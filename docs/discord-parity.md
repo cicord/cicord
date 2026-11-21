@@ -170,6 +170,10 @@ Verified on the test server (Community enabled by CODI, 2026-11-21):
   counted channels must let @everyone send messages. `codi validate` reports both when
   `spec.everyone` is declared.
 - Boost gating (banner, role icon) is blocked in the plan at level 0, as designed.
+- **Roles can share a position.** After a drag in the Discord client the API listed every
+  role at position 1; Discord then ranks the older role (lower ID) higher, and the bot
+  could edit the tied roles. The adapter turns positions into distinct ranks in that
+  order, so the hierarchy checks and the reorder planner see the real hierarchy.
 
 ## Native onboarding and the CODI onboarding plugin
 

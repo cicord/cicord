@@ -415,3 +415,33 @@ func TestPresenceBeforeOpenAndClose(t *testing.T) {
 		t.Error("open after close should fail")
 	}
 }
+
+// Discord can return several roles at the same position (seen live after a drag in
+// the client: every role at 1) and ranks the older one (lower ID) higher. ListRoles
+// must hand CODI distinct positions in that order, or a bot whose role ties with the
+// roles it manages is wrongly reported below them.
+func TestListRolesBreaksPositionTies(t *testing.T) {
+	f := newFakeDiscord(t)
+	f.json("GET /guilds/1/roles", 200, `[
+		{"id":"1","name":"@everyone","position":0},
+		{"id":"300","name":"Admin","position":1},
+		{"id":"200","name":"Bot","position":1,"managed":true},
+		{"id":"400","name":"Membre","position":1},
+		{"id":"150","name":"Top","position":2}
+	]`)
+	s := f.connect(t)
+	roles, err := s.ListRoles(context.Background(), "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, r := range roles {
+		got[r.Name] = r.Position
+	}
+	want := map[string]int{"@everyone": 0, "Membre": 1, "Admin": 2, "Bot": 3, "Top": 4}
+	for name, pos := range want {
+		if got[name] != pos {
+			t.Errorf("%s position = %d, want %d (all: %v)", name, got[name], pos, got)
+		}
+	}
+}

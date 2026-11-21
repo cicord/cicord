@@ -1,8 +1,10 @@
 package disgoadapter
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -105,7 +107,40 @@ func (s *session) ListRoles(ctx context.Context, serverID string) ([]discord.Rol
 	for _, r := range rs {
 		out = append(out, roleFromWire(r))
 	}
+	normalizeRolePositions(serverID, out)
 	return out, nil
+}
+
+// normalizeRolePositions rewrites positions as Discord's effective hierarchy rank.
+// Discord lets several roles share a position (seen live: every role at 1 after
+// a drag in the client) and then ranks the older role (lower ID) higher. The rest
+// of CODI compares positions numerically, so ties are broken here, once: @everyone
+// (ID = server ID) stays 0 and the others get distinct ranks 1..n in Discord's order.
+func normalizeRolePositions(serverID string, roles []discord.Role) {
+	idx := make([]int, 0, len(roles))
+	for i, r := range roles {
+		if r.ID != serverID {
+			idx = append(idx, i)
+		}
+	}
+	slices.SortFunc(idx, func(a, b int) int {
+		ra, rb := roles[a], roles[b]
+		if ra.Position != rb.Position {
+			return cmp.Compare(ra.Position, rb.Position)
+		}
+		return snowflakeCmp(rb.ID, ra.ID) // tie: the higher ID ranks lower
+	})
+	for rank, i := range idx {
+		roles[i].Position = rank + 1
+	}
+}
+
+// snowflakeCmp orders snowflakes numerically (shorter strings are smaller).
+func snowflakeCmp(a, b string) int {
+	if len(a) != len(b) {
+		return cmp.Compare(len(a), len(b))
+	}
+	return cmp.Compare(a, b)
 }
 
 func (s *session) CreateRole(ctx context.Context, serverID string, p discord.RoleParams, reason string) (discord.Role, error) {
