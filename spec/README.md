@@ -137,6 +137,20 @@ comes from the code. The builder checks both agree.
 
 Interactions on the plugin's own commands/components (`reply`, `defer`, `followUp`) need no capability.
 
+### Network egress (`http.fetch`)
+`spec.network.allow` lists **public DNS hostnames** (optional port). The schema rejects IP
+literals, single-label names (`localhost`), reserved/internal suffixes (`.local`,
+`.internal`, `.arpa`, …) and wildcards on a bare TLD (`*.com`). Name checks alone are not
+enough, so the runtime also enforces, on every request:
+1. the hostname matches the allow-list (`*.example.com` matches subdomains, not `example.com`);
+2. **after DNS resolution**, every resolved address is public: loopback, private (RFC 1918,
+   `fc00::/7`), link-local (incl. `169.254.169.254` metadata), CGNAT, multicast,
+   unspecified and IPv4-mapped equivalents are refused;
+3. the connection is made to the **address that was checked** (no second lookup), which
+   defeats DNS rebinding;
+4. redirects are followed manually and each hop is re-checked against 1–3;
+5. only `https` (and `http` when `--dev`), bounded response size and timeout.
+
 ### Config schema extensions
 Plugin `config.schema.json` is standard JSON Schema (2020-12) plus:
 | Keyword | Values | Effect |
