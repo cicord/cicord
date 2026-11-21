@@ -47,7 +47,7 @@ No public release until the product is complete.
 - [x] Verify the parity checklist on the real Discord test server: Community toggle, AFK/locale/flags/filter, icon upload, widget, welcome screen, AutoMod (+ default mention spam placeholder), emoji upload, native onboarding, boost gating (docs/discord-parity.md "Behaviour observed on real Discord")
 - [ ] Real Discord, still untested: stickers (multipart), soundboard, role gradient colors / icons (need boosts)
 - [x] Setup wizard on real Discord: token, intents, server, hierarchy, embedded repo, import (empty plan), OAuth secret, verify, welcome plugin (commands registered), finish
-- [ ] Wizard on real Discord, by hand: the live events check (needs a member message) and a real "Log in with Discord" round trip
+- [x] Wizard on real Discord, by hand: live events check (member message received) and a real "Log in with Discord" round trip; all 9 diagnostics green
 - [ ] Import: download the server icon and emojis into the repository instead of only warning
 - [ ] Plugin privileged-intent warning is printed even when the intent is enabled in the portal: check the live application flags first
 - [ ] Gateway events for the new kinds (AUTO_MODERATION_RULE_*, GUILD_EMOJIS_UPDATE, GUILD_STICKERS_UPDATE,
