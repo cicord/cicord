@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1
+#
+# CODI runtime image: one static `codi` binary with the admin UI and the default portal
+# embedded, on distroless/static (no shell, non-root uid 65532).
+#
+#   docker build -t codi .
+#   docker run -p 7420:7420 -v codi-data:/data -v "$PWD:/repo:ro" --env-file .env codi
+#
+# Stages mirror `make all`: `ui` = `make ui` (pnpm build + scripts/sync-ui.sh),
+# `build` = `make build` (CGO_ENABLED=0). See docs/deploy.md.
+
+ARG NODE_VERSION=24
+ARG GO_VERSION=1.27
+
+# ───────────────────────────────────────────────────────────── web UIs
+FROM node:${NODE_VERSION}-bookworm-slim AS ui
+WORKDIR /src
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+# Vite+ (vp) refuses to start without system CA certificates.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+# pnpm version comes from package.json "packageManager".
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable && corepack install
+COPY vite.config.ts .node-version ./
+COPY packages ./packages
+# @codi/sdk copies its normative types from spec/sdk/codi-sdk.d.ts; the admin UI's mock
+# runtime imports the example plugins' config schemas.
+COPY spec ./spec
+COPY examples ./examples
+RUN --mount=type=cache,id=codi-pnpm-store,target=/pnpm-store \
+    pnpm install --frozen-lockfile --store-dir /pnpm-store
+RUN pnpm -r --filter "./packages/*" build
+
+# ───────────────────────────────────────────────────────────── codi binary
+FROM golang:${GO_VERSION}-bookworm AS build
+WORKDIR /src
+# The official image pins GOTOOLCHAIN=local; allow the exact toolchain of go.mod.
+ENV GOTOOLCHAIN=auto CGO_ENABLED=0
+COPY go.mod go.sum ./
+RUN --mount=type=cache,id=codi-gomod,target=/go/pkg/mod go mod download
+COPY . .
+COPY --from=ui /src/packages/admin/dist ./packages/admin/dist
+COPY --from=ui /src/packages/create-codi-portal/dist ./packages/create-codi-portal/dist
+RUN ./scripts/sync-ui.sh
+ARG VERSION=0.1.0
+ARG COMMIT=dev
+RUN --mount=type=cache,id=codi-gomod,target=/go/pkg/mod \
+    --mount=type=cache,id=codi-gobuild,target=/root/.cache/go-build \
+    go build -trimpath \
+      -ldflags "-s -w -X github.com/npjonath/codi/internal/version.Version=${VERSION} -X github.com/npjonath/codi/internal/version.Commit=${COMMIT}" \
+      -o /out/codi ./cmd/codi \
+ && mkdir -p /out/data /out/repo
+
+# ───────────────────────────────────────────────────────────── runtime
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/codi /usr/local/bin/codi
+# Empty, nonroot-owned directories: a named volume mounted on /data inherits the ownership.
+COPY --from=build --chown=65532:65532 /out/data /data
+COPY --from=build --chown=65532:65532 /out/repo /repo
+# Plugin download cache on the volume (default would be $HOME/.cache, lost on restart).
+ENV CODI_CACHE_DIR=/data/cache
+USER 65532:65532
+WORKDIR /repo
+VOLUME ["/data"]
+EXPOSE 7420
+ENTRYPOINT ["/usr/local/bin/codi"]
+# /repo holds at least codi.yaml (spec.source tells the runtime what to follow); with no
+# spec.source it is the watched local repository.
+CMD ["serve", "/repo", "--data-dir", "/data", "--listen", ":7420"]

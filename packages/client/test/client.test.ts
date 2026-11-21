@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
   CodiApiError,
+  codeForStatus,
   createCodiClient,
   onboardingApi,
   SseParser,
@@ -97,6 +98,14 @@ describe("transport", () => {
       status: 404,
       message: "404 page not found",
     });
+  });
+
+  test("status fallbacks match the runtime's codes", () => {
+    expect(codeForStatus(413)).toBe("invalid");
+    expect(codeForStatus(415)).toBe("invalid");
+    expect(codeForStatus(421)).toBe("forbidden");
+    expect(codeForStatus(418)).toBe("http_418");
+    expect(codeForStatus(502)).toBe("internal");
   });
 
   test("network errors", async () => {
@@ -216,6 +225,7 @@ describe("admin & machine", () => {
     const { fetch, calls } = mockFetch(() => json({ items: [] }));
     const client = createCodiClient({ fetch });
     await client.admin.history({ limit: 10 });
+    await client.admin.history({ target: "server:s" });
     await client.admin.server("s");
     await client.admin.resources("s");
     await client.admin.plan("s");
@@ -229,6 +239,7 @@ describe("admin & machine", () => {
     });
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       "GET /api/v1/history?limit=10",
+      "GET /api/v1/history?target=server%3As",
       "GET /api/v1/servers/s",
       "GET /api/v1/servers/s/resources",
       "GET /api/v1/servers/s/plan",
@@ -237,7 +248,7 @@ describe("admin & machine", () => {
       "GET /api/v1/servers/s/plugins",
       "PUT /api/v1/servers/s/plugins/b/i/config",
     ]);
-    expect(calls[7]?.body).toEqual({ config: { a: 1 }, scope: "base", revision: "r" });
+    expect(calls[8]?.body).toEqual({ config: { a: 1 }, scope: "base", revision: "r" });
   });
 
   test("machine endpoints", async () => {
@@ -266,6 +277,7 @@ describe("simulator", () => {
     await client.sim.leave("srv", "u1");
     await client.sim.messages("c1", { limit: 20 });
     await client.sim.dms("u1");
+    await client.sim.dms("u1", { limit: 5 });
     await client.sim.sendMessage({ userId: "u1", channelId: "c1", content: "hi" });
     await client.sim.command({
       userId: "u1",
@@ -276,6 +288,14 @@ describe("simulator", () => {
     });
     await client.sim.component({ userId: "u1", channelId: "c1", messageId: "m", customId: "x" });
     await client.sim.commands("srv");
+    await client.sim.modal({
+      userId: "u1",
+      serverId: "srv",
+      channelId: "c1",
+      bot: "moderator",
+      customId: "c:welcome:form",
+      fields: { name: "Alice" },
+    });
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       "GET /api/v1/sim/state",
       "POST /api/v1/sim/users",
@@ -283,13 +303,23 @@ describe("simulator", () => {
       "DELETE /api/v1/sim/servers/srv/members/u1",
       "GET /api/v1/sim/channels/c1/messages?limit=20",
       "GET /api/v1/sim/users/u1/dms",
+      "GET /api/v1/sim/users/u1/dms?limit=5",
       "POST /api/v1/sim/messages",
       "POST /api/v1/sim/commands",
       "POST /api/v1/sim/components",
       "GET /api/v1/sim/commands?serverId=srv",
+      "POST /api/v1/sim/modals",
     ]);
-    expect(calls[7]?.body).toMatchObject({ options: {}, name: "onboarding" });
-    expect(calls[8]?.body).toMatchObject({ values: [] });
+    expect(calls[8]?.body).toMatchObject({ options: {}, name: "onboarding" });
+    expect(calls[9]?.body).toMatchObject({ values: [] });
+    expect(calls[11]?.body).toEqual({
+      userId: "u1",
+      serverId: "srv",
+      channelId: "c1",
+      bot: "moderator",
+      customId: "c:welcome:form",
+      fields: { name: "Alice" },
+    });
   });
 
   test("SSE subscription over fetch", async () => {

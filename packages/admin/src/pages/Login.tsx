@@ -3,7 +3,6 @@ import { codiKeys, useCodi } from "@codi/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BrandMark, useAdminConfig } from "../context.tsx";
 import { useLocation } from "../router.tsx";
-import type { AdminSimServer } from "../types.ts";
 import { IconDiscord, IconLogin } from "../ui/icons.tsx";
 import { Avatar, Badge, Button, errorMessage, Spinner } from "../ui/index.tsx";
 
@@ -48,7 +47,7 @@ export function LoginPage() {
   useEffect(() => {
     if (config.mock && search.get("mock-oauth") && sim && !autoLogin.current) {
       autoLogin.current = true;
-      const owner = (sim.servers[0] as AdminSimServer | undefined)?.ownerId;
+      const owner = sim.servers[0]?.ownerId;
       if (owner) void login(owner);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,9 +58,7 @@ export function LoginPage() {
     if (userId.trim()) void login(userId.trim());
   };
 
-  const owners = new Set(
-    (sim?.servers ?? []).map((s) => (s as AdminSimServer).ownerId).filter(Boolean),
-  );
+  const owners = new Set((sim?.servers ?? []).map((s) => s.ownerId).filter(Boolean));
   const users = [...(sim?.users ?? [])].sort(
     (a, b) => Number(owners.has(b.id)) - Number(owners.has(a.id)),
   );

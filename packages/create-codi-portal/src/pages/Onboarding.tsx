@@ -108,9 +108,15 @@ function usePreviewRoles(flow: OnboardingFlowState): { roles: PortalRole[]; fres
     const roles: PortalRole[] = current.filter((r) => !offered.has(r.key));
     const completed = flow.data?.completedRole;
     if (completed && !roles.some((r) => r.key === completed.key)) {
-      roles.push({ key: completed.key, name: completed.name, color: completed.color });
+      roles.push({
+        key: completed.key,
+        id: completed.id,
+        name: completed.name,
+        color: completed.color,
+      });
     }
-    for (const o of picked) roles.push({ key: o.role, name: o.name, color: o.color });
+    // Preview only: the role id is not known until the plugin assigns it.
+    for (const o of picked) roles.push({ key: o.role, id: "", name: o.name, color: o.color });
     const had = new Set(current.map((r) => r.key));
     return { roles, fresh: roles.filter((r) => !had.has(r.key)).map((r) => r.key) };
   }, [member.data, flow.steps, flow.answers, flow.data]);

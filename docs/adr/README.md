@@ -16,8 +16,9 @@ Statuses: `Proposed` (not decided yet), `Accepted`, `Superseded by ADR-XXXX`.
 | [0009](0009-server-vocabulary.md) | "Server", never "guild", outside the Discord adapter | Accepted |
 | [0010](0010-plugin-instance-per-bot-server.md) | One plugin instance per (bot, server) | Accepted |
 | [0011](0011-git-registry-and-lockfile.md) | Git-based plugin registry + `codi.lock` | Accepted |
-| [0012](0012-discord-simulator.md) | Discord simulator for tests and offline dev | Accepted |
+| [0012](0012-discord-simulator.md) | In-process Discord simulator behind the `discord` interfaces | Accepted |
 | [0013](0013-licensing.md) | Apache-2.0 SDKs, AGPL-3.0 runtime | Proposed |
-| [0014](0014-discord-library.md) | `disgo` as the Discord library | Proposed |
+| [0014](0014-discord-library.md) | `disgo` (`rest` + `gateway` only) as the Discord library | Accepted |
 | [0015](0015-yaml-k8s-style.md) | Kubernetes-style YAML resources | Accepted |
 | [0016](0016-portal-as-discord-activity.md) | Community portal runnable as a Discord Activity | Proposed |
+| [0017](0017-dev-mode-with-simulator.md) | `codi dev --sim`: local runtime on the simulator, loopback-only | Accepted |

@@ -14,7 +14,8 @@ export interface CodiTheme {
   primary?: string | undefined;
   accent?: string | undefined;
   logo?: string | undefined;
-  mode?: "light" | "dark" | "system" | undefined;
+  /** "" (sent by the runtime when unset) behaves like undefined: the default mode. */
+  mode?: "light" | "dark" | "system" | "" | undefined;
 }
 
 export type ResolvedMode = "light" | "dark";

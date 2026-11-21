@@ -49,7 +49,13 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.rt.Status()
 	if st.Revision == nil {
-		writeJSON(w, http.StatusOK, st) // nothing to filter before the first revision
+		// Before the first revision no server roles can be resolved: only bearer clients
+		// get the details (lastError may contain configuration content).
+		if !s.isBearer(r) {
+			st.LastError = ""
+			st.Bots = []runtime.BotStatus{}
+		}
+		writeJSON(w, http.StatusOK, st)
 		return
 	}
 	vis, err := s.visibleServers(r.Context(), id, roleModerator)
@@ -153,7 +159,8 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit := queryInt(r, "limit", 50, 500)
-	recs, err := s.store.Syncs().List(r.Context(), r.URL.Query().Get("target"), limit)
+	// Over-fetch: visibility filtering happens after the query.
+	recs, err := s.store.Syncs().List(r.Context(), r.URL.Query().Get("target"), min(limit*5, 1000))
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -193,6 +200,9 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		items = append(items, syncRecordDTO{ID: rec.ID, Time: rec.Time, Revision: rec.Revision, Target: rec.Target,
 			Status: rec.Status, Message: rec.Message, Details: rec.Details})
 	}
+	if len(items) > limit {
+		items = items[:limit]
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
@@ -211,8 +221,15 @@ func (s *server) handleServer(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	ss, _ := s.serverStatus(r.Context(), key)
-	srv, _ := s.rt.ServerConfig(key)
+	ss, ok := s.serverStatus(r.Context(), key)
+	srv, okCfg := s.rt.ServerConfig(key)
+	if !ok || !okCfg {
+		s.fail(w, httpErr(http.StatusNotFound, "not_found", "unknown server %q", key))
+		return
+	}
+	if ss.Drift == nil {
+		ss.Drift = []runtime.DriftEntry{}
+	}
 	writeJSON(w, http.StatusOK, struct {
 		runtime.ServerStatus
 		Spec any `json:"spec"`

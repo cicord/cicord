@@ -4,8 +4,10 @@
 > GitOps for Discord: servers and bots are declared in a git repository, a runtime
 > reconciles them continuously, and behaviour is extended with TypeScript plugins.
 
-Status: **draft v0.1** — decisions are recorded in [`docs/adr/`](docs/adr/README.md),
-the contracts live in [`spec/`](spec/README.md).
+Status: **v0.1, implemented (pre-release)** — decisions are recorded in
+[`docs/adr/`](docs/adr/README.md), the contracts live in [`spec/`](spec/README.md) and
+[`spec/api.md`](spec/api.md). Items not built yet are marked *(planned)*; see the
+[roadmap](#12-roadmap).
 
 ---
 
@@ -36,14 +38,14 @@ processing, a visual plugin builder.
             ┌──────────────────────────── git repository ─────────────────────────────┐
             │ codi.yaml   servers/*.yaml   bots/<name>/bot.yaml   plugins/   codi.lock │
             └───────▲──────────────────────────────┬──────────────────────────────────┘
-     write-back     │ commits (GitHub App          │ webhook / poll
+     write-back     │ commits (go-git push,        │ webhook / poll
      (UI changes)   │ or embedded go-git)          ▼
 ┌───────────────────┴──────────────────────────────────────────────────────────────────┐
 │                                 codi serve  (runtime)                                │
 │                                                                                      │
 │  ┌───────────┐   ┌────────────┐   ┌──────────────┐   ┌──────────────────────────┐    │
 │  │  Source   │──▶│  Loader &  │──▶│   Builder    │──▶│ Revision (immutable)      │    │
-│  │ controller│   │ validator  │   │ (esbuild-go) │   │ config + plugin bundles   │    │
+│  │ (source)  │   │ (config)   │   │ (esbuild-go) │   │ config + plugin bundles   │    │
 │  └───────────┘   └────────────┘   └──────────────┘   └──────┬───────────────┬────┘    │
 │                                                             │               │         │
 │                                        ┌────────────────────▼───┐   ┌───────▼──────┐  │
@@ -57,7 +59,7 @@ processing, a visual plugin builder.
 │  │ commit       │   └───────▲────────▲───────┘     │                │  └─────────┘ │  │
 │  └──────────────┘           │        │             │                └──────┬───────┘  │
 │         ┌─────────────────────────────────────────────────────────────────▼───────┐  │
-│         │  State store (SQLite / Postgres): resource map · KV · audit · sessions  │  │
+│         │  State store (SQLite):   resource map · KV · audit · sessions · history │  │
 │         └─────────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────┼────────┼─────────────┼────────────────────────────────┘
                                │        │             │ Discord REST + Gateway
@@ -106,22 +108,28 @@ See [ADR-0003](docs/adr/0003-state-in-runtime-db.md).
 
 ## 4. Runtime components
 
-### 4.1 Source controller
-- Watches the configured repo/branch: **webhook** (push events) with **polling** as a fallback.
-- In "embedded git" mode (no GitHub), the repo lives inside the runtime (go-git) and the CLI /
-  UI push to it. The pipeline is identical: everything is a commit.
-- Produces a candidate revision per commit SHA.
+### 4.1 Source controller (`internal/source`)
+- Providers (`codi.yaml` `spec.source.provider`): `github`, `git` (any HTTPS remote,
+  `CODI_GIT_TOKEN`) and `embedded` (a bare repository in the data dir, seeded from the
+  served directory); `codi serve --local` and `codi dev` use the working directory itself.
+- Git sources are fetched with go-git (pure Go, no `git` binary): **polling** (default 1 min,
+  `spec.source.pollInterval`) plus **webhooks** (`/hooks/github`) and `POST /api/v1/sync`
+  for immediate fetches. The local source watches files and hashes the content.
+- Produces an immutable snapshot directory per commit SHA (or content hash): a revision.
 
 ### 4.2 Loader & validator
 1. Parse YAML, validate each document against its JSON Schema (`spec/schemas`).
 2. Semantic validation: references resolve (`category: community` exists), keys are unique,
    plugin config validates against the plugin's `config.schema.json`, every capability a
    plugin requests is granted in `bot.yaml`, the engine version is compatible.
-3. The same code runs in `codi validate` (CLI, offline) and in the runtime.
+3. The same code runs in `codi validate` (CLI, offline), in the runtime and in the config
+   write-back (`PUT …/config`, spec/api.md §5).
 
 ### 4.3 Builder
-- Resolves plugins from `codi.lock` (registry plugins) or the repo (local plugins).
-- Bundles TypeScript with **esbuild used as a Go library** — no Node.js required anywhere.
+- Resolves plugins from `codi.lock` (registry plugins, `internal/registry`) or the repo
+  (local plugins).
+- Bundles TypeScript with **esbuild used as a Go library** (`internal/build`; ES2022, inline
+  source maps, `@codi/sdk` as the only external) — no Node.js required anywhere.
 - Loads each bundle once to extract its static definition (commands, handlers, API routes),
   checks it against the manifest (e.g. a `memberJoin` handler requires the `ServerMembers` intent).
 
@@ -132,9 +140,13 @@ See [ADR-0003](docs/adr/0003-state-in-runtime-db.md).
 - **drift**: the bot host forwards gateway events (`CHANNEL_UPDATE`, `ROLE_DELETE`, …) so
   manual changes in Discord are detected in real time. Per server `syncPolicy` decides:
   report only, or `selfHeal` (revert).
+- **adoption**: a declared resource with no mapping adopts an existing Discord resource with
+  the same name (`adopt`), so pointing CODI at an existing server does not duplicate it.
 - **ownership**: only resources present in the resource map are ever modified. Resources
   never declared are ignored. Resources created at runtime by plugins (e.g. ticket channels)
-  are recorded as owned by that plugin instance and never pruned by the reconciler.
+  are recorded as owned by that plugin instance and never pruned by the reconciler. A key
+  removed from YAML is deleted (`prune`), blocked (`deletionProtection`) or just dropped
+  from the map (`unmanage`). The exact rules are in [spec/README.md §3](spec/README.md).
 
 ### 4.5 Bot host
 - One gateway session per bot. Intents = union of the intents required by its plugin
@@ -146,19 +158,22 @@ See [ADR-0003](docs/adr/0003-state-in-runtime-db.md).
   Storage persists across revisions.
 
 ### 4.6 Plugin host
-- JavaScript engine: **Sobek** (pure Go, ESM, async/await), behind a language-agnostic
-  `PluginRuntime` interface so a QuickJS-on-wasm or WASM backend can be added for stronger
-  multi-tenant isolation. See [ADR-0005](docs/adr/0005-typescript-plugins.md).
+- JavaScript engine: **Sobek** (pure Go, async/await) running the esbuild bundle
+  (`internal/plugin`). The package boundary is the seam for another backend
+  (QuickJS-on-wasm, WASM) for stronger multi-tenant isolation; an interface will be
+  extracted when a second backend exists. See [ADR-0005](docs/adr/0005-typescript-plugins.md).
 - One isolated VM per plugin instance, a serialized event queue per VM.
 - Capability enforcement on every host call ([ADR-0006](docs/adr/0006-capability-based-permissions.md)).
 - CPU budget per handler (interrupt), wall-clock timeouts, no filesystem/network except
-  through capabilities (`http.fetch` with an allow-list).
+  through capabilities (`http.fetch` with an allow-list). Budgets and limits:
+  [spec/README.md §8](spec/README.md), [docs/plugins.md](docs/plugins.md).
 - **Interaction deadline**: Discord requires an answer within 3 s. If a handler has not
   replied after ~2 s, the host defers automatically; a later `reply()` transparently edits
   the deferred response.
 
 ### 4.7 State store
-SQLite by default (single file, zero ops), Postgres optional. Holds:
+SQLite (`internal/state/sqlite`, pure Go driver; a single file in the data dir, in memory
+for `codi dev --sim`) behind the `internal/state` interfaces; Postgres *(planned)*. Holds:
 - resource map: `(server key, kind, resource key) → Discord ID`, plus owner (git / plugin instance);
 - plugin KV storage, scoped per plugin instance;
 - audit log (moderation actions, UI actions), sessions, sync history.
@@ -167,22 +182,27 @@ SQLite by default (single file, zero ops), Postgres optional. Holds:
 preferences never go to git. See [ADR-0004](docs/adr/0004-git-write-back.md).
 
 ### 4.8 HTTP API
-Serves the admin UI, the community portal SDK and the CLI (`codi plan --remote`, `codi status`).
-Auth via Discord OAuth2; authorization derived from Discord roles (`spec.access` in the Server).
-Plugins can expose their own routes to the portal. *The API contract is the next spec to write.*
+`internal/api`, contract in [spec/api.md](spec/api.md). Serves the admin UI, the community
+portal SDK and the CLI (`codi plan --remote`, `codi status`), plus the simulator endpoints
+of `codi dev --sim`. Auth via Discord OAuth2, portal links (`ctx.portal.link()`, scoped to one
+server) and the runtime bearer token; authorization derived from Discord roles
+(`spec.access` in the Server). Plugins can expose their own routes to the portal. CSRF
+protection (`X-Codi-Request` + Origin check) and, in dev mode, a loopback-only Host check.
 
 ### 4.9 Write-back
 When a change is made in the admin UI:
 
 ```
 UI edit ─▶ API validates against schema ─▶ patch YAML node tree (yaml.v3, comments kept)
-        ─▶ commit on top of the active SHA (author codi[bot], trailer Codi-Actor)
+        ─▶ commit on the latest branch head (author codi[bot], trailers Codi-Actor / Codi-Source)
         ─▶ policy: direct commit  → runtime activates its own SHA immediately
                    pull request   → change waits for review/merge, then normal sync
-        ─▶ conflict (branch moved): rebase if trivial, otherwise open a PR
+        ─▶ conflict: the edit is re-applied on the latest head; if it no longer applies → 409
 ```
 
-The runtime never applies a change that is not committed first.
+`internal/writeback` pushes with go-git and `CODI_GIT_TOKEN`; pull requests use the GitHub
+API (GitHub App credentials *(planned)*). `codi dev` writes to the working directory. The
+runtime never applies a change that is not committed first.
 
 ---
 
@@ -191,7 +211,7 @@ The runtime never applies a change that is not committed first.
 ```
 commit ─▶ fetch ─▶ validate ─▶ build ─▶ plan ─▶ apply servers ─▶ activate bots ─▶ report
                      │            │                │                  │             │
-                  rejected     rejected         failed            rolled back   commit status
+                  rejected     rejected         failed            rolled back   history
                   (status)     (status)         (resumable)       to previous    + UI status
 ```
 
@@ -202,7 +222,8 @@ Each server and bot exposes a status, ArgoCD style:
 | `Synced` · `OutOfSync` · `Unknown` | `Healthy` · `Progressing` · `Degraded` · `Missing` |
 
 The active revision only changes when validation and build succeed. A failed apply on one
-server does not block others.
+server does not block others. Every activation, rejection and server sync is recorded in
+the sync history (`GET /api/v1/history`); GitHub commit statuses are *(planned)*.
 
 ---
 
@@ -211,10 +232,10 @@ server does not block others.
 | Event | CI step | Runtime |
 |---|---|---|
 | Pull request | `codi validate` (offline) + `codi plan --remote` posted as a PR comment | answers the plan request, nothing applied |
-| Merge to `main` | — (optional: `codi status --wait`) | webhook → sync → commit status on the SHA |
+| Merge to `main` | — (optional: `codi status --wait`) | webhook → sync (commit status on the SHA: *planned*) |
 | UI change | — | commits, then activates (or opens a PR, by policy) |
 
-`codi init` generates the GitHub Actions workflow.
+A GitHub Actions template generated by `codi init` is *(planned)*.
 
 ---
 
@@ -222,6 +243,26 @@ server does not block others.
 
 | Command | Purpose |
 |---|---|
+| `codi init` | Scaffold a repo (`codi.yaml`, `servers/`, `bots/`). |
+| `codi validate` | Schema + semantic validation, offline (`-o json`). |
+| `codi plan [--remote]` | Diff with the live server(s); `--remote` asks the runtime (`POST /api/v1/plan`). |
+| `codi apply` | Reconcile directly (local/dev use; in production the runtime applies). |
+| `codi status [--wait]` | Sync/health of servers and bots (`GET /api/v1/status`). |
+| `codi sync` | Ask the runtime to fetch and sync now (`POST /api/v1/sync`). |
+| `codi import <server-id>` | Generate `servers/<key>.yaml` from an existing server. |
+| `codi adopt` | Rebuild the resource map by matching names after state loss. |
+| `codi mv <old-key> <new-key>` | Rename a resource key without delete + create (rewrites YAML and the resource map). |
+| `codi dev [--sim]` | Run the runtime locally with hot reload, against real Discord or the simulator. |
+| `codi serve [--local]` | Run the runtime. |
+| `codi plugin new / sdk-types` | Scaffold a plugin; write the SDK types for editors. |
+| `codi plugin add` | Add a registry plugin to a bot and lock it in `codi.lock`. |
+| `codi plugin build / typegen / test` | Bundle a plugin, generate config types from its schema, run its tests. |
+| `codi plugin publish` | *(planned)* |
+
+`plan`, `apply`, `status`, `sync`, `import`, `adopt`, `mv` and `plugin build | typegen |
+test` are being added; `codi <command> --help` is authoritative.
+
+---|---|
 | `codi init` | Scaffold a repo (`codi.yaml`, `servers/`, `bots/`, CI workflow). |
 | `codi validate` | Schema + semantic validation, offline. |
 | `codi plan [--remote]` | Diff with the live server(s). |
@@ -242,8 +283,12 @@ server does not block others.
 - Shipped prebuilt inside the binary. Not customized per deployment.
 - Server overview, sync status, drift, history (git log of the config), audit log.
 - **Plugin settings pages generated from each plugin's `config.schema.json`.** CODI schema
-  extensions (`x-codi-ref: channel | role | category`) render channel/role pickers.
+  extensions (`x-codi-ref: channel | role | category`, `x-codi-widget`, `x-codi-access`)
+  render pickers and restrict moderator edits.
 - Every save goes through write-back (§4.9).
+- In `codi dev --sim`, a **Simulator** panel plays Discord users (join, messages, slash
+  commands, buttons, selects, modals, DMs) against the in-memory world
+  ([ADR-0017](docs/adr/0017-dev-mode-with-simulator.md)).
 
 ### Community portal (SDK)
 The portal is **not** a fixed app: it is a set of packages any React app can use.
@@ -255,12 +300,13 @@ The portal is **not** a fixed app: it is a set of packages any React app can use
 | `@codi/ui` | Optional styled components driven by the server's theme. |
 | `create-codi-portal` | The demo / reference portal, meant to be forked. |
 
-Plugins can be full-stack: a server part (runs in the runtime) and a client part (React
-components). Types for plugin API routes are generated.
+Plugins expose portal routes (`definePlugin({routes})`, served under
+`/api/v1/portal/{server}/plugins/{bot}/{instance}/…`). A client part (React components,
+`spec.client` in `plugin.yaml`) and generated route types are *(planned)*.
 
-Hosting: if the repo has a `portal/` directory, CI builds it and the runtime serves the
-output; otherwise the runtime serves the default portal. An external host (Vercel, …) works
-with CORS configured.
+Hosting: the runtime serves the default portal (`create-codi-portal`) at `/`. An external
+host (Vercel, …) works with `--cors-origin`. Serving a repository's own `portal/` build is
+*(planned)*.
 
 Typical onboarding: a member joins → a plugin sends a DM with a button →
 `ctx.portal.link("/onboarding")` produces a signed, short-lived URL → the themed portal opens,
@@ -277,7 +323,11 @@ Running the portal *inside* Discord (Embedded App SDK / Activities) is a propose
 - **Plugin capabilities** are declared in the manifest and must be granted explicitly in
   `bot.yaml`. A plugin update that requests a new capability fails validation until granted.
 - **Supply chain**: `codi.lock` pins plugin commits and content hashes.
-- **Write-back** uses a GitHub App with repo-scoped, short-lived tokens.
+- **Write-back** uses `CODI_GIT_TOKEN` (a repo-scoped token); GitHub App credentials are
+  *(planned)*.
+- **HTTP API**: session cookies (HttpOnly, SameSite=Lax, Secure over https), CSRF header +
+  Origin check, link sessions scoped to one server, dev mode bound to loopback hosts and
+  dev login only with `--sim` or the runtime token. Checklist: [docs/deploy.md](docs/deploy.md).
 - **Destructive operations** (deleting roles/channels) require `prune: true` and are blocked by
   `deletionProtection` unless explicitly disabled.
 
@@ -285,56 +335,66 @@ Running the portal *inside* Discord (Embedded App SDK / Activities) is a propose
 
 ## 10. Testing strategy
 
-A **Discord simulator** (`internal/sim`) implements the subset of the REST API and gateway
-CODI uses. It backs:
-- unit/integration tests of the reconciler and the bot host;
-- plugin tests (`codi plugin test`) without a real server;
-- `codi dev --sim` offline;
-- conformance tests that agents and contributors run against the spec.
+A **Discord simulator** (`internal/sim`) is an in-process fake that implements the
+`internal/discord` interfaces (REST operations and gateway events), not an HTTP-level fake.
+It backs:
+- unit/integration tests of the reconciler, the runtime and the API;
+- `codi dev --sim` offline, with the admin UI's Simulator panel;
+- end-to-end checks of plugins against a seeded world.
 
-See [ADR-0012](docs/adr/0012-discord-simulator.md).
+The disgo adapter is tested separately against an HTTP test server. Plugin unit tests use
+`@codi/sdk/testing` (a fake context, no runtime needed). See
+[ADR-0012](docs/adr/0012-discord-simulator.md).
 
 ---
 
 ## 11. Repository layout (CODI itself)
 
 ```
-cmd/codi/               single binary: CLI + `codi serve`
+cmd/codi/                  single binary: CLI + `codi serve`
 internal/
-  config/               loading, JSON Schema + semantic validation
-  source/               git fetch, webhooks, embedded repo, revisions
-  build/                esbuild bundling of plugins
-  reconcile/            server plan / apply / drift
-  bothost/              gateway sessions, command sync, interaction routing
-  plugin/               PluginRuntime interface, Sobek backend, capabilities, scheduler
-  state/                SQLite/Postgres store
-  writeback/            YAML node patching, commits, PRs
-  api/                  HTTP API
-  discord/              adapter over the Discord library (only place saying "guild")
-  sim/                  Discord simulator
-packages/               JS workspace (Vite+)
-  sdk/                  @codi/sdk — plugin authoring API (types = spec/sdk)
-  client/  react/  ui/  community portal SDK
-  admin/                admin UI (embedded into the binary)
-  create-codi-portal/   reference portal
-spec/                   JSON Schemas + SDK type contract
-docs/adr/               architecture decision records
-examples/               example CODI repositories
+  api/                     HTTP API v1 (spec/api.md), auth, simulator endpoints, static UIs
+  auth/                    signed portal link tokens, random IDs
+  build/                   esbuild bundling of plugins
+  cli/                     cobra commands (init, validate, dev, serve, plugin …)
+  config/                  loading, JSON Schema + semantic validation, plugin config
+  discord/                 Discord interfaces and vocabulary (only place saying "guild")
+  discord/disgoadapter/    implementation over disgo rest + gateway (ADR-0014)
+  plugin/                  Sobek plugin host: definitions, capabilities, budgets, scheduler
+  reconcile/               server plan / apply / drift
+  registry/                git registries, codi.lock resolution
+  runtime/                 controller: revisions, hot swap, bot host, status
+  sim/                     in-process Discord simulator
+  source/                  local and git sources, revisions
+  state/                   store interfaces; state/sqlite/ the SQLite store
+  version/                 build version
+  webui/                   embedded admin UI and default portal (copied by scripts/sync-ui.sh)
+  writeback/               YAML node patching, commits, pull requests
+packages/                  JS workspace (pnpm + Vite+)
+  sdk/                     @codi/sdk — plugin authoring API (types = spec/sdk) + testing helpers
+  client/                  @codi/client — typed API client
+  react/                   @codi/react — hooks and headless components
+  ui/                      @codi/ui — themed components
+  admin/                   admin UI (embedded into the binary)
+  create-codi-portal/      reference portal (embedded as the default portal)
+spec/                      API contract, semantics, JSON Schemas, SDK type contract
+docs/                      plugin guide, deployment guide, ADRs
+examples/                  example CODI repositories
 ```
 
 ---
 
 ## 12. Roadmap
 
-| Phase | Content |
-|---|---|
-| **0 — Spec** | This document, ADRs, JSON Schemas, SDK contract, example repo. ← *we are here* |
-| **1 — Vertical slice** | `codi` binary, config loader/validator, simulator, bot host, Sobek plugin host, KV, slash commands, `codi dev`. |
-| **2 — Server reconciler** | Resource map, plan/apply, drift + selfHeal, `import` / `adopt`, GitHub Actions template. |
-| **3 — GitOps runtime** | Source controller, revisions + hot swap, commit statuses, `plan --remote`. |
-| **4 — Admin UI + write-back** | HTTP API spec, OAuth, generated settings pages, GitHub App write-back. |
-| **5 — Portal SDK** | `@codi/client`, `@codi/react`, `@codi/ui`, `create-codi-portal`, onboarding flow. |
-| **6 — Registry** | Git-based index, `codi plugin publish`, verified publishers. |
-| **7 — SaaS** | Multi-tenant runtime, stronger isolation backend, managed git, billing. |
+| Phase | Content | Status |
+|---|---|---|
+| **0 — Spec** | This document, ADRs, JSON Schemas, SDK contract, example repo. | Done |
+| **1 — Vertical slice** | `codi` binary, config loader/validator, simulator, bot host, Sobek plugin host, KV, slash commands, `codi dev`. | Done |
+| **2 — Server reconciler** | Resource map, plan/apply, drift + selfHeal, adoption, `import` / `adopt` / `mv`, GitHub Actions template. | Reconciler done; CLI commands in progress; template planned |
+| **3 — GitOps runtime** | Source controller, revisions + hot swap, webhooks, `plan --remote`, commit statuses. | Done except commit statuses; `codi plan --remote` client in progress |
+| **4 — Admin UI + write-back** | HTTP API spec, OAuth, generated settings pages, write-back (commit / PR), simulator panel. | Done (GitHub App credentials planned) |
+| **5 — Portal SDK** | `@codi/client`, `@codi/react`, `@codi/ui`, `create-codi-portal`, onboarding flow. | Done |
+| **6 — Registry** | Git-based index, `codi plugin add` + `codi.lock`, `codi plugin publish`, verified publishers. | `add` done; publishing planned |
+| **7 — SaaS** | Multi-tenant runtime, stronger isolation backend, Postgres, managed git, billing. | Not started |
 
-Next specs to write: **runtime HTTP API**, **registry index format**, **revision/bundle format**.
+Next specs to write: **registry index format**, **revision/bundle format**.

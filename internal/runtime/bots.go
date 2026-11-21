@@ -47,10 +47,8 @@ type routing struct {
 	caches      map[string]*serverCache           // serverID → cache
 }
 
-var botErrors sync.Map // bot key → last connection error
-
 func (r *Runtime) botError(key string) string {
-	if v, ok := botErrors.Load(key); ok {
+	if v, ok := r.botErrs.Load(key); ok {
 		return v.(string)
 	}
 	return "not connected"
@@ -108,7 +106,7 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 		wanted[key] = true
 		token, ok := r.opts.Secrets(b.Spec.Token.SecretRef)
 		if !ok || strings.TrimSpace(token) == "" {
-			botErrors.Store(key, fmt.Sprintf("secret %s is not set", b.Spec.Token.SecretRef))
+			r.botErrs.Store(key, fmt.Sprintf("secret %s is not set", b.Spec.Token.SecretRef))
 			r.dropBot(key)
 			continue
 		}
@@ -121,12 +119,12 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 		r.dropBot(key)
 		sess, err := r.opts.Connector.Connect(ctx, token)
 		if err != nil {
-			botErrors.Store(key, fmt.Sprintf("connect: %v", err))
+			r.botErrs.Store(key, fmt.Sprintf("connect: %v", err))
 			r.log.Error("bot connect failed", "bot", key, "err", err)
 			continue
 		}
 		if sess.ApplicationID() != b.Spec.ApplicationID {
-			botErrors.Store(key, fmt.Sprintf("token belongs to application %s, bot.yaml says %s", sess.ApplicationID(), b.Spec.ApplicationID))
+			r.botErrs.Store(key, fmt.Sprintf("token belongs to application %s, bot.yaml says %s", sess.ApplicationID(), b.Spec.ApplicationID))
 			_ = sess.Close(ctx)
 			continue
 		}
@@ -136,12 +134,12 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 			_ = sess.SetPresence(ctx, toPresence(p))
 		}
 		if err := sess.Open(ctx, intents, h.handle); err != nil {
-			botErrors.Store(key, fmt.Sprintf("gateway: %v", err))
+			r.botErrs.Store(key, fmt.Sprintf("gateway: %v", err))
 			r.log.Error("bot gateway failed", "bot", key, "err", err)
 			_ = sess.Close(ctx)
 			continue
 		}
-		botErrors.Delete(key)
+		r.botErrs.Delete(key)
 		r.mu.Lock()
 		r.bots[key] = h
 		r.mu.Unlock()

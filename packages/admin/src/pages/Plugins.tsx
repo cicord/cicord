@@ -1,4 +1,10 @@
-import { CodiApiError, type ConfigScope, type Json, type WriteBackResult } from "@codi/client";
+import {
+  CodiApiError,
+  type ConfigScope,
+  type Json,
+  type PluginInstance,
+  type WriteBackResult,
+} from "@codi/client";
 import { useCodi } from "@codi/react";
 import { useEffect, useMemo, useState } from "react";
 import { keys, usePlugins, useResources, useRole, useStatus } from "../api.ts";
@@ -17,7 +23,6 @@ import {
   type JsonObject,
   type JsonSchema,
 } from "../schema-form/index.ts";
-import type { AdminPluginInstance } from "../types.ts";
 import { IconExternal, IconLock, IconPlug, IconSlash } from "../ui/icons.tsx";
 import {
   Badge,
@@ -136,7 +141,7 @@ function PluginCard({
   resources,
   revision,
 }: {
-  instance: AdminPluginInstance;
+  instance: PluginInstance;
   serverKey: string;
   role: string | undefined;
   resources: Parameters<typeof SchemaForm>[0]["resources"];
@@ -308,7 +313,7 @@ function SettingsEditor({
 }: {
   scope: ConfigScope;
   onScope: (scope: ConfigScope) => void;
-  instance: AdminPluginInstance;
+  instance: PluginInstance;
   serverKey: string;
   role: string | undefined;
   resources: Parameters<typeof SchemaForm>[0]["resources"];

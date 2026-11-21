@@ -3,9 +3,11 @@ import type {
   AccessRole,
   AuditEntry,
   Me,
+  PluginInstance,
   Message,
   Plan,
   ServerDetail,
+  RuntimeStatus,
   ServerResources,
   SimCommand,
   SimState,
@@ -13,7 +15,6 @@ import type {
 } from "@codi/client";
 import { useCodi, useCodiQuery, type QueryResult } from "@codi/react";
 import { useMemo } from "react";
-import type { AdminPluginInstance, AdminStatus } from "./types.ts";
 
 export const keys = {
   status: () => ["admin", "status"] as const,
@@ -30,12 +31,9 @@ export const keys = {
   simDms: (userId: string) => ["sim", "dms", userId] as const,
 };
 
-export function useStatus(): QueryResult<AdminStatus> {
+export function useStatus(): QueryResult<RuntimeStatus> {
   const { client } = useCodi();
-  return useCodiQuery(
-    keys.status(),
-    (signal) => client.admin.status({ signal }) as unknown as Promise<AdminStatus>,
-  );
+  return useCodiQuery(keys.status(), (signal) => client.admin.status({ signal }));
 }
 
 export function useHistory(limit = 30): QueryResult<SyncRecord[]> {
@@ -71,7 +69,7 @@ export function useAudit(key: string, before: string): QueryResult<AuditEntry[]>
   );
 }
 
-export function usePlugins(key: string): QueryResult<AdminPluginInstance[]> {
+export function usePlugins(key: string): QueryResult<PluginInstance[]> {
   const { client } = useCodi();
   return useCodiQuery(keys.plugins(key), (signal) => client.admin.plugins(key, { signal }));
 }

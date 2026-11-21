@@ -1,7 +1,6 @@
-import type { BotStatus, SyncRecord } from "@codi/client";
+import type { BotStatus, RuntimeStatus, ServerStatus, SyncRecord } from "@codi/client";
 import { useHistory, useStatus } from "../api.ts";
 import { Link } from "../router.tsx";
-import type { AdminServerStatus, AdminStatus } from "../types.ts";
 import { IconBot, IconBranch, IconCommit, IconPlay, IconServer } from "../ui/icons.tsx";
 import {
   Avatar,
@@ -104,7 +103,7 @@ export function OverviewPage() {
   );
 }
 
-function RevisionHero({ status }: { status: AdminStatus }) {
+function RevisionHero({ status }: { status: RuntimeStatus }) {
   const rev = status.revision;
   if (!rev)
     return (
@@ -140,7 +139,7 @@ function RevisionHero({ status }: { status: AdminStatus }) {
   );
 }
 
-function ServerCard({ server }: { server: AdminServerStatus }) {
+function ServerCard({ server }: { server: ServerStatus }) {
   const drift = server.drift?.length ?? 0;
   return (
     <article className="server-card" data-sync={server.sync}>

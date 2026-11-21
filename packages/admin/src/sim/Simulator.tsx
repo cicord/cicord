@@ -1,13 +1,20 @@
 /**
  * The playground (spec/api.md §8): act as simulated Discord users, watch bots answer live.
  */
-import type { Json, Message, SimCommand, SimServer, User } from "@codi/client";
+import type {
+  InteractionResult,
+  Json,
+  Message,
+  SimCommand,
+  SimModal,
+  SimServer,
+  User,
+} from "@codi/client";
 import { useCodi } from "@codi/react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { keys, useSimCommands, useSimDms, useSimMessages, useSimState, useStatus } from "../api.ts";
 import { useAdminConfig } from "../context.tsx";
 import { Picker, Swatch, type PickerOption } from "../schema-form/index.ts";
-import type { AdminInteractionResult, AdminSimServer, SimModal } from "../types.ts";
 import {
   IconHash,
   IconLeave,
@@ -38,7 +45,7 @@ type View = { kind: "channel"; id: string } | { kind: "dm"; userId: string };
 
 interface LastInteraction {
   label: string;
-  result: AdminInteractionResult;
+  result: InteractionResult;
   /** Context to submit a modal. */
   ctx: { userId: string; serverId: string; channelId: string; bot: string };
   at: number;
@@ -100,7 +107,7 @@ export function SimulatorPage() {
     <Playground
       users={state.data.users}
       bots={state.data.bots}
-      servers={state.data.servers as AdminSimServer[]}
+      servers={state.data.servers}
       live={live}
     />
   );
@@ -114,7 +121,7 @@ function Playground({
 }: {
   users: User[];
   bots: User[];
-  servers: AdminSimServer[];
+  servers: SimServer[];
   live: string;
 }) {
   const { client, cache } = useCodi();
@@ -197,11 +204,7 @@ function Playground({
     }
   };
 
-  const showResult = (
-    label: string,
-    result: AdminInteractionResult,
-    ctx: LastInteraction["ctx"],
-  ) => {
+  const showResult = (label: string, result: InteractionResult, ctx: LastInteraction["ctx"]) => {
     const entry = { label, result, ctx, at: Date.now() };
     setLast(entry);
     if (result.status === "modal" && result.modal) setModal(entry);
@@ -212,13 +215,13 @@ function Playground({
     if (!actor) return;
     setBusy(message.id);
     try {
-      const result = (await client.sim.component({
+      const result = await client.sim.component({
         userId: actor.id,
         channelId: message.channelId,
         messageId: message.id,
         customId,
         values,
-      })) as AdminInteractionResult;
+      });
       const component = message.components
         .flatMap((row) => row.components ?? [])
         .find((c) => c.customId === customId);
@@ -243,14 +246,14 @@ function Playground({
   const runCommand = async (command: SimCommand, options: { [key: string]: Json }) => {
     if (!actor) return;
     try {
-      const result = (await client.sim.command({
+      const result = await client.sim.command({
         userId: actor.id,
         serverId: server.id,
         channelId: channelForCommand,
         bot: command.bot,
         name: command.name,
         options,
-      })) as AdminInteractionResult;
+      });
       showResult(`/${command.name}`, result, {
         userId: actor.id,
         serverId: server.id,
@@ -268,13 +271,7 @@ function Playground({
     fields: Record<string, string>,
   ) => {
     try {
-      const result = await client.request<AdminInteractionResult>(
-        "POST",
-        `${client.apiPath}/sim/modals`,
-        {
-          body: { ...entry.ctx, customId: modalDef.customId, fields },
-        },
-      );
+      const result = await client.sim.modal({ ...entry.ctx, customId: modalDef.customId, fields });
       setModal(null);
       showResult(`Submitted “${modalDef.title}”`, result, entry.ctx);
     } catch (e) {
@@ -511,9 +508,8 @@ function ChannelNav({
   onSelect: (v: View) => void;
 }) {
   const cats = server.channels.filter((c) => c.type === "category");
-  const parent = (c: SimServer["channels"][number]) => (c as { parentId?: string }).parentId ?? "";
-  const pos = (c: SimServer["channels"][number]) =>
-    Number((c as { position?: number }).position ?? 0);
+  const parent = (c: SimServer["channels"][number]) => c.parentId ?? "";
+  const pos = (c: SimServer["channels"][number]) => c.position;
   const byPos = (a: SimServer["channels"][number], b: SimServer["channels"][number]) =>
     pos(a) - pos(b);
   const loose = server.channels
@@ -786,7 +782,7 @@ function ActorPicker({
   onChange,
 }: {
   users: User[];
-  server: AdminSimServer;
+  server: SimServer;
   value: string | undefined;
   onChange: (id: string) => void;
 }) {
@@ -1060,11 +1056,7 @@ function ModalDialog({
 function topRoleColor(server: SimServer, roleIds: string[]): string | undefined {
   const roles = server.roles
     .filter((r) => roleIds.includes(r.id) && r.color && r.color !== "#000000")
-    .sort(
-      (a, b) =>
-        Number((b as { position?: number }).position ?? 0) -
-        Number((a as { position?: number }).position ?? 0),
-    );
+    .sort((a, b) => b.position - a.position);
   return roles[0]?.color;
 }
 
@@ -1079,7 +1071,7 @@ function MembersPanel({
   onDms,
   onCreate,
 }: {
-  server: AdminSimServer;
+  server: SimServer;
   users: User[];
   bots: User[];
   actorId: string | undefined;

@@ -11,6 +11,7 @@ import type {
   InteractionResult,
   Items,
   Json,
+  HistoryQuery,
   Me,
   Message,
   Plan,
@@ -24,6 +25,7 @@ import type {
   SimCommand,
   SimCommandRequest,
   SimComponentRequest,
+  SimModalRequest,
   SimSendMessageRequest,
   SimState,
   SyncRecord,
@@ -345,9 +347,14 @@ export class CodiClient {
     /** `GET /status` (admin, moderator) — visible servers only. */
     status: (options?: CallOptions): Promise<RuntimeStatus> =>
       this.#api<RuntimeStatus>("GET", "/status", options),
-    /** `GET /history?limit=`. */
-    history: async (query: { limit?: number } = {}, options?: CallOptions): Promise<SyncRecord[]> =>
-      (await this.#api<Items<SyncRecord>>("GET", "/history", { query, ...options })).items,
+    /** `GET /history?limit=&target=` (admin, moderator), newest first. */
+    history: async (query: HistoryQuery = {}, options?: CallOptions): Promise<SyncRecord[]> =>
+      (
+        await this.#api<Items<SyncRecord>>("GET", "/history", {
+          query: { limit: query.limit, target: query.target },
+          ...options,
+        })
+      ).items,
     /** `GET /servers/{server}` (moderator). */
     server: (server: string, options?: CallOptions): Promise<ServerDetail> =>
       this.#api<ServerDetail>("GET", `/servers/${seg(server)}`, options),
@@ -469,9 +476,17 @@ export class CodiClient {
           ...options,
         })
       ).items,
-    /** `GET /sim/users/{id}/dms` — DMs received by the user from bots. */
-    dms: async (userId: string, options?: CallOptions): Promise<Message[]> =>
-      (await this.#api<Items<Message>>("GET", `/sim/users/${seg(userId)}/dms`, options)).items,
+    /** `GET /sim/users/{id}/dms?limit=` — DMs received by the user from bots, oldest first. */
+    dms: async (
+      userId: string,
+      { limit, ...options }: CallOptions & { limit?: number } = {},
+    ): Promise<Message[]> =>
+      (
+        await this.#api<Items<Message>>("GET", `/sim/users/${seg(userId)}/dms`, {
+          query: { limit },
+          ...options,
+        })
+      ).items,
     /** `POST /sim/messages`. */
     sendMessage: (request: SimSendMessageRequest, options?: CallOptions): Promise<Message> =>
       this.#api<Message>("POST", "/sim/messages", { body: request, ...options }),
@@ -487,7 +502,13 @@ export class CodiClient {
         body: { values: [], ...request },
         ...options,
       }),
-    /** `GET /sim/commands?serverId=`. */
+    /**
+     * `POST /sim/modals` — submits a modal shown by a previous interaction
+     * (`InteractionResult.modal`); `fields` maps text input ids to values.
+     */
+    modal: (request: SimModalRequest, options?: CallOptions): Promise<InteractionResult> =>
+      this.#api<InteractionResult>("POST", "/sim/modals", { body: request, ...options }),
+    /** `GET /sim/commands?serverId=` — registered commands (all simulated servers by default). */
     commands: async (serverId?: string, options?: CallOptions): Promise<SimCommand[]> =>
       (
         await this.#api<Items<SimCommand>>("GET", "/sim/commands", {

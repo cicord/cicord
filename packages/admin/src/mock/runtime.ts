@@ -12,6 +12,7 @@ import type {
   Json,
   Message,
   MessageRow,
+  Revision,
   SyncRecord,
   User,
 } from "@codi/client";
@@ -52,7 +53,7 @@ interface Instance {
 
 interface MockState {
   session: string | null;
-  revision: { id: string; message: string; author: string; time: string; source: string };
+  revision: Revision;
   drift: boolean;
   lastSync: string;
   users: User[];
@@ -74,8 +75,9 @@ const hex = () =>
   Array.from({ length: 7 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
 
 function seed(): MockState {
-  const rev = {
+  const rev: Revision = {
     id: "4f0c2d9",
+    sha: "4f0c2d9e8b1a7c6d5e4f3a2b1c0d9e8f7a6b5c4d",
     message: "feat(onboarding): add the notifications step",
     author: "Léa",
     time: ago(42),
@@ -137,51 +139,51 @@ function seed(): MockState {
     ],
     history: [
       {
-        id: "6",
+        id: 6,
         time: ago(3),
         revision: "4f0c2d9",
-        target: SERVER_KEY,
-        status: "Synced",
+        target: `server:${SERVER_KEY}`,
+        status: "succeeded",
         message: "3 changes applied",
       },
       {
-        id: "5",
+        id: 5,
         time: ago(42),
         revision: "4f0c2d9",
-        target: "moderator",
-        status: "Synced",
+        target: "bot:moderator",
+        status: "succeeded",
         message: "bot reloaded (2 plugins)",
       },
       {
-        id: "4",
+        id: 4,
         time: ago(60 * 5),
         revision: "a91e7c3",
-        target: SERVER_KEY,
-        status: "Failed",
+        target: `server:${SERVER_KEY}`,
+        status: "rejected",
         message: 'rejected: steps[1].options[0].role: unknown role "xbox"',
       },
       {
-        id: "3",
+        id: 3,
         time: ago(60 * 26),
         revision: "c27d0b1",
-        target: SERVER_KEY,
-        status: "Synced",
+        target: `server:${SERVER_KEY}`,
+        status: "succeeded",
         message: "1 change applied",
       },
       {
-        id: "2",
+        id: 2,
         time: ago(60 * 50),
         revision: "e04b9fa",
-        target: SERVER_KEY,
-        status: "Synced",
+        target: `server:${SERVER_KEY}`,
+        status: "succeeded",
         message: "12 changes applied (adopted 4)",
       },
       {
-        id: "1",
+        id: 1,
         time: ago(60 * 51),
         revision: "e04b9fa",
-        target: "moderator",
-        status: "Synced",
+        target: "bot:moderator",
+        status: "succeeded",
         message: "bot started",
       },
     ],
@@ -503,19 +505,21 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
   };
 
   function newRevision(msg: string, author: string) {
+    const id = hex();
     state.revision = {
-      id: hex(),
+      id,
+      sha: id.padEnd(40, "0"),
       message: msg,
       author,
       time: new Date().toISOString(),
-      source: "admin-ui",
+      source: "git",
     };
     state.history.unshift({
-      id: String(state.history.length + 1),
+      id: state.history.length + 1,
       time: new Date().toISOString(),
       revision: state.revision.id,
-      target: "moderator",
-      status: "Synced",
+      target: "bot:moderator",
+      status: "succeeded",
       message: "bot reloaded (config change)",
     });
   }
@@ -866,11 +870,11 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           state.drift = false;
           state.lastSync = new Date().toISOString();
           state.history.unshift({
-            id: String(state.history.length + 1),
+            id: state.history.length + 1,
             time: state.lastSync,
             revision: state.revision.id,
-            target: SERVER_KEY,
-            status: "Synced",
+            target: `server:${SERVER_KEY}`,
+            status: "succeeded",
             message: `${applied} changes applied`,
           });
           addAudit(`discord:${v}`, "sync.apply", SERVER_KEY, { applied });

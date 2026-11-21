@@ -1,5 +1,5 @@
 /** Slash command runner: pick a command, fill its options from their types, run it. */
-import type { Json, SimCommand, SimServer } from "@codi/client";
+import type { Json, SimCommand, SimCommandOption, SimServer } from "@codi/client";
 import { useMemo, useState, type FormEvent } from "react";
 import { jsonText } from "../schema-form/values.ts";
 import { IconPlay, IconSlash } from "../ui/icons.tsx";
@@ -28,9 +28,9 @@ const NUMERIC_TYPES: Record<number, string> = {
   11: "attachment",
 };
 
-export function normalizeOption(raw: Json): CommandOption | null {
+export function normalizeOption(raw: SimCommandOption | Json): CommandOption | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const o = raw as { [key: string]: Json };
+  const o = raw as unknown as { [key: string]: Json };
   if (typeof o["name"] !== "string") return null;
   const t = o["type"];
   const type =

@@ -87,8 +87,8 @@ export function ServerPage({ serverKey, tab }: { serverKey: string; tab: string 
           <StatusTab
             drift={drift}
             message={s.message}
-            lastSync={(s as { lastSync?: string }).lastSync}
-            bot={(s as { bot?: string }).bot}
+            lastSync={s.lastSync}
+            bot={s.bot}
             spec={s.spec}
           />
         ) : current === "plan" ? (

@@ -1,0 +1,25 @@
+# Build context of the root Dockerfile: sources only. Dependencies and build outputs are
+# produced inside the image.
+.git
+.github
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+bin
+.codi
+.codi-data
+**/.codi
+**/.codi-data
+*.db
+*.db-*
+.env
+.env.*
+**/.env
+**/.env.*
+.DS_Store
+**/.DS_Store
+# Built UI assets synced into the Go embed dirs on the host (the image rebuilds them).
+internal/webui/admin/assets
+internal/webui/portal/assets
+Dockerfile
+.dockerignore

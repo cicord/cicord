@@ -62,7 +62,7 @@ export function createMockRuntime() {
       roles: state.memberRoles
         .map((k) => roleOut(k))
         .filter((r) => r !== undefined)
-        .map(({ key, name, color }) => ({ key, name, color })),
+        .map(({ key, id, name, color }) => ({ key, id, name, color })),
     },
     role: "member",
   });

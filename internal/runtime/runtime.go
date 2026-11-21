@@ -63,6 +63,7 @@ type Runtime struct {
 	active  *active
 	lastErr string
 	bots    map[string]*botHost
+	botErrs sync.Map // bot key → last connection error
 
 	wake  chan struct{}
 	sched *scheduler
@@ -115,9 +116,7 @@ func (i *instanceRT) setHealth(err error) {
 	defer i.mu.Unlock()
 	if err == nil {
 		i.failures = 0
-		if i.health != HealthDegraded || i.message == "" {
-			i.health, i.message = HealthHealthy, ""
-		}
+		i.health, i.message = HealthHealthy, ""
 		return
 	}
 	i.failures++

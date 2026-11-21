@@ -57,3 +57,23 @@ func TestDevLoginRequiresSimOrToken(t *testing.T) {
 		t.Errorf("dev-login with the runtime token must pass the guard, got %d", got)
 	}
 }
+
+func TestDevLoopbackOriginsInterchangeable(t *testing.T) {
+	s := &server{opts: Options{Mode: "dev", PublicURL: "http://127.0.0.1:7420"}}
+	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req.Host = "localhost:7420"
+	for origin, want := range map[string]bool{
+		"http://127.0.0.1:7420": true,
+		"http://localhost:7420": true,
+		"http://localhost:5173": false, // other port
+		"http://evil.test:7420": false,
+	} {
+		if got := s.sameOrigin(req, origin); got != want {
+			t.Errorf("origin %s: %v, want %v", origin, got, want)
+		}
+	}
+	prod := &server{opts: Options{Mode: "serve", PublicURL: "https://codi.example.com"}}
+	if prod.sameOrigin(req, "http://localhost:7420") {
+		t.Errorf("serve mode must not accept loopback origins")
+	}
+}

@@ -67,7 +67,7 @@ export function MessageItem({
   const m = message;
   const isBot = (m.author as User & { bot?: boolean }).bot || botIds?.has(m.author.id);
   const name = m.author.displayName || m.author.username;
-  const edited = (m as Message & { editedAt?: string }).editedAt;
+  const edited = m.editedAt;
   return (
     <li
       className="msg"
@@ -118,8 +118,8 @@ export function MessageItem({
                       button={c as MessageButton}
                       busy={busy === m.id}
                       onClick={
-                        onComponent
-                          ? () => onComponent(m, (c as MessageButton).customId, [])
+                        onComponent && c.customId
+                          ? () => onComponent(m, c.customId!, [])
                           : undefined
                       }
                     />
@@ -141,9 +141,9 @@ export function MessageItem({
 }
 
 function Embed({ embed, resolver }: { embed: MessageEmbed; resolver: MentionResolver }) {
-  const e = embed as MessageEmbed & { imageUrl?: string; thumbnailUrl?: string };
-  const image = e.image?.url ?? e.imageUrl;
-  const thumb = e.thumbnail?.url ?? e.thumbnailUrl;
+  const e = embed;
+  const image = e.imageUrl;
+  const thumb = e.thumbnailUrl;
   return (
     <div className="embed" style={{ borderLeftColor: e.color || undefined }}>
       <div className="embed-body">

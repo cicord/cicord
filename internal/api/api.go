@@ -299,9 +299,19 @@ func (s *server) sameOrigin(r *http.Request, origin string) bool {
 		// With a configured public URL, the Host header (attacker-influenced through DNS
 		// rebinding) is never trusted for origin checks.
 		p, err := url.Parse(s.opts.PublicURL)
-		return err == nil && p.Scheme == u.Scheme && p.Host == u.Host
+		if err == nil && p.Scheme == u.Scheme && p.Host == u.Host {
+			return true
+		}
+		// Dev runtimes: localhost and 127.0.0.1 are interchangeable (both loopback, and
+		// hostAllowed already restricts dev to loopback hosts).
+		return err == nil && s.opts.Mode == "dev" && isLoopback(u.Hostname()) && isLoopback(p.Hostname()) && u.Port() == p.Port()
 	}
 	return u.Host == r.Host
+}
+
+func isLoopback(h string) bool {
+	h = strings.Trim(h, "[]")
+	return h == "localhost" || h == "127.0.0.1" || h == "::1" || strings.HasSuffix(h, ".localhost")
 }
 
 // hostAllowed restricts dev runtimes to loopback hosts or the public URL host.

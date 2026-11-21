@@ -1,6 +1,8 @@
 /**
  * Types of the CODI runtime HTTP API v1 (spec/api.md). Field names and shapes follow the
- * spec exactly; comments point at the section that defines them.
+ * JSON DTOs of the runtime (`internal/api`, `internal/runtime/status.go`,
+ * `internal/reconcile/plan.go`); comments point at the spec section that defines them.
+ * Optional (`?`) fields are omitted by the runtime when empty.
  */
 
 export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
@@ -18,6 +20,8 @@ export type ApiErrorCode =
   | "conflict"
   | "unavailable"
   | "internal"
+  /** Client side only: the request did not reach the runtime (`status: 0`). */
+  | "network"
   // Codes are an open set: unknown codes are passed through.
   | (string & {});
 
@@ -46,6 +50,8 @@ export interface User {
   username: string;
   displayName: string;
   avatarUrl: string;
+  /** Present (true) for bot users only. */
+  bot?: boolean;
 }
 
 export interface MeServer {
@@ -66,13 +72,20 @@ export type SyncState = "Synced" | "OutOfSync" | "Unknown";
 export type HealthState = "Healthy" | "Progressing" | "Degraded" | "Missing";
 
 export interface Revision {
+  /** Short identifier shown to users (7-char SHA, or content hash for local sources). */
   id: string;
+  /** Full git SHA, or content hash for local sources. */
+  sha: string;
   message: string;
   author: string;
   time: Timestamp;
-  source: string;
+  source: "local" | "git" | (string & {});
 }
 
+/**
+ * One differing field. `field: "exists"` = the resource is missing in Discord (or not
+ * created yet), `"order"` = a reorder, `"managed"` = a mapping about to be dropped.
+ */
 export interface Drift {
   kind: string;
   key: string;
@@ -88,8 +101,11 @@ export interface ServerStatus {
   sync: SyncState;
   health: HealthState;
   message: string;
-  lastSync: Timestamp;
+  /** Absent until the server was reconciled once. */
+  lastSync?: Timestamp;
   drift: Drift[];
+  /** Key of the bot that reconciles this server. */
+  bot?: string;
 }
 
 export interface PluginInstanceStatus {
@@ -115,18 +131,34 @@ export interface RuntimeStatus {
   version: string;
   mode: RuntimeMode;
   simulator: boolean;
-  revision: Revision;
+  /** `null` before the first revision is active (the lists are then empty). */
+  revision: Revision | null;
+  /** Latest rejected revision / failed fetch or sync, if any. */
+  lastError?: string;
   servers: ServerStatus[];
   bots: BotStatus[];
 }
 
+export type SyncRecordStatus = "succeeded" | "failed" | "rejected";
+
 export interface SyncRecord {
-  id: string;
+  id: number;
   time: Timestamp;
+  /** Revision id ("" for a self-heal before the first revision). */
   revision: string;
+  /** `revision`, `server:<key>` or `bot:<key>`. */
   target: string;
-  status: string;
+  status: SyncRecordStatus;
   message: string;
+  /** Free-form details, e.g. `{plan, applied, failed}` for server syncs. */
+  details?: Json;
+}
+
+export interface HistoryQuery {
+  /** Default 50, at most 500. */
+  limit?: number;
+  /** Only records of this target (`revision`, `server:<key>`, `bot:<key>`). */
+  target?: string;
 }
 
 export interface Items<T> {
@@ -145,7 +177,9 @@ export interface ResourceRole {
   key: string;
   id: string;
   name: string;
+  /** "#rrggbb", "" when the role has no color. */
   color: string;
+  /** Declared in YAML (has a key). */
   managed: boolean;
 }
 
@@ -160,35 +194,57 @@ export interface ResourceChannel {
   key: string;
   id: string;
   name: string;
+  /** Server YAML channel type (`text`, `voice`, `announcement`, `stage`, `forum`, …). */
   type: string;
-  /** Category key ("" when none / unmanaged). */
-  category: string;
+  /** Category key; absent when the channel has no managed category. */
+  category?: string;
   managed: boolean;
 }
 
 export interface ServerResources {
+  /** Sorted from the top of the hierarchy; `@everyone` is omitted. */
   roles: ResourceRole[];
   categories: ResourceCategory[];
   channels: ResourceChannel[];
 }
 
-export type PlanAction = "create" | "update" | "delete" | "adopt" | "reorder";
+export type PlanAction = "create" | "update" | "delete" | "adopt" | "reorder" | "unmanage";
+
+export type PlanKind = "server" | "role" | "category" | "channel" | "everyone" | (string & {});
+
+/** from → to of one field (strings, numbers, booleans, permission lists, overwrite maps, key lists). */
+export interface PlanFieldChange {
+  from: Json;
+  to: Json;
+}
 
 export interface PlanChange {
   action: PlanAction;
-  kind: string;
+  kind: PlanKind;
+  /**
+   * Resource key. For `reorder`: `hierarchy` (roles), `categories`, a category key or
+   * `(none)` (channels without a category).
+   */
   key: string;
+  /** Discord ID of an existing resource. */
+  id?: string;
   summary: string;
-  fields?: Record<string, { from: Json; to: Json }>;
+  fields?: Record<string, PlanFieldChange>;
 }
 
+/** An operation the reconciler refuses to perform. */
 export interface PlanBlocked {
   action: PlanAction;
-  kind: string;
+  kind: PlanKind;
   key: string;
+  id?: string;
+  /** e.g. `deletionProtection`, `ownership: …`, `type change: …`, `hierarchy: …`. */
   reason: string;
+  /** The differences that could not be applied, when known. */
+  fields?: Record<string, PlanFieldChange>;
 }
 
+/** Diff between the desired and the live state of one server; changes are in apply order. */
 export interface Plan {
   server: string;
   changes: PlanChange[];
@@ -201,18 +257,21 @@ export interface SyncResult {
 }
 
 export interface AuditEntry {
-  /** Numeric in the spec example; IDs are strings elsewhere — both are accepted. */
-  id: number | string;
+  id: number;
   time: Timestamp;
   server: string;
+  /** `discord:<user id>` or `runtime-token`. */
   actor: string;
+  /** e.g. `config.update`, `sync.apply`. */
   action: string;
   target: string;
   details: { [key: string]: Json };
 }
 
 export interface AuditQuery {
+  /** Only entries with a smaller id (pagination cursor). */
   before?: number | string;
+  /** Default 50, at most 500. */
   limit?: number;
 }
 
@@ -239,11 +298,20 @@ export interface PluginInstance {
   plugin: PluginManifestSummary;
   /** Effective config (defaults applied). */
   config: { [key: string]: Json };
-  /** The plugin's config.schema.json. */
+  /**
+   * The plugin's config.schema.json as written (key order preserved);
+   * `{"type": "object"}` when the plugin has none.
+   */
   schema: { [key: string]: Json };
+  /** `spec.plugins[].config` of bot.yaml as written (no defaults). */
+  baseConfig: { [key: string]: Json };
+  /** `overrides.<server>.config` as written, `null` when there is none. */
+  override: { [key: string]: Json } | null;
   /** Top-level fields this user may edit (x-codi-access). */
   editable: string[];
   commands: PluginCommandSummary[];
+  /** Portal route keys (§6), e.g. "GET /steps". */
+  routes: string[];
   health: HealthState;
   message: string;
 }
@@ -254,8 +322,8 @@ export interface UpdatePluginConfigRequest {
   config: { [key: string]: Json };
   /** Default "server". */
   scope?: ConfigScope;
-  /** Active revision id the edit is based on (conflict detection). */
-  revision: string;
+  /** Active revision id the edit is based on (`409 conflict` when it is not the active one). */
+  revision?: string;
 }
 
 export type WriteBackResult =
@@ -264,13 +332,14 @@ export type WriteBackResult =
 
 // ───────────────────────────────────────────────────────────── portal (§6)
 
+/** The runtime always sends every field; "" means unset. */
 export interface PortalTheme {
   /** #RRGGBB */
   primary?: string;
   accent?: string;
-  /** URL of the logo. */
+  /** URL of the logo (`/api/v1/portal/{server}/logo` or an absolute URL). */
   logo?: string;
-  mode?: "light" | "dark" | "system";
+  mode?: "light" | "dark" | "system" | "";
 }
 
 export interface PortalPlugin {
@@ -290,7 +359,9 @@ export interface PortalServer {
 }
 
 export interface PortalRole {
+  /** Role key ("" for roles not declared in YAML). */
   key: string;
+  id: string;
   name: string;
   color: string;
 }
@@ -310,6 +381,8 @@ export interface PortalMe {
 // ───────────────────────────────────────────────────────────── machine (§7)
 
 export interface RemotePlanResult {
+  /** false when the uploaded repository has validation errors (`plans` is then empty). */
+  valid: boolean;
   diagnostics: Diagnostic[];
   plans: Plan[];
 }
@@ -319,15 +392,21 @@ export interface RemotePlanResult {
 export interface SimRole {
   id: string;
   name: string;
-  color?: string;
-  [key: string]: Json | undefined;
+  /** "#rrggbb", "" when none. */
+  color: string;
+  position: number;
+  /** Integration-managed role (e.g. a bot's own role). */
+  managed: boolean;
 }
 
 export interface SimChannel {
   id: string;
   name: string;
-  type?: string;
-  [key: string]: Json | undefined;
+  /** Server YAML channel type (`text`, `voice`, `category`, …). */
+  type: string;
+  /** Category id. */
+  parentId?: string;
+  position: number;
 }
 
 export interface SimMember {
@@ -338,9 +417,14 @@ export interface SimMember {
 }
 
 export interface SimServer {
+  /** Discord id of the server. */
   id: string;
+  /** Repository key of the server. */
+  key?: string;
   name: string;
+  ownerId: string;
   channels: SimChannel[];
+  /** Includes `@everyone` (its id is the server id). */
   roles: SimRole[];
   members: SimMember[];
 }
@@ -351,14 +435,26 @@ export interface SimState {
   servers: SimServer[];
 }
 
+export type ButtonStyle = "primary" | "secondary" | "success" | "danger" | "link";
+
 export interface MessageButton {
   type: "button";
-  customId: string;
-  label: string;
-  style: string;
-  url: string;
+  /** Absent on link buttons. */
+  customId?: string;
+  label?: string;
+  style: ButtonStyle;
+  /** Link buttons only. */
+  url?: string;
   emoji?: string;
   disabled?: boolean;
+}
+
+export interface MessageSelectOption {
+  value: string;
+  label: string;
+  description?: string;
+  emoji?: string;
+  default?: boolean;
 }
 
 export interface MessageSelect {
@@ -367,13 +463,8 @@ export interface MessageSelect {
   placeholder?: string;
   minValues?: number;
   maxValues?: number;
-  options: {
-    value: string;
-    label: string;
-    description?: string;
-    emoji?: string;
-    default?: boolean;
-  }[];
+  disabled?: boolean;
+  options: MessageSelectOption[];
 }
 
 export interface MessageRow {
@@ -385,24 +476,50 @@ export interface MessageEmbed {
   title?: string;
   description?: string;
   url?: string;
+  /** "#rrggbb" */
   color?: string;
-  timestamp?: string;
-  fields?: { name: string; value: string; inline?: boolean }[];
-  author?: { name: string; url?: string; iconUrl?: string };
-  footer?: { text: string; iconUrl?: string };
-  image?: { url: string };
-  thumbnail?: { url: string };
+  timestamp?: Timestamp;
+  fields?: { name: string; value: string; inline: boolean }[];
+  author?: { name: string; url: string; iconUrl: string };
+  footer?: { text: string; iconUrl: string };
+  imageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface Message {
   id: string;
   channelId: string;
+  /** Absent for DMs. */
+  serverId?: string;
   author: User;
   content: string;
   embeds: MessageEmbed[];
   components: MessageRow[];
   ephemeral: boolean;
   createdAt: Timestamp;
+  editedAt?: Timestamp;
+}
+
+export interface SimTextInput {
+  type: "textInput";
+  customId: string;
+  label: string;
+  style: "short" | "paragraph";
+  required?: boolean;
+  value?: string;
+  placeholder?: string;
+}
+
+export interface SimModalRow {
+  type: "row";
+  components: SimTextInput[];
+}
+
+/** A modal shown by the bot (`InteractionResult.modal`). */
+export interface SimModal {
+  customId: string;
+  title: string;
+  components: SimModalRow[];
 }
 
 export type InteractionStatus = "replied" | "deferred" | "failed" | "modal";
@@ -411,6 +528,8 @@ export interface InteractionResult {
   status: InteractionStatus;
   response: Message | null;
   followups: Message[];
+  /** Set when `status` is `"modal"`. */
+  modal?: SimModal;
   error: string;
 }
 
@@ -424,6 +543,7 @@ export interface SimCommandRequest {
   userId: string;
   serverId: string;
   channelId: string;
+  /** Bot key (an application id is accepted too). */
   bot: string;
   name: string;
   options?: { [key: string]: Json };
@@ -431,15 +551,51 @@ export interface SimCommandRequest {
 
 export interface SimComponentRequest {
   userId: string;
+  /** Optional check: the message must be in this channel. */
   channelId: string;
   messageId: string;
   customId: string;
+  /** Selected values (select menus). */
   values?: string[];
 }
 
+export interface SimModalRequest {
+  userId: string;
+  serverId: string;
+  channelId: string;
+  /** Bot key (an application id is accepted too). */
+  bot: string;
+  /** `SimModal.customId`. */
+  customId: string;
+  /** Text input custom id → value. */
+  fields: Record<string, string>;
+}
+
+export type SimCommandOptionType =
+  | "string"
+  | "integer"
+  | "boolean"
+  | "user"
+  | "channel"
+  | "role"
+  | "mentionable"
+  | "number"
+  | "attachment";
+
+export interface SimCommandOption {
+  name: string;
+  description: string;
+  type: SimCommandOptionType;
+  required: boolean;
+  choices?: { name: string; value: string | number }[];
+  minValue?: number;
+  maxValue?: number;
+}
+
 export interface SimCommand {
+  /** Bot key (application id when the bot is not in the repository). */
   bot: string;
   name: string;
   description: string;
-  options: Json[];
+  options: SimCommandOption[];
 }

@@ -40,31 +40,95 @@ All references use keys and are checked by `codi validate`:
 
 ## 3. Server semantics
 
-### Ordering
-- **Roles**: `hierarchy` lists role keys from highest to lowest. Managed roles not listed
-  are placed below the listed ones, in key order. Unmanaged roles keep their relative place.
-  The bot's own role must stay above every role it manages (validated at plan time).
-- **Categories / channels**: `position` ascending; ties broken by key. Channels without a
-  category are placed at the top.
+Implemented by `internal/reconcile` (the package documentation is the detailed reference).
+A **plan** is the ordered list of changes between the YAML and the live server; actions are
+`create`, `update`, `delete`, `adopt`, `reorder` and `unmanage`. Operations the reconciler
+refuses are reported separately as **blocked** (with a `reason` and, when known, the
+`fields` that could not be applied); they never fail the plan.
 
-### Permissions
-- `everyone.permissions` sets the @everyone role.
-- `overwrites` on a category or channel are keyed by target; each target has `allow` and
-  `deny`. A permission present in neither is *inherited*.
-- `syncWithCategory` defaults to `true` when the channel has no `overwrites`, `false` otherwise.
+### Identity, adoption and ownership
+- YAML keys are mapped to Discord IDs in the runtime DB (resource map, ADR-0003). A display
+  name change is an `update` (rename), never a recreate. A key whose mapped ID no longer
+  exists in Discord is created again.
+- **Adoption by name**: a declared key without a mapping adopts an *unmapped* live resource
+  of the same kind (role, category, or channel of the same type) with exactly the same
+  display name (`adopt`; differing fields are updated by the same change). Resources mapped
+  under any owner, managed (integration/bot) roles and @everyone are never candidates; a
+  live resource is adopted at most once; keys are processed in key order, candidates in ID
+  order. Because mappings are written as soon as a create succeeds, a resource created by a
+  crashed apply is simply adopted on the next run.
+- Resources that were never declared (unmapped) are **never** modified or deleted.
+- Resources created by plugins (`ctx.server.createChannel`) are owned by their plugin
+  instance (`plugin:` owner); the reconciler ignores them, and a YAML key whose mapping is
+  owned by a plugin is blocked (`ownership: …`).
+- Managed roles (bot / integration roles) are never touched (`managed: …` when declared).
+  @everyone is only changed through `spec.everyone`.
+- Text-like channel names (text, announcement, forum, media) are compared after Discord's
+  normalization (lowercase, whitespace runs → `-`): `name: Général Chat` matches
+  `#général-chat` and does not cause a perpetual rename.
 
-### syncPolicy
+### Removed keys and syncPolicy
 | Field | Default | Effect |
 |---|---|---|
-| `selfHeal` | `false` | `false`: drift is reported (status `OutOfSync`). `true`: drift is reverted immediately. |
+| `selfHeal` | `false` | `false`: drift is reported (status `OutOfSync`). `true`: drift (gateway role/channel/server events on managed resources) triggers a debounced sync that reverts it. |
 | `prune` | `false` | Delete resources that were managed and have been **removed** from the config. |
 | `deletionProtection` | `true` | Refuse every deletion, even with `prune: true`. |
 
-Ownership rules, always applied:
-1. Resources that were never declared are **never** modified or deleted.
-2. Resources created by plugins (`ctx.server.createChannel`) are owned by their plugin
-   instance; the reconciler ignores them.
-3. Removing a resource from the config without `prune` simply stops managing it.
+A managed key that disappears from the YAML produces:
+- `delete` when `prune: true` and `deletionProtection: false`;
+- blocked `deletionProtection` when `prune: true` and `deletionProtection: true` (the mapping
+  is kept, so turning the protection off later deletes it);
+- `unmanage` when `prune: false`: the mapping is dropped and the Discord resource is left as
+  is. `unmanage` is also used, whatever the policy, when the resource is already gone.
+
+Deletions run last (channels, then categories, then roles).
+
+### Compared fields
+- Always managed (the YAML zero value is applied): role name, color (0 = none), hoist,
+  mentionable, permissions; category/channel name and overwrites; channel `topic` (text,
+  announcement, forum, media), `nsfw`, `slowmode` (text, voice, stage, forum, media) and
+  `userLimit` (voice, stage).
+- Managed only when set: channel `bitrate` (> 0), each `profile` field (non-empty), the
+  server icon (a file relative to the server YAML, re-uploaded when its hash or the live
+  icon changes), `everyone` (when present). Role icons are not managed.
+
+### Channel types
+The type of a channel cannot change in place. When the live type differs from the YAML:
+with `prune: true` and `deletionProtection: false` the channel is replaced (created, the old
+one deleted at the end); otherwise the change is blocked (`type change: …`). Threads are
+ignored.
+
+### Ordering
+- **Roles**: `hierarchy` lists role keys from highest to lowest; declared roles not listed
+  follow, in key order. Managed roles permute among the slots they occupy in the live order;
+  unmanaged roles keep their place; roles created by the plan start at the bottom. Only roles
+  below the bot's highest role can be ordered, edited or deleted: a managed role at or above
+  it is blocked (`hierarchy: …`).
+- **Categories / channels**: categories among categories, channels within their category
+  (channels without a category first): `position` ascending, a missing `position` after
+  explicit ones, ties broken by key. Like Discord, text-like and voice-like (voice, stage)
+  channels of a category are two separate position groups (voice below text).
+- A `reorder` change (key `hierarchy`, `categories`, a category key, or `(none)` for
+  uncategorized channels) is emitted only when the relative order of managed items differs.
+  Apply recomputes positions from a fresh fetch, so the final order is right even if Discord
+  placed new items differently than predicted.
+
+### Permissions
+- `everyone.permissions` sets the @everyone role.
+- `overwrites` on a category or channel are keyed by target (`@everyone`, a role key or
+  `member:<id>`); each target has `allow` and `deny`. A permission present in neither is
+  *inherited*. Entries with empty `allow` and `deny` are ignored; order does not matter.
+- Overwrites of a managed category/channel are owned **as a whole**: overwrites for targets
+  not in the YAML are removed.
+- `syncWithCategory` defaults to `true` when the channel has no `overwrites`, `false`
+  otherwise. A synced channel gets exactly its category's desired overwrites, written
+  explicitly (without a category: none).
+
+### Apply order
+Server basics and @everyone → roles (adopt/create/update) → role positions → categories →
+channels → channel positions → server channel references (system/rules channel) →
+deletions and `unmanage`. Apply continues past failures; changes that depend on a failed one
+fail as `unresolved`.
 
 ### access
 Admin UI access per server. The server owner is always admin. `admins` can change any
@@ -78,7 +142,8 @@ configuration; `moderators` can use moderation features and plugin settings mark
 - **Intents** = union of the intents declared by its plugins' manifests + `spec.intents`
   + what the reconciler needs (`Servers`). Privileged intents (`ServerMembers`,
   `ServerPresences`, `MessageContent`) must also be enabled in the Discord developer portal;
-  the runtime reports a `Degraded` health otherwise.
+  otherwise Discord refuses the gateway connection and the bot is reported `Missing` with
+  the reason in its status message.
 - `profile` (username, avatar, banner) and `presence` are applied by the runtime.
 
 ### Plugin instances
@@ -149,7 +214,11 @@ enough, so the runtime also enforces, on every request:
 3. the connection is made to the **address that was checked** (no second lookup), which
    defeats DNS rebinding;
 4. redirects are followed manually and each hop is re-checked against 1–3;
-5. only `https` (and `http` when `--dev`), bounded response size and timeout.
+5. only `https`, no credentials in URLs, request bodies ≤ 1 MiB, responses ≤ 5 MiB, a 10 s
+   default timeout.
+
+`codi dev` relaxes the address checks (2–3) and allows plain `http`, so plugins can call
+local services; the host allow-list still applies. `codi serve` never relaxes them.
 
 ### Config schema extensions
 Plugin `config.schema.json` is standard JSON Schema (2020-12) plus:
@@ -177,25 +246,53 @@ plugins:
 ## 8. SDK semantics
 
 Contract: [`sdk/codi-sdk.d.ts`](sdk/codi-sdk.d.ts). A plugin default-exports `definePlugin({...})`.
+Implemented by `internal/plugin` (the package documentation is the detailed reference).
 
-- **Isolation**: one VM per plugin instance, events processed in order per instance.
-- **Budgets**: one turn of synchronous JS execution may not exceed the sync budget (default
-  50 ms wall clock — e.g. a `while(true)` is interrupted), and each handler, including its
-  awaited async work, has a timeout (default 10 s). Exceeding either aborts the handler and
-  logs an error; the instance keeps running.
-- **Interaction deadline**: after ~2 s without a reply the runtime defers automatically
-  (ephemeral when the command has `ephemeral: true`); a later `reply()` edits the deferred
-  response.
+- **Isolation**: one Sobek VM and one event loop per plugin instance (bot × server, ADR-0010).
+  Handlers start in arrival order and interleave at `await` points (Node-like).
+- **Budgets** (defaults):
+  | Limit | Default | Effect |
+  |---|---|---|
+  | sync budget | 50 ms | One turn of synchronous JS (a handler's synchronous part, or the continuations run when a host call settles). A runaway turn (`while(true)`) is interrupted and its handler aborted; the VM keeps serving other handlers. |
+  | startup budget | 2 s | Replaces the sync budget while the module is evaluated. |
+  | handler timeout | 10 s | Each handler, wall clock, awaits included. Afterwards its pending host calls are cancelled and new ones fail. |
+  | `onStop` | 3 s | Bound of `onStop`. |
+  | `http.fetch` | 10 s / 5 MiB | Default timeout and response cap. |
+- **Interactions**: an interaction not answered after **2 s** is deferred automatically
+  (ephemeral when the command has `ephemeral: true`; components get a silent deferred
+  update); a later `reply()` edits the deferred response. Rules:
+  - `reply()` is the first response, or edits a deferred response; after a reply, use
+    `followUp()` (a second `reply()` throws);
+  - `defer()` after a deferral is a no-op; `followUp()` needs a prior response;
+  - `update()` (components only) edits the message carrying the component;
+  - `showModal()` must be the first response;
+  - ephemerality is fixed by the first response (a reply after a deferral keeps its flags);
+  - follow-ups are accepted for 15 minutes.
+- **Component and modal ids**: the SDK namespaces local ids as `c:<instance>:<id>` (at most
+  100 bytes in total, as Discord requires; a longer id is an error, never truncated). The
+  handler is looked up by the full local id, then by the part before the first `:`
+  (`"vote:42"` → `components.vote`), so ids can carry data.
+- **Channel isolation**: every channel ID used by plugin code must belong to the instance's
+  server, or be a DM channel the instance opened or received; a plugin cannot reach other
+  servers the bot is in.
+- **Capabilities**: every host call checks the instance's grants (§6) and throws a
+  `CapabilityError` otherwise.
 - **Errors**: an uncaught error in a handler is logged with the plugin instance and revision;
-  for interactions, the user gets a generic ephemeral error message. Repeated failures mark
-  the instance `Degraded` in the status.
+  for interactions, the user gets a generic ephemeral error message (or the deferred
+  response is edited). Three consecutive failures mark the instance `Degraded` in the status.
 - **References**: `ctx.server.channel("general")` resolves by key in the active revision;
   `{ id }` addresses unmanaged resources.
 - **Config defaults**: `default` values from `config.schema.json` are applied before the
   plugin sees `ctx.config`, so a field with a default is always present.
 - **Config typing**: `codi plugin typegen` generates a `PluginConfig` module augmentation
   from `config.schema.json` (fields that are required or have a default are non-optional).
-- **No Node.js APIs**: pure-JS libraries can be bundled; all I/O goes through `ctx`.
+- **Globals beyond the SDK**: `setTimeout` / `setInterval` / `clearTimeout` /
+  `clearInterval`, `queueMicrotask` and `console.*` (mapped to the instance logger). Timers
+  belong to the handler that created them and stop with it.
+- **No Node.js APIs**: the bundle targets ES2022 (async generators lowered), `@codi/sdk` is
+  the only module resolved at run time, Node built-ins cannot be imported; pure-JS libraries
+  can be bundled. All I/O goes through `ctx`. Stack traces map to the TypeScript sources
+  (inline source map).
 
 ## 9. Naming map (CODI ↔ Discord API)
 
