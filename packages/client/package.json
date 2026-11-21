@@ -4,7 +4,8 @@
   "description": "Typed, framework-agnostic client for the CODI runtime HTTP API v1.",
   "license": "Apache-2.0",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,

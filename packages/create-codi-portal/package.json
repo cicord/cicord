@@ -14,7 +14,8 @@
     "index.html",
     "tsconfig.json",
     "vite.config.ts",
-    "env.d.ts"
+    "env.d.ts",
+    "LICENSE"
   ],
   "type": "module",
   "scripts": {

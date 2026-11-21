@@ -4,7 +4,8 @@
   "description": "React bindings for CODI community portals: provider, data hooks and headless components (<OnboardingFlow>).",
   "license": "Apache-2.0",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,

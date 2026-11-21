@@ -4,7 +4,8 @@
   "description": "CODI plugin SDK: authoring types (spec/sdk/codi-sdk.d.ts) and a tiny runtime for unit tests in Node.",
   "license": "Apache-2.0",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,
