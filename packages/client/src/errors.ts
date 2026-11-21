@@ -33,6 +33,12 @@ export class CodiApiError extends Error {
   readonly diagnostics: Diagnostic[];
   /** Parsed response body (JSON or text), when any. */
   readonly body: Json | string | undefined;
+  /** How to fix it, when the runtime explains the error (plan / sync failures). */
+  readonly hint: string | undefined;
+  /** Raw technical text behind `message`, when the runtime explains the error. */
+  readonly details: string | undefined;
+  /** Humanized error code (`HumanErrorCode`), when the runtime explains the error. */
+  readonly reason: string | undefined;
 
   constructor(init: {
     code: ApiErrorCode;
@@ -41,6 +47,9 @@ export class CodiApiError extends Error {
     diagnostics?: Diagnostic[];
     body?: Json | string;
     cause?: unknown;
+    hint?: string | undefined;
+    details?: string | undefined;
+    reason?: string | undefined;
   }) {
     super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
     this.name = "CodiApiError";
@@ -48,6 +57,9 @@ export class CodiApiError extends Error {
     this.status = init.status;
     this.diagnostics = init.diagnostics ?? [];
     this.body = init.body;
+    this.hint = init.hint;
+    this.details = init.details;
+    this.reason = init.reason;
   }
 
   /** Builds the error from a response status and its (already parsed) body. */
@@ -59,7 +71,15 @@ export class CodiApiError extends Error {
     if (body && typeof body === "object" && !Array.isArray(body)) {
       const error = (body as { error?: unknown }).error;
       if (error && typeof error === "object" && !Array.isArray(error)) {
-        const e = error as { code?: unknown; message?: unknown; diagnostics?: unknown };
+        const e = error as {
+          code?: unknown;
+          message?: unknown;
+          diagnostics?: unknown;
+          hint?: unknown;
+          details?: unknown;
+          reason?: unknown;
+        };
+        const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
         return new CodiApiError({
           code: typeof e.code === "string" && e.code ? e.code : codeForStatus(status),
           status,
@@ -69,6 +89,9 @@ export class CodiApiError extends Error {
             ? (e.diagnostics as unknown as Diagnostic[])
             : [],
           body,
+          hint: str(e.hint),
+          details: str(e.details),
+          reason: str(e.reason),
         });
       }
     }

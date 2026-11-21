@@ -7,6 +7,7 @@ import {
   type PortalRole,
   type PortalServer,
   type Query,
+  type StoredSession,
 } from "@codi/client";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { hashKey, type QueryKey, type QueryState, type QueryStatus } from "./cache.ts";
@@ -120,23 +121,29 @@ export type LinkTokenLoginState =
 // One exchange per token and client, whatever the number of mounts (StrictMode, remounts).
 const exchanges = new WeakMap<object, Map<string, Promise<Me | null>>>();
 
+/** The login credential left in the current URL: `codi_token` (bot link) or, in token mode, `codi_code`. */
+function urlCredential(param: string, tokenMode: boolean): string | null {
+  if (typeof location === "undefined") return null;
+  const params = new URL(location.href).searchParams;
+  return params.get(param) ?? (tokenMode ? params.get("codi_code") : null);
+}
+
 /**
- * Exchanges the `codi_token` of the current URL (signed link sent by a bot) for a session,
- * once. The token is removed from the address bar immediately. On success, the cached user
- * and member queries are refreshed.
+ * Exchanges the `codi_token` of the current URL (signed link sent by a bot) — or, in token
+ * mode, the `codi_code` of an OAuth login — for a session, once. The parameter is removed
+ * from the address bar immediately. On success, the cached user and member queries are
+ * refreshed.
  */
 export function useLinkTokenLogin(options: { param?: string } = {}): LinkTokenLoginState {
   const { client, cache } = useCodi();
   const param = options.param ?? "codi_token";
+  const tokenMode = client.authMode === "token";
   const [state, setState] = useState<LinkTokenLoginState>(() => {
-    if (typeof location === "undefined") return { status: "none" };
-    const token = new URL(location.href).searchParams.get(param);
+    const token = urlCredential(param, tokenMode);
     const inflight = token ? exchanges.get(client)?.get(token) : undefined;
     return token || inflight ? { status: "pending" } : { status: "none" };
   });
-  const tokenRef = useRef<string | null>(
-    typeof location === "undefined" ? null : new URL(location.href).searchParams.get(param),
-  );
+  const tokenRef = useRef<string | null>(urlCredential(param, tokenMode));
 
   useEffect(() => {
     const token = tokenRef.current;
@@ -172,6 +179,21 @@ export function useLinkTokenLogin(options: { param?: string } = {}): LinkTokenLo
   }, [client, cache, param]);
 
   return state;
+}
+
+/**
+ * The token-mode session (`null` in cookie mode or when logged out), updated on login,
+ * logout and expiry.
+ */
+export function useSession(): StoredSession | null {
+  const { client } = useCodi();
+  const subscribe = useCallback((fn: () => void) => client.onSessionChange(fn), [client]);
+  const token = useSyncExternalStore(
+    subscribe,
+    () => client.session()?.token ?? null,
+    () => null,
+  );
+  return token ? client.session() : null;
 }
 
 /** Logs out and clears every cached query. */

@@ -1,5 +1,5 @@
 import type { CodiClient } from "@codi/client";
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { QueryCache } from "./cache.ts";
 
 export interface CodiContextValue {
@@ -23,6 +23,18 @@ export interface CodiProviderProps {
 export function CodiProvider({ client, server, cache, children }: CodiProviderProps) {
   const [ownCache] = useState(() => new QueryCache());
   const store = cache ?? ownCache;
+  // Token mode: a token that expires or is revoked (401) logs the viewer out everywhere.
+  useEffect(
+    () =>
+      client.onSessionChange(() => {
+        if (!client.session()) {
+          store.setData(["codi", "me"], null);
+          void store.invalidate(["codi", "portal"]);
+          void store.invalidate(["codi", "plugin"]);
+        }
+      }),
+    [client, store],
+  );
   const value = useMemo<CodiContextValue>(
     () => ({ client, server, cache: store }),
     [client, server, store],

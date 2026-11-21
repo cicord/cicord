@@ -627,3 +627,63 @@ html.codi-root {
     animation-iteration-count: infinite !important;
   }
 }
+
+/* ───────────────────────────────────────────── Markdown (spec.portal.description) */
+
+.codi-markdown {
+  color: var(--codi-text);
+  line-height: 1.65;
+}
+.codi-markdown > * + * {
+  margin-top: 0.85em;
+}
+.codi-markdown :is(h2, h3, h4, h5) {
+  font-family: var(--codi-font-display);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin-top: 1.4em;
+}
+.codi-markdown :is(h2, h3, h4, h5):first-child {
+  margin-top: 0;
+}
+.codi-markdown h2 {
+  font-size: 1.35em;
+}
+.codi-markdown h3 {
+  font-size: 1.15em;
+}
+.codi-markdown :is(ul, ol) {
+  padding-left: 1.3em;
+}
+.codi-markdown li + li {
+  margin-top: 0.3em;
+}
+.codi-markdown li::marker {
+  color: var(--codi-primary-text);
+}
+.codi-markdown a {
+  color: var(--codi-primary-text);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+.codi-markdown a:hover {
+  text-decoration-thickness: 2px;
+}
+.codi-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: 6px;
+  background: var(--codi-sunken);
+}
+.codi-markdown blockquote {
+  margin: 0;
+  padding: 0.2em 0 0.2em 1em;
+  border-left: 3px solid var(--codi-accent);
+  color: var(--codi-muted);
+}
+
+.codi-link-icon {
+  flex: none;
+}

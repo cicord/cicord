@@ -6,7 +6,7 @@ import { App } from "../src/App.tsx";
 import { watch401, type AdminConfig } from "../src/config.ts";
 import { createMockRuntime } from "../src/mock/runtime.ts";
 import { formatPath } from "../src/pages/Plugins.tsx";
-import { groupChanges } from "../src/pages/Server.tsx";
+import { groupChanges } from "../src/pages/Sync.tsx";
 import { normalizeOption } from "../src/sim/CommandRunner.tsx";
 
 beforeEach(() => {
@@ -54,7 +54,9 @@ describe("login", () => {
     );
     expect(await screen.findByRole("button", { name: /Alice/ })).toBeTruthy();
     await loginAsOwner(user);
-    expect(await screen.findByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
+    // "/" lands on the overview of the first server.
+    expect(await screen.findByRole("heading", { level: 1, name: "Ma Commu" })).toBeTruthy();
+    expect(window.location.pathname).toMatch(/\/servers\/ma-commu$/);
   });
 
   test("a member without staff role gets an explanation", async () => {
@@ -72,15 +74,28 @@ describe("login", () => {
 });
 
 describe("overview & server", () => {
-  test("overview shows revision, rejected revision banner, servers, bots and history", async () => {
+  test("overview shows revision, rejected revision, explained failure, bots and history", async () => {
     const { user } = setup();
     await loginAsOwner(user);
     expect(await screen.findByText("4f0c2d9", { selector: ".rev-id" })).toBeTruthy();
     expect(screen.getByText("The latest revision was rejected")).toBeTruthy();
-    expect(await screen.findByRole("link", { name: "Ma Commu" })).toBeTruthy();
-    expect(screen.getByText("Out of sync")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Ma Commu" })).toBeTruthy();
+    expect(screen.getAllByText("Out of sync").length).toBeGreaterThan(0);
     expect(screen.getByText("Gardien")).toBeTruthy();
     expect(await screen.findByText("bot reloaded (2 plugins)")).toBeTruthy();
+    // The Discord failure is explained, grouped, and its raw JSON stays in the collapsed details.
+    const alerts = screen.getAllByRole("alert");
+    const failure = alerts.find((a) =>
+      a.textContent?.includes("Announcement and stage channels need the Community feature"),
+    )!;
+    expect(failure).toBeTruthy();
+    expect(within(failure).getByText(/Enable Community in Discord/)).toBeTruthy();
+    expect(within(failure).getByText(/Failed 4 times/)).toBeTruthy();
+    expect(await screen.findByText("Failed 4 times")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/_errors|BASE_TYPE_CHOICES/);
+    await user.click(within(failure).getByRole("button", { name: "Technical details" }));
+    expect(within(failure).getByText(/BASE_TYPE_CHOICES/)).toBeTruthy();
+    expect(within(failure).getByRole("button", { name: "Copy" })).toBeTruthy();
   });
 
   test("plan groups changes, shows field diffs and blocked items; sync applies it", async () => {
@@ -90,10 +105,11 @@ describe("overview & server", () => {
     expect(within(roles).getByText("valorant")).toBeTruthy();
     expect(within(roles).getByText("#e91e63")).toBeTruthy();
     const blocked = screen.getByRole("region", { name: "Blocked" });
-    expect(within(blocked).getByText(/Deletion protection is on/)).toBeTruthy();
+    expect(within(blocked).getByText(/deletion protection is on/)).toBeTruthy();
+    expect(within(blocked).getByText(/syncPolicy.deletionProtection: false/)).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Sync now" }));
-    const confirm = screen.getByRole("group", { name: "Confirm sync" });
+    const confirm = await screen.findByRole("alertdialog", { name: "Apply the plan to Discord?" });
     await user.click(within(confirm).getByRole("button", { name: "Sync now" }));
     expect(await screen.findByText("Applied 4 changes")).toBeTruthy();
     expect(await screen.findByText("Nothing to change")).toBeTruthy();
@@ -106,7 +122,7 @@ describe("overview & server", () => {
     expect(screen.getAllByText("unmanaged").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("radio", { name: "Unmanaged" }));
     expect(screen.queryByText("Notifs événements")).toBeNull();
-    await user.click(screen.getByRole("tab", { name: "Audit log" }));
+    await user.click(screen.getByRole("link", { name: "Audit log" }));
     expect(await screen.findByText("moderator/onboarding")).toBeTruthy();
   });
 
@@ -274,7 +290,7 @@ describe("plugin settings", () => {
     await loginAsOwner(user);
     await screen.findByRole("article", { name: /Welcome/ });
     expired = true;
-    await user.click(screen.getByRole("link", { name: "Server" }));
+    await user.click(screen.getByRole("link", { name: "Overview" }));
     expect(
       await screen.findByRole("heading", { name: "Sign in to the operator console" }),
     ).toBeTruthy();

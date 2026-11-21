@@ -27,6 +27,7 @@ import {
   type JsonObject,
   type Segment,
 } from "./values.ts";
+import { i18n } from "../i18n/index.ts";
 
 export interface SchemaFormProps {
   schema: JsonSchema;
@@ -71,7 +72,7 @@ export function SchemaForm(props: SchemaFormProps) {
     errors: props.errors ?? {},
     baseline: props.baseline,
     disabled: props.disabled ?? false,
-    lockedLabel: props.lockedLabel ?? "Admins only",
+    lockedLabel: props.lockedLabel ?? i18n.t("plugins.editor.adminsOnly"),
     idBase,
     update: (path, v) => props.onChange(setIn(props.value, path, v) as JsonObject),
   };
@@ -164,17 +165,14 @@ function FieldShell({
           {fieldLabel(schema, name)}
         </label>
         {typeof name === "string" ? <code className="sf-key">{name}</code> : null}
-        {required ? <span className="sf-badge">Required</span> : null}
+        {required ? <span className="sf-badge">{i18n.t("form.required")}</span> : null}
         {topLocked ? (
-          <span
-            className="sf-badge sf-badge-lock"
-            title="You can view this field but not change it"
-          >
+          <span className="sf-badge sf-badge-lock" title={i18n.t("form.lockedHint")}>
             <LockIcon />
             {ctx.lockedLabel}
           </span>
         ) : null}
-        {modified ? <span className="sf-badge sf-badge-mod">Modified</span> : null}
+        {modified ? <span className="sf-badge sf-badge-mod">{i18n.t("form.modified")}</span> : null}
         {inlineControl ? <div className="sf-inline-control">{children}</div> : null}
       </div>
       {inlineControl ? null : children}
@@ -286,7 +284,7 @@ function ScalarControl(p: ControlProps) {
         clearable={!p.required}
         disabled={p.locked}
         invalid={p.invalid}
-        placeholder={`Select a ${ref}…`}
+        placeholder={i18n.t("form.selectRef", { kind: i18n.t(`form.ref.${ref}`) })}
         aria-label={p.label}
         aria-labelledby={p.label ? undefined : `${p.id}-label`}
         aria-describedby={p.describedBy}
@@ -333,7 +331,9 @@ function ScalarControl(p: ControlProps) {
           p.onChange(e.target.value === "" ? undefined : options[Number(e.target.value)]!.value)
         }
       >
-        {index < 0 ? <option value="">{p.required ? "Select…" : "Not set"}</option> : null}
+        {index < 0 ? (
+          <option value="">{p.required ? i18n.t("form.select") : i18n.t("form.notSet")}</option>
+        ) : null}
         {options.map((o, i) => (
           <option key={o.label} value={String(i)}>
             {o.label}
@@ -455,23 +455,27 @@ function TextArea({
   return (
     <div className="sf-textarea">
       {markdown ? (
-        <div className="sf-textarea-tabs" role="tablist" aria-label="Editor mode">
+        <div className="sf-textarea-tabs" role="tablist" aria-label={i18n.t("form.editorMode")}>
           <button
             type="button"
             role="tab"
             aria-selected={!preview}
             onClick={() => setPreview(false)}
           >
-            Write
+            {i18n.t("form.write")}
           </button>
           <button type="button" role="tab" aria-selected={preview} onClick={() => setPreview(true)}>
-            Preview
+            {i18n.t("form.preview")}
           </button>
         </div>
       ) : null}
       {preview ? (
         <div className="sf-preview">
-          {value ? <Markdown source={value} placeholders /> : <em>Nothing to preview</em>}
+          {value ? (
+            <Markdown source={value} placeholders />
+          ) : (
+            <em>{i18n.t("form.nothingToPreview")}</em>
+          )}
         </div>
       ) : (
         <textarea
@@ -511,7 +515,7 @@ function JsonControl(p: ControlProps) {
             setDraft(null);
             setError(null);
           } catch {
-            setError("Not valid JSON");
+            setError(i18n.t("form.invalidJson"));
           }
         }}
       />
@@ -670,7 +674,9 @@ function ArrayField(props: FieldProps) {
   return (
     <FieldShell {...props} id={id}>
       <div className={objects ? "sf-list sf-list-objects" : "sf-list"} id={id}>
-        {list.length === 0 ? <p className="sf-empty">No {noun}s yet.</p> : null}
+        {list.length === 0 ? (
+          <p className="sf-empty">{i18n.t("form.emptyList", { noun })}</p>
+        ) : null}
         {list.map((item, i) =>
           objects ? (
             <ObjectItem
@@ -716,7 +722,7 @@ function ArrayField(props: FieldProps) {
             <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
               <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" />
             </svg>
-            Add {noun}
+            {i18n.t("form.add", { noun })}
           </button>
         ) : null}
       </div>
@@ -740,7 +746,7 @@ function RowActions(p: {
       <button
         type="button"
         className="sf-icon-btn"
-        aria-label={`Move ${p.noun} ${n} up`}
+        aria-label={i18n.t("form.moveUp", { noun: p.noun, n })}
         disabled={p.index === 0}
         onClick={() => p.onMove(p.index - 1)}
       >
@@ -751,7 +757,7 @@ function RowActions(p: {
       <button
         type="button"
         className="sf-icon-btn"
-        aria-label={`Move ${p.noun} ${n} down`}
+        aria-label={i18n.t("form.moveDown", { noun: p.noun, n })}
         disabled={p.index === p.count - 1}
         onClick={() => p.onMove(p.index + 1)}
       >
@@ -762,7 +768,7 @@ function RowActions(p: {
       <button
         type="button"
         className="sf-icon-btn sf-danger"
-        aria-label={`Remove ${p.noun} ${n}`}
+        aria-label={i18n.t("form.remove", { noun: p.noun, n })}
         disabled={!p.canRemove}
         onClick={p.onRemove}
       >

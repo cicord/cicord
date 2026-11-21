@@ -1,4 +1,4 @@
-import { createCodiClient, type CodiClient } from "@codi/client";
+import { createCodiClient, type AuthMode, type CodiClient } from "@codi/client";
 
 export interface PortalConfig {
   client: CodiClient;
@@ -8,6 +8,23 @@ export interface PortalConfig {
 }
 
 const SERVER_KEY = "codi-portal:server";
+
+/**
+ * Auth mode: `VITE_CODI_AUTH` ("cookie" | "token"); by default "token" when the runtime is
+ * on another origin (`VITE_CODI_API_URL`, the portal is embedded in a third-party site),
+ * else "cookie".
+ */
+export function authModeFor(apiUrl: string | undefined, explicit: string | undefined): AuthMode {
+  if (explicit === "token" || explicit === "cookie") return explicit;
+  if (!apiUrl) return "cookie";
+  try {
+    return new URL(apiUrl, window.location.href).origin === window.location.origin
+      ? "cookie"
+      : "token";
+  } catch {
+    return "cookie";
+  }
+}
 
 /**
  * Builds the API client. In mock mode (`vp dev --mode mock`) the client talks to an in-browser
@@ -25,7 +42,11 @@ export async function createPortalConfig(): Promise<PortalConfig> {
       mock: true,
     };
   }
-  const client = createCodiClient({ baseUrl: import.meta.env.VITE_CODI_API_URL ?? "" });
+  const baseUrl = import.meta.env.VITE_CODI_API_URL ?? "";
+  const client = createCodiClient({
+    baseUrl,
+    auth: authModeFor(baseUrl, import.meta.env.VITE_CODI_AUTH),
+  });
   return {
     client,
     login: (redirect) => client.auth.login(redirect),
@@ -44,6 +65,19 @@ export function requestedServer(): string | undefined {
   } catch {
     return fromUrl ?? import.meta.env.VITE_CODI_SERVER ?? undefined;
   }
+}
+
+/** Switches to another server (server picker). */
+export function rememberServer(key: string): void {
+  try {
+    localStorage.setItem(SERVER_KEY, key);
+  } catch {
+    // storage unavailable: the URL carries it
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set("server", key);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  window.dispatchEvent(new Event("codi:server"));
 }
 
 export function forgetServer(): void {

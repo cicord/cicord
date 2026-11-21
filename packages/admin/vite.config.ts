@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite-plus";
 
@@ -27,9 +28,9 @@ interface ProxyRequest {
 export default defineConfig(({ mode }) => ({
   // Served by the runtime under /admin/ with an SPA fallback to index.html.
   base: "/admin/",
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
-    port: 5175,
+    port: Number(process.env["CODI_ADMIN_PORT"] ?? 5175),
     ...(mode === "mock"
       ? {}
       : {
@@ -49,5 +50,8 @@ export default defineConfig(({ mode }) => ({
   test: {
     include: ["test/**/*.test.{ts,tsx}"],
     environment: "jsdom",
+    setupFiles: ["test/setup.ts"],
+    // Radix / cmdk render through portals and animations: give slow CI machines room.
+    testTimeout: 15000,
   },
 }));

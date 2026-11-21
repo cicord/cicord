@@ -20,6 +20,36 @@ mirrors every shape below.
   | `internal` | 500 (also a panic in a handler) |
 
   `Diagnostic = {"severity": "error" | "warning", "file"?, "line"?, "path"? (JSON pointer), "message"}`.
+- **Error object** (humanized errors, `internal/reconcile/humanize.go`). The runtime keeps
+  errors as text; the API adds an explained form next to the raw field, which is unchanged:
+
+  ```json
+  { "code": "community_required",
+    "message": "Announcement and stage channels need the Community feature",
+    "hint": "Enable Community in Discord (Server Settings → Enable Community), then sync again. …",
+    "details": "reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: … (HTTP 400 50035: Invalid Form Body {…})",
+    "discordCode": 50035, "httpStatus": 400,
+    "resource": { "action": "create", "kind": "channel", "key": "news" },
+    "fields": [ { "path": "type", "code": "BASE_TYPE_CHOICES", "message": "Value must be one of {0, 2}." } ],
+    "failures": 3 }
+  ```
+
+  `code`, `message` always; `hint`, `details` (the raw text), `discordCode`, `httpStatus`,
+  `resource` (the failed plan change), `fields` (Discord's "Invalid Form Body" tree,
+  flattened) and `failures` (changes that failed in the same sync, when > 1) are optional.
+  Codes: `community_required`, `boost_required`, `missing_permissions`, `missing_access`,
+  `role_hierarchy`, `unknown_resource`, `invalid_form_body`, `limit_reached`,
+  `invalid_token`, `intents_disallowed`, `rate_limited`, `discord_unavailable`, `timeout`,
+  `bot_not_connected`, `no_bot`, `unresolved_reference`, `revision_rejected`,
+  `fetch_failed`, `bad_request`, `unknown`; for blocked plan operations also
+  `deletion_protection`, `ownership`, `managed_role`, `type_change` (and `role_hierarchy`,
+  `no_bot`). Clients must accept unknown codes. It appears as:
+  - `error` on a server of `/status` and `/servers/{server}` (Degraded or Missing with a
+    `message`), and on a bot of `/status`; `lastErrorInfo` explains `lastError`;
+  - `error` on `/history` records whose status is `failed` or `rejected`;
+  - `error` on every `blocked[]` entry of a `Plan` (`/plan`, `/sync`);
+  - in the error envelope of `plan` / `sync` failures (`503`): `message` is the explained
+    message, plus `hint`, `details` (raw text) and `reason` (the error object `code`).
 - Time values: RFC 3339 strings. Discord IDs and keys are strings; the IDs of history and
   audit records are integers.
 - Optional fields are omitted when empty (marked `?` below); lists are always present
@@ -27,11 +57,17 @@ mirrors every shape below.
 - Every response carries `X-Content-Type-Options: nosniff` and
   `Referrer-Policy: same-origin` (portal URLs may carry `codi_token`); JSON responses are
   `Cache-Control: no-store`; the admin UI is served with `X-Frame-Options: DENY`.
-- CORS: same-origin by default; `--cors-origin` (`CODI_CORS_ORIGINS`) allows external
-  portal origins (credentials allowed, `Vary: Origin`). Preflights (`OPTIONS` with
-  `Access-Control-Request-Method`) answer `204`; for an allowed origin they allow the
-  methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`, the headers `Content-Type`,
-  `Authorization`, `X-Codi-Request` and `Last-Event-ID`, max age 600 s.
+- CORS: same-origin by default (every response carries `Vary: Origin`). Two lists of
+  external portal origins are allowed:
+  - operator origins: `--cors-origin` (`CODI_CORS_ORIGINS`) — with
+    credentials (`Access-Control-Allow-Credentials: true`), for cookie sessions;
+  - repository origins: codi.yaml `spec.portal.allowedOrigins` of the active revision —
+    **without** credentials, for token mode only (§1), so that a merged pull request can
+    never open cookie sessions to a new site.
+
+  Preflights (`OPTIONS` with `Access-Control-Request-Method`) answer `204`; for an allowed
+  origin they allow the methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`, the headers
+  `Content-Type`, `Authorization`, `X-Codi-Request` and `Last-Event-ID`, max age 600 s.
 - Limits: JSON bodies ≤ 1 MiB (`413 invalid`), `POST /api/v1/plan` uploads ≤ 32 MiB,
   GitHub webhook payloads ≤ 25 MiB; handlers time out after 60 s (`503 unavailable`),
   except the SSE stream.
@@ -43,19 +79,22 @@ mirrors every shape below.
 ## 1. Authentication
 
 Browser clients use a session cookie `codi_session` (HttpOnly, SameSite=Lax, path `/`,
-Secure when the request is TLS or `--public-url` is `https://`). Machine clients (CLI, CI)
-use `Authorization: Bearer <token>` where the token is the runtime token
+Secure when the request is TLS or `--public-url` is `https://`), or — for sites embedding
+the portal SDK on another origin — a **session token** (token mode, below). Machine clients
+(CLI, CI) use `Authorization: Bearer <token>` where the token is the runtime token
 (`CODI_RUNTIME_TOKEN`, compared in constant time); a bearer token acts as `admin` on every
-server. Any other `Authorization` value → `401 unauthenticated` ("invalid bearer token"),
-even when a valid cookie is present. An unknown or expired cookie is simply anonymous.
+server. `Authorization: Bearer codi_st_…` is a session token. Any other `Authorization`
+value, or an unknown / expired session token → `401 unauthenticated`, even when a valid
+cookie is present. An unknown or expired cookie is simply anonymous.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/auth/login?redirect=<path>` | Redirects (`302`) to Discord OAuth2 (scope `identify`, `prompt=none`). |
+| GET | `/auth/login?redirect=<path>[&mode=token]` | Redirects (`302`) to Discord OAuth2 (scope `identify`, `prompt=none`). |
 | GET | `/auth/callback` | OAuth2 callback; creates the session, redirects (`302`) to `redirect`. |
 | POST | `/auth/link` | Body `{"token": "<signed link token>"}`. Exchanges a token produced by `ctx.portal.link()` (query parameter `codi_token` on the portal URL) for a session. Returns `Me`. |
 | POST | `/auth/dev-login` | **Dev mode only.** Body `{"userId": "<id>"}`. Creates a session for that user. Returns `Me`. |
-| POST | `/auth/logout` | Deletes the session and clears the cookie. `204`. |
+| POST | `/auth/token` | Token mode. Body `{"code": "<one-time code>"}`. Redeems the `codi_code` of a token-mode login for a `TokenSession`. |
+| POST | `/auth/logout` | Deletes the session and clears the cookie; with `Authorization: Bearer codi_st_…`, revokes that token instead. `204`. |
 
 - **OAuth2**: `redirect` must be a local path (`/x`, not `//x` nor `/\x`) or an absolute URL
   on an allowed CORS origin; anything else falls back to `/`. The redirect URI sent to
@@ -82,6 +121,34 @@ even when a valid cookie is present. An unknown or expired cookie is simply anon
   (`Authorization: Bearer …`), otherwise `403 forbidden`. With the simulator the user must
   exist in the simulated world (`404` otherwise); without it the profile is looked up through
   a connected bot. `userId` is required (`400`).
+
+### Token mode (embedded portals)
+A site on another origin (a fan site with its own design) cannot use the SameSite=Lax
+cookie. It authenticates with a bearer **session token** instead; `@codi/client` does it
+when created with `auth: "token"`.
+
+- **Allowed origins**: the embedding site's origin must be in codi.yaml
+  `spec.portal.allowedOrigins` (token mode only) or `--cors-origin`.
+- **OAuth**: `/auth/login?mode=token&redirect=<URL>` where `redirect` is a local path or an
+  absolute URL on an allowed origin (otherwise `400 invalid`: unlike cookie mode, there is
+  no silent fallback to `/`). After Discord, `/auth/callback` sets no session cookie and
+  redirects to `redirect` with `codi_code=<code>` added to its query. The code is single-use,
+  valid 60 s, and bound to the redirect's origin: `POST /auth/token {"code"}` must come from
+  that origin (`Origin` header; a local redirect binds it to the runtime's own origin),
+  otherwise `403 forbidden` (the code is burnt). Unknown or expired code → `401`.
+- **Portal links** and **dev login**: `POST /auth/link {"token", "mode": "token"}` and
+  `POST /auth/dev-login {"userId", "mode": "token"}` return a `TokenSession` instead of
+  setting a cookie. `mode` is `"cookie"` (default) or `"token"` (anything else → `400`).
+- `TokenSession = {"token": "codi_st_…", "expiresAt": "<RFC 3339>", "me": Me}`. Tokens
+  last 24 h (link tokens: as long as the link session, at most 24 h) and are stored by the
+  runtime like sessions (revoked by `/auth/logout`).
+- **Scope**: on the portal endpoints (§6, plugin routes included) a token session has the
+  user's full role on the server; everywhere else it is **at most `member`** (like link
+  sessions), so a token kept by a third-party site never reaches the admin endpoints. A
+  token is only accepted in the `Authorization` header, never as the `codi_session`
+  cookie; a cookie session ID is never accepted as a bearer token.
+- Requests carrying `Authorization` need no `X-Codi-Request` header (CSRF, below), but the
+  `Origin` check still applies: unsafe requests must come from an allowed origin.
 
 ### CSRF
 Every request with an unsafe method (anything but `GET`, `HEAD`, `OPTIONS`), the `/auth/*`
@@ -316,7 +383,8 @@ Response `200`:
 |---|---|---|---|
 | GET | `/api/v1/portal/servers` | none | `{"items": [PortalServer]}` — servers with a portal. |
 | GET | `/api/v1/portal/{server}` | none | `PortalServer` (`404` when the server has no portal). |
-| GET | `/api/v1/portal/{server}/logo` | none | The `portal.theme.logo` image when it is a repository file (path relative to the server YAML, must stay inside the repository and have an `image/*` type; `Cache-Control: public, max-age=300`); a URL logo redirects (`302`). |
+| GET | `/api/v1/portal/{server}/logo` | none | The `portal.theme.logo` image when it is a repository file (path relative to the server YAML; must stay inside the repository, be reached without symbolic links, be at most 10 MiB and be a png, jpg, gif, webp, avif or svg); a URL logo redirects (`302`). Headers: `Cache-Control: public, max-age=300`, `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` (a repository SVG never runs script), `Cross-Origin-Resource-Policy: cross-origin` (embedding sites may display it). Unset or invalid → `404`. |
+| GET | `/api/v1/portal/{server}/banner` | none | The `portal.banner` image, same rules as the logo. |
 | GET | `/api/v1/portal/{server}/me` | member | `{"user": User, "member": {"nick", "joinedAt", "roles": [{"key","id","name","color"}]}, "role": "member" \| "moderator" \| "admin"}` |
 | ANY | `/api/v1/portal/{server}/plugins/{bot}/{instance}/{path…}` | per route | Plugin routes (`definePlugin({routes})`). The route's `access` is enforced; the JSON body/response are passed through. Unknown route → `404`. |
 
@@ -324,8 +392,13 @@ All portal endpoints answer `503` before the first revision.
 
 "Servers with a portal" are servers that declare `spec.portal` or run a plugin with routes.
 `theme` always has the four fields (`""` = unset): `theme.logo` is the logo endpoint above
-or an absolute URL, `mode` is `light | dark | system | ""`. `plugins` lists the instances on
-that server that declare routes. Member roles have `key: ""` when they are not declared in
+(with `?v=<revision id>`, so caches follow new commits) or an absolute URL, `mode` is
+`light | dark | system | ""`. The no-code fields of `spec.portal` (server.schema.json) are
+always present: `title` (default: the server name), `tagline`, `description` (Markdown
+subset source, rendered by the portal — never HTML), `banner` (like `theme.logo`), `links`
+(`[{label, url, icon}]`, `url` is http(s) by schema, `icon` defaults to `"link"`), `pages`
+(`{onboarding, profile, leaderboard, tickets}`, unset = `true`) and `locale`
+(`"en" | "fr" | ""`). `plugins` lists the instances on that server that declare routes. Member roles have `key: ""` when they are not declared in
 YAML. `/portal/{server}/me` → `401` anonymous, `403` when the caller is not a member.
 
 Plugin routes:
@@ -333,7 +406,9 @@ Plugin routes:
   `member`, `moderator`, `admin` with the roles of §1 (portal endpoints count the full role
   of link sessions on their server). Anonymous → `401`, insufficient role → `403`. The
   bearer token passes every check (no viewer).
-- The handler receives `request.viewer = {user, member}` (member fetched from Discord),
+- The handler receives `request.viewer = {user, member}` (member fetched from Discord;
+  after a route with an unsafe method the viewer's cached member is dropped, so the next
+  `/portal/{server}/me` shows roles the plugin just changed),
   the query parameters (first value of each) and the JSON body (≤ 1 MiB; non-JSON →
   `400`; an empty body is no body).
 - Response: the handler's status (default `200`) and its JSON body as
@@ -346,8 +421,13 @@ Plugin routes:
 ```json
 // PortalServer
 { "key": "ma-commu", "name": "Ma Commu", "iconUrl": "",
-  "theme": { "primary": "#5865f2", "accent": "#eb459e", "logo": "/api/v1/portal/ma-commu/logo", "mode": "dark" },
-  "plugins": [ { "bot": "moderator", "instance": "onboarding", "plugin": "onboarding", "routes": ["GET /options", "POST /choose"] } ] }
+  "theme": { "primary": "#5865f2", "accent": "#eb459e", "logo": "/api/v1/portal/ma-commu/logo?v=3f2a9c1", "mode": "dark" },
+  "title": "Bienvenue sur Ma Commu", "tagline": "La commu francophone des soirées jeux…",
+  "description": "Ici, on joue **ensemble**…", "banner": "/api/v1/portal/ma-commu/banner?v=3f2a9c1",
+  "links": [ { "label": "Site web", "url": "https://ma-commu.example", "icon": "website" } ],
+  "pages": { "onboarding": true, "profile": true, "leaderboard": true, "tickets": true },
+  "locale": "fr",
+  "plugins": [ { "bot": "moderator", "instance": "onboarding", "plugin": "onboarding", "routes": ["GET /steps", "POST /complete"] } ] }
 ```
 
 ## 7. Machine endpoints
@@ -442,9 +522,18 @@ and the users `alice`, `bob` and `charlie`, who are not members.
 
 - `/admin` redirects (`301`) to `/admin/`; `/admin/*` serves the admin UI and `/*` the
   portal, both with an SPA fallback to `index.html` (`Cache-Control: no-cache`). Hashed files
-  under `assets/` are `Cache-Control: public, max-age=31536000, immutable`; a missing file
-  with an extension (other than `.html`) is a plain `404`.
-- `/api/*`, `/auth/*` and `/hooks/*` are never shadowed: unknown paths there are JSON
-  `404 not_found`.
+  under `assets/` are `Cache-Control: public, max-age=31536000, immutable`, other files
+  `no-cache` (revalidated with `Last-Modified`); a missing file with an extension (other than
+  `.html`) is a plain `404`. Content types come from the file extension.
+- **Custom portal**: when codi.yaml `spec.portal.path` of the **active revision** points to a
+  directory of that revision containing `index.html` (a committed build, docs/portal.md), it
+  is served at `/` instead of the embedded default portal, with the same rules and an
+  `X-Codi-Portal: repository` header. The directory is resolved on every request, so a new
+  revision swaps the files without a restart; when it is missing (not built yet) the
+  default portal is served. Files are opened through an `os.Root` confined to that
+  directory: `..` and symbolic links leading outside it are refused, and a portal path
+  reached through a symbolic link is ignored (`codi validate` reports it).
+- `/api/*`, `/auth/*`, `/hooks/*`, `/admin/*`, `/healthz` and `/readyz` are never shadowed
+  by the portal: unknown paths there are JSON `404 not_found`.
 - Methods other than `GET` / `HEAD` on a static UI → `405 invalid`. A UI that was not built
   into the binary answers `404`.

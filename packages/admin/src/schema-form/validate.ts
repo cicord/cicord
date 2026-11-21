@@ -5,6 +5,7 @@
 import type { Json, ServerResources } from "@codi/client";
 import { enumOptions, fieldKind, primaryType, resolve, type JsonSchema } from "./schema.ts";
 import { deepEqual, isObject, toPointer, type Segment } from "./values.ts";
+import { i18n } from "../i18n/index.ts";
 
 export interface FieldError {
   pointer: string;
@@ -58,22 +59,27 @@ function check(
   }
 
   if (type === "string" || kind === "ref") {
-    if (typeof value !== "string") return fail("Must be text");
+    if (typeof value !== "string") return fail(i18n.t("form.errors.text"));
     if (s.minLength !== undefined && value.length < s.minLength)
-      fail(s.minLength === 1 ? "Required" : `At least ${s.minLength} characters`);
+      fail(
+        s.minLength === 1
+          ? i18n.t("form.errors.required")
+          : i18n.t("form.errors.minLength", { count: s.minLength }),
+      );
     if (s.maxLength !== undefined && value.length > s.maxLength)
-      fail(`At most ${s.maxLength} characters (${value.length})`);
+      fail(i18n.t("form.errors.maxLength", { count: s.maxLength, length: value.length }));
     if (s.pattern && value !== "") {
       try {
-        if (!new RegExp(s.pattern, "u").test(value)) fail(`Must match ${s.pattern}`);
+        if (!new RegExp(s.pattern, "u").test(value))
+          fail(i18n.t("form.errors.pattern", { pattern: s.pattern }));
       } catch {
         // invalid pattern in the schema: let the runtime decide
       }
     }
     if (s["x-codi-widget"] === "duration" && value !== "" && !isDuration(value))
-      fail("Use a duration such as 30s, 10m or 1h30m");
+      fail(i18n.t("form.errors.duration"));
     if (s["x-codi-widget"] === "color" && value !== "" && !/^#[0-9a-fA-F]{6}$/.test(value))
-      fail("Use a hex color such as #5865f2");
+      fail(i18n.t("form.errors.color"));
     const ref = s["x-codi-ref"];
     if (ref && resources && value !== "") {
       const list =
@@ -82,39 +88,43 @@ function check(
           : ref === "category"
             ? resources.categories
             : resources.channels;
-      if (!list.some((r) => r.key === value)) fail(`Unknown ${ref} "${value}"`);
+      if (!list.some((r) => r.key === value))
+        fail(i18n.t("form.errors.unknownRef", { kind: i18n.t(`form.ref.${ref}`), value }));
     }
     return;
   }
   if (type === "number" || type === "integer") {
-    if (typeof value !== "number" || Number.isNaN(value)) return fail("Must be a number");
-    if (type === "integer" && !Number.isInteger(value)) fail("Must be a whole number");
-    if (s.minimum !== undefined && value < s.minimum) fail(`Minimum ${s.minimum}`);
-    if (s.maximum !== undefined && value > s.maximum) fail(`Maximum ${s.maximum}`);
+    if (typeof value !== "number" || Number.isNaN(value)) return fail(i18n.t("form.errors.number"));
+    if (type === "integer" && !Number.isInteger(value)) fail(i18n.t("form.errors.integer"));
+    if (s.minimum !== undefined && value < s.minimum)
+      fail(i18n.t("form.errors.minimum", { value: s.minimum }));
+    if (s.maximum !== undefined && value > s.maximum)
+      fail(i18n.t("form.errors.maximum", { value: s.maximum }));
     if (s.exclusiveMinimum !== undefined && value <= s.exclusiveMinimum)
-      fail(`Must be greater than ${s.exclusiveMinimum}`);
+      fail(i18n.t("form.errors.greaterThan", { value: s.exclusiveMinimum }));
     if (s.exclusiveMaximum !== undefined && value >= s.exclusiveMaximum)
-      fail(`Must be less than ${s.exclusiveMaximum}`);
+      fail(i18n.t("form.errors.lessThan", { value: s.exclusiveMaximum }));
     return;
   }
   if (type === "boolean") {
-    if (typeof value !== "boolean") fail("Must be true or false");
+    if (typeof value !== "boolean") fail(i18n.t("form.errors.boolean"));
     return;
   }
   if (type === "array") {
-    if (!Array.isArray(value)) return fail("Must be a list");
+    if (!Array.isArray(value)) return fail(i18n.t("form.errors.list"));
     if (s.minItems !== undefined && value.length < s.minItems)
-      fail(s.minItems === 1 ? "Add at least one item" : `Add at least ${s.minItems} items`);
-    if (s.maxItems !== undefined && value.length > s.maxItems) fail(`At most ${s.maxItems} items`);
+      fail(i18n.t("form.errors.minItems", { count: s.minItems }));
+    if (s.maxItems !== undefined && value.length > s.maxItems)
+      fail(i18n.t("form.errors.maxItems", { count: s.maxItems }));
     if (s.uniqueItems) {
       const seen = value.map((v) => JSON.stringify(v));
-      if (new Set(seen).size !== seen.length) fail("Items must be unique");
+      if (new Set(seen).size !== seen.length) fail(i18n.t("form.errors.unique"));
     }
     value.forEach((item, i) => check(s.items ?? {}, root, item, [...path, i], out, resources));
     return;
   }
   if (type === "object") {
-    if (!isObject(value)) return fail("Must be an object");
+    if (!isObject(value)) return fail(i18n.t("form.errors.object"));
     for (const key of s.required ?? []) {
       const v = value[key];
       if (v === undefined || v === null)

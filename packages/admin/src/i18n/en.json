@@ -1,0 +1,807 @@
+{
+  "app": {
+    "admin": "admin",
+    "mock": "Mock runtime"
+  },
+  "common": {
+    "loading": "Loading",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "cancel": "Cancel",
+    "copy": "Copy",
+    "copied": "Copied",
+    "dismiss": "Dismiss",
+    "empty": "empty",
+    "none": "None",
+    "on": "On",
+    "off": "Off"
+  },
+  "time": {
+    "justNow": "just now",
+    "never": "never"
+  },
+  "boot": {
+    "unreachable": "Can't reach the runtime"
+  },
+  "roles": {
+    "admin": "Admin",
+    "moderator": "Moderator",
+    "member": "Member",
+    "none": "No access"
+  },
+  "nav": {
+    "label": "Main navigation",
+    "home": "CODI admin, overview",
+    "breadcrumb": "Breadcrumb",
+    "toggleSidebar": "Toggle sidebar",
+    "dev": "dev",
+    "driftCount_one": "{{count}} drifted field",
+    "driftCount_other": "{{count}} drifted fields",
+    "sections": {
+      "configuration": "Configuration",
+      "sync": "Sync"
+    },
+    "pages": {
+      "overview": "Overview",
+      "resources": "Roles & channels",
+      "serverSettings": "Server settings",
+      "plugins": "Plugins",
+      "plan": "Plan",
+      "history": "History",
+      "drift": "Drift",
+      "audit": "Audit log",
+      "simulator": "Simulator",
+      "settings": "Settings"
+    }
+  },
+  "switcher": {
+    "label": "Server: {{name}}. Switch server",
+    "servers": "Servers",
+    "none": "No server",
+    "pick": "Pick a server",
+    "current": "Current server",
+    "empty": "No servers visible"
+  },
+  "user": {
+    "menu": "Account: {{name}}",
+    "access": "Access",
+    "logout": "Log out"
+  },
+  "header": {
+    "revision": "Active revision: {{message}}",
+    "lightTheme": "Switch to light theme",
+    "darkTheme": "Switch to dark theme"
+  },
+  "palette": {
+    "open": "Search pages, servers and plugins",
+    "title": "Command palette",
+    "description": "Jump to a page, a server or a plugin",
+    "placeholder": "Jump to a page, server or plugin…",
+    "placeholderShort": "Search…",
+    "empty": "Nothing matches.",
+    "pages": "Pages",
+    "pagesOf": "Pages · {{name}}",
+    "servers": "Servers",
+    "plugins": "Plugins",
+    "actions": "Actions",
+    "lightTheme": "Switch to light theme",
+    "darkTheme": "Switch to dark theme"
+  },
+  "legend": {
+    "open": "Status legend",
+    "title": "What the statuses mean",
+    "intro": "The same colours mean the same thing everywhere: green is fine, amber needs attention, red is broken, grey is unknown.",
+    "sync": "Sync: does Discord match git?",
+    "health": "Health: is it working?",
+    "history": "History: how did a sync end?",
+    "actions": "Plan actions: what a sync will do"
+  },
+  "status": {
+    "unknown": "Unknown",
+    "sync": {
+      "Synced": {
+        "label": "Synced",
+        "description": "Discord matches the active revision in git."
+      },
+      "OutOfSync": {
+        "label": "Out of sync",
+        "description": "Discord differs from the active revision. The next sync applies the plan."
+      },
+      "Unknown": {
+        "label": "Unknown",
+        "description": "Not compared yet: no bot connected or no sync so far."
+      }
+    },
+    "health": {
+      "Healthy": {
+        "label": "Healthy",
+        "description": "Running normally."
+      },
+      "Progressing": {
+        "label": "Progressing",
+        "description": "Starting or syncing; it should settle shortly."
+      },
+      "Degraded": {
+        "label": "Degraded",
+        "description": "The last operation failed. The message explains why and how to fix it."
+      },
+      "Missing": {
+        "label": "Missing",
+        "description": "Not running: the bot is not connected or the server is not reachable."
+      }
+    },
+    "history": {
+      "succeeded": {
+        "label": "Succeeded",
+        "description": "The sync or activation completed."
+      },
+      "failed": {
+        "label": "Failed",
+        "description": "Discord refused one or more changes. Nothing else was rolled back."
+      },
+      "rejected": {
+        "label": "Rejected",
+        "description": "The revision is invalid; the runtime kept the last valid one."
+      }
+    },
+    "action": {
+      "create": {
+        "label": "Create",
+        "description": "Declared in YAML, missing on Discord: it will be created."
+      },
+      "update": {
+        "label": "Update",
+        "description": "Exists on Discord with different values: they will be changed."
+      },
+      "delete": {
+        "label": "Delete",
+        "description": "Removed from YAML and pruning is on: it will be deleted on Discord."
+      },
+      "adopt": {
+        "label": "Adopt",
+        "description": "An existing resource with the same name becomes managed by CODI."
+      },
+      "reorder": {
+        "label": "Reorder",
+        "description": "Positions will be changed to follow the YAML order."
+      },
+      "unmanage": {
+        "label": "Unmanage",
+        "description": "Removed from YAML: CODI stops managing it but leaves it on Discord."
+      },
+      "blocked": {
+        "label": "Blocked",
+        "description": "A safety rule prevents this change; it is not applied."
+      }
+    }
+  },
+  "errors": {
+    "details": "Technical details",
+    "otherFailures_one": "{{count}} other change failed in the same sync.",
+    "otherFailures_other": "{{count}} other changes failed in the same sync.",
+    "generic": {
+      "title": "Something went wrong"
+    },
+    "network": {
+      "title": "Can't reach the runtime",
+      "message": "The CODI runtime did not answer.",
+      "hint": "Check that codi is running and reachable, then retry."
+    },
+    "unauthenticated": {
+      "title": "Your session expired",
+      "message": "Sign in again to continue."
+    },
+    "forbidden": {
+      "title": "Not available with your role",
+      "message": "Your role on this server does not allow this.",
+      "hint": "Ask a server admin for access (spec.access in the server YAML)."
+    },
+    "notFound": {
+      "title": "Not found",
+      "message": "It may have been removed from the repository."
+    },
+    "conflict": {
+      "title": "Changed since you opened it",
+      "message": "Someone changed the configuration in the meantime.",
+      "hint": "Reload to get the latest version, then redo your change."
+    },
+    "invalid": {
+      "title": "Some values are invalid",
+      "titleCount_one": "{{count}} value is invalid",
+      "titleCount_other": "{{count}} values are invalid",
+      "hint": "Fix the highlighted fields and try again."
+    },
+    "discord": {
+      "title": "Discord refused the change"
+    },
+    "unavailable": {
+      "title": "The runtime is not ready",
+      "message": "The runtime cannot do this right now.",
+      "hint": "Check the bot status, then retry in a moment."
+    },
+    "internal": {
+      "title": "The runtime hit an internal error",
+      "message": "This is a bug in CODI, not in your configuration.",
+      "hint": "Retry; if it persists, check the runtime logs."
+    }
+  },
+  "login": {
+    "title": "Sign in to the operator console",
+    "text": "Manage the servers, bots and plugins this runtime reconciles from git. Access comes from the spec.access section of each server.",
+    "discord": "Continue with Discord",
+    "devOnly": "Dev login only works with codi dev.",
+    "dev": {
+      "title": "Dev login",
+      "text": "Pick a simulated user. The server owner is admin everywhere.",
+      "simulator": "Simulator",
+      "owner": "Owner",
+      "memberOf": "member of {{servers}}",
+      "notMember": "not a member yet",
+      "byId": "Available with codi dev only: sign in as any Discord user ID.",
+      "use": "Use dev login",
+      "userId": "User ID",
+      "userIdPlaceholder": "User ID, e.g. 1122334455",
+      "signIn": "Sign in"
+    }
+  },
+  "noAccess": {
+    "title": "No server to manage",
+    "text": "You are signed in as {{name}}, but you are not an admin or moderator of any server this runtime manages. Ask an owner to add you to spec.access in the server's YAML."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "text": "Nothing lives at",
+    "back": "Back to the overview"
+  },
+  "overview": {
+    "discordId": "Discord ID",
+    "rejected": {
+      "title": "The latest revision was rejected",
+      "hint": "The runtime keeps running the last valid revision until a fix is pushed."
+    },
+    "failedTimes_one": "Failed once",
+    "failedTimes_other": "Failed {{count}} times",
+    "facts": {
+      "revision": "Active revision",
+      "lastSync": "Last sync",
+      "drift": "Drift",
+      "plugins": "Plugins"
+    },
+    "noRevision": "No active revision yet",
+    "noMessage": "(no message)",
+    "by": "by {{bot}}",
+    "noDrift": "None",
+    "driftCount_one": "{{count}} field differs",
+    "driftCount_other": "{{count}} fields differ",
+    "pluginCount_one": "{{count}} instance",
+    "pluginCount_other": "{{count}} instances",
+    "unhealthy_one": "{{count}} unhealthy",
+    "unhealthy_other": "{{count}} unhealthy",
+    "activity": "Recent activity",
+    "viewHistory": "Full history",
+    "bots": "Bots & plugins",
+    "botTag": "BOT",
+    "noBots": {
+      "title": "No bot on this server",
+      "text": "List this server in a bot's spec.servers."
+    },
+    "instancesOf": "Plugin instances of {{bot}}",
+    "noInstances": "No plugin instances."
+  },
+  "sync": {
+    "now": "Sync now",
+    "confirm": {
+      "title": "Apply the plan to Discord?",
+      "text": "CODI changes Discord to match the active revision. Blocked operations are skipped. Review the plan first if you are unsure."
+    },
+    "toast": {
+      "upToDate": "Already in sync",
+      "applied_one": "Applied {{count}} change",
+      "applied_other": "Applied {{count}} changes",
+      "blocked_one": "{{count}} change blocked by the sync policy",
+      "blocked_other": "{{count}} changes blocked by the sync policy",
+      "failed": "Sync failed"
+    }
+  },
+  "plan": {
+    "title": "Plan",
+    "description": "What the next sync would change on Discord to match the active revision.",
+    "loadFailed": "Could not compute the plan",
+    "lastSyncFailed": "The last sync failed",
+    "summary": "Summary",
+    "changeCount_one": "{{count}} change",
+    "changeCount_other": "{{count}} changes",
+    "becomes": "becomes",
+    "adminOnly": {
+      "title": "The plan is for admins",
+      "text": "Only server admins can preview and apply the reconciliation plan. Drift is visible to moderators too."
+    },
+    "empty": {
+      "title": "Nothing to change",
+      "text": "Discord already matches the active revision."
+    },
+    "blocked": {
+      "title": "Blocked",
+      "text": "Safety rules prevent these operations. They are not applied."
+    },
+    "kinds": {
+      "server": "Server",
+      "everyone": "@everyone",
+      "profile": "Profile",
+      "role": "Roles",
+      "category": "Categories",
+      "channel": "Channels",
+      "overwrite": "Permission overwrites"
+    },
+    "blockedReason": {
+      "deletionProtection": "Removed from the YAML, but deletion protection is on (syncPolicy.deletionProtection).",
+      "hierarchy": "The bot's role is not above this role in the hierarchy.",
+      "ownership": "Another owner (a plugin) manages this resource.",
+      "managed": "Integration roles cannot be edited.",
+      "typechange": "Discord cannot change a channel's type in place."
+    }
+  },
+  "history": {
+    "title": "History",
+    "description": "Syncs, revision activations and bot reloads, newest first. Identical consecutive results are grouped.",
+    "repeated_one": "{{status}}",
+    "repeated_other": "{{status}} {{count}} times",
+    "last": "last",
+    "since": "since",
+    "moreRevisions_one": "+{{count}} revision",
+    "moreRevisions_other": "+{{count}} revisions",
+    "target": {
+      "server": "Sync · {{key}}",
+      "bot": "Bot · {{key}}",
+      "revision": "Revision"
+    },
+    "filter": {
+      "label": "Show",
+      "all": "All",
+      "server": "Syncs",
+      "revision": "Revisions",
+      "bot": "Bots"
+    },
+    "empty": {
+      "title": "Nothing synced yet",
+      "text": "Entries appear after the first sync or revision."
+    }
+  },
+  "drift": {
+    "title": "Drift",
+    "description": "Fields changed on Discord that differ from the active revision in git.",
+    "viewPlan": "View plan",
+    "columns": {
+      "resource": "Resource",
+      "field": "Field",
+      "expected": "Expected (git)",
+      "actual": "Actual (Discord)"
+    },
+    "fields": {
+      "exists": "Missing on Discord",
+      "order": "Position",
+      "managed": "Mapping dropped"
+    },
+    "empty": {
+      "title": "No drift",
+      "text": "Discord matches the YAML of the active revision."
+    }
+  },
+  "resources": {
+    "title": "Roles & channels",
+    "description": "What exists on Discord. Managed resources are declared in {{file}} and have a key.",
+    "counts": "{{roles}} roles · {{channels}} channels and categories · {{unmanaged}} unmanaged",
+    "roles": "Roles",
+    "rolesHint": "Top of the hierarchy first",
+    "channels": "Categories & channels",
+    "managedHint": "Key in the YAML: CODI manages this resource",
+    "unmanaged": "unmanaged",
+    "unmanagedHint": "Exists only on Discord. CODI leaves it alone.",
+    "noRoles": "No roles",
+    "noChannels": "No channels",
+    "emptyCategory": "No channels",
+    "filter": {
+      "label": "Show",
+      "all": "All",
+      "managed": "Managed",
+      "unmanaged": "Unmanaged"
+    }
+  },
+  "serverSettings": {
+    "title": "Server settings",
+    "description": "The server profile, sync policy and access declared in git.",
+    "readOnly": {
+      "title": "Edited in git",
+      "text": "These values come from {{file}}. Change them in the repository; the runtime applies them on the next revision."
+    },
+    "profile": {
+      "title": "Profile",
+      "description": "Managed only when set in the YAML.",
+      "name": "Name",
+      "description2": "Description",
+      "icon": "Icon",
+      "verificationLevel": "Verification level",
+      "defaultNotifications": "Default notifications",
+      "systemChannel": "System messages channel",
+      "rulesChannel": "Rules channel"
+    },
+    "policy": {
+      "title": "Sync policy",
+      "description": "How CODI reconciles Discord with git.",
+      "selfHeal": "Self-heal",
+      "selfHealHelp": "Revert changes made on Discord as soon as they are seen.",
+      "prune": "Prune",
+      "pruneHelp": "Delete resources removed from the YAML (otherwise they are only unmanaged).",
+      "deletionProtection": "Deletion protection",
+      "deletionProtectionHelp": "Block every deletion, even with prune on."
+    },
+    "access": {
+      "title": "Access",
+      "description": "Who can use this console for the server. The server owner is always admin.",
+      "admins": "Admins",
+      "moderators": "Moderators",
+      "ownerOnly": "Server owner only"
+    },
+    "declared": {
+      "title": "Declared resources",
+      "description": "What the YAML manages.",
+      "roles": "Roles",
+      "categories": "Categories",
+      "channels": "Channels",
+      "everyone": "@everyone permissions",
+      "notManaged": "Not managed"
+    }
+  },
+  "audit": {
+    "title": "Audit log",
+    "description": "Configuration changes, syncs and logins on this server. Stored in the runtime database, not in git.",
+    "columns": {
+      "when": "When",
+      "actor": "Actor",
+      "action": "Action",
+      "target": "Target",
+      "details": "Details"
+    },
+    "actions": {
+      "sync": {
+        "apply": "Sync applied"
+      },
+      "config": {
+        "update": "Settings changed"
+      }
+    },
+    "pullRequest": "pull request",
+    "empty": "No audit entries yet",
+    "more": "Load older entries",
+    "end": "End of the log",
+    "discordUser": "Discord user"
+  },
+  "plugins": {
+    "title": "Plugins",
+    "description": "Plugin instances running on this server. Saving settings commits to git; the runtime then activates the new revision.",
+    "count_one": "{{count}} instance",
+    "count_other": "{{count}} instances",
+    "empty": {
+      "title": "No plugins on this server",
+      "text": "Add a plugin to a bot's spec.plugins and list this server in spec.servers."
+    },
+    "where": {
+      "instance": "Instance",
+      "bot": "of bot"
+    },
+    "meta": {
+      "capabilities": "Capabilities",
+      "intents": "Gateway intents",
+      "commands": "Commands",
+      "routes": "Portal routes"
+    },
+    "capabilities": {
+      "discord_messages_read": "Read messages",
+      "discord_messages_send": "Send messages",
+      "discord_messages_manage": "Manage messages",
+      "discord_reactions_manage": "Manage reactions",
+      "discord_members_read": "Read members",
+      "discord_members_manage": "Change nicknames",
+      "discord_members_moderate": "Timeout, kick, ban",
+      "discord_roles_assign": "Assign roles",
+      "discord_channels_read": "Read channels",
+      "discord_channels_manage": "Manage channels",
+      "discord_threads_manage": "Manage threads",
+      "discord_dm_send": "Send DMs",
+      "storage_kv": "Key-value storage",
+      "scheduler": "Scheduled tasks",
+      "http_fetch": "Outbound HTTP",
+      "portal_routes": "Portal routes",
+      "portal_links": "Portal links",
+      "events_publish": "Publish events",
+      "events_subscribe": "Subscribe to events"
+    },
+    "settings": {
+      "title": "Settings",
+      "label": "{{name}} settings",
+      "none": "This plugin has no settings."
+    },
+    "outcome": {
+      "review": "Review required",
+      "prOpened": "Pull request opened",
+      "prText": "The change applies once it is merged.",
+      "committed": "Committed",
+      "committedRev": "Committed {{rev}}",
+      "active": "is now the active revision"
+    },
+    "editor": {
+      "writeTo": "Write to",
+      "scopeServer": "This server's override",
+      "scopeBase": "Base config",
+      "saveFirst": "Save or discard your changes first",
+      "savedAs": "Saved as",
+      "onlyDiff": "only what differs from the base",
+      "everyServer": "applies to every server of bot {{bot}}",
+      "baseEffective": "The form shows the effective values on {{server}}. Saving to the base writes them all as the shared base config.",
+      "baseOverride": "Editing the base config. On {{server}} the override still wins for {{fields}}.",
+      "overrides": "This server overrides",
+      "overridesTail": "; other fields come from the base config.",
+      "readOnly": {
+        "title": "Read only",
+        "text": "Your role on this server cannot change these settings. Fields marked x-codi-access: moderator are editable by moderators."
+      },
+      "someLocked": "Some fields are for admins only; you can view them.",
+      "adminsOnly": "Admins only",
+      "conflict": {
+        "title": "The configuration changed since you opened it",
+        "hint": "Reloading discards your unsaved edits.",
+        "reload": "Reload settings"
+      },
+      "forbidden": {
+        "title": "Your role cannot save this change",
+        "hint": "Moderators can only change fields marked x-codi-access: moderator; ask an admin for the others."
+      },
+      "rejected": "The runtime rejected the configuration",
+      "saveFailed": "Could not save the settings",
+      "fixFirst": "Fix the highlighted fields first",
+      "problems_one": "{{count}} problem found",
+      "problems_other": "{{count}} problems found",
+      "unsavedRegion": "Unsaved changes",
+      "unsaved_one": "{{count}} unsaved change",
+      "unsaved_other": "{{count}} unsaved changes",
+      "discard": "Discard",
+      "review": "Review changes",
+      "reviewServer": "Override for {{server}}",
+      "reviewBase": "Base config",
+      "field": "Field",
+      "before": "Before",
+      "after": "After",
+      "kinds": {
+        "added": "added",
+        "removed": "removed",
+        "changed": "changed"
+      },
+      "denied": "Your role may not change {{fields}}; the runtime will refuse this save.",
+      "commitNote": "Committed to git, then applied by the runtime",
+      "back": "Back to editing",
+      "save": "Save to git"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Preferences of this console, stored in this browser.",
+    "appearance": {
+      "title": "Appearance",
+      "description": "Follow the system, or pick a theme."
+    },
+    "theme": {
+      "label": "Theme",
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "language": {
+      "label": "Language",
+      "help": "More languages are coming."
+    },
+    "account": {
+      "title": "Account",
+      "description": "Your Discord identity and your role on each server."
+    },
+    "runtime": {
+      "title": "Runtime",
+      "description": "The CODI runtime this console talks to.",
+      "version": "Version",
+      "mode": "Mode",
+      "simulator": "Simulator",
+      "revision": "Active revision"
+    }
+  },
+  "form": {
+    "required": "Required",
+    "modified": "Modified",
+    "lockedHint": "You can view this field but not change it",
+    "select": "Select…",
+    "notSet": "Not set",
+    "selectRef": "Select a {{kind}}…",
+    "filter": "Filter…",
+    "filterOptions": "Filter options",
+    "noMatch": "No match",
+    "noCategory": "No category",
+    "editorMode": "Editor mode",
+    "write": "Write",
+    "preview": "Preview",
+    "nothingToPreview": "Nothing to preview",
+    "invalidJson": "Not valid JSON",
+    "moveUp": "Move {{noun}} {{n}} up",
+    "moveDown": "Move {{noun}} {{n}} down",
+    "remove": "Remove {{noun}} {{n}}",
+    "emptyList": "No {{noun}}s yet.",
+    "add": "Add {{noun}}",
+    "ref": {
+      "channel": "channel",
+      "role": "role",
+      "category": "category"
+    },
+    "errors": {
+      "text": "Must be text",
+      "required": "Required",
+      "minLength_one": "At least {{count}} character",
+      "minLength_other": "At least {{count}} characters",
+      "maxLength_one": "At most {{count}} character ({{length}})",
+      "maxLength_other": "At most {{count}} characters ({{length}})",
+      "pattern": "Must match {{pattern}}",
+      "duration": "Use a duration such as 30s, 10m or 1h30m",
+      "color": "Use a hex color such as #5865f2",
+      "unknownRef": "Unknown {{kind}} \"{{value}}\"",
+      "number": "Must be a number",
+      "integer": "Must be a whole number",
+      "minimum": "Minimum {{value}}",
+      "maximum": "Maximum {{value}}",
+      "greaterThan": "Must be greater than {{value}}",
+      "lessThan": "Must be less than {{value}}",
+      "boolean": "Must be true or false",
+      "list": "Must be a list",
+      "minItems_one": "Add at least one item",
+      "minItems_other": "Add at least {{count}} items",
+      "maxItems_one": "At most {{count}} item",
+      "maxItems_other": "At most {{count}} items",
+      "unique": "Items must be unique",
+      "object": "Must be an object"
+    }
+  },
+  "sim": {
+    "channels": "Channels",
+    "server": "Simulated server",
+    "conversation": "Conversation",
+    "pickChannel": "Pick a channel",
+    "channel": "channel",
+    "voice": "Voice channels are not simulated",
+    "bot": "BOT",
+    "edited": "(edited)",
+    "submit": "Submit",
+    "start": "This is the start of #{{channel}}",
+    "startText": "Send a message, or join a user to see the welcome plugin post here.",
+    "time": {
+      "today": "Today at {{time}}",
+      "at": "{{day}} at {{time}}"
+    },
+    "select": {
+      "option": "Select an option",
+      "make": "Make a selection",
+      "pick": "Pick options"
+    },
+    "off": {
+      "title": "The simulator is off",
+      "text": "Start the runtime with codi dev --sim to play with your bots without Discord."
+    },
+    "noServer": {
+      "title": "No simulated server",
+      "text": "The simulated world has no server yet."
+    },
+    "live": {
+      "on": "Live updates (SSE)",
+      "polling": "Live updates unavailable: polling every 2.5 s",
+      "connecting": "Connecting…",
+      "live": "Live",
+      "poll": "Polling"
+    },
+    "dms": {
+      "title": "Direct messages",
+      "hint": "What bots sent to each user",
+      "none": "No DMs for {{name}} yet",
+      "noneText": "The welcome plugin DMs an onboarding link when a member joins."
+    },
+    "toast": {
+      "joined": "{{user}} joined {{server}}",
+      "joinFailed": "Could not join",
+      "left": "{{user}} left {{server}}",
+      "leaveFailed": "Could not leave",
+      "interactionFailed": "Interaction failed",
+      "modalFailed": "Modal submit failed",
+      "messageFailed": "Message not sent",
+      "created": "Created {{user}}",
+      "createdText": "Join them to the server to trigger the welcome flow.",
+      "createFailed": "Could not create the user"
+    },
+    "result": {
+      "label": "Interaction result",
+      "picked": "Picked {{values}}",
+      "clicked": "Clicked “{{name}}”",
+      "submitted": "Submitted “{{title}}”",
+      "ephemeral": "ephemeral",
+      "followups_one": "{{count}} followup",
+      "followups_other": "{{count}} followups",
+      "close": "Close interaction result",
+      "deferred": "The bot acknowledged the interaction; its answer will arrive as an edit or followup.",
+      "modal": "The bot opened a modal:",
+      "fill": "Fill it in",
+      "status": {
+        "replied": "replied",
+        "deferred": "deferred",
+        "failed": "failed",
+        "modal": "modal"
+      }
+    },
+    "composer": {
+      "mode": "Composer mode",
+      "message": "Message",
+      "command": "Slash command",
+      "thisUser": "This user",
+      "notMember": "{{user}} is not a member: join the server first.",
+      "joinToRun": "Join the server with this user to run commands.",
+      "placeholder": "Message #{{channel}}",
+      "send": "Send message",
+      "runsIn": "Runs in #{{channel}}"
+    },
+    "actor": {
+      "label": "Acting as",
+      "owner": "owner",
+      "member": "member",
+      "notMember": "not a member"
+    },
+    "members": {
+      "title": "Members",
+      "outside": "Not in the server",
+      "ownerTitle": "Server owner",
+      "actAs": "Act as {{user}}",
+      "dmsOf": "DMs of {{user}}",
+      "allIn": "Everyone is in. Create a user below.",
+      "join": "Join",
+      "newUser": "New user name",
+      "newUserPlaceholder": "New user, e.g. dave",
+      "create": "Create"
+    },
+    "quick": {
+      "label": "Quick start",
+      "title": "See your bot work in 30 seconds",
+      "hide": "Hide quick start",
+      "join": {
+        "title": "Join a user",
+        "text": "The welcome plugin greets them in the welcome channel and gives them a role.",
+        "action": "Join {{user}}",
+        "done": "Everyone has joined: create a user on the right."
+      },
+      "dms": {
+        "title": "Open their DMs",
+        "text": "The bot sends a link to the onboarding page of the portal.",
+        "action": "DMs of {{user}}"
+      },
+      "command": {
+        "title": "Run a command",
+        "text": "Try /welcome-preview as the owner of {{server}}.",
+        "action": "Prepare /welcome-preview"
+      }
+    },
+    "commands": {
+      "none": "No slash commands on this server",
+      "noneText": "Plugins register commands with command() in definePlugin.",
+      "choose": "Choose…",
+      "notSet": "Not set",
+      "true": "True",
+      "false": "False",
+      "chooseMember": "Choose a member…",
+      "chooseChannel": "Choose a channel…",
+      "chooseRole": "Choose a role…",
+      "noAttachments": "Attachments are not simulated",
+      "required": "required",
+      "command": "Command",
+      "run": "Run /{{name}}"
+    }
+  }
+}

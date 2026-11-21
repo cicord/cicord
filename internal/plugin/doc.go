@@ -52,6 +52,10 @@
 // network egress rules (allow-list, public addresses only, checked address dialed, manual
 // redirects, https, size and time limits).
 //
+// Message content is gated per instance (Env.MessageContent, the plugin's own
+// MessageContent intent): gateway intents are unioned per bot, so without this a plugin
+// would read content because another plugin of the same bot declared the intent.
+//
 // # SDK extensions
 //
 // Beyond codi-sdk.d.ts the VM provides setTimeout/setInterval/clearTimeout/clearInterval,

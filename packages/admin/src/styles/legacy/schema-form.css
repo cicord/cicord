@@ -15,8 +15,8 @@
   border: 1px solid transparent;
 }
 .sf-field[data-modified] {
-  background: color-mix(in srgb, var(--accent, #8c9eff) 6%, transparent);
-  border-color: color-mix(in srgb, var(--accent, #8c9eff) 22%, transparent);
+  background: color-mix(in srgb, var(--brand, #8c9eff) 6%, transparent);
+  border-color: color-mix(in srgb, var(--brand, #8c9eff) 22%, transparent);
 }
 .sf-field[data-modified]::before {
   content: "";
@@ -26,11 +26,11 @@
   bottom: 8px;
   width: 2px;
   border-radius: 2px;
-  background: var(--accent, #8c9eff);
+  background: var(--brand, #8c9eff);
 }
 .sf-field[data-invalid] {
-  background: var(--bad-soft, rgb(242 104 111 / 0.1));
-  border-color: color-mix(in srgb, var(--bad, #f2686f) 35%, transparent);
+  background: var(--danger-soft, rgb(242 104 111 / 0.1));
+  border-color: color-mix(in srgb, var(--danger, #f2686f) 35%, transparent);
 }
 
 .sf-head {
@@ -44,7 +44,7 @@
   font-weight: 600;
 }
 .sf-key {
-  color: var(--subtle, #6c7489);
+  color: var(--subtle-foreground, #6c7489);
   font-size: 11.5px;
 }
 .sf-badge {
@@ -56,16 +56,16 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 550;
-  color: var(--muted, #98a1b6);
-  background: var(--hover, rgb(148 163 196 / 0.07));
+  color: var(--muted-foreground, #98a1b6);
+  background: var(--surface-hover, rgb(148 163 196 / 0.07));
 }
 .sf-badge-lock {
-  color: var(--warn, #f0b03f);
-  background: var(--warn-soft, rgb(240 176 63 / 0.12));
+  color: var(--warning, #f0b03f);
+  background: var(--warning-soft, rgb(240 176 63 / 0.12));
 }
 .sf-badge-mod {
-  color: var(--accent, #8c9eff);
-  background: var(--accent-soft, rgb(140 158 255 / 0.14));
+  color: var(--brand, #8c9eff);
+  background: var(--brand-soft, rgb(140 158 255 / 0.14));
 }
 .sf-inline-control {
   margin-left: auto;
@@ -75,12 +75,12 @@
 }
 
 .sf-desc {
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
   font-size: 12px;
   max-width: 80ch;
 }
 .sf-error {
-  color: var(--bad, #f2686f);
+  color: var(--danger, #f2686f);
   font-size: 12px;
   font-weight: 500;
 }
@@ -90,9 +90,9 @@
   min-height: 32px;
   padding: 6px 10px;
   border-radius: var(--r-md, 7px);
-  border: 1px solid var(--line-strong, rgb(148 163 196 / 0.24));
-  background: var(--sunken, #0b0e14);
-  color: var(--text, #e4e7ef);
+  border: 1px solid var(--border-strong, rgb(148 163 196 / 0.24));
+  background: var(--surface-sunken, #0b0e14);
+  color: var(--foreground, #e4e7ef);
   font: inherit;
 }
 textarea.sf-input {
@@ -101,11 +101,11 @@ textarea.sf-input {
 }
 .sf-input:focus {
   outline: none;
-  border-color: var(--accent, #8c9eff);
-  box-shadow: 0 0 0 3px var(--accent-soft, rgb(140 158 255 / 0.14));
+  border-color: var(--brand, #8c9eff);
+  box-shadow: 0 0 0 3px var(--brand-soft, rgb(140 158 255 / 0.14));
 }
 .sf-input[aria-invalid="true"] {
-  border-color: var(--bad, #f2686f);
+  border-color: var(--danger, #f2686f);
 }
 .sf-input:disabled {
   opacity: 0.65;
@@ -130,13 +130,13 @@ textarea.sf-input {
   right: 8px;
   bottom: 6px;
   font-size: 11px;
-  color: var(--subtle, #6c7489);
+  color: var(--subtle-foreground, #6c7489);
   pointer-events: none;
-  background: var(--sunken, #0b0e14);
+  background: var(--surface-sunken, #0b0e14);
   padding: 0 2px;
 }
 .sf-counter[data-over] {
-  color: var(--bad, #f2686f);
+  color: var(--danger, #f2686f);
   font-weight: 600;
 }
 .sf-textarea-tabs {
@@ -147,21 +147,21 @@ textarea.sf-input {
 .sf-textarea-tabs button {
   border: 0;
   background: transparent;
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 12px;
   cursor: pointer;
 }
 .sf-textarea-tabs button[aria-selected="true"] {
-  background: var(--hover, rgb(148 163 196 / 0.07));
-  color: var(--text, #e4e7ef);
+  background: var(--surface-hover, rgb(148 163 196 / 0.07));
+  color: var(--foreground, #e4e7ef);
 }
 .sf-preview {
   min-height: 64px;
   padding: 8px 10px;
   border-radius: var(--r-md, 7px);
-  border: 1px dashed var(--line-strong, rgb(148 163 196 / 0.24));
+  border: 1px dashed var(--border-strong, rgb(148 163 196 / 0.24));
 }
 
 .sf-color {
@@ -175,8 +175,8 @@ textarea.sf-input {
   height: 32px;
   padding: 2px;
   border-radius: var(--r-md, 7px);
-  border: 1px solid var(--line-strong, rgb(148 163 196 / 0.24));
-  background: var(--sunken, #0b0e14);
+  border: 1px solid var(--border-strong, rgb(148 163 196 / 0.24));
+  background: var(--surface-sunken, #0b0e14);
   cursor: pointer;
 }
 
@@ -186,22 +186,22 @@ textarea.sf-input {
   padding: 2px;
   gap: 2px;
   border-radius: var(--r-md, 7px);
-  background: var(--sunken, #0b0e14);
-  border: 1px solid var(--line, rgb(148 163 196 / 0.13));
+  background: var(--surface-sunken, #0b0e14);
+  border: 1px solid var(--border, rgb(148 163 196 / 0.13));
 }
 .sf-segmented button {
   border: 0;
   background: transparent;
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
   padding: 4px 12px;
   border-radius: 5px;
   cursor: pointer;
   font-weight: 500;
 }
 .sf-segmented button[aria-checked="true"] {
-  background: var(--raised, #1c2230);
-  color: var(--text, #e4e7ef);
-  box-shadow: 0 0 0 1px var(--line-strong, rgb(148 163 196 / 0.24));
+  background: var(--surface-2, #1c2230);
+  color: var(--foreground, #e4e7ef);
+  box-shadow: 0 0 0 1px var(--border-strong, rgb(148 163 196 / 0.24));
 }
 
 .sf-switch {
@@ -211,8 +211,8 @@ textarea.sf-input {
   height: 20px;
   padding: 0;
   border-radius: 999px;
-  border: 1px solid var(--line-strong, rgb(148 163 196 / 0.24));
-  background: var(--sunken, #0b0e14);
+  border: 1px solid var(--border-strong, rgb(148 163 196 / 0.24));
+  background: var(--surface-sunken, #0b0e14);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -223,11 +223,11 @@ textarea.sf-input {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--muted, #98a1b6);
+  background: var(--muted-foreground, #98a1b6);
   transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .sf-switch[aria-checked="true"] {
-  background: var(--accent, #8c9eff);
+  background: var(--brand, #8c9eff);
   border-color: transparent;
 }
 .sf-switch[aria-checked="true"] .sf-switch-thumb {
@@ -244,7 +244,7 @@ textarea.sf-input {
   gap: 4px;
   margin: 4px 0;
   padding: 8px 6px 6px;
-  border: 1px solid var(--line, rgb(148 163 196 / 0.13));
+  border: 1px solid var(--border, rgb(148 163 196 / 0.13));
   border-radius: var(--r-lg, 10px);
 }
 .sf-legend {
@@ -264,7 +264,7 @@ textarea.sf-input {
   gap: 6px;
 }
 .sf-empty {
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
   font-size: 12px;
   padding: 4px 0;
 }
@@ -279,7 +279,7 @@ textarea.sf-input {
   padding-top: 7px;
   text-align: right;
   font-size: 11.5px;
-  color: var(--subtle, #6c7489);
+  color: var(--subtle-foreground, #6c7489);
   font-family: var(--mono, monospace);
 }
 .sf-row-control {
@@ -300,17 +300,17 @@ textarea.sf-input {
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
   cursor: pointer;
 }
 .sf-icon-btn:hover:not(:disabled) {
-  background: var(--hover, rgb(148 163 196 / 0.07));
-  border-color: var(--line, rgb(148 163 196 / 0.13));
-  color: var(--text, #e4e7ef);
+  background: var(--surface-hover, rgb(148 163 196 / 0.07));
+  border-color: var(--border, rgb(148 163 196 / 0.13));
+  color: var(--foreground, #e4e7ef);
 }
 .sf-icon-btn.sf-danger:hover:not(:disabled) {
-  color: var(--bad, #f2686f);
-  background: var(--bad-soft, rgb(242 104 111 / 0.1));
+  color: var(--danger, #f2686f);
+  background: var(--danger-soft, rgb(242 104 111 / 0.1));
 }
 .sf-icon-btn:disabled {
   opacity: 0.3;
@@ -324,25 +324,25 @@ textarea.sf-input {
   height: 28px;
   padding: 0 10px;
   border-radius: var(--r-md, 7px);
-  border: 1px dashed var(--line-strong, rgb(148 163 196 / 0.24));
+  border: 1px dashed var(--border-strong, rgb(148 163 196 / 0.24));
   background: transparent;
-  color: var(--accent, #8c9eff);
+  color: var(--brand, #8c9eff);
   font-weight: 550;
   font-size: 12.5px;
   cursor: pointer;
 }
 .sf-add:hover {
   border-style: solid;
-  background: var(--accent-soft, rgb(140 158 255 / 0.14));
+  background: var(--brand-soft, rgb(140 158 255 / 0.14));
 }
 
 .sf-item {
-  border: 1px solid var(--line, rgb(148 163 196 / 0.13));
+  border: 1px solid var(--border, rgb(148 163 196 / 0.13));
   border-radius: var(--r-lg, 10px);
-  background: var(--raised, #1c2230);
+  background: var(--surface-2, #1c2230);
 }
 .sf-item[data-invalid] {
-  border-color: color-mix(in srgb, var(--bad, #f2686f) 45%, transparent);
+  border-color: color-mix(in srgb, var(--danger, #f2686f) 45%, transparent);
 }
 .sf-item-head {
   display: flex;
@@ -364,11 +364,11 @@ textarea.sf-input {
   cursor: pointer;
 }
 .sf-item-toggle:hover {
-  background: var(--hover, rgb(148 163 196 / 0.07));
+  background: var(--surface-hover, rgb(148 163 196 / 0.07));
 }
 .sf-item-caret {
   flex: none;
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
   transition: transform 0.15s;
 }
 .sf-item[data-open] .sf-item-caret {
@@ -377,7 +377,7 @@ textarea.sf-input {
 .sf-item-index {
   flex: none;
   font-size: 12px;
-  color: var(--subtle, #6c7489);
+  color: var(--subtle-foreground, #6c7489);
   font-weight: 550;
 }
 .sf-item-summary {
@@ -389,10 +389,10 @@ textarea.sf-input {
 }
 .sf-item-body {
   padding: 0 6px 6px;
-  border-top: 1px solid var(--line, rgb(148 163 196 / 0.13));
+  border-top: 1px solid var(--border, rgb(148 163 196 / 0.13));
 }
 .sf-item-body .sf-item {
-  background: var(--surface, #161b26);
+  background: var(--card, #161b26);
 }
 
 .sf-chips {
@@ -406,12 +406,12 @@ textarea.sf-input {
   gap: 6px;
   padding: 3px 10px;
   border-radius: 999px;
-  border: 1px solid var(--line-strong, rgb(148 163 196 / 0.24));
+  border: 1px solid var(--border-strong, rgb(148 163 196 / 0.24));
   cursor: pointer;
 }
 .sf-chip[data-on] {
-  border-color: var(--accent, #8c9eff);
-  background: var(--accent-soft, rgb(140 158 255 / 0.14));
+  border-color: var(--brand, #8c9eff);
+  background: var(--brand-soft, rgb(140 158 255 / 0.14));
 }
 
 /* picker */
@@ -428,9 +428,9 @@ textarea.sf-input {
   min-height: 32px;
   padding: 4px 8px 4px 10px;
   border-radius: var(--r-md, 7px);
-  border: 1px solid var(--line-strong, rgb(148 163 196 / 0.24));
-  background: var(--sunken, #0b0e14);
-  color: var(--text, #e4e7ef);
+  border: 1px solid var(--border-strong, rgb(148 163 196 / 0.24));
+  background: var(--surface-sunken, #0b0e14);
+  color: var(--foreground, #e4e7ef);
   text-align: left;
   cursor: pointer;
 }
@@ -441,11 +441,11 @@ textarea.sf-input {
 .sf-picker-button[aria-expanded="true"],
 .sf-picker-button:focus-visible {
   outline: none;
-  border-color: var(--accent, #8c9eff);
-  box-shadow: 0 0 0 3px var(--accent-soft, rgb(140 158 255 / 0.14));
+  border-color: var(--brand, #8c9eff);
+  box-shadow: 0 0 0 3px var(--brand-soft, rgb(140 158 255 / 0.14));
 }
 .sf-picker-button[aria-invalid="true"] {
-  border-color: var(--bad, #f2686f);
+  border-color: var(--danger, #f2686f);
 }
 .sf-picker-value {
   flex: 1;
@@ -455,11 +455,11 @@ textarea.sf-input {
   gap: 8px;
 }
 .sf-picker-unknown {
-  color: var(--warn, #f0b03f);
+  color: var(--warning, #f0b03f);
 }
 .sf-picker-placeholder {
   flex: 1;
-  color: var(--subtle, #6c7489);
+  color: var(--subtle-foreground, #6c7489);
 }
 .sf-picker-label {
   min-width: 0;
@@ -469,14 +469,14 @@ textarea.sf-input {
 }
 .sf-picker-hint {
   margin-left: auto;
-  color: var(--subtle, #6c7489);
+  color: var(--subtle-foreground, #6c7489);
   font-size: 11px;
 }
 .sf-picker-caret {
   flex: none;
   width: 14px;
   height: 14px;
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
 }
 .sf-picker-pop {
   position: absolute;
@@ -487,8 +487,8 @@ textarea.sf-input {
   min-width: 240px;
   padding: 5px;
   border-radius: var(--r-lg, 10px);
-  background: var(--bg-elev, #121621);
-  border: 1px solid var(--line-strong, rgb(148 163 196 / 0.24));
+  background: var(--card, #121621);
+  border: 1px solid var(--border-strong, rgb(148 163 196 / 0.24));
   box-shadow: var(--shadow-pop, 0 16px 40px -12px rgb(0 0 0 / 0.7));
 }
 .composer .sf-picker-pop {
@@ -501,14 +501,14 @@ textarea.sf-input {
   padding: 0 8px;
   margin-bottom: 4px;
   border-radius: 5px;
-  border: 1px solid var(--line, rgb(148 163 196 / 0.13));
-  background: var(--sunken, #0b0e14);
-  color: var(--text, #e4e7ef);
+  border: 1px solid var(--border, rgb(148 163 196 / 0.13));
+  background: var(--surface-sunken, #0b0e14);
+  color: var(--foreground, #e4e7ef);
   font: inherit;
 }
 .sf-picker-search:focus {
   outline: none;
-  border-color: var(--accent, #8c9eff);
+  border-color: var(--brand, #8c9eff);
 }
 .sf-picker-list {
   list-style: none;
@@ -521,7 +521,7 @@ textarea.sf-input {
   padding: 6px 8px 2px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--subtle, #6c7489);
+  color: var(--subtle-foreground, #6c7489);
 }
 .sf-picker-option {
   display: flex;
@@ -532,10 +532,10 @@ textarea.sf-input {
   cursor: pointer;
 }
 .sf-picker-option[data-active] {
-  background: var(--hover, rgb(148 163 196 / 0.07));
+  background: var(--surface-hover, rgb(148 163 196 / 0.07));
 }
 .sf-picker-option[aria-selected="true"] {
-  background: var(--accent-soft, rgb(140 158 255 / 0.14));
+  background: var(--brand-soft, rgb(140 158 255 / 0.14));
 }
 .sf-picker-option[aria-disabled="true"] {
   opacity: 0.45;
@@ -543,7 +543,7 @@ textarea.sf-input {
 }
 .sf-picker-empty {
   padding: 8px;
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
 }
 
 .sf-swatch {
@@ -556,14 +556,14 @@ textarea.sf-input {
 }
 .sf-swatch[data-empty] {
   background: transparent;
-  box-shadow: 0 0 0 1px var(--line-strong, rgb(148 163 196 / 0.24)) inset;
+  box-shadow: 0 0 0 1px var(--border-strong, rgb(148 163 196 / 0.24)) inset;
 }
 .sf-glyph {
   flex: none;
   display: inline-grid;
   place-items: center;
   width: 14px;
-  color: var(--muted, #98a1b6);
+  color: var(--muted-foreground, #98a1b6);
   font-family: var(--mono, monospace);
   font-weight: 500;
 }
@@ -571,4 +571,11 @@ textarea.sf-input {
 .sf-bare {
   display: grid;
   gap: 4px;
+}
+
+html:not(.dark) .sf-input,
+html:not(.dark) .sf-picker-button,
+html:not(.dark) .sf-picker-search,
+html:not(.dark) .sf-counter {
+  background: var(--background);
 }

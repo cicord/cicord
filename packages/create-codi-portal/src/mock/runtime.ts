@@ -1,11 +1,12 @@
 /**
  * In-browser fake of the CODI runtime for `vp dev --mode mock`: portal endpoints, auth
- * (link token, dev login, logout) and the onboarding plugin routes, mirroring
- * spec/api.md and examples/basic/plugins/onboarding. State lives in sessionStorage so it
+ * (link token, dev login, logout), the onboarding plugin routes and the showcase plugins
+ * (levels, tickets), mirroring spec/api.md, examples/basic/plugins/onboarding and
+ * examples/showcase. State lives in sessionStorage so it
  * survives the reload that follows a login.
  */
 import type { FetchLike } from "@codi/client";
-import { onboardingConfig, portalServer, roles, user } from "./data.ts";
+import { leaderboard, onboardingConfig, portalServer, roles, tickets, user } from "./data.ts";
 
 interface MockState {
   loggedIn: boolean;
@@ -38,6 +39,18 @@ const roleOut = (key: string) => {
   return r ? { key, id: r.id, name: r.name, color: r.color } : undefined;
 };
 
+/** `?role=moderator|admin` previews the moderator pages in mock mode. */
+function viewerRole(): "member" | "moderator" | "admin" {
+  const role = new URLSearchParams(window.location.search).get("role");
+  try {
+    if (role) sessionStorage.setItem("codi-portal:mock-role", role);
+    const saved = role ?? sessionStorage.getItem("codi-portal:mock-role");
+    return saved === "moderator" || saved === "admin" ? saved : "member";
+  } catch {
+    return role === "moderator" || role === "admin" ? role : "member";
+  }
+}
+
 export function createMockRuntime() {
   let state = load();
   const save = (next: Partial<MockState>) => {
@@ -64,7 +77,7 @@ export function createMockRuntime() {
         .filter((r) => r !== undefined)
         .map(({ key, id, name, color }) => ({ key, id, name, color })),
     },
-    role: "member",
+    role: viewerRole(),
   });
 
   const steps = () => ({
@@ -154,7 +167,7 @@ export function createMockRuntime() {
     });
   };
 
-  const route = (method: string, path: string, body: unknown): Response => {
+  const route = (method: string, path: string, body: unknown, query: URLSearchParams): Response => {
     const auth = (fn: () => Response) =>
       state.loggedIn ? fn() : error(401, "unauthenticated", "login required");
     const key = portalServer.key;
@@ -178,6 +191,21 @@ export function createMockRuntime() {
         return auth(() => json(steps()));
       case `POST ${API}/portal/${key}/plugins/moderator/onboarding/complete`:
         return auth(() => complete(body));
+      case `GET ${API}/portal/${key}/plugins/moderator/levels/leaderboard`:
+        return json({ items: leaderboard });
+      case `GET ${API}/portal/${key}/plugins/moderator/levels/me`:
+        return auth(() => json({ ...leaderboard[0], nextLevelXp: 20000 }));
+      case `GET ${API}/portal/${key}/plugins/moderator/tickets/tickets`:
+        // A moderator route: `?role=moderator` makes the mock viewer a moderator.
+        return auth(() =>
+          viewerRole() === "member"
+            ? error(403, "forbidden", "this route requires the moderator role")
+            : json({
+                items: tickets.filter(
+                  (t) => !query.get("status") || t.status === query.get("status"),
+                ),
+              }),
+        );
       default:
         return error(404, "not_found", `mock: no route ${method} ${path}`);
     }
@@ -188,7 +216,7 @@ export function createMockRuntime() {
     const method = (init.method ?? "GET").toUpperCase();
     const body = typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
     await new Promise((resolve) => setTimeout(resolve, LATENCY));
-    return route(method, url.pathname, body);
+    return route(method, url.pathname, body, url.searchParams);
   };
 
   return {

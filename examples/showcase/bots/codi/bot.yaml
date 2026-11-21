@@ -1,0 +1,97 @@
+# yaml-language-server: $schema=../../../../spec/schemas/bot.schema.json
+apiVersion: codi.dev/v1alpha1
+kind: Bot
+metadata:
+  name: codi
+spec:
+  applicationId: "887766554433221100"
+  token:
+    secretRef: DISCORD_TOKEN_CODI
+  profile:
+    username: CODI
+  presence:
+    status: online
+    activity:
+      type: watching
+      name: the showcase
+  servers: [showcase]
+  plugins:
+    - name: tickets
+      source: ../../plugins/tickets
+      grants:
+        - discord.messages.send
+        - discord.messages.read
+        - discord.channels.read
+        - discord.channels.manage
+        - storage.kv
+        - portal.routes
+      config:
+        panelChannel: help-desk
+        category: support
+        staffRoles: [support, mod]
+        logChannel: ticket-log
+        panel:
+          title: Need help from the team?
+          description: Click **Open a ticket** and tell us what is going on. Only you and the staff will see the conversation.
+        maxOpenPerMember: 1
+
+    - name: polls
+      source: ../../plugins/polls
+      grants:
+        - discord.messages.send
+        - discord.messages.read
+        - discord.channels.read
+        - discord.threads.manage
+        - storage.kv
+        - scheduler
+        - events.publish
+        - portal.routes
+      config:
+        defaultHours: 24
+        managerRoles: [mod]
+
+    - name: levels
+      source: ../../plugins/levels
+      grants:
+        - discord.messages.send
+        - discord.reactions.manage
+        - discord.channels.read
+        - discord.members.read
+        - discord.roles.assign
+        - storage.kv
+        - scheduler
+        - events.subscribe
+        - portal.routes
+        - portal.links
+      config:
+        cooldownSeconds: 60
+        ignoredChannels: [staff-chat]
+        announce:
+          channel: level-ups
+        rewards:
+          - { level: 5, role: regular }
+          - { level: 10, role: veteran }
+          - { level: 25, role: legend, keep: true }
+        recap:
+          channel: level-ups
+
+    - name: moderation
+      source: ../../plugins/moderation
+      grants:
+        - discord.messages.send
+        - discord.messages.manage
+        - discord.channels.read
+        - discord.members.read
+        - discord.members.moderate
+        - discord.dm.send
+        - storage.kv
+        - http.fetch
+        - portal.routes
+      config:
+        logChannel: mod-log
+        warningDays: 30
+        escalation:
+          - { warnings: 3, action: timeout, durationMinutes: 60 }
+          - { warnings: 5, action: kick }
+        flood:
+          exemptRoles: [mod, admin]

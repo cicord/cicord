@@ -1,285 +1,315 @@
-import type { BotStatus, RuntimeStatus, ServerStatus, SyncRecord } from "@codi/client";
-import { useHistory, useStatus } from "../api.ts";
-import { Link } from "../router.tsx";
-import { IconBot, IconBranch, IconCommit, IconPlay, IconServer } from "../ui/icons.tsx";
+/** Server overview: state and problems first, then the facts, recent activity and bots. */
+import type { BotStatus, ServerDetail } from "@codi/client";
+import { ArrowRight, CircleHelp, History } from "lucide-react";
+import { useMemo } from "react";
+import { useHistory, useServer, useStatus } from "../api.ts";
 import {
-  Avatar,
-  Badge,
-  Callout,
+  BotAvatar,
   EmptyState,
-  ErrorState,
-  HealthBadge,
+  Fact,
+  LoadingRows,
+  Mono,
+  Page,
   PageHeader,
-  Panel,
+  PluginGlyph,
+  ServerAvatar,
   Sha,
-  Skeleton,
-  SyncBadge,
   Time,
-} from "../ui/index.tsx";
+} from "../components/common.tsx";
+import { ErrorState, HumanErrorCallout } from "../components/errors.tsx";
+import { HistoryList } from "../components/history.tsx";
+import {
+  HealthBadge,
+  StatusDot,
+  StatusLegend,
+  SyncBadge,
+  healthTone,
+} from "../components/status.tsx";
+import { Badge } from "../components/ui/badge.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { Card, CardAction, CardHeader, CardTitle } from "../components/ui/card.tsx";
+import { Skeleton } from "../components/ui/skeleton.tsx";
+import { Tip } from "../components/ui/tooltip.tsx";
+import { RoleBadge, useWorkspace } from "../context.tsx";
+import { useTranslation } from "../i18n/index.ts";
+import { errorOf } from "../lib/errors.ts";
+import { groupHistory } from "../lib/history.ts";
+import { Link } from "../router.tsx";
+import { relevantHistory, SyncButton } from "./Sync.tsx";
 
-export function OverviewPage() {
+export function OverviewPage({ serverKey }: { serverKey: string }) {
+  const { t } = useTranslation();
+  const ws = useWorkspace();
+  const server = useServer(serverKey);
   const status = useStatus();
-  if (status.isLoading)
+  const history = useHistory(100);
+
+  const bots = useMemo(
+    () => (status.data?.bots ?? []).filter((b) => b.servers.includes(serverKey)),
+    [status.data, serverKey],
+  );
+  const records = useMemo(
+    () =>
+      relevantHistory(
+        history.data ?? [],
+        serverKey,
+        bots.map((b) => b.key),
+      ),
+    [history.data, serverKey, bots],
+  );
+
+  if (server.isLoading)
     return (
-      <div className="page">
-        <PageHeader title="Overview" />
-        <Skeleton lines={6} />
-      </div>
+      <Page>
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-10 rounded-[30%]" />
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+        </div>
+        <Card>
+          <LoadingRows rows={5} />
+        </Card>
+      </Page>
     );
-  if (!status.data)
+  if (!server.data)
     return (
-      <div className="page">
-        <PageHeader title="Overview" />
-        <ErrorState error={status.error} onRetry={() => void status.refetch()} />
-      </div>
+      <Page>
+        <PageHeader title={serverKey} />
+        <ErrorState error={server.error} onRetry={() => void server.refetch()} />
+      </Page>
     );
-  const s = status.data;
+
+  const s = server.data;
+  const error = s.health === "Degraded" || s.health === "Missing" ? errorOf(s) : null;
+  // How often the current failure repeated (newest group of this server's syncs).
+  const serverGroups = groupHistory(records.filter((r) => r.target === `server:${serverKey}`));
+  const run = serverGroups[0] && serverGroups[0].status === "failed" ? serverGroups[0] : undefined;
+  const rev = status.data?.revision;
+  const lastError =
+    status.data?.lastErrorInfo ??
+    (status.data?.lastError ? errorOf({ message: status.data.lastError }) : null);
+
   return (
-    <div className="page">
+    <Page>
       <PageHeader
-        title="Overview"
+        leading={<ServerAvatar name={s.name} size={40} className="mt-0.5" />}
+        title={s.name}
         meta={
           <>
-            <span>
-              <code>codi {s.mode}</code> · v{s.version}
+            <SyncBadge sync={s.sync} />
+            <HealthBadge health={s.health} />
+            <RoleBadge role={ws.role} />
+            <span className="text-xs text-muted-foreground">
+              <Mono>{s.key}</Mono>
+              <span className="mx-1.5 text-subtle-foreground">/</span>
+              {t("overview.discordId")} <Mono className="tabular">{s.discordId}</Mono>
             </span>
-            {s.simulator ? (
-              <Badge tone="violet" title="Discord is simulated in-process (codi dev --sim)">
-                Simulator
-              </Badge>
-            ) : null}
           </>
         }
         actions={
-          s.simulator ? (
-            <Link to="/simulator" className="btn btn-primary btn-md">
-              <IconPlay size={14} />
-              <span>Open simulator</span>
-            </Link>
-          ) : null
+          <>
+            <StatusLegend>
+              <Button variant="ghost" size="sm" className="text-muted-foreground">
+                <CircleHelp />
+                <span className="hidden sm:inline">{t("legend.open")}</span>
+              </Button>
+            </StatusLegend>
+            {ws.isAdmin ? <SyncButton serverKey={s.key} /> : null}
+          </>
         }
       />
-      {s.lastError ? (
-        <Callout tone="bad" title="The latest revision was rejected">
-          <code className="error-code">{s.lastError}</code>
-          <p className="muted">
-            The runtime keeps running the last good revision until a fix is pushed.
-          </p>
-        </Callout>
+
+      {lastError ? (
+        <HumanErrorCallout
+          tone="warning"
+          title={t("overview.rejected.title")}
+          error={{
+            ...lastError,
+            hint: lastError.hint ?? t("overview.rejected.hint"),
+          }}
+        />
       ) : null}
-      <RevisionHero status={s} />
-      <div className="overview-grid">
-        <div className="overview-main">
-          <Panel title="Servers" description="Reconciled from servers/*.yaml">
-            {s.servers.length === 0 ? (
-              <EmptyState icon={<IconServer />} title="No servers visible">
-                You see the servers where you are an admin or moderator.
-              </EmptyState>
-            ) : (
-              <div className="server-cards">
-                {s.servers.map((srv) => (
-                  <ServerCard key={srv.key} server={srv} />
-                ))}
-              </div>
-            )}
-          </Panel>
-          <Panel title="Bots" description="Plugin instances run per bot and server">
-            {s.bots.length === 0 ? (
-              <EmptyState icon={<IconBot />} title="No bots running" />
-            ) : (
-              <ul className="bot-list">
-                {s.bots.map((b) => (
-                  <BotRow key={b.key} bot={b} />
-                ))}
-              </ul>
-            )}
-          </Panel>
-        </div>
-        <aside className="overview-side">
-          <HistoryPanel />
-        </aside>
-      </div>
-    </div>
-  );
-}
 
-function RevisionHero({ status }: { status: RuntimeStatus }) {
-  const rev = status.revision;
-  if (!rev)
-    return (
-      <div className="rev-hero rev-hero-empty">
-        <IconCommit size={20} />
-        <div>
-          <p className="rev-message">No active revision yet</p>
-          <p className="muted">The runtime is waiting for its first valid revision.</p>
-        </div>
-      </div>
-    );
-  return (
-    <section className="rev-hero" aria-label="Active revision">
-      <div className="rev-sha">
-        <span className="rev-label">Active revision</span>
-        <code className="rev-id" title={rev.sha ?? rev.id}>
-          {rev.id}
-        </code>
-      </div>
-      <div className="rev-body">
-        <p className="rev-message">{rev.message.split("\n")[0] || "(no message)"}</p>
-        <p className="rev-meta">
-          <span>{rev.author || "unknown author"}</span>
-          <span aria-hidden="true">·</span>
-          <Time iso={rev.time} />
-        </p>
-      </div>
-      <div className="rev-source">
-        <IconBranch size={14} />
-        <span>{rev.source || "source"}</span>
-      </div>
-    </section>
-  );
-}
-
-function ServerCard({ server }: { server: ServerStatus }) {
-  const drift = server.drift?.length ?? 0;
-  return (
-    <article className="server-card" data-sync={server.sync}>
-      <header className="server-card-head">
-        <div>
-          <h3 className="server-card-name">
-            <Link to={`/servers/${server.key}`}>{server.name}</Link>
-          </h3>
-          <code className="muted small">{server.key}</code>
-        </div>
-        <SyncBadge sync={server.sync} />
-      </header>
-      <dl className="kv">
-        <div>
-          <dt>Health</dt>
-          <dd>
-            <HealthBadge health={server.health} title={server.message} />
-          </dd>
-        </div>
-        <div>
-          <dt>Drift</dt>
-          <dd>
-            {drift === 0 ? (
-              <span className="muted">none</span>
-            ) : (
-              <Link to={`/servers/${server.key}`} className="drift-count">
-                {drift} field{drift > 1 ? "s" : ""}
-              </Link>
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Last sync</dt>
-          <dd>
-            {server.lastSync ? (
-              <Time iso={server.lastSync} />
-            ) : (
-              <span className="muted">never</span>
-            )}
-          </dd>
-        </div>
-        {server.bot ? (
-          <div>
-            <dt>Bot</dt>
-            <dd>
-              <code>{server.bot}</code>
-            </dd>
-          </div>
-        ) : null}
-      </dl>
-      {server.message ? <p className="server-card-msg">{server.message}</p> : null}
-      <footer className="server-card-foot">
-        <Link to={`/servers/${server.key}/plan`}>Plan</Link>
-        <Link to={`/servers/${server.key}/resources`}>Resources</Link>
-        <Link to={`/servers/${server.key}/plugins`}>Plugins</Link>
-      </footer>
-    </article>
-  );
-}
-
-function BotRow({ bot }: { bot: BotStatus }) {
-  return (
-    <li className="bot-row">
-      <div className="bot-id">
-        <Avatar name={bot.username || bot.key} size={32} bot />
-        <div>
-          <div className="bot-name">
-            {bot.username || bot.key}
-            <Badge>bot</Badge>
-          </div>
-          <div className="muted small">
-            <code>{bot.key}</code>
-            {bot.servers.length ? ` · ${bot.servers.join(", ")}` : ""}
-          </div>
-        </div>
-        <HealthBadge health={bot.health} title={bot.message} />
-      </div>
-      {bot.message ? <p className="bot-msg">{bot.message}</p> : null}
-      {bot.plugins.length ? (
-        <ul className="instance-list">
-          {bot.plugins.map((p) => (
-            <li key={`${p.server}/${p.instance}`} className="instance">
-              <span
-                className={`dot dot-${p.health === "Healthy" ? "ok" : p.health === "Degraded" ? "bad" : p.health === "Progressing" ? "info" : "warn"}`}
-              />
-              <Link
-                to={`/servers/${p.server}/plugins#${bot.key}-${p.instance}`}
-                className="instance-name"
-              >
-                {p.instance}
-              </Link>
-              <span className="muted small">
-                {p.plugin !== p.instance ? `${p.plugin} ` : ""}v{p.version}
+      {error ? (
+        <HumanErrorCallout
+          error={error}
+          meta={
+            run && run.count > 1 ? (
+              <span>
+                {t("overview.failedTimes", { count: run.count })} · {t("history.last")}{" "}
+                <Time iso={run.latest.time} />
               </span>
-              <code className="muted small instance-server">{p.server}</code>
-              {p.message ? <span className="instance-msg">{p.message}</span> : null}
+            ) : s.lastSync ? (
+              <Time iso={s.lastSync} />
+            ) : undefined
+          }
+        />
+      ) : null}
+
+      <Card>
+        <dl className="grid grid-cols-2 divide-border lg:grid-cols-4 lg:divide-x [&>*:nth-child(-n+2)]:border-b lg:[&>*:nth-child(-n+2)]:border-b-0 [&>*:nth-child(odd)]:border-r lg:[&>*:nth-child(odd)]:border-r-0">
+          <Fact label={t("overview.facts.revision")}>
+            {rev ? (
+              <span className="flex min-w-0 items-center gap-2">
+                <Sha id={rev.id} className="rev-id text-foreground" />
+                <span className="truncate font-normal text-muted-foreground" title={rev.message}>
+                  {rev.message.split("\n")[0] || t("overview.noMessage")}
+                </span>
+              </span>
+            ) : (
+              <span className="font-normal text-muted-foreground">{t("overview.noRevision")}</span>
+            )}
+          </Fact>
+          <Fact label={t("overview.facts.lastSync")}>
+            <Time iso={s.lastSync} />
+            {s.bot ? (
+              <span className="font-normal text-muted-foreground">
+                {" "}
+                · {t("overview.by", { bot: s.bot })}
+              </span>
+            ) : null}
+          </Fact>
+          <Fact label={t("overview.facts.drift")}>
+            {s.drift.length === 0 ? (
+              <span className="font-normal text-muted-foreground">{t("overview.noDrift")}</span>
+            ) : (
+              <Link to={`/servers/${s.key}/drift`} className="text-warning hover:underline">
+                {t("overview.driftCount", { count: s.drift.length })}
+              </Link>
+            )}
+          </Fact>
+          <PluginsFact server={s} bots={bots} />
+        </dl>
+      </Card>
+
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <Card aria-labelledby="activity-title">
+          <CardHeader className="items-center py-2.5">
+            <CardTitle id="activity-title">{t("overview.activity")}</CardTitle>
+            <CardAction>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to={`/servers/${s.key}/history`}>
+                  {t("overview.viewHistory")}
+                  <ArrowRight />
+                </Link>
+              </Button>
+            </CardAction>
+          </CardHeader>
+          {history.isLoading ? (
+            <LoadingRows rows={5} />
+          ) : !history.data ? (
+            <div className="p-4">
+              <ErrorState error={history.error} onRetry={() => void history.refetch()} />
+            </div>
+          ) : records.length === 0 ? (
+            <EmptyState icon={<History />} title={t("history.empty.title")} />
+          ) : (
+            <HistoryList records={records} limit={8} />
+          )}
+        </Card>
+
+        <Card aria-labelledby="bots-title">
+          <CardHeader className="items-center py-2.5">
+            <CardTitle id="bots-title">{t("overview.bots")}</CardTitle>
+          </CardHeader>
+          {bots.length === 0 ? (
+            <EmptyState title={t("overview.noBots.title")}>{t("overview.noBots.text")}</EmptyState>
+          ) : (
+            <ul className="divide-y">
+              {bots.map((b) => (
+                <BotItem key={b.key} bot={b} serverKey={s.key} />
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+    </Page>
+  );
+}
+
+function PluginsFact({ server, bots }: { server: ServerDetail; bots: BotStatus[] }) {
+  const { t } = useTranslation();
+  const instances = bots.flatMap((b) => b.plugins.filter((p) => p.server === server.key));
+  const unhealthy = instances.filter((p) => p.health !== "Healthy").length;
+  return (
+    <Fact label={t("overview.facts.plugins")}>
+      <Link to={`/servers/${server.key}/plugins`} className="hover:underline">
+        {t("overview.pluginCount", { count: instances.length })}
+      </Link>
+      {unhealthy ? (
+        <span className="font-normal text-danger">
+          {" "}
+          · {t("overview.unhealthy", { count: unhealthy })}
+        </span>
+      ) : null}
+    </Fact>
+  );
+}
+
+function BotItem({ bot, serverKey }: { bot: BotStatus; serverKey: string }) {
+  const { t } = useTranslation();
+  const plugins = bot.plugins.filter((p) => p.server === serverKey);
+  const error = bot.health === "Degraded" || bot.health === "Missing" ? errorOf(bot) : null;
+  return (
+    <li className="flex flex-col gap-3 px-4 py-3">
+      <div className="flex items-center gap-2.5">
+        <BotAvatar size={28} />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 text-[13px] font-medium">
+            <span className="truncate">{bot.username || bot.key}</span>
+            <Badge tone="brand" className="h-4 px-1 text-[10px]">
+              {t("overview.botTag")}
+            </Badge>
+          </p>
+          <Mono className="text-[11px]">{bot.key}</Mono>
+        </div>
+        <HealthBadge health={bot.health} />
+      </div>
+      {error ? (
+        <div className="rounded-md border border-danger/25 bg-danger-soft px-3 py-2 text-[13px]">
+          <p className="font-medium">{error.message}</p>
+          {error.hint ? <p className="mt-0.5 text-muted-foreground">{error.hint}</p> : null}
+        </div>
+      ) : null}
+      {plugins.length ? (
+        <ul
+          className="flex flex-col gap-1"
+          aria-label={t("overview.instancesOf", { bot: bot.username || bot.key })}
+        >
+          {plugins.map((p) => (
+            <li key={p.instance}>
+              <Link
+                to={`/servers/${serverKey}/plugins#${bot.key}-${p.instance}`}
+                className="group flex items-center gap-2.5 rounded-md px-1.5 py-1 -mx-1.5 hover:bg-surface-hover"
+              >
+                <PluginGlyph size={22} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px]">{p.instance}</span>
+                  <span className="block truncate font-mono text-[11px] text-subtle-foreground">
+                    {p.plugin}@{p.version}
+                  </span>
+                </span>
+                <Tip
+                  content={
+                    p.message || t(`status.health.${p.health}.label`, { defaultValue: p.health })
+                  }
+                >
+                  <span tabIndex={0} className="p-1">
+                    <StatusDot
+                      tone={healthTone(p.health)}
+                      label={t(`status.health.${p.health}.label`, { defaultValue: p.health })}
+                    />
+                  </span>
+                </Tip>
+              </Link>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="muted small">No plugin instances.</p>
+        <p className="text-[13px] text-muted-foreground">{t("overview.noInstances")}</p>
       )}
     </li>
-  );
-}
-
-const STATUS_TONE = (status: string): string => {
-  const s = status.toLowerCase();
-  if (/(synced|succe|ok|applied|healthy|active)/.test(s)) return "ok";
-  if (/(fail|error|reject|degraded)/.test(s)) return "bad";
-  if (/(progress|running|pending)/.test(s)) return "info";
-  return "neutral";
-};
-
-function HistoryPanel() {
-  const history = useHistory(30);
-  return (
-    <Panel title="Sync history" description="Most recent first">
-      {history.isLoading ? (
-        <Skeleton lines={6} />
-      ) : !history.data ? (
-        <ErrorState error={history.error} onRetry={() => void history.refetch()} />
-      ) : history.data.length === 0 ? (
-        <EmptyState title="Nothing synced yet" />
-      ) : (
-        <ol className="timeline">
-          {history.data.map((h: SyncRecord) => (
-            <li key={h.id} className="timeline-item" data-tone={STATUS_TONE(h.status)}>
-              <span className="timeline-dot" aria-hidden="true" />
-              <div className="timeline-head">
-                <span className={`timeline-status tone-${STATUS_TONE(h.status)}`}>{h.status}</span>
-                <code className="timeline-target">{h.target}</code>
-                <Time iso={h.time} />
-              </div>
-              <p className="timeline-msg">{h.message}</p>
-              <Sha id={h.revision} />
-            </li>
-          ))}
-        </ol>
-      )}
-    </Panel>
   );
 }

@@ -1,15 +1,16 @@
-import { useMe, useMember, useLogout } from "@codi/react";
-import { Button, MemberCard, Notice, Spinner } from "@codi/ui";
-import { t } from "../i18n/fr.ts";
-import { useLogin, useServer } from "../portal.tsx";
+import type { LeaderboardEntry } from "@codi/client";
+import { useLogout, useMe, useMember, usePluginQuery } from "@codi/react";
+import { Button, MemberCard, Notice, ProgressBar, Spinner } from "@codi/ui";
+import { useT } from "../i18n/index.tsx";
+import { SignIn, useNumber, usePages, usePlugin } from "../portal.tsx";
 import { Link, navigate } from "../router.tsx";
 
 export function Profile() {
-  const server = useServer();
+  const t = useT();
   const me = useMe();
   const member = useMember();
-  const login = useLogin();
   const logout = useLogout();
+  const pages = usePages();
 
   if (me.isLoading || (me.data && member.isLoading)) {
     return (
@@ -23,9 +24,7 @@ export function Profile() {
     return (
       <div className="onboarding-gate">
         <h1>{t.me.loginTitle}</h1>
-        <Button size="lg" onClick={login}>
-          {t.login}
-        </Button>
+        <SignIn />
       </div>
     );
   }
@@ -35,7 +34,6 @@ export function Profile() {
     joined && !Number.isNaN(joined.getTime())
       ? t.me.since(new Intl.DateTimeFormat(t.locale, { dateStyle: "long" }).format(joined))
       : undefined;
-  const hasOnboarding = server.plugins.some((p) => p.plugin === "onboarding");
 
   return (
     <div className="profile">
@@ -55,8 +53,9 @@ export function Profile() {
             .filter(Boolean)
             .join(". ")}
         >
+          <LevelCard />
           <div className="profile__actions">
-            {hasOnboarding ? (
+            {pages.onboarding ? (
               <Link to="/onboarding" className="codi-button codi-button--primary codi-button--md">
                 <span className="codi-button__label">{t.me.editRoles}</span>
               </Link>
@@ -72,6 +71,34 @@ export function Profile() {
           </div>
         </MemberCard>
       )}
+    </div>
+  );
+}
+
+/** The viewer's entry of the `levels` plugin (`GET /me`, member), when installed. */
+function LevelCard() {
+  const t = useT();
+  const fmt = useNumber();
+  const levels = usePlugin("levels", "GET /me");
+  const mine = usePluginQuery<Partial<LeaderboardEntry> & { nextLevelXp?: number }>(
+    levels ? { bot: levels.bot, instance: levels.instance } : undefined,
+    "/me",
+  );
+  const d = mine.data;
+  if (!d || typeof d.level !== "number") return null;
+  const next = typeof d.nextLevelXp === "number" && d.nextLevelXp > 0 ? d.nextLevelXp : undefined;
+  return (
+    <div className="profile__level">
+      <div className="profile__level-head">
+        <strong>{t.me.level(d.level)}</strong>
+        <span>
+          {t.me.xp(fmt(d.xp ?? 0))}
+          {typeof d.rank === "number" ? ` · ${t.me.rank(d.rank)}` : ""}
+        </span>
+      </div>
+      {next ? (
+        <ProgressBar value={Math.min(1, (d.xp ?? 0) / next)} label={t.me.level(d.level + 1)} />
+      ) : null}
     </div>
   );
 }

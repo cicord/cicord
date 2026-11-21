@@ -6,6 +6,7 @@
     // The plugin sources themselves are checked strictly by ../tsconfig.json.
     "lib": ["ES2022", "DOM"],
     "skipLibCheck": false,
+    "resolveJsonModule": true,
     // One copy of the SDK types: the built @codi/sdk (a verbatim copy of the spec), which
     // @codi/sdk/testing also references.
     "paths": {

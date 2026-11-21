@@ -122,9 +122,9 @@ export function resolveSteps(
     return {
       id: step.id,
       title: step.title,
-      description: step.description ?? "",
-      multiple: step.multiple ?? false,
-      required: step.required ?? false,
+      description: step.description,
+      multiple: step.multiple,
+      required: step.required,
       options,
       selected: options.filter((o) => member.hasRole(o.role)).map((o) => o.role),
     };
@@ -191,10 +191,9 @@ export function parseAnswers(
     for (const role of picked) {
       if (!offered.has(role)) problem(path, `"${role}" is not an option of step "${step.id}"`);
     }
-    if (!(step.multiple ?? false) && picked.length > 1)
+    if (!step.multiple && picked.length > 1)
       problem(path, `step "${step.id}" accepts a single choice`);
-    if ((step.required ?? false) && picked.length === 0)
-      problem(path, `step "${step.id}" is required`);
+    if (step.required && picked.length === 0) problem(path, `step "${step.id}" is required`);
     answers.set(step.id, picked);
   }
 

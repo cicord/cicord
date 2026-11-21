@@ -17,7 +17,6 @@ import (
 	"net/url"
 	"os"
 	"runtime/debug"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -64,11 +63,15 @@ type Options struct {
 	// CORSOrigins are external portal origins allowed with credentials.
 	CORSOrigins []string
 	// AdminUI is served under /admin/, Portal under / (both with SPA fallback). Nil: 404.
+	// The custom portal of the active revision (codi.yaml spec.portal.path) takes
+	// precedence over Portal once it has been built.
 	AdminUI fs.FS
 	Portal  fs.FS
 	Logger  *slog.Logger
 	// SessionTTL (default 7 days); link sessions last at most 24 h.
 	SessionTTL time.Duration
+	// TokenSessionTTL bounds bearer session tokens of token mode (default 24 h).
+	TokenSessionTTL time.Duration
 	// MemberCacheTTL caches Discord member lookups used for roles (default 30 s; <0 disables).
 	MemberCacheTTL time.Duration
 	// MaxBodyBytes limits JSON bodies (default 1 MiB); MaxUploadBytes the plan upload (default 32 MiB).
@@ -108,6 +111,9 @@ func New(opts Options) http.Handler {
 	}
 	if opts.SessionTTL == 0 {
 		opts.SessionTTL = 7 * 24 * time.Hour
+	}
+	if opts.TokenSessionTTL == 0 {
+		opts.TokenSessionTTL = 24 * time.Hour
 	}
 	if opts.MemberCacheTTL == 0 {
 		opts.MemberCacheTTL = 30 * time.Second
@@ -152,6 +158,7 @@ func (s *server) routes() {
 	h("GET /auth/callback", s.handleCallback)
 	h("POST /auth/link", s.handleLink)
 	h("POST /auth/dev-login", s.handleDevLogin)
+	h("POST /auth/token", s.handleToken)
 	h("POST /auth/logout", s.handleLogout)
 	h("/auth/", notFoundHandler)
 
@@ -170,7 +177,8 @@ func (s *server) routes() {
 	// §6 portal
 	h("GET /api/v1/portal/servers", s.handlePortalServers)
 	h("GET /api/v1/portal/{server}", s.handlePortalServer)
-	h("GET /api/v1/portal/{server}/logo", s.handlePortalLogo)
+	h("GET /api/v1/portal/{server}/logo", s.handlePortalImage("logo"))
+	h("GET /api/v1/portal/{server}/banner", s.handlePortalImage("banner"))
 	h("GET /api/v1/portal/{server}/me", s.handlePortalMe)
 	h("/api/v1/portal/{server}/plugins/{bot}/{instance}/{path...}", s.handlePluginRoute)
 
@@ -203,7 +211,7 @@ func (s *server) routes() {
 		http.Redirect(w, r, "/admin/", http.StatusMovedPermanently)
 	})
 	h("/admin/", s.staticHandler(s.opts.AdminUI, "/admin/", true))
-	h("/", s.staticHandler(s.opts.Portal, "/", false))
+	h("/", s.portalHandler())
 }
 
 // ───────────────────────────────────────────────────────────── middleware
@@ -245,12 +253,16 @@ func (s *server) middleware(next http.Handler) http.Handler {
 		hdr.Set("Referrer-Policy", "same-origin")
 
 		// CORS
+		// Operator origins (--cors-origin) may use cookies; repository origins
+		// (spec.portal.allowedOrigins) only token mode (no Allow-Credentials).
 		origin := r.Header.Get("Origin")
-		allowed := origin != "" && slices.Contains(s.opts.CORSOrigins, origin)
+		allowed, credentials := s.originPolicy(origin)
+		hdr.Add("Vary", "Origin")
 		if allowed {
 			hdr.Set("Access-Control-Allow-Origin", origin)
-			hdr.Set("Access-Control-Allow-Credentials", "true")
-			hdr.Add("Vary", "Origin")
+			if credentials {
+				hdr.Set("Access-Control-Allow-Credentials", "true")
+			}
 		}
 		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 			if allowed {

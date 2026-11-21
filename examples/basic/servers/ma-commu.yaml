@@ -117,8 +117,39 @@ spec:
     moderators:
       roles: [modo]
 
+  # Community portal (docs/portal.md): served at / by the runtime, no code needed.
   portal:
     theme:
       primary: "#5865f2"
       accent: "#eb459e"
+      logo: ../assets/logo.svg
       mode: dark
+    title: Bienvenue sur Ma Commu
+    tagline: La commu francophone des soirées jeux, tournois et lives.
+    description: |
+      Ici, on joue **ensemble** : Minecraft, Valorant, League of Legends et tout ce qui passe.
+
+      ## Ce que tu trouveras ici
+      - des soirées jeux chaque vendredi
+      - des tournois mensuels avec des lots
+      - une équipe de modération à l'écoute
+
+      Lis le [règlement](https://ma-commu.example/regles) avant de poster.
+    banner: ../assets/banner.jpg
+    links:
+      - label: Site web
+        url: https://ma-commu.example
+        icon: website
+      - label: Chaîne YouTube
+        url: https://www.youtube.com/@ma-commu
+        icon: youtube
+      - label: Lives Twitch
+        url: https://www.twitch.tv/ma-commu
+        icon: twitch
+      - label: Règlement
+        url: https://ma-commu.example/regles
+        icon: rules
+    pages:
+      onboarding: true
+      profile: true
+    locale: fr

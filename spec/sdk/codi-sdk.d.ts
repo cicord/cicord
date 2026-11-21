@@ -111,7 +111,12 @@ export interface Attachment {
 
 export interface Message {
   readonly id: Snowflake;
-  /** Empty unless the plugin declares the MessageContent intent (or the bot is mentioned). */
+  /**
+   * Empty unless the plugin declares the MessageContent intent in plugin.yaml, or the
+   * message is the bot's own, mentions the bot or is a DM. The gating is per plugin (other
+   * plugins of the same bot declaring the intent do not lift it) and also applies to
+   * `channel.messages()`; `attachments` are emptied the same way.
+   */
   readonly content: string;
   readonly author: User;
   readonly member?: Member;
@@ -197,6 +202,11 @@ export interface CreateChannelOptions {
   type?: "text" | "voice" | "forum";
   category?: ResourceRef;
   topic?: string;
+  /**
+   * Permission overwrites keyed by target: `"@everyone"`, a role key, `"role:<id>"` or
+   * `"member:<id>"` (e.g. the ticket opener, or `member:${ctx.bot.user.id}` so the bot keeps
+   * access without Administrator).
+   */
   overwrites?: Record<string, { allow?: Permission[]; deny?: Permission[] }>;
 }
 

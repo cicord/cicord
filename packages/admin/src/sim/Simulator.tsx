@@ -25,8 +25,6 @@ import {
   IconUser,
   IconVolume,
   IconX,
-} from "../ui/icons.tsx";
-import {
   Avatar,
   Badge,
   Button,
@@ -36,10 +34,11 @@ import {
   Skeleton,
   Spinner,
   useToast,
-} from "../ui/index.tsx";
+} from "./kit.tsx";
 import { CommandRunner } from "./CommandRunner.tsx";
 import { useSimLive } from "./live.ts";
 import { MessageItem, MessageList, type MentionResolver } from "./MessageView.tsx";
+import { i18n } from "../i18n/index.ts";
 
 type View = { kind: "channel"; id: string } | { kind: "dm"; userId: string };
 
@@ -80,8 +79,8 @@ export function SimulatorPage() {
   if (status.data && !status.data.simulator)
     return (
       <div className="page">
-        <EmptyState icon={<IconSlash />} title="The simulator is off">
-          Start the runtime with <code>codi dev --sim</code> to play with your bots without Discord.
+        <EmptyState icon={<IconSlash />} title={i18n.t("sim.off.title")}>
+          {i18n.t("sim.off.text")}
         </EmptyState>
       </div>
     );
@@ -100,7 +99,7 @@ export function SimulatorPage() {
   if (state.data.servers.length === 0)
     return (
       <div className="page">
-        <EmptyState title="No simulated server">The simulated world has no server yet.</EmptyState>
+        <EmptyState title={i18n.t("sim.noServer.title")}>{i18n.t("sim.noServer.text")}</EmptyState>
       </div>
     );
   return (
@@ -184,11 +183,14 @@ function Playground({
       await client.sim.join(server.id, user.id);
       toast.push({
         tone: "ok",
-        title: `${user.displayName || user.username} joined ${server.name}`,
+        title: i18n.t("sim.toast.joined", {
+          user: user.displayName || user.username,
+          server: server.name,
+        }),
       });
       refresh();
     } catch (e) {
-      toast.push({ tone: "bad", title: "Could not join", text: errorMessage(e) });
+      toast.push({ tone: "bad", title: i18n.t("sim.toast.joinFailed"), text: errorMessage(e) });
     }
   };
   const leave = async (user: User) => {
@@ -196,11 +198,14 @@ function Playground({
       await client.sim.leave(server.id, user.id);
       toast.push({
         tone: "info",
-        title: `${user.displayName || user.username} left ${server.name}`,
+        title: i18n.t("sim.toast.left", {
+          user: user.displayName || user.username,
+          server: server.name,
+        }),
       });
       refresh();
     } catch (e) {
-      toast.push({ tone: "bad", title: "Could not leave", text: errorMessage(e) });
+      toast.push({ tone: "bad", title: i18n.t("sim.toast.leaveFailed"), text: errorMessage(e) });
     }
   };
 
@@ -227,7 +232,9 @@ function Playground({
         .find((c) => c.customId === customId);
       const name =
         component && component.type === "button" ? component.label || customId : customId;
-      const label = values.length ? `Picked ${values.join(", ")}` : `Clicked “${name}”`;
+      const label = values.length
+        ? i18n.t("sim.result.picked", { values: values.join(", ") })
+        : i18n.t("sim.result.clicked", { name });
       showResult(label, result, {
         userId: actor.id,
         serverId: server.id,
@@ -235,7 +242,11 @@ function Playground({
         bot: botKeyOf(message.author.id),
       });
     } catch (e) {
-      toast.push({ tone: "bad", title: "Interaction failed", text: errorMessage(e) });
+      toast.push({
+        tone: "bad",
+        title: i18n.t("sim.toast.interactionFailed"),
+        text: errorMessage(e),
+      });
     } finally {
       setBusy(null);
     }
@@ -273,9 +284,9 @@ function Playground({
     try {
       const result = await client.sim.modal({ ...entry.ctx, customId: modalDef.customId, fields });
       setModal(null);
-      showResult(`Submitted “${modalDef.title}”`, result, entry.ctx);
+      showResult(i18n.t("sim.result.submitted", { title: modalDef.title }), result, entry.ctx);
     } catch (e) {
-      toast.push({ tone: "bad", title: "Modal submit failed", text: errorMessage(e) });
+      toast.push({ tone: "bad", title: i18n.t("sim.toast.modalFailed"), text: errorMessage(e) });
     }
   };
 
@@ -287,13 +298,13 @@ function Playground({
 
   return (
     <div className="sim">
-      <aside className="sim-nav" aria-label="Channels">
+      <aside className="sim-nav" aria-label={i18n.t("sim.channels")}>
         <div className="sim-server">
           {servers.length > 1 ? (
             <select
               className="input"
               value={server.id}
-              aria-label="Simulated server"
+              aria-label={i18n.t("sim.server")}
               onChange={(e) => setServerId(e.target.value)}
             >
               {servers.map((s) => (
@@ -309,20 +320,24 @@ function Playground({
             className={`live live-${live}`}
             title={
               live === "live"
-                ? "Live updates (SSE)"
+                ? i18n.t("sim.live.on")
                 : live === "polling"
-                  ? "Live updates unavailable: polling every 2.5 s"
-                  : "Connecting…"
+                  ? i18n.t("sim.live.polling")
+                  : i18n.t("sim.live.connecting")
             }
           >
             <span className="live-dot" />
-            {live === "live" ? "Live" : live === "polling" ? "Polling" : "…"}
+            {live === "live"
+              ? i18n.t("sim.live.live")
+              : live === "polling"
+                ? i18n.t("sim.live.poll")
+                : "…"}
           </span>
         </div>
         <ChannelNav server={server} view={view} onSelect={setView} />
         <div className="sim-nav-section">
-          <h3 className="sim-nav-title">Direct messages</h3>
-          <p className="muted small sim-nav-hint">What bots sent to each user</p>
+          <h3 className="sim-nav-title">{i18n.t("sim.dms.title")}</h3>
+          <p className="muted small sim-nav-hint">{i18n.t("sim.dms.hint")}</p>
           <ul className="sim-dm-list">
             {users.map((u) => (
               <DmEntry
@@ -336,7 +351,7 @@ function Playground({
         </div>
       </aside>
 
-      <section className="sim-chat" aria-label="Conversation">
+      <section className="sim-chat" aria-label={i18n.t("sim.conversation")}>
         {showQuick ? (
           <QuickStart
             server={server}
@@ -380,7 +395,7 @@ function Playground({
             onComponent={onComponent}
           />
         ) : (
-          <EmptyState title="Pick a channel" />
+          <EmptyState title={i18n.t("sim.pickChannel")} />
         )}
 
         {last ? (
@@ -396,20 +411,20 @@ function Playground({
 
         <div className="composer">
           <div className="composer-top">
-            <div className="composer-tabs" role="tablist" aria-label="Composer mode">
+            <div className="composer-tabs" role="tablist" aria-label={i18n.t("sim.composer.mode")}>
               <button
                 role="tab"
                 aria-selected={mode === "message"}
                 onClick={() => setMode("message")}
               >
-                <IconSend size={12} /> Message
+                <IconSend size={12} /> {i18n.t("sim.composer.message")}
               </button>
               <button
                 role="tab"
                 aria-selected={mode === "command"}
                 onClick={() => setMode("command")}
               >
-                <IconSlash size={12} /> Slash command
+                <IconSlash size={12} /> {i18n.t("sim.composer.command")}
               </button>
             </div>
             <ActorPicker users={users} server={server} value={actor?.id} onChange={setActorId} />
@@ -421,7 +436,10 @@ function Playground({
                 view?.kind === "dm"
                   ? "DMs are read-only: the simulator records what bots send to users."
                   : !actorIsMember
-                    ? `${actor?.displayName || actor?.username || "This user"} is not a member: join the server first.`
+                    ? i18n.t("sim.composer.notMember", {
+                        user:
+                          actor?.displayName || actor?.username || i18n.t("sim.composer.thisUser"),
+                      })
                     : undefined
               }
               channelName={
@@ -435,7 +453,11 @@ function Playground({
                   await client.sim.sendMessage({ userId: actor.id, channelId: view.id, content });
                   refresh();
                 } catch (e) {
-                  toast.push({ tone: "bad", title: "Message not sent", text: errorMessage(e) });
+                  toast.push({
+                    tone: "bad",
+                    title: i18n.t("sim.toast.messageFailed"),
+                    text: errorMessage(e),
+                  });
                   throw e;
                 }
               }}
@@ -444,9 +466,7 @@ function Playground({
             <CommandPanel
               server={server}
               disabled={!actorIsMember}
-              reason={
-                !actorIsMember ? "Join the server with this user to run commands." : undefined
-              }
+              reason={!actorIsMember ? i18n.t("sim.composer.joinToRun") : undefined}
               onRun={runCommand}
               initial={commandHint}
               channelName={server.channels.find((c) => c.id === channelForCommand)?.name}
@@ -455,7 +475,7 @@ function Playground({
         </div>
       </section>
 
-      <aside className="sim-members" aria-label="Members">
+      <aside className="sim-members" aria-label={i18n.t("sim.members.title")}>
         <MembersPanel
           server={server}
           users={users}
@@ -470,14 +490,14 @@ function Playground({
               const user = await client.sim.createUser(username);
               toast.push({
                 tone: "ok",
-                title: `Created ${user.username}`,
-                text: "Join them to the server to trigger the welcome flow.",
+                title: i18n.t("sim.toast.created", { user: user.username }),
+                text: i18n.t("sim.toast.createdText"),
               });
               refresh();
             } catch (e) {
               toast.push({
                 tone: "bad",
-                title: "Could not create the user",
+                title: i18n.t("sim.toast.createFailed"),
                 text: errorMessage(e),
               });
             }
@@ -524,7 +544,7 @@ function ChannelNav({
           className="sim-channel"
           aria-current={active ? "true" : undefined}
           disabled={!textual}
-          title={textual ? undefined : "Voice channels are not simulated"}
+          title={textual ? undefined : i18n.t("sim.voice")}
           onClick={() => onSelect({ kind: "channel", id: c.id })}
         >
           {textual ? <IconHash size={14} /> : <IconVolume size={14} />}
@@ -534,7 +554,7 @@ function ChannelNav({
     );
   };
   return (
-    <nav className="sim-channels" aria-label="Channels">
+    <nav className="sim-channels" aria-label={i18n.t("sim.channels")}>
       <ul>{loose.map(item)}</ul>
       {[...cats].sort(byPos).map((cat) => (
         <div key={cat.id} className="sim-cat">
@@ -630,9 +650,9 @@ function ChannelView({
         ) : messages.data.length === 0 ? (
           <EmptyState
             icon={<IconHash />}
-            title={`This is the start of #${channel?.name ?? "channel"}`}
+            title={i18n.t("sim.start", { channel: channel?.name ?? i18n.t("sim.channel") })}
           >
-            Send a message, or join a user to see the welcome plugin post here.
+            {i18n.t("sim.startText")}
           </EmptyState>
         ) : (
           <MessageList
@@ -678,8 +698,8 @@ function DmView({
         ) : !dms.data ? (
           <ErrorState error={dms.error} onRetry={() => void dms.refetch()} />
         ) : dms.data.length === 0 ? (
-          <EmptyState icon={<IconMail />} title={`No DMs for ${name} yet`}>
-            The welcome plugin DMs an onboarding link when a member joins.
+          <EmptyState icon={<IconMail />} title={i18n.t("sim.dms.none", { name })}>
+            {i18n.t("sim.dms.noneText")}
           </EmptyState>
         ) : (
           <MessageList
@@ -719,41 +739,43 @@ function QuickStart({
 }) {
   const steps: { title: string; text: ReactNode; action?: ReactNode }[] = [
     {
-      title: "Join a user",
-      text: <>The welcome plugin greets them in the welcome channel and gives them a role.</>,
+      title: i18n.t("sim.quick.join.title"),
+      text: i18n.t("sim.quick.join.text"),
       action: welcomeUser ? (
         <Button size="sm" variant="primary" onClick={() => onJoin(welcomeUser)}>
-          Join {welcomeUser.displayName || welcomeUser.username}
+          {i18n.t("sim.quick.join.action", {
+            user: welcomeUser.displayName || welcomeUser.username,
+          })}
         </Button>
       ) : (
-        <span className="muted small">Everyone has joined: create a user on the right.</span>
+        <span className="muted small">{i18n.t("sim.quick.join.done")}</span>
       ),
     },
     {
-      title: "Open their DMs",
-      text: <>The bot sends a link to the onboarding page of the portal.</>,
+      title: i18n.t("sim.quick.dms.title"),
+      text: i18n.t("sim.quick.dms.text"),
       action: dmTarget ? (
         <Button size="sm" onClick={() => onDms(dmTarget)}>
-          DMs of {dmTarget.displayName || dmTarget.username}
+          {i18n.t("sim.quick.dms.action", { user: dmTarget.displayName || dmTarget.username })}
         </Button>
       ) : null,
     },
     {
-      title: "Run a command",
-      text: <>Try /welcome-preview as the owner of {server.name}.</>,
+      title: i18n.t("sim.quick.command.title"),
+      text: i18n.t("sim.quick.command.text", { server: server.name }),
       action: (
         <Button size="sm" onClick={onPreview}>
-          Prepare /welcome-preview
+          {i18n.t("sim.quick.command.action")}
         </Button>
       ),
     },
   ];
   return (
-    <div className="quick" role="note" aria-label="Quick start">
+    <div className="quick" role="note" aria-label={i18n.t("sim.quick.label")}>
       <div className="quick-head">
-        <strong>See your bot work in 30 seconds</strong>
-        {mock ? <Badge tone="violet">Mock runtime</Badge> : null}
-        <button className="icon-btn" aria-label="Hide quick start" onClick={onClose}>
+        <strong>{i18n.t("sim.quick.title")}</strong>
+        {mock ? <Badge tone="violet">{i18n.t("app.mock")}</Badge> : null}
+        <button className="icon-btn" aria-label={i18n.t("sim.quick.hide")} onClick={onClose}>
           <IconX size={12} />
         </button>
       </div>
@@ -792,16 +814,21 @@ function ActorPicker({
       return {
         value: u.id,
         label: u.displayName || u.username,
-        hint: u.id === server.ownerId ? "owner" : member ? "member" : "not a member",
-        group: member ? "Members" : "Not in the server",
+        hint:
+          u.id === server.ownerId
+            ? i18n.t("sim.actor.owner")
+            : member
+              ? i18n.t("sim.actor.member")
+              : i18n.t("sim.actor.notMember"),
+        group: member ? i18n.t("sim.members.title") : i18n.t("sim.members.outside"),
         icon: <Avatar name={u.displayName || u.username} url={u.avatarUrl} size={16} />,
       };
     })
-    .sort((a, b) => (a.group === b.group ? 0 : a.group === "Members" ? -1 : 1));
+    .sort((a, b) => (a.group === b.group ? 0 : a.group === i18n.t("sim.members.title") ? -1 : 1));
   return (
     <div className="actor">
       <span className="muted small" id="actor-label">
-        Acting as
+        {i18n.t("sim.actor.label")}
       </span>
       <Picker
         value={value}
@@ -845,8 +872,11 @@ function MessageComposer({
       <textarea
         className="input composer-input"
         rows={1}
-        aria-label="Message"
-        placeholder={reason ?? `Message #${channelName ?? "channel"}`}
+        aria-label={i18n.t("sim.composer.message")}
+        placeholder={
+          reason ??
+          i18n.t("sim.composer.placeholder", { channel: channelName ?? i18n.t("sim.channel") })
+        }
         disabled={disabled}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -862,7 +892,7 @@ function MessageComposer({
         variant="primary"
         icon={sending ? <Spinner size={12} /> : <IconSend size={14} />}
         disabled={disabled || !text.trim() || sending}
-        aria-label="Send message"
+        aria-label={i18n.t("sim.composer.send")}
       />
     </form>
   );
@@ -893,7 +923,10 @@ function CommandPanel({
       commands={commands.data}
       server={server}
       disabled={disabled}
-      disabledReason={reason ?? (channelName ? `Runs in #${channelName}` : undefined)}
+      disabledReason={
+        reason ??
+        (channelName ? i18n.t("sim.composer.runsIn", { channel: channelName }) : undefined)
+      }
       onRun={onRun}
       {...(initial ? { initial } : {})}
     />
@@ -930,35 +963,31 @@ function InteractionCard({
       className="interaction"
       data-status={r.status}
       role="status"
-      aria-label="Interaction result"
+      aria-label={i18n.t("sim.result.label")}
     >
       <div className="interaction-head">
         <code className="interaction-label">{entry.label}</code>
         <Badge tone={STATUS_TONE[r.status] ?? "neutral"} dot>
-          {r.status}
+          {i18n.t(`sim.result.status.${r.status as "replied"}`, { defaultValue: r.status })}
         </Badge>
-        {r.response?.ephemeral ? <Badge>ephemeral</Badge> : null}
+        {r.response?.ephemeral ? <Badge>{i18n.t("sim.result.ephemeral")}</Badge> : null}
         {r.followups.length ? (
-          <Badge tone="info">
-            {r.followups.length} followup{r.followups.length > 1 ? "s" : ""}
-          </Badge>
+          <Badge tone="info">{i18n.t("sim.result.followups", { count: r.followups.length })}</Badge>
         ) : null}
         <span className="interaction-spacer" />
-        <button className="icon-btn" aria-label="Close interaction result" onClick={onClose}>
+        <button className="icon-btn" aria-label={i18n.t("sim.result.close")} onClick={onClose}>
           <IconX size={12} />
         </button>
       </div>
       {r.error ? <p className="interaction-error">{r.error}</p> : null}
       {r.status === "deferred" && !r.response ? (
-        <p className="muted small">
-          The bot acknowledged the interaction; its answer will arrive as an edit or followup.
-        </p>
+        <p className="muted small">{i18n.t("sim.result.deferred")}</p>
       ) : null}
       {r.status === "modal" && r.modal ? (
         <p className="small">
-          The bot opened a modal: <strong>{r.modal.title}</strong>{" "}
+          {i18n.t("sim.result.modal")} <strong>{r.modal.title}</strong>{" "}
           <button className="link-btn" onClick={onOpenModal}>
-            Fill it in
+            {i18n.t("sim.result.fill")}
           </button>
         </p>
       ) : null}
@@ -1040,10 +1069,10 @@ function ModalDialog({
         ))}
         <div className="modal-actions">
           <Button variant="ghost" onClick={onCancel}>
-            Cancel
+            {i18n.t("common.cancel")}
           </Button>
           <Button type="submit" variant="primary" loading={sending}>
-            Submit
+            {i18n.t("sim.submit")}
           </Button>
         </div>
       </form>
@@ -1089,7 +1118,7 @@ function MembersPanel({
   return (
     <div className="members">
       <h3 className="sim-nav-title">
-        Members <span className="muted">{members.length}</span>
+        {i18n.t("sim.members.title")} <span className="muted">{members.length}</span>
       </h3>
       <ul className="member-list">
         {members.map((m) => {
@@ -1111,11 +1140,11 @@ function MembersPanel({
                 <span className="member-name" style={color ? { color } : undefined}>
                   {m.nick || u.displayName || u.username}
                   {u.id === server.ownerId ? (
-                    <span className="member-tag" title="Server owner">
+                    <span className="member-tag" title={i18n.t("sim.members.ownerTitle")}>
                       owner
                     </span>
                   ) : null}
-                  {isBot ? <span className="msg-bot-tag">BOT</span> : null}
+                  {isBot ? <span className="msg-bot-tag">{i18n.t("sim.bot")}</span> : null}
                 </span>
                 {roleChips.length ? (
                   <span className="member-roles">
@@ -1135,8 +1164,8 @@ function MembersPanel({
                 <div className="member-actions">
                   <button
                     className="icon-btn"
-                    title={`Act as ${u.username}`}
-                    aria-label={`Act as ${u.username}`}
+                    title={i18n.t("sim.members.actAs", { user: u.username })}
+                    aria-label={i18n.t("sim.members.actAs", { user: u.username })}
                     aria-pressed={u.id === actorId}
                     onClick={() => onAct(u.id)}
                   >
@@ -1144,8 +1173,8 @@ function MembersPanel({
                   </button>
                   <button
                     className="icon-btn"
-                    title={`DMs of ${u.username}`}
-                    aria-label={`DMs of ${u.username}`}
+                    title={i18n.t("sim.members.dmsOf", { user: u.username })}
+                    aria-label={i18n.t("sim.members.dmsOf", { user: u.username })}
                     onClick={() => onDms(u)}
                   >
                     <IconMail size={13} />
@@ -1167,11 +1196,9 @@ function MembersPanel({
         })}
       </ul>
       <h3 className="sim-nav-title">
-        Not in the server <span className="muted">{outside.length}</span>
+        {i18n.t("sim.members.outside")} <span className="muted">{outside.length}</span>
       </h3>
-      {outside.length === 0 ? (
-        <p className="muted small">Everyone is in. Create a user below.</p>
-      ) : null}
+      {outside.length === 0 ? <p className="muted small">{i18n.t("sim.members.allIn")}</p> : null}
       <ul className="member-list">
         {outside.map((u) => (
           <li key={u.id} className="member member-out">
@@ -1186,7 +1213,7 @@ function MembersPanel({
               onClick={() => onJoin(u)}
               aria-label={`${u.username} joins the server`}
             >
-              Join
+              {i18n.t("sim.members.join")}
             </Button>
           </li>
         ))}
@@ -1205,12 +1232,12 @@ function MembersPanel({
         }}
       >
         <label htmlFor="sim-new-user" className="sr-only">
-          New user name
+          {i18n.t("sim.members.newUser")}
         </label>
         <input
           id="sim-new-user"
           className="input"
-          placeholder="New user, e.g. dave"
+          placeholder={i18n.t("sim.members.newUserPlaceholder")}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -1221,7 +1248,7 @@ function MembersPanel({
           loading={creating}
           disabled={!name.trim()}
         >
-          Create
+          {i18n.t("sim.members.create")}
         </Button>
       </form>
     </div>

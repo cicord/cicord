@@ -1,0 +1,234 @@
+/* CODI admin — design tokens (shadcn/ui conventions) + Tailwind v4.
+ *
+ * Dark is a true black: #000 canvas, surfaces lifted by 2–6 % white, hairline borders.
+ * Light is a white canvas on a faintly grey shell. Discord blurple (--brand) is an accent
+ * for focus, the active navigation item and links only; primary buttons are ink.
+ * Status colours carry meaning and never decorate: success = in sync / succeeded,
+ * warning = drift / attention, danger = failure, info = in progress, neutral = unknown. */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./legacy/schema-form.css" layer(components);
+@import "./legacy/simulator.css" layer(components);
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #0b0b0c;
+  --card: #ffffff;
+  --card-foreground: #0b0b0c;
+  --popover: #ffffff;
+  --popover-foreground: #0b0b0c;
+  --primary: #111113;
+  --primary-foreground: #fafafa;
+  --secondary: #f3f3f4;
+  --secondary-foreground: #111113;
+  --muted: #f4f4f5;
+  --muted-foreground: #5f5f67;
+  --subtle-foreground: #8a8a93;
+  --accent: #f1f1f3;
+  --accent-foreground: #111113;
+  --destructive: #cd2b31;
+  --destructive-foreground: #ffffff;
+  --border: #e7e7ea;
+  --border-strong: #d4d4d8;
+  --input: #dcdce0;
+  --ring: #5865f2;
+
+  --brand: #4752c4;
+  --brand-foreground: #ffffff;
+  --brand-soft: rgb(88 101 242 / 0.1);
+  --discord: #5865f2;
+
+  --success: #18794e;
+  --success-soft: rgb(24 121 78 / 0.09);
+  --warning: #a35200;
+  --warning-soft: rgb(220 130 20 / 0.12);
+  --danger: #cd2b31;
+  --danger-soft: rgb(205 43 49 / 0.08);
+  --info: #0b68cb;
+  --info-soft: rgb(11 104 203 / 0.08);
+  --violet: #6e56cf;
+  --violet-soft: rgb(110 86 207 / 0.09);
+
+  --surface-2: #f7f7f8;
+  --surface-sunken: #f4f4f5;
+  --surface-hover: rgb(10 10 12 / 0.04);
+
+  --sidebar: #fafafa;
+  --sidebar-foreground: #3f3f46;
+  --sidebar-primary: #111113;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #efeff1;
+  --sidebar-accent-foreground: #0b0b0c;
+  --sidebar-border: #e7e7ea;
+  --sidebar-ring: #5865f2;
+
+  --shadow-pop: 0 1px 2px rgb(10 10 12 / 0.06), 0 12px 32px -12px rgb(10 10 12 / 0.22);
+  --radius: 0.5rem;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --header-h: 52px;
+  --font:
+    "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #000000;
+  --foreground: #ededef;
+  --card: #0a0a0b;
+  --card-foreground: #ededef;
+  --popover: #0e0e10;
+  --popover-foreground: #ededef;
+  --primary: #ededef;
+  --primary-foreground: #0a0a0b;
+  --secondary: #161618;
+  --secondary-foreground: #ededef;
+  --muted: #111113;
+  --muted-foreground: #9a9aa3;
+  --subtle-foreground: #6c6c75;
+  --accent: #19191c;
+  --accent-foreground: #ededef;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: #1d1d20;
+  --border-strong: #2a2a2e;
+  --input: #27272b;
+  --ring: #6e79f4;
+
+  --brand: #8b94f7;
+  --brand-foreground: #ffffff;
+  --brand-soft: rgb(110 121 244 / 0.14);
+
+  --success: #3dd68c;
+  --success-soft: rgb(61 214 140 / 0.1);
+  --warning: #f1a10d;
+  --warning-soft: rgb(241 161 13 / 0.11);
+  --danger: #ff6166;
+  --danger-soft: rgb(255 97 102 / 0.1);
+  --info: #70b8ff;
+  --info-soft: rgb(112 184 255 / 0.1);
+  --violet: #b4a3ff;
+  --violet-soft: rgb(180 163 255 / 0.11);
+
+  --surface-2: #121214;
+  --surface-sunken: #050506;
+  --surface-hover: rgb(255 255 255 / 0.04);
+
+  --sidebar: #050506;
+  --sidebar-foreground: #b4b4bc;
+  --sidebar-primary: #ededef;
+  --sidebar-primary-foreground: #0a0a0b;
+  --sidebar-accent: #141416;
+  --sidebar-accent-foreground: #ededef;
+  --sidebar-border: #18181b;
+  --sidebar-ring: #6e79f4;
+
+  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.04), 0 16px 40px -12px rgb(0 0 0 / 0.9);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-soft: var(--brand-soft);
+  --color-discord: var(--discord);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --color-surface-2: var(--surface-2);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --shadow-pop: var(--shadow-pop);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    background: var(--background);
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+    font-feature-settings: "ss02";
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--mono);
+    font-size: 0.9em;
+  }
+  ::selection {
+    background: var(--brand-soft);
+  }
+}
+
+@layer utilities {
+  /* IDs, SHAs, counts and timestamps line up. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum", "ss02";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

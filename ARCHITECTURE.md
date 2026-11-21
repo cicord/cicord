@@ -287,12 +287,16 @@ The portal is **not** a fixed app: it is a set of packages any React app can use
 | `create-codi-portal` | The demo / reference portal, meant to be forked. |
 
 Plugins expose portal routes (`definePlugin({routes})`, served under
-`/api/v1/portal/{server}/plugins/{bot}/{instance}/…`). A client part (React components,
-`spec.client` in `plugin.yaml`) and generated route types are *(planned)*.
+`/api/v1/portal/{server}/plugins/{bot}/{instance}/…`); portals consume them through the SDK
+(`client.plugin(...)`) and render them as they like — no server-driven UI, never plugin JS
+injected at runtime. Generated route types are *(planned)*.
 
-Hosting: the runtime serves the default portal (`create-codi-portal`) at `/`. An external
-host (Vercel, …) works with `--cors-origin`. Serving a repository's own `portal/` build is
-*(planned)*.
+Hosting: the runtime serves the default portal (`create-codi-portal`) at `/`, or the
+committed build of the repository's own portal (`codi portal init`, `codi.yaml
+spec.portal.path`) from the active revision. Sites on other origins embed the SDK in token
+mode (`spec.portal.allowedOrigins`, portal-scoped bearer tokens); `--cors-origin` also allows
+cookie sessions. No-code options (`spec.portal`: texts, banner, links, pages, locale) need no
+fork. See [docs/portal.md](docs/portal.md).
 
 Typical onboarding: a member joins → a plugin sends a DM with a button →
 `ctx.portal.link("/onboarding")` produces a signed, short-lived URL → the themed portal opens,

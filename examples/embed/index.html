@@ -1,0 +1,341 @@
+<!doctype html>
+<!--
+  A third-party site (its own domain, its own design) embedding a CODI community with the
+  portal SDK in token mode: Discord login (or the simulator's users), the member's roles
+  and a plugin route. No framework, no build: plain HTML + the @codi/client ES module.
+  Served by serve.mjs (docs/portal.md, "Embedding in another site").
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Night Raid — fan site</title>
+    <style>
+      :root {
+        --ink: #14110f;
+        --paper: #f6f1e7;
+        --card: #fffdf8;
+        --line: #e2d8c5;
+        --muted: #6f655a;
+        --brand: #d1452b;
+        --brand-ink: #fff;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          16px/1.55 Georgia,
+          "Iowan Old Style",
+          serif;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 28px 20px 18px;
+        border-bottom: 2px solid var(--ink);
+      }
+      header h1 {
+        margin: 0;
+        font-size: clamp(1.8rem, 5vw, 2.6rem);
+        letter-spacing: -0.02em;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+        font-style: italic;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 20px;
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px 20px 64px;
+      }
+      @media (max-width: 720px) {
+        main {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+      section {
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--card);
+      }
+      h2 {
+        margin: 0 0 12px;
+        font:
+          700 0.8rem/1.2 system-ui,
+          sans-serif;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--brand);
+      }
+      button {
+        min-height: 40px;
+        padding: 0 16px;
+        border: 2px solid var(--ink);
+        border-radius: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font:
+          600 0.9rem system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: transparent;
+        color: var(--ink);
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .who {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .who img,
+      .who .initial {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: var(--brand);
+        color: var(--brand-ink);
+        display: grid;
+        place-items: center;
+        font:
+          700 1.2rem system-ui,
+          sans-serif;
+        object-fit: cover;
+      }
+      .who strong {
+        display: block;
+        font-size: 1.2rem;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .chips li {
+        padding: 2px 10px;
+        border: 1px solid var(--chip, var(--line));
+        border-left-width: 6px;
+        font:
+          600 0.85rem system-ui,
+          sans-serif;
+      }
+      ol.board {
+        margin: 0;
+        padding: 0 0 0 1.6em;
+      }
+      ol.board li {
+        padding: 4px 0;
+        border-bottom: 1px dotted var(--line);
+      }
+      ol.board small {
+        color: var(--muted);
+        font-family: system-ui, sans-serif;
+      }
+      pre {
+        overflow: auto;
+        max-height: 260px;
+        margin: 0;
+        padding: 12px;
+        background: #f1eadb;
+        font-size: 0.8rem;
+      }
+      .error {
+        color: #a3261a;
+      }
+      footer {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 0 20px 40px;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Night Raid</h1>
+      <p>the unofficial fan site — powered by our Discord</p>
+    </header>
+    <main>
+      <section aria-labelledby="account-title">
+        <h2 id="account-title">Your Discord account</h2>
+        <div id="account"><p class="muted">Loading…</p></div>
+      </section>
+      <section aria-labelledby="plugin-title">
+        <h2 id="plugin-title">From the bot</h2>
+        <div id="plugin"><p class="muted">Loading…</p></div>
+      </section>
+    </main>
+    <footer id="footer"></footer>
+
+    <script type="module">
+      import { CodiApiError, createCodiClient, isSafeUrl } from "/codi-client.mjs";
+
+      const RUNTIME = "__CODI_RUNTIME_URL__";
+      // Token mode: the runtime is on another origin, so no cookies — a bearer session token
+      // kept in localStorage (tokenStore: "memory" | "session" | a custom store also work).
+      const client = createCodiClient({ baseUrl: RUNTIME, auth: "token" });
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) =>
+        String(s).replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+        );
+
+      let server;
+
+      async function render() {
+        // Back from Discord (?codi_code=) or from a bot link (?codi_token=): finish the login.
+        try {
+          await client.auth.exchangeLinkToken();
+        } catch (e) {
+          $("account").innerHTML = `<p class="error">Login failed: ${esc(e.message)}</p>`;
+        }
+        const servers = await client.portal.servers();
+        server = servers[0];
+        if (!server) {
+          $("account").innerHTML = `<p>This runtime publishes no portal.</p>`;
+          return;
+        }
+        $("footer").innerHTML =
+          `Community: <strong>${esc(server.title)}</strong> · runtime <code>${esc(RUNTIME)}</code> · auth mode <code>${client.authMode}</code>`;
+        await Promise.all([renderAccount(), renderPlugin()]);
+      }
+
+      async function renderAccount() {
+        const me = await client.meOrNull();
+        if (!me) {
+          let sim = null;
+          try {
+            sim = await client.sim.state(); // only on `codi dev --sim`
+          } catch {}
+          const world = sim?.servers.find((s) => s.key === server.key);
+          const users = (sim?.users ?? [])
+            .filter((u) => !world || world.members.some((m) => m.user.id === u.id))
+            .slice(0, 4);
+          $("account").innerHTML = `
+            <p>Sign in to see your roles on <strong>${esc(server.name)}</strong>.</p>
+            <div class="row"><button id="login">Sign in with Discord</button></div>
+            ${
+              users.length
+                ? `<p class="muted">Simulator: sign in as</p><div class="row">${users
+                    .map(
+                      (u) =>
+                        `<button class="secondary" data-user="${esc(u.id)}">${esc(u.displayName)}</button>`,
+                    )
+                    .join("")}</div>`
+                : ""
+            }`;
+          $("login").onclick = () => client.auth.login(location.href);
+          for (const b of document.querySelectorAll("[data-user]")) {
+            b.onclick = async () => {
+              await client.auth.devLogin(b.dataset.user);
+              render();
+            };
+          }
+          return;
+        }
+        let member;
+        try {
+          member = await client.portal.me(server.key);
+        } catch (e) {
+          member = null;
+        }
+        const u = (member ?? me).user;
+        const avatar =
+          u.avatarUrl && isSafeUrl(u.avatarUrl)
+            ? `<img src="${esc(u.avatarUrl)}" alt="" />`
+            : `<span class="initial">${esc((u.displayName || "?")[0])}</span>`;
+        $("account").innerHTML = `
+          <div class="who">${avatar}<div><strong>${esc(member?.member.nick || u.displayName)}</strong>
+            <span class="muted">@${esc(u.username)}${member ? ` · ${esc(member.role)}` : ""}</span></div></div>
+          ${
+            member
+              ? `<ul class="chips" aria-label="Roles">${
+                  member.member.roles
+                    .map(
+                      (r) => `<li style="--chip:${esc(r.color || "#e2d8c5")}">${esc(r.name)}</li>`,
+                    )
+                    .join("") || "<li>No roles yet</li>"
+                }</ul>`
+              : `<p>You are not a member of ${esc(server.name)} yet.</p>`
+          }
+          <p class="row" style="margin-top:16px"><button class="secondary" id="logout">Sign out</button></p>`;
+        $("logout").onclick = async () => {
+          await client.auth.logout().catch(() => {});
+          render();
+        };
+      }
+
+      async function renderPlugin() {
+        // Discover plugin instances: never hard-code the bot / instance keys.
+        const levels = server.plugins.find(
+          (p) => p.plugin === "levels" && p.routes.includes("GET /leaderboard"),
+        );
+        const onboarding = server.plugins.find((p) => p.plugin === "onboarding");
+        try {
+          if (levels) {
+            const board = await client
+              .plugin(server.key, levels.bot, levels.instance)
+              .get("/leaderboard", { limit: 5 });
+            $("plugin").innerHTML = `<p class="muted">levels · GET /leaderboard (public)</p>
+              <ol class="board">${board.items
+                .map(
+                  (e) =>
+                    `<li>${esc(e.displayName)} <small>level ${esc(e.level)} · ${esc(e.xp)} XP</small></li>`,
+                )
+                .join("")}</ol>`;
+          } else if (onboarding) {
+            const steps = await client
+              .plugin(server.key, onboarding.bot, onboarding.instance)
+              .get("/steps");
+            $("plugin").innerHTML = `<p class="muted">onboarding · GET /steps (member)</p>
+              <p><strong>${esc(steps.title)}</strong></p>
+              <ul>${steps.steps.map((s) => `<li>${esc(s.title)} — ${s.selected.length ? esc(s.selected.join(", ")) : "<em>not answered</em>"}</li>`).join("")}</ul>`;
+          } else {
+            $("plugin").innerHTML = `<p class="muted">No plugin routes on ${esc(server.name)}.</p>`;
+          }
+        } catch (e) {
+          const why =
+            e instanceof CodiApiError && e.code === "unauthenticated"
+              ? "Sign in to see this."
+              : esc(e.message);
+          $("plugin").innerHTML = `<p class="muted">${why}</p>`;
+        }
+      }
+
+      client.onSessionChange(() => {}); // e.g. refresh your UI when the token expires
+      render().catch((e) => {
+        $("account").innerHTML =
+          `<p class="error">Cannot reach the community: ${esc(e.message)}</p>`;
+      });
+    </script>
+  </body>
+</html>

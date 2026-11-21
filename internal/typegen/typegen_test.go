@@ -11,6 +11,12 @@ import (
 
 const examples = "../../examples/basic/plugins"
 
+// examplePlugins lists the plugin directories whose src/codi-env.d.ts must match typegen.
+var examplePlugins = []string{
+	"basic/plugins/welcome", "basic/plugins/onboarding",
+	"showcase/plugins/tickets", "showcase/plugins/polls", "showcase/plugins/levels", "showcase/plugins/moderation",
+}
+
 // codeLines drops comment lines, so hand-written headers do not matter.
 func codeLines(s string) string {
 	var out []string
@@ -24,9 +30,10 @@ func codeLines(s string) string {
 }
 
 func TestExamplesMatchHandWritten(t *testing.T) {
-	for _, name := range []string{"welcome", "onboarding"} {
+	for _, name := range examplePlugins {
 		t.Run(name, func(t *testing.T) {
-			schema, err := os.ReadFile(filepath.Join(examples, name, "config.schema.json"))
+			dir := filepath.Join("../../examples", name)
+			schema, err := os.ReadFile(filepath.Join(dir, "config.schema.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -34,7 +41,7 @@ func TestExamplesMatchHandWritten(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want, err := os.ReadFile(filepath.Join(examples, name, "src", "codi-env.d.ts"))
+			want, err := os.ReadFile(filepath.Join(dir, "src", "codi-env.d.ts"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -48,16 +55,18 @@ func TestExamplesMatchHandWritten(t *testing.T) {
 	}
 }
 
-func TestOnboardingNestedNote(t *testing.T) {
-	schema, _ := os.ReadFile(filepath.Join(examples, "onboarding", "config.schema.json"))
-	got, _ := Generate(schema)
-	if !strings.Contains(got, nestedNote) {
-		t.Errorf("nested-defaults note missing:\n%s", got)
+func TestNestedNote(t *testing.T) {
+	// Array item defaults are applied by the runtime: no note for onboarding any more.
+	for _, name := range []string{"onboarding", "welcome"} {
+		schema, _ := os.ReadFile(filepath.Join(examples, name, "config.schema.json"))
+		got, _ := Generate(schema)
+		if strings.Contains(got, nestedNote) {
+			t.Errorf("%s: unexpected nested-defaults note:\n%s", name, got)
+		}
 	}
-	schema, _ = os.ReadFile(filepath.Join(examples, "welcome", "config.schema.json"))
-	got, _ = Generate(schema)
-	if strings.Contains(got, nestedNote) {
-		t.Errorf("unexpected nested-defaults note:\n%s", got)
+	got, _ := Generate([]byte(`{"type":"object","properties":{"m":{"type":"object","additionalProperties":{"type":"object","properties":{"x":{"type":"string","default":"a"}}}}}}`))
+	if !strings.Contains(got, nestedNote) {
+		t.Errorf("nested-defaults note missing for additionalProperties defaults:\n%s", got)
 	}
 }
 
@@ -125,9 +134,9 @@ func TestTypeCheck(t *testing.T) {
 		t.Skip("node not installed")
 	}
 	sdk := filepath.Join(root, "spec", "sdk", "codi-sdk.d.ts")
-	for _, name := range []string{"welcome", "onboarding"} {
+	for _, name := range examplePlugins {
 		t.Run(name, func(t *testing.T) {
-			src := filepath.Join(root, "examples", "basic", "plugins", name)
+			src := filepath.Join(root, "examples", filepath.FromSlash(name))
 			dir := t.TempDir()
 			if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
 				t.Fatal(err)

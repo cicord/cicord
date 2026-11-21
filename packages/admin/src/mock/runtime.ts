@@ -8,6 +8,7 @@ import type {
   AuditEntry,
   Diagnostic,
   FetchLike,
+  HumanError,
   InteractionResult,
   Json,
   Message,
@@ -55,6 +56,8 @@ interface MockState {
   session: string | null;
   revision: Revision;
   drift: boolean;
+  /** The last syncs failed (announcement channel without Community). */
+  failing?: boolean;
   lastSync: string;
   users: User[];
   members: Member[];
@@ -68,6 +71,28 @@ interface MockState {
 }
 
 const STORAGE = "codi-admin:mock";
+
+const firstLine = (s: string) => s.split("\n")[0]!;
+
+/** What the runtime reports for an announcement channel on a server without Community. */
+const COMMUNITY_RAW =
+  'reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2, 4, 6, 13, 14, 15}."}]}}) (announcement channels require the Community feature: Server Settings → Enable Community, then sync again)';
+const COMMUNITY_ERROR: HumanError = {
+  code: "community_required",
+  message: "Announcement and stage channels need the Community feature",
+  hint: "Enable Community in Discord (Server Settings → Enable Community), then sync again. Or change the channel type in the YAML.",
+  details: COMMUNITY_RAW,
+  discordCode: 50035,
+  httpStatus: 400,
+  resource: { action: "create", kind: "channel", key: "news" },
+  fields: [
+    {
+      path: "type",
+      code: "BASE_TYPE_CHOICES",
+      message: "Value must be one of {0, 2, 4, 6, 13, 14, 15}.",
+    },
+  ],
+};
 const API = "/api/v1";
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60000).toISOString();
@@ -88,7 +113,8 @@ function seed(): MockState {
     session: null,
     revision: rev,
     drift: true,
-    lastSync: ago(3),
+    failing: true,
+    lastSync: ago(1),
     users: Object.values(users),
     members: [
       { userId: owner.id, nick: "", roles: ["r-admin"] },
@@ -138,6 +164,15 @@ function seed(): MockState {
       { bot: "moderator", instance: "onboarding", base: onboardingBase, override: {} },
     ],
     history: [
+      ...[1, 6, 11, 16].map((minutes, i) => ({
+        id: 10 - i,
+        time: ago(minutes),
+        revision: "4f0c2d9",
+        target: `server:${SERVER_KEY}`,
+        status: "failed" as const,
+        message: firstLine(COMMUNITY_RAW),
+        error: COMMUNITY_ERROR,
+      })),
       {
         id: 6,
         time: ago(3),
@@ -404,8 +439,9 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     name: "Ma Commu",
     discordId: SERVER_ID,
     sync: state.drift ? "OutOfSync" : "Synced",
-    health: "Healthy",
-    message: state.drift ? "2 fields drifted (selfHeal is off)" : "",
+    health: state.failing ? "Degraded" : "Healthy",
+    message: state.failing ? COMMUNITY_RAW : "",
+    ...(state.failing ? { error: COMMUNITY_ERROR } : {}),
     lastSync: state.lastSync,
     drift: drift(),
   });
@@ -443,7 +479,21 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           },
         ]
       : [],
-    blocked: [{ action: "delete", kind: "role", key: "VIP 2023", reason: "deletionProtection" }],
+    blocked: [
+      {
+        action: "delete",
+        kind: "role",
+        key: "VIP 2023",
+        reason: "deletionProtection",
+        error: {
+          code: "deletion_protection",
+          message: "The role “VIP 2023” was removed from the YAML but deletion protection is on",
+          hint: "Set syncPolicy.deletionProtection: false to let CODI delete it, or add it back to the YAML.",
+          details: "deletionProtection",
+          resource: { action: "delete", kind: "role", key: "VIP 2023" },
+        },
+      },
+    ],
   });
 
   const status = () => ({
@@ -868,6 +918,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           const p = plan();
           const applied = p.changes.length;
           state.drift = false;
+          state.failing = false;
           state.lastSync = new Date().toISOString();
           state.history.unshift({
             id: state.history.length + 1,

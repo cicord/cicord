@@ -1,5 +1,6 @@
 import { callRoute, createTestContext, runCommand } from "@codi/sdk/testing";
 import { describe, expect, test } from "vite-plus/test";
+import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
 
 const config = {
@@ -34,6 +35,7 @@ const grants = ["discord.roles.assign", "storage.kv", "portal.routes", "portal.l
 function setup(memberRoles: string[] = []) {
   return createTestContext({
     config,
+    schema, // applies the config defaults like the runtime (e.g. steps[].multiple)
     grants,
     plugin: { name: "onboarding", instance: "onboarding" },
     roles: {

@@ -12,6 +12,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { i18n } from "../i18n/index.ts";
 
 export interface PickerOption {
   value: string;
@@ -47,7 +48,7 @@ export function Picker(props: PickerProps) {
     value,
     options,
     onChange,
-    placeholder = "Select…",
+    placeholder = i18n.t("form.select"),
     clearable,
     disabled,
     invalid,
@@ -164,9 +165,9 @@ export function Picker(props: PickerProps) {
           <input
             ref={searchRef}
             className="sf-picker-search"
-            placeholder="Filter…"
+            placeholder={i18n.t("form.filter")}
             value={query}
-            aria-label="Filter options"
+            aria-label={i18n.t("form.filterOptions")}
             aria-controls={listId}
             aria-activedescendant={entries[active] ? `${id}-opt-${active}` : undefined}
             onChange={(e) => {
@@ -175,7 +176,9 @@ export function Picker(props: PickerProps) {
             }}
           />
           <ul className="sf-picker-list" role="listbox" id={listId}>
-            {entries.length === 0 ? <li className="sf-picker-empty">No match</li> : null}
+            {entries.length === 0 ? (
+              <li className="sf-picker-empty">{i18n.t("form.noMatch")}</li>
+            ) : null}
             {entries.map((o, i) => {
               const heading = o.group !== lastGroup && o.group ? o.group : undefined;
               lastGroup = o.group;

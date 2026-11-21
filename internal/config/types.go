@@ -58,8 +58,12 @@ type WriteBackPolicy struct {
 }
 
 type ProjectPortal struct {
+	// Path is the committed build output of a custom portal (relative to codi.yaml),
+	// served at / instead of the default portal.
 	Path string `yaml:"path,omitempty" json:"path,omitempty"`
 	URL  string `yaml:"url,omitempty" json:"url,omitempty"`
+	// AllowedOrigins are third-party sites embedding the SDK in token mode.
+	AllowedOrigins []string `yaml:"allowedOrigins,omitempty" json:"allowedOrigins,omitempty"`
 }
 
 // ───────────────────────────────────────────────────────────── Server
@@ -168,7 +172,28 @@ type Access struct {
 }
 
 type ServerPortal struct {
-	Theme *Theme `yaml:"theme,omitempty" json:"theme,omitempty"`
+	Theme       *Theme       `yaml:"theme,omitempty" json:"theme,omitempty"`
+	Title       string       `yaml:"title,omitempty" json:"title,omitempty"`
+	Tagline     string       `yaml:"tagline,omitempty" json:"tagline,omitempty"`
+	Description string       `yaml:"description,omitempty" json:"description,omitempty"`
+	Banner      string       `yaml:"banner,omitempty" json:"banner,omitempty"`
+	Links       []PortalLink `yaml:"links,omitempty" json:"links,omitempty"`
+	Pages       *PortalPages `yaml:"pages,omitempty" json:"pages,omitempty"`
+	Locale      string       `yaml:"locale,omitempty" json:"locale,omitempty"`
+}
+
+type PortalLink struct {
+	Label string `yaml:"label" json:"label"`
+	URL   string `yaml:"url" json:"url"`
+	Icon  string `yaml:"icon,omitempty" json:"icon,omitempty"`
+}
+
+// PortalPages toggles the pages of the default portal (unset = enabled).
+type PortalPages struct {
+	Onboarding  *bool `yaml:"onboarding,omitempty" json:"onboarding,omitempty"`
+	Profile     *bool `yaml:"profile,omitempty" json:"profile,omitempty"`
+	Leaderboard *bool `yaml:"leaderboard,omitempty" json:"leaderboard,omitempty"`
+	Tickets     *bool `yaml:"tickets,omitempty" json:"tickets,omitempty"`
 }
 
 type Theme struct {

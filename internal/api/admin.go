@@ -55,7 +55,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			st.LastError = ""
 			st.Bots = []runtime.BotStatus{}
 		}
-		writeJSON(w, http.StatusOK, st)
+		writeJSON(w, http.StatusOK, humanStatus(st))
 		return
 	}
 	vis, err := s.visibleServers(r.Context(), id, roleModerator)
@@ -67,7 +67,93 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "you are not an admin or moderator of any server"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.filterStatus(r.Context(), st, vis))
+	writeJSON(w, http.StatusOK, humanStatus(s.filterStatus(r.Context(), st, vis)))
+}
+
+// ───────────────────────────────────────────────────────────── error objects
+//
+// The runtime keeps errors as text (status messages, sync history). The DTOs below add
+// the humanized form (spec/api.md "Error object") next to the unchanged raw fields.
+
+type serverStatusDTO struct {
+	runtime.ServerStatus
+	Error *reconcile.HumanError `json:"error,omitempty"`
+}
+
+type botStatusDTO struct {
+	runtime.BotStatus
+	Error *reconcile.HumanError `json:"error,omitempty"`
+}
+
+type statusDTO struct {
+	runtime.Status
+	// LastErrorInfo is LastError explained.
+	LastErrorInfo *reconcile.HumanError `json:"lastErrorInfo,omitempty"`
+	Servers       []serverStatusDTO     `json:"servers"`
+	Bots          []botStatusDTO        `json:"bots"`
+}
+
+// statusError explains a status message when the health reports a problem (Healthy
+// servers may carry informational messages such as "2 change(s) blocked").
+func statusError(health, message string) *reconcile.HumanError {
+	if message == "" || (health != runtime.HealthDegraded && health != runtime.HealthMissing) {
+		return nil
+	}
+	return reconcile.Humanize(message)
+}
+
+func humanServer(ss runtime.ServerStatus) serverStatusDTO {
+	return serverStatusDTO{ServerStatus: ss, Error: statusError(ss.Health, ss.Message)}
+}
+
+func humanStatus(st runtime.Status) statusDTO {
+	out := statusDTO{Status: st, LastErrorInfo: reconcile.Humanize(st.LastError),
+		Servers: make([]serverStatusDTO, 0, len(st.Servers)), Bots: make([]botStatusDTO, 0, len(st.Bots))}
+	for _, ss := range st.Servers {
+		out.Servers = append(out.Servers, humanServer(ss))
+	}
+	for _, b := range st.Bots {
+		out.Bots = append(out.Bots, botStatusDTO{BotStatus: b, Error: statusError(b.Health, b.Message)})
+	}
+	return out
+}
+
+type blockedDTO struct {
+	reconcile.Blocked
+	Error *reconcile.HumanError `json:"error,omitempty"`
+}
+
+type planDTO struct {
+	Server  string             `json:"server"`
+	Changes []reconcile.Change `json:"changes"`
+	Blocked []blockedDTO       `json:"blocked"`
+}
+
+func humanPlan(p reconcile.Plan) planDTO {
+	p = emptyPlan(p)
+	out := planDTO{Server: p.Server, Changes: p.Changes, Blocked: make([]blockedDTO, 0, len(p.Blocked))}
+	for _, b := range p.Blocked {
+		out.Blocked = append(out.Blocked, blockedDTO{Blocked: b, Error: reconcile.ExplainBlocked(b)})
+	}
+	return out
+}
+
+// humanAPIError is the API error envelope (api.go apiError) with the humanized fields.
+type humanAPIError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Hint    string `json:"hint,omitempty"`
+	Details string `json:"details,omitempty"`
+	// Reason is the humanized error code (reconcile.HumanError.Code).
+	Reason string `json:"reason,omitempty"`
+}
+
+// failHuman answers a Discord / reconcile failure with an explained error.
+func failHuman(w http.ResponseWriter, status int, code, prefix string, err error) {
+	h := reconcile.HumanizeErr(err)
+	writeJSON(w, status, map[string]any{"error": humanAPIError{
+		Code: code, Message: h.Message, Hint: h.Hint, Details: prefix + err.Error(), Reason: h.Code,
+	}})
 }
 
 func (s *server) filterStatus(ctx context.Context, st runtime.Status, vis map[string]role) runtime.Status {
@@ -126,6 +212,8 @@ type syncRecordDTO struct {
 	Status   string          `json:"status"`
 	Message  string          `json:"message"`
 	Details  json.RawMessage `json:"details,omitempty"`
+	// Error explains Message for failed and rejected records.
+	Error *reconcile.HumanError `json:"error,omitempty"`
 }
 
 func queryInt(r *http.Request, name string, def, max int) int {
@@ -197,8 +285,12 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		} else if !seesAll {
 			continue
 		}
-		items = append(items, syncRecordDTO{ID: rec.ID, Time: rec.Time, Revision: rec.Revision, Target: rec.Target,
-			Status: rec.Status, Message: rec.Message, Details: rec.Details})
+		dto := syncRecordDTO{ID: rec.ID, Time: rec.Time, Revision: rec.Revision, Target: rec.Target,
+			Status: rec.Status, Message: rec.Message, Details: rec.Details}
+		if rec.Status != "succeeded" {
+			dto.Error = reconcile.Humanize(rec.Message)
+		}
+		items = append(items, dto)
 	}
 	if len(items) > limit {
 		items = items[:limit]
@@ -231,9 +323,9 @@ func (s *server) handleServer(w http.ResponseWriter, r *http.Request) {
 		ss.Drift = []runtime.DriftEntry{}
 	}
 	writeJSON(w, http.StatusOK, struct {
-		runtime.ServerStatus
+		serverStatusDTO
 		Spec any `json:"spec"`
-	}{ss, srv.Spec})
+	}{humanServer(ss), srv.Spec})
 }
 
 type roleDTO struct {
@@ -346,10 +438,10 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := s.rt.PlanServer(r.Context(), key)
 	if err != nil {
-		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "plan: %v", err))
+		failHuman(w, http.StatusServiceUnavailable, "unavailable", "plan: ", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, emptyPlan(p))
+	writeJSON(w, http.StatusOK, humanPlan(p))
 }
 
 func (s *server) handleServerSync(w http.ResponseWriter, r *http.Request) {
@@ -361,12 +453,12 @@ func (s *server) handleServerSync(w http.ResponseWriter, r *http.Request) {
 	}
 	p, n, err := s.rt.SyncServer(r.Context(), key)
 	if err != nil {
-		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "sync: %v", err))
+		failHuman(w, http.StatusServiceUnavailable, "unavailable", "sync: ", err)
 		return
 	}
 	s.audit(r.Context(), state.AuditEntry{Server: key, Actor: id.auditActor(), Action: "sync.apply", Target: key,
 		Details: mustJSON(map[string]any{"changes": n})})
-	writeJSON(w, http.StatusOK, map[string]any{"plan": emptyPlan(p), "applied": n})
+	writeJSON(w, http.StatusOK, map[string]any{"plan": humanPlan(p), "applied": n})
 }
 
 func (id *identity) auditActor() string {

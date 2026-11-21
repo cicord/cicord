@@ -89,6 +89,29 @@ describe("transport", () => {
     });
   });
 
+  test("explained errors carry hint, details and reason", async () => {
+    const { fetch } = mockFetch(() =>
+      json(
+        {
+          error: {
+            code: "unavailable",
+            message: "Announcement and stage channels need the Community feature",
+            hint: "Enable Community",
+            details: "sync: raw",
+            reason: "community_required",
+          },
+        },
+        503,
+      ),
+    );
+    await expect(createCodiClient({ fetch }).admin.sync("ma-commu")).rejects.toMatchObject({
+      code: "unavailable",
+      hint: "Enable Community",
+      details: "sync: raw",
+      reason: "community_required",
+    });
+  });
+
   test("non-JSON errors map the status to a code", async () => {
     const { fetch } = mockFetch(
       () => new Response("404 page not found", { status: 404, statusText: "Not Found" }),

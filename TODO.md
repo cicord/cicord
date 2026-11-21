@@ -4,20 +4,34 @@ Living tracker of what is left. Updated as work lands (`[x]` = done, with the co
 No public release until the product is complete.
 
 ## Now — plugins & community portal
-- [ ] Verify every SDK feature end to end (events, commands with options, components, modals,
-      selects, schedules, tasks, KV, http.fetch, cross-plugin events, routes, plugin-owned
-      channels, reactions, message content) on the simulator and on real Discord
-- [ ] Plugin developer loop: `codi plugin new` → `codi dev --sim` hot reload → `typegen` →
-      `plugin test` → unit tests with `@codi/sdk/testing`; fix friction found
-- [ ] Community portal customization:
-  - [ ] theme from YAML end to end (colors, mode, logo served)
-  - [ ] no-code customization from YAML (texts, links, pages)
-  - [ ] custom portal in the repo (`portal/`), served by the runtime from the active revision
-  - [ ] `codi portal init` (scaffold from the template) + dev loop against `codi dev`
-  - [ ] `@codi/*` usable outside the monorepo before npm publication
-  - [ ] embeddable in third-party sites (cross-origin auth with bearer sessions) — decision: SDK-first, plugin UI = plugin routes via the SDK
-  - [ ] reference portal = complete showcase of everything the SDK can do
+- [x] Verify every SDK feature end to end on the simulator (events, commands with every option
+      type, components, modals, selects, schedules, tasks, KV, http.fetch, cross-plugin events,
+      routes per access level, plugin-owned channels, reactions, message content):
+      examples/showcase (tickets, polls, levels, moderation) + docs/plugin-coverage.md
+- [ ] Same on real Discord: checklist at the end of docs/plugin-coverage.md
+- [x] Plugin developer loop: `codi plugin new` → `codi dev --sim` hot reload → `typegen` →
+      `plugin test` → unit tests with `@codi/sdk/testing` (component/modal runners, schema
+      defaults, richer fakes); friction fixed (init placeholders work with `--sim`, `plugin new`
+      prints the bot.yaml snippet, array-item defaults, `plugin test` docs)
+- [ ] Unit tests of a plugin outside the monorepo (`codi plugin new` scaffolds no test setup;
+      needs `@codi/sdk` installable, e.g. the tarballs embedded for `codi portal init`)
+- [ ] SDK: fetch a message by id (`channel.message(id)`) instead of the `messages({ before })`
+      workaround (needs `GetMessage` in the Discord contract)
+- [ ] Community portal customization (docs/portal.md):
+  - [x] theme from YAML end to end (colors, mode, logo served; banner too)
+  - [x] no-code customization from YAML (title, tagline, Markdown description, banner, links, pages, locale)
+  - [x] custom portal in the repo (`portal/`, committed build), served by the runtime from the active revision
+  - [x] `codi portal init` (scaffold from the template) + `codi portal build` + dev loop against `codi dev`
+  - [x] `@codi/*` usable outside the monorepo before npm publication (tarballs embedded in `codi`, vendored by `portal init`)
+  - [x] embeddable in third-party sites (token mode: portal-scoped bearer sessions, `spec.portal.allowedOrigins`, examples/embed) — decision: SDK-first, plugin UI = plugin routes via the SDK (ADR-0008)
+  - [x] reference portal = complete showcase of everything the SDK can do (leaderboard, tickets, developers page, en/fr)
+  - [ ] generated route types for plugin routes (`definePlugin({routes})` → typed client)
+  - [ ] publish `@codi/*` on npm, then make `codi portal init` use registry versions
 - [ ] Real Discord: test member join (needs a second account)
+- [x] Admin console redesign: shadcn/ui + Tailwind v4, collapsible sidebar with server switcher,
+      ⌘K palette, true-black dark + light themes, i18n (`src/i18n/en.json`, typed keys), one
+      status taxonomy with legend, humanized errors end to end (`internal/reconcile/humanize.go`
+      → `error` objects in status / history / plan / sync failures), grouped sync history
 
 ## Discord parity (docs/discord-parity.md)
 - [ ] Live status: boost level + boost count, features (Community…) in contract/API/admin UI; boost-gated fields blocked in plans with a reason

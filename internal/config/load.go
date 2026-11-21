@@ -218,6 +218,7 @@ func (l *loader) load(dir string) *Repo {
 	l.checkServers(repo)
 	l.checkBots(repo)
 	l.checkUniqueIDs(repo)
+	l.checkPortal(repo)
 	return repo
 }
 

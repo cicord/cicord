@@ -1,8 +1,9 @@
 /**
- * Interface copy (French). Fork the portal and translate this file to change the language;
- * texts that come from the server config (step titles, success message…) are not here.
+ * Interface copy (French). `spec.portal.locale` (or the browser language) picks the
+ * language; add a file next to this one to support another. Texts that come from the server
+ * config (title, description, step titles…) are not here.
  */
-export const t = {
+export const fr = {
   locale: "fr-FR",
   loading: "Chargement…",
   portalOf: (server: string) => `Le portail de ${server}`,
@@ -12,16 +13,40 @@ export const t = {
   loggingIn: "Connexion en cours…",
   profile: "Mon profil",
   demoMode: "Démo : données fictives, aucune connexion à Discord",
+  skip: "Aller au contenu",
+  poweredBy: (server: string) => `Portail de ${server}, propulsé par`,
+
+  nav: {
+    label: "Navigation du portail",
+    home: "Accueil",
+    leaderboard: "Classement",
+    tickets: "Tickets",
+    profile: "Profil",
+    developers: "Développeurs",
+    switchServer: "Changer de serveur",
+  },
+
+  signIn: {
+    simTitle: "Simulateur Discord",
+    simText: "Ce runtime tourne avec le simulateur (codi dev --sim) : connecte-toi en tant que :",
+    owner: "propriétaire",
+  },
 
   home: {
     loggedOutTitle: "Connecte-toi pour commencer",
     loggedOut: "Avec ton compte Discord, choisis tes rôles et retrouve ton profil de membre.",
     hello: (name: string) => `Salut ${name} !`,
+    about: "À propos",
+    links: "Liens",
     onboardingTitle: "Choisir mes rôles",
     onboardingTodo: "Quelques questions pour débloquer tes salons.",
     onboardingDone: "C'est fait. Tu peux changer tes réponses quand tu veux.",
     profileTitle: "Mon profil",
     profileText: "Ton pseudo, tes rôles et ta date d'arrivée.",
+    leaderboardTitle: "Classement",
+    leaderboardText: "Les membres les plus actifs du serveur.",
+    ticketsTitle: "Tickets",
+    ticketsText: "Les demandes des membres à traiter.",
     notMember:
       "Ton compte Discord n'est pas encore membre de ce serveur. Rejoins-le, puis reviens ici.",
   },
@@ -67,6 +92,58 @@ export const t = {
     >,
     editRoles: "Modifier mes rôles",
     loginTitle: "Connecte-toi pour voir ton profil",
+    level: (level: number) => `Niveau ${level}`,
+    xp: (xp: string) => `${xp} XP`,
+    rank: (rank: number) => `${rank}ᵉ du classement`,
+  },
+
+  leaderboard: {
+    title: "Classement",
+    lead: "Les membres les plus actifs, mis à jour en direct par le bot.",
+    empty: "Personne n'a encore gagné d'XP. Envoie un message sur Discord pour ouvrir le bal !",
+    level: "Niveau",
+    xp: "XP",
+    member: "Membre",
+    you: "toi",
+    failed: "Impossible de charger le classement.",
+  },
+
+  tickets: {
+    title: "Tickets",
+    lead: "Les demandes ouvertes par les membres avec /ticket.",
+    all: "Tous",
+    open: "Ouverts",
+    closed: "Fermés",
+    filter: "Filtrer les tickets",
+    subject: "Sujet",
+    author: "Auteur",
+    opened: "Ouvert le",
+    status: { open: "Ouvert", closed: "Fermé" } as Record<string, string>,
+    empty: "Aucun ticket ici.",
+    forbidden: "Réservé à l'équipe de modération.",
+    failed: "Impossible de charger les tickets.",
+    loginTitle: "Connecte-toi pour voir les tickets",
+  },
+
+  developers: {
+    title: "Développeurs",
+    lead: "Tout ce que ce portail utilise, à reproduire avec @codi/client et @codi/react dans ton propre site.",
+    session: "Session",
+    mode: "Mode d'authentification",
+    cookie: "cookie (même site)",
+    token: "jeton bearer (site intégré)",
+    api: "API du runtime",
+    user: "Utilisateur",
+    role: "Rôle d'accès",
+    expires: "Expire",
+    signedOut: "Non connecté",
+    endpoints: "Endpoints du portail",
+    server: "Configuration du serveur",
+    plugins: "Routes des plugins",
+    noPlugins: "Aucun plugin n'expose de route sur ce serveur.",
+    run: "Appeler",
+    params: "Cette route a des paramètres : appelle-la depuis ton code.",
+    response: "Réponse",
   },
 
   notFound: {
@@ -82,3 +159,5 @@ export const t = {
   unknownServer: (key: string) => `Le serveur « ${key} » n'a pas de portail.`,
   apiDown: "Le portail ne répond pas. Réessaie dans un instant.",
 };
+
+export type Messages = typeof fr;

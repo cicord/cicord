@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -1058,5 +1059,52 @@ export default definePlugin({
 	}
 	if e := h.logged("unhandled promise rejection in plugin code"); !strings.Contains(e.Attrs["error"].(string), "message is empty") {
 		t.Fatalf("rejection log: %v", e.Attrs)
+	}
+}
+
+// TestMessageContentGating: a plugin without the MessageContent intent never sees message
+// content, even when another plugin of the same bot declares it (intents are unioned per
+// bot), except for its own messages, messages mentioning the bot and DMs.
+func TestMessageContentGating(t *testing.T) {
+	h := start(t, `
+import { definePlugin } from "@codi/sdk";
+export default definePlugin({
+  events: {
+    async messageCreate(ctx, msg) {
+      ctx.log.info("seen", { content: msg.content, attachments: msg.attachments.length });
+    },
+  },
+});`, func(e *Env) { e.MessageContent = false })
+	cases := []struct {
+		name, content, author string
+		want                  string
+	}{
+		{"other author", "secret", "42", ""},
+		{"mention", "hey <@1> look", "42", "hey <@1> look"},
+		{"nick mention", "hey <@!1>", "42", "hey <@!1>"},
+		{"own message", "mine", "1", "mine"},
+	}
+	for k, c := range cases {
+		msg := discord.Message{ID: fmt.Sprint(900 + k), ChannelID: "100", ServerID: "10", Content: c.content,
+			Author:      discord.User{ID: c.author, Username: "u"},
+			Attachments: []discord.Attachment{{ID: "5", Filename: "a.png", URL: "https://cdn/a.png", Size: 1}}}
+		if err := h.inst.HandleEvent(context.Background(), discord.MessageCreateEvent{Message: msg}); err != nil {
+			t.Fatal(err)
+		}
+		seen := h.logs.Find("seen")
+		if len(seen) != k+1 {
+			t.Fatalf("%s: %d logs", c.name, len(seen))
+		}
+		e := seen[k]
+		if fmt.Sprint(e.Attrs["content"]) != c.want {
+			t.Errorf("%s: content = %q, want %q", c.name, e.Attrs["content"], c.want)
+		}
+		wantAtt := "1"
+		if c.want == "" {
+			wantAtt = "0"
+		}
+		if fmt.Sprint(e.Attrs["attachments"]) != wantAtt {
+			t.Errorf("%s: attachments = %v, want %s", c.name, e.Attrs["attachments"], wantAtt)
+		}
 	}
 }

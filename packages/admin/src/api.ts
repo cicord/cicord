@@ -18,7 +18,7 @@ import { useMemo } from "react";
 
 export const keys = {
   status: () => ["admin", "status"] as const,
-  history: (limit: number) => ["admin", "history", limit] as const,
+  history: (limit: number, target = "") => ["admin", "history", limit, target] as const,
   server: (key: string) => ["admin", "server", key] as const,
   resources: (key: string) => ["admin", "server", key, "resources"] as const,
   plan: (key: string) => ["admin", "server", key, "plan"] as const,
@@ -36,9 +36,11 @@ export function useStatus(): QueryResult<RuntimeStatus> {
   return useCodiQuery(keys.status(), (signal) => client.admin.status({ signal }));
 }
 
-export function useHistory(limit = 30): QueryResult<SyncRecord[]> {
+export function useHistory(limit = 30, target?: string): QueryResult<SyncRecord[]> {
   const { client } = useCodi();
-  return useCodiQuery(keys.history(limit), (signal) => client.admin.history({ limit }, { signal }));
+  return useCodiQuery(keys.history(limit, target ?? ""), (signal) =>
+    client.admin.history(target ? { limit, target } : { limit }, { signal }),
+  );
 }
 
 export function useServer(key: string): QueryResult<ServerDetail> {
@@ -54,6 +56,7 @@ export function useResources(key: string | undefined): QueryResult<ServerResourc
 }
 
 export function usePlan(key: string, enabled = true): QueryResult<Plan> {
+  // (enabled = false for moderators: the plan endpoint is admin-only)
   const { client } = useCodi();
   return useCodiQuery(keys.plan(key), (signal) => client.admin.plan(key, { signal }), { enabled });
 }
@@ -69,9 +72,11 @@ export function useAudit(key: string, before: string): QueryResult<AuditEntry[]>
   );
 }
 
-export function usePlugins(key: string): QueryResult<PluginInstance[]> {
+export function usePlugins(key: string | undefined): QueryResult<PluginInstance[]> {
   const { client } = useCodi();
-  return useCodiQuery(keys.plugins(key), (signal) => client.admin.plugins(key, { signal }));
+  return useCodiQuery(key ? keys.plugins(key) : null, (signal) =>
+    client.admin.plugins(key!, { signal }),
+  );
 }
 
 export function useSimState(enabled = true): QueryResult<SimState> {

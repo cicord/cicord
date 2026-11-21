@@ -16,6 +16,13 @@ Normative references:
   `plugin.yaml` schema.
 - [`examples/basic/plugins/`](../examples/basic/plugins/) holds two complete plugins:
   `welcome` and `onboarding`.
+- [`examples/showcase/`](../examples/showcase/) is a complete repository with four
+  production-grade plugins that together use the whole SDK: `tickets` (buttons, modals,
+  plugin-owned private channels), `polls` (selects, buttons with data ids, live updates,
+  tasks, cross-plugin events), `levels` (message content, reactions, role rewards, cron,
+  public portal route) and `moderation` (permissions, DMs, timeouts/kicks/bans, expiring KV,
+  `http.fetch`). [`docs/plugin-coverage.md`](plugin-coverage.md) maps every SDK feature to
+  the plugin and the end-to-end test that exercise it.
 
 ## 1. Create a plugin
 
@@ -43,7 +50,7 @@ The other plugin commands:
 |---|---|
 | `codi plugin build <dir>` | Bundle the plugin the way the runtime does and check the definition against the manifest. |
 | `codi plugin typegen <dir>` | Generate `src/codi-env.d.ts` (the typed `PluginConfig`) from `config.schema.json`. |
-| `codi plugin test <dir>` | Run the plugin's unit tests (see §8). |
+| `codi plugin test <dir>` | Run the plugin on the Discord simulator with the real runtime: build, start, then a smoke test (a member joins, every command without required options is invoked). `--config` passes a config. Unit tests are separate (§8). |
 
 Then enable the plugin on a bot in `bots/<bot>/bot.yaml`:
 
@@ -168,6 +175,13 @@ Event handlers need gateway intents, which the manifest must declare:
 |---|---|
 | `memberJoin`, `memberLeave`, `memberUpdate` | `ServerMembers` (privileged) |
 | `messageCreate`, `messageUpdate`, `messageDelete` | `ServerMessages` (add `MessageContent`, privileged, to read `message.content`) |
+
+**Message content is gated per plugin.** A bot connects with the union of its plugins'
+intents, but a plugin that does not declare `MessageContent` still gets an empty
+`message.content` (and no `attachments`), in events and in `channel.messages()`, unless
+the message is the bot's own, mentions the bot or is a DM. Declare `MessageContent` only
+when the plugin reads what people write (e.g. `levels` ignores very short messages); a
+plugin that only needs who posted and when (flood protection, ticket activity) does not.
 | `reactionAdd`, `reactionRemove` | `ServerMessageReactions` |
 
 A bot connects with the union of its plugins' intents, plus `spec.intents` and what the
@@ -177,8 +191,12 @@ reconciler needs. Privileged intents must also be enabled in the Discord develop
 
 `config.schema.json` is JSON Schema 2020-12. The runtime checks each instance's config
 against it, per server, after merging `overrides.<server>.config` into the base config.
-Top-level `default`s are applied before the plugin sees `ctx.config`. CODI adds three
-keywords:
+Schema `default`s are applied before the plugin sees `ctx.config`: at the top level, in
+nested objects, in every object element of arrays (e.g. `steps[].multiple`) and through
+local `$ref`s. An absent optional object is created only when its defaults cover all its
+`required` fields (so an optional `webhook: {url, format}` with a required `url` stays
+absent). Defaults inside `additionalProperties` maps and `oneOf`/`anyOf` alternatives are
+not applied. CODI adds three keywords:
 
 | Keyword | Values | Effect |
 |---|---|---|
@@ -208,7 +226,8 @@ From [`welcome/config.schema.json`](../examples/basic/plugins/welcome/config.sch
 ```
 
 `codi plugin typegen` turns the schema into a module augmentation, so `ctx.config` is
-typed. A field that is required, or has a top-level default, is non-optional:
+typed. A field that is required, or has a default the runtime applies (rules above), is
+non-optional:
 
 ```ts
 // src/codi-env.d.ts — generated, do not edit
@@ -223,8 +242,9 @@ declare module "@codi/sdk" {
 export {};
 ```
 
-Only top-level defaults are applied. Nested fields with a default stay optional, and the
-plugin falls back on them itself (see the `onboarding` example).
+Array items follow the same rule: with `"multiple": {"type": "boolean", "default": false}`
+in `steps.items`, `ctx.config.steps[0].multiple` is a `boolean`, never `undefined`. Run
+`codi plugin typegen --check` in CI to catch a stale file.
 
 ## 5. The plugin definition
 
@@ -339,7 +359,8 @@ Component and modal `id`s are local to the plugin instance. On the wire the runt
 namespaces them as `c:<instance>:<id>`, which must fit Discord's 100-byte `custom_id`
 limit. Handler keys are at most 80 bytes. An id may **carry data after a colon**: the lookup
 falls back to the part before the first `:`, so `"vote:42"` is routed to `components.vote`,
-and `componentId` stays `"vote:42"`. A sketch (the examples have no components):
+and `componentId` stays `"vote:42"`. A sketch (`examples/showcase/plugins/polls` and
+`tickets` are complete examples):
 
 ```ts
 commands: {
@@ -401,6 +422,11 @@ A handler can return:
 - an envelope `{ status, body?, headers? }`;
 - nothing, which answers `204`.
 
+A handler that returns both envelopes and plain JSON objects should declare its return type
+(`async handler(ctx, request): Promise<RouteResponse>`): TypeScript otherwise infers a union
+that does not match `RouteResponse`. Interfaces are not assignable to `Json` (no index
+signature): cast records with `as unknown as Json`.
+
 From [`onboarding`](../examples/basic/plugins/onboarding/src/index.ts):
 
 ```ts
@@ -444,6 +470,22 @@ tasks: {
 // elsewhere: const { id } = await ctx.schedule.after(60 * 60_000, "remind", { userId });
 //            await ctx.schedule.cancel(id);
 ```
+
+A task often has to edit a message posted earlier (e.g. close a poll). The SDK has no
+"get message by id": post with `channel.send()` (which returns the `Message`), store
+`{ channelId, messageId }`, and in the task fetch it back with
+`channel.messages({ before: <messageId + 1>, limit: 1 })` (the newest message strictly
+before `id + 1` is the message itself). `examples/showcase/plugins/polls` does this.
+
+### Plugin-owned channels
+
+`ctx.server.createChannel({ name, type, category, topic, overwrites })`
+(`discord.channels.manage`) creates a channel recorded as owned by the plugin instance: the
+reconciler never touches or prunes it, even with `prune: true`, and only that instance can
+`deleteChannel()` it. `overwrites` keys are `"@everyone"`, a role key, `"role:<id>"` or
+`"member:<id>"`. Give the bot itself access (`member:${ctx.bot.user.id}`) when the channel
+hides `@everyone`, or a bot without Administrator locks itself out. See
+`examples/showcase/plugins/tickets`.
 
 ### Cross-plugin events
 
@@ -526,18 +568,35 @@ Vitest or `node:test` without Discord:
 
 - `createTestContext(options)` returns a harness. Its `ctx` goes to your handlers, and it
   records:
-  - `sent` (messages; DMs are `to: "dm:<userId>"`);
-  - `roleChanges`, `links`, `published`, `scheduled`, `logs`;
-  - the raw `kv`.
+  - `sent` (messages with their `id`; DMs are `to: "dm:<userId>"`), `edits`,
+    `deletedMessages`, `reactions`, `threads`;
+  - `roleChanges`, `moderation` (timeouts, kicks, bans, nicknames);
+  - `createdChannels` / `deletedChannels` (created channels resolve with `{ id }`, and
+    `deleteChannel()` refuses channels the plugin did not create);
+  - `links`, `published`, `scheduled`, `requests` (`http.fetch`), `logs`;
+  - the raw `kv` (TTLs follow `Date.now()`, so `vi.useFakeTimers()` expires keys).
 
-  It also offers `member(id)` and `addMember(init)`. Options: `config` (defaults are **not**
-  applied), `grants` (when given, calls without the grant throw `CapabilityError`), `plugin`,
-  `bot`, `server`, `roles` and `channels` (keyed by resource key), `members`, `portalUrl`.
+  It also offers `member(id)`, `addMember(init)`, `removeMember(id)`, `message(id)` and
+  `channel(keyOrId)`. Options:
+  - `config`, and `schema` (the plugin's `config.schema.json`): when given, its defaults are
+    applied like the runtime does (`applyDefaults(schema, config)` is exported too);
+  - `grants` (when given, calls without the grant throw `CapabilityError`);
+  - `plugin`, `bot`, `server`, `roles` and `channels` (keyed by resource key), `members`,
+    `portalUrl`;
+  - `fetch(url, init)`: the fake `ctx.http.fetch` (`{ status?, headers?, body? }`).
 - `callRoute(plugin, harness, "POST /complete", { viewer, body, query })` matches the
   route patterns. It answers `401` for anonymous callers of non-public routes and `403` for
   non-members of `member` routes, and returns `{ status, body, headers }`.
-- `runCommand(plugin, harness, "name", { user, options })` returns
-  `{ replies, followUps, deferred }`.
+- `runCommand(plugin, harness, "name", { user, channel, options })`,
+  `runComponent(plugin, harness, "vote:42", { user, message, values })` and
+  `submitModal(plugin, harness, "open", { user, fields })` run interaction handlers with a
+  fake interaction that follows the runtime's rules (a second `reply()` throws, `followUp()`
+  needs a response, `showModal()` must come first, `update()` is for components; component
+  and modal ids fall back to the part before `:`). They return
+  `{ replies, followUps, updates, deferred, modal }`. `message` is a message sent through
+  the fakes (or its id); `channel` sets `interaction.channel`.
+- Events, tasks, schedules and subscriptions are plain functions: call them with the
+  harness context, e.g. `await plugin.tasks!.close!(t.ctx, { id: "1" })`.
 - `capabilityError(name)` and `normalizeRouteResponse(response)` are helpers.
 
 Adapted from [`onboarding.test.ts`](../examples/basic/plugins/onboarding/test/onboarding.test.ts):
@@ -545,10 +604,12 @@ Adapted from [`onboarding.test.ts`](../examples/basic/plugins/onboarding/test/on
 ```ts
 import { callRoute, createTestContext, runCommand } from "@codi/sdk/testing";
 import { expect, test } from "vite-plus/test";
+import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
 
 const t = createTestContext({
   config,
+  schema, // the runtime's defaults (steps[].multiple…)
   grants: ["discord.roles.assign", "storage.kv", "portal.routes", "portal.links"],
   roles: { pc: { name: "PC" }, member: { name: "Membre" } },
   members: [{ id: "1", username: "alice", roles: ["pc"] }],
@@ -565,8 +626,11 @@ test("/onboarding replies with a link", async () => {
 });
 ```
 
-In this repository, `pnpm test` runs `examples/**/test/**/*.test.ts` (root `vite.config.ts`).
-`codi plugin test <dir>` runs a single plugin's tests. To test a plugin end to end, run
+Importing the JSON schema needs `"resolveJsonModule": true` in the test `tsconfig.json`.
+In this repository, `pnpm test` runs `examples/**/test/**/*.test.ts` (root `vite.config.ts`);
+`pnpm exec vp test examples/showcase/plugins/polls` runs one plugin's unit tests.
+`codi plugin test <dir>` is different: it starts the plugin on the simulator with the real
+runtime (no unit tests). To test a plugin end to end, run
 `codi dev --sim` and drive it from the admin UI's **Simulator** panel
 (`http://127.0.0.1:7420/admin/`): you can join members, send messages, run slash commands,
 click buttons and submit modals.

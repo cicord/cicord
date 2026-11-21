@@ -37,7 +37,65 @@ export interface Diagnostic {
 }
 
 export interface ApiErrorBody {
-  error: { code: ApiErrorCode; message: string; diagnostics?: Diagnostic[] };
+  error: {
+    code: ApiErrorCode;
+    message: string;
+    diagnostics?: Diagnostic[];
+    /** How to fix it (plan / sync failures). */
+    hint?: string;
+    /** Raw technical text (plan / sync failures). */
+    details?: string;
+    /** Humanized error code ({@link HumanErrorCode}) of plan / sync failures. */
+    reason?: string;
+  };
+}
+
+/** Stable codes of humanized errors (spec/api.md "Error object"); unknown codes may appear. */
+export type HumanErrorCode =
+  | "community_required"
+  | "boost_required"
+  | "missing_permissions"
+  | "missing_access"
+  | "role_hierarchy"
+  | "unknown_resource"
+  | "invalid_form_body"
+  | "limit_reached"
+  | "invalid_token"
+  | "intents_disallowed"
+  | "rate_limited"
+  | "discord_unavailable"
+  | "timeout"
+  | "bot_not_connected"
+  | "no_bot"
+  | "unresolved_reference"
+  | "revision_rejected"
+  | "fetch_failed"
+  | "bad_request"
+  | "deletion_protection"
+  | "ownership"
+  | "managed_role"
+  | "type_change"
+  | "unknown"
+  | (string & {});
+
+/** An error explained for people (spec/api.md "Error object"). */
+export interface HumanError {
+  code: HumanErrorCode;
+  /** One sentence: what went wrong. */
+  message: string;
+  /** How to fix it. */
+  hint?: string;
+  /** The raw technical error text. */
+  details?: string;
+  /** Discord JSON error code (e.g. 50035) and HTTP status, for Discord REST errors. */
+  discordCode?: number;
+  httpStatus?: number;
+  /** The planned change that failed. */
+  resource?: { action: string; kind: string; key?: string };
+  /** Discord "Invalid Form Body" field errors, flattened. */
+  fields?: { path: string; code?: string; message: string }[];
+  /** Number of changes that failed in the same sync (when more than one). */
+  failures?: number;
 }
 
 // ───────────────────────────────────────────────────────────── auth & me (§1, §2)
@@ -106,6 +164,8 @@ export interface ServerStatus {
   drift: Drift[];
   /** Key of the bot that reconciles this server. */
   bot?: string;
+  /** `message` explained, when the server is Degraded or Missing. */
+  error?: HumanError;
 }
 
 export interface PluginInstanceStatus {
@@ -125,6 +185,8 @@ export interface BotStatus {
   message: string;
   servers: string[];
   plugins: PluginInstanceStatus[];
+  /** `message` explained, when the bot is Degraded or Missing. */
+  error?: HumanError;
 }
 
 export interface RuntimeStatus {
@@ -135,6 +197,8 @@ export interface RuntimeStatus {
   revision: Revision | null;
   /** Latest rejected revision / failed fetch or sync, if any. */
   lastError?: string;
+  /** `lastError` explained. */
+  lastErrorInfo?: HumanError;
   servers: ServerStatus[];
   bots: BotStatus[];
 }
@@ -152,6 +216,8 @@ export interface SyncRecord {
   message: string;
   /** Free-form details, e.g. `{plan, applied, failed}` for server syncs. */
   details?: Json;
+  /** `message` explained, for `failed` and `rejected` records. */
+  error?: HumanError;
 }
 
 export interface HistoryQuery {
@@ -242,6 +308,8 @@ export interface PlanBlocked {
   reason: string;
   /** The differences that could not be applied, when known. */
   fields?: Record<string, PlanFieldChange>;
+  /** `reason` explained. */
+  error?: HumanError;
 }
 
 /** Diff between the desired and the live state of one server; changes are in apply order. */
@@ -330,6 +398,19 @@ export type WriteBackResult =
   | { mode: "commit"; revision: string; pullRequestUrl: string }
   | { mode: "pullRequest"; revision: ""; pullRequestUrl: string };
 
+// ───────────────────────────────────────────────────────────── token mode (§1)
+
+/**
+ * Response of the token-mode logins (`POST /auth/token`, and `/auth/link` or
+ * `/auth/dev-login` with `mode: "token"`): a bearer session token for embedding sites.
+ */
+export interface TokenSession {
+  /** `codi_st_…`, sent as `Authorization: Bearer <token>`. */
+  token: string;
+  expiresAt: Timestamp;
+  me: Me;
+}
+
 // ───────────────────────────────────────────────────────────── portal (§6)
 
 /** The runtime always sends every field; "" means unset. */
@@ -337,7 +418,10 @@ export interface PortalTheme {
   /** #RRGGBB */
   primary?: string;
   accent?: string;
-  /** URL of the logo (`/api/v1/portal/{server}/logo` or an absolute URL). */
+  /**
+   * URL of the logo: `/api/v1/portal/{server}/logo?v=<revision>` or an absolute URL.
+   * `@codi/client` makes runtime paths absolute when `baseUrl` is set (embedded portals).
+   */
   logo?: string;
   mode?: "light" | "dark" | "system" | "";
 }
@@ -350,11 +434,62 @@ export interface PortalPlugin {
   routes: string[];
 }
 
+/** Icons of `spec.portal.links[].icon` (server.schema.json). */
+export type PortalLinkIcon =
+  | "link"
+  | "website"
+  | "discord"
+  | "youtube"
+  | "twitch"
+  | "x"
+  | "bluesky"
+  | "mastodon"
+  | "instagram"
+  | "tiktok"
+  | "github"
+  | "reddit"
+  | "steam"
+  | "rules"
+  | "calendar"
+  | "shop"
+  // Future icons are passed through.
+  | (string & {});
+
+export interface PortalLink {
+  label: string;
+  /** http(s) URL (validated by the schema; check it again with `isSafeUrl` before rendering). */
+  url: string;
+  /** Always set ("link" by default). */
+  icon: PortalLinkIcon;
+}
+
+/** Page toggles of `spec.portal.pages`, resolved (unset = true). */
+export interface PortalPages {
+  onboarding: boolean;
+  profile: boolean;
+  leaderboard: boolean;
+  tickets: boolean;
+}
+
+export type PortalLocale = "en" | "fr" | "";
+
 export interface PortalServer {
   key: string;
   name: string;
   iconUrl: string;
   theme: PortalTheme;
+  /** `spec.portal.title`, or the server name. */
+  title: string;
+  /** "" when unset. */
+  tagline: string;
+  /** Markdown subset ("" when unset); render it with `<Markdown>` from @codi/ui. */
+  description: string;
+  /** URL of the banner image ("" when unset); like `theme.logo`. */
+  banner: string;
+  links: PortalLink[];
+  pages: PortalPages;
+  /** "" = let the portal choose (browser language). */
+  locale: PortalLocale;
   plugins: PortalPlugin[];
 }
 

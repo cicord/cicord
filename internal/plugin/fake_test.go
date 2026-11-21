@@ -561,7 +561,7 @@ func testEnv(dc *fakeDiscord) Env {
 		BotKey: "moderator", InstanceName: "inst", PluginName: "test", PluginVersion: "0.1.0",
 		Bot: discord.User{ID: "1", Username: "codi", Bot: true}, ApplicationID: "app",
 		ServerKey: "ma-commu", ServerID: "10", ServerName: "Ma Commu",
-		Config: map[string]any{"greeting": "hi"}, Grants: allGrants,
+		Config: map[string]any{"greeting": "hi"}, Grants: allGrants, MessageContent: true,
 		Discord: dc, Resolver: newFakeResolver(), Portal: fakePortal{}, TaskScope: "plugin:moderator/inst/ma-commu",
 	}
 }

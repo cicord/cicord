@@ -178,10 +178,23 @@ func (i *Instance) messageDTO(m discord.Message) messageDTO {
 		md := i.memberDTO(mem)
 		dto.Member = &md
 	}
+	if !i.contentVisible(m) {
+		dto.Content = ""
+		return dto
+	}
 	for _, a := range m.Attachments {
 		dto.Attachments = append(dto.Attachments, attachmentDTOFrom(a))
 	}
 	return dto
+}
+
+// contentVisible applies the MessageContent gating per plugin (Env.MessageContent).
+func (i *Instance) contentVisible(m discord.Message) bool {
+	if i.env.MessageContent || m.Author.ID == i.env.Bot.ID || i.isDMChannel(m.ChannelID) {
+		return true
+	}
+	id := i.env.Bot.ID
+	return id != "" && (strings.Contains(m.Content, "<@"+id+">") || strings.Contains(m.Content, "<@!"+id+">"))
 }
 
 func attachmentDTOFrom(a discord.Attachment) attachmentDTO {

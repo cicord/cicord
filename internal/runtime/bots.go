@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -193,6 +194,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		Bot: host.session.Self(), ApplicationID: host.session.ApplicationID(),
 		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL,
 		Config: in.Config, Grants: in.Grants, NetworkAllow: network, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
+		MessageContent: slices.Contains(m.Spec.Intents, "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
 		Discord: host.session, Resolver: srt.cache,
 		KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources: ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},

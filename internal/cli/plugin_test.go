@@ -2,9 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/npjonath/codi/internal/api"
+	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/codi/internal/sim"
 )
 
 func TestPluginBuild(t *testing.T) {
@@ -103,5 +108,56 @@ func TestInitWorkflow(t *testing.T) {
 	}
 	if code, _, errOut := run(t, "validate", dir); code != 0 {
 		t.Errorf("validate init repo: %s", errOut)
+	}
+	// `codi dev --sim` seeds the simulator with the repository IDs: the placeholders of a
+	// fresh repository must be accepted (the "Next steps" say to run it).
+	repo, ds := config.Load(dir, config.LoadOptions{})
+	if repo == nil || ds.HasErrors() {
+		t.Fatalf("load: %v", ds)
+	}
+	if _, err := api.SeedSimWorld(sim.NewWorld(), repo); err != nil {
+		t.Errorf("seed the simulator from a fresh repository: %v", err)
+	}
+}
+
+// TestShowcasePlugins: every plugin of examples/showcase builds without warnings, has an
+// up-to-date codi-env.d.ts and passes `codi plugin test` without a --config.
+func TestShowcasePlugins(t *testing.T) {
+	for _, name := range []string{"tickets", "polls", "levels", "moderation"} {
+		t.Run(name, func(t *testing.T) {
+			dir := "../../examples/showcase/plugins/" + name
+			code, out, errOut := run(t, "plugin", "build", dir)
+			if code != 0 || strings.Contains(out, "warning:") {
+				t.Errorf("build = %d\n%s\n%s", code, out, errOut)
+			}
+			if code, _, errOut := run(t, "plugin", "typegen", dir, "--check"); code != 0 {
+				t.Errorf("typegen --check: %s", errOut)
+			}
+			code, out, errOut = run(t, "plugin", "test", dir)
+			if code != 0 || !strings.Contains(out, "PASS") {
+				t.Errorf("plugin test = %d\n%s\n%s", code, out, errOut)
+			}
+		})
+	}
+}
+
+func TestPluginNewInRepo(t *testing.T) {
+	dir := t.TempDir()
+	if code, _, errOut := run(t, "init", dir, "--server", "srv", "--bot", "helper"); code != 0 {
+		t.Fatalf("init: %s", errOut)
+	}
+	code, out, errOut := run(t, "plugin", "new", filepath.Join(dir, "plugins", "hello"))
+	if code != 0 {
+		t.Fatalf("plugin new: %s", errOut)
+	}
+	// the hint names the bot file and the source path relative to it
+	if !strings.Contains(out, "bot.yaml (spec.plugins)") || !strings.Contains(out, "source: ../../plugins/hello") {
+		t.Errorf("plugin new output:\n%s", out)
+	}
+	if code, _, errOut := run(t, "plugin", "typegen", filepath.Join(dir, "plugins", "hello"), "--check"); code != 0 {
+		t.Errorf("fresh plugin typegen --check: %s", errOut)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plugins", "hello", ".codi", "codi-sdk.d.ts")); err != nil {
+		t.Error(err)
 	}
 }

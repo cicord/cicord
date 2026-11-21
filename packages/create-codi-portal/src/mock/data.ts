@@ -19,12 +19,47 @@ function mockMode(): "light" | "dark" | "system" {
   return mode === "light" || mode === "system" ? mode : "dark";
 }
 
+const banner = `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#1b1d3a"/><stop offset=".55" stop-color="#2b2466"/><stop offset="1" stop-color="#5a1f4f"/>
+      </linearGradient>
+      <radialGradient id="a" cx=".22" cy=".35" r=".45"><stop offset="0" stop-color="#5865f2" stop-opacity=".85"/><stop offset="1" stop-color="#5865f2" stop-opacity="0"/></radialGradient>
+      <radialGradient id="b" cx=".82" cy=".7" r=".5"><stop offset="0" stop-color="#eb459e" stop-opacity=".75"/><stop offset="1" stop-color="#eb459e" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect width="1500" height="500" fill="url(#bg)"/><rect width="1500" height="500" fill="url(#a)"/><rect width="1500" height="500" fill="url(#b)"/>
+    <g fill="none" stroke="#fff" stroke-linecap="round"><circle cx="1180" cy="170" r="110" stroke-opacity=".18" stroke-width="26"/><circle cx="1290" cy="230" r="110" stroke-opacity=".12" stroke-width="26"/></g>
+  </svg>`,
+)}`;
+
 export const portalServer: PortalServer = {
   key: "ma-commu",
   name: "Ma Commu",
   iconUrl: "",
   // `?mode=light|system` previews the other palettes in mock mode.
   theme: { primary: "#5865f2", accent: "#eb459e", logo, mode: mockMode() },
+  title: "Bienvenue sur Ma Commu",
+  tagline: "La commu francophone des soirées jeux, tournois et lives.",
+  description: [
+    "Ici, on joue **ensemble** : Minecraft, Valorant, League of Legends et tout ce qui passe.",
+    "",
+    "## Ce que tu trouveras ici",
+    "- des soirées jeux chaque vendredi",
+    "- des tournois mensuels avec des lots",
+    "- une équipe de modération à l'écoute",
+    "",
+    "Lis le [règlement](https://ma-commu.example/regles) avant de poster.",
+  ].join("\n"),
+  banner,
+  links: [
+    { label: "Site web", url: "https://ma-commu.example", icon: "website" },
+    { label: "Chaîne YouTube", url: "https://www.youtube.com/@ma-commu", icon: "youtube" },
+    { label: "Lives Twitch", url: "https://www.twitch.tv/ma-commu", icon: "twitch" },
+    { label: "Règlement", url: "https://ma-commu.example/regles", icon: "rules" },
+  ],
+  pages: { onboarding: true, profile: true, leaderboard: true, tickets: true },
+  locale: "fr",
   plugins: [
     {
       bot: "moderator",
@@ -32,8 +67,57 @@ export const portalServer: PortalServer = {
       plugin: "onboarding",
       routes: ["GET /steps", "POST /complete"],
     },
+    {
+      bot: "moderator",
+      instance: "levels",
+      plugin: "levels",
+      routes: ["GET /leaderboard", "GET /me"],
+    },
+    { bot: "moderator", instance: "tickets", plugin: "tickets", routes: ["GET /tickets"] },
   ],
 };
+
+export const leaderboard = [
+  ["1001", "Léa", 14, 18420],
+  ["1002", "Nico", 12, 15210],
+  ["1003", "Inès", 11, 13980],
+  ["1004", "Hugo", 9, 9340],
+  ["1005", "Camille", 8, 8120],
+  ["1006", "Yanis", 6, 5230],
+  ["1007", "Sarah", 5, 4410],
+  ["1008", "Malo", 3, 1980],
+].map(([userId, displayName, level, xp], i) => ({
+  rank: i + 1,
+  userId: userId as string,
+  displayName: displayName as string,
+  avatarUrl: null,
+  level: level as number,
+  xp: xp as number,
+}));
+
+export const tickets = [
+  {
+    id: "42",
+    subject: "Problème d'accès au salon Valorant",
+    status: "open" as const,
+    author: { id: "1005", displayName: "Camille" },
+    createdAt: "2026-11-20T18:12:00Z",
+  },
+  {
+    id: "41",
+    subject: "Signalement : spam en vocal",
+    status: "open" as const,
+    author: { id: "1007", displayName: "Sarah" },
+    createdAt: "2026-11-19T21:40:00Z",
+  },
+  {
+    id: "37",
+    subject: "Idée de tournoi Minecraft",
+    status: "closed" as const,
+    author: { id: "1002", displayName: "Nico" },
+    createdAt: "2026-11-12T09:05:00Z",
+  },
+];
 
 export const user: User = { id: "1001", username: "lea.gg", displayName: "Léa", avatarUrl: "" };
 

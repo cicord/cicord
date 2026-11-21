@@ -286,9 +286,17 @@ Implemented by `internal/plugin` (the package documentation is the detailed refe
 - **References**: `ctx.server.channel("general")` resolves by key in the active revision;
   `{ id }` addresses unmanaged resources.
 - **Config defaults**: `default` values from `config.schema.json` are applied before the
-  plugin sees `ctx.config`, so a field with a default is always present.
+  plugin sees `ctx.config`: top level, nested objects, every object element of arrays and
+  through local `$ref`s; not inside `additionalProperties` maps nor `oneOf`/`anyOf`
+  alternatives. An absent optional object is materialized only when its defaults cover its
+  `required` fields. A field with an applied default is always present.
 - **Config typing**: `codi plugin typegen` generates a `PluginConfig` module augmentation
-  from `config.schema.json` (fields that are required or have a default are non-optional).
+  from `config.schema.json`, with the same rules (fields that are required or have an
+  applied default are non-optional).
+- **Message content**: gated per plugin. Without the `MessageContent` intent in its own
+  manifest, a plugin sees empty `content` and `attachments` (events and
+  `channel.messages()`), except for the bot's own messages, messages mentioning the bot and
+  DMs, even when another plugin of the same bot declares the intent.
 - **Globals beyond the SDK**: `setTimeout` / `setInterval` / `clearTimeout` /
   `clearInterval`, `queueMicrotask` and `console.*` (mapped to the instance logger). Timers
   belong to the handler that created them and stop with it.

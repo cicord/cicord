@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -49,7 +50,11 @@ type Options struct {
 	PluginLimits   plugin.Limits
 	// AllowPrivateNetworks relaxes http.fetch egress checks (dev only).
 	AllowPrivateNetworks bool
-	Logger               *slog.Logger
+	// PluginHTTPClient overrides the HTTP client of http.fetch (tests: route allow-listed
+	// hosts to a local server). The allow-list checks still apply; nil uses the egress-safe
+	// default client.
+	PluginHTTPClient *http.Client
+	Logger           *slog.Logger
 }
 
 // Runtime is safe for concurrent use.
@@ -414,7 +419,7 @@ func stopActive(a *active, log *slog.Logger) {
 	}
 }
 
-func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serverRT) {
+func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serverRT) (reconcile.Plan, reconcile.Result, error) {
 	plan, res, err := rt.rec.Sync(ctx)
 	now := time.Now().UTC()
 	rt.mu.Lock()
@@ -439,6 +444,7 @@ func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serve
 			r.log.Warn("refresh server cache", "server", rt.key, "err", err)
 		}
 	}
+	return plan, res, err
 }
 
 func (r *Runtime) afterSelfHeal(rt *serverRT, p reconcile.Plan, res reconcile.Result, err error) {
@@ -495,8 +501,8 @@ func (r *Runtime) SyncServer(ctx context.Context, key string) (reconcile.Plan, i
 	if err != nil {
 		return plan, 0, err
 	}
-	r.syncServer(ctx, a.rev, rt)
-	return plan, len(plan.Changes), nil
+	plan, res, err := r.syncServer(ctx, a.rev, rt)
+	return plan, len(res.Applied), err
 }
 
 // PlanServer computes the plan of the active revision for one server.

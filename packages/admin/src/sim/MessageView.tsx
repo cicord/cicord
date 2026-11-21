@@ -2,8 +2,9 @@
 import type { Message, MessageButton, MessageEmbed, MessageSelect, User } from "@codi/client";
 import { useState } from "react";
 import { Markdown, isSafeUrl } from "../schema-form/index.ts";
-import { IconExternal, IconEye } from "../ui/icons.tsx";
-import { Avatar, Spinner } from "../ui/index.tsx";
+import { IconExternal, IconEye } from "./kit.tsx";
+import { Avatar, Spinner } from "./kit.tsx";
+import { i18n } from "../i18n/index.ts";
 
 export interface MentionResolver {
   user: (id: string) => string | undefined;
@@ -22,16 +23,17 @@ export interface MessageListProps {
   botIds?: ReadonlySet<string>;
 }
 
-const timeFmt = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" });
-const dayFmt = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+const timeFmt = () =>
+  new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit" });
 
 function when(iso: string): string {
+  const dayFmt = new Intl.DateTimeFormat(i18n.language, { month: "short", day: "numeric" });
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const today = new Date();
   return d.toDateString() === today.toDateString()
-    ? `Today at ${timeFmt.format(d)}`
-    : `${dayFmt.format(d)} at ${timeFmt.format(d)}`;
+    ? i18n.t("sim.time.today", { time: timeFmt().format(d) })
+    : i18n.t("sim.time.at", { day: dayFmt.format(d), time: timeFmt().format(d) });
 }
 
 /** Consecutive messages of the same author within 5 minutes are grouped. */
@@ -76,7 +78,7 @@ export function MessageItem({
     >
       {compact ? (
         <span className="msg-gutter-time" aria-hidden="true">
-          {timeFmt.format(new Date(m.createdAt))}
+          {timeFmt().format(new Date(m.createdAt))}
         </span>
       ) : (
         <Avatar name={name} url={m.author.avatarUrl} size={36} bot={isBot} />
@@ -85,7 +87,7 @@ export function MessageItem({
         {compact ? null : (
           <div className="msg-head">
             <span className="msg-author">{name}</span>
-            {isBot ? <span className="msg-bot-tag">BOT</span> : null}
+            {isBot ? <span className="msg-bot-tag">{i18n.t("sim.bot")}</span> : null}
             <time className="msg-time" dateTime={m.createdAt}>
               {when(m.createdAt)}
             </time>
@@ -94,7 +96,7 @@ export function MessageItem({
         {m.content ? (
           <div className="msg-content">
             <Markdown source={m.content} resolveMention={(kind, id) => resolver[kind](id)} />
-            {edited ? <span className="msg-edited">(edited)</span> : null}
+            {edited ? <span className="msg-edited">{i18n.t("sim.edited")}</span> : null}
           </div>
         ) : null}
         {(m.embeds ?? []).map((e, i) => (
@@ -256,10 +258,10 @@ function SelectMenu({
         className="dselect"
         disabled={disabled}
         value=""
-        aria-label={select.placeholder || "Select an option"}
+        aria-label={select.placeholder || i18n.t("sim.select.option")}
         onChange={(e) => e.target.value && onPick([e.target.value])}
       >
-        <option value="">{select.placeholder || "Make a selection"}</option>
+        <option value="">{select.placeholder || i18n.t("sim.select.make")}</option>
         {select.options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.emoji ? `${o.emoji} ` : ""}
@@ -271,7 +273,7 @@ function SelectMenu({
     );
   return (
     <fieldset className="dselect-multi" disabled={disabled}>
-      <legend>{select.placeholder || "Pick options"}</legend>
+      <legend>{select.placeholder || i18n.t("sim.select.pick")}</legend>
       {select.options.map((o) => (
         <label key={o.value}>
           <input
@@ -295,7 +297,7 @@ function SelectMenu({
         }
         onClick={() => onPick(picked)}
       >
-        Submit
+        {i18n.t("sim.submit")}
       </button>
     </fieldset>
   );

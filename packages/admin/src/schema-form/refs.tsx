@@ -2,6 +2,7 @@
 import type { ServerResources } from "@codi/client";
 import type { PickerOption } from "./Picker.tsx";
 import type { RefKind } from "./schema.ts";
+import { i18n } from "../i18n/index.ts";
 
 export function Swatch({ color }: { color: string }) {
   const c = /^#[0-9a-f]{6}$/i.test(color) && color.toLowerCase() !== "#000000" ? color : undefined;
@@ -69,7 +70,7 @@ export function refOptions(kind: RefKind, resources: ServerResources | undefined
       value: c.key,
       label: c.name,
       hint: c.key,
-      group: c.category ? (categoryName.get(c.category) ?? c.category) : "No category",
+      group: c.category ? (categoryName.get(c.category) ?? c.category) : i18n.t("form.noCategory"),
       icon: <ChannelGlyph type={c.type} />,
     }));
 }

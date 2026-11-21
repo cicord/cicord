@@ -15,6 +15,7 @@ export {
   usePortalServer,
   usePortalServers,
   useRoles,
+  useSession,
 } from "./hooks.ts";
 export type {
   LinkTokenLoginState,

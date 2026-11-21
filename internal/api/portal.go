@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/discord"
 	"github.com/npjonath/codi/internal/plugin"
 	"github.com/npjonath/codi/internal/runtime"
@@ -33,12 +34,50 @@ type portalPluginDTO struct {
 	Routes   []string `json:"routes"`
 }
 
+type portalLinkDTO struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+	Icon  string `json:"icon"`
+}
+
+type portalPagesDTO struct {
+	Onboarding  bool `json:"onboarding"`
+	Profile     bool `json:"profile"`
+	Leaderboard bool `json:"leaderboard"`
+	Tickets     bool `json:"tickets"`
+}
+
 type portalServerDTO struct {
-	Key     string            `json:"key"`
-	Name    string            `json:"name"`
-	IconURL string            `json:"iconUrl"`
-	Theme   themeDTO          `json:"theme"`
-	Plugins []portalPluginDTO `json:"plugins"`
+	Key         string            `json:"key"`
+	Name        string            `json:"name"`
+	IconURL     string            `json:"iconUrl"`
+	Theme       themeDTO          `json:"theme"`
+	Title       string            `json:"title"`
+	Tagline     string            `json:"tagline"`
+	Description string            `json:"description"`
+	Banner      string            `json:"banner"`
+	Links       []portalLinkDTO   `json:"links"`
+	Pages       portalPagesDTO    `json:"pages"`
+	Locale      string            `json:"locale"`
+	Plugins     []portalPluginDTO `json:"plugins"`
+}
+
+func enabled(b *bool) bool { return b == nil || *b }
+
+// portalImageURL is the URL of a portal image: absolute URLs as is, repository files
+// through the image endpoint (versioned by revision so that caches follow new commits).
+func (s *server) portalImageURL(key, kind, value string) string {
+	switch {
+	case value == "":
+		return ""
+	case strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://"):
+		return value
+	}
+	u := "/api/v1/portal/" + url.PathEscape(key) + "/" + kind
+	if rev, ok := s.rt.Revision(); ok && rev.ID != "" {
+		u += "?v=" + url.QueryEscape(rev.ID)
+	}
+	return u
 }
 
 func (s *server) portalServer(key string) (portalServerDTO, bool) {
@@ -46,19 +85,33 @@ func (s *server) portalServer(key string) (portalServerDTO, bool) {
 	if !ok {
 		return portalServerDTO{}, false
 	}
-	out := portalServerDTO{Key: key, Name: s.serverName(key), Plugins: []portalPluginDTO{}}
+	out := portalServerDTO{
+		Key: key, Name: s.serverName(key), Plugins: []portalPluginDTO{}, Links: []portalLinkDTO{},
+		Pages: portalPagesDTO{Onboarding: true, Profile: true, Leaderboard: true, Tickets: true},
+	}
+	out.Title = out.Name
 	if info, ok := s.rt.ServerInfo(key); ok {
 		out.IconURL = info.IconURL
 	}
-	if p := srv.Spec.Portal; p != nil && p.Theme != nil {
-		t := p.Theme
-		out.Theme = themeDTO{Primary: t.Primary, Accent: t.Accent, Mode: t.Mode}
-		if t.Logo != "" {
-			if strings.HasPrefix(t.Logo, "https://") || strings.HasPrefix(t.Logo, "http://") {
-				out.Theme.Logo = t.Logo
-			} else {
-				out.Theme.Logo = "/api/v1/portal/" + key + "/logo"
+	if p := srv.Spec.Portal; p != nil {
+		if t := p.Theme; t != nil {
+			out.Theme = themeDTO{Primary: t.Primary, Accent: t.Accent, Mode: t.Mode, Logo: s.portalImageURL(key, "logo", t.Logo)}
+		}
+		if p.Title != "" {
+			out.Title = p.Title
+		}
+		out.Tagline, out.Description, out.Locale = p.Tagline, p.Description, p.Locale
+		out.Banner = s.portalImageURL(key, "banner", p.Banner)
+		for _, l := range p.Links {
+			icon := l.Icon
+			if icon == "" {
+				icon = "link"
 			}
+			out.Links = append(out.Links, portalLinkDTO{Label: l.Label, URL: l.URL, Icon: icon})
+		}
+		if pg := p.Pages; pg != nil {
+			out.Pages = portalPagesDTO{Onboarding: enabled(pg.Onboarding), Profile: enabled(pg.Profile),
+				Leaderboard: enabled(pg.Leaderboard), Tickets: enabled(pg.Tickets)}
 		}
 	}
 	for _, in := range s.rt.Instances(key) {
@@ -107,43 +160,72 @@ func (s *server) handlePortalServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
-// handlePortalLogo serves theme.logo when it is a file of the repository (relative to
-// the server YAML).
-func (s *server) handlePortalLogo(w http.ResponseWriter, r *http.Request) {
-	if err := s.requireRuntime(); err != nil {
-		s.fail(w, err)
-		return
+// handlePortalImage serves theme.logo ("logo") or banner ("banner") when it is a file of
+// the repository (relative to the server YAML); an absolute URL redirects.
+func (s *server) handlePortalImage(kind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := s.requireRuntime(); err != nil {
+			s.fail(w, err)
+			return
+		}
+		srv, ok := s.rt.ServerConfig(r.PathValue("server"))
+		repo := s.rt.Repo()
+		if !ok || repo == nil || srv.Spec.Portal == nil {
+			notFoundHandler(w, r)
+			return
+		}
+		var value string
+		switch kind {
+		case "logo":
+			if srv.Spec.Portal.Theme != nil {
+				value = srv.Spec.Portal.Theme.Logo
+			}
+		case "banner":
+			value = srv.Spec.Portal.Banner
+		}
+		if value == "" {
+			notFoundHandler(w, r)
+			return
+		}
+		if strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://") {
+			http.Redirect(w, r, value, http.StatusFound)
+			return
+		}
+		rel, ok := config.ResolveRepoPath(srv.File, value)
+		ct := config.PortalImageType(rel)
+		if !ok || ct == "" || config.LocalPathError(repo.Root, rel) != nil {
+			notFoundHandler(w, r)
+			return
+		}
+		root, err := os.OpenRoot(repo.Root)
+		if err != nil {
+			notFoundHandler(w, r)
+			return
+		}
+		defer root.Close()
+		f, err := root.Open(filepath.FromSlash(rel))
+		if err != nil {
+			notFoundHandler(w, r)
+			return
+		}
+		defer f.Close()
+		st, err := f.Stat()
+		if err != nil || st.IsDir() || st.Size() > maxPortalImage {
+			notFoundHandler(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		// A repository SVG must never run script on the runtime origin.
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+		// Embedding sites on other origins may display the image.
+		w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
+		http.ServeContent(w, r, path.Base(rel), st.ModTime(), f)
 	}
-	srv, ok := s.rt.ServerConfig(r.PathValue("server"))
-	if !ok || srv.Spec.Portal == nil || srv.Spec.Portal.Theme == nil || srv.Spec.Portal.Theme.Logo == "" {
-		notFoundHandler(w, r)
-		return
-	}
-	logo := srv.Spec.Portal.Theme.Logo
-	if strings.Contains(logo, "://") {
-		http.Redirect(w, r, logo, http.StatusFound)
-		return
-	}
-	rev, _ := s.rt.Revision()
-	rel := path.Clean(path.Join(path.Dir(srv.File), logo))
-	if !filepath.IsLocal(filepath.FromSlash(rel)) {
-		notFoundHandler(w, r)
-		return
-	}
-	data, err := os.ReadFile(filepath.Join(rev.Dir, filepath.FromSlash(rel)))
-	if err != nil {
-		notFoundHandler(w, r)
-		return
-	}
-	ct := mime.TypeByExtension(path.Ext(rel))
-	if !strings.HasPrefix(ct, "image/") {
-		notFoundHandler(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Cache-Control", "public, max-age=300")
-	http.ServeContent(w, r, path.Base(rel), time.Time{}, bytes.NewReader(data))
 }
+
+// maxPortalImage bounds the logo / banner files served (10 MiB).
+const maxPortalImage = 10 << 20
 
 type memberRoleDTO struct {
 	Key   string `json:"key"`
@@ -281,6 +363,13 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	resp, _, err := s.rt.HandleRoute(r.Context(), serverKey, botKey, inst, r.Method, routePath, req)
+	if viewer != nil && !isSafeMethod(r.Method) {
+		// Plugins often change the viewer's roles (onboarding): do not serve the cached
+		// member to the portal's next /me.
+		s.members.mu.Lock()
+		delete(s.members.entries, serverKey+"/"+viewer.User.ID)
+		s.members.mu.Unlock()
+	}
 	if errors.Is(err, runtime.ErrNotFound) {
 		notFoundHandler(w, r)
 		return

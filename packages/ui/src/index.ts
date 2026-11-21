@@ -39,3 +39,7 @@ export type {
   StepperStep,
 } from "./components.tsx";
 export { contrast, legibleOn, luminance, parseHex, readableOn } from "./color.ts";
+export { Markdown, parseMarkdown, renderInline } from "./markdown.tsx";
+export type { MarkdownBlock, MarkdownProps } from "./markdown.tsx";
+export { LinkIcon, LINK_ICONS } from "./icons.tsx";
+export type { LinkIconProps } from "./icons.tsx";

@@ -1,0 +1,142 @@
+# yaml-language-server: $schema=../../../spec/schemas/server.schema.json
+apiVersion: codi.dev/v1alpha1
+kind: Server
+metadata:
+  name: showcase
+spec:
+  discordId: "223344556677889900"
+  profile:
+    name: CODI Showcase
+    verificationLevel: low
+    defaultNotifications: onlyMentions
+    systemChannel: general
+    rulesChannel: rules
+
+  # Pruning is on: everything not declared here and not owned by a plugin is removed. Ticket
+  # channels are created at runtime by the tickets plugin, recorded as plugin-owned and never
+  # pruned.
+  syncPolicy:
+    selfHeal: false
+    prune: true
+    deletionProtection: false
+
+  # Everyone who joins can chat right away (there is no verification step in the showcase):
+  # levels, polls and tickets need regular members to be able to post.
+  everyone:
+    permissions: [ViewChannel, ReadMessageHistory, AddReactions, UseApplicationCommands,
+                  SendMessages, SendMessagesInThreads, EmbedLinks, AttachFiles]
+
+  roles:
+    admin:
+      name: Admin
+      color: "#e74c3c"
+      hoist: true
+      permissions: [Administrator]
+    mod:
+      name: Moderator
+      color: "#e67e22"
+      hoist: true
+      permissions: [KickMembers, BanMembers, ModerateMembers, ManageMessages, ManageThreads, ViewAuditLog]
+    support:
+      name: Support
+      color: "#2ecc71"
+      hoist: true
+    member:
+      name: Member
+      color: "#3498db"
+      permissions: [CreatePublicThreads]
+    # Level rewards (plugin "levels").
+    regular:
+      name: Regular
+      color: "#95a5a6"
+    veteran:
+      name: Veteran
+      color: "#9b59b6"
+    legend:
+      name: Legend
+      color: "#f1c40f"
+      hoist: true
+
+  hierarchy: [admin, mod, support, legend, veteran, regular, member]
+
+  categories:
+    info:
+      name: Info
+      position: 0
+      overwrites:
+        "@everyone":
+          deny: [SendMessages]
+    community:
+      name: Community
+      position: 1
+    support:
+      name: Support
+      position: 2
+    staff:
+      name: Staff
+      position: 3
+      overwrites:
+        "@everyone":
+          deny: [ViewChannel]
+        mod:
+          allow: [ViewChannel, SendMessages]
+        support:
+          allow: [ViewChannel, SendMessages]
+
+  channels:
+    rules:
+      name: rules
+      type: text
+      category: info
+      position: 0
+    announcements:
+      name: announcements
+      type: text
+      category: info
+      position: 1
+    general:
+      name: general
+      type: text
+      category: community
+      topic: Say hi!
+      position: 0
+    polls:
+      name: polls
+      type: text
+      category: community
+      topic: Vote on community decisions (/poll)
+      position: 1
+    level-ups:
+      name: level-ups
+      type: text
+      category: community
+      position: 2
+      overwrites:
+        "@everyone":
+          deny: [SendMessages]
+    help-desk:
+      name: help-desk
+      type: text
+      category: support
+      topic: Need help from the team? Open a ticket.
+      overwrites:
+        "@everyone":
+          deny: [SendMessages]
+    ticket-log:
+      name: ticket-log
+      type: text
+      category: staff
+    mod-log:
+      name: mod-log
+      type: text
+      category: staff
+    staff-chat:
+      name: staff-chat
+      type: text
+      category: staff
+
+  access:
+    admins:
+      roles: [admin]
+    moderators:
+      roles: [mod, support]

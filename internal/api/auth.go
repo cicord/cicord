@@ -35,6 +35,11 @@ type sessionData struct {
 	Method string `json:"method"`
 	// LinkServer restricts a session created from a portal link to that server.
 	LinkServer string `json:"linkServer,omitempty"`
+	// Token marks a bearer session token (token mode): only accepted in an
+	// Authorization header, never as a cookie; capped at member outside the portal.
+	Token bool `json:"token,omitempty"`
+	// Origin is the embedding site a token session was issued to (informational).
+	Origin string `json:"origin,omitempty"`
 }
 
 // identity is the caller of a request.
@@ -65,6 +70,9 @@ func (s *server) identify(r *http.Request) (*identity, error) {
 		if s.isBearer(r) {
 			return &identity{bearer: true, user: discord.User{ID: "runtime", Username: "runtime"}}, nil
 		}
+		if tok := bearerSessionToken(r); tok != "" {
+			return s.identifyToken(r.Context(), tok)
+		}
 		return nil, httpErr(http.StatusUnauthorized, "unauthenticated", "invalid bearer token")
 	}
 	c, err := r.Cookie(sessionCookie)
@@ -80,6 +88,9 @@ func (s *server) identify(r *http.Request) (*identity, error) {
 	}
 	var d sessionData
 	_ = json.Unmarshal(sess.Data, &d)
+	if d.Token {
+		return nil, nil // token sessions are never accepted as cookies
+	}
 	return &identity{sessionID: sess.ID, data: d, user: discord.User{
 		ID: sess.UserID, Username: d.Username, GlobalName: d.DisplayName, AvatarURL: d.AvatarURL,
 	}}, nil
@@ -256,7 +267,8 @@ func (s *server) roleIn(ctx context.Context, id *identity, serverKey string, por
 			r = roleModerator
 		}
 	}
-	if id.data.LinkServer != "" && !portal && r > roleMember {
+	// Link and token sessions only get their full role on the portal endpoints.
+	if (id.data.LinkServer != "" || id.data.Token) && !portal && r > roleMember {
 		r = roleMember
 	}
 	return r, m, nil
@@ -357,8 +369,13 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleLink(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Token string `json:"token"`
+		Mode  string `json:"mode"`
 	}
 	if err := s.decodeJSON(w, r, &body); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := checkMode(body.Mode); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -398,6 +415,15 @@ func (s *server) handleLink(w http.ResponseWriter, r *http.Request) {
 	if ttl > maxLinkTTL {
 		ttl = maxLinkTTL
 	}
+	if body.Mode == "token" {
+		out, err := s.createTokenSession(r.Context(), u, sessionData{Method: "link", LinkServer: claims.Server, Origin: r.Header.Get("Origin")}, ttl)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	id, err := s.createSession(w, r, u, sessionData{Method: "link", LinkServer: claims.Server}, ttl)
 	if err != nil {
 		s.fail(w, err)
@@ -424,8 +450,13 @@ func (s *server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		UserID string `json:"userId"`
+		Mode   string `json:"mode"`
 	}
 	if err := s.decodeJSON(w, r, &body); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := checkMode(body.Mode); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -448,6 +479,15 @@ func (s *server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if body.Mode == "token" {
+		out, err := s.createTokenSession(r.Context(), u, sessionData{Method: "dev", Origin: r.Header.Get("Origin")}, 0)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	id, err := s.createSession(w, r, u, sessionData{Method: "dev"}, 0)
 	if err != nil {
 		s.fail(w, err)
@@ -462,6 +502,17 @@ func (s *server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if tok := bearerSessionToken(r); tok != "" {
+		// Token mode: revoke the token; never touch the browser's cookie session.
+		if id, err := s.identifyToken(r.Context(), tok); err == nil {
+			if err := s.store.Sessions().Delete(r.Context(), id.sessionID); err != nil && !errors.Is(err, state.ErrNotFound) {
+				s.fail(w, err)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
 		if err := s.store.Sessions().Delete(r.Context(), c.Value); err != nil && !errors.Is(err, state.ErrNotFound) {
 			s.fail(w, err)
@@ -477,6 +528,16 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 type oauthState struct {
 	Redirect string `json:"redirect"`
+	// Mode "token": the callback redirects with a one-time code instead of a cookie.
+	Mode string `json:"mode,omitempty"`
+}
+
+// checkMode validates the auth mode of a login request ("" = cookie).
+func checkMode(mode string) error {
+	if mode != "" && mode != "cookie" && mode != "token" {
+		return httpErr(http.StatusBadRequest, "invalid", "mode must be cookie or token")
+	}
+	return nil
 }
 
 // safeRedirect accepts a local path ("/x", not "//x" nor "/\x") or an absolute URL on an
@@ -538,8 +599,22 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "Discord login is not configured (CODI_DISCORD_CLIENT_SECRET)"))
 		return
 	}
+	mode := r.URL.Query().Get("mode")
+	if err := checkMode(mode); err != nil {
+		s.fail(w, err)
+		return
+	}
+	stv := oauthState{Redirect: s.safeRedirect(r.URL.Query().Get("redirect"))}
+	if mode == "token" {
+		target, _, ok := s.tokenRedirect(r.URL.Query().Get("redirect"))
+		if !ok {
+			s.fail(w, httpErr(http.StatusBadRequest, "invalid", "redirect must be a local path or a URL on an allowed origin"))
+			return
+		}
+		stv = oauthState{Redirect: target, Mode: "token"}
+	}
 	st := auth.RandomID(24)
-	data, _ := json.Marshal(oauthState{Redirect: s.safeRedirect(r.URL.Query().Get("redirect"))})
+	data, _ := json.Marshal(stv)
 	if err := s.store.KV("api:oauth").Set(r.Context(), st, data, 10*time.Minute); err != nil {
 		s.fail(w, err)
 		return
@@ -589,6 +664,15 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.log.Warn("oauth exchange failed", "err", err)
 		s.fail(w, httpErr(http.StatusUnauthorized, "unauthenticated", "Discord login failed"))
+		return
+	}
+	if os.Mode == "token" {
+		target, err := s.issueAuthCode(r.Context(), u, os.Redirect)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		http.Redirect(w, r, target, http.StatusFound)
 		return
 	}
 	if _, err := s.createSession(w, r, u, sessionData{Method: "oauth"}, 0); err != nil {

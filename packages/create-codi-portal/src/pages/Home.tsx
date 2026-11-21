@@ -1,54 +1,84 @@
+import { isSafeUrl, type OnboardingSteps } from "@codi/client";
 import { useLinkTokenLogin, useMe, useMember, usePluginQuery } from "@codi/react";
-import type { OnboardingSteps } from "@codi/client";
-import { Button, Notice, Spinner } from "@codi/ui";
-import { t } from "../i18n/fr.ts";
-import { ServerMark, useLogin, useServer } from "../portal.tsx";
+import { LinkIcon, Markdown, Notice, Spinner } from "@codi/ui";
+import type { ReactNode } from "react";
+import { useT } from "../i18n/index.tsx";
+import { ServerMark, SignIn, usePages, usePlugin, useServer } from "../portal.tsx";
 import { Link } from "../router.tsx";
 
 export function Home() {
   const server = useServer();
+  const t = useT();
   const me = useMe();
   const linkLogin = useLinkTokenLogin();
-  const login = useLogin();
   const user = me.data?.user;
+  const links = server.links.filter((l) => isSafeUrl(l.url));
 
   return (
-    <div className="home">
+    <div className={server.banner ? "home home--banner" : "home"}>
       <section className="home-hero" aria-labelledby="home-title">
+        {server.banner ? (
+          <div className="home-hero__banner">
+            <img src={server.banner} alt="" />
+          </div>
+        ) : null}
         <ServerMark size={112} className="home-hero__mark" />
         <h1 id="home-title" className="home-hero__title">
-          {server.name}
+          {server.title}
         </h1>
-        <p className="home-hero__lead">{t.portalOf(server.name)}</p>
+        <p className="home-hero__lead">{server.tagline || t.portalOf(server.name)}</p>
+        {links.length > 0 ? (
+          <ul className="home-links" aria-label={t.home.links}>
+            {links.map((l) => (
+              <li key={`${l.label}-${l.url}`}>
+                <a className="home-link" href={l.url} target="_blank" rel="noopener noreferrer">
+                  <LinkIcon name={l.icon} size={18} />
+                  <span>{l.label}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
-      <section className="home-panel" aria-live="polite">
-        {me.isLoading || linkLogin.status === "pending" ? (
-          <div className="home-panel__loading">
-            <Spinner label={t.loading} />
-          </div>
-        ) : user ? (
-          <MemberHome name={user.displayName} />
-        ) : (
-          <div className="home-login">
-            <h2>{t.home.loggedOutTitle}</h2>
-            <p>{t.home.loggedOut}</p>
-            <Button size="lg" onClick={login}>
-              {t.login}
-            </Button>
-          </div>
-        )}
-      </section>
+      <div className={server.description ? "home-body home-body--split" : "home-body"}>
+        <section className="home-panel" aria-live="polite">
+          {me.isLoading || linkLogin.status === "pending" ? (
+            <div className="home-panel__loading">
+              <Spinner label={t.loading} />
+            </div>
+          ) : user ? (
+            <MemberHome name={user.displayName} />
+          ) : (
+            <div className="home-login">
+              <h2>{t.home.loggedOutTitle}</h2>
+              <p>{t.home.loggedOut}</p>
+              <SignIn />
+            </div>
+          )}
+        </section>
+        {server.description ? (
+          <section className="home-about" aria-labelledby="home-about">
+            <h2 id="home-about" className="home-about__title">
+              {t.home.about}
+            </h2>
+            <Markdown source={server.description} baseLevel={3} />
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }
 
 function MemberHome({ name }: { name: string }) {
-  const server = useServer();
+  const t = useT();
   const member = useMember();
-  const onboarding = server.plugins.find((p) => p.plugin === "onboarding");
+  const pages = usePages();
+  const onboarding = usePlugin("onboarding");
   const steps = usePluginQuery<OnboardingSteps>(
-    onboarding && member.data ? { bot: onboarding.bot, instance: onboarding.instance } : undefined,
+    pages.onboarding && onboarding && member.data
+      ? { bot: onboarding.bot, instance: onboarding.instance }
+      : undefined,
     "/steps",
   );
 
@@ -64,36 +94,57 @@ function MemberHome({ name }: { name: string }) {
     <div className="home-member">
       <h2>{t.home.hello(name)}</h2>
       <ul className="home-actions">
-        {onboarding ? (
-          <li>
-            <Link to="/onboarding" className="home-action">
-              <span className="home-action__icon" aria-hidden="true">
-                ✨
-              </span>
-              <span className="home-action__text">
-                <span className="home-action__title">{t.home.onboardingTitle}</span>
-                <span className="home-action__desc">
-                  {steps.data?.completed ? t.home.onboardingDone : t.home.onboardingTodo}
-                </span>
-              </span>
-              <Chevron />
-            </Link>
-          </li>
+        {pages.onboarding ? (
+          <Action
+            to="/onboarding"
+            icon="✨"
+            title={t.home.onboardingTitle}
+            desc={steps.data?.completed ? t.home.onboardingDone : t.home.onboardingTodo}
+          />
         ) : null}
-        <li>
-          <Link to="/me" className="home-action">
-            <span className="home-action__icon" aria-hidden="true">
-              🪪
-            </span>
-            <span className="home-action__text">
-              <span className="home-action__title">{t.home.profileTitle}</span>
-              <span className="home-action__desc">{t.home.profileText}</span>
-            </span>
-            <Chevron />
-          </Link>
-        </li>
+        {pages.profile ? (
+          <Action to="/me" icon="🪪" title={t.home.profileTitle} desc={t.home.profileText} />
+        ) : null}
+        {pages.leaderboard ? (
+          <Action
+            to="/leaderboard"
+            icon="🏆"
+            title={t.home.leaderboardTitle}
+            desc={t.home.leaderboardText}
+          />
+        ) : null}
+        {pages.ticketsInNav ? (
+          <Action to="/tickets" icon="🎫" title={t.home.ticketsTitle} desc={t.home.ticketsText} />
+        ) : null}
       </ul>
     </div>
+  );
+}
+
+function Action({
+  to,
+  icon,
+  title,
+  desc,
+}: {
+  to: string;
+  icon: ReactNode;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <li>
+      <Link to={to} className="home-action">
+        <span className="home-action__icon" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="home-action__text">
+          <span className="home-action__title">{title}</span>
+          <span className="home-action__desc">{desc}</span>
+        </span>
+        <Chevron />
+      </Link>
+    </li>
   );
 }
 

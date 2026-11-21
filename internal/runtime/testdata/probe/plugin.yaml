@@ -1,0 +1,13 @@
+# Test fixture of internal/runtime/showcase_test.go: exercises the error paths and edge
+# cases of the SDK that a real plugin should never hit on purpose (capability errors,
+# throwing handlers, runaway loops, slow handlers), plus message content gating.
+apiVersion: codi.dev/v1alpha1
+kind: Plugin
+metadata:
+  name: probe
+  version: 0.0.1
+spec:
+  engine: ">=0.1.0"
+  entry: ./src/index.ts
+  capabilities: [storage.kv, portal.routes, discord.messages.send]
+  intents: [ServerMessages]

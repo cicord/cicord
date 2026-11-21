@@ -166,6 +166,7 @@
       "additionalProperties": false
     },
     "portal": {
+      "description": "Community portal of this server (spec/api.md §6). Declaring it publishes the server on the portal.",
       "type": "object",
       "properties": {
         "theme": {
@@ -173,10 +174,72 @@
           "properties": {
             "primary": { "$ref": "common.schema.json#/$defs/color" },
             "accent": { "$ref": "common.schema.json#/$defs/color" },
-            "logo": { "$ref": "common.schema.json#/$defs/relativePath" },
+            "logo": {
+              "description": "Image file of the repository (png, jpg, gif, webp, avif or svg), relative to this file.",
+              "$ref": "common.schema.json#/$defs/relativePath"
+            },
             "mode": { "enum": ["light", "dark", "system"], "default": "system" }
           },
           "additionalProperties": false
+        },
+        "title": {
+          "description": "Headline of the portal home page. Default: the server name.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "tagline": {
+          "description": "One sentence under the title.",
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "description": "Longer presentation (Markdown subset: paragraphs, headings, lists, **bold**, *italic*, `code`, [links](https://…)). Raw HTML is shown as text.",
+          "type": "string",
+          "maxLength": 4000
+        },
+        "banner": {
+          "description": "Wide header image of the home page (png, jpg, gif, webp, avif or svg), relative to this file.",
+          "$ref": "common.schema.json#/$defs/relativePath"
+        },
+        "links": {
+          "description": "Links shown on the home page (website, socials, rules…).",
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": ["label", "url"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1, "maxLength": 60 },
+              "url": {
+                "description": "http(s) URL.",
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https?://",
+                "maxLength": 500
+              },
+              "icon": {
+                "enum": ["link", "website", "discord", "youtube", "twitch", "x", "bluesky", "mastodon", "instagram", "tiktok", "github", "reddit", "steam", "rules", "calendar", "shop"],
+                "default": "link"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "pages": {
+          "description": "Pages of the default portal. A disabled page is hidden from the navigation and answers \"not found\".",
+          "type": "object",
+          "properties": {
+            "onboarding": { "type": "boolean", "default": true },
+            "profile": { "type": "boolean", "default": true },
+            "leaderboard": { "type": "boolean", "default": true },
+            "tickets": { "type": "boolean", "default": true }
+          },
+          "additionalProperties": false
+        },
+        "locale": {
+          "description": "Interface language of the default portal. Default: the browser language when supported, else English.",
+          "enum": ["en", "fr"]
         }
       },
       "additionalProperties": false

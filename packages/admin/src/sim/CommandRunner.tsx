@@ -2,8 +2,9 @@
 import type { Json, SimCommand, SimCommandOption, SimServer } from "@codi/client";
 import { useMemo, useState, type FormEvent } from "react";
 import { jsonText } from "../schema-form/values.ts";
-import { IconPlay, IconSlash } from "../ui/icons.tsx";
-import { Button, EmptyState } from "../ui/index.tsx";
+import { IconPlay, IconSlash } from "./kit.tsx";
+import { Button, EmptyState } from "./kit.tsx";
+import { i18n } from "../i18n/index.ts";
 
 export interface CommandOption {
   name: string;
@@ -90,8 +91,8 @@ export function CommandRunner({
 
   if (commands.length === 0)
     return (
-      <EmptyState icon={<IconSlash />} title="No slash commands on this server">
-        Plugins register commands with <code>command()</code> in <code>definePlugin</code>.
+      <EmptyState icon={<IconSlash />} title={i18n.t("sim.commands.none")}>
+        {i18n.t("sim.commands.noneText")}
       </EmptyState>
     );
 
@@ -122,7 +123,7 @@ export function CommandRunner({
     <form className="cmd-runner" onSubmit={(e) => void submit(e)}>
       <div className="cmd-pick">
         <label htmlFor="sim-command" className="sr-only">
-          Command
+          {i18n.t("sim.commands.command")}
         </label>
         <span className="cmd-slash" aria-hidden="true">
           /
@@ -160,7 +161,9 @@ export function CommandRunner({
                   value={value}
                   onChange={(e) => set(e.target.value)}
                 >
-                  <option value="">{o.required ? "Choose…" : "Not set"}</option>
+                  <option value="">
+                    {o.required ? i18n.t("sim.commands.choose") : i18n.t("sim.commands.notSet")}
+                  </option>
                   {o.choices.map((c) => (
                     <option key={jsonText(c.value)} value={jsonText(c.value)}>
                       {c.name}
@@ -176,9 +179,11 @@ export function CommandRunner({
                   value={value}
                   onChange={(e) => set(e.target.value)}
                 >
-                  <option value="">{o.required ? "Choose…" : "Not set"}</option>
-                  <option value="true">True</option>
-                  <option value="false">False</option>
+                  <option value="">
+                    {o.required ? i18n.t("sim.commands.choose") : i18n.t("sim.commands.notSet")}
+                  </option>
+                  <option value="true">{i18n.t("sim.commands.true")}</option>
+                  <option value="false">{i18n.t("sim.commands.false")}</option>
                 </select>
               );
             } else if (o.type === "user" || o.type === "mentionable") {
@@ -189,7 +194,11 @@ export function CommandRunner({
                   value={value}
                   onChange={(e) => set(e.target.value)}
                 >
-                  <option value="">{o.required ? "Choose a member…" : "Not set"}</option>
+                  <option value="">
+                    {o.required
+                      ? i18n.t("sim.commands.chooseMember")
+                      : i18n.t("sim.commands.notSet")}
+                  </option>
                   {server.members.map((m) => (
                     <option key={m.user.id} value={m.user.id}>
                       @{m.nick || m.user.displayName || m.user.username}
@@ -212,7 +221,11 @@ export function CommandRunner({
                   value={value}
                   onChange={(e) => set(e.target.value)}
                 >
-                  <option value="">{o.required ? "Choose a channel…" : "Not set"}</option>
+                  <option value="">
+                    {o.required
+                      ? i18n.t("sim.commands.chooseChannel")
+                      : i18n.t("sim.commands.notSet")}
+                  </option>
                   {channels.map((c) => (
                     <option key={c.id} value={c.id}>
                       #{c.name}
@@ -228,7 +241,9 @@ export function CommandRunner({
                   value={value}
                   onChange={(e) => set(e.target.value)}
                 >
-                  <option value="">{o.required ? "Choose a role…" : "Not set"}</option>
+                  <option value="">
+                    {o.required ? i18n.t("sim.commands.chooseRole") : i18n.t("sim.commands.notSet")}
+                  </option>
                   {server.roles.map((r) => (
                     <option key={r.id} value={r.id}>
                       @{r.name}
@@ -257,7 +272,7 @@ export function CommandRunner({
                   value={value}
                   disabled={o.type === "attachment"}
                   placeholder={
-                    o.type === "attachment" ? "Attachments are not simulated" : undefined
+                    o.type === "attachment" ? i18n.t("sim.commands.noAttachments") : undefined
                   }
                   onChange={(e) => set(e.target.value)}
                 />
@@ -268,7 +283,9 @@ export function CommandRunner({
                 <label htmlFor={id} className="cmd-option-label">
                   <code>{o.name}</code>
                   <span className="muted small">{o.type}</span>
-                  {o.required ? <span className="req">required</span> : null}
+                  {o.required ? (
+                    <span className="req">{i18n.t("sim.commands.required")}</span>
+                  ) : null}
                 </label>
                 {input}
                 {o.description ? <span className="muted small">{o.description}</span> : null}
@@ -286,7 +303,7 @@ export function CommandRunner({
           loading={running}
           disabled={disabled || !command || missing.length > 0}
         >
-          Run /{command?.name}
+          {i18n.t("sim.commands.run", { name: command?.name ?? "" })}
         </Button>
       </div>
     </form>

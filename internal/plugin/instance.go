@@ -44,6 +44,12 @@ type Env struct {
 	// AllowPrivateNetworks disables the egress address checks and allows plain http
 	// (tests and `codi dev` only).
 	AllowPrivateNetworks bool
+	// MessageContent reports that the plugin declares the MessageContent intent in
+	// plugin.yaml. Without it, message content and attachments are blanked in every
+	// Message the plugin sees (events and channel.messages()), like Discord does for bots
+	// without the intent, except for the bot's own messages, messages that mention the bot
+	// and DMs. Gateway intents are unioned per bot, so this keeps the gating per plugin.
+	MessageContent bool
 
 	Discord  discord.Client
 	Resolver Resolver // may be nil (nothing resolves)

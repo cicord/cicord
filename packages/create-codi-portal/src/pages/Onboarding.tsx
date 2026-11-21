@@ -17,10 +17,11 @@ import {
   Stepper,
 } from "@codi/ui";
 import { useEffect, useMemo, useRef } from "react";
-import { t } from "../i18n/fr.ts";
+import { useT } from "../i18n/index.tsx";
 import { useLogin, useServer } from "../portal.tsx";
 
 export function Onboarding() {
+  const t = useT();
   const linkLogin = useLinkTokenLogin();
   const me = useMe();
   const login = useLogin();
@@ -123,6 +124,7 @@ function usePreviewRoles(flow: OnboardingFlowState): { roles: PortalRole[]; fres
 }
 
 function Steps({ flow }: { flow: OnboardingFlowState }) {
+  const t = useT();
   const me = useMe();
   const server = useServer();
   const preview = usePreviewRoles(flow);
@@ -248,6 +250,7 @@ function Steps({ flow }: { flow: OnboardingFlowState }) {
 }
 
 function Done({ flow, result }: { flow: OnboardingFlowState; result: OnboardingCompleteResponse }) {
+  const t = useT();
   const me = useMe();
   const user = me.data?.user;
   const headingRef = useRef<HTMLHeadingElement>(null);

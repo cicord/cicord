@@ -6,10 +6,39 @@ import {
   type WriteBackResult,
 } from "@codi/client";
 import { useCodi } from "@codi/react";
-import { useEffect, useMemo, useState } from "react";
-import { keys, usePlugins, useResources, useRole, useStatus } from "../api.ts";
-import { RoleBadge, useViewer } from "../context.tsx";
 import {
+  ExternalLink,
+  GitCommitHorizontal,
+  Lock,
+  Puzzle,
+  Slash,
+  TriangleAlert,
+} from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { toast } from "sonner";
+import { keys, usePlugins, useResources, useStatus } from "../api.ts";
+import {
+  EmptyState,
+  LoadingRows,
+  Mono,
+  Page,
+  PageHeader,
+  PluginGlyph,
+  Sha,
+} from "../components/common.tsx";
+import { Callout, ErrorState, toastError } from "../components/errors.tsx";
+import { HealthBadge } from "../components/status.tsx";
+import { Badge } from "../components/ui/badge.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { Card } from "../components/ui/card.tsx";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group.tsx";
+import { Tip } from "../components/ui/tooltip.tsx";
+import { useWorkspace } from "../context.tsx";
+import { useTranslation } from "../i18n/index.ts";
+import { cleanMessage } from "../lib/errors.ts";
+import { cn } from "../lib/utils.ts";
+import {
+  applyDefaults,
   changedTopLevel,
   collectPointers,
   diffConfig,
@@ -17,35 +46,19 @@ import {
   mapDiagnostics,
   mergeErrors,
   SchemaForm,
-  applyDefaults,
   validate,
   type FieldChange,
   type JsonObject,
   type JsonSchema,
 } from "../schema-form/index.ts";
-import { IconExternal, IconLock, IconPlug, IconSlash } from "../ui/icons.tsx";
-import {
-  Badge,
-  Button,
-  Callout,
-  EmptyState,
-  ErrorState,
-  errorMessage,
-  HealthBadge,
-  PageHeader,
-  Sha,
-  Skeleton,
-  useToast,
-} from "../ui/index.tsx";
-import { ValueView } from "./Server.tsx";
+import { ValueView } from "./Sync.tsx";
 
 export function PluginsPage({ serverKey }: { serverKey: string }) {
-  const me = useViewer();
-  const role = useRole(me, serverKey);
+  const { t } = useTranslation();
+  const ws = useWorkspace();
   const plugins = usePlugins(serverKey);
   const resources = useResources(serverKey);
   const status = useStatus();
-  const name = status.data?.servers.find((s) => s.key === serverKey)?.name ?? serverKey;
 
   useEffect(() => {
     if (!plugins.data || !window.location.hash) return;
@@ -53,77 +66,82 @@ export function PluginsPage({ serverKey }: { serverKey: string }) {
   }, [plugins.data]);
 
   return (
-    <div className="page">
+    <Page>
       <PageHeader
-        eyebrow={<code>bots/*/bot.yaml</code>}
-        title={`Plugins on ${name}`}
+        title={t("plugins.title")}
+        description={t("plugins.description")}
         meta={
-          <>
-            <RoleBadge role={role} />
-            <span className="muted small">
-              Saving settings commits to git; the runtime then activates the new revision.
+          plugins.data ? (
+            <span className="text-xs text-muted-foreground">
+              {t("plugins.count", { count: plugins.data.length })}
             </span>
-          </>
+          ) : null
         }
       />
       {plugins.isLoading ? (
-        <Skeleton lines={8} />
+        <Card>
+          <LoadingRows rows={8} />
+        </Card>
       ) : !plugins.data ? (
         <ErrorState error={plugins.error} onRetry={() => void plugins.refetch()} />
       ) : plugins.data.length === 0 ? (
-        <EmptyState icon={<IconPlug />} title="No plugins on this server">
-          Add a plugin to a bot's <code>spec.plugins</code> and list this server in{" "}
-          <code>spec.servers</code>.
-        </EmptyState>
+        <Card>
+          <EmptyState icon={<Puzzle />} title={t("plugins.empty.title")}>
+            {t("plugins.empty.text")}
+          </EmptyState>
+        </Card>
       ) : (
-        <div className="plugin-list">
+        <div className="flex flex-col gap-6">
           {plugins.data.map((p) => (
             <PluginCard
               key={`${p.bot}/${p.instance}`}
               instance={p}
               serverKey={serverKey}
-              role={role}
+              role={ws.role}
               resources={resources.data}
               revision={status.data?.revision?.id ?? ""}
             />
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }
 
 // ───────────────────────────────────────────────────────────── capabilities
 
-const CAPABILITIES: Record<string, { label: string; risk?: "high" | "medium" }> = {
-  "discord.messages.read": { label: "Read messages" },
-  "discord.messages.send": { label: "Send messages" },
-  "discord.messages.manage": { label: "Manage messages", risk: "medium" },
-  "discord.reactions.manage": { label: "Manage reactions" },
-  "discord.members.read": { label: "Read members" },
-  "discord.members.manage": { label: "Change nicknames", risk: "medium" },
-  "discord.members.moderate": { label: "Timeout, kick, ban", risk: "high" },
-  "discord.roles.assign": { label: "Assign roles", risk: "medium" },
-  "discord.channels.read": { label: "Read channels" },
-  "discord.channels.manage": { label: "Manage channels", risk: "medium" },
-  "discord.threads.manage": { label: "Manage threads" },
-  "discord.dm.send": { label: "Send DMs" },
-  "storage.kv": { label: "Key-value storage" },
-  scheduler: { label: "Scheduled tasks" },
-  "http.fetch": { label: "Outbound HTTP", risk: "medium" },
-  "portal.routes": { label: "Portal routes" },
-  "portal.links": { label: "Portal links" },
-  "events.publish": { label: "Publish events" },
-  "events.subscribe": { label: "Subscribe to events" },
+const RISK: Record<string, "high" | "medium"> = {
+  "discord.messages.manage": "medium",
+  "discord.members.manage": "medium",
+  "discord.members.moderate": "high",
+  "discord.roles.assign": "medium",
+  "discord.channels.manage": "medium",
+  "http.fetch": "medium",
 };
 
 function CapabilityChip({ cap }: { cap: string }) {
-  const info = CAPABILITIES[cap];
+  const { t } = useTranslation();
+  const risk = RISK[cap];
+  const label = t(`plugins.capabilities.${cap.replaceAll(".", "_") as "storage_kv"}`, {
+    defaultValue: cap,
+  });
   return (
-    <span className="cap" data-risk={info?.risk} title={cap}>
-      {info?.label ?? cap}
-      <code>{cap}</code>
-    </span>
+    <Tip content={<Mono>{cap}</Mono>}>
+      <span
+        tabIndex={0}
+        className={cn(
+          "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-xs",
+          risk === "high"
+            ? "border-danger/30 text-danger"
+            : risk === "medium"
+              ? "border-warning/30 text-warning"
+              : "border-border-strong text-foreground/90",
+        )}
+      >
+        {risk ? <TriangleAlert className="size-3" aria-hidden="true" /> : null}
+        {label}
+      </span>
+    </Tip>
   );
 }
 
@@ -147,96 +165,106 @@ function PluginCard({
   resources: Parameters<typeof SchemaForm>[0]["resources"];
   revision: string;
 }) {
+  const { t } = useTranslation();
   const p = instance.plugin;
   const [outcome, setOutcome] = useState<SaveOutcome | null>(null);
   const [scope, setScope] = useState<ConfigScope>("server");
   const anchor = `${instance.bot}-${instance.instance}`;
   const hasSettings = Object.keys((instance.schema as JsonSchema).properties ?? {}).length > 0;
+  const name = p.displayName || p.name;
   return (
-    <article className="plugin-card" id={anchor} aria-labelledby={`${anchor}-title`}>
-      <header className="plugin-head">
-        <div className="plugin-icon" aria-hidden="true">
-          {(p.displayName || p.name).slice(0, 1).toUpperCase()}
-        </div>
-        <div className="plugin-titles">
-          <h2 className="plugin-title" id={`${anchor}-title`}>
-            {p.displayName || p.name}
-            <span className="plugin-version">
+    <Card id={anchor} role="article" aria-labelledby={`${anchor}-title`} className="scroll-mt-20">
+      <header className="flex items-start gap-3 border-b px-4 py-4">
+        <PluginGlyph size={36} />
+        <div className="min-w-0 flex-1">
+          <h2
+            className="flex flex-wrap items-baseline gap-x-2 text-[15px] font-semibold"
+            id={`${anchor}-title`}
+          >
+            {name}
+            <Mono className="text-[11px] font-normal">
               {p.name}@{p.version}
-            </span>
+            </Mono>
           </h2>
-          <p className="plugin-desc">{p.description}</p>
-          <p className="plugin-where muted small">
-            Instance <code>{instance.instance}</code> of bot <code>{instance.bot}</code> on{" "}
-            <code>{serverKey}</code>
+          {p.description ? (
+            <p className="mt-0.5 text-[13px] text-muted-foreground">{p.description}</p>
+          ) : null}
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {t("plugins.where.instance")}{" "}
+            <Mono className="text-foreground">{instance.instance}</Mono> {t("plugins.where.bot")}{" "}
+            <Mono className="text-foreground">{instance.bot}</Mono>
           </p>
         </div>
-        <HealthBadge health={instance.health} title={instance.message} />
+        <HealthBadge health={instance.health} />
       </header>
-      {instance.message ? <p className="plugin-msg">{instance.message}</p> : null}
+      {instance.message ? (
+        <div className="border-b px-4 py-3">
+          <Callout
+            tone={instance.health === "Degraded" ? "danger" : "info"}
+            title={cleanMessage(instance.message)}
+            details={instance.message}
+          />
+        </div>
+      ) : null}
 
-      <div className="plugin-meta">
-        <div className="plugin-meta-block">
-          <h3>Capabilities</h3>
+      <div className="grid gap-x-6 gap-y-4 border-b px-4 py-4 md:grid-cols-2">
+        <MetaBlock title={t("plugins.meta.capabilities")}>
           {p.capabilities.length ? (
-            <div className="caps">
+            <div className="flex flex-wrap gap-1.5">
               {p.capabilities.map((c) => (
                 <CapabilityChip key={c} cap={c} />
               ))}
             </div>
           ) : (
-            <p className="muted small">None</p>
+            <None />
           )}
-        </div>
-        <div className="plugin-meta-block">
-          <h3>Gateway intents</h3>
+        </MetaBlock>
+        <MetaBlock title={t("plugins.meta.intents")}>
           {p.intents.length ? (
-            <div className="caps">
+            <div className="flex flex-wrap gap-1.5">
               {p.intents.map((i) => (
-                <span key={i} className="cap cap-plain">
+                <Badge key={i} tone="neutral" className="h-6 px-2 font-mono font-normal">
                   {i}
-                </span>
+                </Badge>
               ))}
             </div>
           ) : (
-            <p className="muted small">None</p>
+            <None />
           )}
-        </div>
-        <div className="plugin-meta-block">
-          <h3>Commands</h3>
+        </MetaBlock>
+        <MetaBlock title={t("plugins.meta.commands")}>
           {instance.commands.length ? (
-            <ul className="cmd-list">
+            <ul className="flex flex-col gap-1">
               {instance.commands.map((c) => (
-                <li key={c.name}>
-                  <code className="cmd-name">
-                    <IconSlash size={11} />
+                <li key={c.name} className="flex items-baseline gap-2 text-[13px]">
+                  <code className="inline-flex items-center font-mono text-[12px] text-foreground">
+                    <Slash className="size-3 text-subtle-foreground" aria-hidden="true" />
                     {c.name}
                   </code>
-                  <span className="muted">{c.description}</span>
+                  <span className="truncate text-muted-foreground">{c.description}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="muted small">None</p>
+            <None />
           )}
-        </div>
+        </MetaBlock>
         {instance.routes && instance.routes.length ? (
-          <div className="plugin-meta-block">
-            <h3>Portal routes</h3>
-            <ul className="cmd-list">
+          <MetaBlock title={t("plugins.meta.routes")}>
+            <ul className="flex flex-col gap-1">
               {instance.routes.map((r) => (
                 <li key={r}>
-                  <code>{r}</code>
+                  <Mono className="text-foreground">{r}</Mono>
                 </li>
               ))}
             </ul>
-          </div>
+          </MetaBlock>
         ) : null}
       </div>
 
-      <section className="settings" aria-label={`${p.displayName || p.name} settings`}>
-        <div className="settings-head">
-          <h3>Settings</h3>
+      <section className="px-4 py-4" aria-label={t("plugins.settings.label", { name })}>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-[13px] font-semibold">{t("plugins.settings.title")}</h3>
           {outcome ? <OutcomeNote outcome={outcome} onDismiss={() => setOutcome(null)} /> : null}
         </div>
         {hasSettings ? (
@@ -252,42 +280,62 @@ function PluginCard({
             onOutcome={setOutcome}
           />
         ) : (
-          <p className="muted small">This plugin has no settings.</p>
+          <p className="text-[13px] text-muted-foreground">{t("plugins.settings.none")}</p>
         )}
       </section>
-    </article>
+    </Card>
   );
 }
 
+function MetaBlock({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function None() {
+  const { t } = useTranslation();
+  return <p className="text-[13px] text-subtle-foreground">{t("common.none")}</p>;
+}
+
 function OutcomeNote({ outcome, onDismiss }: { outcome: SaveOutcome; onDismiss: () => void }) {
+  const { t } = useTranslation();
   if (outcome.kind !== "saved") return null;
   const r = outcome.result;
   return (
-    <div className="outcome" role="status">
+    <div className="flex items-center gap-2 text-[13px]" role="status">
       {r.mode === "pullRequest" ? (
         <>
-          <Badge tone="info">Review required</Badge>
-          <a href={r.pullRequestUrl} target="_blank" rel="noreferrer" className="outcome-link">
-            Pull request opened <IconExternal size={12} />
+          <Badge tone="info">{t("plugins.outcome.review")}</Badge>
+          <a
+            href={r.pullRequestUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-brand hover:underline"
+          >
+            {t("plugins.outcome.prOpened")} <ExternalLink className="size-3" />
           </a>
         </>
       ) : (
         <>
-          <Badge tone="ok">Committed</Badge>
-          <span>
+          <Badge tone="success">{t("plugins.outcome.committed")}</Badge>
+          <span className="inline-flex items-center gap-1">
             {r.revision ? (
               <>
-                <Sha id={r.revision} /> is now the active revision
+                <Sha id={r.revision} /> {t("plugins.outcome.active")}
               </>
             ) : (
-              "Committed"
+              t("plugins.outcome.committed")
             )}
           </span>
         </>
       )}
-      <button className="link-btn small" onClick={onDismiss}>
-        Dismiss
-      </button>
+      <Button variant="link" size="sm" className="text-xs" onClick={onDismiss}>
+        {t("common.dismiss")}
+      </Button>
     </div>
   );
 }
@@ -320,11 +368,10 @@ function SettingsEditor({
   revision: string;
   onOutcome: (o: SaveOutcome | null) => void;
 }) {
+  const { t } = useTranslation();
   const { client, cache } = useCodi();
-  const toast = useToast();
   const schema = instance.schema as JsonSchema;
-  // "server" edits the effective config on this server; "base" edits spec.plugins[].config
-  // (with defaults shown) when the runtime exposes it.
+  // "server" edits the effective config on this server; "base" edits spec.plugins[].config.
   const baseConfig = instance.baseConfig ? applyDefaults(schema, instance.baseConfig) : undefined;
   const baseline = (scope === "base" && baseConfig ? baseConfig : instance.config) as JsonObject;
   const overridden = Object.keys(instance.override ?? {}).sort();
@@ -339,16 +386,15 @@ function SettingsEditor({
     byField: {},
     general: [],
   });
-  const [problem, setProblem] = useState<SaveOutcome | { kind: "error"; message: string } | null>(
-    null,
-  );
+  const [problem, setProblem] = useState<
+    SaveOutcome | { kind: "error"; message: string; details?: string | undefined } | null
+  >(null);
 
   const editable = instance.editable;
   const readOnly = editable.length === 0;
   const changes = useMemo(() => diffConfig(baseline, draft), [baseline, draft]);
   const dirty = changes.length > 0;
   const switchScope = (next: ConfigScope) => {
-    // The editor remounts with the new scope's values (keyed by scope).
     if (next !== scope && !dirty) onScope(next);
   };
   const touched = changedTopLevel(changes);
@@ -386,10 +432,8 @@ function SettingsEditor({
   const review = () => {
     setAttempted(true);
     if (clientErrors.length > 0) {
-      toast.push({
-        tone: "bad",
-        title: "Fix the highlighted fields first",
-        text: `${clientErrors.length} problem${clientErrors.length > 1 ? "s" : ""} found`,
+      toast.error(t("plugins.editor.fixFirst"), {
+        description: t("plugins.editor.problems", { count: clientErrors.length }),
       });
       return;
     }
@@ -411,18 +455,14 @@ function SettingsEditor({
         },
       );
       onOutcome({ kind: "saved", result, changed: touched });
-      toast.push(
-        result.mode === "pullRequest"
-          ? {
-              tone: "info",
-              title: "Pull request opened",
-              text: "The change applies once it is merged.",
-            }
-          : {
-              tone: "ok",
-              title: result.revision ? `Committed ${shortRev(result.revision)}` : "Committed",
-            },
-      );
+      if (result.mode === "pullRequest")
+        toast.info(t("plugins.outcome.prOpened"), { description: t("plugins.outcome.prText") });
+      else
+        toast.success(
+          result.revision
+            ? t("plugins.outcome.committedRev", { rev: shortRev(result.revision) })
+            : t("plugins.outcome.committed"),
+        );
       setReviewing(false);
       await Promise.all([
         cache.invalidate(keys.plugins(serverKey)),
@@ -442,7 +482,8 @@ function SettingsEditor({
       } else if (e instanceof CodiApiError && e.code === "conflict") {
         setProblem({ kind: "conflict", message: e.message });
       } else {
-        setProblem({ kind: "error", message: errorMessage(e) });
+        const d = toastError(e, t("plugins.editor.saveFailed"));
+        setProblem({ kind: "error", message: d.message, details: d.details });
       }
     } finally {
       setSaving(false);
@@ -459,93 +500,100 @@ function SettingsEditor({
   };
 
   return (
-    <div className="editor">
-      <div className="editor-bar">
-        <div className="scope" role="radiogroup" aria-label="Write to">
-          <span className="scope-label">Write to</span>
-          <div className="segmented">
-            <button
-              role="radio"
-              aria-checked={scope === "server"}
-              onClick={() => switchScope("server")}
-              disabled={readOnly || (dirty && scope !== "server")}
-              title={dirty && scope !== "server" ? "Save or discard your changes first" : undefined}
-            >
-              This server's override
-            </button>
-            <button
-              role="radio"
-              aria-checked={scope === "base"}
-              onClick={() => switchScope("base")}
-              disabled={readOnly || (dirty && scope !== "base")}
-              title={dirty && scope !== "base" ? "Save or discard your changes first" : undefined}
-            >
-              Base config
-            </button>
-          </div>
-        </div>
-        <span className="muted small scope-help">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span
+          className="text-xs text-muted-foreground"
+          id={`${instance.bot}-${instance.instance}-scope`}
+        >
+          {t("plugins.editor.writeTo")}
+        </span>
+        <ToggleGroup
+          type="single"
+          value={scope}
+          onValueChange={(v) => v && switchScope(v as ConfigScope)}
+          aria-labelledby={`${instance.bot}-${instance.instance}-scope`}
+        >
+          <ToggleGroupItem
+            value="server"
+            disabled={readOnly || (dirty && scope !== "server")}
+            title={dirty && scope !== "server" ? t("plugins.editor.saveFirst") : undefined}
+          >
+            {t("plugins.editor.scopeServer")}
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="base"
+            disabled={readOnly || (dirty && scope !== "base")}
+            title={dirty && scope !== "base" ? t("plugins.editor.saveFirst") : undefined}
+          >
+            {t("plugins.editor.scopeBase")}
+          </ToggleGroupItem>
+        </ToggleGroup>
+        <span className="text-xs text-muted-foreground">
           {scope === "server" ? (
             <>
-              Saved as <code>overrides.{serverKey}.config</code>: only what differs from the base.
+              {t("plugins.editor.savedAs")} <Mono>overrides.{serverKey}.config</Mono> ·{" "}
+              {t("plugins.editor.onlyDiff")}
             </>
           ) : (
             <>
-              Saved as <code>config</code>: applies to every server of bot{" "}
-              <code>{instance.bot}</code>.
+              {t("plugins.editor.savedAs")} <Mono>config</Mono> ·{" "}
+              {t("plugins.editor.everyServer", { bot: instance.bot })}
             </>
           )}
         </span>
       </div>
       {scope === "base" && !baseConfig ? (
-        <Callout tone="warn">
-          The form shows the effective values on <strong>{serverKey}</strong> (base plus this
-          server's override). Saving to the base writes them all as the shared base config.
-        </Callout>
+        <Callout tone="warning" title={t("plugins.editor.baseEffective", { server: serverKey })} />
       ) : scope === "base" && overridden.length ? (
-        <Callout tone="info">
-          Editing the base config. On <strong>{serverKey}</strong> the override still wins for{" "}
-          <code>{overridden.join(", ")}</code>.
-        </Callout>
+        <Callout
+          tone="info"
+          title={t("plugins.editor.baseOverride", {
+            server: serverKey,
+            fields: overridden.join(", "),
+          })}
+        />
       ) : scope === "server" && overridden.length ? (
-        <p className="muted small editor-note">
-          This server overrides <code>{overridden.join(", ")}</code>; other fields come from the
-          base config.
+        <p className="editor-note text-xs text-muted-foreground">
+          {t("plugins.editor.overrides")} <code className="font-mono">{overridden.join(", ")}</code>
+          {t("plugins.editor.overridesTail")}
         </p>
       ) : null}
       {readOnly ? (
-        <Callout tone="info" title="Read only">
-          Your role on this server cannot change these settings. Fields marked{" "}
-          <code>x-codi-access: moderator</code> are editable by moderators.
+        <Callout tone="info" title={t("plugins.editor.readOnly.title")}>
+          {t("plugins.editor.readOnly.text")}
         </Callout>
       ) : role === "moderator" && editable.length < Object.keys(schema.properties ?? {}).length ? (
-        <p className="muted small editor-note">
-          <IconLock size={12} /> Some fields are for admins only; you can view them.
+        <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <Lock className="size-3" aria-hidden="true" /> {t("plugins.editor.someLocked")}
         </p>
       ) : null}
 
       {problem?.kind === "conflict" ? (
         <Callout
-          tone="warn"
-          title="The configuration changed since you opened it"
+          tone="warning"
+          title={t("plugins.editor.conflict.title")}
+          hint={t("plugins.editor.conflict.hint")}
+          details={problem.message}
           action={
-            <Button size="sm" onClick={() => void reload()}>
-              Reload settings
+            <Button size="sm" variant="outline" onClick={() => void reload()}>
+              {t("plugins.editor.conflict.reload")}
             </Button>
           }
-        >
-          {problem.message} Reloading discards your unsaved edits.
-        </Callout>
+        />
       ) : problem?.kind === "forbidden" ? (
-        <Callout tone="bad" title="Your role cannot save this change">
-          {problem.message}. Moderators can only change fields marked{" "}
-          <code>x-codi-access: moderator</code>; ask an admin for the others.
+        <Callout
+          tone="danger"
+          title={t("plugins.editor.forbidden.title")}
+          hint={t("plugins.editor.forbidden.hint")}
+        >
+          {problem.message}
         </Callout>
       ) : problem?.kind === "error" ? (
-        <Callout tone="bad" title="The runtime rejected the configuration">
+        <Callout tone="danger" title={t("plugins.editor.rejected")} details={problem.details}>
           <p>{problem.message}</p>
           {serverErrors.general.length ? (
-            <ul className="general-errors">
+            <ul className="mt-1 list-disc pl-5">
               {serverErrors.general.map((g) => (
                 <li key={g}>{g}</li>
               ))}
@@ -562,11 +610,15 @@ function SettingsEditor({
         resources={resources}
         errors={errors}
         baseline={baseline}
-        lockedLabel="Admins only"
+        lockedLabel={t("plugins.editor.adminsOnly")}
       />
 
       {changes.length > 0 ? (
-        <div className="savebar" role="region" aria-label="Unsaved changes">
+        <div
+          className="sticky bottom-3 z-[4] rounded-lg border border-border-strong bg-popover/95 shadow-pop backdrop-blur"
+          role="region"
+          aria-label={t("plugins.editor.unsavedRegion")}
+        >
           {reviewing ? (
             <ReviewPanel
               changes={changes}
@@ -578,18 +630,18 @@ function SettingsEditor({
               onSave={() => void save()}
             />
           ) : (
-            <div className="savebar-row">
-              <span className="savebar-count">
-                <strong>{changes.length}</strong> unsaved change{changes.length > 1 ? "s" : ""}
-                <span className="muted"> in {touched.join(", ")}</span>
+            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+              <span className="text-[13px]">
+                <strong className="tabular">
+                  {t("plugins.editor.unsaved", { count: changes.length })}
+                </strong>
+                <span className="text-muted-foreground"> · {touched.join(", ")}</span>
               </span>
-              <div className="savebar-actions">
+              <div className="ml-auto flex gap-2">
                 <Button variant="ghost" onClick={discard}>
-                  Discard
+                  {t("plugins.editor.discard")}
                 </Button>
-                <Button variant="primary" onClick={review}>
-                  Review changes
-                </Button>
+                <Button onClick={review}>{t("plugins.editor.review")}</Button>
               </div>
             </div>
           )}
@@ -616,55 +668,70 @@ function ReviewPanel({
   onCancel: () => void;
   onSave: () => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="review">
-      <div className="review-head">
-        <h4>Review changes</h4>
-        <span className="muted small">
-          {scope === "server" ? `Override for ${serverKey}` : "Base config"} · committed to git,
-          then applied
+    <div className="review flex flex-col gap-3 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h4 className="text-[13px] font-semibold">{t("plugins.editor.review")}</h4>
+        <span className="text-xs text-muted-foreground">
+          {scope === "server"
+            ? t("plugins.editor.reviewServer", { server: serverKey })
+            : t("plugins.editor.reviewBase")}
         </span>
       </div>
-      <table className="review-table">
-        <thead>
-          <tr>
-            <th scope="col">Field</th>
-            <th scope="col">Before</th>
-            <th scope="col">After</th>
-          </tr>
-        </thead>
-        <tbody>
-          {changes.map((c) => (
-            <tr key={c.pointer} data-kind={c.kind}>
-              <th scope="row">
-                <code>{formatPath(c.path)}</code>
-                {c.kind !== "changed" ? (
-                  <span className={`review-kind review-${c.kind}`}>{c.kind}</span>
-                ) : null}
+      <div className="max-h-80 overflow-auto rounded-md border">
+        <table className="w-full text-[13px]">
+          <thead className="border-b bg-surface-2 text-xs text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-3 py-1.5 text-left font-medium">
+                {t("plugins.editor.field")}
               </th>
-              <td className="diff-from">
-                <DiffValue value={c.from} />
-              </td>
-              <td className="diff-to">
-                <DiffValue value={c.to} />
-              </td>
+              <th scope="col" className="px-3 py-1.5 text-left font-medium">
+                {t("plugins.editor.before")}
+              </th>
+              <th scope="col" className="px-3 py-1.5 text-left font-medium">
+                {t("plugins.editor.after")}
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y">
+            {changes.map((c) => (
+              <tr key={c.pointer} data-kind={c.kind} className="align-top">
+                <th scope="row" className="px-3 py-1.5 text-left font-normal">
+                  <code className="font-mono text-[12px]">{formatPath(c.path)}</code>
+                  {c.kind !== "changed" ? (
+                    <Badge tone={c.kind === "added" ? "success" : "danger"} className="ml-1.5">
+                      {t(`plugins.editor.kinds.${c.kind}`)}
+                    </Badge>
+                  ) : null}
+                </th>
+                <td className="px-3 py-1.5 text-muted-foreground">
+                  <DiffValue value={c.from} />
+                </td>
+                <td className="px-3 py-1.5">
+                  <DiffValue value={c.to} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {denied.length ? (
-        <Callout tone="warn">
-          Your role may not change <code>{denied.join(", ")}</code>; the runtime will refuse this
-          save.
-        </Callout>
+        <Callout tone="warning" title={t("plugins.editor.denied", { fields: denied.join(", ") })} />
       ) : null}
-      <div className="review-actions">
-        <Button variant="ghost" onClick={onCancel} disabled={saving}>
-          Back to editing
-        </Button>
-        <Button variant="primary" onClick={onSave} loading={saving}>
-          Save to git
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <GitCommitHorizontal className="size-3.5" aria-hidden="true" />
+          {t("plugins.editor.commitNote")}
+        </span>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={onCancel} disabled={saving}>
+            {t("plugins.editor.back")}
+          </Button>
+          <Button onClick={onSave} loading={saving}>
+            {t("plugins.editor.save")}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -672,6 +739,10 @@ function ReviewPanel({
 
 function DiffValue({ value }: { value: Json | undefined }) {
   if (value !== null && typeof value === "object")
-    return <pre className="diff-json">{JSON.stringify(value, null, 2)}</pre>;
+    return (
+      <pre className="font-mono text-[12px] whitespace-pre-wrap">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    );
   return <ValueView value={value} />;
 }

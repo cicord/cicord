@@ -103,13 +103,24 @@
           "type": "object",
           "properties": {
             "path": {
-              "description": "Directory of a custom portal app built by CI and served by the runtime.",
+              "description": "Build output (index.html + assets) of a custom portal, committed in the repository and served by the runtime at / instead of the default portal, e.g. ./portal/dist (see docs/portal.md).",
               "$ref": "common.schema.json#/$defs/relativePath"
             },
             "url": {
-              "description": "External portal URL (when hosted elsewhere).",
+              "description": "External portal URL (when hosted elsewhere): base of the links made by ctx.portal.link().",
               "type": "string",
               "format": "uri"
+            },
+            "allowedOrigins": {
+              "description": "Origins of third-party sites that embed the portal SDK in token mode (CORS without credentials, login redirects, bearer sessions). Cookie sessions across origins need the operator's --cors-origin instead.",
+              "type": "array",
+              "maxItems": 20,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^https?://[^/?#\\s]+$",
+                "maxLength": 200
+              }
             }
           },
           "additionalProperties": false

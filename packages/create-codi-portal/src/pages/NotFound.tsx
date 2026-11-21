@@ -1,8 +1,9 @@
-import { t } from "../i18n/fr.ts";
+import { useT } from "../i18n/index.tsx";
 import { CenteredMessage } from "../portal.tsx";
 import { Link } from "../router.tsx";
 
 export function NotFound() {
+  const t = useT();
   return (
     <CenteredMessage title={t.notFound.title}>
       <p>{t.notFound.text}</p>

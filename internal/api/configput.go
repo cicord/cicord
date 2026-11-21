@@ -73,20 +73,57 @@ func pruneNoopNulls(patch, base map[string]any) map[string]any {
 	return patch
 }
 
-// stripDefaults removes top-level keys that only restate the schema default and were
-// not written in the base config before (keeps bot.yaml minimal).
+// stripDefaults removes from cfg the values equal to their schema default that were not
+// written in rawBase at the same place, so a config saved from the admin UI (which shows
+// the effective config) does not copy every default into bot.yaml. It recurses into nested
+// objects and the object elements of arrays (matched by index), like config.ApplyDefaults.
 func stripDefaults(cfg, rawBase, schema map[string]any) map[string]any {
-	props, _ := schema["properties"].(map[string]any)
+	stripDefaultsIn(schema, schema, cfg, rawBase, 0)
+	return cfg
+}
+
+func stripDefaultsIn(root, schema, cfg, raw map[string]any, depth int) {
+	if depth > 32 {
+		return
+	}
+	props, _ := config.ResolveSchemaRef(root, schema)["properties"].(map[string]any)
 	for k, v := range cfg {
-		if _, written := rawBase[k]; written {
+		subRaw, _ := props[k].(map[string]any)
+		if subRaw == nil {
 			continue
 		}
-		sub, _ := props[k].(map[string]any)
-		if d, ok := sub["default"]; ok && reflect.DeepEqual(d, v) {
+		sub := config.ResolveSchemaRef(root, subRaw)
+		rv, written := raw[k]
+		if d, ok := sub["default"]; ok && !written && reflect.DeepEqual(d, v) {
 			delete(cfg, k)
+			continue
+		}
+		switch tv := v.(type) {
+		case map[string]any:
+			rm, _ := rv.(map[string]any)
+			stripDefaultsIn(root, sub, tv, rm, depth+1)
+			if len(tv) == 0 && !written {
+				delete(cfg, k) // an object only materialized by defaults
+			}
+		case []any:
+			items, _ := sub["items"].(map[string]any)
+			if items == nil {
+				continue
+			}
+			ra, _ := rv.([]any)
+			for i, e := range tv {
+				em, ok := e.(map[string]any)
+				if !ok {
+					continue
+				}
+				var rm map[string]any
+				if i < len(ra) {
+					rm, _ = ra[i].(map[string]any)
+				}
+				stripDefaultsIn(root, items, em, rm, depth+1)
+			}
 		}
 	}
-	return cfg
 }
 
 func (s *server) handleConfigPut(w http.ResponseWriter, r *http.Request) {

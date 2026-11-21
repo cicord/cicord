@@ -10,17 +10,28 @@
  * ```
  *
  * The fakes follow spec/sdk/codi-sdk.d.ts. Capabilities are enforced only when `grants` is
- * given; then a call without its grant throws `CapabilityError`, like the real host.
+ * given; then a call without its grant throws `CapabilityError`, like the real host. Pass the
+ * plugin's `schema` (config.schema.json) to get the config defaults the runtime applies.
+ *
+ * Interactions: `runCommand`, `runComponent` and `submitModal` call the handler with a
+ * recording fake interaction that follows the reply/defer/update/followUp/showModal rules of
+ * the runtime. Other handlers (events, tasks, schedules, subscriptions) are plain functions:
+ * call them with `harness.ctx`, e.g. `await plugin.tasks!.close!(t.ctx, { id: "1" })`.
  */
 import type {
   Channel,
   CommandInteraction,
+  ComponentInteraction,
   Context,
+  CreateChannelOptions,
+  Interaction,
   Json,
   KV,
   Member,
   Message,
   MessageInput,
+  Modal,
+  ModalInteraction,
   PluginConfig,
   PluginDefinition,
   ReplyInput,
@@ -59,9 +70,26 @@ export interface TestMemberInit {
   joinedAt?: Date;
 }
 
+export interface TestFetchResponse {
+  status?: number;
+  headers?: Record<string, string>;
+  /** Response body (string, or a JSON value that is serialized). */
+  body?: string | Json;
+}
+
 export interface TestContextOptions {
-  /** Effective plugin config (defaults are *not* applied here: pass them explicitly). */
+  /**
+   * Plugin config. Defaults are applied only when `schema` is given (like the runtime does
+   * with config.schema.json); otherwise pass every field the plugin reads.
+   */
   config?: Record<string, unknown>;
+  /** The plugin's config.schema.json: its `default`s are applied to `config` (see `applyDefaults`). */
+  schema?: object;
+  /** Fake `ctx.http.fetch`. Without it, fetch throws. Requests are recorded in `requests`. */
+  fetch?: (
+    url: string,
+    init: Parameters<Context["http"]["fetch"]>[1],
+  ) => TestFetchResponse | Promise<TestFetchResponse>;
   /** Granted capabilities. Omit to allow everything. */
   grants?: string[];
   plugin?: { name?: string; version?: string; instance?: string };
@@ -88,6 +116,17 @@ export interface SentMessage {
   /** Channel key/id, or `dm:<userId>` for direct messages. */
   to: string;
   message: MessageInput;
+  /** Id of the created message (see `harness.message(id)`). */
+  id: string;
+}
+
+export interface ModerationAction {
+  member: string;
+  action: "timeout" | "kick" | "ban" | "nickname";
+  durationMs?: number;
+  reason?: string;
+  deleteMessagesSeconds?: number;
+  nickname?: string | null;
 }
 
 export interface RoleChange {
@@ -105,11 +144,29 @@ export interface TestHarness {
   readonly links: { path: string; member?: string; url: string }[];
   readonly published: { topic: string; payload: Json }[];
   readonly scheduled: { id: string; delayMs: number; task: string; payload?: Json }[];
-  /** Raw KV contents (values are JSON clones). */
+  /** Message edits (`message.edit()`), in order. */
+  readonly edits: { id: string; message: MessageInput }[];
+  /** Deleted message ids (`message.delete()`). */
+  readonly deletedMessages: { id: string; reason?: string }[];
+  readonly reactions: { message: string; emoji: string }[];
+  readonly moderation: ModerationAction[];
+  /** Channels created with `ctx.server.createChannel()` (resolvable by `{ id }`). */
+  readonly createdChannels: { channel: TextChannel; options: CreateChannelOptions }[];
+  readonly deletedChannels: { id: string; reason?: string }[];
+  readonly threads: { parent: string; name: string; private: boolean; fromMessage?: string }[];
+  /** `ctx.http.fetch()` requests. */
+  readonly requests: { url: string; init: Parameters<Context["http"]["fetch"]>[1] }[];
+  /** Raw KV contents (values are JSON clones; expired keys are dropped on access). */
   readonly kv: Map<string, Json>;
   /** Live member (roles reflect role changes). */
   member(userId: string): Member | undefined;
   addMember(init: TestMemberInit): Member;
+  /** A message sent through the fakes (channel.send, reply, member.send, followUp). */
+  message(id: string): Message | undefined;
+  /** A channel by key or id (managed, created or DM). */
+  channel(ref: string): TextChannel | undefined;
+  /** Removes a member (e.g. before calling a memberLeave handler). */
+  removeMember(userId: string): void;
 }
 
 // ───────────────────────────────────────────────────────────── helpers
@@ -123,6 +180,67 @@ export function capabilityError(capability: string): CapabilityError {
 
 function clone<T extends Json>(value: T): T {
   return structuredClone(value);
+}
+
+type SchemaNode = { [key: string]: unknown };
+const isObject = (v: unknown): v is SchemaNode =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+function resolveRef(root: SchemaNode, s: SchemaNode): SchemaNode {
+  for (let i = 0; i < 8; i++) {
+    const ref = s["$ref"];
+    if (typeof ref !== "string") return s;
+    if (!ref.startsWith("#")) return {};
+    let cur: unknown = root;
+    for (const raw of ref.slice(1).split("/")) {
+      if (raw === "") continue;
+      const part = raw.replaceAll("~1", "/").replaceAll("~0", "~");
+      cur = isObject(cur) ? cur[part] : undefined;
+    }
+    if (!isObject(cur)) return {};
+    const { $ref: _ignored, ...siblings } = s;
+    s = { ...cur, ...siblings };
+  }
+  return s;
+}
+
+function defaultsInObject(root: SchemaNode, schema: SchemaNode, v: SchemaNode, depth: number) {
+  if (depth > 32) return;
+  schema = resolveRef(root, schema);
+  const props = isObject(schema["properties"]) ? schema["properties"] : {};
+  for (const [k, raw] of Object.entries(props)) {
+    if (!isObject(raw)) continue;
+    const sub = resolveRef(root, raw);
+    if (!(k in v) && "default" in sub) v[k] = structuredClone(sub["default"]);
+    if (k in v) defaultsInValue(root, sub, v[k], depth + 1);
+    else if (sub["type"] === "object" && isObject(sub["properties"])) {
+      const obj: SchemaNode = {};
+      defaultsInObject(root, sub, obj, depth + 1);
+      const required = Array.isArray(sub["required"]) ? (sub["required"] as unknown[]) : [];
+      // like the runtime: only when the defaults cover the object's required properties
+      if (Object.keys(obj).length > 0 && required.every((r) => typeof r !== "string" || r in obj))
+        v[k] = obj;
+    }
+  }
+}
+
+function defaultsInValue(root: SchemaNode, schema: SchemaNode, v: unknown, depth: number) {
+  if (isObject(v)) defaultsInObject(root, schema, v, depth);
+  else if (Array.isArray(v) && depth <= 32) {
+    const items = resolveRef(root, schema)["items"];
+    if (isObject(items)) for (const e of v) defaultsInValue(root, items, e, depth + 1);
+  }
+}
+
+/**
+ * Returns a copy of `config` with the `default`s of a JSON Schema applied, with the runtime's
+ * rules (config.ApplyDefaults): nested objects, object elements of arrays and local `$ref`s;
+ * not `additionalProperties` values nor `oneOf`/`anyOf` alternatives.
+ */
+export function applyDefaults<T extends Record<string, unknown>>(schema: object, config: T): T {
+  const out = structuredClone(config) as SchemaNode;
+  defaultsInObject(schema as SchemaNode, schema as SchemaNode, out, 0);
+  return out as T;
 }
 
 function makeUser(init: {
@@ -157,7 +275,16 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const links: TestHarness["links"] = [];
   const published: TestHarness["published"] = [];
   const scheduled: TestHarness["scheduled"] = [];
+  const edits: TestHarness["edits"] = [];
+  const deletedMessages: TestHarness["deletedMessages"] = [];
+  const reactions: TestHarness["reactions"] = [];
+  const moderation: ModerationAction[] = [];
+  const createdChannels: TestHarness["createdChannels"] = [];
+  const deletedChannels: TestHarness["deletedChannels"] = [];
+  const threads: TestHarness["threads"] = [];
+  const requests: TestHarness["requests"] = [];
   const kvData = new Map<string, Json>();
+  const kvExpiry = new Map<string, number>();
 
   const roles = new Map<string, Role>();
   for (const [key, r] of Object.entries(options.roles ?? {})) {
@@ -176,37 +303,54 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     return undefined;
   };
 
+  const botUser = makeUser({ id: "bot", username: options.bot?.username ?? "TestBot", bot: true });
+
+  const messages = new Map<string, Message>();
+  const history = new Map<string, Message[]>(); // channel id → messages, oldest first
   let messageSeq = 0;
   const makeMessage = (channel: TextChannel, author: User, input: MessageInput): Message => {
     const message: Message = {
-      id: `msg-${++messageSeq}`,
+      // Snowflake-like ids (numeric strings growing with time), like Discord.
+      id: String(1_000_000_000_000_000n + BigInt(++messageSeq)),
       content: typeof input === "string" ? input : (input.content ?? ""),
       author,
       channel,
       attachments: [],
       createdAt: new Date(),
       async reply(reply) {
-        need("discord.messages.send");
-        sent.push({ to: channel.key ?? channel.id, message: reply });
-        return makeMessage(channel, botUser, reply);
+        need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
+        return post(channel, reply);
       },
       async edit(next) {
-        sent.push({ to: channel.key ?? channel.id, message: next });
+        if (author.id !== botUser.id) need("discord.messages.manage");
+        edits.push({ id: message.id, message: next });
         return makeMessage(channel, author, next);
       },
-      async delete() {
+      async delete(reason) {
         need("discord.messages.manage");
+        deletedMessages.push({ id: message.id, ...(reason ? { reason } : {}) });
       },
-      async react() {
+      async react(emoji) {
         need("discord.reactions.manage");
+        reactions.push({ message: message.id, emoji });
       },
     };
+    messages.set(message.id, message);
+    const list = history.get(channel.id) ?? [];
+    list.push(message);
+    history.set(channel.id, list);
+    return message;
+  };
+  /** Records a message sent by the bot. */
+  const post = (channel: TextChannel, input: MessageInput, to?: string): Message => {
+    const message = makeMessage(channel, botUser, input);
+    sent.push({ to: to ?? channel.key ?? channel.id, message: input, id: message.id });
     return message;
   };
 
-  const channels = new Map<string, TextChannel>();
+  const channels = new Map<string, TextChannel>(); // by key and by id
   const makeChannel = (key: string | undefined, init: TestChannelInit): TextChannel => {
-    const id = init.id ?? `channel-${key}`;
+    const id = init.id ?? (key ? `channel-${key}` : `channel-${channels.size + 1}`);
     const channel: TextChannel = {
       id,
       ...(key ? { key } : {}),
@@ -214,25 +358,38 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       type: init.type ?? "text",
       mention: `<#${id}>`,
       async send(input) {
-        need("discord.messages.send");
-        sent.push({ to: key ?? id, message: input });
-        return makeMessage(channel, botUser, input);
+        need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
+        return post(channel, input);
       },
-      async messages() {
+      async messages(opts = {}) {
         need("discord.messages.read");
-        return [];
+        // Newest first; `before`/`after` compare snowflakes numerically, like Discord.
+        let list = [...(history.get(id) ?? [])].reverse();
+        const { before, after } = opts;
+        if (before) list = list.filter((m) => BigInt(m.id) < BigInt(before));
+        if (after) list = list.filter((m) => BigInt(m.id) > BigInt(after)).reverse();
+        return list.slice(0, opts.limit ?? 50);
       },
-      async createThread(name) {
+      async createThread(name, opts = {}) {
         need("discord.threads.manage");
-        return makeChannel(undefined, { name, type: "thread" });
+        threads.push({
+          parent: id,
+          name,
+          private: opts.private ?? false,
+          ...(opts.fromMessage ? { fromMessage: opts.fromMessage } : {}),
+        });
+        return register(undefined, { name, type: "thread" });
       },
     };
     return channel;
   };
-  for (const [key, c] of Object.entries(options.channels ?? {}))
-    channels.set(key, makeChannel(key, c));
-
-  const botUser = makeUser({ id: "bot", username: options.bot?.username ?? "TestBot", bot: true });
+  const register = (key: string | undefined, init: TestChannelInit): TextChannel => {
+    const channel = makeChannel(key, init);
+    if (key) channels.set(key, channel);
+    channels.set(channel.id, channel);
+    return channel;
+  };
+  for (const [key, c] of Object.entries(options.channels ?? {})) register(key, c);
 
   const members = new Map<string, Member>();
   const addMember = (init: TestMemberInit): Member => {
@@ -256,6 +413,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         ...(reason ? { reason } : {}),
       });
     };
+    const moderate = (entry: ModerationAction): void => {
+      need(entry.action === "nickname" ? "discord.members.manage" : "discord.members.moderate");
+      moderation.push(entry);
+    };
     const member: Member = {
       user,
       id: user.id,
@@ -276,32 +437,40 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       async removeRole(ref, reason) {
         change(ref, "remove", reason);
       },
-      async setNickname() {
-        need("discord.members.manage");
+      async setNickname(nickname, reason) {
+        moderate({ member: user.id, action: "nickname", nickname, ...(reason ? { reason } : {}) });
       },
-      async timeout() {
-        need("discord.members.moderate");
+      async timeout(durationMs, reason) {
+        moderate({ member: user.id, action: "timeout", durationMs, ...(reason ? { reason } : {}) });
       },
-      async kick() {
-        need("discord.members.moderate");
+      async kick(reason) {
+        moderate({ member: user.id, action: "kick", ...(reason ? { reason } : {}) });
       },
-      async ban() {
-        need("discord.members.moderate");
+      async ban(opts = {}) {
+        moderate({
+          member: user.id,
+          action: "ban",
+          ...(opts.reason ? { reason: opts.reason } : {}),
+          ...(opts.deleteMessagesSeconds !== undefined
+            ? { deleteMessagesSeconds: opts.deleteMessagesSeconds }
+            : {}),
+        });
       },
       async send(input) {
         need("discord.dm.send");
-        sent.push({ to: `dm:${user.id}`, message: input });
-        return makeMessage(
-          makeChannel(undefined, { name: "dm", id: `dm-${user.id}` }),
-          botUser,
-          input,
-        );
+        const dm =
+          channels.get(`dm-${user.id}`) ??
+          register(undefined, { name: "dm", type: "dm", id: `dm-${user.id}` });
+        return post(dm, input, `dm:${user.id}`);
       },
     };
     members.set(user.id, member);
     return member;
   };
   for (const m of options.members ?? []) addMember(m);
+
+  const findChannel = (ref: string | { id: string }): TextChannel | undefined =>
+    typeof ref === "string" ? channels.get(ref) : channels.get(ref.id);
 
   const serverKey = options.server?.key ?? "test-server";
   const server: Server = {
@@ -311,10 +480,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     ...(options.server?.iconUrl ? { iconUrl: options.server.iconUrl } : {}),
     channel(ref) {
       need("discord.channels.read");
-      const found =
-        typeof ref === "string"
-          ? channels.get(ref)
-          : [...channels.values()].find((c) => c.id === ref.id);
+      const found = findChannel(ref);
       if (!found) throw new Error(`unknown channel ${JSON.stringify(ref)}`);
       return found;
     },
@@ -329,31 +495,58 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     },
     async createChannel(opts) {
       need("discord.channels.manage");
-      const channel = makeChannel(undefined, { name: opts.name, type: opts.type ?? "text" });
+      if (opts.category !== undefined && !findChannel(opts.category))
+        throw new Error(`unknown category ${JSON.stringify(opts.category)}`);
+      for (const target of Object.keys(opts.overwrites ?? {})) {
+        if (target === "@everyone" || /^(role|member):/.test(target)) continue;
+        if (!roles.has(target))
+          throw new Error(`createChannel(): overwrite target "${target}": unknown role`);
+      }
+      const channel = register(undefined, { name: opts.name, type: opts.type ?? "text" });
+      createdChannels.push({ channel, options: opts });
       return channel;
     },
-    async deleteChannel() {
+    async deleteChannel(ref, reason) {
       need("discord.channels.manage");
+      const channel = findChannel(ref);
+      if (!channel || !createdChannels.some((c) => c.channel.id === channel.id))
+        throw new Error(
+          `deleteChannel(): channel ${JSON.stringify(ref)} is not owned by this plugin instance`,
+        );
+      channels.delete(channel.id);
+      deletedChannels.push({ id: channel.id, ...(reason ? { reason } : {}) });
     },
   };
 
+  const live = (key: string): boolean => {
+    const exp = kvExpiry.get(key);
+    if (exp !== undefined && exp <= Date.now()) {
+      kvData.delete(key);
+      kvExpiry.delete(key);
+      return false;
+    }
+    return kvData.has(key);
+  };
   const kv: KV = {
     async get<T extends Json = Json>(key: string) {
       need("storage.kv");
-      const v = kvData.get(key);
-      return (v === undefined ? undefined : clone(v)) as T | undefined;
+      if (!live(key)) return undefined;
+      return clone(kvData.get(key) as Json) as T;
     },
-    async set(key, value) {
+    async set(key, value, opts) {
       need("storage.kv");
       kvData.set(key, clone(value));
+      if (opts?.ttlSeconds) kvExpiry.set(key, Date.now() + opts.ttlSeconds * 1000);
+      else kvExpiry.delete(key);
     },
     async delete(key) {
       need("storage.kv");
       kvData.delete(key);
+      kvExpiry.delete(key);
     },
     async increment(key, by = 1) {
       need("storage.kv");
-      const current = kvData.get(key);
+      const current = live(key) ? kvData.get(key) : undefined;
       const next = (typeof current === "number" ? current : 0) + by;
       kvData.set(key, next);
       return next;
@@ -362,7 +555,9 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       opts: { prefix?: string; limit?: number; cursor?: string } = {},
     ) {
       need("storage.kv");
-      const keys = [...kvData.keys()].filter((k) => k.startsWith(opts.prefix ?? "")).sort();
+      const keys = [...kvData.keys()]
+        .filter((k) => k.startsWith(opts.prefix ?? "") && live(k))
+        .sort();
       const start = opts.cursor ? Number(opts.cursor) : 0;
       const limit = opts.limit ?? 100;
       const page = keys.slice(start, start + limit);
@@ -378,6 +573,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
 
   let scheduleSeq = 0;
   const portalUrl = (options.portalUrl ?? "https://portal.test").replace(/\/$/, "");
+  const config =
+    options.schema !== undefined
+      ? applyDefaults(options.schema, options.config ?? {})
+      : (options.config ?? {});
 
   const ctx: Context = {
     plugin: {
@@ -387,7 +586,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     },
     bot: { key: options.bot?.key ?? "test-bot", user: botUser },
     server,
-    config: (options.config ?? {}) as Readonly<PluginConfig>,
+    config: config as Readonly<PluginConfig>,
     log: { debug: log("debug"), info: log("info"), warn: log("warn"), error: log("error") },
     kv,
     schedule: {
@@ -404,9 +603,22 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
     },
     http: {
-      async fetch() {
+      async fetch(url, init) {
         need("http.fetch");
-        throw new Error("createTestContext: ctx.http.fetch is not faked; stub it in your test");
+        if (!options.fetch)
+          throw new Error(
+            "createTestContext: ctx.http.fetch is not faked; pass `fetch` in the options",
+          );
+        requests.push({ url, init });
+        const r = await options.fetch(url, init);
+        const body =
+          typeof r.body === "string" ? r.body : r.body === undefined ? "" : JSON.stringify(r.body);
+        return {
+          status: r.status ?? 200,
+          headers: r.headers ?? {},
+          text: async () => body,
+          json: async <T>() => JSON.parse(body) as T,
+        };
       },
     },
     events: {
@@ -435,9 +647,22 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     links,
     published,
     scheduled,
+    edits,
+    deletedMessages,
+    reactions,
+    moderation,
+    createdChannels,
+    deletedChannels,
+    threads,
+    requests,
     kv: kvData,
     member: (id) => members.get(id),
     addMember,
+    message: (id) => messages.get(id),
+    channel: (ref) => channels.get(ref),
+    removeMember: (id) => {
+      members.delete(id);
+    },
   };
 }
 
@@ -544,18 +769,157 @@ function matchPath(pattern: string, path: string): Record<string, string> | unde
   return params;
 }
 
-// ───────────────────────────────────────────────────────────── commands
+// ───────────────────────────────────────────────────────────── interactions
 
-export interface CommandCall {
+export interface InteractionCall {
   /** Invoking user id. When it is a member of the test context, `interaction.member` is set. */
   user: string;
+  /** Channel key or id of `interaction.channel` (a managed or created channel). */
+  channel?: string;
+}
+
+export interface CommandCall extends InteractionCall {
   options?: Record<string, unknown>;
 }
 
-export interface CommandResult {
+export interface ComponentCall extends InteractionCall {
+  /** Selected values (select menus). */
+  values?: string[];
+  /** The message carrying the component: a message sent through the fakes, or its id. */
+  message?: Message | string;
+}
+
+export interface ModalCall extends InteractionCall {
+  fields?: Record<string, string>;
+}
+
+export interface InteractionResult {
+  /** `reply()` calls (initial reply, or the edit of a deferred reply). */
   replies: ReplyInput[];
   followUps: ReplyInput[];
+  /** `update()` calls (components only). */
+  updates: MessageInput[];
   deferred: { ephemeral?: boolean } | undefined;
+  /** The modal opened with `showModal()`. */
+  modal: Modal | undefined;
+}
+
+/** Result of `runCommand` (same shape as the other interaction helpers). */
+export type CommandResult = InteractionResult;
+
+type Phase = "none" | "deferred" | "replied" | "updated" | "modal";
+
+/**
+ * A recording interaction following the runtime's rules (docs/plugins.md, "Interactions"):
+ * `reply()` once (or after a deferral), then `followUp()`; `showModal()` first; `update()`
+ * for components only.
+ */
+function fakeInteraction(
+  harness: TestHarness,
+  kind: "command" | "component" | "modal",
+  id: string,
+  call: InteractionCall,
+  result: InteractionResult,
+): Interaction & { update: (message: MessageInput) => Promise<void> } {
+  const member = harness.member(call.user);
+  const user = member?.user ?? makeUser({ id: call.user });
+  const channel = call.channel !== undefined ? harness.channel(call.channel) : undefined;
+  if (call.channel !== undefined && !channel)
+    throw new Error(`unknown channel ${JSON.stringify(call.channel)} for the interaction`);
+  let phase: Phase = "none";
+  let deferredUpdate = false;
+  const followUp = async (message: ReplyInput): Promise<Message> => {
+    if (phase === "none") throw new Error("followUp(): the interaction has not been answered yet");
+    result.followUps.push(message);
+    // Follow-ups need no capability: the message is not recorded in `sent`.
+    return {
+      id: `followup-${result.followUps.length}`,
+      content: typeof message === "string" ? message : (message.content ?? ""),
+      author: harness.ctx.bot.user,
+      channel: channel ?? {
+        id: "interaction-channel",
+        name: "interaction",
+        type: "text",
+        mention: "<#interaction-channel>",
+        send: async () => {
+          throw new Error("not supported in tests: pass `channel` in the call");
+        },
+        messages: async () => [],
+        createThread: async () => {
+          throw new Error("not supported in tests: pass `channel` in the call");
+        },
+      },
+      attachments: [],
+      createdAt: new Date(),
+      reply: async () => {
+        throw new Error("not supported in tests: pass `channel` in the call");
+      },
+      edit: async () => {
+        throw new Error("not supported in tests: pass `channel` in the call");
+      },
+      delete: async () => {},
+      react: async () => {},
+    };
+  };
+  return {
+    id: `interaction-${kind}-${id}`,
+    user,
+    ...(member ? { member } : {}),
+    ...(channel ? { channel } : {}),
+    get replied() {
+      return phase === "replied" || phase === "updated" || phase === "modal";
+    },
+    get deferred() {
+      return phase === "deferred";
+    },
+    async reply(message) {
+      if (phase === "replied" || phase === "modal")
+        throw new Error("reply(): the interaction was already answered: use followUp()");
+      if (phase === "updated" || (phase === "deferred" && deferredUpdate)) {
+        await followUp(message);
+        return;
+      }
+      phase = "replied";
+      result.replies.push(message);
+    },
+    async defer(opts) {
+      if (phase === "deferred") return;
+      if (phase !== "none") throw new Error("defer(): the interaction was already answered");
+      phase = "deferred";
+      deferredUpdate = kind === "component" && opts?.ephemeral === undefined;
+      result.deferred = opts ?? {};
+    },
+    followUp,
+    async showModal(modal) {
+      if (kind === "modal") throw new Error("showModal(): a modal cannot open another modal");
+      if (phase !== "none") throw new Error("showModal(): must be the first response");
+      phase = "modal";
+      result.modal = modal;
+    },
+    async update(message) {
+      if (kind !== "component") throw new Error("update(): only for component interactions");
+      if (phase === "replied" || phase === "modal" || (phase === "deferred" && !deferredUpdate))
+        throw new Error("update(): the interaction was already answered");
+      phase = "updated";
+      result.updates.push(message);
+    },
+  };
+}
+
+const emptyResult = (): InteractionResult => ({
+  replies: [],
+  followUps: [],
+  updates: [],
+  deferred: undefined,
+  modal: undefined,
+});
+
+/** Like the runtime: the full local id, then the part before the first ":" (`"vote:42"` → `vote`). */
+function lookup<F>(table: Record<string, F> | undefined, id: string): F | undefined {
+  if (!table) return undefined;
+  if (Object.hasOwn(table, id)) return table[id];
+  const i = id.indexOf(":");
+  return i > 0 && Object.hasOwn(table, id.slice(0, i)) ? table[id.slice(0, i)] : undefined;
 }
 
 /** Runs a slash command handler with a recording fake interaction. */
@@ -567,69 +931,76 @@ export async function runCommand(
 ): Promise<CommandResult> {
   const definition = plugin.commands?.[name];
   if (!definition) throw new Error(`runCommand: no command "${name}"`);
-  const result: CommandResult = { replies: [], followUps: [], deferred: undefined };
-  const member = harness.member(call.user);
-  const user = member?.user ?? makeUser({ id: call.user });
-  let replied = false;
-  let deferred = false;
-  const interaction: CommandInteraction = {
-    id: `interaction-${name}`,
-    user,
-    ...(member ? { member } : {}),
-    get replied() {
-      return replied;
+  const result = emptyResult();
+  const base = fakeInteraction(harness, "command", name, call, result);
+  const { update: _update, ...rest } = base;
+  const interaction = Object.defineProperties(
+    { ...rest, command: name, options: (call.options ?? {}) as CommandInteraction["options"] },
+    {
+      replied: { get: () => base.replied },
+      deferred: { get: () => base.deferred },
     },
-    get deferred() {
-      return deferred;
-    },
-    command: name,
-    options: (call.options ?? {}) as CommandInteraction["options"],
-    async reply(message) {
-      if (replied) throw new Error("interaction already replied");
-      replied = true;
-      result.replies.push(message);
-    },
-    async defer(opts) {
-      deferred = true;
-      result.deferred = opts ?? {};
-    },
-    async followUp(message) {
-      result.followUps.push(message);
-      const channel: TextChannel = {
-        id: "interaction-channel",
-        name: "interaction",
-        type: "text",
-        mention: "<#interaction-channel>",
-        send: async () => {
-          throw new Error("not supported in tests");
-        },
-        messages: async () => [],
-        createThread: async () => {
-          throw new Error("not supported in tests");
-        },
-      };
-      const content = typeof message === "string" ? message : (message.content ?? "");
-      return {
-        id: "followup",
-        content,
-        author: harness.ctx.bot.user,
-        channel,
-        attachments: [],
-        createdAt: new Date(),
-        reply: async () => {
-          throw new Error("not supported in tests");
-        },
-        edit: async () => {
-          throw new Error("not supported in tests");
-        },
-        delete: async () => {},
-        react: async () => {},
-      };
-    },
-    async showModal() {
-      replied = true;
-    },
-  };
+  ) as CommandInteraction;
   await definition.run(harness.ctx, interaction);
+  return result;
+}
+
+/**
+ * Runs the component handler for a local component id (`"vote:42"` is routed to
+ * `components.vote`, `componentId` stays `"vote:42"`).
+ */
+export async function runComponent(
+  plugin: PluginDefinition,
+  harness: TestHarness,
+  componentId: string,
+  call: ComponentCall,
+): Promise<InteractionResult> {
+  const handler = lookup(plugin.components, componentId);
+  if (!handler) throw new Error(`runComponent: no component handler for "${componentId}"`);
+  const message = typeof call.message === "string" ? harness.message(call.message) : call.message;
+  if (call.message !== undefined && !message)
+    throw new Error(`runComponent: unknown message ${JSON.stringify(call.message)}`);
+  const result = emptyResult();
+  const base = fakeInteraction(
+    harness,
+    "component",
+    componentId,
+    {
+      ...call,
+      ...(call.channel === undefined && message ? { channel: message.channel.id } : {}),
+    },
+    result,
+  );
+  const interaction = Object.defineProperties(
+    { ...base, componentId, values: [...(call.values ?? [])], ...(message ? { message } : {}) },
+    {
+      replied: { get: () => base.replied },
+      deferred: { get: () => base.deferred },
+    },
+  ) as ComponentInteraction;
+  await handler(harness.ctx, interaction);
+  return result;
+}
+
+/** Runs the modal submit handler for a modal id (same id fallback as components). */
+export async function submitModal(
+  plugin: PluginDefinition,
+  harness: TestHarness,
+  modalId: string,
+  call: ModalCall,
+): Promise<InteractionResult> {
+  const handler = lookup(plugin.modals, modalId);
+  if (!handler) throw new Error(`submitModal: no modal handler for "${modalId}"`);
+  const result = emptyResult();
+  const base = fakeInteraction(harness, "modal", modalId, call, result);
+  const { update: _update, ...rest } = base;
+  const interaction = Object.defineProperties(
+    { ...rest, modalId, fields: { ...call.fields } },
+    {
+      replied: { get: () => base.replied },
+      deferred: { get: () => base.deferred },
+    },
+  ) as ModalInteraction;
+  await handler(harness.ctx, interaction);
   return result;
 }

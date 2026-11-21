@@ -7,11 +7,11 @@ LDFLAGS := -s -w -X github.com/npjonath/codi/internal/version.Version=$(VERSION)
 
 all: ui build
 
-## build: the single `codi` binary (embeds the admin UI and the default portal)
+## build: the single `codi` binary (embeds the admin UI, the default portal and the portal kit of `codi portal init`)
 build:
 	CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o bin/codi ./cmd/codi
 
-## ui: build the JS workspace and copy the admin UI / portal into the Go embed dirs
+## ui: build the JS workspace; copy the admin UI, the portal and the portal kit (@codi/* tarballs + template) into the Go embed dirs
 ui:
 	pnpm install --frozen-lockfile
 	pnpm -r --filter "./packages/*" build

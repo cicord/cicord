@@ -30,12 +30,80 @@ import type {
   SimState,
   SyncRecord,
   SyncResult,
+  TokenSession,
   UpdatePluginConfigRequest,
   User,
   WriteBackResult,
 } from "./types.ts";
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
+
+/**
+ * How browser clients authenticate (spec/api.md §1):
+ * - `"cookie"` (default): the `codi_session` cookie, for a portal served by the runtime or
+ *   on a same-site origin listed in `--cors-origin`;
+ * - `"token"`: a bearer session token kept in a `TokenStore` and sent as `Authorization`,
+ *   for sites embedding the SDK on another origin (codi.yaml `spec.portal.allowedOrigins`).
+ */
+export type AuthMode = "cookie" | "token";
+
+/** A token-mode session as stored by the client. */
+export interface StoredSession {
+  token: string;
+  expiresAt: string;
+}
+
+/** Where token mode keeps the session token. */
+export interface TokenStore {
+  get(): StoredSession | null;
+  set(session: StoredSession | null): void;
+}
+
+/** Keeps the token in memory (lost on reload; safest against XSS persistence). */
+export function memoryTokenStore(): TokenStore {
+  let value: StoredSession | null = null;
+  return { get: () => value, set: (session) => void (value = session) };
+}
+
+/** Keeps the token in `localStorage` / `sessionStorage` (falls back to memory when unavailable). */
+export function webStorageTokenStore(
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | undefined,
+  key = "codi:session",
+): TokenStore {
+  const memory = memoryTokenStore();
+  if (!storage) return memory;
+  return {
+    get: () => {
+      try {
+        const raw = storage.getItem(key);
+        const parsed = raw ? (JSON.parse(raw) as Partial<StoredSession>) : null;
+        return parsed && typeof parsed.token === "string" && typeof parsed.expiresAt === "string"
+          ? { token: parsed.token, expiresAt: parsed.expiresAt }
+          : null;
+      } catch {
+        return memory.get();
+      }
+    },
+    set: (session) => {
+      try {
+        if (session) storage.setItem(key, JSON.stringify(session));
+        else storage.removeItem(key);
+      } catch {
+        memory.set(session);
+      }
+    },
+  };
+}
+
+/** True for absolute http(s) URLs (links from the server config, plugin data…). */
+export function isSafeUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
 
 export interface CodiClientOptions {
   /**
@@ -53,8 +121,20 @@ export interface CodiClientOptions {
   token?: string | (() => string | undefined | null);
   /** Extra headers sent with every request. */
   headers?: Record<string, string>;
-  /** Fetch credentials mode. Default "include" (session cookie, also cross-origin with CORS). */
+  /**
+   * Fetch credentials mode. Default "include" in cookie mode (session cookie, also
+   * cross-origin with CORS), "omit" in token mode.
+   */
   credentials?: RequestCredentials;
+  /** Browser auth mode. Default "cookie". See `AuthMode`. */
+  auth?: AuthMode;
+  /**
+   * Token mode: where the session token lives. "local" (default in browsers) and
+   * "session" use Web Storage under `storageKey`; "memory" forgets it on reload.
+   */
+  tokenStore?: TokenStore | "local" | "session" | "memory";
+  /** Web Storage key of token mode. Default "codi:session:<baseUrl>". */
+  storageKey?: string;
 }
 
 export type Query = Record<string, string | number | boolean | undefined | null>;
@@ -103,7 +183,12 @@ export interface ExchangeLinkTokenOptions {
   history?: HistoryLike;
   /** Query parameter carrying the token. Default "codi_token". */
   param?: string;
+  /** Query parameter carrying the one-time code of a token-mode login. Default "codi_code". */
+  codeParam?: string;
 }
+
+/** Query parameters a login may leave in the URL (removed by `exchangeLinkToken`). */
+export const LOGIN_PARAMS = ["codi_token", "codi_code"] as const;
 
 const isRawBody = (body: unknown): boolean =>
   typeof body === "string" ||
@@ -138,7 +223,10 @@ export class CodiClient {
   readonly baseUrl: string;
   readonly apiPath: string;
   readonly authPath: string;
+  readonly authMode: AuthMode;
   readonly #options: CodiClientOptions;
+  readonly #store: TokenStore;
+  readonly #listeners = new Set<() => void>();
   #pendingLink: Promise<Me> | undefined;
 
   constructor(options: CodiClientOptions = {}) {
@@ -146,6 +234,40 @@ export class CodiClient {
     this.baseUrl = trimSlash(options.baseUrl ?? "");
     this.apiPath = trimSlash(options.apiPath ?? "/api/v1");
     this.authPath = trimSlash(options.authPath ?? "/auth");
+    this.authMode = options.auth ?? "cookie";
+    this.#store = resolveStore(
+      options.tokenStore,
+      options.storageKey ?? `codi:session:${this.baseUrl}`,
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────── token-mode session
+
+  /** The token-mode session, or null (cookie mode, logged out or expired). */
+  session(): StoredSession | null {
+    if (this.authMode !== "token") return null;
+    const s = this.#store.get();
+    if (s && Date.parse(s.expiresAt) <= Date.now()) {
+      this.#setSession(null);
+      return null;
+    }
+    return s;
+  }
+
+  /** Called when the token-mode session changes (login, logout, expiry, revocation). */
+  onSessionChange(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #setSession(session: StoredSession | null): void {
+    this.#store.set(session);
+    for (const listener of this.#listeners) listener();
+  }
+
+  #adopt(session: TokenSession): Me {
+    this.#setSession({ token: session.token, expiresAt: session.expiresAt });
+    return session.me;
   }
 
   // ─────────────────────────────────────────────────────────── transport
@@ -166,7 +288,8 @@ export class CodiClient {
     // state-changing requests without this header.
     headers.set("X-Codi-Request", "1");
     const token =
-      typeof this.#options.token === "function" ? this.#options.token() : this.#options.token;
+      (typeof this.#options.token === "function" ? this.#options.token() : this.#options.token) ??
+      this.session()?.token;
     if (token) headers.set("Authorization", `Bearer ${token}`);
     for (const [k, v] of Object.entries(extra ?? {})) headers.set(k, v);
     return headers;
@@ -195,7 +318,7 @@ export class CodiClient {
     const init: RequestInit = {
       method: method.toUpperCase(),
       headers,
-      credentials: this.#options.credentials ?? "include",
+      credentials: this.#credentials(),
       ...(body === undefined ? {} : { body }),
       ...(options.signal ? { signal: options.signal } : {}),
     };
@@ -214,8 +337,17 @@ export class CodiClient {
     }
 
     const parsed = await readBody(response);
-    if (!response.ok) throw CodiApiError.fromResponse(response.status, response.statusText, parsed);
+    if (!response.ok) {
+      // A revoked or expired token: forget it so the app shows the logged-out state.
+      if (response.status === 401 && this.session()?.token && !this.#options.token)
+        this.#setSession(null);
+      throw CodiApiError.fromResponse(response.status, response.statusText, parsed);
+    }
     return parsed as T;
+  }
+
+  #credentials(): RequestCredentials {
+    return this.#options.credentials ?? (this.authMode === "token" ? "omit" : "include");
   }
 
   #api<T>(method: string, path: string, options?: RequestOptions): Promise<T> {
@@ -245,6 +377,14 @@ export class CodiClient {
      * portal; default: the current page).
      */
     loginUrl: (redirect?: string): string => {
+      if (this.authMode === "token") {
+        // The runtime redirects back with ?codi_code=… to this absolute URL, which must be
+        // on an allowed origin (spec.portal.allowedOrigins or --cors-origin).
+        const here = globalLocation()?.href;
+        const target =
+          redirect !== undefined && here ? new URL(redirect, here).toString() : (redirect ?? here);
+        return this.url(`${this.authPath}/login`, { mode: "token", redirect: target });
+      }
       const target = redirect ?? currentPath();
       return this.url(`${this.authPath}/login`, target ? { redirect: target } : undefined);
     },
@@ -257,9 +397,26 @@ export class CodiClient {
       else throw new Error("@codi/client: auth.login() needs a browser location");
     },
 
-    /** `POST /auth/link` with an explicit token. */
-    link: (token: string, options?: CallOptions): Promise<Me> =>
-      this.request<Me>("POST", `${this.authPath}/link`, { body: { token }, ...options }),
+    /** `POST /auth/link` with an explicit token (stores the session token in token mode). */
+    link: async (token: string, options?: CallOptions): Promise<Me> => {
+      if (this.authMode !== "token")
+        return this.request<Me>("POST", `${this.authPath}/link`, { body: { token }, ...options });
+      return this.#adopt(
+        await this.request<TokenSession>("POST", `${this.authPath}/link`, {
+          body: { token, mode: "token" },
+          ...options,
+        }),
+      );
+    },
+
+    /** Token mode: `POST /auth/token` — redeems the one-time code of an OAuth login. */
+    redeem: async (code: string, options?: CallOptions): Promise<Me> =>
+      this.#adopt(
+        await this.request<TokenSession>("POST", `${this.authPath}/token`, {
+          body: { code },
+          ...options,
+        }),
+      ),
 
     /**
      * Reads `codi_token` from the current URL (a signed link from `ctx.portal.link()`),
@@ -270,31 +427,51 @@ export class CodiClient {
     exchangeLinkToken: (options: ExchangeLinkTokenOptions = {}): Promise<Me | null> => {
       const location = options.location ?? globalLocation();
       const param = options.param ?? "codi_token";
+      const codeParam = options.codeParam ?? "codi_code";
       if (!location) return Promise.resolve(null);
       const url = new URL(location.href);
       const token = url.searchParams.get(param);
-      if (!token) return this.#pendingLink ?? Promise.resolve(null);
+      // A token-mode OAuth login comes back with a one-time code.
+      const code = this.authMode === "token" ? url.searchParams.get(codeParam) : null;
+      if (!token && !code) return this.#pendingLink ?? Promise.resolve(null);
 
       url.searchParams.delete(param);
+      url.searchParams.delete(codeParam);
       const history = options.history ?? globalHistory();
       const clean = `${url.pathname}${url.search}${url.hash}`;
       if (history) history.replaceState(history.state ?? null, "", clean);
       else location.href = url.toString();
 
-      const pending = this.auth.link(token).finally(() => {
+      const exchange = token ? this.auth.link(token) : this.auth.redeem(code as string);
+      const pending = exchange.finally(() => {
         if (this.#pendingLink === pending) this.#pendingLink = undefined;
       });
       this.#pendingLink = pending;
       return pending;
     },
 
-    /** `POST /auth/dev-login` — `codi dev` only. */
-    devLogin: (userId: string, options?: CallOptions): Promise<Me> =>
-      this.request<Me>("POST", `${this.authPath}/dev-login`, { body: { userId }, ...options }),
+    /** `POST /auth/dev-login` — `codi dev` only (stores the session token in token mode). */
+    devLogin: async (userId: string, options?: CallOptions): Promise<Me> => {
+      if (this.authMode !== "token")
+        return this.request<Me>("POST", `${this.authPath}/dev-login`, {
+          body: { userId },
+          ...options,
+        });
+      return this.#adopt(
+        await this.request<TokenSession>("POST", `${this.authPath}/dev-login`, {
+          body: { userId, mode: "token" },
+          ...options,
+        }),
+      );
+    },
 
-    /** `POST /auth/logout`. */
+    /** `POST /auth/logout` (token mode: revokes the token and forgets it). */
     logout: async (options?: CallOptions): Promise<void> => {
-      await this.request<void>("POST", `${this.authPath}/logout`, options);
+      try {
+        await this.request<void>("POST", `${this.authPath}/logout`, options);
+      } finally {
+        if (this.authMode === "token") this.#setSession(null);
+      }
     },
   };
 
@@ -303,14 +480,27 @@ export class CodiClient {
   readonly portal = {
     /** `GET /portal/servers` — servers with a portal. */
     servers: async (options?: CallOptions): Promise<PortalServer[]> =>
-      (await this.#api<Items<PortalServer>>("GET", "/portal/servers", options)).items,
+      (await this.#api<Items<PortalServer>>("GET", "/portal/servers", options)).items.map((s) =>
+        this.#absolutize(s),
+      ),
     /** `GET /portal/{server}`. */
-    server: (server: string, options?: CallOptions): Promise<PortalServer> =>
-      this.#api<PortalServer>("GET", `/portal/${seg(server)}`, options),
+    server: async (server: string, options?: CallOptions): Promise<PortalServer> =>
+      this.#absolutize(await this.#api<PortalServer>("GET", `/portal/${seg(server)}`, options)),
     /** `GET /portal/{server}/me` — the viewer as a member of the server. */
     me: (server: string, options?: CallOptions): Promise<PortalMe> =>
       this.#api<PortalMe>("GET", `/portal/${seg(server)}/me`, options),
   };
+
+  /** Runtime-relative image URLs (logo, banner) resolved against `baseUrl` (embedded portals). */
+  #absolutize(server: PortalServer): PortalServer {
+    if (!this.baseUrl) return server;
+    const abs = (u: string | undefined) => (u && u.startsWith("/") ? this.url(u) : u);
+    return {
+      ...server,
+      theme: { ...server.theme, logo: abs(server.theme.logo) ?? "" },
+      banner: abs(server.banner) ?? "",
+    };
+  }
 
   /** Routes of a plugin instance: `/api/v1/portal/{server}/plugins/{bot}/{instance}/{path}`. */
   plugin(server: string, bot: string, instance: string): PluginRoutes {
@@ -538,7 +728,7 @@ export class CodiClient {
       {
         method: "GET",
         headers: this.#headers(),
-        credentials: this.#options.credentials ?? "include",
+        credentials: this.#credentials(),
       },
       options,
     );
@@ -559,6 +749,22 @@ async function readBody(response: Response): Promise<Json | string | undefined> 
     }
   }
   return text;
+}
+
+function resolveStore(store: CodiClientOptions["tokenStore"], key: string): TokenStore {
+  if (store && typeof store === "object") return store;
+  if (store === "memory") return memoryTokenStore();
+  const storage = (name: "localStorage" | "sessionStorage") => {
+    try {
+      return (globalThis as Record<string, unknown>)[name] as Storage | undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  return webStorageTokenStore(
+    storage(store === "session" ? "sessionStorage" : "localStorage"),
+    key,
+  );
 }
 
 function globalLocation(): LocationLike | undefined {

@@ -190,7 +190,11 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 	need(len(def.Routes) > 0, "portal.routes", "routes")
 	need(len(def.Subscriptions) > 0, "events.subscribe", "subscriptions")
 	for _, in := range m.Spec.Intents {
-		if !slices.Contains(def.RequiredIntents(), in) {
+		// MessageContent is never required: it fills message.content in message events and
+		// in channel.messages() history.
+		readsContent := in == "MessageContent" && (def.HasEvent("messageCreate") || def.HasEvent("messageUpdate") ||
+			slices.Contains(m.Spec.Capabilities, "discord.messages.read"))
+		if !slices.Contains(def.RequiredIntents(), in) && !readsContent {
 			r.Warnings = append(r.Warnings, fmt.Sprintf("plugin.yaml declares the %s intent, which no handler needs", in))
 		}
 	}
@@ -338,9 +342,10 @@ func newPluginTypegenCmd() *cobra.Command {
 		Long: `Generate a TypeScript module augmentation of @codi/sdk's PluginConfig from the plugin's
 config schema (plugin.yaml spec.config.schema), so that ctx.config is typed.
 
-Fields that are required, or have a default the runtime applies (top level and nested
-objects, not inside arrays), are non-optional. x-codi-ref fields are keys (string),
-enums become literal unions.
+Fields that are required, or have a default the runtime applies (top level, nested
+objects, object elements of arrays and local $refs; not additionalProperties maps nor
+oneOf/anyOf alternatives), are non-optional. x-codi-ref fields are keys (string), enums
+become literal unions.
 
 --check compares with the existing file instead of writing it (exit 1 when it is out
 of date), for CI.`,

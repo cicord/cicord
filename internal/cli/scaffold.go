@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -141,7 +142,7 @@ func newInitCmd() *cobra.Command {
 				fmt.Fprintln(w, "  created", rel)
 			}
 			fmt.Fprintf(w, "\nNext steps:\n  cd %s\n  codi validate\n  codi dev --sim\n", dir)
-			if o.serverID == "000000000000000000" || o.appID == "000000000000000000" {
+			if o.serverID == placeholderServerID || o.appID == placeholderAppID {
 				fmt.Fprintln(w, "\nReplace the placeholder discordId / applicationId with your real IDs before `codi plan`.")
 			}
 			return nil
@@ -150,9 +151,9 @@ func newInitCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&o.project, "project", "", "project key (default: directory name)")
 	f.StringVar(&o.server, "server", "", "server key (default: project key)")
-	f.StringVar(&o.serverID, "server-id", "000000000000000000", "Discord server ID")
+	f.StringVar(&o.serverID, "server-id", placeholderServerID, "Discord server ID (default: a placeholder that works with `codi dev --sim`)")
 	f.StringVar(&o.bot, "bot", "bot", "bot key")
-	f.StringVar(&o.appID, "application-id", "000000000000000000", "Discord application ID of the bot")
+	f.StringVar(&o.appID, "application-id", placeholderAppID, "Discord application ID of the bot (default: a placeholder that works with `codi dev --sim`)")
 	f.StringVar(&o.provider, "provider", "", "source provider: github | git | embedded (default: inferred from --repo, none for local-only repos)")
 	f.StringVar(&o.repo, "repo", "", "repository URL (github / git providers)")
 	f.BoolVar(&o.force, "force", false, "overwrite existing files")
@@ -179,6 +180,14 @@ func sanitizeKey(s string) string {
 	}
 	return out
 }
+
+// Placeholder IDs written by `codi init` without --server-id / --application-id. They are
+// valid snowflakes, so `codi dev --sim` (which creates the server and the application with
+// the IDs of the repository) works right away; they must be replaced before `codi plan`.
+const (
+	placeholderServerID = "100000000000000001"
+	placeholderAppID    = "100000000000000002"
+)
 
 func newPluginCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -208,7 +217,22 @@ func newPluginCmd() *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), "  created", rel)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "  created .codi/codi-sdk.d.ts")
-			fmt.Fprintf(cmd.OutOrStdout(), "\nAdd it to a bot:\n  plugins:\n    - name: %s\n      source: <relative path to %s>\n      grants: [discord.messages.send]\n", name, args[0])
+			where, source := "a bot", "<relative path from bot.yaml to "+args[0]+">"
+			if botFile := findBotFile(abs); botFile != "" {
+				if rel, err := filepath.Rel(filepath.Dir(botFile), abs); err == nil {
+					source = filepath.ToSlash(rel)
+					if !strings.HasPrefix(source, ".") {
+						source = "./" + source
+					}
+					where = botFile
+					if wd, err := os.Getwd(); err == nil {
+						if r, err := filepath.Rel(wd, botFile); err == nil {
+							where = r
+						}
+					}
+				}
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "\nAdd it to %s (spec.plugins), then run `codi dev --sim`:\n    - name: %s\n      source: %s\n      grants: [discord.messages.send]\n", where, name, source)
 			return nil
 		},
 	}
@@ -237,4 +261,22 @@ func writeSDKTypes(pluginDir string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, "codi-sdk.d.ts"), []byte(spec.SDKTypes), 0o644)
+}
+
+// findBotFile returns the first bots/<key>/bot.yaml of the CODI repository containing dir
+// (the nearest parent with a codi.yaml), or "".
+func findBotFile(dir string) string {
+	for d := dir; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, "codi.yaml")); err == nil {
+			matches, _ := filepath.Glob(filepath.Join(d, "bots", "*", "bot.yaml"))
+			sort.Strings(matches)
+			if len(matches) > 0 {
+				return matches[0]
+			}
+			return ""
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
+	}
 }
