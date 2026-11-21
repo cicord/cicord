@@ -1,15 +1,19 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
 	"time"
 
+	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/discord"
 	"github.com/npjonath/codi/internal/reconcile"
 	"github.com/npjonath/codi/internal/runtime"
@@ -421,12 +425,17 @@ type pluginItemDTO struct {
 	Server   string         `json:"server"`
 	Plugin   pluginInfoDTO  `json:"plugin"`
 	Config   map[string]any `json:"config"`
-	Schema   map[string]any `json:"schema"`
-	Editable []string       `json:"editable"`
-	Commands []commandDTO   `json:"commands"`
-	Routes   []string       `json:"routes"`
-	Health   string         `json:"health"`
-	Message  string         `json:"message"`
+	// Schema is the plugin's config.schema.json as written (property order preserved).
+	Schema json.RawMessage `json:"schema"`
+	// BaseConfig is spec.plugins[].config of bot.yaml and Override the server's
+	// overrides.<server>.config (null when none), both without defaults.
+	BaseConfig map[string]any `json:"baseConfig"`
+	Override   map[string]any `json:"override"`
+	Editable   []string       `json:"editable"`
+	Commands   []commandDTO   `json:"commands"`
+	Routes     []string       `json:"routes"`
+	Health     string         `json:"health"`
+	Message    string         `json:"message"`
 }
 
 // editableFields lists the top-level config fields a role may edit (x-codi-access).
@@ -468,11 +477,13 @@ func (s *server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		if schema == nil {
 			schema = map[string]any{"type": "object"}
 		}
+		base, override := s.rawInstanceConfig(in.Config.Bot, in.Config.Name, key)
 		it := pluginItemDTO{
 			Bot: in.Config.Bot, Instance: in.Config.Name, Server: in.Config.Server,
 			Plugin: pluginInfoDTO{Name: m.Metadata.Name, Version: m.Metadata.Version, DisplayName: m.Metadata.DisplayName,
 				Description: m.Metadata.Description, Capabilities: strs(m.Spec.Capabilities), Intents: strs(m.Spec.Intents)},
-			Config: in.Config.Config, Schema: schema, Editable: editableFields(schema, ro),
+			Config: in.Config.Config, Schema: rawSchema(in.Config.Plugin, schema), Editable: editableFields(schema, ro),
+			BaseConfig: base, Override: override,
 			Commands: []commandDTO{}, Routes: []string{}, Health: in.Health, Message: in.Message,
 		}
 		if it.Config == nil {
@@ -489,4 +500,43 @@ func (s *server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		items = append(items, it)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// rawSchema returns the config schema file bytes (key order preserved), falling back to
+// the decoded document.
+func rawSchema(lp *config.LoadedPlugin, doc map[string]any) json.RawMessage {
+	if lp != nil && lp.Manifest != nil && lp.Manifest.Spec.Config != nil {
+		p := filepath.Join(lp.Dir, filepath.FromSlash(lp.Manifest.Spec.Config.Schema))
+		if data, err := os.ReadFile(p); err == nil && json.Valid(data) {
+			var buf bytes.Buffer
+			if json.Compact(&buf, data) == nil {
+				return buf.Bytes()
+			}
+		}
+	}
+	return mustJSON(doc)
+}
+
+// rawInstanceConfig returns the base config and the server override of an instance as
+// written in bot.yaml (normalized to JSON values).
+func (s *server) rawInstanceConfig(botKey, instance, serverKey string) (base, override map[string]any) {
+	base = map[string]any{}
+	repo := s.rt.Repo()
+	if repo == nil || repo.Bots[botKey] == nil {
+		return base, nil
+	}
+	for _, p := range repo.Bots[botKey].Spec.Plugins {
+		if p.Name != instance {
+			continue
+		}
+		if b, err := config.NormalizeConfig(p.Config); err == nil {
+			base = b
+		}
+		if ov, ok := p.Overrides[serverKey]; ok && ov.Config != nil {
+			if o, err := config.NormalizeConfig(ov.Config); err == nil {
+				override = o
+			}
+		}
+	}
+	return base, override
 }

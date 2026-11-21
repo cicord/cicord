@@ -357,8 +357,19 @@ func TestPluginsList(t *testing.T) {
 	if !ok || byName["onboarding"].Instance == "" {
 		t.Fatalf("plugins = %+v", list.Items)
 	}
-	if w.Config["channel"] != "general" || w.Config["dmOnboarding"] != true || w.Schema["properties"] == nil {
+	if w.Config["channel"] != "general" || w.Config["dmOnboarding"] != true || !strings.Contains(string(w.Schema), `"properties"`) {
 		t.Fatalf("welcome = %+v", w)
+	}
+	// The schema keeps the file's property order (the generated form follows it).
+	sch := string(w.Schema)
+	if i, j := strings.Index(sch, `"channel"`), strings.Index(sch, `"message"`); i < 0 || j < 0 || i > j {
+		t.Errorf("schema property order lost: %s", sch)
+	}
+	if w.BaseConfig["channel"] != "general" || w.Override == nil || w.Override["message"] == nil {
+		t.Errorf("base/override = %v / %v", w.BaseConfig, w.Override)
+	}
+	if byName["onboarding"].Override != nil {
+		t.Errorf("onboarding override = %v", byName["onboarding"].Override)
 	}
 	if strings.Join(w.Editable, ",") != "autoRole,channel,dmOnboarding,message" {
 		t.Errorf("admin editable = %v", w.Editable)

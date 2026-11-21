@@ -187,3 +187,20 @@ func TestDirWriter(t *testing.T) {
 		t.Errorf("path escape must fail")
 	}
 }
+
+func TestEmojiPreserved(t *testing.T) {
+	src := "spec:\n  plugins:\n    - name: welcome\n      config:\n        message: \"Bienvenue ! 👋\"\n        emoji: \"🎯\"\n        raw: \"a\\\\U0001F3AF\"\n"
+	out, err := PluginConfigEdit("welcome", "", map[string]any{"message": "Bienvenue ! 👋", "emoji": "🎯", "raw": `a\U0001F3AF`, "x": "🛡️"})([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	for _, want := range []string{`message: "Bienvenue ! 👋"`, `emoji: "🎯"`, `raw: "a\\U0001F3AF"`, "🛡️"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, `\U0001F44B`) {
+		t.Errorf("emoji escaped:\n%s", s)
+	}
+}

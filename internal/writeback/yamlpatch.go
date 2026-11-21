@@ -6,8 +6,11 @@ package writeback
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -62,7 +65,29 @@ func SetYAML(src []byte, path []PathElem, value any) ([]byte, error) {
 	if err := enc.Close(); err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	return unescapeAstral(buf.Bytes()), nil
+}
+
+var astralEscape = regexp.MustCompile(`\\\\|\\U[0-9A-Fa-f]{8}`)
+
+// unescapeAstral turns the \UXXXXXXXX escapes that yaml.v3 emits for characters outside
+// the Basic Multilingual Plane (emoji…) back into UTF-8, so a write-back does not rewrite
+// every emoji of the file. Escaped backslashes are left untouched.
+func unescapeAstral(b []byte) []byte {
+	return astralEscape.ReplaceAllFunc(b, func(m []byte) []byte {
+		if len(m) == 2 { // "\\"
+			return m
+		}
+		v, err := strconv.ParseUint(string(m[2:]), 16, 32)
+		if err != nil {
+			return m
+		}
+		r := rune(v)
+		if !utf8.ValidRune(r) || !unicode.IsPrint(r) {
+			return m
+		}
+		return []byte(string(r))
+	})
 }
 
 func setNode(n *yaml.Node, path []PathElem, value any) error {
@@ -220,5 +245,8 @@ func AppendYAML(src []byte, path []PathElem, value any) ([]byte, error) {
 	if err := enc.Encode(&doc); err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), enc.Close()
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return unescapeAstral(buf.Bytes()), nil
 }
