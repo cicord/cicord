@@ -206,7 +206,7 @@ func (a *applier) run(ctx context.Context, c Change) error {
 			}
 			ch, err := c0.CreateChannel(ctx, a.serverID, params, a.reason())
 			if err != nil {
-				return err
+				return withCommunityHint(params.Type, err)
 			}
 			return a.record(ctx, o.rk, c.Key, ch.ID)
 		case ActionAdopt:
@@ -468,4 +468,13 @@ func (r *Reconciler) saveIconState(ctx context.Context, s iconState) error {
 	}
 	raw, _ := json.Marshal(map[string]string{"hash": s.Hash, "url": s.URL})
 	return r.opts.KV.Set(ctx, iconKVKey, raw, 0)
+}
+
+// withCommunityHint explains Discord's opaque "invalid type" error for channel types that
+// need the server's Community feature.
+func withCommunityHint(t discord.ChannelType, err error) error {
+	if t == discord.ChannelAnnouncement && errors.Is(err, discord.ErrBadRequest) {
+		return fmt.Errorf("%w (announcement channels require the Community feature: Server Settings → Enable Community, then sync again)", err)
+	}
+	return err
 }
