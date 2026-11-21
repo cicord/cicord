@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -233,6 +234,12 @@ func (s *server) middleware(next http.Handler) http.Handler {
 		}()
 
 		hdr := sw.Header()
+		if !s.hostAllowed(r) {
+			// DNS-rebinding protection: a dev runtime only answers to loopback hosts (or
+			// the configured public URL).
+			writeError(sw, http.StatusMisdirectedRequest, "forbidden", "unexpected Host header")
+			return
+		}
 		hdr.Set("X-Content-Type-Options", "nosniff")
 		// Portal URLs carry codi_token: never leak them to other origins.
 		hdr.Set("Referrer-Policy", "same-origin")
@@ -289,11 +296,37 @@ func (s *server) sameOrigin(r *http.Request, origin string) bool {
 		return false
 	}
 	if s.opts.PublicURL != "" {
-		if p, err := url.Parse(s.opts.PublicURL); err == nil && p.Scheme == u.Scheme && p.Host == u.Host {
+		// With a configured public URL, the Host header (attacker-influenced through DNS
+		// rebinding) is never trusted for origin checks.
+		p, err := url.Parse(s.opts.PublicURL)
+		return err == nil && p.Scheme == u.Scheme && p.Host == u.Host
+	}
+	return u.Host == r.Host
+}
+
+// hostAllowed restricts dev runtimes to loopback hosts or the public URL host.
+func (s *server) hostAllowed(r *http.Request) bool {
+	if s.opts.Mode != "dev" {
+		return true
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	switch host {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	if strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	if s.opts.PublicURL != "" {
+		if p, err := url.Parse(s.opts.PublicURL); err == nil && strings.EqualFold(p.Hostname(), host) {
 			return true
 		}
 	}
-	return u.Host == r.Host
+	return false
 }
 
 type statusWriter struct {

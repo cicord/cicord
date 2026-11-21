@@ -416,6 +416,12 @@ func (s *server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 		notFoundHandler(w, r)
 		return
 	}
+	// Impersonating arbitrary users is only acceptable against the simulator; against
+	// real Discord it requires the runtime token.
+	if s.opts.Sim == nil && !s.isBearer(r) {
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "dev login requires --sim or the runtime token"))
+		return
+	}
 	var body struct {
 		UserID string `json:"userId"`
 	}

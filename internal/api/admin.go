@@ -154,12 +154,37 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	// Project-level records (revisions) describe every server: only callers who can see
+	// all servers get them. Bot records need one visible server of that bot.
+	seesAll := true
+	repo := s.rt.Repo()
+	if repo != nil {
+		for k := range repo.Servers {
+			if _, ok := vis[k]; !ok {
+				seesAll = false
+			}
+		}
+	}
 	items := []syncRecordDTO{}
 	for _, rec := range recs {
 		if sk, ok := cutPrefix(rec.Target, "server:"); ok {
 			if _, visible := vis[sk]; !visible {
 				continue
 			}
+		} else if bk, ok := cutPrefix(rec.Target, "bot:"); ok {
+			visible := false
+			if repo != nil && repo.Bots[bk] != nil {
+				for _, sk := range repo.Bots[bk].Spec.Servers {
+					if _, v := vis[sk]; v {
+						visible = true
+					}
+				}
+			}
+			if !visible {
+				continue
+			}
+		} else if !seesAll {
+			continue
 		}
 		items = append(items, syncRecordDTO{ID: rec.ID, Time: rec.Time, Revision: rec.Revision, Target: rec.Target,
 			Status: rec.Status, Message: rec.Message, Details: rec.Details})
