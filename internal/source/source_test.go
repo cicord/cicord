@@ -106,3 +106,33 @@ func TestGitSource(t *testing.T) {
 		t.Errorf("first snapshot changed: %q", data)
 	}
 }
+
+func TestLocalWatchesNestedNewDirectories(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "codi.yaml"), "a: 1\n")
+	l, err := NewLocal(dir, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	// mkdir -p in one burst, then wait for the debounced notification.
+	if err := os.MkdirAll(filepath.Join(dir, "portal", "dist", "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	drain := func(d time.Duration) bool {
+		select {
+		case <-l.Changes():
+			return true
+		case <-time.After(d):
+			return false
+		}
+	}
+	drain(2 * time.Second)
+	time.Sleep(300 * time.Millisecond)
+	drain(50 * time.Millisecond)
+	// An edit deep inside the new tree must trigger a change.
+	writeFile(t, filepath.Join(dir, "portal", "dist", "assets", "app.js"), "x")
+	if !drain(3 * time.Second) {
+		t.Fatal("no change notification for a file in a nested new directory")
+	}
+}

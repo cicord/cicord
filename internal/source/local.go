@@ -76,6 +76,22 @@ func (l *Local) watchTree() error {
 	})
 }
 
+// watchDir adds dir and its non-ignored subdirectories to the watcher.
+func (l *Local) watchDir(dir string) {
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if isIgnoredPath(l.dir, p) {
+				return filepath.SkipDir
+			}
+			_ = l.watcher.Add(p)
+		}
+		return nil
+	})
+}
+
 func (l *Local) loop() {
 	var timer *time.Timer
 	for {
@@ -91,7 +107,9 @@ func (l *Local) loop() {
 			}
 			if ev.Op&fsnotify.Create != 0 {
 				if st, err := os.Stat(ev.Name); err == nil && st.IsDir() {
-					_ = l.watcher.Add(ev.Name)
+					// Watch the new directory and every subdirectory created in the same
+					// burst (mkdir -p, a build writing dist/assets…).
+					l.watchDir(ev.Name)
 				}
 			}
 			// Debounce bursts of editor writes.
