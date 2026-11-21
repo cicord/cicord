@@ -173,7 +173,9 @@ Verified on the test server (Community enabled by CODI, 2026-11-21):
 - **Roles can share a position.** After a drag in the Discord client the API listed every
   role at position 1; Discord then ranks the older role (lower ID) higher, and the bot
   could edit the tied roles. The adapter turns positions into distinct ranks in that
-  order, so the hierarchy checks and the reorder planner see the real hierarchy.
+  order, so the hierarchy checks and the reorder planner see the real hierarchy. Any
+  bulk `PATCH /roles` (even a no-op on one role) makes Discord renumber every role
+  1..n in that same order, so positions CODI writes from those ranks stay consistent.
 
 ## Native onboarding and the CODI onboarding plugin
 

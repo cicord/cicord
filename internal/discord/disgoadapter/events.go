@@ -196,6 +196,9 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		if err := json.Unmarshal(d, &r); err != nil {
 			return nil, err
 		}
+		// A single role carries Discord's raw position, which can tie with others
+		// (see normalizeRolePositions). Hierarchy decisions re-list roles through
+		// ListRoles; event roles only feed the runtime cache (lookups, display order).
 		if t == "GUILD_ROLE_CREATE" {
 			return []discord.Event{discord.RoleCreateEvent{ServerID: r.GuildID, Role: roleFromWire(r.Role)}}, nil
 		}
