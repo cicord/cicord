@@ -1,0 +1,24 @@
+{
+  "name": "codi-js",
+  "private": true,
+  "description": "JavaScript side of CODI: plugin SDK, runtime API client, React bindings, UI kit and the reference community portal.",
+  "type": "module",
+  "scripts": {
+    "build": "vp run -r build",
+    "test": "vp run -r build && vp run -r test && vp test",
+    "check": "vp run -r build && vp check && vp run -r typecheck && pnpm run typecheck:examples",
+    "typecheck:examples": "tsc -p examples/basic/plugins/welcome && tsc -p examples/basic/plugins/onboarding && tsc -p examples/basic/plugins/onboarding/test",
+    "dev:portal": "vp run -t create-codi-portal#build && vp run create-codi-portal#dev"
+  },
+  "devDependencies": {
+    "@codi/sdk": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

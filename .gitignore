@@ -5,3 +5,7 @@ dist/
 .env
 .env.*
 .DS_Store
+.codi/
+.codi-data/
+bin/
+*.tsbuildinfo

@@ -179,8 +179,10 @@ plugins:
 Contract: [`sdk/codi-sdk.d.ts`](sdk/codi-sdk.d.ts). A plugin default-exports `definePlugin({...})`.
 
 - **Isolation**: one VM per plugin instance, events processed in order per instance.
-- **Budgets**: each handler has a CPU budget and a wall-clock timeout (defaults: 50 ms CPU,
-  10 s wall); exceeding them aborts the handler and logs an error.
+- **Budgets**: one turn of synchronous JS execution may not exceed the sync budget (default
+  50 ms wall clock — e.g. a `while(true)` is interrupted), and each handler, including its
+  awaited async work, has a timeout (default 10 s). Exceeding either aborts the handler and
+  logs an error; the instance keeps running.
 - **Interaction deadline**: after ~2 s without a reply the runtime defers automatically
   (ephemeral when the command has `ephemeral: true`); a later `reply()` edits the deferred
   response.

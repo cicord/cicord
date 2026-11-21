@@ -154,7 +154,7 @@ export interface Channel {
   /** Key in servers/<server>.yaml when the channel is managed by CODI. */
   readonly key?: string;
   readonly name: string;
-  readonly type: "text" | "voice" | "announcement" | "stage" | "forum" | "media" | "thread";
+  readonly type: "text" | "voice" | "announcement" | "stage" | "forum" | "media" | "thread" | "category" | "dm";
   readonly mention: string;
 }
 
@@ -366,7 +366,10 @@ export interface Http {
 
 /** Cross-plugin events within the same (bot, server). */
 export interface Events {
-  /** Topic is namespaced by the publisher plugin name. @capability events.publish */
+  /**
+   * Topic is namespaced by the publisher plugin name: `publish("levelUp", …)` from plugin
+   * `xp` is delivered to `subscriptions["xp.levelUp"]`. @capability events.publish
+   */
   publish(topic: string, payload: Json): Promise<void>;
 }
 
@@ -429,9 +432,13 @@ export interface EventHandlers {
   messageUpdate?(ctx: Context, message: Message): Awaitable<void>;
   /** @intent ServerMessages */
   messageDelete?(ctx: Context, deleted: { id: Snowflake; channel: TextChannel }): Awaitable<void>;
-  /** @intent ServerMessageReactions */
+  /**
+   * @intent ServerMessageReactions
+   * `message` is partial: only `id`, `channel` and the methods are guaranteed (author/content
+   * may be missing); fetch it with `channel.messages()` if you need more.
+   */
   reactionAdd?(ctx: Context, reaction: { message: Message; user: User; emoji: string }): Awaitable<void>;
-  /** @intent ServerMessageReactions */
+  /** @intent ServerMessageReactions — same partial `message` as reactionAdd. */
   reactionRemove?(ctx: Context, reaction: { message: Message; user: User; emoji: string }): Awaitable<void>;
 }
 
@@ -444,7 +451,10 @@ export interface PluginDefinition {
   events?: EventHandlers;
   /** Slash commands, keyed by command name (lowercase, 1–32 chars). Synced per server. */
   commands?: Record<string, CommandDefinition<any>>;
-  /** Component handlers keyed by local component id. */
+  /**
+   * Component handlers keyed by local component id. A component id may carry data after a
+   * colon: `"vote:42"` is routed to `components.vote` (`componentId` stays `"vote:42"`).
+   */
   components?: Record<string, (ctx: Context, interaction: ComponentInteraction) => Awaitable<void>>;
   /** Modal submit handlers keyed by modal id. */
   modals?: Record<string, (ctx: Context, interaction: ModalInteraction) => Awaitable<void>>;
@@ -460,3 +470,26 @@ export interface PluginDefinition {
 
 /** Entry point of a plugin: `export default definePlugin({ ... })`. */
 export declare function definePlugin(definition: PluginDefinition): PluginDefinition;
+
+// ───────────────────────────────────────────────────────────── globals
+
+/**
+ * Globals provided by the plugin host (no Node.js / DOM APIs). Timers are bound to the
+ * handler that created them and cancelled when it times out.
+ */
+declare global {
+  function setTimeout(callback: (...args: any[]) => void, ms?: number, ...args: any[]): number;
+  function clearTimeout(id: number | undefined): void;
+  function setInterval(callback: (...args: any[]) => void, ms?: number, ...args: any[]): number;
+  function clearInterval(id: number | undefined): void;
+  function queueMicrotask(callback: () => void): void;
+  /** Mapped to the instance logger. Declared by interface merging so it composes with lib.dom. */
+  interface Console {
+    log(...args: any[]): void;
+    info(...args: any[]): void;
+    warn(...args: any[]): void;
+    error(...args: any[]): void;
+    debug(...args: any[]): void;
+  }
+  var console: Console;
+}

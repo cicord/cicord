@@ -1,0 +1,15 @@
+apiVersion: codi.dev/v1alpha1
+kind: Plugin
+metadata:
+  name: {{.Name}}
+  version: 0.1.0
+  description: TODO
+  license: Apache-2.0
+spec:
+  engine: "{{.EngineRange}}"
+  entry: ./src/index.ts
+  capabilities:
+    - discord.messages.send
+  intents: []
+  config:
+    schema: ./config.schema.json

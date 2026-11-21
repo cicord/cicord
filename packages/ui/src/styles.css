@@ -1,0 +1,629 @@
+/* @codi/ui — styles. Import once: `import "@codi/ui/styles.css"`.
+ * Every color derives from a few tokens; the server theme sets --codi-primary / --codi-accent
+ * (and their computed foregrounds) through <ThemeProvider>. */
+
+.codi-root {
+  --codi-font-display:
+    "Bricolage Grotesque Variable", "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --codi-font-body:
+    "Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+
+  --codi-primary: #5865f2;
+  --codi-primary-fg: #ffffff;
+  --codi-primary-text: #8f98ff;
+  --codi-accent: #eb459e;
+  --codi-accent-fg: #ffffff;
+  --codi-accent-text: #f27bbd;
+
+  --codi-success: #3ba55d;
+  --codi-danger: #ed4245;
+
+  --codi-radius-sm: 8px;
+  --codi-radius-md: 12px;
+  --codi-radius-lg: 16px;
+  --codi-radius-xl: 24px;
+
+  --codi-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --codi-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Dark is the default palette (Discord-like). */
+.codi-root,
+.codi-root[data-codi-mode="dark"],
+[data-codi-mode="dark"] .codi-root {
+  --codi-bg: #16171f;
+  --codi-surface: #1b1d26;
+  --codi-raised: #232633;
+  --codi-sunken: #121319;
+  --codi-line: rgb(255 255 255 / 0.08);
+  --codi-line-strong: rgb(255 255 255 / 0.16);
+  --codi-text: #eceef5;
+  --codi-muted: #a3a9c0;
+  --codi-subtle: #737a94;
+  --codi-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 18px 40px -18px rgb(0 0 0 / 0.65);
+  --codi-danger-text: #ff8a8c;
+  --codi-success-text: #6fd394;
+  color-scheme: dark;
+}
+
+.codi-root[data-codi-mode="light"],
+[data-codi-mode="light"] .codi-root {
+  --codi-bg: #f2f3f7;
+  --codi-surface: #ffffff;
+  --codi-raised: #f7f8fb;
+  --codi-sunken: #e8eaf1;
+  --codi-line: rgb(22 26 45 / 0.1);
+  --codi-line-strong: rgb(22 26 45 / 0.2);
+  --codi-text: #191b24;
+  --codi-muted: #565c72;
+  --codi-subtle: #7d8399;
+  --codi-shadow: 0 1px 2px rgb(22 26 45 / 0.06), 0 16px 36px -20px rgb(22 26 45 / 0.28);
+  --codi-danger-text: #c42b2e;
+  --codi-success-text: #23804a;
+  color-scheme: light;
+}
+
+.codi-root {
+  color: var(--codi-text);
+  font-family: var(--codi-font-body);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+html.codi-root {
+  background: var(--codi-bg);
+}
+
+.codi-root *,
+.codi-root *::before,
+.codi-root *::after {
+  box-sizing: border-box;
+}
+
+.codi-root :focus-visible {
+  outline: 2px solid var(--codi-primary-text);
+  outline-offset: 2px;
+}
+
+.codi-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─────────────────────────────────────────────── Spinner */
+
+.codi-spinner {
+  display: inline-flex;
+  --codi-spinner-size: 20px;
+}
+.codi-spinner--sm {
+  --codi-spinner-size: 14px;
+}
+.codi-spinner--lg {
+  --codi-spinner-size: 32px;
+}
+.codi-spinner__ring {
+  width: var(--codi-spinner-size);
+  height: var(--codi-spinner-size);
+  border-radius: 50%;
+  border: max(2px, calc(var(--codi-spinner-size) / 9)) solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.85;
+  animation: codi-spin 0.7s linear infinite;
+}
+
+@keyframes codi-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ─────────────────────────────────────────────── Button */
+
+.codi-button {
+  --codi-button-bg: var(--codi-primary);
+  --codi-button-fg: var(--codi-primary-fg);
+  --codi-button-border: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  min-height: 44px;
+  padding: 0 1.15em;
+  border: 1px solid var(--codi-button-border);
+  border-radius: var(--codi-radius-md);
+  background: var(--codi-button-bg);
+  color: var(--codi-button-fg);
+  font: inherit;
+  font-weight: 650;
+  letter-spacing: 0.005em;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s var(--codi-ease),
+    border-color 0.15s var(--codi-ease),
+    transform 0.15s var(--codi-ease),
+    filter 0.15s var(--codi-ease);
+}
+.codi-button:hover {
+  filter: brightness(1.08);
+}
+.codi-button:active {
+  transform: translateY(1px) scale(0.99);
+}
+.codi-button:disabled,
+.codi-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+  filter: none;
+  transform: none;
+}
+.codi-button.is-loading {
+  opacity: 0.8;
+  cursor: progress;
+}
+.codi-button--sm {
+  min-height: 34px;
+  padding: 0 0.85em;
+  font-size: 0.875rem;
+  border-radius: var(--codi-radius-sm);
+}
+.codi-button--lg {
+  min-height: 52px;
+  padding: 0 1.5em;
+  font-size: 1.0625rem;
+}
+.codi-button--block {
+  display: flex;
+  width: 100%;
+}
+.codi-button--secondary {
+  --codi-button-bg: var(--codi-raised);
+  --codi-button-fg: var(--codi-text);
+  --codi-button-border: var(--codi-line-strong);
+}
+.codi-button--ghost {
+  --codi-button-bg: transparent;
+  --codi-button-fg: var(--codi-muted);
+}
+.codi-button--ghost:hover {
+  --codi-button-bg: var(--codi-raised);
+  --codi-button-fg: var(--codi-text);
+  filter: none;
+}
+.codi-button--danger {
+  --codi-button-bg: var(--codi-danger);
+  --codi-button-fg: #fff;
+}
+.codi-button__icon {
+  display: inline-flex;
+  font-size: 1.15em;
+  line-height: 1;
+}
+
+/* ─────────────────────────────────────────────── Card */
+
+.codi-card {
+  background: var(--codi-surface);
+  border: 1px solid var(--codi-line);
+  border-radius: var(--codi-radius-xl);
+  box-shadow: var(--codi-shadow);
+}
+.codi-card--inset {
+  background: var(--codi-sunken);
+  box-shadow: none;
+  border-radius: var(--codi-radius-lg);
+}
+.codi-card--pad-sm {
+  padding: 12px;
+}
+.codi-card--pad-md {
+  padding: clamp(16px, 3vw, 24px);
+}
+.codi-card--pad-lg {
+  padding: clamp(20px, 5vw, 40px);
+}
+
+/* ─────────────────────────────────────────────── Avatar */
+
+.codi-avatar {
+  --codi-avatar-size: 40px;
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: var(--codi-avatar-size);
+  height: var(--codi-avatar-size);
+  border-radius: 50%;
+  overflow: hidden;
+  background: hsl(var(--codi-avatar-hue, 230) 55% 46%);
+  color: #fff;
+}
+.codi-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.codi-avatar__initials {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  font-family: var(--codi-font-display);
+  font-weight: 700;
+  font-size: calc(var(--codi-avatar-size) * 0.38);
+  letter-spacing: 0.02em;
+}
+.codi-avatar--ring {
+  box-shadow:
+    0 0 0 2px var(--codi-bg),
+    0 0 0 4px var(--codi-avatar-ring);
+}
+
+/* ─────────────────────────────────────────────── RoleChip */
+
+.codi-role-chip {
+  --codi-role: var(--codi-subtle);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--codi-role) 45%, var(--codi-line));
+  background: color-mix(in oklab, var(--codi-role) 12%, var(--codi-raised));
+  color: var(--codi-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.codi-role-chip--sm {
+  font-size: 0.8125rem;
+  padding: 2px 9px 2px 7px;
+}
+.codi-role-chip__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--codi-role);
+}
+.codi-role-chip.is-fresh {
+  animation: codi-chip-in 0.45s var(--codi-ease-spring) both;
+}
+.codi-role-chip.is-fresh .codi-role-chip__dot {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--codi-role) 30%, transparent);
+}
+
+@keyframes codi-chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+/* ─────────────────────────────────────────────── ChoiceTile */
+
+.codi-choice-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+}
+
+.codi-choice {
+  --codi-role: var(--codi-primary);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--codi-line-strong);
+  border-radius: var(--codi-radius-lg);
+  background: var(--codi-surface);
+  color: var(--codi-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.18s var(--codi-ease),
+    background-color 0.18s var(--codi-ease),
+    box-shadow 0.18s var(--codi-ease),
+    transform 0.18s var(--codi-ease);
+}
+.codi-choice:hover {
+  border-color: color-mix(in oklab, var(--codi-role) 55%, var(--codi-line-strong));
+}
+.codi-choice:active {
+  transform: scale(0.985);
+}
+.codi-choice:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.codi-choice.is-selected {
+  border-color: var(--codi-role);
+  background: color-mix(in oklab, var(--codi-role) 13%, var(--codi-surface));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--codi-role) 22%, transparent);
+}
+.codi-choice__emoji {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--codi-radius-md);
+  background: color-mix(in oklab, var(--codi-role) 18%, var(--codi-raised));
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.codi-choice__dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--codi-role);
+}
+.codi-choice__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.codi-choice__label {
+  font-weight: 700;
+  font-size: 1.0625rem;
+  line-height: 1.25;
+}
+.codi-choice__description {
+  color: var(--codi-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.codi-choice__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--codi-line-strong);
+  color: transparent;
+  transition:
+    background-color 0.18s var(--codi-ease),
+    border-color 0.18s var(--codi-ease),
+    color 0.18s var(--codi-ease);
+}
+.codi-choice__mark.is-check {
+  border-radius: 7px;
+}
+.codi-choice__mark.is-radio {
+  border-radius: 50%;
+}
+.codi-choice.is-selected .codi-choice__mark {
+  border-color: var(--codi-role);
+  background: var(--codi-role);
+  color: var(--codi-role-fg, var(--codi-primary-fg));
+}
+
+/* ─────────────────────────────────────────────── Stepper */
+
+.codi-stepper ol {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.codi-stepper__step {
+  flex: 1;
+  min-width: 0;
+}
+.codi-stepper__step > span,
+.codi-stepper__step > button {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--codi-subtle);
+  font: inherit;
+  text-align: left;
+}
+.codi-stepper__step > button {
+  cursor: pointer;
+}
+.codi-stepper__step > span::before,
+.codi-stepper__step > button::before {
+  content: "";
+  order: -1;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--codi-line-strong);
+  transition: background-color 0.3s var(--codi-ease);
+}
+.codi-stepper__step.is-done > *::before {
+  background: var(--codi-primary);
+}
+.codi-stepper__step.is-current > *::before {
+  background: linear-gradient(90deg, var(--codi-primary), var(--codi-accent));
+}
+.codi-stepper__step.is-current > *,
+.codi-stepper__step.is-done > * {
+  color: var(--codi-text);
+}
+.codi-stepper__index {
+  display: none;
+}
+.codi-stepper__label {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.codi-stepper__step.is-todo .codi-stepper__label {
+  font-weight: 500;
+}
+@media (max-width: 560px) {
+  .codi-stepper__step:not(.is-current) .codi-stepper__label {
+    visibility: hidden;
+  }
+}
+
+/* ─────────────────────────────────────────────── ProgressBar */
+
+.codi-progress {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--codi-line-strong);
+  overflow: hidden;
+}
+.codi-progress__bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--codi-primary), var(--codi-accent));
+  transition: width 0.4s var(--codi-ease);
+}
+
+/* ─────────────────────────────────────────────── Notice */
+
+.codi-notice {
+  --codi-notice: var(--codi-primary-text);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in oklab, var(--codi-notice) 35%, var(--codi-line));
+  border-left-width: 4px;
+  border-radius: var(--codi-radius-md);
+  background: color-mix(in oklab, var(--codi-notice) 8%, var(--codi-surface));
+}
+.codi-notice--error {
+  --codi-notice: var(--codi-danger-text);
+}
+.codi-notice--success {
+  --codi-notice: var(--codi-success-text);
+}
+.codi-notice__body {
+  flex: 1 1 240px;
+}
+.codi-notice__title {
+  margin: 0;
+  font-weight: 700;
+}
+.codi-notice__text {
+  color: var(--codi-muted);
+  font-size: 0.9375rem;
+}
+.codi-notice__text > :first-child {
+  margin-top: 0;
+}
+.codi-notice__text > :last-child {
+  margin-bottom: 0;
+}
+
+/* ─────────────────────────────────────────────── MemberCard */
+
+.codi-member-card {
+  overflow: hidden;
+  border: 1px solid var(--codi-line);
+  border-radius: var(--codi-radius-xl);
+  background: var(--codi-surface);
+  box-shadow: var(--codi-shadow);
+}
+.codi-member-card__banner {
+  height: 84px;
+  background:
+    radial-gradient(
+      120% 140% at 100% 0%,
+      color-mix(in oklab, var(--codi-accent) 85%, transparent),
+      transparent 60%
+    ),
+    var(--codi-primary);
+}
+.codi-member-card__head {
+  height: 0;
+  padding-left: 18px;
+}
+.codi-member-card__avatar {
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 6px var(--codi-surface);
+}
+.codi-member-card__body {
+  padding: 50px 20px 20px;
+}
+.codi-member-card__name {
+  margin: 0;
+  font-family: var(--codi-font-display);
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.codi-member-card__username {
+  margin: 2px 0 0;
+  color: var(--codi-muted);
+  font-size: 0.9375rem;
+}
+.codi-member-card__caption {
+  margin: 8px 0 0;
+  color: var(--codi-muted);
+  font-size: 0.875rem;
+}
+.codi-member-card__roles {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--codi-line);
+}
+.codi-member-card__roles-title {
+  margin: 0 0 10px;
+  color: var(--codi-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.codi-member-card__roles ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.codi-member-card__roles li {
+  max-width: 100%;
+}
+.codi-member-card__empty {
+  margin: 0;
+  color: var(--codi-subtle);
+  font-size: 0.875rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codi-root *,
+  .codi-root *::before,
+  .codi-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .codi-spinner__ring {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

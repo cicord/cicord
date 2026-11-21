@@ -1,0 +1,44 @@
+apiVersion: codi.dev/v1alpha1
+kind: Server
+metadata:
+  name: {{.Server}}
+spec:
+  discordId: "{{.ServerID}}"
+
+  syncPolicy:
+    selfHeal: false
+    prune: false
+    deletionProtection: true
+
+  roles:
+    moderator:
+      name: Moderator
+      color: "#e67e22"
+      hoist: true
+      permissions: [KickMembers, ModerateMembers, ManageMessages]
+    member:
+      name: Member
+      color: "#3498db"
+
+  hierarchy: [moderator, member]
+
+  categories:
+    community:
+      name: Community
+      position: 0
+
+  channels:
+    welcome:
+      name: welcome
+      type: text
+      category: community
+      position: 0
+    general:
+      name: general
+      type: text
+      category: community
+      position: 1
+
+  access:
+    moderators:
+      roles: [moderator]

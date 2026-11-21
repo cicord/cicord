@@ -1,0 +1,17 @@
+# CI validates and plans; the runtime (codi serve) applies after merge (GitOps pull model).
+name: codi
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go install github.com/npjonath/codi/cmd/codi@latest
+      - run: codi validate

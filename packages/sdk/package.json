@@ -1,0 +1,34 @@
+{
+  "name": "@codi/sdk",
+  "version": "0.1.0",
+  "description": "CODI plugin SDK: authoring types (spec/sdk/codi-sdk.d.ts) and a tiny runtime for unit tests in Node.",
+  "license": "Apache-2.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack && tsc -p tsconfig.build.json && node scripts/copy-spec-types.mjs",
+    "test": "vp test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

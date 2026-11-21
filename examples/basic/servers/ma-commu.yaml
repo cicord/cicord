@@ -35,8 +35,34 @@ spec:
       name: Membre
       color: "#3498db"
       permissions: [SendMessages, EmbedLinks, AttachFiles, Connect, Speak]
+    # Interest roles, self-assigned on the portal (plugin "onboarding").
+    minecraft:
+      name: Minecraft
+      color: "#5b8731"
+      mentionable: true
+    valorant:
+      name: Valorant
+      color: "#ff4655"
+      mentionable: true
+    lol:
+      name: League of Legends
+      color: "#c89b3c"
+      mentionable: true
+    pc:
+      name: PC
+      color: "#95a5a6"
+    console:
+      name: Console
+      color: "#9b59b6"
+    mobile:
+      name: Mobile
+      color: "#1abc9c"
+    ping-events:
+      name: Notifs événements
+      color: "#f1c40f"
+      mentionable: true
 
-  hierarchy: [admin, modo, member]
+  hierarchy: [admin, modo, member, minecraft, valorant, lol, pc, console, mobile, ping-events]
 
   categories:
     info:

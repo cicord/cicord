@@ -1,0 +1,52 @@
+import { defineConfig } from "vite-plus";
+
+// Root Vite+ config: shared lint/format settings for the JS workspace (packages/*) and the
+// TypeScript plugins under examples/. Everything else in the repository (Go code, specs,
+// docs, YAML resources) is owned by other tools and must never be rewritten by `vp fmt`.
+const notOurs = [
+  "cmd/**",
+  "internal/**",
+  "spec/**",
+  "docs/**",
+  "*.md",
+  "**/*.md",
+  "go.mod",
+  "go.sum",
+  "pnpm-lock.yaml",
+  "**/dist/**",
+  "**/node_modules/**",
+  "packages/admin/**",
+  "examples/**/*.yaml",
+  "examples/**/*.yml",
+  "examples/**/*.json",
+  "examples/basic/.github/**",
+  "examples/basic/plugins/welcome/**",
+];
+
+export default defineConfig({
+  fmt: {
+    ignorePatterns: notOurs,
+  },
+  lint: {
+    ignorePatterns: notOurs,
+    plugins: ["typescript"],
+    jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
+    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    options: { typeAware: true, typeCheck: true },
+    overrides: [
+      {
+        files: ["packages/react/**", "packages/ui/**", "packages/create-codi-portal/**"],
+        plugins: ["typescript", "react"],
+      },
+    ],
+  },
+  // Unit tests of the example plugins (packages have their own vite.config.ts).
+  test: {
+    include: ["examples/**/test/**/*.test.ts"],
+  },
+  run: {
+    // Package scripts write build outputs (dist/) that the task cache does not restore on a
+    // replay (e.g. a replayed `tsc` after a real `vp pack` that cleaned dist/), so they always run.
+    cache: { scripts: false, tasks: true },
+  },
+});

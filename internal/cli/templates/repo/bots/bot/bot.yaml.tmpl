@@ -1,0 +1,10 @@
+apiVersion: codi.dev/v1alpha1
+kind: Bot
+metadata:
+  name: {{.Bot}}
+spec:
+  applicationId: "{{.ApplicationID}}"
+  token:
+    secretRef: {{.TokenEnv}}
+  servers: [{{.Server}}]
+  plugins: []

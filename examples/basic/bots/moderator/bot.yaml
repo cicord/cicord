@@ -35,3 +35,52 @@ spec:
         ma-commu:
           config:
             message: "Salut {member}, bienvenue sur {server} ! Passe lire le règlement."
+    - name: onboarding
+      source: ../../plugins/onboarding
+      grants:
+        - discord.roles.assign
+        - storage.kv
+        - portal.routes
+        - portal.links
+      config:
+        title: Bienvenue sur Ma Commu !
+        intro: Trois petites questions pour personnaliser ton expérience. Tu pourras changer d'avis quand tu veux avec /onboarding.
+        steps:
+          - id: jeux
+            title: À quoi tu joues ?
+            description: Tu auras accès aux salons et aux pings de tes jeux.
+            multiple: true
+            options:
+              - role: minecraft
+                emoji: "⛏️"
+                description: Survie, créatif et serveur de la commu
+              - role: valorant
+                emoji: "🎯"
+                description: Ranked, customs et tournois
+              - role: lol
+                label: League of Legends
+                emoji: "🛡️"
+                description: Flex, ARAM et Clash
+          - id: plateforme
+            title: Tu joues surtout sur…
+            description: Pour trouver des coéquipiers sur la même plateforme.
+            required: true
+            options:
+              - role: pc
+                emoji: "🖥️"
+              - role: console
+                emoji: "🎮"
+              - role: mobile
+                emoji: "📱"
+          - id: notifs
+            title: On te prévient pour les événements ?
+            description: Soirées jeux, tournois et lives de la commu. Zéro spam, promis.
+            options:
+              - role: ping-events
+                label: Oui, ping-moi !
+                emoji: "🔔"
+                description: Tu seras mentionné à chaque nouvel événement
+        completedRole: member
+        successMessage: C'est tout bon ! Tes rôles sont à jour, file dire bonjour dans #général.
+        linkMessage: "Choisis tes rôles sur le portail de la commu :"
+        buttonLabel: Choisir mes rôles

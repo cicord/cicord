@@ -1,0 +1,12 @@
+import { command, definePlugin } from "@codi/sdk";
+
+export default definePlugin({
+  commands: {
+    hello: command({
+      description: "Say hello",
+      async run(ctx, interaction) {
+        await interaction.reply(ctx.config.greeting);
+      },
+    }),
+  },
+});
