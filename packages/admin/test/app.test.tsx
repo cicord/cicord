@@ -126,6 +126,45 @@ describe("overview & server", () => {
     expect(await screen.findByText("moderator/onboarding")).toBeTruthy();
   });
 
+  test("server settings: boost, community, Discord-only list and image upload", async () => {
+    const uploads: { url: string; type: string | null }[] = [];
+    const { user } = setup("/admin/servers/ma-commu/settings", (url, init) => {
+      if (init.method !== "PUT" || !url.pathname.includes("/assets/")) return undefined;
+      uploads.push({
+        url: url.pathname + url.search,
+        type: new Headers(init.headers).get("Content-Type"),
+      });
+      return json({
+        mode: "pullRequest",
+        revision: "",
+        pullRequestUrl: "https://github.com/o/r/pull/9",
+        path: "servers/assets/ma-commu-banner.png",
+        value: "./assets/ma-commu-banner.png",
+        format: "png",
+        width: 300,
+        height: 100,
+        warnings: ["the image is 300×100: Discord recommends a 16:9 image of at least 960×540"],
+      });
+    });
+    await loginAsOwner(user);
+    expect(await screen.findByRole("heading", { name: "Server boost" })).toBeTruthy();
+    expect(screen.getByText("Level 1 · 3 boosts")).toBeTruthy();
+    expect(screen.getByText("4 more boosts to level 2")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Community Disabled" })).toBeTruthy();
+    expect(screen.getByText("Discord UI only")).toBeTruthy();
+    expect(screen.getByText("Server tag")).toBeTruthy();
+    // The banner needs level 2: the warning explains the plan will block it.
+    expect(screen.getByText("Banner requires boost level 2; the server is level 1.")).toBeTruthy();
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "b.png", {
+      type: "image/png",
+    });
+    await user.upload(screen.getByLabelText("Upload a new banner"), file);
+    expect(await screen.findByRole("link", { name: /Open pull request/ })).toBeTruthy();
+    expect(screen.getByText(/Discord recommends a 16:9 image/)).toBeTruthy();
+    expect(uploads[0]?.url).toMatch(/^\/api\/v1\/servers\/ma-commu\/assets\/banner/);
+    expect(uploads[0]?.type).toBe("image/png");
+  });
+
   test("plan helpers", () => {
     const groups = groupChanges([
       { action: "create", kind: "channel", key: "a", summary: "" },

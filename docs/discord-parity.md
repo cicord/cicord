@@ -11,24 +11,24 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | Discord setting | CODI | Notes |
 |---|---|---|
 | Name | ✅ `profile.name` | |
-| Icon | ✅ `profile.icon` | |
-| Banner image (boost level 2) | ❌ | `banner` field (PATCH guild) |
-| Invite splash / discovery splash | ❌ | boost / discovery only |
+| Icon | ✅ `profile.icon` | upload from Server settings; animated icons need boost level 1 |
+| Banner image (boost level 2) | ✅ `profile.banner` | boost-gated in the plan; upload from Server settings |
+| Invite splash / discovery splash | ✅ `profile.splash` / 🚫 | invite splash (boost level 1); discovery splash needs Discovery (not settable) |
 | Description | ✅ `profile.description` | shown for community/discovery servers |
 | Profile banner color, traits ("particularités"), games played, private profile | 🚫 | server profile is not in the public API |
 | Server tag | 🚫 | not in the public API |
-| Preferred locale | ❌ | `preferred_locale` (community) |
-| Boost progress bar | ❌ | `premium_progress_bar_enabled` |
+| Preferred locale | ✅ `profile.preferredLocale` | |
+| Boost progress bar | ✅ `profile.premiumProgressBar` | |
 
 ## Engagement ("Participation")
 | Discord setting | CODI | Notes |
 |---|---|---|
 | System messages channel | ✅ `profile.systemChannel` | |
-| System message toggles (welcome message, sticker replies, boost message, setup tips) | ❌ | `system_channel_flags` |
+| System message toggles (welcome message, sticker replies, boost message, setup tips) | ✅ `profile.systemChannelFlags` | readable booleans (`welcomeMessages`, `welcomeStickerReplies`, `boostMessages`, `setupTips`, `roleSubscriptionMessages`, `roleSubscriptionStickerReplies`) |
 | Activity feed | 🚫 | |
 | Default notifications | ✅ `profile.defaultNotifications` | |
-| Inactive (AFK) channel + timeout | ❌ | `afk_channel_id`, `afk_timeout` |
-| Server widget (enabled + channel) | ❌ | `PATCH /guilds/{id}/widget` |
+| Inactive (AFK) channel + timeout | ✅ `afk: {channel, timeout}` | |
+| Server widget (enabled + channel) | ✅ `widget: {enabled, channel}` | |
 
 ## Access & safety
 | Discord setting | CODI | Notes |
@@ -38,27 +38,27 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | Server rules (rules screening form) | 🚫 | member verification form not in the public API |
 | Verification level | ✅ `profile.verificationLevel` | |
 | 2FA required for moderation | 🚫 | `mfa_level` only by the owner |
-| Explicit (sensitive) content filter | ❌ | `explicit_content_filter` |
-| Safety alerts channel | ❌ | `safety_alerts_channel_id` (community) |
+| Explicit (sensitive) content filter | ✅ `profile.explicitContentFilter` | |
+| Safety alerts channel | ✅ `community.safetyAlertsChannel` | |
 | Members in channel list | 🚫 | |
 
 ## Community
 | Discord setting | CODI | Notes |
 |---|---|---|
-| Enable Community | ❌ | `features: [COMMUNITY]` + rules/public updates channels, verification ≥ low, explicit filter = all members |
-| Rules channel | ✅ `profile.rulesChannel` | requires Community on real Discord |
-| Community updates channel | ❌ | `public_updates_channel_id` |
-| Welcome screen | ❌ | `PATCH /guilds/{id}/welcome-screen` |
-| Onboarding (questions, default channels, mode) | ❌ | `PUT /guilds/{id}/onboarding` — complements the CODI onboarding plugin |
-| Announcement channels | ✅ `type: announcement` | need Community (clear error since 78aea4a) |
+| Enable Community | ✅ `community.enabled` | prerequisites (rules/updates channels, verification ≥ low, filter = all members) checked by `codi validate` and blocked in the plan with the missing list |
+| Rules channel | ✅ `community.rulesChannel` | `profile.rulesChannel` still accepted (deprecated alias); blocked without Community |
+| Community updates channel | ✅ `community.updatesChannel` | |
+| Welcome screen | ✅ `welcomeScreen` | |
+| Onboarding (questions, default channels, mode) | ✅ `onboarding` | see "Native onboarding and the CODI onboarding plugin" below |
+| Announcement channels | ✅ `type: announcement` | need Community: blocked in the plan, created right after Community is enabled |
 
 ## Roles
 | Discord setting | CODI | Notes |
 |---|---|---|
 | Name, color, hoist, mentionable, permissions, hierarchy | ✅ | |
-| Role style: gradient / holographic colors | ❌ | `colors {primary, secondary, tertiary}` (boost) |
-| Role icon (image, boost level 2) | 🟡 | `roles.*.icon` declared but not applied (contract has no icon field) |
-| Role icon emoji | ❌ | `unicode_emoji` |
+| Role style: gradient / holographic colors | ✅ `roles.*.colors` | boost level 2; `color` stays the solid shorthand |
+| Role icon (image, boost level 2) | ✅ `roles.*.icon` | |
+| Role icon emoji | ✅ `roles.*.emoji` | exclusive with `icon` |
 | Linked roles (role connections) | ❌ | app-level metadata, later |
 | @everyone permissions | ✅ `everyone.permissions` | |
 
@@ -67,27 +67,27 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 |---|---|---|
 | Name, type, category, position, topic, NSFW, slowmode, overwrites, sync with category | ✅ | |
 | Voice bitrate, user limit | ✅ | |
-| Voice region | ❌ | `rtc_region` |
-| Video quality | ❌ | `video_quality_mode` |
-| Hide after inactivity (thread auto-archive) | ❌ | `default_auto_archive_duration` |
-| Thread slowmode default | ❌ | `default_thread_rate_limit_per_user` |
-| Forum/media: tags, default reaction, sort order, layout, guidelines | ❌ | `available_tags`, `default_reaction_emoji`, `default_sort_order`, `default_forum_layout`, `topic` |
+| Voice region | ✅ `voiceRegion` | `automatic` or a region id |
+| Video quality | ✅ `videoQuality` | `auto` / `full` |
+| Hide after inactivity (thread auto-archive) | ✅ `threadArchiveAfter` | `1h` / `24h` / `3d` / `1w` |
+| Thread slowmode default | ✅ `threadSlowmode` | |
+| Forum/media: tags, default reaction, sort order, layout, guidelines | ✅ `tags` (keyed), `defaultReaction`, `sortOrder`, `layout`, `guidelines` | tag IDs kept on rename |
 | Spoiler channel ("salon de spoiler") | ❌ | to verify in the API |
 | Stage channels | ✅ `type: stage` | |
-| Channel webhooks | ❌ | maybe later (secrets) |
-| Invites | ❌ | permanent invite links could be declared |
+| Channel webhooks | ❌ | later (secrets) — TODO |
+| Invites | ❌ | permanent invite links could be declared — TODO |
 
 ## Expression
 | Discord setting | CODI | Notes |
 |---|---|---|
-| Emojis | ❌ | `emojis: {key: {name, image}}` from repo files |
-| Stickers | ❌ | `stickers` |
-| Soundboard sounds | ❌ | `soundboard` |
+| Emojis | ✅ `emojis: {key: {name, image, roles}}` | slots per boost level blocked in the plan; a changed file needs a new key |
+| Stickers | ✅ `stickers: {key: {name, description, emoji, file}}` | |
+| Soundboard sounds | ✅ `soundboard: {key: {name, sound, volume, emoji}}` | |
 
 ## Moderation
 | Discord setting | CODI | Notes |
 |---|---|---|
-| AutoMod rules (mention spam, spam, keyword presets, custom keywords, actions, exemptions) | ❌ | `/guilds/{id}/auto-moderation/rules` — high value |
+| AutoMod rules (mention spam, spam, keyword presets, custom keywords, actions, exemptions) | ✅ `automod: {key: {...}}` | keyed, adopted by name + trigger, rule caps blocked in the plan |
 | Bans | — | data, not configuration |
 | Audit log | — | read-only |
 
@@ -101,9 +101,69 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 ## Live server status (read-only, shown in the admin UI and used by the planner)
 | Information | CODI | Notes |
 |---|---|---|
-| Boost level and boost count | ❌ | `premium_tier`, `premium_subscription_count`: features locked by boost level (banner, role icons, gradient role colors, splash, upload limits…) must be **blocked in the plan with a clear reason** ("banner requires boost level 2, server is level 0") instead of failing on apply |
-| Community enabled | ❌ | `features` contains `COMMUNITY` (also `DISCOVERABLE`, `WELCOME_SCREEN_ENABLED`, `ROLE_ICONS`…) |
-| Icon / banner currently set | 🟡 | icon URL only; banner URL missing |
+| Boost level and boost count | ✅ | `premium_tier`, `premium_subscription_count`: features locked by boost level (banner, role icons, gradient role colors, splash, upload limits…) must be **blocked in the plan with a clear reason** ("banner requires boost level 2, server is level 0") instead of failing on apply |
+| Community enabled | ✅ | `features` contains `COMMUNITY` (also `DISCOVERABLE`, `WELCOME_SCREEN_ENABLED`, `ROLE_ICONS`…) |
+| Icon / banner currently set | ✅ | `iconUrl`, `bannerUrl`, `splashUrl` in the status API; the admin switcher shows the icon |
+
+## Example
+
+```yaml
+spec:
+  profile:
+    banner: ./assets/ma-commu-banner.png   # boost level 2
+    explicitContentFilter: allMembers
+    preferredLocale: fr
+    premiumProgressBar: true
+    systemChannel: general
+    systemChannelFlags: {welcomeMessages: true, setupTips: false}
+  community: {enabled: true, rulesChannel: rules, updatesChannel: mod-news}
+  afk: {channel: lounge, timeout: 900}
+  widget: {enabled: true, channel: general}
+  roles:
+    mod: {name: Mod, colors: {primary: "#5865f2", secondary: "#eb459e"}, emoji: "🛡️"}
+  channels:
+    help:
+      name: help
+      type: forum
+      guidelines: Search before asking.
+      tags: {question: {name: Question, emoji: "❓"}, solved: {name: Solved, moderated: true}}
+      defaultReaction: "👍"
+      sortOrder: creationDate
+      layout: list
+  automod:
+    bad-words:
+      name: Bad words
+      trigger: keyword
+      keywords: [darn, "heck*"]
+      actions: {block: {message: "Language!"}, alert: mod-log, timeout: 10m}
+      exemptRoles: [mod]
+  welcomeScreen:
+    description: Welcome!
+    channels: [{channel: rules, description: Read the rules, emoji: "📜"}]
+  onboarding:
+    enabled: true
+    defaultChannels: [rules, general, news, help, memes, events, lounge]
+    prompts:
+      - key: games
+        title: What do you play?
+        options: [{title: Minecraft, emoji: "⛏️", roles: [minecraft], channels: [minecraft]}]
+  emojis: {party: {name: party, image: ./assets/party.png}}
+  stickers: {wave: {name: Wave, emoji: wave, file: ./assets/wave.png}}
+  soundboard: {horn: {name: Horn, sound: ./assets/horn.ogg, volume: 0.6}}
+```
+
+## Native onboarding and the CODI onboarding plugin
+
+They are complementary and can run together:
+- **Discord onboarding** (`spec.onboarding`) runs inside the Discord client when a member
+  joins a Community server: default channels and a few questions that grant roles and
+  channels. It needs Community and at least 7 default channels (5 where @everyone can send
+  messages) in default mode.
+- **The CODI onboarding plugin** runs on the community portal (and with slash commands):
+  richer steps, custom logic, KV state, links to the portal profile. It works on any server.
+
+A typical setup keeps the essential interest roles in Discord onboarding (members see them
+right away) and uses the plugin for everything else; both can grant the same role keys.
 
 ## Priorities
 1. Live status (boost level/count, features incl. Community) in the contract, API and admin UI,

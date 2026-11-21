@@ -67,7 +67,11 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "you are not an admin or moderator of any server"))
 		return
 	}
-	writeJSON(w, http.StatusOK, humanStatus(s.filterStatus(r.Context(), st, vis)))
+	out := humanStatus(s.filterStatus(r.Context(), st, vis))
+	for i := range out.Servers {
+		s.addLive(&out.Servers[i])
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // ───────────────────────────────────────────────────────────── error objects
@@ -78,6 +82,38 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 type serverStatusDTO struct {
 	runtime.ServerStatus
 	Error *reconcile.HumanError `json:"error,omitempty"`
+	liveServerDTO
+}
+
+// liveServerDTO is the live Discord state of a server (from the runtime cache, kept
+// current by GUILD_UPDATE events): images, boost level and feature flags.
+type liveServerDTO struct {
+	IconURL   string `json:"iconUrl"`
+	BannerURL string `json:"bannerUrl"`
+	SplashURL string `json:"splashUrl"`
+	// BoostLevel is Discord's premium tier (0-3), BoostCount the number of boosts.
+	BoostLevel int      `json:"boostLevel"`
+	BoostCount int      `json:"boostCount"`
+	Features   []string `json:"features"`
+	// Community is true when the COMMUNITY feature is enabled.
+	Community bool `json:"community"`
+}
+
+func liveOf(info discord.Server) liveServerDTO {
+	f := append([]string{}, info.Features...)
+	sort.Strings(f)
+	return liveServerDTO{
+		IconURL: info.IconURL, BannerURL: info.BannerURL, SplashURL: info.SplashURL,
+		BoostLevel: info.PremiumTier, BoostCount: info.PremiumSubscriptionCount,
+		Features: f, Community: info.HasFeature(discord.FeatureCommunity),
+	}
+}
+
+// addLive fills the live state of a server DTO (features is [] when the server is not
+// cached yet).
+func (s *server) addLive(d *serverStatusDTO) {
+	info, _ := s.rt.ServerInfo(d.Key)
+	d.liveServerDTO = liveOf(info)
 }
 
 type botStatusDTO struct {
@@ -103,7 +139,7 @@ func statusError(health, message string) *reconcile.HumanError {
 }
 
 func humanServer(ss runtime.ServerStatus) serverStatusDTO {
-	return serverStatusDTO{ServerStatus: ss, Error: statusError(ss.Health, ss.Message)}
+	return serverStatusDTO{ServerStatus: ss, Error: statusError(ss.Health, ss.Message), liveServerDTO: liveServerDTO{Features: []string{}}}
 }
 
 func humanStatus(st runtime.Status) statusDTO {
@@ -322,10 +358,12 @@ func (s *server) handleServer(w http.ResponseWriter, r *http.Request) {
 	if ss.Drift == nil {
 		ss.Drift = []runtime.DriftEntry{}
 	}
+	dto := humanServer(ss)
+	s.addLive(&dto)
 	writeJSON(w, http.StatusOK, struct {
 		serverStatusDTO
 		Spec any `json:"spec"`
-	}{humanServer(ss), srv.Spec})
+	}{dto, srv.Spec})
 }
 
 type roleDTO struct {
@@ -464,6 +502,9 @@ func (s *server) handleServerSync(w http.ResponseWriter, r *http.Request) {
 func (id *identity) auditActor() string {
 	if id.bearer {
 		return "runtime-token"
+	}
+	if id.setup {
+		return "setup"
 	}
 	return "discord:" + id.user.ID
 }

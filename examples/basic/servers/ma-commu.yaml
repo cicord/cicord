@@ -9,8 +9,23 @@ spec:
     name: Ma Commu
     verificationLevel: medium
     defaultNotifications: onlyMentions
+    explicitContentFilter: allMembers
+    preferredLocale: fr
     systemChannel: general
+    systemChannelFlags:
+      welcomeMessages: true
+      setupTips: false
+
+  # Community (Server Settings → Enable Community): needed for the announcement channel,
+  # the welcome screen and Discord's onboarding.
+  community:
+    enabled: true
     rulesChannel: rules
+    updatesChannel: staff-chat
+
+  afk:
+    channel: voice
+    timeout: 900
 
   syncPolicy:
     selfHeal: false

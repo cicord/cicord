@@ -60,6 +60,7 @@ type Reconciler struct {
 	closed  bool
 	running sync.WaitGroup // event-triggered syncs in flight
 	iconMem iconState
+	imgMem  map[string]iconState
 	srvID   string
 	key     string         // server key (immutable)
 	cfg     *config.Server // copy of desired for event filtering
@@ -114,15 +115,25 @@ func (r *Reconciler) Plan(ctx context.Context) (Plan, error) {
 
 func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
 	sp := &r.desired.Spec
-	snap, err := Fetch(ctx, r.opts.Client, sp.DiscordID, r.opts.BotUserID)
-	if err != nil {
-		return Plan{}, err
-	}
 	mapped, err := r.opts.Resources.List(ctx, r.serverKey())
 	if err != nil {
 		return Plan{}, fmt.Errorf("list resource map: %w", err)
 	}
-	in := planInput{Desired: r.desired, Live: snap, Mapped: mapped, BotTop: snap.BotTopPosition()}
+	snap, err := FetchWith(ctx, r.opts.Client, sp.DiscordID, r.opts.BotUserID, FetchOptionsFor(sp, mapped))
+	if err != nil {
+		return Plan{}, err
+	}
+	in := planInput{Desired: r.desired, Live: snap, Mapped: mapped, BotTop: snap.BotTopPosition(),
+		Files: map[string][]byte{}, FileState: map[string]iconState{}}
+	dir := filepath.Join(r.opts.RepoRoot, filepath.Dir(filepath.FromSlash(r.desired.File)))
+	for name, rel := range parityFiles(sp) {
+		if in.Files[name], err = os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel))); err != nil {
+			return Plan{}, fmt.Errorf("%s: %w", name, err)
+		}
+		if in.FileState[name], err = r.loadImageState(ctx, name); err != nil {
+			return Plan{}, fmt.Errorf("load %s state: %w", name, err)
+		}
+	}
 	if sp.Profile != nil && sp.Profile.Icon != "" {
 		path := filepath.Join(r.opts.RepoRoot, filepath.Dir(filepath.FromSlash(r.desired.File)), filepath.FromSlash(sp.Profile.Icon))
 		if in.Icon, err = os.ReadFile(path); err != nil {
@@ -276,7 +287,7 @@ func (r *Reconciler) HandleEvent(ev discord.Event) bool {
 	case discord.RoleDeleteEvent:
 		relevant = r.managed[e.RoleID]
 	case discord.ServerUpdateEvent:
-		relevant = sp.Profile != nil
+		relevant = sp.Profile != nil || sp.Community != nil || sp.AFK != nil
 	}
 	if !relevant {
 		return false

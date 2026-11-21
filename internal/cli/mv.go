@@ -268,6 +268,13 @@ func serverEdits(root, rel string, kind state.ResourceKind, oldKey, newKey strin
 				renameKey(mapGet(v, "overwrites"), section+"."+k+".overwrites")
 			})
 		}
+		forEachEntry(mapGet(spec, "automod"), func(k string, v *yaml.Node) {
+			replaceIn(mapGet(v, "exemptRoles"), "automod."+k+".exemptRoles")
+		})
+		forEachEntry(mapGet(spec, "emojis"), func(k string, v *yaml.Node) {
+			replaceIn(mapGet(v, "roles"), "emojis."+k+".roles")
+		})
+		forEachOption(spec, func(where string, o *yaml.Node) { replaceIn(mapGet(o, "roles"), where+".roles") })
 	case state.KindCategory:
 		renameKey(mapGet(spec, "categories"), "categories."+oldKey)
 		forEachEntry(mapGet(spec, "channels"), func(k string, v *yaml.Node) {
@@ -277,6 +284,22 @@ func serverEdits(root, rel string, kind state.ResourceKind, oldKey, newKey strin
 		renameKey(mapGet(spec, "channels"), "channels."+oldKey)
 		for _, f := range []string{"systemChannel", "rulesChannel"} {
 			replaceValue(mapGet(mapGet(spec, "profile"), f), "profile."+f)
+		}
+		for _, f := range []string{"rulesChannel", "updatesChannel", "safetyAlertsChannel"} {
+			replaceValue(mapGet(mapGet(spec, "community"), f), "community."+f)
+		}
+		replaceValue(mapGet(mapGet(spec, "afk"), "channel"), "afk.channel")
+		replaceValue(mapGet(mapGet(spec, "widget"), "channel"), "widget.channel")
+		forEachEntry(mapGet(spec, "automod"), func(k string, v *yaml.Node) {
+			replaceIn(mapGet(v, "exemptChannels"), "automod."+k+".exemptChannels")
+			replaceValue(mapGet(mapGet(v, "actions"), "alert"), "automod."+k+".actions.alert")
+		})
+		replaceIn(mapGet(mapGet(spec, "onboarding"), "defaultChannels"), "onboarding.defaultChannels")
+		forEachOption(spec, func(where string, o *yaml.Node) { replaceIn(mapGet(o, "channels"), where+".channels") })
+		if ws := mapGet(mapGet(spec, "welcomeScreen"), "channels"); ws != nil && ws.Kind == yaml.SequenceNode {
+			for i, it := range ws.Content {
+				replaceValue(mapGet(it, "channel"), fmt.Sprintf("welcomeScreen.channels[%d].channel", i))
+			}
 		}
 	}
 	if fe.newData, err = applySpanEdits(data, fe.edits); err != nil {
@@ -560,4 +583,21 @@ func tokenEnds(rest []byte, quoted bool) bool {
 		return true
 	}
 	return false
+}
+
+// forEachOption calls fn for every onboarding answer (spec.onboarding.prompts[].options[]).
+func forEachOption(spec *yaml.Node, fn func(where string, o *yaml.Node)) {
+	prompts := mapGet(mapGet(spec, "onboarding"), "prompts")
+	if prompts == nil || prompts.Kind != yaml.SequenceNode {
+		return
+	}
+	for i, p := range prompts.Content {
+		opts := mapGet(p, "options")
+		if opts == nil || opts.Kind != yaml.SequenceNode {
+			continue
+		}
+		for j, o := range opts.Content {
+			fn(fmt.Sprintf("onboarding.prompts[%d].options[%d]", i, j), o)
+		}
+	}
 }

@@ -129,7 +129,8 @@ func TestUserMemberRoleFromWire(t *testing.T) {
 	}
 
 	r := roleFromWire(wireRole{ID: "3", Name: "mod", Color: 0xff0000, Hoist: true, Mentionable: true, Permissions: "8", Position: 4, Managed: true})
-	if r != (discord.Role{ID: "3", Name: "mod", Color: 0xff0000, Hoist: true, Mentionable: true, Permissions: 8, Position: 4, Managed: true}) {
+	if r != (discord.Role{ID: "3", Name: "mod", Color: 0xff0000, Hoist: true, Mentionable: true, Permissions: 8, Position: 4, Managed: true,
+		Colors: discord.RoleColors{Primary: 0xff0000}}) {
 		t.Errorf("role = %+v", r)
 	}
 	body := jsonOf(t, roleParamsBody(discord.RoleParams{Name: ptr("x"), Color: ptr(0), Permissions: ptr(discord.Permissions(1 << 3))}))
@@ -143,8 +144,9 @@ func TestServerMapping(t *testing.T) {
 	s := serverFromWire(wireGuild{ID: "1", Name: "S", Description: &desc, OwnerID: "2", Icon: &icon,
 		VerificationLevel: 2, DefaultMessageNotifications: 1, SystemChannelID: &sys})
 	want := discord.Server{ID: "1", Name: "S", Description: "d", OwnerID: "2", IconURL: "https://cdn.discordapp.com/icons/1/hash.png",
-		VerificationLevel: "medium", DefaultNotifications: "onlyMentions", SystemChannelID: "11"}
-	if s != want {
+		VerificationLevel: "medium", DefaultNotifications: "onlyMentions", SystemChannelID: "11",
+		ExplicitContentFilter: "disabled", Features: []string{}}
+	if !reflect.DeepEqual(s, want) {
 		t.Errorf("server = %+v", s)
 	}
 
@@ -215,7 +217,11 @@ func TestChannelMapping(t *testing.T) {
 	}
 
 	// Update: "" parent → null; nil fields omitted; Type ignored.
-	ub := jsonOf(t, channelUpdateBody(discord.ChannelParams{Type: discord.ChannelVoice, ParentID: ptr(""), Topic: ptr("")}))
+	ubm, err := channelUpdateBody(discord.ChannelParams{Type: discord.ChannelVoice, ParentID: ptr(""), Topic: ptr("")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ub := jsonOf(t, ubm)
 	if !reflect.DeepEqual(ub, map[string]any{"parent_id": nil, "topic": ""}) {
 		t.Errorf("update body = %v", ub)
 	}

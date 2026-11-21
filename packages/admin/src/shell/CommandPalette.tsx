@@ -121,7 +121,7 @@ export function CommandPalette({
                       ws.selectServer(s.key);
                     }}
                   >
-                    <ServerAvatar name={s.name} size={18} />
+                    <ServerAvatar name={s.name} url={s.iconUrl} size={18} />
                     <span>{s.name}</span>
                     <span className="font-mono text-[11px] text-subtle-foreground">{s.key}</span>
                     <StatusDot tone={syncTone(s.sync)} className="ml-auto" />

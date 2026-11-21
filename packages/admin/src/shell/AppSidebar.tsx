@@ -40,7 +40,7 @@ export function AppSidebar({ page }: { page: PageId }) {
   const visible = NAV.filter((n) => (!n.devOnly || ws.simulator) && (!n.adminOnly || ws.isAdmin));
   // Overview · Configuration · Sync · Audit log … Simulator, Settings (bottom).
   const top = visible.filter((n) => n.id === "overview");
-  const audit = visible.filter((n) => n.id === "audit");
+  const audit = visible.filter((n) => n.id === "audit" || n.id === "diagnostics");
   const section = (id: SectionId) => visible.filter((n) => n.section === id);
   const tail = visible.filter((n) => n.id === "simulator" || n.id === "settings");
 
@@ -174,7 +174,7 @@ export function ServerSwitcher() {
           tooltip={name}
         >
           <span className="relative">
-            <ServerAvatar name={name} size={26} />
+            <ServerAvatar name={name} url={current?.iconUrl} size={26} />
             <span className="absolute -right-0.5 -bottom-0.5 rounded-full bg-sidebar p-[2px]">
               <StatusDot tone={tone} className="block size-2" />
             </span>
@@ -197,7 +197,7 @@ export function ServerSwitcher() {
         <DropdownMenuLabel>{t("switcher.servers")}</DropdownMenuLabel>
         {servers.map((s) => (
           <DropdownMenuItem key={s.key} onSelect={() => ws.selectServer(s.key)} className="gap-2.5">
-            <ServerAvatar name={s.name} size={22} />
+            <ServerAvatar name={s.name} url={s.iconUrl} size={22} />
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
               <span className="truncate">{s.name}</span>
               <span className="truncate font-mono text-[11px] text-subtle-foreground">{s.key}</span>

@@ -209,7 +209,10 @@ func (s *session) UpdateChannel(ctx context.Context, channelID string, p discord
 	if err := checkIDs("UpdateChannel", channelID); err != nil {
 		return discord.Channel{}, err
 	}
-	body := channelUpdateBody(p)
+	body, err := channelUpdateBody(p)
+	if err != nil {
+		return discord.Channel{}, fmt.Errorf("discord UpdateChannel: %w", err)
+	}
 	if p.LockPermissions != nil && *p.LockPermissions {
 		parentID := ""
 		if p.ParentID != nil {

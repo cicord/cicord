@@ -22,6 +22,32 @@ var verificationLevels = []string{"none", "low", "medium", "high", "highest"}
 // Default message notification levels.
 var notificationLevels = []string{"allMessages", "onlyMentions"}
 
+// Explicit content filter levels (0 disabled, 1 members without roles, 2 all members).
+var explicitContentFilters = []string{"disabled", "membersWithoutRoles", "allMembers"}
+
+// Optional enums: index 0 is "unset" (Discord 0 / null).
+var (
+	videoQualityModes = []string{"", "auto", "full"}
+	forumLayouts      = []string{"", "list", "gallery"}
+	// sortOrders is shifted by one: Discord null → "", 0 → latestActivity, 1 → creationDate.
+	sortOrders = []string{"", "latestActivity", "creationDate"}
+)
+
+// optEnumName maps an optional enum; out-of-range values (newer Discord values) → "".
+func optEnumName(table []string, v int) string {
+	if v > 0 && v < len(table) {
+		return table[v]
+	}
+	return ""
+}
+
+func optEnumValue(table []string, name, what string) (int, error) {
+	if name == "" {
+		return 0, nil
+	}
+	return enumValue(table, name, what)
+}
+
 func verificationLevelName(v int) string { return enumName(verificationLevels, v) }
 func notificationLevelName(v int) string { return enumName(notificationLevels, v) }
 
@@ -204,16 +230,23 @@ func memberFromWire(serverID string, m wireMember, user *wireUser) discord.Membe
 }
 
 func roleFromWire(r wireRole) discord.Role {
-	return discord.Role{
-		ID:          r.ID,
-		Name:        r.Name,
-		Color:       r.Color,
-		Hoist:       r.Hoist,
-		Mentionable: r.Mentionable,
-		Permissions: parsePerm(r.Permissions),
-		Position:    r.Position,
-		Managed:     r.Managed,
+	out := discord.Role{
+		ID:           r.ID,
+		Name:         r.Name,
+		Color:        r.Color,
+		Hoist:        r.Hoist,
+		Mentionable:  r.Mentionable,
+		Permissions:  parsePerm(r.Permissions),
+		Position:     r.Position,
+		Managed:      r.Managed,
+		IconURL:      cdnImage("role-icons", r.ID, r.Icon),
+		UnicodeEmoji: deref(r.UnicodeEmoji),
+		Colors:       discord.RoleColors{Primary: r.Color},
 	}
+	if r.Colors != nil {
+		out.Colors = discord.RoleColors{Primary: r.Colors.PrimaryColor, Secondary: derefInt(r.Colors.SecondaryColor), Tertiary: derefInt(r.Colors.TertiaryColor)}
+	}
+	return out
 }
 
 func roleParamsBody(p discord.RoleParams) map[string]any {
@@ -221,8 +254,21 @@ func roleParamsBody(p discord.RoleParams) map[string]any {
 	if p.Name != nil {
 		body["name"] = *p.Name
 	}
-	if p.Color != nil {
+	if p.Colors != nil {
+		// colors supersedes color (Discord keeps color = colors.primary_color).
+		body["colors"] = map[string]any{
+			"primary_color":   p.Colors.Primary,
+			"secondary_color": nullIfZero(p.Colors.Secondary),
+			"tertiary_color":  nullIfZero(p.Colors.Tertiary),
+		}
+	} else if p.Color != nil {
 		body["color"] = *p.Color
+	}
+	if p.Icon != nil {
+		body["icon"] = nullIfEmpty(imageDataURI(*p.Icon))
+	}
+	if p.UnicodeEmoji != nil {
+		body["unicode_emoji"] = nullIfEmpty(*p.UnicodeEmoji)
 	}
 	if p.Hoist != nil {
 		body["hoist"] = *p.Hoist
@@ -249,6 +295,20 @@ func serverFromWire(g wireGuild) discord.Server {
 		DefaultNotifications: notificationLevelName(g.DefaultMessageNotifications),
 		SystemChannelID:      deref(g.SystemChannelID),
 		RulesChannelID:       deref(g.RulesChannelID),
+
+		BannerURL:                cdnImage("banners", g.ID, g.Banner),
+		SplashURL:                cdnImage("splashes", g.ID, g.Splash),
+		ExplicitContentFilter:    enumName(explicitContentFilters, g.ExplicitContentFilter),
+		SystemChannelFlags:       discord.SystemChannelFlags(g.SystemChannelFlags),
+		PublicUpdatesChannelID:   deref(g.PublicUpdatesChannelID),
+		SafetyAlertsChannelID:    deref(g.SafetyAlertsChannelID),
+		AFKChannelID:             deref(g.AFKChannelID),
+		AFKTimeout:               g.AFKTimeout,
+		PreferredLocale:          g.PreferredLocale,
+		PremiumProgressBar:       g.PremiumProgressBarEnabled,
+		Features:                 append([]string{}, g.Features...),
+		PremiumTier:              g.PremiumTier,
+		PremiumSubscriptionCount: derefInt(g.PremiumSubscriptionCount),
 	}
 }
 
@@ -285,7 +345,94 @@ func serverParamsBody(p discord.ServerParams) (map[string]any, error) {
 	if p.RulesChannelID != nil {
 		body["rules_channel_id"] = nullIfEmpty(*p.RulesChannelID)
 	}
+	if p.Banner != nil {
+		body["banner"] = nullIfEmpty(imageDataURI(*p.Banner))
+	}
+	if p.Splash != nil {
+		body["splash"] = nullIfEmpty(imageDataURI(*p.Splash))
+	}
+	if p.ExplicitContentFilter != nil {
+		v, err := enumValue(explicitContentFilters, *p.ExplicitContentFilter, "explicit content filter")
+		if err != nil {
+			return nil, err
+		}
+		body["explicit_content_filter"] = v
+	}
+	if p.SystemChannelFlags != nil {
+		body["system_channel_flags"] = int(*p.SystemChannelFlags)
+	}
+	if p.PublicUpdatesChannelID != nil {
+		body["public_updates_channel_id"] = nullIfEmpty(*p.PublicUpdatesChannelID)
+	}
+	if p.SafetyAlertsChannelID != nil {
+		body["safety_alerts_channel_id"] = nullIfEmpty(*p.SafetyAlertsChannelID)
+	}
+	if p.AFKChannelID != nil {
+		body["afk_channel_id"] = nullIfEmpty(*p.AFKChannelID)
+	}
+	if p.AFKTimeout != nil {
+		body["afk_timeout"] = *p.AFKTimeout
+	}
+	if p.PreferredLocale != nil {
+		body["preferred_locale"] = *p.PreferredLocale
+	}
+	if p.PremiumProgressBar != nil {
+		body["premium_progress_bar_enabled"] = *p.PremiumProgressBar
+	}
+	if p.Features != nil {
+		f := append([]string{}, (*p.Features)...)
+		body["features"] = f
+	}
 	return body, nil
+}
+
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+func nullIfZero(v int) any {
+	if v == 0 {
+		return nil
+	}
+	return v
+}
+
+// splitEmoji turns a CODI emoji string (unicode, "name:id", "<:name:id>" or a bare
+// custom emoji ID) into Discord's emoji_id / emoji_name pair.
+func splitEmoji(s string) (id, name *string) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	if len(s) >= 15 && isSnowflake(s) {
+		return &s, nil
+	}
+	e := emojiToWire(s)
+	if e.ID != "" {
+		eid := e.ID
+		if e.Name == "" {
+			return &eid, nil
+		}
+		n := e.Name
+		return &eid, &n
+	}
+	n := e.Name
+	return nil, &n
+}
+
+// joinEmoji is the inverse of splitEmoji: "name:id" for custom emojis (the bare ID
+// when Discord sends no name), the unicode character otherwise.
+func joinEmoji(id, name *string) string {
+	if i := deref(id); i != "" && i != "0" {
+		if n := deref(name); n != "" {
+			return n + ":" + i
+		}
+		return i
+	}
+	return deref(name)
 }
 
 func nullIfEmpty(s string) any {
@@ -336,6 +483,21 @@ func channelFromWire(c wireChannel) discord.Channel {
 		RateLimitPerUser: c.RateLimitPerUser,
 		Bitrate:          c.Bitrate,
 		UserLimit:        c.UserLimit,
+
+		RTCRegion:             deref(c.RTCRegion),
+		VideoQuality:          optEnumName(videoQualityModes, c.VideoQualityMode),
+		DefaultAutoArchive:    c.DefaultAutoArchiveDuration,
+		DefaultThreadSlowmode: c.DefaultThreadRateLimitPerUser,
+		DefaultLayout:         optEnumName(forumLayouts, c.DefaultForumLayout),
+	}
+	if c.DefaultSortOrder != nil {
+		out.DefaultSortOrder = optEnumName(sortOrders, *c.DefaultSortOrder+1)
+	}
+	if c.DefaultReactionEmoji != nil {
+		out.DefaultReaction = joinEmoji(c.DefaultReactionEmoji.EmojiID, c.DefaultReactionEmoji.EmojiName)
+	}
+	for _, t := range c.AvailableTags {
+		out.Tags = append(out.Tags, discord.ForumTag{ID: t.ID, Name: t.Name, Moderated: t.Moderated, Emoji: joinEmoji(t.EmojiID, t.EmojiName)})
 	}
 	if len(c.PermissionOverwrites) > 0 {
 		out.Overwrites = make([]discord.Overwrite, 0, len(c.PermissionOverwrites))
@@ -351,7 +513,10 @@ func channelCreateBody(p discord.ChannelParams) (map[string]any, error) {
 	if p.Name == nil || *p.Name == "" {
 		return nil, fmt.Errorf("%w: channel name is required", discord.ErrBadRequest)
 	}
-	body := channelCommonBody(p)
+	body, err := channelCommonBody(p)
+	if err != nil {
+		return nil, err
+	}
 	body["type"] = int(p.Type)
 	if p.ParentID != nil {
 		if *p.ParentID == "" {
@@ -363,11 +528,11 @@ func channelCreateBody(p discord.ChannelParams) (map[string]any, error) {
 
 // channelUpdateBody builds the Modify Channel body. ParentID "" is sent as null.
 // LockPermissions is resolved by the caller (it needs the parent's overwrites).
-func channelUpdateBody(p discord.ChannelParams) map[string]any {
+func channelUpdateBody(p discord.ChannelParams) (map[string]any, error) {
 	return channelCommonBody(p)
 }
 
-func channelCommonBody(p discord.ChannelParams) map[string]any {
+func channelCommonBody(p discord.ChannelParams) (map[string]any, error) {
 	body := map[string]any{}
 	if p.Name != nil {
 		body["name"] = *p.Name
@@ -396,7 +561,57 @@ func channelCommonBody(p discord.ChannelParams) map[string]any {
 	if p.Overwrites != nil {
 		body["permission_overwrites"] = overwritesToWire(*p.Overwrites)
 	}
-	return body
+	if p.RTCRegion != nil {
+		body["rtc_region"] = nullIfEmpty(*p.RTCRegion)
+	}
+	if p.VideoQuality != nil {
+		v, err := optEnumValue(videoQualityModes, *p.VideoQuality, "video quality")
+		if err != nil {
+			return nil, err
+		}
+		body["video_quality_mode"] = v
+	}
+	if p.DefaultAutoArchive != nil {
+		body["default_auto_archive_duration"] = *p.DefaultAutoArchive
+	}
+	if p.DefaultThreadSlowmode != nil {
+		body["default_thread_rate_limit_per_user"] = *p.DefaultThreadSlowmode
+	}
+	if p.Tags != nil {
+		tags := make([]wireForumTag, 0, len(*p.Tags))
+		for _, t := range *p.Tags {
+			id, name := splitEmoji(t.Emoji)
+			tags = append(tags, wireForumTag{ID: t.ID, Name: t.Name, Moderated: t.Moderated, EmojiID: id, EmojiName: name})
+		}
+		body["available_tags"] = tags
+	}
+	if p.DefaultReaction != nil {
+		if *p.DefaultReaction == "" {
+			body["default_reaction_emoji"] = nil
+		} else {
+			id, name := splitEmoji(*p.DefaultReaction)
+			body["default_reaction_emoji"] = wireDefaultReaction{EmojiID: id, EmojiName: name}
+		}
+	}
+	if p.DefaultSortOrder != nil {
+		v, err := optEnumValue(sortOrders, *p.DefaultSortOrder, "sort order")
+		if err != nil {
+			return nil, err
+		}
+		if v == 0 {
+			body["default_sort_order"] = nil
+		} else {
+			body["default_sort_order"] = v - 1
+		}
+	}
+	if p.DefaultLayout != nil {
+		v, err := optEnumValue(forumLayouts, *p.DefaultLayout, "forum layout")
+		if err != nil {
+			return nil, err
+		}
+		body["default_forum_layout"] = v
+	}
+	return body, nil
 }
 
 func channelPositionsBody(positions []discord.ChannelPosition) []map[string]any {

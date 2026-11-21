@@ -44,7 +44,9 @@ type sessionData struct {
 
 // identity is the caller of a request.
 type identity struct {
-	bearer    bool
+	bearer bool
+	// setup is the setup-wizard principal (setup cookie): admin until setup completes.
+	setup     bool
 	sessionID string
 	user      discord.User
 	data      sessionData
@@ -53,6 +55,9 @@ type identity struct {
 func (id *identity) actor() string {
 	if id.bearer {
 		return "runtime-token"
+	}
+	if id.setup {
+		return "setup"
 	}
 	return fmt.Sprintf("discord:%s (%s)", id.user.ID, id.user.DisplayName())
 }
@@ -75,6 +80,11 @@ func (s *server) identify(r *http.Request) (*identity, error) {
 		}
 		return nil, httpErr(http.StatusUnauthorized, "unauthenticated", "invalid bearer token")
 	}
+	// While the setup wizard runs, its session wins over a Discord login made from the same
+	// browser ("Test login" with a non-owner account must not lock the wizard out).
+	if id := s.identifySetup(r); id != nil {
+		return id, nil
+	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
 		return nil, nil
@@ -88,8 +98,8 @@ func (s *server) identify(r *http.Request) (*identity, error) {
 	}
 	var d sessionData
 	_ = json.Unmarshal(sess.Data, &d)
-	if d.Token {
-		return nil, nil // token sessions are never accepted as cookies
+	if d.Token || d.Method == setupSessionMethod {
+		return nil, nil // token / setup sessions are never accepted as codi_session cookies
 	}
 	return &identity{sessionID: sess.ID, data: d, user: discord.User{
 		ID: sess.UserID, Username: d.Username, GlobalName: d.DisplayName, AvatarURL: d.AvatarURL,
@@ -230,7 +240,7 @@ func (s *server) roleIn(ctx context.Context, id *identity, serverKey string, por
 	if !ok {
 		return roleNone, nil, nil
 	}
-	if id.bearer {
+	if id.bearer || id.setup {
 		return roleAdmin, nil, nil
 	}
 	if id.data.LinkServer != "" && id.data.LinkServer != serverKey {
@@ -560,6 +570,17 @@ func (s *server) safeRedirect(target string) string {
 	return "/"
 }
 
+// clientSecret returns the OAuth2 client secret (SecretFunc first: the setup wizard
+// stores it after the handler was built).
+func (s *server) clientSecret() string {
+	if f := s.opts.OAuth.SecretFunc; f != nil {
+		if v := f(); v != "" {
+			return v
+		}
+	}
+	return s.opts.OAuth.ClientSecret
+}
+
 func (s *server) clientID() string {
 	if s.opts.OAuth.ClientID != "" {
 		return s.opts.OAuth.ClientID
@@ -595,7 +616,7 @@ func (s *server) publicURL(r *http.Request) string {
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	cid := s.clientID()
-	if cid == "" || s.opts.OAuth.ClientSecret == "" {
+	if cid == "" || s.clientSecret() == "" {
 		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "Discord login is not configured (CODI_DISCORD_CLIENT_SECRET)"))
 		return
 	}
@@ -688,7 +709,7 @@ func (s *server) exchangeCode(ctx context.Context, code, redirectURI string) (di
 	form.Set("code", code)
 	form.Set("redirect_uri", redirectURI)
 	form.Set("client_id", s.clientID())
-	form.Set("client_secret", s.opts.OAuth.ClientSecret)
+	form.Set("client_secret", s.clientSecret())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.opts.OAuth.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return discord.User{}, err

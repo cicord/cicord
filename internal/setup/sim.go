@@ -1,0 +1,229 @@
+package setup
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+
+	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/codi/internal/sim"
+)
+
+// SimEnv is the simulated Discord of `codi dev --sim --setup`: a world with an owner, a
+// community server that already has roles and channels (so the import has something to
+// adopt), and helpers standing in for what a person does on discord.com (create a bot,
+// toggle the privileged intents, authorize the invite, drag the bot role, send a
+// message). It also implements Probe on the world.
+type SimEnv struct {
+	World *sim.World
+	Owner discord.User
+
+	mu      sync.Mutex
+	servers []string                   // servers created by the environment
+	intents map[string]discord.Intents // application ID → enabled privileged intents
+	names   map[string]string          // application ID → application name
+}
+
+// NewSimEnv seeds a world for the setup wizard.
+func NewSimEnv(w *sim.World) (*SimEnv, error) {
+	e := &SimEnv{World: w, intents: map[string]discord.Intents{}, names: map[string]string{}}
+	e.Owner = w.CreateUser("owner")
+	if _, err := e.CreateServer("Pixel Pals"); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// CreateServer creates a server owned by the owner with a realistic layout.
+func (e *SimEnv) CreateServer(name string) (discord.Server, error) {
+	w := e.World
+	srv := w.CreateServer(name, e.Owner.ID, sim.WithGeneralChannel())
+	perm := discord.MustPermissions
+	for _, r := range []discord.RoleParams{
+		{Name: ptr("Admin"), Color: ptr(0xE74C3C), Hoist: ptr(true), Permissions: ptr(perm("Administrator"))},
+		{Name: ptr("Moderator"), Color: ptr(0x3498DB), Hoist: ptr(true), Permissions: ptr(perm("KickMembers", "BanMembers", "ManageMessages", "ModerateMembers"))},
+		{Name: ptr("Member"), Color: ptr(0x2ECC71)},
+	} {
+		if _, err := w.AdminCreateRole(srv.ID, r); err != nil {
+			return srv, err
+		}
+	}
+	cat, err := w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("Community"), Type: discord.ChannelCategory})
+	if err != nil {
+		return srv, err
+	}
+	for _, c := range []discord.ChannelParams{
+		{Name: ptr("rules"), Type: discord.ChannelText, ParentID: ptr(cat.ID), Topic: ptr("Be kind.")},
+		{Name: ptr("announcements"), Type: discord.ChannelText, ParentID: ptr(cat.ID)},
+		{Name: ptr("Lounge"), Type: discord.ChannelVoice, ParentID: ptr(cat.ID)},
+	} {
+		if _, err := w.AdminCreateChannel(srv.ID, c); err != nil {
+			return srv, err
+		}
+	}
+	for _, n := range []string{"alice", "bob"} {
+		u := w.CreateUser(n)
+		if err := w.AddMember(srv.ID, u.ID); err != nil {
+			return srv, err
+		}
+	}
+	e.mu.Lock()
+	e.servers = append(e.servers, srv.ID)
+	e.mu.Unlock()
+	return srv, nil
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// CreateBot creates an application with its bot (privileged intents off, like a new
+// application) and returns its token.
+func (e *SimEnv) CreateBot(name string) (token string, appID string) {
+	token, _, appID = e.World.CreateBot(name)
+	_ = e.SetIntents(appID, 0) // a new application has every privileged intent off
+	e.mu.Lock()
+	e.names[appID] = name
+	e.mu.Unlock()
+	return token, appID
+}
+
+// SetIntents toggles the privileged intents of an application ("developer portal").
+func (e *SimEnv) SetIntents(appID string, in discord.Intents) error {
+	in &= discord.PrivilegedIntents
+	if err := e.World.SetPrivilegedIntents(appID, in); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	e.intents[appID] = in
+	e.mu.Unlock()
+	return nil
+}
+
+func (e *SimEnv) botUser(token string) (discord.User, string, error) {
+	s, err := e.World.Connect(context.Background(), CleanToken(token))
+	if err != nil {
+		return discord.User{}, "", err
+	}
+	defer s.Close(context.Background())
+	return s.Self(), s.ApplicationID(), nil
+}
+
+// Invite adds the bot to a server with Administrator, like the OAuth invite. low places
+// the bot's role at the bottom of the hierarchy (to rehearse the "drag the role" fix).
+func (e *SimEnv) Invite(token, serverID string, low bool) error {
+	u, _, err := e.botUser(token)
+	if err != nil {
+		return err
+	}
+	role, err := e.World.AddBotToServer(serverID, u.ID, discord.MustPermissions("Administrator"))
+	if err != nil {
+		return err
+	}
+	if low && role.ID != "" {
+		return e.World.AdminSetRolePositions(serverID, []discord.RolePosition{{ID: role.ID, Position: 1}})
+	}
+	return nil
+}
+
+// RaiseBotRole moves the bot's managed role to the top ("drag it above every role").
+func (e *SimEnv) RaiseBotRole(token, serverID string) error {
+	u, _, err := e.botUser(token)
+	if err != nil {
+		return err
+	}
+	m, ok := e.World.Member(serverID, u.ID)
+	if !ok {
+		return errors.New("the bot is not in this server")
+	}
+	roles := e.World.Roles(serverID)
+	top := 0
+	for _, r := range roles {
+		if r.Position > top {
+			top = r.Position
+		}
+	}
+	for _, r := range roles {
+		if r.Managed && m.HasRole(r.ID) {
+			return e.World.AdminSetRolePositions(serverID, []discord.RolePosition{{ID: r.ID, Position: top}})
+		}
+	}
+	return errors.New("the bot has no role in this server")
+}
+
+// SendMessage posts a message as the owner in the first text channel of a server.
+func (e *SimEnv) SendMessage(serverID, content string) error {
+	for _, c := range e.World.Channels(serverID) {
+		if c.Type == discord.ChannelText {
+			_, err := e.World.SendMessage(e.Owner.ID, c.ID, content)
+			return err
+		}
+	}
+	return fmt.Errorf("server %s has no text channel", serverID)
+}
+
+// Servers lists the servers of the environment (to invite the bot to).
+func (e *SimEnv) Servers() []discord.Server {
+	e.mu.Lock()
+	ids := append([]string(nil), e.servers...)
+	e.mu.Unlock()
+	var out []discord.Server
+	for _, id := range ids {
+		if s, ok := e.World.Server(id); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Identify implements Probe.
+func (e *SimEnv) Identify(ctx context.Context, token string) (Identity, error) {
+	u, appID, err := e.botUser(token)
+	if err != nil {
+		return Identity{}, err
+	}
+	e.mu.Lock()
+	in, known := e.intents[appID]
+	name := e.names[appID]
+	e.mu.Unlock()
+	if !known {
+		in = discord.PrivilegedIntents // the simulator's default for seeded bots
+	}
+	if name == "" {
+		name = u.Username
+	}
+	return Identity{BotUserID: u.ID, BotUsername: u.Username, BotAvatarURL: u.AvatarURL, ApplicationID: appID,
+		ApplicationName: name, Flags: FlagsFromIntents(in)}, nil
+}
+
+// Servers implements Probe (Servers method on the token).
+func (e *SimEnv) ServersOf(ctx context.Context, token string) ([]ServerSummary, error) {
+	u, _, err := e.botUser(token)
+	if err != nil {
+		return nil, err
+	}
+	out := []ServerSummary{}
+	for _, s := range e.Servers() {
+		if _, ok := e.World.Member(s.ID, u.ID); ok {
+			out = append(out, ServerSummary{ID: s.ID, Name: s.Name, IconURL: s.IconURL})
+		}
+	}
+	return out, nil
+}
+
+// NewSimProbe returns a Probe on a world that was not seeded by NewSimEnv (`codi dev
+// --sim` Diagnostics): privileged intents are reported enabled (the simulator default).
+func NewSimProbe(w *sim.World) Probe {
+	return simProbe{&SimEnv{World: w, intents: map[string]discord.Intents{}, names: map[string]string{}}}
+}
+
+// Probe returns the environment as a Probe.
+func (e *SimEnv) Probe() Probe { return simProbe{e} }
+
+type simProbe struct{ e *SimEnv }
+
+func (p simProbe) Identify(ctx context.Context, token string) (Identity, error) {
+	return p.e.Identify(ctx, token)
+}
+func (p simProbe) Servers(ctx context.Context, token string) ([]ServerSummary, error) {
+	return p.e.ServersOf(ctx, token)
+}

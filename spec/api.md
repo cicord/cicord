@@ -18,6 +18,9 @@ mirrors every shape below.
   | `conflict` | 409 |
   | `unavailable` | 503 (no active revision yet, no bot connected, write-back failure, timeout) |
   | `internal` | 500 (also a panic in a handler) |
+  | `setup_required` | 503 (setup mode: no configured repository yet, §10) |
+  | `gone` | 410 (setup endpoints after the setup completed, §10) |
+  | `invalid_token`, `intents` | 422 / 409 (setup wizard explanations, §10) |
 
   `Diagnostic = {"severity": "error" | "warning", "file"?, "line"?, "path"? (JSON pointer), "message"}`.
 - **Error object** (humanized errors, `internal/reconcile/humanize.go`). The runtime keeps
@@ -42,8 +45,9 @@ mirrors every shape below.
   `invalid_token`, `intents_disallowed`, `rate_limited`, `discord_unavailable`, `timeout`,
   `bot_not_connected`, `no_bot`, `unresolved_reference`, `revision_rejected`,
   `fetch_failed`, `bad_request`, `unknown`; for blocked plan operations also
-  `deletion_protection`, `ownership`, `managed_role`, `type_change` (and `role_hierarchy`,
-  `no_bot`). Clients must accept unknown codes. It appears as:
+  `deletion_protection`, `ownership`, `managed_role`, `type_change`, `recreate_required`
+  (and `role_hierarchy`, `no_bot`, `boost_required`, `community_required`, `limit_reached`:
+  blocked reasons prefixed `boost: `, `community: `, `limit: `). Clients must accept unknown codes. It appears as:
   - `error` on a server of `/status` and `/servers/{server}` (Degraded or Missing with a
     `message`), and on a bot of `/status`; `lastErrorInfo` explains `lastError`;
   - `error` on `/history` records whose status is `failed` or `rejected`;
@@ -214,7 +218,14 @@ are empty and the status is returned to any authenticated caller.
     "message": "",
     "lastSync": "2026-11-21T10:00:00Z",  // optional: absent until the first reconcile
     "bot": "moderator",                  // optional: the reconciling bot
-    "drift": [ { "kind": "channel", "key": "general", "field": "name", "expected": "général", "actual": "general" } ]
+    "drift": [ { "kind": "channel", "key": "general", "field": "name", "expected": "général", "actual": "general" } ],
+    // live Discord state (runtime cache, kept current by server update events)
+    "iconUrl": "https://cdn.discordapp.com/icons/…/….png",   // "" = no icon (or not cached yet)
+    "bannerUrl": "", "splashUrl": "",
+    "boostLevel": 1,                     // premium tier 0-3
+    "boostCount": 3,                     // number of boosts
+    "features": ["ANIMATED_ICON", "INVITE_SPLASH"],  // Discord feature flags, sorted; [] when unknown
+    "community": false                   // COMMUNITY feature enabled
   } ],
   "bots": [ {
     "key": "moderator", "username": "Gardien", "userId": "…", "health": "Healthy", "message": "",
@@ -230,6 +241,9 @@ are empty and the status is returned to any authenticated caller.
   `"order"` = a reorder is pending, `"managed"` = a mapping is about to be dropped.
 - A bot whose session is not connected is `Missing` with the reason in `message`; it is
   `Degraded` when one of its plugin instances is.
+- `boostLevel` / `features` drive the plan: settings that need a higher boost level or the
+  Community feature are reported as `blocked` with a reason instead of failing at apply time
+  (spec/README.md §3).
 
 `GET /api/v1/history?limit=50&target=<target>` → `{"items": [SyncRecord]}` newest first:
 
@@ -255,9 +269,32 @@ are empty and the status is returned to any authenticated caller.
 | GET | `/api/v1/servers/{server}/plan` | admin | `Plan` of the active revision vs. live Discord. |
 | POST | `/api/v1/servers/{server}/sync` | admin | Reconcile now. Returns `{"plan": Plan, "applied": n}`. |
 | GET | `/api/v1/servers/{server}/audit?before=<id>&limit=50` | moderator | `{"items": [AuditEntry]}` newest first; `before` is the id cursor of the next page; `limit` ≤ 500. |
+| PUT | `/api/v1/servers/{server}/assets/{kind}` | admin | Upload the server `icon`, `banner` or `splash` (below). |
+| GET | `/api/v1/servers/{server}/assets/{kind}` | moderator | The image file declared in `spec.profile.<kind>` of the active revision (`404` when none), e.g. as a preview when the Discord CDN URL is unavailable. |
 
 `plan` / `sync` failures (no bot, Discord or reconcile error) → `503 unavailable`. Every
 sync is recorded in the audit log (`sync.apply`, details `{changes}`).
+
+**Server assets** — `PUT /api/v1/servers/{server}/assets/{icon|banner|splash}?revision=<id>`
+with the raw image bytes as body (any `Content-Type`; the bytes decide). Accepted: PNG,
+JPEG, GIF (animated kept, not for `splash`) and WebP, at most 8 MiB; SVG and anything else
+→ `415 unsupported_media_type`, larger → `413 too_large`. The image is not re-encoded. One
+write-back (ADR-0004, mode from `codi.yaml` policies over both paths) writes the file at
+`<server YAML dir>/assets/<server>-<kind>.<ext>` and sets `spec.profile.<kind>:
+./assets/<server>-<kind>.<ext>`; `revision` (optional) → `409 conflict` when the active
+revision differs. Uploading the declared file again is a no-op. Commit mode waits for the
+new revision like a config `PUT` (§5). Audit action `server.asset` (details `{kind, path,
+format, bytes, mode, revision, pullRequestUrl}`).
+
+```json
+{ "mode": "commit", "revision": "9a1b2c3", "pullRequestUrl": "",
+  "path": "servers/assets/ma-commu-banner.png", "value": "./assets/ma-commu-banner.png",
+  "format": "png", "width": 1920, "height": 1080,
+  "warnings": [] }   // e.g. "the image is 300×100: Discord recommends a 16:9 image of at least 960×540"
+```
+
+The banner needs boost level 2 and the splash level 1: uploading works at any level, the
+plan blocks the setting (`boost_required`) until the server reaches it.
 
 Resources: `@everyone` is omitted, roles are sorted from the top of the hierarchy, channels
 by position; `color` is `"#rrggbb"` (`""` = none); channel `type` uses the Server YAML names
@@ -470,6 +507,7 @@ and the users `alice`, `bob` and `charlie`, who are not members.
 | POST | `/api/v1/sim/users` | `{"username"}` (1–32 characters) → `201 User` |
 | POST | `/api/v1/sim/servers/{id}/members` | `{"userId"}` — the user joins the server (`memberJoin`). `204`. |
 | DELETE | `/api/v1/sim/servers/{id}/members/{userId}` | The user leaves. `204`. |
+| POST | `/api/v1/sim/servers/{id}/boosts` | `{"count": n}` — sets the number of boosts (boost level 2/7/14 → 1/2/3 and the features it unlocks) → `{"id","boostLevel","boostCount","features"}`. Seeding also honors the server annotations `sim.codi.dev/boosts: "<n>"` and `sim.codi.dev/features: "A,B"`. |
 | GET | `/api/v1/sim/channels/{id}/messages?limit=50` | `{"items": [Message]}` the last `limit` (≤ 500) messages, oldest first. |
 | GET | `/api/v1/sim/users/{id}/dms?limit=50` | `{"items": [Message]}` DMs received by the user from bots, oldest first. |
 | POST | `/api/v1/sim/messages` | `{"userId","channelId","content"}` → `201 Message` |
@@ -537,3 +575,166 @@ and the users `alice`, `bob` and `charlie`, who are not members.
   by the portal: unknown paths there are JSON `404 not_found`.
 - Methods other than `GET` / `HEAD` on a static UI → `405 invalid`. A UI that was not built
   into the binary answers `404`.
+
+## 10. Setup wizard, catalog and diagnostics
+
+Design and security: [docs/onboarding-wizard.md](../docs/onboarding-wizard.md).
+
+### Setup mode
+
+`codi serve` / `codi dev` started in a directory without `codi.yaml` (and without a
+repository already created by the wizard) serve only these:
+
+- the admin UI;
+- the endpoints below;
+- `/healthz`, and `/readyz` (`503 setup mode`).
+
+Every other `/api/*` and `/auth/*` path → `503 setup_required` (`message`, `hint`); `/` →
+`302 /admin/setup`. The runtime prints a one-time link `<public url>/admin/setup?token=<token>`.
+
+### Session
+
+- `GET /api/v1/setup/status` (anonymous) →
+  `{"active", "completed", "authenticated", "simulator"?, "view"?: SetupView}`. `view` is set
+  only for a valid setup session. Without the wizard (normal runtime) →
+  `{"active": false, "completed": true, "authenticated": false}`.
+- `POST /api/v1/setup/session` `{"token"}` → the same shape, and sets the cookie
+  `codi_setup` (HttpOnly, `SameSite=Strict`, Secure behind HTTPS, 24 h).
+  - The token is consumed: a reused or wrong token → `401 unauthenticated`. After
+    completion → `410 gone`.
+  - The usual CSRF rule applies (`X-Codi-Request`).
+- Every other `/api/v1/setup/*` endpoint needs the setup session: otherwise `401
+  unauthenticated` with a `hint`. After completion → `410 gone`.
+- Until completion the setup session is an **admin** on every server for the rest of the
+  API, like the runtime bearer token; `/me` returns the user `setup`.
+
+### Errors
+
+Wizard errors use the error envelope with explanations:
+
+```json
+{"error": {"code", "message", "hint"?, "details"?, "link"?, "diagnostics"?}}
+```
+
+`link` is the page where the fix happens (developer portal…). Codes:
+
+| Code | Status | Meaning |
+|---|---|---|
+| `invalid_token` | 422 | Discord rejected the bot token |
+| `intents` | 409 | A plugin needs a privileged intent that is off |
+| `invalid` | 400 / 422 | Bad input, or a plugin config that does not validate (with `diagnostics`) |
+| `conflict` | 409 | Step prerequisites not met, configuration already active, plugin already installed |
+| `unavailable` | 503 | Discord, git or the runtime could not be reached |
+| `gone` | 410 | Setup already complete |
+
+### Wizard endpoints
+
+All under `/api/v1/setup`. `SetupView` is described below.
+
+| Endpoint | Body | Result |
+|---|---|---|
+| `POST /intent` | `{"intent": "existing" \| "new"}` | `SetupView` (moves to `discord`) |
+| `POST /step` | `{"step"}` | `SetupView` |
+| `POST /discord/token` | `{"token"}` | `SetupView` |
+| `POST /discord/recheck` | | `SetupView` |
+| `GET /discord/invite` | | `{"url", "scopes": ["bot", "applications.commands"], "permissions": "Administrator"}` |
+| `GET /discord/servers` | | `{"servers": [{"id", "name", "iconUrl"?}]}` |
+| `POST /server` | `{"serverId"}` | `{"view", "checks": [Check], "ok"}` |
+| `POST /server/check` | | Same as `POST /server` |
+| `POST /repo` | `{"provider": "embedded" \| "github" \| "local", "url"?, "branch"?, "token"?}` | `SetupView` |
+| `POST /import` | `{"confirm"?: bool}` | `{"view", "plan": Plan \| null, "needsConfirm", "files", "warnings"}` |
+| `POST /oauth` | `{"clientSecret"}` | `SetupView` |
+| `POST /oauth/skip` | | `SetupView` |
+| `GET /oauth/test` | | `{"ok", "user"?, "servers"?}` |
+| `GET /verify` | | `Report` |
+| `GET /plugins` | | The catalog (as `/api/v1/catalog`) |
+| `POST /plugins/install` | `{"plugin", "config"}` | `{"result": {"instance", "health", "message"?, "command"?, "revision"?, "mode", "pullRequestUrl"?}, "view"}` |
+| `POST /finish` | | `SetupView` (`completed: true`) |
+
+Notes:
+
+- `POST /step` moves to a step whose prerequisites are met, else `409 conflict` with a
+  `hint`. `repository` re-runs the server checks and refuses while one fails. Steps up to
+  `repository` cannot be revisited once the configuration is active.
+- `POST /discord/token` validates the token with Discord (`/users/@me`,
+  `/oauth2/applications/@me`), derives the bot key, the application ID and the privileged
+  intents from the application flags, and stores the token encrypted under
+  `DISCORD_TOKEN_<BOT>`.
+- `POST /discord/recheck` re-reads the application (privileged intents) with the stored
+  token.
+- `GET /discord/servers` lists the servers the bot is in (`GET /users/@me/guilds`). The UI
+  polls it every 2.5 s while the invite is open.
+- `POST /server` picks the server (it must be in that list) and checks it: `member`,
+  `permissions`, `hierarchy`.
+- `POST /repo`: `providers` in `SetupView` lists the choices of this runtime (`serve`:
+  embedded, github; `dev`: local, embedded). For `github`, the remote is checked with the
+  token, which is stored encrypted as `CODI_GIT_TOKEN`.
+- `POST /import` imports the server and computes a preflight plan before anything changes.
+  If the plan is not empty, it answers `needsConfirm: true` with the plan; call again with
+  `confirm: true` to go on. Otherwise it writes the first commit and activates the runtime
+  **without restart**, then answers with the runtime's first plan (`changes: []` when
+  everything was adopted). Repeating the call after activation returns the same result.
+- `POST /oauth` checks the OAuth2 client secret with Discord and stores it
+  (`CODI_DISCORD_CLIENT_SECRET`).
+- `POST /oauth/skip` skips admin login.
+- `GET /oauth/test` reports whether this browser has a Discord login session after "Test
+  login" (`/auth/login` in another tab).
+- `GET /verify` runs the checklist on the wizard's server. The `events` check counts
+  messages since the Verify step started.
+- `POST /plugins/install` installs a catalog plugin. Privileged intents are checked against
+  the application. The config is validated on a copy of the repository; then the sources
+  are written to `plugins/<name>/` and the instance (every capability granted) to
+  `bots/<bot>/bot.yaml`.
+- `POST /finish` completes the setup and revokes the setup sessions.
+
+Simulator only (`codi dev --sim --setup`, else `404`): these endpoints stand in for
+discord.com.
+
+| Endpoint | Body | Result |
+|---|---|---|
+| `GET /sim` | | `{"servers", "owner"}` |
+| `POST /sim/bot` | `{"name"?}` | `{"token"}` (a simulated application, intents off) |
+| `POST /sim/intents` | `{"enabled"}` | `204` |
+| `POST /sim/invite` | `{"serverId"?, "low"?}` | `204` (`low` puts the bot role at the bottom) |
+| `POST /sim/raise-role` | | `204` |
+| `POST /sim/message` | | `204` (the owner sends a message) |
+
+### Shapes
+
+```json
+// SetupView (never contains secret values)
+{ "step": "welcome|discord|server|repository|login|verify|plugin|done", "steps": [...],
+  "completed": false, "mode": "serve|dev", "simulator": false, "version": "0.1.0",
+  "intent"?: "existing|new", "providers": ["embedded", "github"], "publicUrl": "…",
+  "bot"?: { "key", "secretRef", "applicationId", "applicationName", "userId", "username",
+            "avatarUrl"?, "flags", "tokenStored", "portalUrl", "intents": Check },
+  "inviteUrl"?: "https://discord.com/oauth2/authorize?client_id=…&permissions=8&scope=bot+applications.commands…",
+  "server"?: { "id", "name", "iconUrl"?, "key" },
+  "repo"?: { "provider", "url"?, "branch", "tokenStored"? },
+  "activated": false, "revision"?: "…", "firstPlan"?: Plan,
+  "login": { "configured", "skipped", "testedAs"?, "clientId"?, "redirectUrl", "portalUrl", "fromEnv" },
+  "plugin"?: { "name", "instance", "command"?, "skipped"? } }
+// Check
+{ "id": "token|intents|member|permissions|hierarchy|commands|events|plan|writeback",
+  "status": "ok|warn|fail|pending|skip", "message": "…", "hint"?: "…", "link"?: "…", "data"?: {…} }
+// Report (/setup/verify, /servers/{server}/diagnostics)
+{ "server", "bot", "checks": [Check], "ranAt", "ok", "plan"?: Plan }
+```
+
+`ok` is true when no check is `fail` or `pending`. `fail` blocks the step. The UI titles
+checks by `id`, and `message` / `hint` are written for people.
+
+### Catalog and diagnostics (any mode)
+
+- `GET /api/v1/catalog` (admin of a server, the setup session or bearer) →
+  `{"plugins": [CatalogPlugin]}`. These are the official plugins bundled in the binary
+  (welcome, onboarding, tickets, polls, levels, moderation):
+
+  ```json
+  { "name", "displayName", "description", "version", "keywords": [], "source": "official",
+    "capabilities": [], "intents": [], "privilegedIntents": [], "network": [],
+    "schema": {…}, "commands": [{"name", "description"}] }
+  ```
+- `GET /api/v1/servers/{server}/diagnostics[?since=<RFC 3339>]` (admin) → `Report`. This is
+  the Verify checklist on demand. `since` bounds the `events` check; by default any message
+  since the runtime started counts.

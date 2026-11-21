@@ -444,6 +444,13 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     ...(state.failing ? { error: COMMUNITY_ERROR } : {}),
     lastSync: state.lastSync,
     drift: drift(),
+    iconUrl: "",
+    bannerUrl: "",
+    splashUrl: "",
+    boostLevel: 1,
+    boostCount: 3,
+    features: ["ANIMATED_ICON", "INVITE_SPLASH"],
+    community: false,
   });
 
   const plan = () => ({
@@ -913,6 +920,54 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         return staff(() => json({ ...serverStatus(), spec: serverSpec }));
       if (method === "GET" && rest === "/resources") return staff(() => json(resources()));
       if (method === "GET" && rest === "/plan") return staff(() => json(plan()), true);
+      if (method === "GET" && rest === "/diagnostics")
+        return staff(
+          () =>
+            json({
+              server: SERVER_KEY,
+              bot: "moderator",
+              ranAt: new Date().toISOString(),
+              ok: false,
+              checks: [
+                { id: "token", status: "ok", message: "Connected as Gardien." },
+                {
+                  id: "intents",
+                  status: "ok",
+                  message: "The privileged intents CODI uses are enabled.",
+                },
+                { id: "member", status: "ok", message: "Gardien is a member of Ma Commu." },
+                {
+                  id: "permissions",
+                  status: "ok",
+                  message: "The bot has the Administrator permission.",
+                },
+                {
+                  id: "hierarchy",
+                  status: "ok",
+                  message: "The role “Gardien” is above every role CODI manages.",
+                },
+                { id: "commands", status: "ok", message: "2 slash command(s) registered." },
+                {
+                  id: "events",
+                  status: "pending",
+                  message:
+                    "Waiting for a message: send any message in a text channel the bot can see.",
+                },
+                {
+                  id: "plan",
+                  status: "warn",
+                  message: "Discord differs from the configuration: 3 change(s) pending.",
+                  hint: "Open Sync → Plan in the admin to review them; CODI applies them on the next sync.",
+                },
+                {
+                  id: "writeback",
+                  status: "ok",
+                  message: "CODI can read and update the configuration repository.",
+                },
+              ],
+            }),
+          true,
+        );
       if (method === "POST" && rest === "/sync")
         return staff((v) => {
           const p = plan();

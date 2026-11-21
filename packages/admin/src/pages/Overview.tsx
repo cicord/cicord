@@ -16,6 +16,7 @@ import {
   Sha,
   Time,
 } from "../components/common.tsx";
+import { LiveSummary } from "../components/discord.tsx";
 import { ErrorState, HumanErrorCallout } from "../components/errors.tsx";
 import { HistoryList } from "../components/history.tsx";
 import {
@@ -94,7 +95,7 @@ export function OverviewPage({ serverKey }: { serverKey: string }) {
   return (
     <Page>
       <PageHeader
-        leading={<ServerAvatar name={s.name} size={40} className="mt-0.5" />}
+        leading={<ServerAvatar name={s.name} url={s.iconUrl} size={40} className="mt-0.5" />}
         title={s.name}
         meta={
           <>
@@ -183,6 +184,20 @@ export function OverviewPage({ serverKey }: { serverKey: string }) {
           <PluginsFact server={s} bots={bots} />
         </dl>
       </Card>
+
+      <LiveSummary
+        server={s}
+        action={
+          <CardAction>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to={`/servers/${s.key}/settings`}>
+                {t("parity.live.details")}
+                <ArrowRight />
+              </Link>
+            </Button>
+          </CardAction>
+        }
+      />
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Card aria-labelledby="activity-title">

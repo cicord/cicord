@@ -32,24 +32,87 @@ type Server struct {
 	Description string
 	OwnerID     string
 	IconURL     string
+	// BannerURL / SplashURL are the CDN URLs of the banner and invite splash ("" = none).
+	BannerURL string
+	SplashURL string
 	// VerificationLevel: none | low | medium | high | highest
 	VerificationLevel string
 	// DefaultNotifications: allMessages | onlyMentions
 	DefaultNotifications string
-	SystemChannelID      string
-	RulesChannelID       string
+	// ExplicitContentFilter: disabled | membersWithoutRoles | allMembers
+	ExplicitContentFilter string
+	SystemChannelID       string
+	// SystemChannelFlags are Discord's SUPPRESS_* bits for the system channel.
+	SystemChannelFlags     SystemChannelFlags
+	RulesChannelID         string
+	PublicUpdatesChannelID string
+	SafetyAlertsChannelID  string
+	// AFKChannelID is the inactive voice channel ("" = none); AFKTimeout is in seconds
+	// (60, 300, 900, 1800 or 3600).
+	AFKChannelID string
+	AFKTimeout   int
+	// PreferredLocale is the community language (e.g. "en-US").
+	PreferredLocale    string
+	PremiumProgressBar bool
+	// Features are Discord's server feature flags (COMMUNITY, BANNER, ROLE_ICONS…).
+	Features []string
+	// PremiumTier is the boost level (0-3); PremiumSubscriptionCount the number of boosts.
+	PremiumTier              int
+	PremiumSubscriptionCount int
 }
 
+// HasFeature reports whether the server has a feature flag.
+func (s Server) HasFeature(f string) bool {
+	for _, x := range s.Features {
+		if x == f {
+			return true
+		}
+	}
+	return false
+}
+
+// SystemChannelFlags is the system_channel_flags bitset. Every bit SUPPRESSES a kind of
+// system message: a cleared bit means the message is sent.
+type SystemChannelFlags int
+
+const (
+	SuppressJoinNotifications                         SystemChannelFlags = 1 << 0
+	SuppressPremiumSubscriptions                      SystemChannelFlags = 1 << 1
+	SuppressGuildReminderNotifications                SystemChannelFlags = 1 << 2
+	SuppressJoinNotificationReplies                   SystemChannelFlags = 1 << 3
+	SuppressRoleSubscriptionPurchaseNotifications     SystemChannelFlags = 1 << 4
+	SuppressRoleSubscriptionPurchaseNotificationReply SystemChannelFlags = 1 << 5
+)
+
 // ServerParams is a partial update; nil fields are left unchanged.
-// An empty string for a channel ID clears it.
+// An empty string for a channel ID clears it; empty image bytes remove the image.
 type ServerParams struct {
-	Name                 *string
-	Description          *string
-	Icon                 *[]byte // raw image bytes (png/jpg/gif)
-	VerificationLevel    *string
-	DefaultNotifications *string
-	SystemChannelID      *string
-	RulesChannelID       *string
+	Name                   *string
+	Description            *string
+	Icon                   *[]byte // raw image bytes (png/jpg/gif/webp)
+	Banner                 *[]byte
+	Splash                 *[]byte
+	VerificationLevel      *string
+	DefaultNotifications   *string
+	ExplicitContentFilter  *string
+	SystemChannelID        *string
+	SystemChannelFlags     *SystemChannelFlags
+	RulesChannelID         *string
+	PublicUpdatesChannelID *string
+	SafetyAlertsChannelID  *string
+	AFKChannelID           *string
+	AFKTimeout             *int
+	PreferredLocale        *string
+	PremiumProgressBar     *bool
+	// Features replaces the MUTABLE feature flags (MutableFeatures); the others are
+	// kept by Discord. Callers send the live mutable set ± the flag they change.
+	Features *[]string
+}
+
+// ServerWidget is the server widget setting (Server Settings → Widget).
+type ServerWidget struct {
+	Enabled   bool
+	ChannelID string // invite channel, "" = none
 }
 
 // ───────────────────────────────────────────────────────────── roles
@@ -57,7 +120,7 @@ type ServerParams struct {
 type Role struct {
 	ID          string
 	Name        string
-	Color       int // 0xRRGGBB, 0 = no color
+	Color       int // 0xRRGGBB, 0 = no color (always Colors.Primary)
 	Hoist       bool
 	Mentionable bool
 	Permissions Permissions
@@ -65,17 +128,34 @@ type Role struct {
 	Position int
 	// Managed roles belong to an integration/bot and cannot be edited or assigned.
 	Managed bool
+	// IconURL is the role icon image ("" = none); UnicodeEmoji the emoji icon.
+	IconURL      string
+	UnicodeEmoji string
+	// Colors is the role style: a gradient when Secondary is set (ENHANCED_ROLE_COLORS).
+	Colors RoleColors
+}
+
+// RoleColors is a role style. Secondary/Tertiary 0 = none (solid color).
+type RoleColors struct {
+	Primary   int
+	Secondary int
+	Tertiary  int
 }
 
 // IsEveryone reports whether the role is the @everyone role of serverID.
 func (r Role) IsEveryone(serverID string) bool { return r.ID == serverID }
 
+// RoleParams is a partial update; nil fields are unchanged. Colors, when set, also
+// sets Color (= Colors.Primary). Empty Icon bytes / "" UnicodeEmoji remove them.
 type RoleParams struct {
-	Name        *string
-	Color       *int
-	Hoist       *bool
-	Mentionable *bool
-	Permissions *Permissions
+	Name         *string
+	Color        *int
+	Colors       *RoleColors
+	Hoist        *bool
+	Mentionable  *bool
+	Permissions  *Permissions
+	Icon         *[]byte
+	UnicodeEmoji *string
 }
 
 type RolePosition struct {
@@ -113,11 +193,36 @@ type Channel struct {
 	Bitrate          int
 	UserLimit        int
 	Overwrites       []Overwrite
+	// Voice / stage: RTCRegion "" = automatic; VideoQuality "" (unset) | auto | full.
+	RTCRegion    string
+	VideoQuality string
+	// Thread defaults (text, announcement, forum, media): auto archive in minutes
+	// (60, 1440, 4320, 10080; 0 = Discord default) and thread slowmode in seconds.
+	DefaultAutoArchive    int
+	DefaultThreadSlowmode int
+	// Forum / media.
+	Tags []ForumTag
+	// DefaultReaction is a unicode emoji or "name:id" ("" = none).
+	DefaultReaction string
+	// DefaultSortOrder: "" (unset) | latestActivity | creationDate.
+	DefaultSortOrder string
+	// DefaultLayout (forum only): "" (unset) | list | gallery.
+	DefaultLayout string
+}
+
+// ForumTag is a tag of a forum/media channel. Emoji is unicode or "name:id".
+type ForumTag struct {
+	ID        string
+	Name      string
+	Moderated bool
+	Emoji     string
 }
 
 // ChannelParams is used for create (Type and Name required) and partial update
 // (nil fields unchanged; Type ignored). Overwrites, when non-nil, replaces all overwrites.
-// ParentID "" removes the channel from its category.
+// ParentID "" removes the channel from its category. Tags, when non-nil, replaces the
+// tags: entries with an ID keep that tag (renamed in place), entries without one are
+// created.
 type ChannelParams struct {
 	Name             *string
 	Type             ChannelType
@@ -131,6 +236,15 @@ type ChannelParams struct {
 	Overwrites       *[]Overwrite
 	// LockPermissions syncs overwrites with the parent category (update only).
 	LockPermissions *bool
+
+	RTCRegion             *string // "" = automatic
+	VideoQuality          *string // auto | full
+	DefaultAutoArchive    *int
+	DefaultThreadSlowmode *int
+	Tags                  *[]ForumTag
+	DefaultReaction       *string // "" = none
+	DefaultSortOrder      *string // latestActivity | creationDate
+	DefaultLayout         *string // list | gallery
 }
 
 type ChannelPosition struct {
@@ -143,6 +257,150 @@ type ThreadParams struct {
 	Name      string
 	Private   bool
 	MessageID string // start the thread from this message (public threads only)
+}
+
+// ───────────────────────────────────────────────────────────── auto moderation
+
+// AutoMod trigger types (CODI names of Discord's trigger_type).
+const (
+	AutoModKeyword       = "keyword"       // 1 KEYWORD
+	AutoModSpam          = "spam"          // 3 SPAM
+	AutoModKeywordPreset = "keywordPreset" // 4 KEYWORD_PRESET
+	AutoModMentionSpam   = "mentionSpam"   // 5 MENTION_SPAM
+	AutoModMemberProfile = "memberProfile" // 6 MEMBER_PROFILE
+)
+
+// AutoMod action types.
+const (
+	AutoModActionBlock            = "block"            // 1 BLOCK_MESSAGE
+	AutoModActionAlert            = "alert"            // 2 SEND_ALERT_MESSAGE
+	AutoModActionTimeout          = "timeout"          // 3 TIMEOUT
+	AutoModActionBlockInteraction = "blockInteraction" // 4 BLOCK_MEMBER_INTERACTION
+)
+
+// AutoModRule is an auto moderation rule. EventType is derived from Trigger
+// (memberProfile → memberUpdate, otherwise messageSend).
+type AutoModRule struct {
+	ID      string
+	Name    string
+	Trigger string
+	// Trigger metadata (which fields apply depends on Trigger).
+	Keywords              []string
+	Regex                 []string
+	Presets               []string // profanity | sexualContent | slurs
+	AllowList             []string
+	MentionLimit          int
+	MentionRaidProtection bool
+
+	Actions        []AutoModAction
+	Enabled        bool
+	ExemptRoles    []string
+	ExemptChannels []string
+}
+
+// AutoModAction is one action of a rule. CustomMessage applies to block, ChannelID to
+// alert, DurationSeconds to timeout.
+type AutoModAction struct {
+	Type            string
+	CustomMessage   string
+	ChannelID       string
+	DurationSeconds int
+}
+
+// ───────────────────────────────────────────────────────────── onboarding & welcome screen
+
+// Onboarding is Discord's native onboarding (community servers). Mode: default | advanced.
+type Onboarding struct {
+	Enabled           bool
+	Mode              string
+	DefaultChannelIDs []string
+	Prompts           []OnboardingPrompt
+}
+
+// OnboardingPrompt is a question. Type: multipleChoice | dropdown. ID "" = new.
+type OnboardingPrompt struct {
+	ID           string
+	Type         string
+	Title        string
+	SingleSelect bool
+	Required     bool
+	InOnboarding bool
+	Options      []OnboardingOption
+}
+
+// OnboardingOption is an answer. Emoji is unicode or "name:id". ID "" = new.
+type OnboardingOption struct {
+	ID          string
+	Title       string
+	Description string
+	Emoji       string
+	RoleIDs     []string
+	ChannelIDs  []string
+}
+
+// WelcomeScreen is shown to new members of community servers.
+type WelcomeScreen struct {
+	Enabled     bool
+	Description string
+	Channels    []WelcomeChannel
+}
+
+type WelcomeChannel struct {
+	ChannelID   string
+	Description string
+	Emoji       string // unicode or "name:id"
+}
+
+// ───────────────────────────────────────────────────────────── expressions
+
+type Emoji struct {
+	ID       string
+	Name     string
+	Animated bool
+	RoleIDs  []string
+	// Managed emojis belong to an integration (e.g. Twitch) and cannot be edited.
+	Managed bool
+}
+
+// EmojiParams creates (Name, Image required) or updates (Name, RoleIDs; Image ignored)
+// an emoji. RoleIDs nil = unchanged on update.
+type EmojiParams struct {
+	Name    string
+	Image   []byte
+	RoleIDs *[]string
+}
+
+type Sticker struct {
+	ID          string
+	Name        string
+	Description string
+	// Tags is the autocomplete/suggestion emoji name (e.g. "smile").
+	Tags string
+	// Format: png | apng | lottie | gif
+	Format string
+}
+
+// StickerParams creates (File required) or updates (File ignored) a sticker.
+type StickerParams struct {
+	Name        string
+	Description string
+	Tags        string
+	File        []byte
+}
+
+type SoundboardSound struct {
+	ID     string
+	Name   string
+	Volume float64 // 0..1
+	Emoji  string  // unicode or "name:id", "" = none
+}
+
+// SoundParams creates (Sound required: mp3/ogg) or updates (Sound ignored) a sound.
+type SoundParams struct {
+	Name   string
+	Sound  []byte
+	Volume float64
+	Emoji  string
 }
 
 // ───────────────────────────────────────────────────────────── users & members
@@ -467,6 +725,33 @@ type Client interface {
 
 	GetServer(ctx context.Context, serverID string) (Server, error)
 	UpdateServer(ctx context.Context, serverID string, p ServerParams) (Server, error)
+	GetServerWidget(ctx context.Context, serverID string) (ServerWidget, error)
+	UpdateServerWidget(ctx context.Context, serverID string, w ServerWidget, reason string) (ServerWidget, error)
+
+	ListAutoModRules(ctx context.Context, serverID string) ([]AutoModRule, error)
+	CreateAutoModRule(ctx context.Context, serverID string, r AutoModRule, reason string) (AutoModRule, error)
+	// UpdateAutoModRule replaces every field but the trigger type (immutable on Discord).
+	UpdateAutoModRule(ctx context.Context, serverID, ruleID string, r AutoModRule, reason string) (AutoModRule, error)
+	DeleteAutoModRule(ctx context.Context, serverID, ruleID, reason string) error
+
+	GetOnboarding(ctx context.Context, serverID string) (Onboarding, error)
+	// UpdateOnboarding replaces the whole onboarding (prompts and options without ID are created).
+	UpdateOnboarding(ctx context.Context, serverID string, o Onboarding, reason string) (Onboarding, error)
+	GetWelcomeScreen(ctx context.Context, serverID string) (WelcomeScreen, error)
+	UpdateWelcomeScreen(ctx context.Context, serverID string, ws WelcomeScreen, reason string) (WelcomeScreen, error)
+
+	ListEmojis(ctx context.Context, serverID string) ([]Emoji, error)
+	CreateEmoji(ctx context.Context, serverID string, p EmojiParams, reason string) (Emoji, error)
+	UpdateEmoji(ctx context.Context, serverID, emojiID string, p EmojiParams, reason string) (Emoji, error)
+	DeleteEmoji(ctx context.Context, serverID, emojiID, reason string) error
+	ListStickers(ctx context.Context, serverID string) ([]Sticker, error)
+	CreateSticker(ctx context.Context, serverID string, p StickerParams, reason string) (Sticker, error)
+	UpdateSticker(ctx context.Context, serverID, stickerID string, p StickerParams, reason string) (Sticker, error)
+	DeleteSticker(ctx context.Context, serverID, stickerID, reason string) error
+	ListSoundboardSounds(ctx context.Context, serverID string) ([]SoundboardSound, error)
+	CreateSoundboardSound(ctx context.Context, serverID string, p SoundParams, reason string) (SoundboardSound, error)
+	UpdateSoundboardSound(ctx context.Context, serverID, soundID string, p SoundParams, reason string) (SoundboardSound, error)
+	DeleteSoundboardSound(ctx context.Context, serverID, soundID, reason string) error
 
 	ListRoles(ctx context.Context, serverID string) ([]Role, error)
 	CreateRole(ctx context.Context, serverID string, p RoleParams, reason string) (Role, error)

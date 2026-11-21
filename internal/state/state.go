@@ -34,6 +34,11 @@ const (
 	KindRole     ResourceKind = "role"
 	KindCategory ResourceKind = "category"
 	KindChannel  ResourceKind = "channel"
+	// Server-level keyed resources (Discord parity).
+	KindAutoMod ResourceKind = "automod"
+	KindEmoji   ResourceKind = "emoji"
+	KindSticker ResourceKind = "sticker"
+	KindSound   ResourceKind = "sound"
 )
 
 // OwnerGit marks resources declared in the server YAML. Plugin-owned resources use

@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/discord"
@@ -40,6 +41,9 @@ func SeedSimWorld(w *sim.World, repo *config.Repo, extraUsers ...string) (*SimSe
 		if _, err := w.CreateServerWithID(srv.Spec.DiscordID, name, seed.Owner.ID); err != nil {
 			return nil, fmt.Errorf("server %s: %w", k, err)
 		}
+		if err := seedSimServer(w, srv); err != nil {
+			return nil, fmt.Errorf("server %s: %w", k, err)
+		}
 	}
 	keys = keys[:0]
 	for k := range repo.Bots {
@@ -75,4 +79,31 @@ func SeedSimWorld(w *sim.World, repo *config.Repo, extraUsers ...string) (*SimSe
 		seed.Users = append(seed.Users, w.CreateUser(n))
 	}
 	return seed, nil
+}
+
+// Simulator annotations on a Server resource (codi dev --sim only).
+const (
+	// AnnotationSimBoosts is the number of boosts of the simulated server ("14" = level 3).
+	AnnotationSimBoosts = "sim.codi.dev/boosts"
+	// AnnotationSimFeatures adds feature flags to the simulated server ("PARTNERED,VERIFIED").
+	AnnotationSimFeatures = "sim.codi.dev/features"
+)
+
+func seedSimServer(w *sim.World, srv *config.Server) error {
+	ann := srv.Metadata.Annotations
+	if v := ann[AnnotationSimFeatures]; v != "" {
+		if err := w.SetFeatures(srv.Spec.DiscordID, sim.ParseFeatureList(v), nil); err != nil {
+			return err
+		}
+	}
+	if v := ann[AnnotationSimBoosts]; v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return fmt.Errorf("annotation %s: %q is not a boost count", AnnotationSimBoosts, v)
+		}
+		if err := w.SetBoosts(srv.Spec.DiscordID, n); err != nil {
+			return err
+		}
+	}
+	return nil
 }

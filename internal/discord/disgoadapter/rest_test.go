@@ -23,6 +23,9 @@ type recorded struct {
 	Auth   string
 	Reason string
 	Body   any
+	// Raw and ContentType keep the undecoded body (multipart requests).
+	Raw         []byte
+	ContentType string
 }
 
 // fakeDiscord is a minimal Discord REST API served by httptest.
@@ -45,7 +48,8 @@ func newFakeDiscord(t *testing.T) *fakeDiscord {
 
 func (f *fakeDiscord) serve(w http.ResponseWriter, r *http.Request) {
 	raw, _ := io.ReadAll(r.Body)
-	rec := recorded{Method: r.Method, URI: r.RequestURI, Auth: r.Header.Get("Authorization"), Reason: r.Header.Get("X-Audit-Log-Reason")}
+	rec := recorded{Method: r.Method, URI: r.RequestURI, Auth: r.Header.Get("Authorization"), Reason: r.Header.Get("X-Audit-Log-Reason"),
+		Raw: raw, ContentType: r.Header.Get("Content-Type")}
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &rec.Body)
 	}

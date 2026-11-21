@@ -202,6 +202,9 @@ export function ServerAvatar({
     .join("")
     .slice(0, 2)
     .toUpperCase();
+  // The live icon may be unreachable (simulator CDN URLs, offline): fall back to initials.
+  const [failed, setFailed] = useState<string | undefined>(undefined);
+  const showImage = !!url && failed !== url;
   return (
     <span
       className={cn(
@@ -210,8 +213,13 @@ export function ServerAvatar({
       )}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
       aria-hidden="true"
+      data-avatar={showImage ? "image" : "initials"}
     >
-      {url ? <img src={url} alt="" className="size-full object-cover" /> : initials}
+      {showImage ? (
+        <img src={url} alt="" className="size-full object-cover" onError={() => setFailed(url)} />
+      ) : (
+        initials
+      )}
     </span>
   );
 }

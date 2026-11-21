@@ -66,6 +66,31 @@
 // it within the deadline (3 s by default, see WithInteractionDeadline). The deadline is
 // measured in real time, even when WithClock is used.
 //
+// # Server settings, boosts and Community
+//
+// Servers start like a new Discord server: boost level 0, no feature flags, explicit
+// content filter disabled, AFK timeout 300 s, locale en-US. SetBoosts(serverID, n) sets
+// the boost count, the boost level (2 → 1, 7 → 2, 14 → 3) and the flags it unlocks
+// (ANIMATED_ICON, INVITE_SPLASH, BANNER, ROLE_ICONS, ENHANCED_ROLE_COLORS, …);
+// SetFeatures adds arbitrary flags (e.g. PARTNERED). Boost-gated settings (banner,
+// splash, animated icon/banner, role icons, gradient role colors) fail with
+// "… requires boost level N", expression slots follow the level (emojis 50/100/150/250
+// static and as many animated, stickers 5/15/30/60, sounds 8/24/36/48).
+//
+// Community follows Discord: enabling COMMUNITY (ServerParams.Features) requires rules
+// and community updates channels, verification ≥ low and the explicit content filter
+// on allMembers (checked again when those settings change); rules / updates / safety
+// alerts channels, announcement and stage channels, the welcome screen and native
+// onboarding fail with "… requires the Community feature" without it. Enabling
+// onboarding needs 7 default channels, 5 of which @everyone can send messages in
+// (advanced mode also counts the channels of the questions). AutoMod rules follow
+// Discord's limits (rules per trigger, keyword/regex/allow-list sizes, actions per
+// trigger, timeout ≤ 4 weeks with ModerateMembers).
+//
+// `codi dev --sim` honors two Server annotations: sim.codi.dev/boosts ("14") and
+// sim.codi.dev/features ("PARTNERED,VERIFIED"); POST /api/v1/sim/servers/{id}/boosts
+// with {"count": n} changes the boosts of a running simulator.
+//
 // # Errors
 //
 // Errors wrap discord.ErrForbidden, discord.ErrNotFound, discord.ErrBadRequest or

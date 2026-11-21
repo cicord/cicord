@@ -83,6 +83,7 @@ func Generate(o Options) (*Result, error) {
 	g.importRoles()
 	g.importChannels()
 	g.importProfile()
+	g.importParity()
 	sp := g.spec()
 	g.res.Server = sp
 	doc, err := g.document(sp)
@@ -110,6 +111,14 @@ type gen struct {
 	chanOrder  []string
 	channels   map[string]config.Channel
 	profileV   *config.ServerProfile
+
+	afk           *config.AFKSpec
+	widget        *config.WidgetSpec
+	community     *config.CommunitySpec
+	automodOrder  []string
+	automod       map[string]config.AutoModSpec
+	onboarding    *config.OnboardingSpec
+	welcomeScreen *config.WelcomeScreenSpec
 }
 
 func (g *gen) warn(format string, args ...any) {
@@ -145,6 +154,18 @@ func (g *gen) importRoles() {
 		spec := config.RoleSpec{Name: r.Name, Hoist: r.Hoist, Mentionable: r.Mentionable, Permissions: r.Permissions.Names()}
 		if r.Color != 0 {
 			spec.Color = fmt.Sprintf("#%06x", r.Color)
+		}
+		if c := r.Colors; c.Secondary != 0 || c.Tertiary != 0 {
+			rc := &config.RoleColors{Primary: fmt.Sprintf("#%06x", c.Primary), Secondary: fmt.Sprintf("#%06x", c.Secondary)}
+			if c.Tertiary != 0 {
+				rc.Tertiary = fmt.Sprintf("#%06x", c.Tertiary)
+			}
+			spec.Colors = rc
+		}
+		if r.UnicodeEmoji != "" {
+			spec.Emoji = r.UnicodeEmoji
+		} else if r.IconURL != "" {
+			g.warn("role %q has an icon image: not imported (download it and set roles.%s.icon to its path)", r.Name, k)
 		}
 		g.roles[k] = spec
 		g.record(state.KindRole, k, r.ID)
@@ -262,6 +283,7 @@ func (g *gen) importChannels() {
 			}
 			ch.UserLimit = c.UserLimit
 		}
+		importChannelExtras(c, &ch)
 		ows := g.overwrites(c.Overwrites, "channel "+strconv.Quote(c.Name))
 		if parent != "" {
 			parentOws := catOws[parent]
@@ -363,13 +385,45 @@ func (g *gen) importProfile() {
 			p.SystemChannel = k
 		}
 	}
-	if s.RulesChannelID != "" {
-		if k, ok := g.chanKeys[s.RulesChannelID]; ok && g.channels[k].Name != "" {
-			p.RulesChannel = k
+	chanKey := func(id string) string {
+		if k, ok := g.chanKeys[id]; ok && g.channels[k].Name != "" {
+			return k
+		}
+		return ""
+	}
+	p.ExplicitContentFilter = s.ExplicitContentFilter
+	p.PreferredLocale = s.PreferredLocale
+	if s.PremiumProgressBar {
+		t := true
+		p.PremiumProgressBar = &t
+	}
+	if s.SystemChannelID != "" {
+		flags := reconcile.SystemFlagsFromLive(s.SystemChannelFlags)
+		p.SystemChannelFlags = &flags
+	}
+	if s.HasFeature(discord.FeatureCommunity) {
+		g.community = &config.CommunitySpec{Enabled: true, RulesChannel: chanKey(s.RulesChannelID),
+			UpdatesChannel: chanKey(s.PublicUpdatesChannelID), SafetyAlertsChannel: chanKey(s.SafetyAlertsChannelID)}
+	} else if k := chanKey(s.RulesChannelID); k != "" {
+		p.RulesChannel = k
+	}
+	if s.AFKChannelID != "" || s.AFKTimeout != 0 {
+		a := &config.AFKSpec{Channel: chanKey(s.AFKChannelID)}
+		if discord.ValidAFKTimeout(s.AFKTimeout) {
+			a.Timeout = s.AFKTimeout
+		}
+		if a.Channel != "" || a.Timeout != 0 {
+			g.afk = a
 		}
 	}
 	if s.IconURL != "" {
 		g.warn("the server icon is not imported: download it and set profile.icon to its path")
+	}
+	if s.BannerURL != "" {
+		g.warn("the server banner is not imported: download it and set profile.banner to its path")
+	}
+	if s.SplashURL != "" {
+		g.warn("the invite splash is not imported: download it and set profile.splash to its path")
 	}
 	g.profileV = p
 }
@@ -381,6 +435,10 @@ func (g *gen) spec() config.ServerSpec {
 		SyncPolicy: config.SyncPolicy{SelfHealP: &f, PruneP: &f, DeletionProtectionP: &t},
 		Everyone:   &config.EveryoneSpec{Permissions: g.everyone},
 		Roles:      g.roles, Hierarchy: g.roleOrder, Categories: g.categories, Channels: g.channels,
+		AFK: g.afk, Widget: g.widget, Community: g.community, Onboarding: g.onboarding, WelcomeScreen: g.welcomeScreen,
+	}
+	if len(g.automod) > 0 {
+		sp.AutoMod = g.automod
 	}
 	return sp
 }
@@ -476,8 +534,20 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 		if p.DefaultNotifications != "" {
 			pm.add("defaultNotifications", str(p.DefaultNotifications))
 		}
+		if p.ExplicitContentFilter != "" {
+			pm.add("explicitContentFilter", str(p.ExplicitContentFilter))
+		}
+		if p.PreferredLocale != "" {
+			pm.add("preferredLocale", str(p.PreferredLocale))
+		}
+		if p.PremiumProgressBar != nil {
+			pm.add("premiumProgressBar", boolean(*p.PremiumProgressBar))
+		}
 		if p.SystemChannel != "" {
 			pm.add("systemChannel", str(p.SystemChannel))
+		}
+		if p.SystemChannelFlags != nil {
+			pm.add("systemChannelFlags", encode(p.SystemChannelFlags))
 		}
 		if p.RulesChannel != "" {
 			pm.add("rulesChannel", str(p.RulesChannel))
@@ -485,6 +555,15 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 		if len(pm.n.Content) > 0 {
 			spec.add("profile", pm.n)
 		}
+	}
+	if sp.Community != nil {
+		spec.add("community", encode(sp.Community))
+	}
+	if sp.AFK != nil {
+		spec.add("afk", encode(sp.AFK))
+	}
+	if sp.Widget != nil {
+		spec.add("widget", encode(sp.Widget))
 	}
 
 	pol := newMap().add("selfHeal", boolean(false)).add("prune", boolean(false)).add("deletionProtection", boolean(true))
@@ -500,6 +579,12 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 			e := newMap().add("name", str(r.Name))
 			if r.Color != "" {
 				e.add("color", quoted(r.Color))
+			}
+			if r.Colors != nil {
+				e.add("colors", encode(r.Colors))
+			}
+			if r.Emoji != "" {
+				e.add("emoji", quoted(r.Emoji))
 			}
 			if r.Hoist {
 				e.add("hoist", boolean(true))
@@ -553,6 +638,7 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 			if c.UserLimit > 0 {
 				e.add("userLimit", num(c.UserLimit))
 			}
+			addChannelExtras(e, c)
 			if c.SyncWithCategory != nil {
 				e.add("syncWithCategory", boolean(*c.SyncWithCategory))
 			}
@@ -562,6 +648,19 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 			chm.add(k, e.n)
 		}
 		spec.add("channels", chm.n)
+	}
+	if len(g.automodOrder) > 0 {
+		am := newMap()
+		for _, k := range g.automodOrder {
+			am.add(k, encode(sp.AutoMod[k]))
+		}
+		spec.add("automod", am.n)
+	}
+	if sp.Onboarding != nil {
+		spec.add("onboarding", encode(sp.Onboarding))
+	}
+	if sp.WelcomeScreen != nil {
+		spec.add("welcomeScreen", encode(sp.WelcomeScreen))
 	}
 	root.add("spec", spec.n)
 

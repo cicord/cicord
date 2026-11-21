@@ -75,6 +75,7 @@ export type HumanErrorCode =
   | "ownership"
   | "managed_role"
   | "type_change"
+  | "recreate_required"
   | "unknown"
   | (string & {});
 
@@ -166,6 +167,41 @@ export interface ServerStatus {
   bot?: string;
   /** `message` explained, when the server is Degraded or Missing. */
   error?: HumanError;
+  // Live Discord state (runtime cache). Optional: absent on older runtimes.
+  /** Server icon URL, `""` = none (or not cached yet). */
+  iconUrl?: string;
+  /** Server banner URL (boost level 2), `""` = none. */
+  bannerUrl?: string;
+  /** Invite splash URL (boost level 1), `""` = none. */
+  splashUrl?: string;
+  /** Boost level (Discord premium tier), 0–3. */
+  boostLevel?: number;
+  /** Number of boosts. */
+  boostCount?: number;
+  /** Discord feature flags (`COMMUNITY`, `BANNER`, `ROLE_ICONS`…), sorted. */
+  features?: string[];
+  /** The `COMMUNITY` feature is enabled. */
+  community?: boolean;
+}
+
+/** Server images editable from the admin UI (`PUT /servers/{server}/assets/{kind}`). */
+export type ServerAssetKind = "icon" | "banner" | "splash";
+
+/** Result of a server image upload (spec/api.md §4, "Server assets"). */
+export interface ServerAssetResult {
+  /** `commit` (applied, `revision` set) or `pullRequest` (`pullRequestUrl` set). */
+  mode: "commit" | "pullRequest" | (string & {});
+  revision: string;
+  pullRequestUrl: string;
+  /** Repository path of the written file, e.g. `servers/assets/ma-commu-icon.png`. */
+  path: string;
+  /** Value set in `spec.profile.<kind>`, e.g. `./assets/ma-commu-icon.png`. */
+  value: string;
+  format: "png" | "jpeg" | "gif" | "webp" | (string & {});
+  width: number;
+  height: number;
+  /** Non-blocking remarks (size, aspect ratio). */
+  warnings: string[];
 }
 
 export interface PluginInstanceStatus {

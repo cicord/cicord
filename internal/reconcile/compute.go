@@ -26,6 +26,11 @@ type planInput struct {
 	// Icon is the content of the desired icon file (nil = icon not managed).
 	Icon      []byte
 	IconState iconState
+	// Files are the other repository files the plan needs, by logical name ("banner",
+	// "splash", "role:<key>", "emoji:<key>", "sticker:<key>", "sound:<key>"), and
+	// FileState what was recorded after their last upload (same names).
+	Files     map[string][]byte
+	FileState map[string]iconState
 }
 
 const reasonHierarchy = "hierarchy: role is at or above the bot's highest role"
@@ -57,6 +62,11 @@ type planner struct {
 
 	buckets map[phase][]Change
 	blocked []Blocked
+
+	// Community state: live now, wanted after the plan (and not blocked).
+	communityLive, communityAfter bool
+	// communityMoves: verification / explicit filter changes go with the Community toggle.
+	communityMoves bool
 }
 
 func computePlan(in planInput) (Plan, error) {
@@ -86,7 +96,7 @@ func computePlan(in planInput) (Plan, error) {
 	if p.serverID == "" {
 		p.serverID = in.Desired.Spec.DiscordID
 	}
-	for _, k := range []state.ResourceKind{state.KindRole, state.KindCategory, state.KindChannel} {
+	for _, k := range allKinds {
 		p.git[k], p.foreign[k], p.ids[k], p.how[k] = map[string]state.Resource{}, map[string]state.Resource{}, map[string]string{}, map[string]string{}
 	}
 	for _, r := range in.Live.Roles {
@@ -122,6 +132,8 @@ func computePlan(in planInput) (Plan, error) {
 	if err := p.resolveIdentities(); err != nil {
 		return Plan{}, err
 	}
+	p.resolveParity()
+	p.planCommunityState()
 	if err := p.planServer(); err != nil {
 		return Plan{}, err
 	}
@@ -135,8 +147,17 @@ func computePlan(in planInput) (Plan, error) {
 	if err := p.planChannels(); err != nil {
 		return Plan{}, err
 	}
-	p.planChannelOrder()
 	p.planServerRefs()
+	p.planChannelOrder()
+	p.planWidget()
+	p.planWelcomeScreen()
+	p.planOnboarding()
+	if err := p.planAutoMod(); err != nil {
+		return Plan{}, err
+	}
+	if err := p.planExpressions(); err != nil {
+		return Plan{}, err
+	}
 	p.planOrphans()
 
 	plan := Plan{Server: p.serverKey, Changes: []Change{}, Blocked: p.blocked}
@@ -261,7 +282,7 @@ func (p *planner) pick(cands []string) string {
 func (p *planner) planServer() error {
 	pr := p.sp.Profile
 	if pr == nil {
-		return nil
+		pr = &config.ServerProfile{}
 	}
 	live := p.in.Live.Server
 	fields := map[string]FieldChange{}
@@ -275,17 +296,46 @@ func (p *planner) planServer() error {
 	}
 	str("name", pr.Name, live.Name, &ss.name)
 	str("description", pr.Description, live.Description, &ss.description)
-	str("verificationLevel", pr.VerificationLevel, live.VerificationLevel, &ss.verification)
+	if !p.communityMoves {
+		str("verificationLevel", pr.VerificationLevel, live.VerificationLevel, &ss.verification)
+		str("explicitContentFilter", pr.ExplicitContentFilter, live.ExplicitContentFilter, &ss.explicit)
+	}
 	str("defaultNotifications", pr.DefaultNotifications, live.DefaultNotifications, &ss.notifications)
+	str("preferredLocale", pr.PreferredLocale, live.PreferredLocale, &ss.locale)
+	if b := pr.PremiumProgressBar; b != nil && *b != live.PremiumProgressBar {
+		fields["premiumProgressBar"] = FieldChange{From: live.PremiumProgressBar, To: *b}
+		v := *b
+		ss.progressBar = &v
+	}
+	if f := pr.SystemChannelFlags; f != nil {
+		want := applySystemFlags(live.SystemChannelFlags, *f)
+		if want != live.SystemChannelFlags {
+			fields["systemChannelFlags"] = FieldChange{From: systemFlagsDisplay(live.SystemChannelFlags), To: systemFlagsDisplay(want)}
+			ss.flags = &want
+		}
+	}
+	if a := p.sp.AFK; a != nil && a.Timeout > 0 && a.Timeout != live.AFKTimeout {
+		fields["afk.timeout"] = FieldChange{From: live.AFKTimeout, To: a.Timeout}
+		t := a.Timeout
+		ss.afkTimeout = &t
+	}
 	if pr.Icon != "" && p.in.Icon != nil {
 		sum := sha256.Sum256(p.in.Icon)
 		h := hex.EncodeToString(sum[:])
 		st := p.in.IconState
 		if live.IconURL == "" || st.Hash != h || st.URL != live.IconURL {
-			fields["icon"] = FieldChange{From: nilIfEmpty(live.IconURL), To: pr.Icon}
-			ss.icon, ss.iconHash = p.in.Icon, h
+			fc := FieldChange{From: nilIfEmpty(live.IconURL), To: pr.Icon}
+			if isGIF(p.in.Icon) && !live.HasBoostFeature(discord.FeatureAnimatedIcon) {
+				p.blockFields(ActionUpdate, KindServer, p.serverKey, p.serverID,
+					"boost: "+live.BoostReason("an animated icon", discord.FeatureAnimatedIcon), map[string]FieldChange{"icon": fc})
+			} else {
+				fields["icon"] = fc
+				ss.icon, ss.iconHash = p.in.Icon, h
+			}
 		}
 	}
+	p.serverImage(fields, "banner", pr.Banner, live.BannerURL, discord.FeatureBanner, &ss.banner, &ss.bannerHash)
+	p.serverImage(fields, "splash", pr.Splash, live.SplashURL, discord.FeatureInviteSplash, &ss.splash, &ss.splashHash)
 	if len(fields) == 0 {
 		return nil
 	}
@@ -305,31 +355,87 @@ func (p *planner) planServer() error {
 func (p *planner) planServerRefs() {
 	pr := p.sp.Profile
 	if pr == nil {
-		return
+		pr = &config.ServerProfile{}
 	}
 	live := p.in.Live.Server
 	fields := map[string]FieldChange{}
 	ss := &serverSpec{}
-	ref := func(name, key, haveID string, dst **string) {
-		if key == "" {
-			return
+	blocked := map[string]FieldChange{}
+	ref := func(name, key, haveID string, dst **string, community bool) {
+		if _, declared := p.sp.Channels[key]; key == "" || !declared {
+			return // undeclared keys are reported by validation
 		}
 		id, ok := p.ids[state.KindChannel][key]
 		if ok && id == haveID {
 			return
 		}
-		fields[name] = FieldChange{From: p.channelRefName(haveID), To: key}
+		fc := FieldChange{From: p.channelRefName(haveID), To: key}
+		if community && !p.communityAfter {
+			blocked[name] = fc
+			return
+		}
+		if p.how[state.KindChannel][key] == "skip" {
+			return // channel owned by a plugin or blocked
+		}
+		fields[name] = fc
 		k := key
 		*dst = &k
 	}
-	ref("systemChannel", pr.SystemChannel, live.SystemChannelID, &ss.systemKey)
-	ref("rulesChannel", pr.RulesChannel, live.RulesChannelID, &ss.rulesKey)
+	ref("systemChannel", pr.SystemChannel, live.SystemChannelID, &ss.systemKey, false)
+	if a := p.sp.AFK; a != nil {
+		ref("afk.channel", a.Channel, live.AFKChannelID, &ss.afkKey, false)
+	}
+	ref("rulesChannel", p.rulesChannelKey(), live.RulesChannelID, &ss.rulesKey, true)
+	if c := p.sp.Community; c != nil {
+		ref("community.updatesChannel", c.UpdatesChannel, live.PublicUpdatesChannelID, &ss.updatesKey, true)
+		ref("community.safetyAlertsChannel", c.SafetyAlertsChannel, live.SafetyAlertsChannelID, &ss.safetyKey, true)
+	}
+	if len(blocked) > 0 {
+		p.blockFields(ActionUpdate, KindServer, p.serverKey, p.serverID,
+			"community: the rules, updates and safety alerts channels require the Community feature (set community.enabled: true)", blocked)
+	}
+	if p.communityAfter != p.communityLive {
+		var feats []string
+		for _, f := range live.Features {
+			if discord.IsMutableFeature(f) && f != discord.FeatureCommunity && !(f == discord.FeatureDiscoverable && !p.communityAfter) {
+				feats = append(feats, f)
+			}
+		}
+		if p.communityAfter {
+			feats = append(feats, discord.FeatureCommunity)
+		}
+		slices.Sort(feats)
+		if feats == nil {
+			feats = []string{}
+		}
+		fields["community"] = FieldChange{From: p.communityLive, To: p.communityAfter}
+		ss.features = &feats
+		if p.communityMoves {
+			str := func(name, want, have string, dst **string) {
+				if want != "" && want != have {
+					fields[name] = FieldChange{From: have, To: want}
+					w := want
+					*dst = &w
+				}
+			}
+			str("verificationLevel", pr.VerificationLevel, live.VerificationLevel, &ss.verification)
+			str("explicitContentFilter", pr.ExplicitContentFilter, live.ExplicitContentFilter, &ss.explicit)
+		}
+	}
 	if len(fields) == 0 {
 		return
 	}
+	summary := "set server " + fieldList(fields)
+	if fc, ok := fields["community"]; ok {
+		if fc.To == true {
+			summary = "enable Community: " + fieldList(fields)
+		} else {
+			summary = "disable Community: " + fieldList(fields)
+		}
+	}
 	p.add(Change{
 		Action: ActionUpdate, Kind: KindServer, Key: p.serverKey, ID: p.serverID,
-		Summary: "set server " + fieldList(fields),
+		Summary: summary,
 		Fields:  fields,
 		op:      &op{phase: phaseServerRefs, server: ss},
 	})
@@ -353,6 +459,15 @@ type roleWant struct {
 	hoist       bool
 	mentionable bool
 	perms       discord.Permissions
+
+	// style, managed only when set in the YAML
+	colors     *discord.RoleColors // spec.colors (Primary == color)
+	iconFile   string              // spec.icon, for display
+	icon       []byte
+	iconHash   string
+	iconState  iconState
+	emoji      string // spec.emoji
+	manageIcon bool   // icon or emoji declared
 }
 
 func parseColor(s string) (int, error) {
@@ -415,38 +530,52 @@ func (p *planner) planRoles() error {
 			return fmt.Errorf("roles.%s.permissions: %w", key, err)
 		}
 		w := roleWant{name: spec.Name, color: color, hoist: spec.Hoist, mentionable: spec.Mentionable, perms: perms}
+		if err := p.roleStyle(key, spec, &w); err != nil {
+			return err
+		}
 		switch p.how[state.KindRole][key] {
 		case "skip":
 			continue
 		case "create":
+			fields := map[string]FieldChange{
+				"name": {To: w.name}, "color": {To: colorString(w.color)}, "hoist": {To: w.hoist},
+				"mentionable": {To: w.mentionable}, "permissions": {To: permNames(w.perms)},
+			}
+			rp := &discord.RoleParams{Name: &w.name, Color: &w.color, Hoist: &w.hoist, Mentionable: &w.mentionable, Permissions: &w.perms}
+			o := &op{phase: phaseRoles, rk: state.KindRole, role: rp}
+			p.roleExtras(key, w, discord.Role{}, fields, rp, o, true)
 			p.add(Change{
 				Action: ActionCreate, Kind: KindRole, Key: key,
 				Summary: fmt.Sprintf("create role %q", w.name),
-				Fields: map[string]FieldChange{
-					"name": {To: w.name}, "color": {To: colorString(w.color)}, "hoist": {To: w.hoist},
-					"mentionable": {To: w.mentionable}, "permissions": {To: permNames(w.perms)},
-				},
-				op: &op{phase: phaseRoles, rk: state.KindRole, role: &discord.RoleParams{
-					Name: &w.name, Color: &w.color, Hoist: &w.hoist, Mentionable: &w.mentionable, Permissions: &w.perms,
-				}},
+				Fields:  fields,
+				op:      o,
 			})
 		default:
 			live := p.rolesByID[p.ids[state.KindRole][key]]
-			fields, params := roleDiff(w, live)
 			adopt := p.how[state.KindRole][key] == "adopt"
 			if live.Managed {
 				p.block(ActionUpdate, KindRole, key, live.ID, "managed: role belongs to an integration")
 				continue
 			}
+			fields, params := roleDiff(w, live)
+			if fields == nil {
+				fields, params = map[string]FieldChange{}, &discord.RoleParams{}
+			}
+			o := &op{phase: phaseRoles, rk: state.KindRole}
+			p.roleExtras(key, w, live, fields, params, o, false)
 			if len(fields) > 0 && live.Position >= p.botTop {
 				p.blockFields(ActionUpdate, KindRole, key, live.ID, reasonHierarchy, fields)
-				fields, params = nil, nil
+				fields = map[string]FieldChange{}
+				o.roleIcon, o.roleIconHash = nil, ""
 			}
 			if !adopt && len(fields) == 0 {
 				continue
 			}
-			c := Change{Action: ActionUpdate, Kind: KindRole, Key: key, ID: live.ID, Fields: fields,
-				op: &op{phase: phaseRoles, rk: state.KindRole, role: params}}
+			if len(fields) == 0 {
+				fields, params = nil, nil
+			}
+			o.role = params
+			c := Change{Action: ActionUpdate, Kind: KindRole, Key: key, ID: live.ID, Fields: fields, op: o}
 			if adopt {
 				c.Action = ActionAdopt
 				c.Summary = fmt.Sprintf("adopt role %q (%s)", live.Name, live.ID)
@@ -469,7 +598,7 @@ func roleDiff(w roleWant, live discord.Role) (map[string]FieldChange, *discord.R
 		f["name"] = FieldChange{From: live.Name, To: w.name}
 		rp.Name = &w.name
 	}
-	if w.color != live.Color {
+	if w.color != live.Color && w.colors == nil {
 		f["color"] = FieldChange{From: colorString(live.Color), To: colorString(w.color)}
 		rp.Color = &w.color
 	}
@@ -737,8 +866,11 @@ func (p *planner) channelSpec(key string) (*chanSpec, error) {
 	nsfw := c.NSFW
 	cs.nsfw = &nsfw
 	if hasTopic(typ) {
-		t := c.Topic
+		t := c.EffectiveTopic()
 		cs.topic = &t
+	}
+	if err := channelExtras(key, c, cs); err != nil {
+		return nil, err
 	}
 	if hasSlowmode(typ) {
 		s := c.Slowmode
@@ -817,6 +949,15 @@ func (p *planner) planChannel(rk state.ResourceKind, kind, key string, cs *chanS
 			})
 		}
 	}
+	if how == "create" && rk == state.KindChannel && needsCommunity(cs.typ) && !p.communityLive {
+		if !p.communityAfter {
+			p.how[rk][key] = "skip"
+			p.blockFields(ActionCreate, kind, key, "", fmt.Sprintf("community: %s channels require the Community feature (set community.enabled: true)", cs.typ),
+				map[string]FieldChange{"exists": {From: false, To: true}})
+			return
+		}
+		ph = phaseCommunityChannels // created once Community is enabled
+	}
 	if how == "create" {
 		fields := map[string]FieldChange{"name": {To: cs.name}, "type": {To: cs.typ.String()}}
 		if cs.parentKey != "" {
@@ -840,6 +981,7 @@ func (p *planner) planChannel(rk state.ResourceKind, kind, key string, cs *chanS
 		if len(cs.overwrites) > 0 {
 			fields["overwrites"] = FieldChange{To: displayWant(cs.overwrites)}
 		}
+		createExtrasFields(cs, fields)
 		p.add(Change{
 			Action: ActionCreate, Kind: kind, Key: key,
 			Summary: "create " + p.channelLabel(cs, cs.name) + in,
@@ -885,6 +1027,7 @@ func (p *planner) planChannel(rk state.ResourceKind, kind, key string, cs *chanS
 		fields["userLimit"] = FieldChange{From: live.UserLimit, To: *cs.userLimit}
 		send["userLimit"] = true
 	}
+	diffChannelExtras(cs, live, fields, send)
 	if p.overwritesDiffer(cs.overwrites, live.Overwrites) {
 		fields["overwrites"] = FieldChange{From: p.displayLive(live.Overwrites), To: displayWant(cs.overwrites)}
 		send["overwrites"] = true
@@ -1050,7 +1193,10 @@ func (p *planner) planChannelOrder() {
 // ───────────────────────────────────────────────────────────── removed keys
 
 func (p *planner) planOrphans() {
-	for _, rk := range []state.ResourceKind{state.KindChannel, state.KindCategory, state.KindRole} {
+	for _, rk := range []state.ResourceKind{state.KindAutoMod, state.KindEmoji, state.KindSticker, state.KindSound, state.KindChannel, state.KindCategory, state.KindRole} {
+		if !p.fetched(rk) {
+			continue // not fetched: nothing known about it
+		}
 		for _, key := range sortedKeys(p.git[rk]) {
 			m := p.git[rk][key]
 			if p.declared(rk, key) {
@@ -1066,13 +1212,16 @@ func (p *planner) planOrphans() {
 					alive, label = true, "role "+quote(r.Name)
 					above = r.Position >= p.botTop || r.Managed
 				}
-			default:
+			case state.KindChannel, state.KindCategory:
 				if c, ok := p.chansByID[m.ID]; ok {
 					alive = true
 					label = p.channelLabel(&chanSpec{typ: c.Type}, c.Name)
 				}
+			default:
+				alive, label = p.parityAlive(rk, m.ID)
 			}
-			ph := map[state.ResourceKind]phase{state.KindChannel: phaseDeleteChannels, state.KindCategory: phaseDeleteCategories, state.KindRole: phaseDeleteRoles}[rk]
+			ph := map[state.ResourceKind]phase{state.KindChannel: phaseDeleteChannels, state.KindCategory: phaseDeleteCategories, state.KindRole: phaseDeleteRoles,
+				state.KindAutoMod: phaseDeleteAutoMod, state.KindEmoji: phaseDeleteExpressions, state.KindSticker: phaseDeleteExpressions, state.KindSound: phaseDeleteExpressions}[rk]
 			switch {
 			case p.consumed[m.ID]:
 				p.add(Change{Action: ActionUnmanage, Kind: kind, Key: key, ID: m.ID,
@@ -1108,6 +1257,14 @@ func (p *planner) declared(rk state.ResourceKind, key string) bool {
 		_, ok = p.sp.Categories[key]
 	case state.KindChannel:
 		_, ok = p.sp.Channels[key]
+	case state.KindAutoMod:
+		_, ok = p.sp.AutoMod[key]
+	case state.KindEmoji:
+		_, ok = p.sp.Emojis[key]
+	case state.KindSticker:
+		_, ok = p.sp.Stickers[key]
+	case state.KindSound:
+		_, ok = p.sp.Soundboard[key]
 	}
 	return ok
 }

@@ -92,9 +92,14 @@ func runImport(cmd *cobra.Command, serverID, dir, key, tokenEnv string, force bo
 		return err
 	}
 	defer sess.Close(context.WithoutCancel(ctx))
-	snap, err := reconcile.Fetch(ctx, sess, serverID, "")
+	snap, err := reconcile.FetchWith(ctx, sess, serverID, "", reconcile.FetchAll)
 	if err != nil {
-		return fmt.Errorf("read server %s (is the bot a member?): %w", serverID, err)
+		// AutoMod, onboarding, widget… need Manage Server: import the rest
+		full := err
+		if snap, err = reconcile.Fetch(ctx, sess, serverID, ""); err != nil {
+			return fmt.Errorf("read server %s (is the bot a member?): %w", serverID, err)
+		}
+		fmt.Fprintf(stderr, "warning: AutoMod rules, onboarding, welcome screen, widget and expressions not read: %v\n", full)
 	}
 	res, err := importer.Generate(importer.Options{ServerKey: key, Snapshot: snap})
 	if err != nil {
@@ -335,7 +340,11 @@ func planAdopt(ctx context.Context, repo *config.Repo, b *bots, store state.Stor
 	if err != nil {
 		return ap, err
 	}
-	snap, err := reconcile.Fetch(ctx, sess, srv.Spec.DiscordID, "")
+	cur, err := store.Resources().List(ctx, key)
+	if err != nil {
+		return ap, err
+	}
+	snap, err := reconcile.FetchWith(ctx, sess, srv.Spec.DiscordID, "", reconcile.FetchOptionsFor(&srv.Spec, cur))
 	if err != nil {
 		return ap, err
 	}
@@ -346,9 +355,17 @@ func planAdopt(ctx context.Context, repo *config.Repo, b *bots, store state.Stor
 	for _, c := range snap.Channels {
 		alive[c.ID] = true
 	}
-	cur, err := store.Resources().List(ctx, key)
-	if err != nil {
-		return ap, err
+	for _, r := range snap.AutoMod {
+		alive[r.ID] = true
+	}
+	for _, e := range snap.Emojis {
+		alive[e.ID] = true
+	}
+	for _, e := range snap.Stickers {
+		alive[e.ID] = true
+	}
+	for _, e := range snap.Sounds {
+		alive[e.ID] = true
 	}
 	scratch, err := sqlite.Open(":memory:")
 	if err != nil {

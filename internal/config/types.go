@@ -89,16 +89,175 @@ type ServerSpec struct {
 	Channels   map[string]Channel  `yaml:"channels,omitempty" json:"channels,omitempty"`
 	Access     *Access             `yaml:"access,omitempty" json:"access,omitempty"`
 	Portal     *ServerPortal       `yaml:"portal,omitempty" json:"portal,omitempty"`
+
+	// Discord parity (docs/discord-parity.md). Every block is managed only when present.
+	AFK           *AFKSpec                  `yaml:"afk,omitempty" json:"afk,omitempty"`
+	Widget        *WidgetSpec               `yaml:"widget,omitempty" json:"widget,omitempty"`
+	Community     *CommunitySpec            `yaml:"community,omitempty" json:"community,omitempty"`
+	AutoMod       map[string]AutoModSpec    `yaml:"automod,omitempty" json:"automod,omitempty"`
+	Onboarding    *OnboardingSpec           `yaml:"onboarding,omitempty" json:"onboarding,omitempty"`
+	WelcomeScreen *WelcomeScreenSpec        `yaml:"welcomeScreen,omitempty" json:"welcomeScreen,omitempty"`
+	Emojis        map[string]EmojiSpec      `yaml:"emojis,omitempty" json:"emojis,omitempty"`
+	Stickers      map[string]StickerSpec    `yaml:"stickers,omitempty" json:"stickers,omitempty"`
+	Soundboard    map[string]SoundboardSpec `yaml:"soundboard,omitempty" json:"soundboard,omitempty"`
 }
 
 type ServerProfile struct {
-	Name                 string `yaml:"name,omitempty" json:"name,omitempty"`
-	Description          string `yaml:"description,omitempty" json:"description,omitempty"`
-	Icon                 string `yaml:"icon,omitempty" json:"icon,omitempty"`
+	Name        string `yaml:"name,omitempty" json:"name,omitempty"`
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	Icon        string `yaml:"icon,omitempty" json:"icon,omitempty"`
+	// Banner (boost level 2) and Splash (invite background, boost level 1) are image
+	// files relative to the server YAML.
+	Banner               string `yaml:"banner,omitempty" json:"banner,omitempty"`
+	Splash               string `yaml:"splash,omitempty" json:"splash,omitempty"`
 	VerificationLevel    string `yaml:"verificationLevel,omitempty" json:"verificationLevel,omitempty"`
 	DefaultNotifications string `yaml:"defaultNotifications,omitempty" json:"defaultNotifications,omitempty"`
-	SystemChannel        string `yaml:"systemChannel,omitempty" json:"systemChannel,omitempty"`
-	RulesChannel         string `yaml:"rulesChannel,omitempty" json:"rulesChannel,omitempty"`
+	// ExplicitContentFilter: disabled | membersWithoutRoles | allMembers.
+	ExplicitContentFilter string              `yaml:"explicitContentFilter,omitempty" json:"explicitContentFilter,omitempty"`
+	PreferredLocale       string              `yaml:"preferredLocale,omitempty" json:"preferredLocale,omitempty"`
+	PremiumProgressBar    *bool               `yaml:"premiumProgressBar,omitempty" json:"premiumProgressBar,omitempty"`
+	SystemChannel         string              `yaml:"systemChannel,omitempty" json:"systemChannel,omitempty"`
+	SystemChannelFlags    *SystemChannelFlags `yaml:"systemChannelFlags,omitempty" json:"systemChannelFlags,omitempty"`
+	// RulesChannel is deprecated: use community.rulesChannel (kept as an alias).
+	RulesChannel string `yaml:"rulesChannel,omitempty" json:"rulesChannel,omitempty"`
+}
+
+// SystemChannelFlags are the system message toggles, as "shown" booleans (unset = not
+// managed). Discord stores the opposite (SUPPRESS_* bits).
+type SystemChannelFlags struct {
+	WelcomeMessages                *bool `yaml:"welcomeMessages,omitempty" json:"welcomeMessages,omitempty"`
+	WelcomeStickerReplies          *bool `yaml:"welcomeStickerReplies,omitempty" json:"welcomeStickerReplies,omitempty"`
+	BoostMessages                  *bool `yaml:"boostMessages,omitempty" json:"boostMessages,omitempty"`
+	SetupTips                      *bool `yaml:"setupTips,omitempty" json:"setupTips,omitempty"`
+	RoleSubscriptionMessages       *bool `yaml:"roleSubscriptionMessages,omitempty" json:"roleSubscriptionMessages,omitempty"`
+	RoleSubscriptionStickerReplies *bool `yaml:"roleSubscriptionStickerReplies,omitempty" json:"roleSubscriptionStickerReplies,omitempty"`
+}
+
+// AFKSpec is the inactive voice channel and timeout (each managed only when set).
+type AFKSpec struct {
+	Channel string `yaml:"channel,omitempty" json:"channel,omitempty"`
+	// Timeout in seconds: 60, 300, 900, 1800 or 3600 (0 = not managed).
+	Timeout int `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+}
+
+type WidgetSpec struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Channel string `yaml:"channel,omitempty" json:"channel,omitempty"`
+}
+
+// CommunitySpec turns the COMMUNITY feature on or off with its channels.
+type CommunitySpec struct {
+	Enabled             bool   `yaml:"enabled" json:"enabled"`
+	RulesChannel        string `yaml:"rulesChannel,omitempty" json:"rulesChannel,omitempty"`
+	UpdatesChannel      string `yaml:"updatesChannel,omitempty" json:"updatesChannel,omitempty"`
+	SafetyAlertsChannel string `yaml:"safetyAlertsChannel,omitempty" json:"safetyAlertsChannel,omitempty"`
+}
+
+// AutoModSpec is one AutoMod rule (spec.automod.<key>).
+type AutoModSpec struct {
+	Name string `yaml:"name" json:"name"`
+	// Trigger: keyword | keywordPreset | mentionSpam | spam | memberProfile.
+	Trigger      string   `yaml:"trigger" json:"trigger"`
+	Enabled      *bool    `yaml:"enabled,omitempty" json:"enabled,omitempty"` // default true
+	Keywords     []string `yaml:"keywords,omitempty" json:"keywords,omitempty"`
+	Regex        []string `yaml:"regex,omitempty" json:"regex,omitempty"`
+	AllowList    []string `yaml:"allowList,omitempty" json:"allowList,omitempty"`
+	Presets      []string `yaml:"presets,omitempty" json:"presets,omitempty"` // profanity | sexualContent | slurs
+	MentionLimit int      `yaml:"mentionLimit,omitempty" json:"mentionLimit,omitempty"`
+	// MentionRaidProtection (mentionSpam only).
+	MentionRaidProtection bool           `yaml:"mentionRaidProtection,omitempty" json:"mentionRaidProtection,omitempty"`
+	Actions               AutoModActions `yaml:"actions" json:"actions"`
+	// ExemptRoles / ExemptChannels are role and channel keys.
+	ExemptRoles    []string `yaml:"exemptRoles,omitempty" json:"exemptRoles,omitempty"`
+	ExemptChannels []string `yaml:"exemptChannels,omitempty" json:"exemptChannels,omitempty"`
+}
+
+// IsEnabled applies the default (true).
+func (a AutoModSpec) IsEnabled() bool { return a.Enabled == nil || *a.Enabled }
+
+type AutoModActions struct {
+	// Block blocks the message (memberProfile: blocks the member's interactions).
+	Block *AutoModBlock `yaml:"block,omitempty" json:"block,omitempty"`
+	// Alert is a channel key that receives an alert.
+	Alert string `yaml:"alert,omitempty" json:"alert,omitempty"`
+	// Timeout is a duration (e.g. "60s", "10m", "1h", "1w"; at most 4 weeks).
+	Timeout string `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+}
+
+type AutoModBlock struct {
+	// Message is shown to the member (at most 150 characters).
+	Message string `yaml:"message,omitempty" json:"message,omitempty"`
+}
+
+// OnboardingSpec is Discord's native onboarding (community servers).
+type OnboardingSpec struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// Mode: default (only default channels count) | advanced.
+	Mode            string             `yaml:"mode,omitempty" json:"mode,omitempty"`
+	DefaultChannels []string           `yaml:"defaultChannels,omitempty" json:"defaultChannels,omitempty"`
+	Prompts         []OnboardingPrompt `yaml:"prompts,omitempty" json:"prompts,omitempty"`
+}
+
+type OnboardingPrompt struct {
+	Key   string `yaml:"key" json:"key"`
+	Title string `yaml:"title" json:"title"`
+	// Type: multipleChoice (default) | dropdown.
+	Type         string             `yaml:"type,omitempty" json:"type,omitempty"`
+	SingleSelect bool               `yaml:"singleSelect,omitempty" json:"singleSelect,omitempty"`
+	Required     bool               `yaml:"required,omitempty" json:"required,omitempty"`
+	InOnboarding *bool              `yaml:"inOnboarding,omitempty" json:"inOnboarding,omitempty"` // default true
+	Options      []OnboardingOption `yaml:"options" json:"options"`
+}
+
+// IsInOnboarding applies the default (true).
+func (p OnboardingPrompt) IsInOnboarding() bool { return p.InOnboarding == nil || *p.InOnboarding }
+
+type OnboardingOption struct {
+	Title       string   `yaml:"title" json:"title"`
+	Description string   `yaml:"description,omitempty" json:"description,omitempty"`
+	Emoji       string   `yaml:"emoji,omitempty" json:"emoji,omitempty"`
+	Roles       []string `yaml:"roles,omitempty" json:"roles,omitempty"`
+	Channels    []string `yaml:"channels,omitempty" json:"channels,omitempty"`
+}
+
+type WelcomeScreenSpec struct {
+	Enabled     *bool            `yaml:"enabled,omitempty" json:"enabled,omitempty"` // default true
+	Description string           `yaml:"description,omitempty" json:"description,omitempty"`
+	Channels    []WelcomeChannel `yaml:"channels,omitempty" json:"channels,omitempty"`
+}
+
+// IsEnabled applies the default (true).
+func (w WelcomeScreenSpec) IsEnabled() bool { return w.Enabled == nil || *w.Enabled }
+
+type WelcomeChannel struct {
+	Channel     string `yaml:"channel" json:"channel"`
+	Description string `yaml:"description" json:"description"`
+	Emoji       string `yaml:"emoji,omitempty" json:"emoji,omitempty"`
+}
+
+// EmojiSpec is a custom emoji from a repository image (png/jpg/gif/webp, ≤ 256 KiB).
+type EmojiSpec struct {
+	Name  string `yaml:"name" json:"name"`
+	Image string `yaml:"image" json:"image"`
+	// Roles restricts the emoji to role keys (empty = everyone).
+	Roles []string `yaml:"roles,omitempty" json:"roles,omitempty"`
+}
+
+// StickerSpec is a custom sticker from a repository file (png/apng/gif/lottie json, ≤ 512 KiB).
+type StickerSpec struct {
+	Name        string `yaml:"name" json:"name"`
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	// Emoji is the related emoji name used for suggestions (e.g. "smile").
+	Emoji string `yaml:"emoji" json:"emoji"`
+	File  string `yaml:"file" json:"file"`
+}
+
+// SoundboardSpec is a soundboard sound from a repository file (mp3/ogg, ≤ 512 KiB).
+type SoundboardSpec struct {
+	Name   string   `yaml:"name" json:"name"`
+	Sound  string   `yaml:"sound" json:"sound"`
+	Volume *float64 `yaml:"volume,omitempty" json:"volume,omitempty"` // 0..1, default 1
+	Emoji  string   `yaml:"emoji,omitempty" json:"emoji,omitempty"`
 }
 
 // SyncPolicy uses pointers so that unset fields get the documented defaults.
@@ -119,12 +278,22 @@ type EveryoneSpec struct {
 }
 
 type RoleSpec struct {
-	Name        string   `yaml:"name" json:"name"`
-	Color       string   `yaml:"color,omitempty" json:"color,omitempty"`
-	Hoist       bool     `yaml:"hoist,omitempty" json:"hoist,omitempty"`
-	Mentionable bool     `yaml:"mentionable,omitempty" json:"mentionable,omitempty"`
+	Name  string `yaml:"name" json:"name"`
+	Color string `yaml:"color,omitempty" json:"color,omitempty"`
+	// Colors is a gradient role style (boost level 2); color is its solid shorthand.
+	Colors      *RoleColors `yaml:"colors,omitempty" json:"colors,omitempty"`
+	Hoist       bool        `yaml:"hoist,omitempty" json:"hoist,omitempty"`
+	Mentionable bool        `yaml:"mentionable,omitempty" json:"mentionable,omitempty"`
+	// Icon is an image file (boost level 2); Emoji a unicode emoji icon. One or the other.
 	Icon        string   `yaml:"icon,omitempty" json:"icon,omitempty"`
+	Emoji       string   `yaml:"emoji,omitempty" json:"emoji,omitempty"`
 	Permissions []string `yaml:"permissions,omitempty" json:"permissions,omitempty"`
+}
+
+type RoleColors struct {
+	Primary   string `yaml:"primary" json:"primary"`
+	Secondary string `yaml:"secondary,omitempty" json:"secondary,omitempty"`
+	Tertiary  string `yaml:"tertiary,omitempty" json:"tertiary,omitempty"`
 }
 
 // OverwriteSpec is keyed by target: "@everyone", a role key, or "member:<id>".
@@ -151,6 +320,35 @@ type Channel struct {
 	UserLimit        int                      `yaml:"userLimit,omitempty" json:"userLimit,omitempty"`
 	SyncWithCategory *bool                    `yaml:"syncWithCategory,omitempty" json:"syncWithCategory,omitempty"`
 	Overwrites       map[string]OverwriteSpec `yaml:"overwrites,omitempty" json:"overwrites,omitempty"`
+
+	// Voice / stage: VoiceRegion ("automatic" or a region id such as "rotterdam"),
+	// VideoQuality (auto | full). Managed only when set.
+	VoiceRegion  string `yaml:"voiceRegion,omitempty" json:"voiceRegion,omitempty"`
+	VideoQuality string `yaml:"videoQuality,omitempty" json:"videoQuality,omitempty"`
+	// Thread defaults: ThreadArchiveAfter is 1h | 24h | 3d | 1w; ThreadSlowmode seconds.
+	ThreadArchiveAfter string `yaml:"threadArchiveAfter,omitempty" json:"threadArchiveAfter,omitempty"`
+	ThreadSlowmode     *int   `yaml:"threadSlowmode,omitempty" json:"threadSlowmode,omitempty"`
+	// Forum / media channels. Guidelines is the forum's "post guidelines" (= topic).
+	Tags            map[string]ForumTag `yaml:"tags,omitempty" json:"tags,omitempty"`
+	DefaultReaction string              `yaml:"defaultReaction,omitempty" json:"defaultReaction,omitempty"`
+	SortOrder       string              `yaml:"sortOrder,omitempty" json:"sortOrder,omitempty"` // latestActivity | creationDate
+	Layout          string              `yaml:"layout,omitempty" json:"layout,omitempty"`       // list | gallery (forum)
+	Guidelines      string              `yaml:"guidelines,omitempty" json:"guidelines,omitempty"`
+}
+
+// ForumTag is a tag of a forum/media channel (channels.<k>.tags.<key>).
+type ForumTag struct {
+	Name      string `yaml:"name" json:"name"`
+	Emoji     string `yaml:"emoji,omitempty" json:"emoji,omitempty"`
+	Moderated bool   `yaml:"moderated,omitempty" json:"moderated,omitempty"`
+}
+
+// EffectiveTopic is the topic, or the forum guidelines (an alias).
+func (c Channel) EffectiveTopic() string {
+	if c.Topic != "" {
+		return c.Topic
+	}
+	return c.Guidelines
 }
 
 // SyncsWithCategory applies the documented default: true when no overwrites are set.

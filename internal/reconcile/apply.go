@@ -29,10 +29,11 @@ func (r *Reconciler) apply(ctx context.Context, p Plan) (Result, error) {
 		r:        r,
 		desired:  r.desired,
 		serverID: r.desired.Spec.DiscordID,
-		ids: map[state.ResourceKind]map[string]string{
-			state.KindRole: {}, state.KindCategory: {}, state.KindChannel: {},
-		},
-		res: Result{Applied: []Change{}, Failed: []Failure{}},
+		ids:      map[state.ResourceKind]map[string]string{},
+		res:      Result{Applied: []Change{}, Failed: []Failure{}},
+	}
+	for _, k := range allKinds {
+		a.ids[k] = map[string]string{}
 	}
 	mapped, err := r.opts.Resources.List(ctx, r.serverKey())
 	if err != nil {
@@ -161,9 +162,18 @@ func (a *applier) run(ctx context.Context, c Change) error {
 
 	case c.Action == ActionDelete:
 		var err error
-		if o.rk == state.KindRole {
+		switch o.rk {
+		case state.KindRole:
 			err = c0.DeleteRole(ctx, a.serverID, c.ID, a.reason())
-		} else {
+		case state.KindAutoMod:
+			err = c0.DeleteAutoModRule(ctx, a.serverID, c.ID, a.reason())
+		case state.KindEmoji:
+			err = c0.DeleteEmoji(ctx, a.serverID, c.ID, a.reason())
+		case state.KindSticker:
+			err = c0.DeleteSticker(ctx, a.serverID, c.ID, a.reason())
+		case state.KindSound:
+			err = c0.DeleteSoundboardSound(ctx, a.serverID, c.ID, a.reason())
+		default:
 			err = c0.DeleteChannel(ctx, c.ID, a.reason())
 		}
 		if err != nil && !errors.Is(err, discord.ErrNotFound) {
@@ -185,7 +195,10 @@ func (a *applier) run(ctx context.Context, c Change) error {
 			if err != nil {
 				return err
 			}
-			return a.record(ctx, state.KindRole, c.Key, role.ID)
+			if err := a.record(ctx, state.KindRole, c.Key, role.ID); err != nil {
+				return err
+			}
+			return a.roleIconSaved(ctx, c.Key, o, role)
 		case ActionAdopt:
 			if err := a.record(ctx, state.KindRole, c.Key, c.ID); err != nil {
 				return err
@@ -194,8 +207,15 @@ func (a *applier) run(ctx context.Context, c Change) error {
 		if o.role == nil {
 			return nil
 		}
-		_, err := c0.UpdateRole(ctx, a.serverID, c.ID, *o.role, a.reason())
-		return err
+		role, err := c0.UpdateRole(ctx, a.serverID, c.ID, *o.role, a.reason())
+		if err != nil {
+			return err
+		}
+		return a.roleIconSaved(ctx, c.Key, o, role)
+
+	case c.Kind == KindWidget, c.Kind == KindWelcomeScreen, c.Kind == KindOnboarding, c.Kind == KindAutoMod,
+		c.Kind == KindEmoji, c.Kind == KindSticker, c.Kind == KindSound:
+		return a.runParity(ctx, c)
 
 	case c.Kind == KindCategory || c.Kind == KindChannel:
 		switch c.Action {
@@ -230,10 +250,20 @@ func (a *applier) run(ctx context.Context, c Change) error {
 func (a *applier) server(ctx context.Context, s *serverSpec) error {
 	sp := discord.ServerParams{
 		Name: s.name, Description: s.description, VerificationLevel: s.verification, DefaultNotifications: s.notifications,
+		ExplicitContentFilter: s.explicit, PreferredLocale: s.locale, PremiumProgressBar: s.progressBar,
+		SystemChannelFlags: s.flags, AFKTimeout: s.afkTimeout, Features: s.features,
 	}
 	if s.icon != nil {
 		icon := s.icon
 		sp.Icon = &icon
+	}
+	if s.banner != nil {
+		b := s.banner
+		sp.Banner = &b
+	}
+	if s.splash != nil {
+		b := s.splash
+		sp.Splash = &b
 	}
 	resolve := func(key *string) (*string, error) {
 		if key == nil {
@@ -252,12 +282,31 @@ func (a *applier) server(ctx context.Context, s *serverSpec) error {
 	if sp.RulesChannelID, err = resolve(s.rulesKey); err != nil {
 		return err
 	}
+	if sp.AFKChannelID, err = resolve(s.afkKey); err != nil {
+		return err
+	}
+	if sp.PublicUpdatesChannelID, err = resolve(s.updatesKey); err != nil {
+		return err
+	}
+	if sp.SafetyAlertsChannelID, err = resolve(s.safetyKey); err != nil {
+		return err
+	}
 	srv, err := a.r.opts.Client.UpdateServer(ctx, a.serverID, sp)
 	if err != nil {
 		return err
 	}
 	if s.icon != nil {
-		return a.r.saveIconState(ctx, iconState{Hash: s.iconHash, URL: srv.IconURL})
+		if err := a.r.saveIconState(ctx, iconState{Hash: s.iconHash, URL: srv.IconURL}); err != nil {
+			return err
+		}
+	}
+	if s.banner != nil {
+		if err := a.r.saveImageState(ctx, "banner", iconState{Hash: s.bannerHash, URL: srv.BannerURL}); err != nil {
+			return err
+		}
+	}
+	if s.splash != nil {
+		return a.r.saveImageState(ctx, "splash", iconState{Hash: s.splashHash, URL: srv.SplashURL})
 	}
 	return nil
 }
@@ -297,6 +346,23 @@ func (a *applier) channelParams(cs *chanSpec, send map[string]bool) (discord.Cha
 	opt("slowmode", cs.slowmode, &p.RateLimitPerUser, true)
 	opt("bitrate", cs.bitrate, &p.Bitrate, false)
 	opt("userLimit", cs.userLimit, &p.UserLimit, true)
+	opt("autoArchive", cs.autoArchive, &p.DefaultAutoArchive, false)
+	opt("threadSlowmode", cs.threadSlowmode, &p.DefaultThreadSlowmode, true)
+	sopt := func(field string, v *string, dst **string) {
+		if v != nil && (all || send[field]) {
+			x := *v
+			*dst = &x
+		}
+	}
+	sopt("rtcRegion", cs.rtcRegion, &p.RTCRegion)
+	sopt("videoQuality", cs.videoQuality, &p.VideoQuality)
+	sopt("defaultReaction", cs.defaultReaction, &p.DefaultReaction)
+	sopt("sortOrder", cs.sortOrder, &p.DefaultSortOrder)
+	sopt("layout", cs.layout, &p.DefaultLayout)
+	if cs.tags != nil && (all || send["tags"]) {
+		t := append([]discord.ForumTag{}, (*cs.tags)...)
+		p.Tags = &t
+	}
 	if all || send["overwrites"] {
 		// always explicit on create: Discord would otherwise copy the category's
 		ows := make([]discord.Overwrite, 0, len(cs.overwrites))

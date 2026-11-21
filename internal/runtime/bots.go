@@ -296,9 +296,11 @@ func (h *botHost) install(ctx context.Context, a *active) {
 			cmds = []discord.Command{}
 		}
 		if err := h.session.SetServerCommands(ctx, h.session.ApplicationID(), sid, cmds); err != nil {
+			h.rt.diag.recordCommands(h.key, sid, len(cmds), err)
 			h.rt.log.Error("sync slash commands", "bot", h.key, "server", sk, "err", err)
 			continue
 		}
+		h.rt.diag.recordCommands(h.key, sid, len(cmds), nil)
 		h.cmdMu.Lock()
 		h.cmdHashes[sid] = hash
 		h.cmdMu.Unlock()
@@ -343,6 +345,7 @@ func (h *botHost) install(ctx context.Context, a *active) {
 
 // handle is the gateway event handler (called sequentially by the session).
 func (h *botHost) handle(ev discord.Event) {
+	h.rt.diag.observe(ev)
 	rt := h.routing.Load()
 	sid := discord.ServerIDOf(ev)
 	if c := rt.caches[sid]; c != nil {

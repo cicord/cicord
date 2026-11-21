@@ -3,6 +3,7 @@ package sim
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -63,11 +64,19 @@ func (w *World) createServer(id, name, ownerID string, opts []ServerOption) disc
 		info: discord.Server{
 			ID: id, Name: name, OwnerID: ownerID,
 			VerificationLevel: "none", DefaultNotifications: "allMessages",
+			ExplicitContentFilter: "disabled", AFKTimeout: 300, PreferredLocale: "en-US",
+			Features: []string{},
 		},
-		roles:     map[string]*discord.Role{id: {ID: id, Name: "@everyone", Permissions: DefaultEveryonePermissions}},
-		managedBy: map[string]string{},
-		members:   map[string]*discord.Member{},
-		bans:      map[string]bool{},
+		roles:      map[string]*discord.Role{id: {ID: id, Name: "@everyone", Permissions: DefaultEveryonePermissions}},
+		managedBy:  map[string]string{},
+		members:    map[string]*discord.Member{},
+		bans:       map[string]bool{},
+		automod:    map[string]*discord.AutoModRule{},
+		emojis:     map[string]*discord.Emoji{},
+		stickers:   map[string]*discord.Sticker{},
+		sounds:     map[string]*discord.SoundboardSound{},
+		onboarding: discord.Onboarding{Mode: "default", DefaultChannelIDs: []string{}, Prompts: []discord.OnboardingPrompt{}},
+		welcome:    discord.WelcomeScreen{Channels: []discord.WelcomeChannel{}},
 	}
 	w.servers[id] = s
 	s.members[ownerID] = &discord.Member{ServerID: id, User: owner.user, RoleIDs: []string{}, JoinedAt: w.now()}
@@ -79,7 +88,7 @@ func (w *World) createServer(id, name, ownerID string, opts []ServerOption) disc
 		s.info.SystemChannelID = c.ch.ID
 	}
 	w.changed()
-	return s.info
+	return cloneServer(s.info)
 }
 
 func (w *World) server(serverID string) (*serverState, error) {
@@ -102,7 +111,7 @@ func (w *World) getServer(a actor, serverID string) (discord.Server, error) {
 	if s.members[a.userID] == nil {
 		return discord.Server{}, forbidden("missing access to server %s", serverID)
 	}
-	return s.info, nil
+	return cloneServer(s.info), nil
 }
 
 var (
@@ -124,12 +133,12 @@ func (w *World) updateServer(a actor, serverID string, p discord.ServerParams) (
 		return discord.Server{}, w.record(a, "UpdateServer", serverID, serverID, "", err)
 	}
 	w.record(a, "UpdateServer", serverID, serverID, "", nil)
-	w.emit(discord.ServerUpdateEvent{Server: s.info})
-	return s.info, nil
+	w.emit(discord.ServerUpdateEvent{Server: cloneServer(s.info)})
+	return cloneServer(s.info), nil
 }
 
 func (w *World) applyServerParams(s *serverState, p discord.ServerParams) error {
-	info := s.info
+	info := cloneServer(s.info)
 	if p.Name != nil {
 		if n := utf8.RuneCountInString(*p.Name); n < 2 || n > 100 {
 			return badRequest("server name must be 2-100 characters")
@@ -142,11 +151,51 @@ func (w *World) applyServerParams(s *serverState, p discord.ServerParams) error 
 		}
 		info.Description = *p.Description
 	}
+	// Feature flags first: the boost and community checks below use the new set.
+	wasCommunity := info.HasFeature(discord.FeatureCommunity)
+	if p.Features != nil {
+		feats, err := mergeFeatures(info.Features, *p.Features)
+		if err != nil {
+			return err
+		}
+		info.Features = feats
+	}
+	community := info.HasFeature(discord.FeatureCommunity)
 	if p.Icon != nil {
 		if len(*p.Icon) == 0 {
 			info.IconURL = ""
 		} else {
-			info.IconURL = "https://cdn.discordapp.com/icons/" + s.info.ID + "/" + imageHash(*p.Icon) + ".png"
+			if isGIF(*p.Icon) {
+				if r := info.BoostReason("an animated icon", discord.FeatureAnimatedIcon); r != "" {
+					return badRequest("%s (ANIMATED_ICON feature)", r)
+				}
+			}
+			info.IconURL = cdnURL("icons", s.info.ID, *p.Icon)
+		}
+	}
+	if p.Banner != nil {
+		if len(*p.Banner) == 0 {
+			info.BannerURL = ""
+		} else {
+			if r := info.BoostReason("banner", discord.FeatureBanner); r != "" {
+				return badRequest("%s (BANNER feature)", r)
+			}
+			if isGIF(*p.Banner) {
+				if r := info.BoostReason("an animated banner", discord.FeatureAnimatedBanner); r != "" {
+					return badRequest("%s (ANIMATED_BANNER feature)", r)
+				}
+			}
+			info.BannerURL = cdnURL("banners", s.info.ID, *p.Banner)
+		}
+	}
+	if p.Splash != nil {
+		if len(*p.Splash) == 0 {
+			info.SplashURL = ""
+		} else {
+			if r := info.BoostReason("invite splash", discord.FeatureInviteSplash); r != "" {
+				return badRequest("%s (INVITE_SPLASH feature)", r)
+			}
+			info.SplashURL = cdnURL("splashes", s.info.ID, *p.Splash)
 		}
 	}
 	if p.VerificationLevel != nil {
@@ -161,30 +210,176 @@ func (w *World) applyServerParams(s *serverState, p discord.ServerParams) error 
 		}
 		info.DefaultNotifications = *p.DefaultNotifications
 	}
-	checkText := func(id, what string) error {
+	if p.ExplicitContentFilter != nil {
+		if !explicitFilters[*p.ExplicitContentFilter] {
+			return badRequest("invalid explicit content filter %q", *p.ExplicitContentFilter)
+		}
+		info.ExplicitContentFilter = *p.ExplicitContentFilter
+	}
+	if p.PreferredLocale != nil {
+		if !discordLocales[*p.PreferredLocale] {
+			return badRequest("invalid preferred locale %q", *p.PreferredLocale)
+		}
+		info.PreferredLocale = *p.PreferredLocale
+	}
+	if p.PremiumProgressBar != nil {
+		info.PremiumProgressBar = *p.PremiumProgressBar
+	}
+	if p.SystemChannelFlags != nil {
+		if *p.SystemChannelFlags < 0 || *p.SystemChannelFlags >= 1<<6 {
+			return badRequest("invalid system channel flags %d", *p.SystemChannelFlags)
+		}
+		info.SystemChannelFlags = *p.SystemChannelFlags
+	}
+	if p.AFKTimeout != nil {
+		if !discord.ValidAFKTimeout(*p.AFKTimeout) {
+			return badRequest("afk timeout must be one of %s seconds", discord.AFKTimeoutsDescription)
+		}
+		info.AFKTimeout = *p.AFKTimeout
+	}
+	checkChan := func(id, what string, types ...discord.ChannelType) error {
 		if id == "" {
 			return nil
 		}
 		c := w.channels[id]
-		if c == nil || c.ch.ServerID != s.info.ID || c.ch.Type != discord.ChannelText {
-			return badRequest("%s must be a text channel of the server", what)
+		if c == nil || c.ch.ServerID != s.info.ID || !slices.Contains(types, c.ch.Type) {
+			kind := "text"
+			if types[0] == discord.ChannelVoice {
+				kind = "voice"
+			}
+			return badRequest("%s must be a %s channel of the server", what, kind)
 		}
 		return nil
 	}
+	if p.AFKChannelID != nil {
+		if err := checkChan(*p.AFKChannelID, "afk channel", discord.ChannelVoice); err != nil {
+			return err
+		}
+		info.AFKChannelID = *p.AFKChannelID
+	}
 	if p.SystemChannelID != nil {
-		if err := checkText(*p.SystemChannelID, "system channel"); err != nil {
+		if err := checkChan(*p.SystemChannelID, "system channel", discord.ChannelText); err != nil {
 			return err
 		}
 		info.SystemChannelID = *p.SystemChannelID
 	}
-	if p.RulesChannelID != nil {
-		if err := checkText(*p.RulesChannelID, "rules channel"); err != nil {
+	communityRef := func(id *string, what string, dst *string) error {
+		if id == nil {
+			return nil
+		}
+		if *id != "" && !community {
+			return badRequest("the %s requires the Community feature", what)
+		}
+		if err := checkChan(*id, what, discord.ChannelText); err != nil {
 			return err
 		}
-		info.RulesChannelID = *p.RulesChannelID
+		*dst = *id
+		return nil
+	}
+	if err := communityRef(p.RulesChannelID, "rules channel", &info.RulesChannelID); err != nil {
+		return err
+	}
+	if err := communityRef(p.PublicUpdatesChannelID, "community updates channel", &info.PublicUpdatesChannelID); err != nil {
+		return err
+	}
+	if err := communityRef(p.SafetyAlertsChannelID, "safety alerts channel", &info.SafetyAlertsChannelID); err != nil {
+		return err
+	}
+	touched := !wasCommunity || p.RulesChannelID != nil || p.PublicUpdatesChannelID != nil ||
+		p.VerificationLevel != nil || p.ExplicitContentFilter != nil
+	if community && touched {
+		// Discord's Community requirements: checked when enabling, and on every change of
+		// the related settings while enabled.
+		switch {
+		case info.RulesChannelID == "":
+			return badRequest("Community servers require a rules channel (rules_channel_id)")
+		case info.PublicUpdatesChannelID == "":
+			return badRequest("Community servers require a community updates channel (public_updates_channel_id)")
+		case info.VerificationLevel == "none":
+			return badRequest("Community servers require a verification level of at least low")
+		case info.ExplicitContentFilter != "allMembers":
+			return badRequest("Community servers require the explicit content filter to scan media from all members (allMembers)")
+		}
+	}
+	if community && !wasCommunity {
+		info.Features = addFeature(info.Features, discord.FeatureNews)
+	} else if !community && wasCommunity {
+		info.Features = removeFeature(info.Features, discord.FeatureNews, discord.FeatureWelcomeScreenEnabled, discord.FeatureGuildOnboarding)
+		s.welcome.Enabled = false
+		s.onboarding.Enabled = false
 	}
 	s.info = info
 	return nil
+}
+
+var (
+	explicitFilters = map[string]bool{"disabled": true, "membersWithoutRoles": true, "allMembers": true}
+	// discordLocales are Discord's locales (Reference → Locales).
+	discordLocales = map[string]bool{
+		"id": true, "da": true, "de": true, "en-GB": true, "en-US": true, "es-ES": true, "es-419": true,
+		"fr": true, "hr": true, "it": true, "lt": true, "hu": true, "nl": true, "no": true, "pl": true,
+		"pt-BR": true, "ro": true, "fi": true, "sv-SE": true, "vi": true, "tr": true, "cs": true, "el": true,
+		"bg": true, "ru": true, "uk": true, "hi": true, "th": true, "zh-CN": true, "ja": true, "zh-TW": true, "ko": true,
+	}
+)
+
+// mergeFeatures applies a Modify Guild `features` list: only mutable flags can be added
+// or removed, the other live flags are kept.
+func mergeFeatures(live, req []string) ([]string, error) {
+	want := map[string]bool{}
+	for _, f := range req {
+		if !discord.IsMutableFeature(f) && !slices.Contains(live, f) {
+			return nil, badRequest("feature %s cannot be set (mutable features: %s)", f, strings.Join(discord.MutableFeatures, ", "))
+		}
+		want[f] = true
+	}
+	if want[discord.FeatureDiscoverable] && !want[discord.FeatureCommunity] {
+		return nil, badRequest("DISCOVERABLE requires the Community feature")
+	}
+	out := []string{}
+	for _, f := range live {
+		if !discord.IsMutableFeature(f) || want[f] {
+			out = append(out, f)
+		}
+	}
+	for _, f := range discord.MutableFeatures {
+		if want[f] && !slices.Contains(out, f) {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+func addFeature(fs []string, f string) []string {
+	if slices.Contains(fs, f) {
+		return fs
+	}
+	return append(fs, f)
+}
+
+func removeFeature(fs []string, rm ...string) []string {
+	out := fs[:0:0]
+	for _, f := range fs {
+		if !slices.Contains(rm, f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func cloneServer(s discord.Server) discord.Server {
+	s.Features = append([]string{}, s.Features...)
+	return s
+}
+
+func isGIF(b []byte) bool { return len(b) >= 4 && string(b[:4]) == "GIF8" }
+
+// cdnURL mimics a Discord CDN image URL ("a_" hash prefix for animated images).
+func cdnURL(kind, id string, b []byte) string {
+	if isGIF(b) {
+		return "https://cdn.discordapp.com/" + kind + "/" + id + "/a_" + imageHash(b) + ".gif"
+	}
+	return "https://cdn.discordapp.com/" + kind + "/" + id + "/" + imageHash(b) + ".png"
 }
 
 func imageHash(b []byte) string {
@@ -222,14 +417,43 @@ func (w *World) sortedRoles(s *serverState) []discord.Role {
 	return out
 }
 
-func validateRoleParams(p discord.RoleParams) error {
+// Holographic role style: the only accepted tertiary color, with these exact values.
+const (
+	holoPrimary   = 11127295
+	holoSecondary = 16759788
+	holoTertiary  = 16761760
+)
+
+func validateRoleParams(info discord.Server, p discord.RoleParams) error {
 	if p.Name != nil {
 		if n := utf8.RuneCountInString(*p.Name); n < 1 || n > 100 {
 			return badRequest("role name must be 1-100 characters")
 		}
 	}
-	if p.Color != nil && (*p.Color < 0 || *p.Color > 0xFFFFFF) {
+	inRange := func(c int) bool { return c >= 0 && c <= 0xFFFFFF }
+	if p.Color != nil && !inRange(*p.Color) {
 		return badRequest("role color out of range")
+	}
+	if c := p.Colors; c != nil {
+		if !inRange(c.Primary) || !inRange(c.Secondary) || !inRange(c.Tertiary) {
+			return badRequest("role color out of range")
+		}
+		if c.Secondary != 0 || c.Tertiary != 0 {
+			if r := info.BoostReason("a gradient role color", discord.FeatureEnhancedRoleColors); r != "" {
+				return badRequest("%s (ENHANCED_ROLE_COLORS feature)", r)
+			}
+		}
+		if c.Tertiary != 0 && (c.Primary != holoPrimary || c.Secondary != holoSecondary || c.Tertiary != holoTertiary) {
+			return badRequest("tertiary_color is only valid for the holographic style (primary %d, secondary %d, tertiary %d)", holoPrimary, holoSecondary, holoTertiary)
+		}
+	}
+	if (p.Icon != nil && len(*p.Icon) > 0) || (p.UnicodeEmoji != nil && *p.UnicodeEmoji != "") {
+		if r := info.BoostReason("a role icon", discord.FeatureRoleIcons); r != "" {
+			return badRequest("%s (ROLE_ICONS feature)", r)
+		}
+	}
+	if p.Icon != nil && len(*p.Icon) > discord.MaxEmojiImageBytes {
+		return badRequest("role icon must be at most 256 KiB")
 	}
 	return nil
 }
@@ -240,6 +464,11 @@ func applyRoleParams(r *discord.Role, p discord.RoleParams) {
 	}
 	if p.Color != nil {
 		r.Color = *p.Color
+		r.Colors = discord.RoleColors{Primary: *p.Color}
+	}
+	if p.Colors != nil {
+		r.Colors = *p.Colors
+		r.Color = p.Colors.Primary
 	}
 	if p.Hoist != nil {
 		r.Hoist = *p.Hoist
@@ -249,6 +478,21 @@ func applyRoleParams(r *discord.Role, p discord.RoleParams) {
 	}
 	if p.Permissions != nil {
 		r.Permissions = *p.Permissions
+	}
+	// An image icon and an emoji icon are exclusive (the Discord client shows one).
+	if p.Icon != nil {
+		if len(*p.Icon) == 0 {
+			r.IconURL = ""
+		} else {
+			r.IconURL = cdnURL("role-icons", r.ID, *p.Icon)
+			r.UnicodeEmoji = ""
+		}
+	}
+	if p.UnicodeEmoji != nil {
+		r.UnicodeEmoji = *p.UnicodeEmoji
+		if *p.UnicodeEmoji != "" {
+			r.IconURL = ""
+		}
 	}
 }
 
@@ -274,7 +518,7 @@ func (w *World) createRole(a actor, serverID string, p discord.RoleParams, reaso
 	if err := w.requireServer(a, s, permManageRoles); err != nil {
 		return fail(err)
 	}
-	if err := validateRoleParams(p); err != nil {
+	if err := validateRoleParams(s.info, p); err != nil {
 		return fail(err)
 	}
 	r := &discord.Role{Name: "new role", Permissions: s.roles[s.info.ID].Permissions}
@@ -285,6 +529,9 @@ func (w *World) createRole(a actor, serverID string, p discord.RoleParams, reaso
 		}
 	}
 	r.ID = w.newID()
+	if r.IconURL != "" {
+		r.IconURL = cdnURL("role-icons", r.ID, *p.Icon)
+	}
 	snap := snapshotRoles(s)
 	s.roles[r.ID] = r
 	// New roles are created at position 1, just above @everyone.
@@ -315,7 +562,7 @@ func (w *World) updateRole(a actor, serverID, roleID string, p discord.RoleParam
 	if err := w.requireAbove(a, s, r.Position, "role "+r.Name); err != nil {
 		return fail(err)
 	}
-	if err := validateRoleParams(p); err != nil {
+	if err := validateRoleParams(s.info, p); err != nil {
 		return fail(err)
 	}
 	if roleID == serverID && p.Name != nil && *p.Name != r.Name {
@@ -370,6 +617,7 @@ func (w *World) removeRole(s *serverState, roleID string) {
 		m.RoleIDs = removeString(m.RoleIDs, roleID)
 	}
 	w.layoutRoles(s, nil, nil)
+	w.forgetRole(s, roleID)
 	w.emit(discord.RoleDeleteEvent{ServerID: s.info.ID, RoleID: roleID})
 	w.emitRoleChanges(s, snap, "")
 	for _, id := range s.channelIDs {
@@ -746,8 +994,23 @@ func (w *World) validateParent(s *serverState, t discord.ChannelType, parentID s
 	return nil
 }
 
+func forumLike(t discord.ChannelType) bool {
+	return t == discord.ChannelForum || t == discord.ChannelMedia
+}
+
+// voiceRegions are Discord's voice region IDs (GET /voice/regions).
+var voiceRegions = map[string]bool{
+	"brazil": true, "hongkong": true, "india": true, "japan": true, "rotterdam": true, "russia": true,
+	"singapore": true, "southafrica": true, "south-korea": true, "sydney": true, "us-central": true,
+	"us-east": true, "us-south": true, "us-west": true, "dubai": true, "atlanta": true, "newark": true,
+	"santa-clara": true, "seattle": true, "stockholm": true, "frankfurt": true, "madrid": true,
+	"milan": true, "bucharest": true, "finland": true, "tel-aviv": true, "buenos-aires": true,
+	"santiago": true, "st-pete": true, "montreal": true,
+}
+
 // applyChannelFields applies the type-specific fields of p to ch, validating them.
-func applyChannelFields(ch *discord.Channel, p discord.ChannelParams) error {
+// Fields that do not apply to the channel type are ignored, like Discord.
+func (w *World) applyChannelFields(ch *discord.Channel, p discord.ChannelParams) error {
 	if p.Name != nil {
 		name := normalizeChannelName(ch.Type, *p.Name)
 		if n := utf8.RuneCountInString(name); n < 1 || n > 100 {
@@ -756,8 +1019,12 @@ func applyChannelFields(ch *discord.Channel, p discord.ChannelParams) error {
 		ch.Name = name
 	}
 	if p.Topic != nil && textLike(ch.Type) {
-		if utf8.RuneCountInString(*p.Topic) > 1024 {
-			return badRequest("topic must be at most 1024 characters")
+		maxTopic := 1024
+		if forumLike(ch.Type) {
+			maxTopic = 4096
+		}
+		if utf8.RuneCountInString(*p.Topic) > maxTopic {
+			return badRequest("topic must be at most %d characters", maxTopic)
 		}
 		ch.Topic = *p.Topic
 	}
@@ -786,7 +1053,82 @@ func applyChannelFields(ch *discord.Channel, p discord.ChannelParams) error {
 		}
 		ch.UserLimit = *p.UserLimit
 	}
+	if p.RTCRegion != nil && voiceLike(ch.Type) {
+		if *p.RTCRegion != "" && !voiceRegions[*p.RTCRegion] {
+			return badRequest("unknown voice region %q", *p.RTCRegion)
+		}
+		ch.RTCRegion = *p.RTCRegion
+	}
+	if p.VideoQuality != nil && voiceLike(ch.Type) {
+		if *p.VideoQuality != "auto" && *p.VideoQuality != "full" {
+			return badRequest("video quality mode must be auto or full")
+		}
+		ch.VideoQuality = *p.VideoQuality
+	}
+	if p.DefaultAutoArchive != nil && isThreadParentable(ch.Type) {
+		if !discord.ValidAutoArchive(*p.DefaultAutoArchive) {
+			return badRequest("default auto archive duration must be one of %s minutes", discord.ThreadArchiveDescription)
+		}
+		ch.DefaultAutoArchive = *p.DefaultAutoArchive
+	}
+	if p.DefaultThreadSlowmode != nil && isThreadParentable(ch.Type) {
+		if *p.DefaultThreadSlowmode < 0 || *p.DefaultThreadSlowmode > 21600 {
+			return badRequest("default thread rate limit per user must be 0-21600")
+		}
+		ch.DefaultThreadSlowmode = *p.DefaultThreadSlowmode
+	}
+	if p.Tags != nil && forumLike(ch.Type) {
+		tags, err := w.forumTags(ch.Tags, *p.Tags)
+		if err != nil {
+			return err
+		}
+		ch.Tags = tags
+	}
+	if p.DefaultReaction != nil && forumLike(ch.Type) {
+		ch.DefaultReaction = *p.DefaultReaction
+	}
+	if p.DefaultSortOrder != nil && forumLike(ch.Type) {
+		if *p.DefaultSortOrder != "latestActivity" && *p.DefaultSortOrder != "creationDate" {
+			return badRequest("default sort order must be latestActivity or creationDate")
+		}
+		ch.DefaultSortOrder = *p.DefaultSortOrder
+	}
+	if p.DefaultLayout != nil && ch.Type == discord.ChannelForum {
+		if *p.DefaultLayout != "list" && *p.DefaultLayout != "gallery" {
+			return badRequest("default forum layout must be list or gallery")
+		}
+		ch.DefaultLayout = *p.DefaultLayout
+	}
 	return nil
+}
+
+// forumTags applies a full tag list: entries with an ID keep that tag, the others are
+// created with a new ID.
+func (w *World) forumTags(live, want []discord.ForumTag) ([]discord.ForumTag, error) {
+	if len(want) > discord.ForumMaxTags {
+		return nil, badRequest("a channel can have at most %d tags", discord.ForumMaxTags)
+	}
+	known := map[string]bool{}
+	for _, t := range live {
+		known[t.ID] = true
+	}
+	out := make([]discord.ForumTag, 0, len(want))
+	seen := map[string]bool{}
+	for _, t := range want {
+		if n := utf8.RuneCountInString(t.Name); n < 1 || n > discord.ForumMaxTagName {
+			return nil, badRequest("tag name must be 1-%d characters", discord.ForumMaxTagName)
+		}
+		if t.ID != "" {
+			if !known[t.ID] || seen[t.ID] {
+				return nil, badRequest("unknown tag %s", t.ID)
+			}
+		} else {
+			t.ID = w.newID()
+		}
+		seen[t.ID] = true
+		out = append(out, t)
+	}
+	return out, nil
 }
 
 func (w *World) createChannel(a actor, serverID string, p discord.ChannelParams, reason string) (discord.Channel, error) {
@@ -808,11 +1150,14 @@ func (w *World) createChannel(a actor, serverID string, p discord.ChannelParams,
 	if p.Name == nil {
 		return fail(badRequest("channel name is required"))
 	}
+	if (p.Type == discord.ChannelAnnouncement || p.Type == discord.ChannelStage) && !s.info.HasFeature(discord.FeatureCommunity) {
+		return fail(badRequest("%s channels require the Community feature", p.Type))
+	}
 	ch := discord.Channel{ServerID: serverID, Type: p.Type}
 	if voiceLike(p.Type) {
 		ch.Bitrate = 64000
 	}
-	if err := applyChannelFields(&ch, p); err != nil {
+	if err := w.applyChannelFields(&ch, p); err != nil {
 		return fail(err)
 	}
 	if p.ParentID != nil {
@@ -872,7 +1217,7 @@ func (w *World) updateChannel(a actor, channelID string, p discord.ChannelParams
 		return fail(err)
 	}
 	ch := cloneChannel(c.ch)
-	if err := applyChannelFields(&ch, p); err != nil {
+	if err := w.applyChannelFields(&ch, p); err != nil {
 		return fail(err)
 	}
 	if p.ParentID != nil && !isThread(ch.Type) {
@@ -970,14 +1315,20 @@ func (w *World) removeChannel(s *serverState, c *channelState) {
 		w.emit(discord.ChannelDeleteEvent{Channel: t.ch})
 	}
 	w.emitChannelChanges(s, snap, "")
-	if s.info.SystemChannelID == c.ch.ID || s.info.RulesChannelID == c.ch.ID {
-		if s.info.SystemChannelID == c.ch.ID {
-			s.info.SystemChannelID = ""
+	cleared := false
+	for _, ref := range []*string{&s.info.SystemChannelID, &s.info.RulesChannelID, &s.info.PublicUpdatesChannelID,
+		&s.info.SafetyAlertsChannelID, &s.info.AFKChannelID} {
+		if *ref == c.ch.ID {
+			*ref = ""
+			cleared = true
 		}
-		if s.info.RulesChannelID == c.ch.ID {
-			s.info.RulesChannelID = ""
-		}
-		w.emit(discord.ServerUpdateEvent{Server: s.info})
+	}
+	if s.widget.ChannelID == c.ch.ID {
+		s.widget.ChannelID = ""
+	}
+	w.forgetChannel(s, c.ch.ID)
+	if cleared {
+		w.emit(discord.ServerUpdateEvent{Server: cloneServer(s.info)})
 	}
 }
 

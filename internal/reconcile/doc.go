@@ -58,13 +58,30 @@
 // mentionable, permissions; category/channel name and overwrites; channel topic (text,
 // announcement, forum, media), nsfw, slowmode (text, voice, stage, forum, media) and
 // userLimit (voice, stage). Managed only when set: channel bitrate (> 0), every server
-// profile field (non-empty), the icon, everyone (when spec.everyone is present).
-// Role icons are not managed (discord.RoleParams has no icon).
+// profile field (non-empty), the icon, everyone (when spec.everyone is present), and
+// every Discord-parity field (parity.go): afk, widget, community, system message
+// toggles, role colors/icon/emoji, channel extras (voice region, video quality, thread
+// defaults, forum tags/settings), welcome screen, onboarding, AutoMod rules, emojis,
+// stickers and soundboard sounds.
 //
-// The server icon is a path relative to the server YAML file. discord.Server only
-// exposes an IconURL, so the SHA-256 of the last uploaded file and the IconURL observed
-// after the upload are kept in the KV (key "icon"); the icon is uploaded again when the
-// file hash or the live IconURL differs (or when the live server has no icon).
+// Images (server icon, banner, splash, role icons) are paths relative to the server
+// YAML file. Discord only exposes URLs, so the SHA-256 of the last uploaded file and the
+// URL observed after the upload are kept in the KV ("icon", "image:banner",
+// "image:splash", "image:role:<key>"); an image is uploaded again when the file hash or
+// the live URL differs. Expressions keep only the hash ("image:emoji:<key>"…): Discord
+// cannot replace their file, so a changed file is blocked ("recreate: …").
+//
+// # Gating (parity.go)
+//
+// Boost-gated settings (banner, splash, animated icon, role icons, gradient role colors)
+// are checked against the live boost level and feature flags, and Community-only
+// settings (announcement/stage channels, rules/updates/safety channels, welcome screen,
+// onboarding) against the Community state after the plan; expression slots and AutoMod
+// rule caps are counted. What Discord would refuse is Blocked with a reason prefixed
+// "boost: ", "community: " or "limit: " (ExplainBlocked) instead of failing at apply.
+// Enabling Community is planned once with its prerequisites (rules and updates channels,
+// verification ≥ low, explicit filter allMembers) in phaseServerRefs, after the channels
+// exist; channels that need Community are created in phaseCommunityChannels right after.
 //
 // # Overwrites
 //
@@ -106,8 +123,10 @@
 // # Apply
 //
 // Order: server basics and @everyone → roles (adopt/create/update) → role positions →
-// categories → channels (create/update with parent and overwrites) → channel positions
-// → server channel references (system/rules channel) → deletions and unmanage. IDs are
+// categories → channels (create/update with parent and overwrites) → server channel
+// references and the Community toggle → channels that need Community → channel
+// positions → widget → welcome screen → onboarding → AutoMod → expressions → deletions
+// (AutoMod, expressions, channels, categories, roles) and unmanage. IDs are
 // resolved by key at apply time from a working map seeded with the resource map and
 // updated after every create/adopt; mappings are written as soon as a create succeeds,
 // so a crash mid-apply re-plans correctly (and a resource created but not recorded is

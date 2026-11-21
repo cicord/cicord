@@ -21,8 +21,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/npjonath/codi/internal/catalog"
 	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/runtime"
+	"github.com/npjonath/codi/internal/setup"
 	"github.com/npjonath/codi/internal/sim"
 	"github.com/npjonath/codi/internal/state"
 	"github.com/npjonath/codi/internal/writeback"
@@ -34,6 +36,9 @@ type OAuth struct {
 	// revision when empty.
 	ClientID     string
 	ClientSecret string
+	// SecretFunc, when set and non-empty, takes precedence over ClientSecret (resolved on
+	// every login: env first, then the secret store).
+	SecretFunc func() string
 	// AuthorizeURL, TokenURL and APIURL default to Discord's (overridable for tests).
 	AuthorizeURL string
 	TokenURL     string
@@ -85,6 +90,12 @@ type Options struct {
 	// Stopping, when closed, ends long-lived streams (SSE) so that a graceful HTTP
 	// shutdown does not wait for them.
 	Stopping <-chan struct{}
+	// Setup enables the setup wizard endpoints (/api/v1/setup/*, setup.go).
+	Setup *setup.Wizard
+	// Checker runs the Diagnostics checklist (nil: GET …/diagnostics answers 503).
+	Checker *setup.Checker
+	// Catalog is the plugin catalog (default: the official plugins bundled in the binary).
+	Catalog *catalog.Catalog
 }
 
 type server struct {
@@ -100,6 +111,12 @@ type server struct {
 
 // New returns the API handler.
 func New(opts Options) http.Handler {
+	s := newServer(opts)
+	s.routes()
+	return s.middleware(s.mux)
+}
+
+func newServer(opts Options) *server {
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
@@ -143,10 +160,12 @@ func New(opts Options) http.Handler {
 		opts.OAuth.APIURL = "https://discord.com/api/v10"
 	}
 	opts.PublicURL = strings.TrimRight(opts.PublicURL, "/")
+	if opts.Catalog == nil {
+		opts.Catalog = catalog.Official()
+	}
 	s := &server{opts: opts, rt: opts.Runtime, store: opts.Store, log: opts.Logger, mux: http.NewServeMux()}
 	s.members.entries = map[string]memberEntry{}
-	s.routes()
-	return s.middleware(s.mux)
+	return s
 }
 
 func (s *server) routes() {
@@ -173,6 +192,8 @@ func (s *server) routes() {
 	h("GET /api/v1/servers/{server}/audit", s.handleAudit)
 	h("GET /api/v1/servers/{server}/plugins", s.handlePlugins)
 	h("PUT /api/v1/servers/{server}/plugins/{bot}/{instance}/config", s.handleConfigPut)
+	h("GET /api/v1/servers/{server}/assets/{kind}", s.handleAssetGet)
+	h("PUT /api/v1/servers/{server}/assets/{kind}", s.handleAssetPut)
 
 	// §6 portal
 	h("GET /api/v1/portal/servers", s.handlePortalServers)
@@ -194,6 +215,7 @@ func (s *server) routes() {
 	h("GET /api/v1/sim/state", s.simOnly(s.handleSimState))
 	h("POST /api/v1/sim/users", s.simOnly(s.handleSimCreateUser))
 	h("POST /api/v1/sim/servers/{id}/members", s.simOnly(s.handleSimJoin))
+	h("POST /api/v1/sim/servers/{id}/boosts", s.simOnly(s.handleSimBoosts))
 	h("DELETE /api/v1/sim/servers/{id}/members/{userId}", s.simOnly(s.handleSimLeave))
 	h("GET /api/v1/sim/channels/{id}/messages", s.simOnly(s.handleSimMessages))
 	h("GET /api/v1/sim/users/{id}/dms", s.simOnly(s.handleSimDMs))
@@ -203,6 +225,9 @@ func (s *server) routes() {
 	h("POST /api/v1/sim/components", s.simOnly(s.handleSimComponent))
 	h("POST /api/v1/sim/modals", s.simOnly(s.handleSimModal))
 	h("GET /api/v1/sim/events", s.simOnly(s.handleSimEvents))
+
+	// setup wizard, catalog, diagnostics (setup.go)
+	s.setupRoutes(h)
 
 	h("/api/", notFoundHandler)
 

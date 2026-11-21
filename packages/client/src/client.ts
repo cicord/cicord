@@ -20,6 +20,8 @@ import type {
   PortalServer,
   RemotePlanResult,
   RuntimeStatus,
+  ServerAssetKind,
+  ServerAssetResult,
   ServerDetail,
   ServerResources,
   SimCommand,
@@ -592,6 +594,29 @@ export class CodiClient {
           ...options,
         },
       ),
+    /**
+     * `PUT /servers/{server}/assets/{kind}` (admin) — uploads the server icon, banner or
+     * splash (PNG, JPEG, GIF, WebP ≤ 8 MiB) into the repository and points
+     * `spec.profile.<kind>` at it. Rejects with `unsupported_media_type` (415),
+     * `too_large` (413) or `conflict` (409, when `revision` is stale).
+     */
+    uploadServerAsset: (
+      server: string,
+      kind: ServerAssetKind,
+      image: Blob | ArrayBuffer | Uint8Array,
+      options: CallOptions & { revision?: string } = {},
+    ): Promise<ServerAssetResult> => {
+      const { revision, ...rest } = options;
+      return this.#api<ServerAssetResult>("PUT", `/servers/${seg(server)}/assets/${seg(kind)}`, {
+        body: image,
+        contentType: image instanceof Blob && image.type ? image.type : "application/octet-stream",
+        ...(revision ? { query: { revision } } : {}),
+        ...rest,
+      });
+    },
+    /** URL of the image declared in `spec.profile.<kind>` (moderator), for previews. */
+    serverAssetUrl: (server: string, kind: ServerAssetKind): string =>
+      this.url(`${this.apiPath}/servers/${seg(server)}/assets/${seg(kind)}`),
   };
 
   // ─────────────────────────────────────────────────────────── machine (§7)

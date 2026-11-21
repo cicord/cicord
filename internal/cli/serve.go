@@ -27,6 +27,8 @@ import (
 	"github.com/npjonath/codi/internal/discord/disgoadapter"
 	"github.com/npjonath/codi/internal/registry"
 	"github.com/npjonath/codi/internal/runtime"
+	"github.com/npjonath/codi/internal/secrets"
+	"github.com/npjonath/codi/internal/setup"
 	"github.com/npjonath/codi/internal/source"
 	"github.com/npjonath/codi/internal/state/sqlite"
 	"github.com/npjonath/codi/internal/webui"
@@ -216,7 +218,7 @@ func checkLocalDataDir(repoDir, dataDir string, explicit bool) (string, error) {
 
 // runHTTP serves h on ln and runs the runtime until ctx ends, then shuts both down.
 // stopping is closed when the shutdown starts (see api.Options.Stopping).
-func runHTTP(ctx context.Context, log *slog.Logger, ln net.Listener, h http.Handler, rt *runtime.Runtime, stopping chan struct{}) error {
+func runHTTP(ctx context.Context, log *slog.Logger, ln net.Listener, h http.Handler, rt interface{ Run(context.Context) error }, stopping chan struct{}) error {
 	srv := &http.Server{
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -298,6 +300,10 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	if err != nil {
 		return err
 	}
+	if _, err := os.Stat(filepath.Join(absDir, "codi.yaml")); errors.Is(err, os.ErrNotExist) && !local {
+		// No configured repository: setup wizard (or the repository it created).
+		return runServeSetup(ctx, stdout, log, absDir, f)
+	}
 	proj, err := readProject(absDir)
 	if err != nil {
 		return err
@@ -328,7 +334,18 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		writer writeback.Writer
 		branch string
 	)
-	gitToken := os.Getenv("CODI_GIT_TOKEN")
+	// Secrets: environment first, then the encrypted secret store of the data dir.
+	store, err := sqlite.Open(filepath.Join(dataDir, "codi.db"))
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	sec, err := openSecrets(ctx, store, dataDir, false)
+	if err != nil {
+		return err
+	}
+	resolve := secrets.Resolver(sec, nil)
+	gitToken, _ := resolve(setup.GitTokenSecret)
 	switch provider {
 	case "github", "git", "embedded":
 		remote, path := sp.Repo, sp.Path
@@ -376,11 +393,6 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	}
 	defer src.Close()
 
-	store, err := sqlite.Open(filepath.Join(dataDir, "codi.db"))
-	if err != nil {
-		return err
-	}
-	defer store.Close()
 	key, err := linkKey(dataDir)
 	if err != nil {
 		return err
@@ -405,7 +417,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 
 	cacheDir := registry.DefaultCacheDir()
 	rt := runtime.New(runtime.Options{
-		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store,
+		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewResolver(root, cacheDir) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
 	})
@@ -417,9 +429,10 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	h := api.New(api.Options{
 		Runtime: rt, Writer: writer, Mode: "serve", RuntimeToken: runtimeToken,
 		WebhookSecret: os.Getenv("CODI_WEBHOOK_SECRET"), Branch: branch,
-		OAuth:     api.OAuth{ClientID: os.Getenv("CODI_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CODI_DISCORD_CLIENT_SECRET")},
+		OAuth: api.OAuth{ClientID: os.Getenv("CODI_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CODI_DISCORD_CLIENT_SECRET"),
+			SecretFunc: setup.OAuthClientSecret(sec, nil)},
 		PublicURL: public, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
-		Stopping: stopping,
+		Stopping: stopping, Checker: &setup.Checker{Runtime: rt, Probe: defaultProbe(), Secrets: resolve, Writer: writer},
 	})
 	fmt.Fprintf(stdout, "CODI runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, public, dataDir)
 	return runHTTP(ctx, log, ln, h, rt, stopping)

@@ -274,6 +274,22 @@ describe("admin & machine", () => {
     expect(calls[8]?.body).toEqual({ config: { a: 1 }, scope: "base", revision: "r" });
   });
 
+  test("server asset upload", async () => {
+    const { fetch, calls } = mockFetch(() => json({ mode: "commit", warnings: [] }));
+    const client = createCodiClient({ fetch });
+    const image = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: "image/png" });
+    await client.admin.uploadServerAsset("s", "banner", image, { revision: "r1" });
+    await client.admin.uploadServerAsset("s", "icon", new Uint8Array([1]));
+    expect(calls[0]).toMatchObject({
+      method: "PUT",
+      url: "/api/v1/servers/s/assets/banner?revision=r1",
+    });
+    expect(calls[0]?.headers.get("Content-Type")).toBe("image/png");
+    expect(calls[0]?.body).toBeInstanceOf(Blob);
+    expect(calls[1]?.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(client.admin.serverAssetUrl("s", "icon")).toBe("/api/v1/servers/s/assets/icon");
+  });
+
   test("machine endpoints", async () => {
     const { fetch, calls } = mockFetch((c) =>
       c.url === "/readyz"

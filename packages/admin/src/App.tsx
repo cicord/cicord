@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, type ReactNode } from "react
 import { useStatus } from "./api.ts";
 import { EmptyState, Sha } from "./components/common.tsx";
 import { ErrorState } from "./components/errors.tsx";
+import { CodiApiError } from "@codi/client";
 import { Badge } from "./components/ui/badge.tsx";
 import {
   Breadcrumb,
@@ -38,6 +39,8 @@ import { ResourcesPage } from "./pages/Resources.tsx";
 import { ServerSettingsPage } from "./pages/ServerSettings.tsx";
 import { SettingsPage } from "./pages/Settings.tsx";
 import { DriftPage, HistoryPage, PlanPage } from "./pages/Sync.tsx";
+import { DiagnosticsPage } from "./pages/Diagnostics.tsx";
+import { SetupPage } from "./setup/SetupPage.tsx";
 import { Link, navigate, useLocation } from "./router.tsx";
 import { AppSidebar } from "./shell/AppSidebar.tsx";
 import {
@@ -73,6 +76,7 @@ function Root() {
   const { t } = useTranslation();
   const { cache } = useCodi();
   const me = useMe();
+  const { path } = useLocation();
 
   useEffect(() => {
     const onExpired = () => void cache.invalidate(codiKeys.me());
@@ -80,6 +84,10 @@ function Root() {
     return () => window.removeEventListener(UNAUTHENTICATED_EVENT, onExpired);
   }, [cache]);
 
+  // The setup wizard is a full page outside the shell (like Login); a runtime in setup
+  // mode answers every other API call with setup_required.
+  if (path === "/setup" || (me.error instanceof CodiApiError && me.error.code === "setup_required"))
+    return <SetupPage />;
   if (me.isLoading)
     return (
       <div className="grid min-h-svh place-items-center">
@@ -220,6 +228,9 @@ function Shell() {
       break;
     case "settings":
       page = <SettingsPage />;
+      break;
+    case "diagnostics":
+      page = <DiagnosticsPage serverKey={key} key={key} />;
       break;
     default:
       page = <NotFound path={path} />;

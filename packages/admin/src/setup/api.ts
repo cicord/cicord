@@ -1,0 +1,207 @@
+/** Setup wizard API (spec/api.md §10): typed calls on top of the generic client. */
+import type { CodiClient, Plan } from "@codi/client";
+
+export type CheckStatus = "ok" | "warn" | "fail" | "pending" | "skip";
+
+export interface Check {
+  id: string;
+  status: CheckStatus;
+  message: string;
+  hint?: string;
+  link?: string;
+  data?: Record<string, unknown>;
+}
+
+export type StepId =
+  | "welcome"
+  | "discord"
+  | "server"
+  | "repository"
+  | "login"
+  | "verify"
+  | "plugin"
+  | "done";
+
+export type Provider = "local" | "embedded" | "github";
+
+export interface SetupBot {
+  key: string;
+  secretRef: string;
+  applicationId: string;
+  applicationName: string;
+  userId: string;
+  username: string;
+  avatarUrl?: string;
+  flags: number;
+  tokenStored: boolean;
+  portalUrl: string;
+  intents: Check;
+}
+
+export interface SetupServer {
+  id: string;
+  name: string;
+  iconUrl?: string;
+  key: string;
+}
+
+export interface SetupView {
+  step: StepId;
+  steps: StepId[];
+  completed: boolean;
+  mode: "serve" | "dev";
+  simulator: boolean;
+  version: string;
+  intent?: "new" | "existing";
+  providers: Provider[];
+  publicUrl: string;
+  bot?: SetupBot;
+  inviteUrl?: string;
+  server?: SetupServer;
+  repo?: { provider: Provider; url?: string; branch: string; tokenStored?: boolean };
+  activated: boolean;
+  revision?: string;
+  firstPlan?: Plan;
+  login: {
+    configured: boolean;
+    skipped: boolean;
+    testedAs?: string;
+    clientId?: string;
+    redirectUrl: string;
+    portalUrl: string;
+    fromEnv: boolean;
+  };
+  plugin?: { name: string; instance: string; command?: string; skipped?: boolean };
+}
+
+export interface SetupStatus {
+  active: boolean;
+  completed: boolean;
+  authenticated: boolean;
+  simulator?: boolean;
+  view?: SetupView;
+}
+
+export interface ServerSummary {
+  id: string;
+  name: string;
+  iconUrl?: string;
+}
+
+export interface ServerResult {
+  view: SetupView;
+  checks: Check[];
+  ok: boolean;
+}
+
+export interface ImportResult {
+  view: SetupView;
+  plan: Plan | null;
+  needsConfirm: boolean;
+  files?: string[];
+  warnings: string[];
+}
+
+export interface Report {
+  server: string;
+  bot: string;
+  checks: Check[];
+  ranAt: string;
+  ok: boolean;
+  plan?: Plan;
+}
+
+export interface CatalogPlugin {
+  name: string;
+  displayName: string;
+  description: string;
+  version: string;
+  keywords: string[];
+  source: string;
+  capabilities: string[];
+  intents: string[];
+  privilegedIntents: string[];
+  network: string[];
+  schema: Record<string, unknown>;
+  commands: { name: string; description: string }[];
+}
+
+export interface InstallResult {
+  instance: string;
+  health: string;
+  message?: string;
+  command?: string;
+  revision?: string;
+  mode: string;
+  pullRequestUrl?: string;
+}
+
+export interface LoginTest {
+  ok: boolean;
+  user?: { id: string; username: string; displayName: string; avatarUrl: string };
+  servers?: { key: string; name: string; role: string }[];
+}
+
+const P = "/api/v1/setup";
+
+/** Wizard calls. */
+export function setupApi(client: CodiClient) {
+  const get = <T>(path: string, signal?: AbortSignal) =>
+    client.request<T>("GET", `${P}${path}`, signal ? { signal } : {});
+  const post = <T>(path: string, body: unknown = {}) =>
+    client.request<T>("POST", `${P}${path}`, { body });
+  return {
+    status: (signal?: AbortSignal) => get<SetupStatus>("/status", signal),
+    exchange: (token: string) => post<SetupStatus>("/session", { token }),
+    intent: (intent: "new" | "existing") => post<SetupView>("/intent", { intent }),
+    step: (step: StepId) => post<SetupView>("/step", { step }),
+    submitToken: (token: string) => post<SetupView>("/discord/token", { token }),
+    recheckDiscord: () => post<SetupView>("/discord/recheck"),
+    servers: (signal?: AbortSignal) =>
+      get<{ servers: ServerSummary[] }>("/discord/servers", signal).then((r) => r.servers),
+    selectServer: (serverId: string) => post<ServerResult>("/server", { serverId }),
+    checkServer: () => post<ServerResult>("/server/check"),
+    repo: (body: { provider: Provider; url?: string; branch?: string; token?: string }) =>
+      post<SetupView>("/repo", body),
+    import: (confirm = false) => post<ImportResult>("/import", { confirm }),
+    saveOAuth: (clientSecret: string) => post<SetupView>("/oauth", { clientSecret }),
+    skipLogin: () => post<SetupView>("/oauth/skip"),
+    testLogin: (signal?: AbortSignal) => get<LoginTest>("/oauth/test", signal),
+    verify: (signal?: AbortSignal) => get<Report>("/verify", signal),
+    catalog: (signal?: AbortSignal) =>
+      get<{ plugins: CatalogPlugin[] }>("/plugins", signal).then((r) => r.plugins),
+    install: (plugin: string, config: Record<string, unknown>) =>
+      post<{ result: InstallResult; view: SetupView }>("/plugins/install", { plugin, config }),
+    finish: () => post<SetupView>("/finish"),
+    sim: {
+      info: () => get<{ servers: { id: string; name: string }[] }>("/sim"),
+      createBot: (name?: string) => post<{ token: string }>("/sim/bot", name ? { name } : {}),
+      intents: (enabled: boolean) => post<void>("/sim/intents", { enabled }),
+      invite: (low: boolean) => post<void>("/sim/invite", { low }),
+      raiseRole: () => post<void>("/sim/raise-role"),
+      message: () => post<void>("/sim/message"),
+    },
+  };
+}
+
+export type SetupApi = ReturnType<typeof setupApi>;
+
+/** Diagnostics of a server (same checks as the Verify step). */
+export function diagnostics(client: CodiClient, serverKey: string, signal?: AbortSignal) {
+  return client.request<Report>(
+    "GET",
+    `/api/v1/servers/${encodeURIComponent(serverKey)}/diagnostics`,
+    signal ? { signal } : {},
+  );
+}
+
+/** Reads the token from "…/admin/setup?token=…" or a pasted link. */
+export function tokenFrom(input: string): string {
+  const s = input.trim();
+  try {
+    const u = new URL(s);
+    return u.searchParams.get("token") ?? s;
+  } catch {
+    return s.replace(/^.*[?&]token=/, "");
+  }
+}

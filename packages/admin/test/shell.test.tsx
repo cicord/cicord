@@ -62,6 +62,7 @@ describe("layout", () => {
       "History",
       "Drift",
       "Audit log",
+      "Diagnostics",
       "Simulator",
       "Settings",
     ]);

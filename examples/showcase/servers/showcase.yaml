@@ -9,8 +9,13 @@ spec:
     name: CODI Showcase
     verificationLevel: low
     defaultNotifications: onlyMentions
+    explicitContentFilter: allMembers
     systemChannel: general
+
+  community:
+    enabled: true
     rulesChannel: rules
+    updatesChannel: mod-log
 
   # Pruning is on: everything not declared here and not owned by a plugin is removed. Ticket
   # channels are created at runtime by the tickets plugin, recorded as plugin-owned and never

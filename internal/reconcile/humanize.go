@@ -75,17 +75,19 @@ const (
 	ErrCodeOwnership          = "ownership"
 	ErrCodeManagedRole        = "managed_role"
 	ErrCodeTypeChange         = "type_change"
+	ErrCodeRecreateRequired   = "recreate_required"
 )
 
 var (
 	reFailedCount = regexp.MustCompile(`(\d+) change\(s\) failed: `)
-	reChange      = regexp.MustCompile(`^(create|update|delete|adopt|reorder|unmanage) (server|role|category|channel|everyone) (\S*): `)
+	reChange      = regexp.MustCompile(`^(create|update|delete|adopt|reorder|unmanage) (server|role|category|channel|everyone|widget|automod|onboarding|welcomeScreen|emoji|sticker|sound) (\S*): `)
 	reREST        = regexp.MustCompile(`HTTP (\d{3}) (\d+): `)
 	reStatusOnly  = regexp.MustCompile(`HTTP (\d{3})\b`)
 	reUnresolved  = regexp.MustCompile(`unresolved (channel|category|role) "([^"]*)"`)
 	reGrant       = regexp.MustCompile(`cannot (?:grant|allow or deny) permissions you do not have: ([A-Za-z, ]+)`)
 	reIntents     = regexp.MustCompile(`disallowed intents ([A-Za-z, ]+)`)
 	reRevision    = regexp.MustCompile(`^revision (\S+) rejected: `)
+	reMaximum     = regexp.MustCompile(`maximum number of [^(:]+(\(\d+\))?`)
 )
 
 // Humanize explains a raw error text produced by the runtime (a sync failure, a server
@@ -226,10 +228,16 @@ func classify(h *HumanError, raw, text, discordMsg string) {
 			h.Hint = "It was probably deleted in Discord. Sync again to recreate it, or remove it from the YAML."
 		}
 
-	case code == 30005 || code == 30013 || code == 30016 || code == 30010 || code == 30018:
+	case code == 30005 || code == 30013 || code == 30016 || code == 30010 || code == 30018 || code == 30008 || code == 30039 ||
+		code == 30045 || code == 30034 || strings.Contains(lower, "maximum number of"):
 		h.Code = ErrCodeLimitReached
 		h.Message = "Discord limit reached: " + strings.TrimSuffix(orDefault(discordMsg, "too many resources"), ".")
-		h.Hint = "Remove unused roles or channels (in Discord or in the YAML), then sync again."
+		h.Hint = "Remove unused resources (in Discord or in the YAML), or boost the server for more expression slots, then sync again."
+		if discordMsg == "" {
+			if m := reMaximum.FindString(text); m != "" {
+				h.Message = "Discord limit reached: " + m
+			}
+		}
 
 	case h.HTTPStatus == 401 || strings.Contains(lower, "invalid token") || strings.Contains(lower, "authentication failed"):
 		h.Code = ErrCodeInvalidToken
@@ -335,10 +343,30 @@ func ExplainBlocked(b Blocked) *HumanError {
 		h.Code = ErrCodeManagedRole
 		h.Message = capitalize(what) + " belongs to an integration (a bot or app role)"
 		h.Hint = "Discord does not let anyone edit integration roles. Remove it from the YAML."
+	case strings.HasPrefix(reason, "type change") && b.Kind == KindAutoMod:
+		h.Code = ErrCodeTypeChange
+		h.Message = "Discord cannot change the trigger of " + what
+		h.Hint = "Keep the trigger, or declare the new rule under another key (the old rule is then unmanaged, or deleted with prune)."
 	case strings.HasPrefix(reason, "type change"):
 		h.Code = ErrCodeTypeChange
 		h.Message = "Discord cannot change the type of " + what + " in place"
 		h.Hint = "Set syncPolicy.prune: true and deletionProtection: false to recreate it, or keep its current type in the YAML."
+	case strings.HasPrefix(reason, prefixBoost):
+		h.Code = ErrCodeBoostRequired
+		h.Message = capitalize(strings.TrimPrefix(reason, prefixBoost))
+		h.Hint = "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. CODI applies it as soon as the level is reached."
+	case strings.HasPrefix(reason, prefixCommunity):
+		h.Code = ErrCodeCommunityRequired
+		h.Message = capitalize(strings.TrimPrefix(reason, prefixCommunity))
+		h.Hint = "Declare community: {enabled: true, rulesChannel, updatesChannel} with profile.verificationLevel low or higher and profile.explicitContentFilter: allMembers, then sync again."
+	case strings.HasPrefix(reason, prefixLimit):
+		h.Code = ErrCodeLimitReached
+		h.Message = "Discord limit: " + strings.TrimPrefix(reason, prefixLimit)
+		h.Hint = "Remove some from Discord or from the YAML (or boost the server for more expression slots)."
+	case strings.HasPrefix(reason, prefixRecreate):
+		h.Code = ErrCodeRecreateRequired
+		h.Message = capitalize(strings.TrimPrefix(reason, prefixRecreate))
+		h.Hint = "Restore the previous file, or declare the new file under a new key."
 	case strings.Contains(reason, "no connected bot"):
 		h.Code = ErrCodeNoBot
 		h.Message = "No connected bot can sync this server"
@@ -355,6 +383,8 @@ func ExplainBlocked(b Blocked) *HumanError {
 var kindNoun = map[string]string{
 	KindServer: "the server settings", KindRole: "role", KindCategory: "category",
 	KindChannel: "channel", KindEveryone: "the @everyone role",
+	KindWidget: "the server widget", KindOnboarding: "the onboarding", KindWelcomeScreen: "the welcome screen",
+	KindAutoMod: "AutoMod rule", KindEmoji: "emoji", KindSticker: "sticker", KindSound: "soundboard sound",
 }
 
 // phrase is "the channel “news”", "the server settings"…
@@ -366,7 +396,7 @@ func (r *ErrorResource) phrase() string {
 	if !ok {
 		noun = r.Kind
 	}
-	if r.Kind == KindServer || r.Kind == KindEveryone {
+	if r.Kind == KindServer || r.Kind == KindEveryone || r.Kind == KindWidget || r.Kind == KindOnboarding || r.Kind == KindWelcomeScreen {
 		return noun
 	}
 	if r.Action == ActionReorder {
@@ -410,8 +440,10 @@ func requiredPermission(r *ErrorResource) string {
 		return "Manage Roles"
 	case KindChannel, KindCategory:
 		return "Manage Channels"
-	case KindServer:
+	case KindServer, KindWidget, KindOnboarding, KindWelcomeScreen, KindAutoMod:
 		return "Manage Server"
+	case KindEmoji, KindSticker, KindSound:
+		return "Manage Expressions"
 	}
 	return ""
 }

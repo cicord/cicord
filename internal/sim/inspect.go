@@ -117,7 +117,7 @@ func (w *World) Server(serverID string) (discord.Server, bool) {
 	if s == nil {
 		return discord.Server{}, false
 	}
-	return s.info, true
+	return cloneServer(s.info), true
 }
 
 // Roles returns a server's roles by ascending position (@everyone first).

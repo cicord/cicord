@@ -51,7 +51,8 @@
       "drift": "Drift",
       "audit": "Audit log",
       "simulator": "Simulator",
-      "settings": "Settings"
+      "settings": "Settings",
+      "diagnostics": "Diagnostics"
     }
   },
   "switcher": {
@@ -409,10 +410,10 @@
   },
   "serverSettings": {
     "title": "Server settings",
-    "description": "The server profile, sync policy and access declared in git.",
+    "description": "The live Discord state, the server images and everything the server YAML declares.",
     "readOnly": {
       "title": "Edited in git",
-      "text": "These values come from {{file}}. Change them in the repository; the runtime applies them on the next revision."
+      "text": "These values come from {{file}}. Change them in the repository (images can be uploaded below); the runtime applies them on the next revision."
     },
     "profile": {
       "title": "Profile",
@@ -803,5 +804,471 @@
       "command": "Command",
       "run": "Run /{{name}}"
     }
+  },
+  "parity": {
+    "boost": {
+      "title": "Server boost",
+      "description": "Live from Discord. Some settings need a boost level: the plan blocks them with a reason until the server reaches it.",
+      "level": "Level {{level}}",
+      "count_one": "{{count}} boost",
+      "count_other": "{{count}} boosts",
+      "summary": "Level {{level}} · {{boosts}}",
+      "toNext_one": "{{count}} more boost to level {{level}}",
+      "toNext_other": "{{count}} more boosts to level {{level}}",
+      "max": "Maximum level",
+      "progress": "Boost progress toward level {{level}}",
+      "unlocked": "Unlocked",
+      "locked": "Needs level {{level}}",
+      "slots": "Expression slots at this level",
+      "slotsValue": "{{emojis}} emojis (+ {{emojis}} animated) · {{stickers}} stickers · {{sounds}} sounds",
+      "perks": {
+        "animatedIcon": "Animated server icon",
+        "splash": "Invite background (splash)",
+        "banner": "Server banner",
+        "roleIcons": "Role icons (image or emoji)",
+        "roleGradients": "Gradient role colors",
+        "animatedBanner": "Animated banner",
+        "vanity": "Custom invite link"
+      },
+      "short": "Unlocks the banner and role icons at level 2, the invite background and animated icon at level 1, and more emoji, sticker and sound slots."
+    },
+    "community": {
+      "title": "Community",
+      "description": "Discord's Community feature, live from Discord.",
+      "on": "Enabled",
+      "off": "Disabled",
+      "short": "Unlocks announcement and stage channels, the rules and updates channels, the welcome screen, native onboarding, discovery and insights.",
+      "unlocks": {
+        "announcement": "Announcement and stage channels",
+        "channels": "Rules, community updates and safety alerts channels",
+        "welcome": "Welcome screen",
+        "onboarding": "Native onboarding (questions, default channels)",
+        "discovery": "Server discovery and insights"
+      },
+      "howTo": "Enable it in the YAML with community.enabled: true. Discord requires a rules channel and an updates channel, verification level low or higher and the explicit content filter on all members.",
+      "yamlOn": "The YAML enables it",
+      "yamlOff": "The YAML disables it",
+      "yamlUnset": "Not managed by the YAML"
+    },
+    "live": {
+      "title": "Live on Discord",
+      "details": "Details"
+    },
+    "assets": {
+      "title": "Images",
+      "description": "Server icon, banner and invite background. Uploading writes the file into the repository and points the profile at it (commit or pull request, per codi.yaml).",
+      "icon": "Icon",
+      "banner": "Banner",
+      "splash": "Invite background",
+      "declared": "Declared:",
+      "notDeclared": "Not managed (no file in the YAML)",
+      "upload": "Upload",
+      "replace": "Replace",
+      "uploading": "Uploading…",
+      "accept": "PNG, JPEG, GIF or WebP, up to 8 MiB.",
+      "acceptSplash": "PNG, JPEG or WebP, up to 8 MiB.",
+      "noImage": "No image",
+      "chooseLabel": "Upload a new {{kind}}",
+      "tooLarge": "The file is larger than 8 MiB",
+      "badType": "Use a PNG, JPEG, GIF or WebP image",
+      "badTypeSplash": "Use a PNG, JPEG or WebP image",
+      "failed": "Upload failed",
+      "committed": "{{kind}} saved",
+      "committedRev": "{{kind}} saved · revision {{rev}}",
+      "prOpened": "Pull request opened",
+      "prText": "The image is applied once the pull request is merged.",
+      "openPr": "Open pull request",
+      "boostGated": "{{kind}} requires boost level {{required}}; the server is level {{level}}.",
+      "boostGatedHint": "You can upload it now: the plan blocks it with this reason until the server reaches level {{required}}.",
+      "warnings": "Notes"
+    },
+    "discordOnly": {
+      "title": "Discord UI only",
+      "description": "Discord does not let bots change these settings. Set them in the Discord app.",
+      "where": "Where",
+      "items": {
+        "profileStyle": {
+          "label": "Server profile banner color, traits, games played, private profile",
+          "where": "Server Settings → Server Profile"
+        },
+        "serverTag": {
+          "label": "Server tag",
+          "where": "Server Settings → Server Tag"
+        },
+        "activityFeed": {
+          "label": "Activity feed",
+          "where": "Server Settings → Engagement"
+        },
+        "joinMode": {
+          "label": "Join mode (invite only, apply to join, discovery)",
+          "where": "Server Settings → Access"
+        },
+        "ageRestricted": {
+          "label": "Age-restricted server",
+          "where": "Server Settings → Safety Setup"
+        },
+        "rulesScreening": {
+          "label": "Server rules (rules screening form)",
+          "where": "Server Settings → Access → Rules"
+        },
+        "mfa": {
+          "label": "2FA requirement for moderation",
+          "where": "Server Settings → Safety Setup (owner only)"
+        },
+        "memberList": {
+          "label": "Members in the channel list",
+          "where": "Server Settings → Engagement"
+        },
+        "template": {
+          "label": "Server template",
+          "where": "Server Settings → Server Template"
+        },
+        "boostPerks": {
+          "label": "Boost perks",
+          "where": "Server Settings → Server Boost"
+        }
+      }
+    },
+    "yaml": {
+      "banner": "Banner",
+      "splash": "Invite background",
+      "explicitContentFilter": "Explicit content filter",
+      "preferredLocale": "Preferred locale",
+      "premiumProgressBar": "Boost progress bar",
+      "systemChannelFlags": "System messages",
+      "flags": {
+        "welcomeMessages": "Welcome messages",
+        "welcomeStickerReplies": "Sticker replies to welcomes",
+        "boostMessages": "Boost messages",
+        "setupTips": "Setup tips",
+        "roleSubscriptionMessages": "Role subscription messages",
+        "roleSubscriptionStickerReplies": "Sticker replies to role subscriptions"
+      },
+      "engagement": {
+        "title": "Engagement",
+        "description": "Inactive channel and widget.",
+        "afkChannel": "Inactive channel",
+        "afkTimeout": "Inactive timeout",
+        "seconds": "{{count}} s",
+        "widget": "Server widget",
+        "widgetChannel": "Widget invite channel"
+      },
+      "community": {
+        "title": "Community (YAML)",
+        "description": "Managed only when the community block is present.",
+        "enabled": "Community",
+        "rulesChannel": "Rules channel",
+        "updatesChannel": "Community updates channel",
+        "safetyAlertsChannel": "Safety alerts channel"
+      },
+      "automod": {
+        "title": "AutoMod rules",
+        "description": "Keyed rules; the plan creates, updates or adopts them by name.",
+        "empty": "No AutoMod rule in the YAML.",
+        "disabled": "Disabled",
+        "actions": "Actions",
+        "block": "block",
+        "alert": "alert → {{channel}}",
+        "timeout": "timeout {{duration}}",
+        "triggers": {
+          "keyword": "Keywords",
+          "keywordPreset": "Keyword presets",
+          "mentionSpam": "Mention spam",
+          "spam": "Spam",
+          "memberProfile": "Member profile"
+        }
+      },
+      "onboarding": {
+        "title": "Onboarding & welcome screen",
+        "description": "Discord's native onboarding and welcome screen (Community). They can run alongside the CODI onboarding plugin on the portal.",
+        "onboarding": "Native onboarding",
+        "mode": "Mode",
+        "defaultChannels": "Default channels",
+        "prompts": "Questions",
+        "welcomeScreen": "Welcome screen",
+        "welcomeChannels": "Welcome channels",
+        "notManaged": "Not managed"
+      },
+      "expressions": {
+        "title": "Expressions",
+        "description": "Emojis, stickers and soundboard sounds from repository files. Counts are compared with the slots of the current boost level.",
+        "emojis": "Emojis",
+        "stickers": "Stickers",
+        "sounds": "Soundboard sounds",
+        "ofLimit": "{{count}} / {{limit}}"
+      }
+    }
+  },
+  "setup": {
+    "title": "Set up CODI",
+    "brand": "setup",
+    "stepper": "Setup steps",
+    "stepOf": "Step {{n}} of {{total}}",
+    "back": "Back",
+    "continue": "Continue",
+    "continueAnyway": "Continue anyway",
+    "recheck": "Re-check",
+    "checking": "Checking…",
+    "openPortal": "Open the Developer Portal",
+    "simulator": "Simulated Discord",
+    "simulatorHint": "This runtime uses the Discord simulator: the buttons marked “Simulate” stand in for what you would do on discord.com.",
+    "steps": {
+      "welcome": "Welcome",
+      "discord": "Discord application",
+      "server": "Server",
+      "repository": "Configuration",
+      "login": "Admin login",
+      "verify": "Verify",
+      "plugin": "First plugin",
+      "done": "Done"
+    },
+    "stepHints": {
+      "welcome": "What CODI will do",
+      "discord": "Your bot's token",
+      "server": "Invite the bot",
+      "repository": "Where settings live",
+      "login": "Optional",
+      "verify": "Live checklist",
+      "plugin": "Add a feature",
+      "done": "You're live"
+    },
+    "access": {
+      "title": "Open the setup link",
+      "text": "For security, the setup wizard only opens with the one-time link CODI printed in its logs when it started. It looks like {{example}}.",
+      "paste": "Setup link or token",
+      "placeholder": "Paste the link from the logs",
+      "submit": "Open the wizard",
+      "restart": "Each link works once. Lost it? Restart CODI: it prints a new one.",
+      "exchanging": "Opening the setup wizard…"
+    },
+    "completed": {
+      "title": "CODI is already set up",
+      "text": "The setup wizard has been completed. Sign in to the admin console to manage your server.",
+      "open": "Open the admin console"
+    },
+    "welcome": {
+      "title": "Let's get your Discord server running on CODI",
+      "lead": "In about ten minutes, CODI will manage your server's roles, channels and permissions, and run plugins like welcome messages or tickets. Every change is saved as a version you can review or undo.",
+      "willDo": "What happens next",
+      "items": {
+        "bot": "You create a Discord bot and paste its token: CODI checks it and finds everything else itself.",
+        "invite": "You add the bot to your server with one link. CODI checks it has the rights it needs.",
+        "import": "CODI reads your server as it is today and saves it. Nothing on Discord changes.",
+        "verify": "CODI verifies everything live, then you can add a first plugin."
+      },
+      "question": "Where are you starting from?",
+      "existing": "I already have a Discord server",
+      "existingText": "CODI adopts your roles and channels as they are.",
+      "new": "I'm starting a new community",
+      "newText": "Create an empty server first, CODI takes it from there.",
+      "newSteps": "In Discord, click the “+” at the bottom of your server list → “Create My Own” → give it a name. Come back here once it exists.",
+      "openDiscord": "Open Discord",
+      "start": "Start"
+    },
+    "discord": {
+      "title": "Create your bot",
+      "lead": "A bot is how CODI acts on your server. You create it once in Discord's Developer Portal; it takes two minutes.",
+      "step1": "Open the Developer Portal and click “New Application”. The name you choose is your bot's name (you can change it later). Accept the terms and click “Create”.",
+      "step2": "In the left menu, open “Bot”, click “Reset Token”, confirm, then click “Copy”. Discord shows the token only once.",
+      "step3": "Paste the token below. CODI checks it with Discord and stores it encrypted; it is never shown again.",
+      "tokenLabel": "Bot token",
+      "tokenPlaceholder": "Paste the token copied from the Bot page",
+      "tokenHelp": "It is a long text with two dots. Not the Application ID, not the Client Secret.",
+      "submit": "Check the token",
+      "replace": "Use another token",
+      "simCreate": "Simulate: create a bot",
+      "simCreated": "A simulated bot was created and its token pasted below.",
+      "connected": "Token accepted",
+      "application": "Application",
+      "applicationId": "Application ID",
+      "stored": "Stored encrypted as {{ref}}",
+      "intentsTitle": "Privileged intents",
+      "intentsLead": "Some plugins need to see who joins the server or what messages say. Discord asks you to turn these on explicitly.",
+      "openBotPage": "Open the Bot page",
+      "simIntents": "Simulate: turn the intents on",
+      "intentToggles": "On the Bot page, scroll to “Privileged Gateway Intents” and turn on:",
+      "toggle": {
+        "ServerMembers": "Server Members Intent",
+        "MessageContent": "Message Content Intent",
+        "ServerPresences": "Presence Intent"
+      }
+    },
+    "server": {
+      "title": "Add the bot to your server",
+      "lead": "Open the invite link, choose your server and click “Authorize”. Keep “Administrator” checked: CODI manages roles, channels and permissions for you.",
+      "invite": "Open the invite link",
+      "inviteDetails": "Asks for the “bot” and “applications.commands” scopes with the Administrator permission.",
+      "simInvite": "Simulate: authorize the invite",
+      "simLow": "Place the bot's role at the bottom (to try the fix)",
+      "listTitle": "Servers the bot is in",
+      "watching": "Watching for new servers… it appears here a few seconds after you click Authorize.",
+      "none": "The bot is not in any server yet.",
+      "select": "Manage this server",
+      "selected": "Selected",
+      "noManage": "You need the “Manage Server” permission on a server to add a bot to it. Usually the server owner does it.",
+      "checksTitle": "Checks on {{name}}",
+      "simRaise": "Simulate: drag the bot role to the top",
+      "allGood": "Everything is in place."
+    },
+    "repo": {
+      "title": "Where should CODI keep your configuration?",
+      "lead": "CODI saves your server's setup as files. Every change made in the admin is a new version, so you can see what changed and go back.",
+      "providers": {
+        "embedded": "Managed by CODI",
+        "embeddedText": "Stored by CODI next to its data, with full history. No git or GitHub account needed.",
+        "github": "A GitHub repository",
+        "githubText": "For teams who review changes on GitHub. CODI pushes the first version for you.",
+        "local": "This folder",
+        "localText": "Development: the files are written to the folder “codi dev” watches; edit them in your editor."
+      },
+      "recommended": "Recommended",
+      "url": "Repository URL",
+      "urlPlaceholder": "https://github.com/your-name/my-community",
+      "urlHelp": "Create an empty repository on GitHub first (it can be private).",
+      "branch": "Branch",
+      "token": "GitHub token",
+      "tokenHelp": "Create a fine-grained token with “Contents: Read and write” on this repository. It is stored encrypted.",
+      "createToken": "Create a GitHub token",
+      "choose": "Use this",
+      "chosen": "Configuration: {{what}}",
+      "change": "Change",
+      "importTitle": "Import your server",
+      "importLead": "CODI reads {{name}} as it is today (roles, channels, permissions) and saves it as the first version. Nothing changes on Discord.",
+      "import": "Import and activate",
+      "importing": "Importing and activating…",
+      "activated": "Your server is now managed by CODI",
+      "proof": "Proof: CODI compared the saved configuration with Discord and found nothing to change.",
+      "proofChanges_one": "CODI found {{count}} difference between the configuration and Discord.",
+      "proofChanges_other": "CODI found {{count}} differences between the configuration and Discord.",
+      "needsConfirm": "Applying this configuration would change Discord",
+      "needsConfirmText": "Usually the import adopts everything as it is. Review these changes before applying them.",
+      "apply": "Apply these changes and activate",
+      "files": "Files created",
+      "revision": "Version",
+      "warnings": "Not imported"
+    },
+    "login": {
+      "title": "Sign in to the admin with Discord",
+      "lead": "Optional but recommended: lets you (and your moderators) sign in to this admin console with Discord. Server owners are admins automatically.",
+      "step1": "Open the OAuth2 page of your application.",
+      "step2": "Under “Redirects”, click “Add Redirect”, paste this URL, then “Save Changes”:",
+      "step3": "Click “Reset Secret”, copy the Client Secret and paste it below.",
+      "openOAuth": "Open the OAuth2 page",
+      "secret": "Client secret",
+      "secretPlaceholder": "Paste the Client Secret",
+      "save": "Save",
+      "saved": "Discord login is configured.",
+      "fromEnv": "The client secret comes from the CODI_DISCORD_CLIENT_SECRET environment variable.",
+      "test": "Test login",
+      "testing": "Waiting for the login in the other tab…",
+      "testedAs": "Signed in as {{name}}.",
+      "skip": "Skip for now",
+      "returnTitle": "Discord login works",
+      "returnText": "You can close this tab and go back to the setup wizard.",
+      "simText": "With the simulator, you sign in with “dev login” (any simulated user): nothing to configure here.",
+      "skipWarning": "Without it, only the setup link can open the admin. You can configure it later (CODI_DISCORD_CLIENT_SECRET)."
+    },
+    "verify": {
+      "title": "Let's check everything works",
+      "lead": "CODI runs these checks live. Fix anything red, then they update on their own.",
+      "sendMessage": "Send a message in any channel of {{name}} (for example “hello CODI”). This proves CODI receives events from Discord.",
+      "simMessage": "Simulate: send a message",
+      "allGood": "Everything works.",
+      "rerun": "Run the checks again",
+      "ranAt": "Checked {{time}}"
+    },
+    "checks": {
+      "token": "Bot token",
+      "intents": "Privileged intents",
+      "member": "Bot is in the server",
+      "permissions": "Permissions",
+      "hierarchy": "Role position",
+      "commands": "Slash commands",
+      "events": "Live events",
+      "plan": "Configuration matches Discord",
+      "writeback": "Saving changes",
+      "status": {
+        "ok": "OK",
+        "warn": "Warning",
+        "fail": "Needs action",
+        "pending": "Waiting",
+        "skip": "Not checked yet"
+      },
+      "fix": "Fix it"
+    },
+    "plugin": {
+      "title": "Add your first plugin",
+      "lead": "Plugins are the features of your bot. Pick one to try; you can add more later from the admin.",
+      "official": "Official",
+      "needsIntent": "Needs {{intents}}",
+      "commands_one": "{{count}} command",
+      "commands_other": "{{count}} commands",
+      "choose": "Choose",
+      "reviewTitle": "{{name}} will be able to:",
+      "intents": "Gateway events it receives",
+      "network": "Websites it may call",
+      "commandsTitle": "Slash commands",
+      "configure": "Settings",
+      "noSettings": "This plugin works without settings.",
+      "install": "Install {{name}}",
+      "installing": "Installing…",
+      "installed": "{{name}} is active",
+      "tryIt": "Try it now: type /{{command}} in a channel of {{server}}.",
+      "noCommand": "It reacts to what happens on your server.",
+      "pr": "A pull request was opened: the plugin is active once it is merged.",
+      "other": "Pick another",
+      "skip": "Skip"
+    },
+    "done": {
+      "title": "You're all set",
+      "lead": "{{server}} is managed by CODI.",
+      "summary": "What you set up",
+      "bot": "Bot",
+      "server": "Server",
+      "repo": "Configuration",
+      "login": "Admin login",
+      "loginOn": "Discord login",
+      "loginOff": "Not configured",
+      "loginDev": "Dev login (simulator)",
+      "plugin": "First plugin",
+      "none": "None yet",
+      "next": "Next steps",
+      "admin": "Open the admin console",
+      "adminText": "Roles, channels, plugins, history and diagnostics.",
+      "portal": "Open the community portal",
+      "portalText": "The page your members see.",
+      "cli": "From a terminal",
+      "cliText": "Review changes before they apply:",
+      "finish": "Finish and open the admin",
+      "loginWarning": "Admin login is not configured: once you finish, the setup link stops working. Configure Discord login first, or set CODI_DISCORD_CLIENT_SECRET later."
+    },
+    "capabilities": {
+      "discord_messages_read": "Read messages in channels it can see",
+      "discord_messages_send": "Send messages",
+      "discord_messages_manage": "Delete or pin messages",
+      "discord_reactions_manage": "Add and remove reactions",
+      "discord_members_read": "See members and their roles",
+      "discord_members_manage": "Change nicknames",
+      "discord_members_moderate": "Time out, kick and ban members",
+      "discord_roles_assign": "Give and remove roles",
+      "discord_channels_read": "See channels",
+      "discord_channels_manage": "Create and delete its own channels",
+      "discord_threads_manage": "Create threads",
+      "discord_dm_send": "Send direct messages",
+      "storage_kv": "Store its own data",
+      "scheduler": "Run tasks on a schedule",
+      "http_fetch": "Call websites on the internet",
+      "portal_routes": "Add pages to the community portal",
+      "portal_links": "Send links to the community portal",
+      "events_publish": "Share events with other plugins",
+      "events_subscribe": "Listen to events from other plugins"
+    }
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "description": "The same live checks as the setup wizard: token, intents, permissions, role position, commands, events and saving.",
+    "run": "Run the checks",
+    "ranAt": "Last run",
+    "sinceStart": "Live events count any message since the runtime started."
   }
 }

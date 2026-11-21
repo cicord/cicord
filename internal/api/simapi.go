@@ -270,6 +270,31 @@ func (s *server) handleSimJoin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleSimBoosts sets the number of boosts of a simulated server (boost level and the
+// feature flags it unlocks follow, like on Discord).
+func (s *server) handleSimBoosts(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Count *int `json:"count"`
+	}
+	if err := s.decodeJSON(w, r, &body); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if body.Count == nil {
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "count is required"))
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.opts.Sim.SetBoosts(id, *body.Count); err != nil {
+		s.fail(w, simErr(err))
+		return
+	}
+	srv, _ := s.opts.Sim.Server(id)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id": srv.ID, "boostLevel": srv.PremiumTier, "boostCount": srv.PremiumSubscriptionCount, "features": srv.Features,
+	})
+}
+
 func (s *server) handleSimLeave(w http.ResponseWriter, r *http.Request) {
 	if err := s.opts.Sim.RemoveMember(r.PathValue("id"), r.PathValue("userId")); err != nil {
 		s.fail(w, simErr(err))

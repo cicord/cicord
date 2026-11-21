@@ -5,6 +5,7 @@ import {
   History,
   LayoutDashboard,
   ListChecks,
+  Stethoscope,
   Puzzle,
   ScrollText,
   Settings,
@@ -25,6 +26,7 @@ export type PageId =
   | "audit"
   | "simulator"
   | "settings"
+  | "diagnostics"
   | "home"
   | "notFound";
 
@@ -51,6 +53,7 @@ export const NAV: NavItem[] = [
   { id: "history", icon: History, segment: "history", section: "sync" },
   { id: "drift", icon: GitCompareArrows, segment: "drift", section: "sync" },
   { id: "audit", icon: ScrollText, segment: "audit" },
+  { id: "diagnostics", icon: Stethoscope, segment: "diagnostics", adminOnly: true },
   { id: "simulator", icon: FlaskConical, path: "/simulator", devOnly: true },
   { id: "settings", icon: Settings, path: "/settings" },
 ];

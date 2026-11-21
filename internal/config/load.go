@@ -280,16 +280,11 @@ func (l *loader) checkServers(repo *Repo) {
 				ref(base+jsonPointer(target), "role", target, roleExists(target))
 			}
 		}
-		if p := sp.Profile; p != nil {
-			if p.SystemChannel != "" {
-				_, ok := sp.Channels[p.SystemChannel]
-				ref("/spec/profile/systemChannel", "channel", p.SystemChannel, ok)
-			}
-			if p.RulesChannel != "" {
-				_, ok := sp.Channels[p.RulesChannel]
-				ref("/spec/profile/rulesChannel", "channel", p.RulesChannel, ok)
-			}
+		if p := sp.Profile; p != nil && p.RulesChannel != "" {
+			_, ok := sp.Channels[p.RulesChannel]
+			ref("/spec/profile/rulesChannel", "channel", p.RulesChannel, ok)
 		}
+		l.checkServerParity(s, doc)
 		for i, r := range sp.Hierarchy {
 			ref(fmt.Sprintf("/spec/hierarchy/%d", i), "role", r, roleExists(r))
 		}

@@ -80,7 +80,10 @@ func testLogger() *slog.Logger {
 }
 
 // start deploys examples/basic on the simulator behind the API.
-func start(t *testing.T) *env {
+func start(t *testing.T) *env { t.Helper(); return startWith(t, nil) }
+
+// startWith is start with a hook to adjust the API options.
+func startWith(t *testing.T, mod func(*Options)) *env {
 	t.Helper()
 	dir := t.TempDir()
 	copyTree(t, "../../examples/basic", dir)
@@ -116,7 +119,7 @@ func start(t *testing.T) *env {
 		Secrets:   func(n string) (string, bool) { v, ok := seed.Secrets[n]; return v, ok },
 		PortalURL: ts.URL, Logger: testLogger(), ResyncInterval: -1,
 	})
-	h := New(Options{
+	opts := Options{
 		Runtime: rt, Writer: &writeback.DirWriter{Root: dir}, Mode: "dev", Sim: w,
 		RuntimeToken: testToken, WebhookSecret: testSecret, Logger: testLogger(), MemberCacheTTL: -1,
 		AdminUI: fstest.MapFS{
@@ -124,7 +127,11 @@ func start(t *testing.T) *env {
 			"assets/app.js": {Data: []byte("console.log('admin')")},
 		},
 		Portal: fstest.MapFS{"index.html": {Data: []byte("<html>portal</html>")}},
-	})
+	}
+	if mod != nil {
+		mod(&opts)
+	}
+	h := New(opts)
 	hmu.Lock()
 	handler = h
 	hmu.Unlock()

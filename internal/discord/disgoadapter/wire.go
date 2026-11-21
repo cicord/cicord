@@ -46,6 +46,16 @@ type wireRole struct {
 	Permissions string `json:"permissions"`
 	Position    int    `json:"position"`
 	Managed     bool   `json:"managed"`
+	// Role icon (ROLE_ICONS) and style (ENHANCED_ROLE_COLORS).
+	Icon         *string         `json:"icon"`
+	UnicodeEmoji *string         `json:"unicode_emoji"`
+	Colors       *wireRoleColors `json:"colors,omitempty"`
+}
+
+type wireRoleColors struct {
+	PrimaryColor   int  `json:"primary_color"`
+	SecondaryColor *int `json:"secondary_color"`
+	TertiaryColor  *int `json:"tertiary_color"`
 }
 
 type wireOverwrite struct {
@@ -68,6 +78,28 @@ type wireChannel struct {
 	Bitrate              int             `json:"bitrate"`
 	UserLimit            int             `json:"user_limit"`
 	PermissionOverwrites []wireOverwrite `json:"permission_overwrites"`
+
+	RTCRegion                     *string              `json:"rtc_region"`
+	VideoQualityMode              int                  `json:"video_quality_mode"`
+	DefaultAutoArchiveDuration    int                  `json:"default_auto_archive_duration"`
+	DefaultThreadRateLimitPerUser int                  `json:"default_thread_rate_limit_per_user"`
+	AvailableTags                 []wireForumTag       `json:"available_tags"`
+	DefaultReactionEmoji          *wireDefaultReaction `json:"default_reaction_emoji"`
+	DefaultSortOrder              *int                 `json:"default_sort_order"`
+	DefaultForumLayout            int                  `json:"default_forum_layout"`
+}
+
+type wireForumTag struct {
+	ID        string  `json:"id,omitempty"`
+	Name      string  `json:"name"`
+	Moderated bool    `json:"moderated"`
+	EmojiID   *string `json:"emoji_id"`
+	EmojiName *string `json:"emoji_name"`
+}
+
+type wireDefaultReaction struct {
+	EmojiID   *string `json:"emoji_id"`
+	EmojiName *string `json:"emoji_name"`
 }
 
 type wireGuild struct {
@@ -80,6 +112,137 @@ type wireGuild struct {
 	DefaultMessageNotifications int     `json:"default_message_notifications"`
 	SystemChannelID             *string `json:"system_channel_id"`
 	RulesChannelID              *string `json:"rules_channel_id"`
+
+	Banner                    *string  `json:"banner"`
+	Splash                    *string  `json:"splash"`
+	ExplicitContentFilter     int      `json:"explicit_content_filter"`
+	SystemChannelFlags        int      `json:"system_channel_flags"`
+	PublicUpdatesChannelID    *string  `json:"public_updates_channel_id"`
+	SafetyAlertsChannelID     *string  `json:"safety_alerts_channel_id"`
+	AFKChannelID              *string  `json:"afk_channel_id"`
+	AFKTimeout                int      `json:"afk_timeout"`
+	PreferredLocale           string   `json:"preferred_locale"`
+	PremiumProgressBarEnabled bool     `json:"premium_progress_bar_enabled"`
+	Features                  []string `json:"features"`
+	PremiumTier               int      `json:"premium_tier"`
+	PremiumSubscriptionCount  *int     `json:"premium_subscription_count"`
+}
+
+type wireWidget struct {
+	Enabled   bool    `json:"enabled"`
+	ChannelID *string `json:"channel_id"`
+}
+
+// ───────────────────────────────────────────────────────────── auto moderation
+
+type wireAutoModMetadata struct {
+	KeywordFilter                []string `json:"keyword_filter,omitempty"`
+	RegexPatterns                []string `json:"regex_patterns,omitempty"`
+	Presets                      []int    `json:"presets,omitempty"`
+	AllowList                    []string `json:"allow_list,omitempty"`
+	MentionTotalLimit            int      `json:"mention_total_limit,omitempty"`
+	MentionRaidProtectionEnabled bool     `json:"mention_raid_protection_enabled,omitempty"`
+}
+
+type wireAutoModActionMetadata struct {
+	ChannelID       string `json:"channel_id,omitempty"`
+	DurationSeconds int    `json:"duration_seconds,omitempty"`
+	CustomMessage   string `json:"custom_message,omitempty"`
+}
+
+type wireAutoModAction struct {
+	Type     int                        `json:"type"`
+	Metadata *wireAutoModActionMetadata `json:"metadata,omitempty"`
+}
+
+type wireAutoModRule struct {
+	ID              string              `json:"id,omitempty"`
+	GuildID         string              `json:"guild_id,omitempty"`
+	Name            string              `json:"name"`
+	EventType       int                 `json:"event_type"`
+	TriggerType     int                 `json:"trigger_type,omitempty"`
+	TriggerMetadata wireAutoModMetadata `json:"trigger_metadata"`
+	Actions         []wireAutoModAction `json:"actions"`
+	Enabled         bool                `json:"enabled"`
+	ExemptRoles     []string            `json:"exempt_roles"`
+	ExemptChannels  []string            `json:"exempt_channels"`
+}
+
+// ───────────────────────────────────────────────────────────── onboarding & welcome screen
+
+// wireOnboardingOption is read with an "emoji" object and written with the flat
+// emoji_id / emoji_name / emoji_animated fields (Discord's documented write form).
+type wireOnboardingOption struct {
+	ID            string     `json:"id"`
+	ChannelIDs    []string   `json:"channel_ids"`
+	RoleIDs       []string   `json:"role_ids"`
+	Emoji         *wireEmoji `json:"emoji,omitempty"`
+	EmojiID       *string    `json:"emoji_id,omitempty"`
+	EmojiName     *string    `json:"emoji_name,omitempty"`
+	EmojiAnimated *bool      `json:"emoji_animated,omitempty"`
+	Title         string     `json:"title"`
+	Description   *string    `json:"description"`
+}
+
+type wireOnboardingPrompt struct {
+	ID           string                 `json:"id"`
+	Type         int                    `json:"type"`
+	Options      []wireOnboardingOption `json:"options"`
+	Title        string                 `json:"title"`
+	SingleSelect bool                   `json:"single_select"`
+	Required     bool                   `json:"required"`
+	InOnboarding bool                   `json:"in_onboarding"`
+}
+
+type wireOnboarding struct {
+	GuildID           string                 `json:"guild_id,omitempty"`
+	Prompts           []wireOnboardingPrompt `json:"prompts"`
+	DefaultChannelIDs []string               `json:"default_channel_ids"`
+	Enabled           bool                   `json:"enabled"`
+	Mode              int                    `json:"mode"`
+}
+
+type wireWelcomeChannel struct {
+	ChannelID   string  `json:"channel_id"`
+	Description string  `json:"description"`
+	EmojiID     *string `json:"emoji_id"`
+	EmojiName   *string `json:"emoji_name"`
+}
+
+type wireWelcomeScreen struct {
+	Enabled         *bool                `json:"enabled,omitempty"`
+	Description     *string              `json:"description"`
+	WelcomeChannels []wireWelcomeChannel `json:"welcome_channels"`
+}
+
+// ───────────────────────────────────────────────────────────── expressions
+
+type wireGuildEmoji struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Animated bool     `json:"animated"`
+	Roles    []string `json:"roles"`
+	Managed  bool     `json:"managed"`
+}
+
+type wireSticker struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Tags        string  `json:"tags"`
+	FormatType  int     `json:"format_type"`
+}
+
+type wireSound struct {
+	SoundID   string  `json:"sound_id"`
+	Name      string  `json:"name"`
+	Volume    float64 `json:"volume"`
+	EmojiID   *string `json:"emoji_id"`
+	EmojiName *string `json:"emoji_name"`
+}
+
+type wireSoundList struct {
+	Items []wireSound `json:"items"`
 }
 
 type wireEmbedField struct {

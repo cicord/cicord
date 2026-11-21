@@ -26,6 +26,14 @@ const (
 	KindCategory = "category"
 	KindChannel  = "channel"
 	KindEveryone = "everyone"
+	// Discord parity (docs/discord-parity.md).
+	KindWidget        = "widget"
+	KindAutoMod       = "automod"
+	KindOnboarding    = "onboarding"
+	KindWelcomeScreen = "welcomeScreen"
+	KindEmoji         = "emoji"
+	KindSticker       = "sticker"
+	KindSound         = "sound"
 )
 
 // Reorder change keys.
@@ -137,8 +145,16 @@ const (
 	phaseRolePositions
 	phaseCategories
 	phaseChannels
+	phaseServerRefs        // channel references, Community on/off
+	phaseCommunityChannels // announcement/stage channels created after Community is enabled
 	phaseChannelPositions
-	phaseServerRefs
+	phaseWidget
+	phaseWelcome
+	phaseOnboarding
+	phaseAutoMod
+	phaseExpressions
+	phaseDeleteAutoMod
+	phaseDeleteExpressions
 	phaseDeleteChannels
 	phaseDeleteCategories
 	phaseDeleteRoles
@@ -168,6 +184,15 @@ type chanSpec struct {
 	bitrate    *int
 	userLimit  *int
 	overwrites []owSpec
+
+	rtcRegion       *string
+	videoQuality    *string
+	autoArchive     *int
+	threadSlowmode  *int
+	tags            *[]discord.ForumTag
+	defaultReaction *string
+	sortOrder       *string
+	layout          *string
 }
 
 type serverSpec struct {
@@ -175,6 +200,16 @@ type serverSpec struct {
 	icon                                           []byte
 	iconHash                                       string
 	systemKey, rulesKey                            *string // "" = clear
+
+	banner, splash         []byte
+	bannerHash, splashHash string
+	explicit, locale       *string
+	progressBar            *bool
+	flags                  *discord.SystemChannelFlags
+	afkTimeout             *int
+	afkKey, updatesKey     *string
+	safetyKey              *string
+	features               *[]string
 }
 
 // op is the data Apply needs for a change.
@@ -189,4 +224,14 @@ type op struct {
 	ch     *chanSpec
 	send   map[string]bool
 	server *serverSpec
+
+	// role icon image (uploaded with the role params)
+	roleIcon     []byte
+	roleIconHash string
+
+	widget     *widgetWant
+	automod    *automodWant
+	onboarding *onboardingWant
+	welcome    *welcomeWant
+	expr       *exprWant
 }

@@ -107,6 +107,16 @@ type serverState struct {
 	memberOrder []string
 	bans        map[string]bool
 	channelIDs  []string // creation order, threads included
+
+	// Discord parity: server-level settings and expressions.
+	widget     discord.ServerWidget
+	automod    map[string]*discord.AutoModRule
+	onboarding discord.Onboarding
+	welcome    discord.WelcomeScreen
+	emojis     map[string]*discord.Emoji
+	stickers   map[string]*discord.Sticker
+	sounds     map[string]*discord.SoundboardSound
+	pinned     map[string]bool // features added with SetFeatures
 }
 
 type channelState struct {
@@ -479,6 +489,9 @@ func cloneOverwrites(in []discord.Overwrite) []discord.Overwrite {
 
 func cloneChannel(c discord.Channel) discord.Channel {
 	c.Overwrites = cloneOverwrites(c.Overwrites)
+	if c.Tags != nil {
+		c.Tags = append([]discord.ForumTag{}, c.Tags...)
+	}
 	return c
 }
 

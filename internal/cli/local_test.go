@@ -57,8 +57,6 @@ func buildLiveServer(t *testing.T) *simServer {
 	// synced with its category
 	rules := must[discord.Channel](t)(w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("règlement"), Type: discord.ChannelText, ParentID: &info.ID,
 		Overwrites: &[]discord.Overwrite{{ID: srv.ID, Type: discord.OverwriteRole, Deny: discord.MustPermissions("SendMessages")}}}))
-	ok(w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("annonces"), Type: discord.ChannelAnnouncement, ParentID: &info.ID,
-		Overwrites: &[]discord.Overwrite{}})) // explicitly not synced with its category
 	general := must[discord.Channel](t)(w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("général"), Type: discord.ChannelText, ParentID: &community.ID,
 		Topic: ptr("Discussions générales"), RateLimitPerUser: ptr(5)}))
 	ok(w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("Vocal"), Type: discord.ChannelVoice, ParentID: &community.ID, UserLimit: ptr(10)}))
@@ -71,7 +69,30 @@ func buildLiveServer(t *testing.T) *simServer {
 		}}))
 	ok(w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("hors-catégorie"), Type: discord.ChannelText}))
 	ok(w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("🎉-fêtes"), Type: discord.ChannelText}))
-	ok(w.AdminUpdateServer(srv.ID, discord.ServerParams{SystemChannelID: &general.ID, RulesChannelID: &rules.ID, VerificationLevel: ptr("medium")}))
+	staffChat, _ := w.ChannelByName(srv.ID, "staff")
+	vocal, _ := w.ChannelByName(srv.ID, "Vocal")
+	// Community, engagement and safety settings (Discord parity)
+	if err := w.SetBoosts(srv.ID, 7); err != nil {
+		t.Fatal(err)
+	}
+	ok(w.AdminUpdateServer(srv.ID, discord.ServerParams{SystemChannelID: &general.ID, RulesChannelID: &rules.ID, VerificationLevel: ptr("medium"),
+		ExplicitContentFilter: ptr("allMembers"), PublicUpdatesChannelID: &staffChat.ID, Features: &[]string{discord.FeatureCommunity},
+		AFKChannelID: &vocal.ID, AFKTimeout: ptr(900), PreferredLocale: ptr("fr"),
+		SystemChannelFlags: ptr(discord.SuppressGuildReminderNotifications)}))
+	ok(w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("annonces"), Type: discord.ChannelAnnouncement, ParentID: &info.ID,
+		Overwrites: &[]discord.Overwrite{}})) // explicitly not synced with its category
+	ok(w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("aide"), Type: discord.ChannelForum, ParentID: &community.ID,
+		Tags:            &[]discord.ForumTag{{Name: "Question", Emoji: "❓"}, {Name: "Résolu", Moderated: true}},
+		DefaultReaction: ptr("👍"), DefaultSortOrder: ptr("creationDate"), DefaultLayout: ptr("list"), DefaultAutoArchive: ptr(4320)}))
+	ok(w.AdminUpdateRole(srv.ID, modo.ID, discord.RoleParams{UnicodeEmoji: ptr("🛡️"), Colors: &discord.RoleColors{Primary: 0xe67e22, Secondary: 0x3498db}}))
+	cl := w.AdminClient(srv.ID)
+	ok(cl.CreateAutoModRule(context.Background(), srv.ID, discord.AutoModRule{Name: "Gros mots", Trigger: discord.AutoModKeyword,
+		Keywords: []string{"zut", "flûte*"}, Enabled: true, ExemptRoles: []string{modo.ID},
+		Actions: []discord.AutoModAction{{Type: discord.AutoModActionBlock, CustomMessage: "Langage !"}, {Type: discord.AutoModActionAlert, ChannelID: staffChat.ID},
+			{Type: discord.AutoModActionTimeout, DurationSeconds: 600}}}, ""))
+	ok(cl.UpdateServerWidget(context.Background(), srv.ID, discord.ServerWidget{Enabled: true, ChannelID: general.ID}, ""))
+	ok(cl.UpdateWelcomeScreen(context.Background(), srv.ID, discord.WelcomeScreen{Enabled: true, Description: "Bienvenue !",
+		Channels: []discord.WelcomeChannel{{ChannelID: rules.ID, Description: "Lis le règlement", Emoji: "📜"}}}, ""))
 	_ = botRole
 	return &simServer{w: w, serverID: srv.ID, appID: appID, token: token, botID: bot.ID}
 }
@@ -110,6 +131,11 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 		`name: "🎮 Gamers"`, `name: "🎉-fêtes"`, "fetes:",
 		"topic: Discussions générales", "slowmode: 5", "userLimit: 10", "member:", "type: announcement",
 		"syncWithCategory: false",
+		// Discord parity
+		"explicitContentFilter: allMembers", "preferredLocale: fr", "setupTips: false", "community:\n    enabled: true",
+		"updatesChannel: staff-2", "afk:\n    channel: vocal\n    timeout: 900", "widget:\n    enabled: true\n    channel: general",
+		"type: forum", "sortOrder: creationDate", "layout: list", "threadArchiveAfter: 3d", "moderated: true", `emoji: "🛡️"`,
+		"secondary: '#3498db'", "automod:\n    gros-mots:", "trigger: keyword", "timeout: 10m", "alert: staff-2", "welcomeScreen:",
 	} {
 		if !strings.Contains(yamlText, want) {
 			t.Errorf("servers/ma-commu.yaml misses %q:\n%s", want, yamlText)
@@ -133,7 +159,7 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 	}
 	rs, _ := store.Resources().List(context.Background(), "ma-commu")
 	store.Close()
-	if len(rs) != 14 { // 4 roles + 3 categories + 7 channels
+	if len(rs) != 16 { // 4 roles + 3 categories + 8 channels + 1 AutoMod rule
 		t.Errorf("resource map has %d entries: %+v", len(rs), rs)
 	}
 
@@ -192,7 +218,7 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 		t.Error("plan created the state database")
 	}
 	code, out, errOut = run(t, "adopt", dir, "--yes")
-	if code != 0 || !strings.Contains(out, "14 to adopt") || !strings.Contains(out, "= channel general → text channel #discussions") {
+	if code != 0 || !strings.Contains(out, "16 to adopt") || !strings.Contains(out, "= channel general → text channel #discussions") {
 		t.Fatalf("adopt = %d\n%s\n%s", code, out, errOut)
 	}
 	code, out, _ = run(t, "plan", dir, "--detailed-exitcode")

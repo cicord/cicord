@@ -34,7 +34,44 @@ make test    # go test -race ./... and the JS tests
 
 A container image is described in [docs/deploy.md](docs/deploy.md) (`docker build .`).
 
-### Create a repository
+### Set up with the wizard (recommended)
+
+Start the runtime in an empty directory: with no `codi.yaml` it enters **setup mode** and
+prints a one-time link to the setup wizard.
+
+```sh
+mkdir my-community && cd my-community
+codi serve --public-url https://codi.example.org      # or: codi dev (writes the files here)
+#   open the setup wizard: https://codi.example.org/admin/setup?token=…
+```
+
+The wizard walks you through every step in the browser and checks each one live:
+
+1. Create the Discord application and paste the bot token. CODI derives the application
+   ID and tells you exactly which privileged intents to turn on.
+2. Invite the bot. The server shows up by itself; permissions and the role position are
+   checked ("drag the role CODI above Admin").
+3. Choose where the configuration lives: **Managed by CODI** (a git repository in the data
+   dir, no git knowledge needed) or **GitHub**. CODI imports the server as it is. The first
+   plan must be empty: everything is adopted, nothing changes on Discord. CODI then
+   activates it without a restart.
+4. Optionally set up Discord login for the admin console.
+5. Run the verification checklist (token, intents, permissions, hierarchy, commands, live
+   events, plan, write-back).
+6. Install a first plugin from the bundled catalog.
+
+Tokens and secrets you paste are stored encrypted in the data dir (`CODI_SECRET_KEY` or a
+generated `secret.key`); environment variables still take precedence. To try the whole
+flow offline, against a simulated Discord, run:
+
+```sh
+codi dev --sim --setup ./my-community
+```
+
+Details: [docs/onboarding-wizard.md](docs/onboarding-wizard.md). The same checks are
+available later on the admin **Diagnostics** page.
+
+### Create a repository by hand
 
 ```sh
 bin/codi init my-community --server-id <discord server id> --application-id <discord application id>
@@ -96,7 +133,9 @@ export default definePlugin({
 });
 ```
 
-### Go live
+### Go live (manual path)
+
+The setup wizard above does all of this for you. By hand:
 
 1. **Create the bot** in the [Discord developer portal](https://discord.com/developers/applications):
    a new application, then *Bot* → reset and copy the token. Under *Privileged Gateway
@@ -149,8 +188,9 @@ JS checks. For a CODI configuration repository, run `codi validate` on pull requ
 |---|---|
 | `codi init` | Scaffold a repository. |
 | `codi validate` | Schema + semantic validation, offline. |
-| `codi dev [--sim]` | Local runtime with hot reload, real Discord or the simulator. |
-| `codi serve` | Production runtime. |
+| `codi dev [--sim] [--setup]` | Local runtime with hot reload, real Discord or the simulator; setup wizard in a directory without `codi.yaml`. |
+| `codi serve` | Production runtime (setup wizard when there is no `codi.yaml` yet). |
+| `codi secret ls / set / rm / rotate-key` | Manage the encrypted secrets of a data dir (bot tokens, OAuth / git secrets; values read from stdin). |
 | `codi plugin new / sdk-types / add` | Scaffold a plugin, write SDK types for editors, add a registry plugin (`codi.lock`). |
 | `codi plan [--remote --comment]` | Diff with Discord (locally, or through the runtime; PR comment in GitHub Actions). |
 | `codi apply / status [--wait] / sync` | Apply locally; runtime status (CI waits for a revision); trigger a sync. |

@@ -19,9 +19,7 @@
         "everyone": {
           "description": "Permissions of the @everyone role.",
           "type": "object",
-          "properties": {
-            "permissions": { "$ref": "common.schema.json#/$defs/permissions" }
-          },
+          "properties": { "permissions": { "$ref": "common.schema.json#/$defs/permissions" } },
           "additionalProperties": false
         },
         "roles": {
@@ -46,7 +44,33 @@
           "additionalProperties": { "$ref": "#/$defs/channel" }
         },
         "access": { "$ref": "#/$defs/access" },
-        "portal": { "$ref": "#/$defs/portal" }
+        "portal": { "$ref": "#/$defs/portal" },
+        "afk": { "$ref": "#/$defs/afk" },
+        "widget": { "$ref": "#/$defs/widget" },
+        "community": { "$ref": "#/$defs/community" },
+        "automod": {
+          "description": "AutoMod rules, keyed. Managed rules are matched by key (resource map) or adopted by name.",
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": { "$ref": "#/$defs/automodRule" }
+        },
+        "onboarding": { "$ref": "#/$defs/onboarding" },
+        "welcomeScreen": { "$ref": "#/$defs/welcomeScreen" },
+        "emojis": {
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": { "$ref": "#/$defs/emoji" }
+        },
+        "stickers": {
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": { "$ref": "#/$defs/sticker" }
+        },
+        "soundboard": {
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": { "$ref": "#/$defs/sound" }
+        }
       },
       "additionalProperties": false
     }
@@ -59,10 +83,60 @@
         "name": { "type": "string", "minLength": 2, "maxLength": 100 },
         "description": { "type": "string", "maxLength": 120 },
         "icon": { "$ref": "common.schema.json#/$defs/relativePath" },
+        "banner": {
+          "description": "Server banner image (png, jpg, gif or webp), relative to this file. Requires boost level 2.",
+          "$ref": "common.schema.json#/$defs/relativePath"
+        },
+        "splash": {
+          "description": "Invite background image (png, jpg or webp), relative to this file. Requires boost level 1.",
+          "$ref": "common.schema.json#/$defs/relativePath"
+        },
         "verificationLevel": { "enum": ["none", "low", "medium", "high", "highest"] },
         "defaultNotifications": { "enum": ["allMessages", "onlyMentions"] },
+        "explicitContentFilter": {
+          "description": "Sensitive media scanning. Community servers require allMembers.",
+          "enum": ["disabled", "membersWithoutRoles", "allMembers"]
+        },
+        "preferredLocale": {
+          "description": "Community language (Discord locale, e.g. en-US, fr).",
+          "type": "string",
+          "pattern": "^[a-z]{2}(-[A-Z]{2})?$|^es-419$"
+        },
+        "premiumProgressBar": { "description": "Show the boost progress bar.", "type": "boolean" },
         "systemChannel": { "$ref": "common.schema.json#/$defs/key" },
-        "rulesChannel": { "$ref": "common.schema.json#/$defs/key" }
+        "systemChannelFlags": {
+          "description": "System messages sent in the system channel (true = sent). Unset toggles are not managed.",
+          "type": "object",
+          "properties": {
+            "welcomeMessages": {
+              "description": "A random welcome message when someone joins.",
+              "type": "boolean"
+            },
+            "welcomeStickerReplies": {
+              "description": "Prompt members to reply to welcome messages with a sticker.",
+              "type": "boolean"
+            },
+            "boostMessages": {
+              "description": "A message when someone boosts the server.",
+              "type": "boolean"
+            },
+            "setupTips": { "description": "Helpful tips for server setup.", "type": "boolean" },
+            "roleSubscriptionMessages": {
+              "description": "A message when someone buys or renews a role subscription.",
+              "type": "boolean"
+            },
+            "roleSubscriptionStickerReplies": {
+              "description": "Prompt members to reply to role subscription messages with a sticker.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "rulesChannel": {
+          "description": "Deprecated: use community.rulesChannel (still accepted as an alias).",
+          "deprecated": true,
+          "$ref": "common.schema.json#/$defs/key"
+        }
       },
       "additionalProperties": false
     },
@@ -92,10 +166,33 @@
       "required": ["name"],
       "properties": {
         "name": { "type": "string", "minLength": 1, "maxLength": 100 },
-        "color": { "$ref": "common.schema.json#/$defs/color" },
+        "color": {
+          "$ref": "common.schema.json#/$defs/color",
+          "description": "Solid color (shorthand of colors.primary)."
+        },
+        "colors": {
+          "description": "Gradient role style (boost level 2): primary + secondary (+ tertiary).",
+          "type": "object",
+          "required": ["primary"],
+          "properties": {
+            "primary": { "$ref": "common.schema.json#/$defs/color" },
+            "secondary": { "$ref": "common.schema.json#/$defs/color" },
+            "tertiary": { "$ref": "common.schema.json#/$defs/color" }
+          },
+          "additionalProperties": false
+        },
         "hoist": { "type": "boolean", "default": false },
         "mentionable": { "type": "boolean", "default": false },
-        "icon": { "$ref": "common.schema.json#/$defs/relativePath" },
+        "icon": {
+          "$ref": "common.schema.json#/$defs/relativePath",
+          "description": "Role icon image (png, jpg or webp, at most 256 KiB), relative to this file. Requires boost level 2."
+        },
+        "emoji": {
+          "description": "Unicode emoji role icon (boost level 2). Exclusive with icon.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
         "permissions": { "$ref": "common.schema.json#/$defs/permissions" }
       },
       "additionalProperties": false
@@ -136,7 +233,64 @@
           "description": "Inherit the category overwrites. Defaults to true when no overwrites are set.",
           "type": "boolean"
         },
-        "overwrites": { "$ref": "common.schema.json#/$defs/overwrites" }
+        "overwrites": { "$ref": "common.schema.json#/$defs/overwrites" },
+        "voiceRegion": {
+          "description": "voice/stage: automatic or a Discord voice region id (e.g. rotterdam, us-east).",
+          "type": "string",
+          "pattern": "^[a-z0-9-]{2,32}$"
+        },
+        "videoQuality": { "description": "voice/stage camera quality.", "enum": ["auto", "full"] },
+        "threadArchiveAfter": {
+          "description": "Default 'hide after inactivity' of new threads.",
+          "enum": ["1h", "24h", "3d", "1w"]
+        },
+        "threadSlowmode": {
+          "description": "Default slowmode (seconds) of new threads.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 21600
+        },
+        "tags": {
+          "description": "forum/media: post tags, keyed (at most 20).",
+          "type": "object",
+          "maxProperties": 20,
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 20 },
+              "emoji": {
+                "description": "A unicode emoji, or a custom emoji as name:id.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "moderated": {
+                "description": "Only moderators can apply it.",
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "defaultReaction": {
+          "description": "A unicode emoji, or a custom emoji as name:id.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "sortOrder": {
+          "description": "forum/media: default sort order of posts.",
+          "enum": ["latestActivity", "creationDate"]
+        },
+        "layout": { "description": "forum: default layout.", "enum": ["list", "gallery"] },
+        "guidelines": {
+          "description": "forum/media: post guidelines (alias of topic).",
+          "type": "string",
+          "maxLength": 4096
+        }
       },
       "additionalProperties": false
     },
@@ -219,7 +373,24 @@
                 "maxLength": 500
               },
               "icon": {
-                "enum": ["link", "website", "discord", "youtube", "twitch", "x", "bluesky", "mastodon", "instagram", "tiktok", "github", "reddit", "steam", "rules", "calendar", "shop"],
+                "enum": [
+                  "link",
+                  "website",
+                  "discord",
+                  "youtube",
+                  "twitch",
+                  "x",
+                  "bluesky",
+                  "mastodon",
+                  "instagram",
+                  "tiktok",
+                  "github",
+                  "reddit",
+                  "steam",
+                  "rules",
+                  "calendar",
+                  "shop"
+                ],
                 "default": "link"
               }
             },
@@ -240,6 +411,297 @@
         "locale": {
           "description": "Interface language of the default portal. Default: the browser language when supported, else English.",
           "enum": ["en", "fr"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "afk": {
+      "description": "Inactive (AFK) voice channel.",
+      "type": "object",
+      "properties": {
+        "channel": { "description": "Voice channel key.", "$ref": "common.schema.json#/$defs/key" },
+        "timeout": {
+          "description": "Seconds of inactivity before moving members.",
+          "enum": [60, 300, 900, 1800, 3600]
+        }
+      },
+      "additionalProperties": false
+    },
+    "widget": {
+      "description": "Server widget (Server Settings → Widget).",
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "channel": { "description": "Invite channel key.", "$ref": "common.schema.json#/$defs/key" }
+      },
+      "additionalProperties": false
+    },
+    "community": {
+      "description": "Community feature. Enabling requires rulesChannel and updatesChannel, verificationLevel at least low and explicitContentFilter allMembers.",
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "rulesChannel": {
+          "description": "Text channel key.",
+          "$ref": "common.schema.json#/$defs/key"
+        },
+        "updatesChannel": {
+          "description": "Community updates channel (text channel key) where Discord posts moderator news.",
+          "$ref": "common.schema.json#/$defs/key"
+        },
+        "safetyAlertsChannel": {
+          "description": "Text channel key that receives safety alerts (raids, spam).",
+          "$ref": "common.schema.json#/$defs/key"
+        }
+      },
+      "additionalProperties": false
+    },
+    "automodRule": {
+      "type": "object",
+      "required": ["name", "trigger", "actions"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "trigger": {
+          "description": "keyword (up to 6 rules), keywordPreset, mentionSpam, spam, memberProfile (1 rule each).",
+          "enum": ["keyword", "keywordPreset", "mentionSpam", "spam", "memberProfile"]
+        },
+        "enabled": { "type": "boolean", "default": true },
+        "keywords": {
+          "description": "keyword / memberProfile: words or phrases (* wildcards).",
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "type": "string", "minLength": 1, "maxLength": 60 },
+          "uniqueItems": true
+        },
+        "regex": {
+          "description": "keyword / memberProfile: Rust-flavoured regular expressions.",
+          "type": "array",
+          "maxItems": 10,
+          "items": { "type": "string", "minLength": 1, "maxLength": 260 },
+          "uniqueItems": true
+        },
+        "allowList": {
+          "description": "Exceptions (keyword, keywordPreset, memberProfile).",
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "type": "string", "minLength": 1, "maxLength": 60 },
+          "uniqueItems": true
+        },
+        "presets": {
+          "description": "keywordPreset: Discord word lists.",
+          "type": "array",
+          "items": { "enum": ["profanity", "sexualContent", "slurs"] },
+          "uniqueItems": true
+        },
+        "mentionLimit": {
+          "description": "mentionSpam: unique role/user mentions allowed per message.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "mentionRaidProtection": {
+          "description": "mentionSpam: also detect mention raids.",
+          "type": "boolean"
+        },
+        "actions": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "block": {
+              "description": "Block the message (memberProfile: block the member's interactions).",
+              "type": "object",
+              "properties": {
+                "message": {
+                  "description": "Shown to the member.",
+                  "type": "string",
+                  "maxLength": 150
+                }
+              },
+              "additionalProperties": false
+            },
+            "alert": {
+              "description": "Channel key that receives an alert.",
+              "$ref": "common.schema.json#/$defs/key"
+            },
+            "timeout": {
+              "description": "Time the member out (keyword, mentionSpam), e.g. 60s, 10m, 1h, 1d, 1w (at most 4 weeks).",
+              "type": "string",
+              "pattern": "^[0-9]+(s|m|h|d|w)$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "exemptRoles": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "uniqueItems": true
+        },
+        "exemptChannels": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "onboarding": {
+      "description": "Discord's native onboarding (needs Community). Complements the CODI onboarding plugin.",
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": {
+          "description": "default: only default channels count toward the requirements; advanced: questions count too.",
+          "enum": ["default", "advanced"],
+          "default": "default"
+        },
+        "defaultChannels": {
+          "description": "Channel keys every new member sees.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "uniqueItems": true
+        },
+        "prompts": {
+          "type": "array",
+          "maxItems": 15,
+          "items": { "$ref": "#/$defs/onboardingPrompt" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "onboardingPrompt": {
+      "type": "object",
+      "required": ["key", "title", "options"],
+      "properties": {
+        "key": { "$ref": "common.schema.json#/$defs/key" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "type": { "enum": ["multipleChoice", "dropdown"], "default": "multipleChoice" },
+        "singleSelect": { "type": "boolean", "default": false },
+        "required": { "type": "boolean", "default": false },
+        "inOnboarding": {
+          "description": "Shown during onboarding (false: only in Channels & Roles).",
+          "type": "boolean",
+          "default": true
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": ["title"],
+            "properties": {
+              "title": { "type": "string", "minLength": 1, "maxLength": 50 },
+              "description": { "type": "string", "maxLength": 100 },
+              "emoji": {
+                "description": "A unicode emoji, or a custom emoji as name:id.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "roles": {
+                "description": "Role keys granted.",
+                "type": "array",
+                "items": { "$ref": "common.schema.json#/$defs/key" },
+                "uniqueItems": true
+              },
+              "channels": {
+                "description": "Channel keys shown.",
+                "type": "array",
+                "items": { "$ref": "common.schema.json#/$defs/key" },
+                "uniqueItems": true
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "welcomeScreen": {
+      "description": "Welcome screen of community servers.",
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "description": { "type": "string", "maxLength": 140 },
+        "channels": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["channel", "description"],
+            "properties": {
+              "channel": { "$ref": "common.schema.json#/$defs/key" },
+              "description": { "type": "string", "minLength": 1, "maxLength": 42 },
+              "emoji": {
+                "description": "A unicode emoji, or a custom emoji as name:id.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "emoji": {
+      "type": "object",
+      "required": ["name", "image"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_]{2,32}$" },
+        "image": {
+          "description": "png, jpg, gif or webp file (at most 256 KiB), relative to this file.",
+          "$ref": "common.schema.json#/$defs/relativePath"
+        },
+        "roles": {
+          "description": "Only these role keys can use the emoji.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "sticker": {
+      "type": "object",
+      "required": ["name", "emoji", "file"],
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 30 },
+        "description": { "type": "string", "maxLength": 100 },
+        "emoji": {
+          "description": "Related emoji name used for suggestions (e.g. smile).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "file": {
+          "description": "png, apng, gif or Lottie json file (at most 512 KiB), relative to this file.",
+          "$ref": "common.schema.json#/$defs/relativePath"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sound": {
+      "type": "object",
+      "required": ["name", "sound"],
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 32 },
+        "sound": {
+          "description": "mp3 or ogg file (at most 512 KiB, 5.2 s), relative to this file.",
+          "$ref": "common.schema.json#/$defs/relativePath"
+        },
+        "volume": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
+        "emoji": {
+          "description": "A unicode emoji, or a custom emoji as name:id.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
         }
       },
       "additionalProperties": false

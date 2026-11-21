@@ -72,6 +72,7 @@ type Runtime struct {
 
 	wake  chan struct{}
 	sched *scheduler
+	diag  diagnostics
 }
 
 // active is an activated revision.

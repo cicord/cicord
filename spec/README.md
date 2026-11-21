@@ -35,7 +35,8 @@ All references use keys and are checked by `codi validate`:
 | Where | Refers to |
 |---|---|
 | `channels.<k>.category` | `categories.<key>` of the same server |
-| `profile.systemChannel`, `profile.rulesChannel` | `channels.<key>` |
+| `profile.systemChannel`, `profile.rulesChannel` (deprecated alias), `community.*Channel`, `afk.channel`, `widget.channel`, `automod.*.actions.alert`, `automod.*.exemptChannels[]`, `onboarding.defaultChannels[]`, `onboarding.prompts[].options[].channels[]`, `welcomeScreen.channels[].channel` | `channels.<key>` |
+| `automod.*.exemptRoles[]`, `onboarding.prompts[].options[].roles[]`, `emojis.*.roles[]` | `roles.<key>` |
 | `hierarchy[]`, `access.*.roles[]` | `roles.<key>` |
 | overwrite targets | `@everyone`, `roles.<key>`, or `member:<discord id>` |
 | `bot.spec.servers[]`, `plugins[].servers[]`, `plugins[].overrides.<k>` | `servers/<key>.yaml` |
@@ -86,14 +87,61 @@ A managed key that disappears from the YAML produces:
 
 Deletions run last (channels, then categories, then roles).
 
+### Live status, boost and Community gating
+The planner reads the live boost level (`premium_tier`), boost count and feature flags.
+Settings Discord would refuse are **blocked in the plan with a reason** instead of failing at
+apply time (reason prefixes, explained by the admin UI and `codi plan`):
+
+| Setting | Needs | Blocked reason |
+|---|---|---|
+| `profile.banner` (animated: level 3) | boost level 2 (`BANNER`) | `boost: banner requires boost level 2; server is level 0 (0 boost(s))` |
+| `profile.splash` | boost level 1 (`INVITE_SPLASH`) | `boost: invite splash requires boost level 1; …` |
+| animated (GIF) `profile.icon` | boost level 1 (`ANIMATED_ICON`) | `boost: an animated icon requires …` |
+| `roles.*.icon`, `roles.*.emoji` | boost level 2 (`ROLE_ICONS`) | `boost: a role icon requires …` |
+| `roles.*.colors` with `secondary` | boost level 2 (`ENHANCED_ROLE_COLORS`) | `boost: a gradient role color requires …` (the primary color is still applied) |
+| announcement / stage channels, rules / updates / safety alerts channels, welcome screen, native onboarding | Community (live, or enabled by the same plan) | `community: … requires the Community feature (set community.enabled: true)` |
+| emojis, stickers, soundboard sounds | slots of the boost level (emojis 50/100/150/250 static + as many animated, stickers 5/15/30/60, sounds 8/24/36/48) | `limit: maximum number of stickers reached (5 at boost level 0)` |
+| AutoMod rules | 6 keyword rules, 1 of each other trigger | `limit: a server can have at most 1 spam AutoMod rule(s); …` |
+
+A feature flag is enough (partnered/verified servers get some without boosts). Blocked
+items keep the server `OutOfSync` and are applied by the first sync after the boost level
+(or Community) is reached.
+
+### Community
+`community: {enabled, rulesChannel, updatesChannel, safetyAlertsChannel}` toggles the
+`COMMUNITY` feature. Enabling it needs a rules channel and an updates channel (text channels,
+created by the same plan if needed), `profile.verificationLevel` at least `low` and
+`profile.explicitContentFilter: allMembers`; a missing prerequisite blocks the change with
+the full list (`codi validate` reports the same). The toggle, the channels and the
+verification/filter changes are sent in one request after the channels exist; announcement
+and stage channels that need Community are created right after it. Disabling sends the live
+mutable features without `COMMUNITY`. `profile.rulesChannel` is a deprecated alias of
+`community.rulesChannel` (validation warns; both set to different keys is an error).
+
 ### Compared fields
 - Always managed (the YAML zero value is applied): role name, color (0 = none), hoist,
   mentionable, permissions; category/channel name and overwrites; channel `topic` (text,
   announcement, forum, media), `nsfw`, `slowmode` (text, voice, stage, forum, media) and
   `userLimit` (voice, stage).
 - Managed only when set: channel `bitrate` (> 0), each `profile` field (non-empty), the
-  server icon (a file relative to the server YAML, re-uploaded when its hash or the live
-  icon changes), `everyone` (when present). Role icons are not managed.
+  server icon, banner and splash (files relative to the server YAML, re-uploaded when the
+  file hash or the live image URL changes), `everyone` (when present), each
+  `systemChannelFlags` toggle (true = the message is sent; undeclared toggles keep their
+  live value), `afk.channel` / `afk.timeout`, the `widget` (as a whole), role
+  `colors` / `icon` / `emoji`, and the channel extras `voiceRegion` (`automatic` = Discord
+  picks), `videoQuality`, `threadArchiveAfter` (`1h|24h|3d|1w`), `threadSlowmode`, forum
+  `tags` (as a whole, in key order; live tag IDs are kept by name, then by position, so a
+  renamed tag stays the same tag), `defaultReaction`, `sortOrder`, `layout`; `guidelines`
+  is the forum topic. A role without `colors` is solid: a live gradient is drift.
+- `welcomeScreen` and `onboarding` are singletons compared as a whole (onboarding prompt
+  and option IDs are kept by title so members' answers stay attached).
+- `automod.<key>`, `emojis.<key>`, `stickers.<key>` and `soundboard.<key>` are keyed like
+  roles: resource map (kinds `automod`, `emoji`, `sticker`, `sound`), adoption by name
+  (AutoMod: name and trigger), `prune` / `deletionProtection` / `unmanage` for removed keys.
+  The trigger of an AutoMod rule and the file of an expression cannot change in place
+  (blocked: `type change` / `recreate`): declare a new key. These endpoints need Manage
+  Server / Manage Expressions and are only called when the YAML declares the block (or
+  removed keys of that kind are still mapped).
 
 ### Channel types
 The type of a channel cannot change in place. When the live type differs from the YAML:
@@ -129,8 +177,10 @@ ignored.
 
 ### Apply order
 Server basics and @everyone → roles (adopt/create/update) → role positions → categories →
-channels → channel positions → server channel references (system/rules channel) →
-deletions and `unmanage`. Apply continues past failures; changes that depend on a failed one
+channels → server channel references and Community toggle (system, AFK, rules, updates,
+safety alerts channels) → channels that need Community → channel positions → widget →
+welcome screen → onboarding → AutoMod rules → emojis/stickers/sounds → deletions (AutoMod,
+expressions, channels, categories, roles) and `unmanage`. Apply continues past failures; changes that depend on a failed one
 fail as `unresolved`.
 
 ### access

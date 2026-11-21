@@ -34,25 +34,36 @@ No public release until the product is complete.
       → `error` objects in status / history / plan / sync failures), grouped sync history
 
 ## Discord parity (docs/discord-parity.md)
-- [ ] Live status: boost level + boost count, features (Community…) in contract/API/admin UI; boost-gated fields blocked in plans with a reason
-- [ ] Server icon + banner (cover): declarable in YAML and editable (upload) from the admin UI
-- [ ] Community: enable + rules/public updates channels, explicit content filter, safety alerts channel
-- [ ] Server: system message flags, AFK channel/timeout, widget, preferred locale, boost progress bar, banner
-- [ ] AutoMod rules
-- [ ] Discord native onboarding + welcome screen
-- [ ] Roles: icon (image + emoji), gradient colors
-- [ ] Channels: voice region, video quality, thread archive/slowmode defaults, forum tags & settings
-- [ ] Emojis, stickers, soundboard from repository assets
-- [ ] Invites, webhooks
-- [ ] Document "Discord UI only" settings in the admin UI
+- [x] Live status: boost level + boost count, features (Community…) in contract/API/admin UI; boost-gated fields blocked in plans with a reason
+- [x] Server icon + banner (cover): declarable in YAML and editable (upload) from the admin UI (`PUT /api/v1/servers/{server}/assets/{kind}`)
+- [x] Community: enable + rules/public updates channels, explicit content filter, safety alerts channel (prerequisites in validate + plan)
+- [x] Server: system message flags, AFK channel/timeout, widget, preferred locale, boost progress bar, banner, invite splash
+- [x] AutoMod rules (keyed, resource map kind `automod`, adoption, drift, prune, rule caps)
+- [x] Discord native onboarding + welcome screen
+- [x] Roles: icon (image + emoji), gradient colors
+- [x] Channels: voice region, video quality, thread archive/slowmode defaults, forum tags & settings
+- [x] Emojis, stickers, soundboard from repository assets (slot limits per boost level)
+- [x] Document "Discord UI only" settings in the admin UI
+- [ ] Verify the parity checklist on the real Discord test server (final report of the parity work: onboarding IDs, sticker multipart, Community toggle, role colors, slot-limit error codes)
+- [ ] Gateway events for the new kinds (AUTO_MODERATION_RULE_*, GUILD_EMOJIS_UPDATE, GUILD_STICKERS_UPDATE,
+      GUILD_SOUNDBOARD_SOUND_*, widget/onboarding have none): today hand edits of AutoMod rules, expressions,
+      widget, onboarding and welcome screen only show as drift at the next plan (status refresh / sync), and
+      selfHeal does not trigger on them
+- [ ] Invites (declared permanent invite links), webhooks (secrets)
+- [ ] `codi import`: download icon/banner/role icons/emojis/stickers/sounds into the repository (today: warnings)
+- [ ] Holographic role style preset (`colors: holographic`) instead of the three magic colors
+- [ ] Admin UI: plan page refreshes on live server updates (boost level changes need a manual Refresh)
 
 ## Setup wizard (docs/onboarding-wizard.md)
-- [ ] Setup mode (no repo) + one-time setup token
-- [ ] Secret store (encrypted) for bot tokens / OAuth secret
-- [ ] Token validation, application ID + intents detection from the token
-- [ ] Invite URL + live detection of servers the bot joined + permission/hierarchy checks
-- [ ] Repository: embedded (default) or GitHub; automatic import + first commit
-- [ ] OAuth step, verification checklist, first plugin from a bundled catalog
+- [x] Setup mode (no repo) + one-time setup token
+- [x] Secret store (encrypted) for bot tokens / OAuth secret
+- [x] Token validation, application ID + intents detection from the token
+- [x] Invite URL + live detection of servers the bot joined + permission/hierarchy checks
+- [x] Repository: embedded (default) or GitHub; automatic import + first commit
+- [x] OAuth step, verification checklist, first plugin from a bundled catalog
+- [x] Diagnostics page (same checks as the wizard's Verify step)
+- [ ] Setup wizard: GitHub App instead of a personal access token; webhook setup step
+- [ ] Setup wizard: manage several servers / bots; Store page on top of the catalog (registries)
 
 ## Store (core of the vision) — apt/Homebrew-style sources (ADR-0011 update)
 - [ ] Create the official plugin registry repository (`codi-dev/registry`, index.yaml) with the official plugins
