@@ -47,6 +47,7 @@ type planner struct {
 	foreign   map[state.ResourceKind]map[string]state.Resource // other owners
 	mappedIDs map[string]bool                                  // IDs in the map, any owner
 	consumed  map[string]bool                                  // IDs adopted by this plan
+	orphanIDs map[string]bool                                  // git mappings whose key left the config
 	keyByID   map[string]string                                // live ID → key (git or adopted)
 
 	// plan-time resolution: key → live ID (mapped & alive, or adopted). Missing = created.
@@ -75,6 +76,7 @@ func computePlan(in planInput) (Plan, error) {
 		git:       map[state.ResourceKind]map[string]state.Resource{},
 		foreign:   map[state.ResourceKind]map[string]state.Resource{},
 		mappedIDs: map[string]bool{},
+		orphanIDs: map[string]bool{},
 		consumed:  map[string]bool{},
 		keyByID:   map[string]string{},
 		ids:       map[state.ResourceKind]map[string]string{},
@@ -103,6 +105,17 @@ func computePlan(in planInput) (Plan, error) {
 			p.keyByID[r.ID] = r.Key
 		} else {
 			p.foreign[r.Kind][r.Key] = r
+		}
+	}
+
+	// A git-owned resource whose key disappeared from the config can be re-adopted by name
+	// under a new key: renaming a key in YAML (or with `codi mv`) moves the mapping
+	// instead of creating a duplicate and orphaning the original.
+	for rk, byKey := range p.git {
+		for key, m := range byKey {
+			if !p.declared(rk, key) {
+				p.orphanIDs[m.ID] = true
+			}
 		}
 	}
 
@@ -236,7 +249,7 @@ func (p *planner) resolve(kind state.ResourceKind, key string, alive func(id str
 func (p *planner) pick(cands []string) string {
 	slices.SortFunc(cands, idLess)
 	for _, id := range cands {
-		if !p.mappedIDs[id] && !p.consumed[id] {
+		if (!p.mappedIDs[id] || p.orphanIDs[id]) && !p.consumed[id] {
 			return id
 		}
 	}
@@ -1061,6 +1074,10 @@ func (p *planner) planOrphans() {
 			}
 			ph := map[state.ResourceKind]phase{state.KindChannel: phaseDeleteChannels, state.KindCategory: phaseDeleteCategories, state.KindRole: phaseDeleteRoles}[rk]
 			switch {
+			case p.consumed[m.ID]:
+				p.add(Change{Action: ActionUnmanage, Kind: kind, Key: key, ID: m.ID,
+					Summary: fmt.Sprintf("move %s mapping %s → %s (key renamed)", kind, key, p.keyByID[m.ID]),
+					op:      &op{phase: phaseUnmanage, rk: rk}})
 			case !alive:
 				p.add(Change{Action: ActionUnmanage, Kind: kind, Key: key, ID: m.ID,
 					Summary: fmt.Sprintf("forget %s %s (removed from the config, already gone from Discord)", kind, key),

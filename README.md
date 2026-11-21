@@ -152,8 +152,10 @@ JS checks. For a CODI configuration repository, run `codi validate` on pull requ
 | `codi dev [--sim]` | Local runtime with hot reload, real Discord or the simulator. |
 | `codi serve` | Production runtime. |
 | `codi plugin new / sdk-types / add` | Scaffold a plugin, write SDK types for editors, add a registry plugin (`codi.lock`). |
-| `codi plan / apply / status / sync / import / adopt / mv` | Being added: see [ARCHITECTURE.md §7](ARCHITECTURE.md#7-cli). |
-| `codi plugin build / typegen / test` | Being added. |
+| `codi plan [--remote --comment]` | Diff with Discord (locally, or through the runtime; PR comment in GitHub Actions). |
+| `codi apply / status [--wait] / sync` | Apply locally; runtime status (CI waits for a revision); trigger a sync. |
+| `codi import / adopt / mv` | Generate YAML from an existing server; rebuild the resource map; rename a key everywhere. |
+| `codi plugin build / typegen / test` | Bundle and inspect a plugin; generate config types; smoke-test it on the simulator. |
 
 ## Documentation
 

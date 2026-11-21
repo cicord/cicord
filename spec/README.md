@@ -22,8 +22,11 @@ Editor support: add `# yaml-language-server: $schema=<url or path to schema>` at
   or the directory name (`bots/<key>/`).
 - Keys match `^[a-z][a-z0-9-]{0,62}$` and **never change**. Display names (`name:` inside
   roles, channels…) can change freely: a changed display name is a rename in Discord.
-- Changing a key means *delete + create*. `codi validate` warns when a key disappears and a
-  new one with the same display name appears, and suggests `codi mv`.
+- Changing a key keeps the Discord resource when the display name and kind are unchanged:
+  the reconciler sees the old key removed and the new one added, adopts the resource under
+  the new key and drops the old mapping (plan: `adopt` + `unmanage "move … mapping"`).
+  `codi mv` renames a key and every reference to it in one step. Changing the key *and* the
+  display name in the same revision is a removal plus a creation.
 
 ## 2. References
 

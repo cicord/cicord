@@ -161,6 +161,14 @@ func TestComputePlan(t *testing.T) {
 	}{
 		{name: "no-op", mutate: func(f *fixture) {}},
 		{
+			name: "key renamed in YAML moves the mapping (no duplicate)",
+			mutate: func(f *fixture) {
+				f.desired.Spec.Channels["discussion"] = f.desired.Spec.Channels["chat"]
+				delete(f.desired.Spec.Channels, "chat")
+			},
+			want: []string{"adopt channel discussion", "unmanage channel chat"},
+		},
+		{
 			name:   "rename channel",
 			mutate: func(f *fixture) { f.channel("303").Name = "old-chat" },
 			want:   []string{"update channel chat [name]"},
