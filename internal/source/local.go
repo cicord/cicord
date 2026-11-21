@@ -30,7 +30,7 @@ type Local struct {
 }
 
 // ignored directories and files never copied into snapshots.
-var ignoredNames = map[string]bool{".git": true, "node_modules": true, ".codi": true, "dist": true, ".DS_Store": true}
+var ignoredNames = map[string]bool{".git": true, "node_modules": true, ".codi": true, ".DS_Store": true}
 
 // NewLocal watches dir and stores snapshots under snapRoot.
 func NewLocal(dir, snapRoot string) (*Local, error) {
