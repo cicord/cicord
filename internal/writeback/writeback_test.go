@@ -204,3 +204,29 @@ func TestEmojiPreserved(t *testing.T) {
 		t.Errorf("emoji escaped:\n%s", s)
 	}
 }
+
+func TestEmojiUnescapeNeverChangesData(t *testing.T) {
+	// A literal \U sequence in a comment and in single-quoted / plain scalars must survive.
+	src := "spec: # see \\U0001F3AF docs\n  plugins:\n    - name: welcome\n      config:\n        a: 'lit \\U0001F3AF'\n        b: plain \\U0001F3AF\n        c: \"👋\"\n"
+	out, err := PluginConfigEdit("welcome", "", map[string]any{"a": `lit \U0001F3AF`, "b": `plain \U0001F3AF`, "c": "👋", "d": "🎯"})([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Spec struct {
+			Plugins []struct {
+				Config map[string]string `yaml:"config"`
+			} `yaml:"plugins"`
+		} `yaml:"spec"`
+	}
+	if err := yamlUnmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	cfg := got.Spec.Plugins[0].Config
+	if cfg["a"] != `lit \U0001F3AF` || cfg["b"] != `plain \U0001F3AF` || cfg["c"] != "👋" || cfg["d"] != "🎯" {
+		t.Fatalf("data changed: %v\n%s", cfg, out)
+	}
+	if !strings.Contains(string(out), `# see \U0001F3AF docs`) {
+		t.Errorf("comment changed:\n%s", out)
+	}
+}

@@ -72,10 +72,12 @@ var astralEscape = regexp.MustCompile(`\\\\|\\U[0-9A-Fa-f]{8}`)
 
 // unescapeAstral turns the \UXXXXXXXX escapes that yaml.v3 emits for characters outside
 // the Basic Multilingual Plane (emoji…) back into UTF-8, so a write-back does not rewrite
-// every emoji of the file. Escaped backslashes are left untouched.
+// every emoji of the file. The rewrite is only kept when re-parsing proves it changes no
+// value and no comment (a literal "\U…" in a comment or a single-quoted / plain scalar
+// would otherwise be altered); else the escaped output is returned unchanged.
 func unescapeAstral(b []byte) []byte {
-	return astralEscape.ReplaceAllFunc(b, func(m []byte) []byte {
-		if len(m) == 2 { // "\\"
+	out := astralEscape.ReplaceAllFunc(b, func(m []byte) []byte {
+		if len(m) == 2 { // escaped backslash
 			return m
 		}
 		v, err := strconv.ParseUint(string(m[2:]), 16, 32)
@@ -88,6 +90,32 @@ func unescapeAstral(b []byte) []byte {
 		}
 		return []byte(string(r))
 	})
+	if bytes.Equal(out, b) {
+		return b
+	}
+	var before, after yaml.Node
+	if yaml.Unmarshal(b, &before) != nil || yaml.Unmarshal(out, &after) != nil || !sameTree(&before, &after) {
+		return b
+	}
+	return out
+}
+
+// sameTree reports whether two YAML node trees carry the same data and comments.
+func sameTree(a, b *yaml.Node) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.Kind != b.Kind || a.ShortTag() != b.ShortTag() || a.Value != b.Value ||
+		a.HeadComment != b.HeadComment || a.LineComment != b.LineComment || a.FootComment != b.FootComment ||
+		a.Anchor != b.Anchor || len(a.Content) != len(b.Content) {
+		return false
+	}
+	for i := range a.Content {
+		if !sameTree(a.Content[i], b.Content[i]) {
+			return false
+		}
+	}
+	return a.Kind != yaml.AliasNode || sameTree(a.Alias, b.Alias)
 }
 
 func setNode(n *yaml.Node, path []PathElem, value any) error {
