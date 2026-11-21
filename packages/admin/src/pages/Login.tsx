@@ -25,7 +25,6 @@ export function LoginPage() {
   const config = useAdminConfig();
   const { search } = useLocation();
   const [sim, setSim] = useState<SimState | null | undefined>(undefined);
-  const [showDev, setShowDev] = useState(false);
   const [userId, setUserId] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; hint?: string | undefined } | null>(null);
@@ -49,11 +48,7 @@ export function LoginPage() {
       void cache.invalidate(["admin"]);
     } catch (e) {
       const d = describeError(e);
-      setError(
-        d.kind === "not_found" && !sim
-          ? { message: t("login.devOnly") }
-          : { message: d.message, hint: d.hint },
-      );
+      setError({ message: d.message, hint: d.hint });
       setPending(null);
     }
   };
@@ -161,25 +156,7 @@ export function LoginPage() {
               />
             </div>
           </section>
-        ) : (
-          <div className="mt-6">
-            {showDev ? (
-              <section className="flex flex-col gap-2" aria-label={t("login.dev.title")}>
-                <p className="text-xs text-muted-foreground">{t("login.dev.byId")}</p>
-                <DevIdForm
-                  userId={userId}
-                  setUserId={setUserId}
-                  submit={submit}
-                  pending={pending !== null}
-                />
-              </section>
-            ) : (
-              <Button variant="link" size="sm" onClick={() => setShowDev(true)}>
-                {t("login.dev.use")}
-              </Button>
-            )}
-          </div>
-        )}
+        ) : null}
         {error ? (
           <div
             role="alert"

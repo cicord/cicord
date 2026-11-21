@@ -230,7 +230,6 @@
     "title": "Sign in to the operator console",
     "text": "Manage the servers, bots and plugins this runtime reconciles from git. Access comes from the spec.access section of each server.",
     "discord": "Continue with Discord",
-    "devOnly": "Dev login only works with codi dev.",
     "dev": {
       "title": "Dev login",
       "text": "Pick a simulated user. The server owner is admin everywhere.",
@@ -238,8 +237,6 @@
       "owner": "Owner",
       "memberOf": "member of {{servers}}",
       "notMember": "not a member yet",
-      "byId": "Available with codi dev only: sign in as any Discord user ID.",
-      "use": "Use dev login",
       "userId": "User ID",
       "userIdPlaceholder": "User ID, e.g. 1122334455",
       "signIn": "Sign in"
