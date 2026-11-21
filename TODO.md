@@ -15,8 +15,28 @@ No public release until the product is complete.
   - [ ] custom portal in the repo (`portal/`), served by the runtime from the active revision
   - [ ] `codi portal init` (scaffold from the template) + dev loop against `codi dev`
   - [ ] `@codi/*` usable outside the monorepo before npm publication
-  - [ ] plugin-provided portal UI (`spec.client`, generated route types)
+  - [ ] embeddable in third-party sites (cross-origin auth with bearer sessions) — decision: SDK-first, plugin UI = plugin routes via the SDK
+  - [ ] reference portal = complete showcase of everything the SDK can do
 - [ ] Real Discord: test member join (needs a second account)
+
+## Discord parity (docs/discord-parity.md)
+- [ ] Community: enable + rules/public updates channels, explicit content filter, safety alerts channel
+- [ ] Server: system message flags, AFK channel/timeout, widget, preferred locale, boost progress bar, banner
+- [ ] AutoMod rules
+- [ ] Discord native onboarding + welcome screen
+- [ ] Roles: icon (image + emoji), gradient colors
+- [ ] Channels: voice region, video quality, thread archive/slowmode defaults, forum tags & settings
+- [ ] Emojis, stickers, soundboard from repository assets
+- [ ] Invites, webhooks
+- [ ] Document "Discord UI only" settings in the admin UI
+
+## Setup wizard (docs/onboarding-wizard.md)
+- [ ] Setup mode (no repo) + one-time setup token
+- [ ] Secret store (encrypted) for bot tokens / OAuth secret
+- [ ] Token validation, application ID + intents detection from the token
+- [ ] Invite URL + live detection of servers the bot joined + permission/hierarchy checks
+- [ ] Repository: embedded (default) or GitHub; automatic import + first commit
+- [ ] OAuth step, verification checklist, first plugin from a bundled catalog
 
 ## Store (core of the vision)
 - [ ] Create the plugin registry repository (`codi-dev/registry`, index.yaml)
