@@ -1,0 +1,337 @@
+import { createCodiClient, type FetchLike } from "@codi/client";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { App } from "../src/App.tsx";
+import { watch401, type AdminConfig } from "../src/config.ts";
+import { createMockRuntime } from "../src/mock/runtime.ts";
+import { formatPath } from "../src/pages/Plugins.tsx";
+import { groupChanges } from "../src/pages/Server.tsx";
+import { normalizeOption } from "../src/sim/CommandRunner.tsx";
+
+beforeEach(() => {
+  sessionStorage.clear();
+  localStorage.clear();
+  window.history.replaceState(null, "", import.meta.env.BASE_URL);
+});
+afterEach(cleanup);
+
+type Intercept = (url: URL, init: RequestInit) => Response | undefined;
+
+function setup(path = "/admin/", intercept?: Intercept) {
+  const runtime = createMockRuntime({ latency: 0, persist: false });
+  const fetch: FetchLike = async (input, init) => {
+    const res = intercept?.(new URL(input, window.location.origin), init);
+    return res ?? runtime.fetch(input, init);
+  };
+  const config: AdminConfig = {
+    client: createCodiClient({ fetch: watch401(fetch) }),
+    loginUrl: "/auth/login?redirect=/admin/",
+    mock: true,
+  };
+  // Vitest runs with base "/", the app is served under BASE_URL.
+  window.history.replaceState(null, "", path.replace(/^\/admin\//, import.meta.env.BASE_URL));
+  render(<App config={config} />);
+  return { runtime, user: userEvent.setup() };
+}
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+async function loginAsOwner(user: ReturnType<typeof userEvent.setup>) {
+  const owner = await screen.findByRole("button", { name: /Owner/ }, { timeout: 3000 });
+  await user.click(owner);
+}
+
+describe("login", () => {
+  test("shows Discord login and the simulator's dev users", async () => {
+    const { user } = setup();
+    expect(
+      await screen.findByRole("heading", { name: "Sign in to the operator console" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Continue with Discord" }).getAttribute("href")).toBe(
+      "/auth/login?redirect=/admin/",
+    );
+    expect(await screen.findByRole("button", { name: /Alice/ })).toBeTruthy();
+    await loginAsOwner(user);
+    expect(await screen.findByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
+  });
+
+  test("a member without staff role gets an explanation", async () => {
+    const { user, runtime } = setup();
+    // alice joins as a plain member, then logs in
+    await screen.findByRole("button", { name: /Alice/ });
+    await runtime.fetch("/api/v1/sim/servers/112233445566778899/members", {
+      method: "POST",
+      body: JSON.stringify({ userId: "101" }),
+      headers: { "X-Codi-Request": "1" },
+    });
+    await user.click(screen.getByRole("button", { name: /Alice/ }));
+    expect(await screen.findByRole("heading", { name: "No server to manage" })).toBeTruthy();
+  });
+});
+
+describe("overview & server", () => {
+  test("overview shows revision, rejected revision banner, servers, bots and history", async () => {
+    const { user } = setup();
+    await loginAsOwner(user);
+    expect(await screen.findByText("4f0c2d9", { selector: ".rev-id" })).toBeTruthy();
+    expect(screen.getByText("The latest revision was rejected")).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "Ma Commu" })).toBeTruthy();
+    expect(screen.getByText("Out of sync")).toBeTruthy();
+    expect(screen.getByText("Gardien")).toBeTruthy();
+    expect(await screen.findByText("bot reloaded (2 plugins)")).toBeTruthy();
+  });
+
+  test("plan groups changes, shows field diffs and blocked items; sync applies it", async () => {
+    const { user } = setup("/admin/servers/ma-commu/plan");
+    await loginAsOwner(user);
+    const roles = await screen.findByRole("region", { name: "Roles" });
+    expect(within(roles).getByText("valorant")).toBeTruthy();
+    expect(within(roles).getByText("#e91e63")).toBeTruthy();
+    const blocked = screen.getByRole("region", { name: "Blocked" });
+    expect(within(blocked).getByText(/Deletion protection is on/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Sync now" }));
+    const confirm = screen.getByRole("group", { name: "Confirm sync" });
+    await user.click(within(confirm).getByRole("button", { name: "Sync now" }));
+    expect(await screen.findByText("Applied 4 changes")).toBeTruthy();
+    expect(await screen.findByText("Nothing to change")).toBeTruthy();
+  });
+
+  test("resources and audit log", async () => {
+    const { user } = setup("/admin/servers/ma-commu/resources");
+    await loginAsOwner(user);
+    expect(await screen.findByText("Notifs événements")).toBeTruthy();
+    expect(screen.getAllByText("unmanaged").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("radio", { name: "Unmanaged" }));
+    expect(screen.queryByText("Notifs événements")).toBeNull();
+    await user.click(screen.getByRole("tab", { name: "Audit log" }));
+    expect(await screen.findByText("moderator/onboarding")).toBeTruthy();
+  });
+
+  test("plan helpers", () => {
+    const groups = groupChanges([
+      { action: "create", kind: "channel", key: "a", summary: "" },
+      { action: "update", kind: "role", key: "b", summary: "" },
+      { action: "delete", kind: "zzz", key: "c", summary: "" },
+    ]);
+    expect(groups.map(([k]) => k)).toEqual(["role", "channel", "zzz"]);
+    expect(formatPath(["steps", 0, "options", 1, "role"])).toBe("steps[0].options[1].role");
+  });
+});
+
+describe("plugin settings", () => {
+  test("edit, review the diff and commit", async () => {
+    const { user, runtime } = setup("/admin/servers/ma-commu/plugins");
+    await loginAsOwner(user);
+    const card = await screen.findByRole("article", { name: /Welcome/ });
+    expect(within(card).getByText("Send DMs")).toBeTruthy();
+    expect(within(card).getByText("welcome-preview")).toBeTruthy();
+    const message = within(card).getByRole("textbox", { name: "Message" });
+    await user.clear(message);
+    await user.type(message, "Coucou {{member}");
+    await user.click(within(card).getByRole("button", { name: "Review changes" }));
+    const review = within(card).getByText("Review changes").closest(".review") as HTMLElement;
+    expect(within(review).getByText("message")).toBeTruthy();
+    expect(within(review).getByText("Coucou {member}")).toBeTruthy();
+    await user.click(within(card).getByRole("button", { name: "Save to git" }));
+    expect(
+      await within(card).findByText("is now the active revision", { exact: false }),
+    ).toBeTruthy();
+    expect(runtime.state.instances[0]!.override["message"]).toBe("Coucou {member}");
+    // The form reloads with the saved value and no pending change.
+    await waitFor(() =>
+      expect(within(card).queryByRole("button", { name: "Review changes" })).toBeNull(),
+    );
+  });
+
+  test("client validation blocks review; 422 diagnostics land on fields", async () => {
+    const { user } = setup("/admin/servers/ma-commu/plugins", (url, init) => {
+      if (init.method === "PUT" && url.pathname.endsWith("/onboarding/config"))
+        return json(
+          {
+            error: {
+              code: "invalid",
+              message: "the configuration is invalid",
+              diagnostics: [
+                {
+                  severity: "error",
+                  path: "/spec/plugins/1/overrides/ma-commu/config/buttonLabel",
+                  message: "[server ma-commu] label already used by another plugin",
+                },
+              ],
+            },
+          },
+          422,
+        );
+      return undefined;
+    });
+    await loginAsOwner(user);
+    const card = await screen.findByRole("article", { name: /Onboarding/ });
+    const title = within(card).getByRole("textbox", { name: "Title" });
+    await user.clear(title);
+    await user.click(within(card).getByRole("button", { name: "Review changes" }));
+    const alerts = await within(card).findAllByRole("alert");
+    expect(alerts.some((a) => a.textContent === "Required")).toBe(true);
+    expect(within(card).queryByRole("button", { name: "Save to git" })).toBeNull();
+
+    await user.type(title, "Salut");
+    const label = within(card).getByRole("textbox", { name: "Button label" });
+    await user.clear(label);
+    await user.type(label, "Go");
+    await user.click(within(card).getByRole("button", { name: "Review changes" }));
+    await user.click(within(card).getByRole("button", { name: "Save to git" }));
+    expect(await within(card).findByText("label already used by another plugin")).toBeTruthy();
+    expect(within(card).getByText("The runtime rejected the configuration")).toBeTruthy();
+  });
+
+  test("409 conflict offers a reload; pull request mode links the PR", async () => {
+    let mode: "conflict" | "pr" = "conflict";
+    const { user } = setup("/admin/servers/ma-commu/plugins", (_url, init) => {
+      if (init.method !== "PUT") return undefined;
+      return mode === "conflict"
+        ? json(
+            { error: { code: "conflict", message: "the configuration changed since revision x." } },
+            409,
+          )
+        : json({
+            mode: "pullRequest",
+            revision: "",
+            pullRequestUrl: "https://github.com/o/r/pull/7",
+          });
+    });
+    await loginAsOwner(user);
+    const card = await screen.findByRole("article", { name: /Welcome/ });
+    await user.click(within(card).getByRole("switch", { name: "Dm onboarding" }));
+    await user.click(within(card).getByRole("button", { name: "Review changes" }));
+    await user.click(within(card).getByRole("button", { name: "Save to git" }));
+    expect(
+      await within(card).findByText("The configuration changed since you opened it"),
+    ).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Reload settings" })).toBeTruthy();
+
+    mode = "pr";
+    await user.click(within(card).getByRole("button", { name: "Review changes" }));
+    await user.click(within(card).getByRole("button", { name: "Save to git" }));
+    const link = await within(card).findByRole("link", { name: /Pull request opened/ });
+    expect(link.getAttribute("href")).toBe("https://github.com/o/r/pull/7");
+  });
+
+  test("base scope edits spec.plugins[].config, not the effective values", async () => {
+    let sent: { config: Record<string, unknown>; scope: string } | undefined;
+    const { user, runtime } = setup("/admin/servers/ma-commu/plugins", (_url, init) => {
+      if (init.method === "PUT") sent = JSON.parse(init.body as string) as typeof sent;
+      return undefined;
+    });
+    await loginAsOwner(user);
+    const card = await screen.findByRole("article", { name: /Welcome/ });
+    expect(within(card).getByText("message", { selector: ".editor-note code" })).toBeTruthy();
+    await user.click(within(card).getByRole("radio", { name: "Base config" }));
+    const message = within(card).getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
+    expect(message.value).toBe("Bienvenue {member} sur {server} ! 👋");
+    expect(within(card).getByText(/the override still wins for/)).toBeTruthy();
+    await user.click(within(card).getByRole("switch", { name: "Dm onboarding" }));
+    // Switching scope is blocked while there are unsaved changes.
+    expect(
+      (within(card).getByRole("radio", { name: "This server's override" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    await user.click(within(card).getByRole("button", { name: "Review changes" }));
+    await user.click(within(card).getByRole("button", { name: "Save to git" }));
+    await within(card).findByText("is now the active revision", { exact: false });
+    expect(sent?.scope).toBe("base");
+    expect(sent?.config["message"]).toBe("Bienvenue {member} sur {server} ! 👋");
+    expect(sent?.config["dmOnboarding"]).toBe(false);
+    expect(runtime.state.instances[0]!.override["message"]).toMatch(/^Salut/);
+  });
+
+  test("moderators see admin-only fields locked and 403 is explained", async () => {
+    const { user } = setup("/admin/servers/ma-commu/plugins", (_url, init) =>
+      init.method === "PUT"
+        ? json({ error: { code: "forbidden", message: "you may not change: channel" } }, 403)
+        : undefined,
+    );
+    await user.click(await screen.findByRole("button", { name: /Mina/ }));
+    const card = await screen.findByRole("article", { name: /Welcome/ });
+    expect(
+      (within(card).getByRole("combobox", { name: "Channel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    const message = within(card).getByRole("textbox", { name: "Message" });
+    await user.type(message, "!");
+    await user.click(within(card).getByRole("button", { name: "Review changes" }));
+    await user.click(within(card).getByRole("button", { name: "Save to git" }));
+    expect(await within(card).findByText("Your role cannot save this change")).toBeTruthy();
+  });
+
+  test("a 401 on any call returns to the login page", async () => {
+    let expired = false;
+    const { user } = setup("/admin/servers/ma-commu/plugins", (url) =>
+      expired && url.pathname.startsWith("/api/v1/")
+        ? json({ error: { code: "unauthenticated", message: "login required" } }, 401)
+        : undefined,
+    );
+    await loginAsOwner(user);
+    await screen.findByRole("article", { name: /Welcome/ });
+    expired = true;
+    await user.click(screen.getByRole("link", { name: "Server" }));
+    expect(
+      await screen.findByRole("heading", { name: "Sign in to the operator console" }),
+    ).toBeTruthy();
+  });
+});
+
+describe("simulator", () => {
+  test("join a user: welcome message, role, DM with the portal link; run a command; click a button", async () => {
+    const { user } = setup("/admin/simulator");
+    await loginAsOwner(user);
+    expect(await screen.findByRole("heading", { name: "général" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "alice joins the server" }));
+    expect(await screen.findByText(/bienvenue sur Ma Commu/)).toBeTruthy();
+    const members = screen.getByRole("complementary", { name: "Members" });
+    expect(await within(members).findByText("Alice")).toBeTruthy();
+
+    await user.click(within(members).getByRole("button", { name: "DMs of alice" }));
+    const link = await screen.findByRole("link", { name: /Commencer/ });
+    expect(link.getAttribute("href")).toMatch(/\/onboarding\?codi_token=/);
+    expect(link.getAttribute("target")).toBe("_blank");
+
+    // Slash command as the owner
+    await user.click(screen.getByRole("button", { name: /général/ }));
+    await user.click(screen.getByRole("tab", { name: "Slash command" }));
+    await user.selectOptions(await screen.findByLabelText("Command"), "moderator/welcome-preview");
+    await user.click(screen.getByRole("button", { name: "Run /welcome-preview" }));
+    const result = await screen.findByRole("status", { name: "Interaction result" });
+    expect(within(result).getByText("replied")).toBeTruthy();
+    expect(within(result).getByText("ephemeral")).toBeTruthy();
+
+    // Buttons call the component endpoint
+    await user.click(screen.getByRole("button", { name: /règlement/ }));
+    await user.click(await screen.findByRole("button", { name: /En savoir plus/ }));
+    await waitFor(() => expect(screen.getByText("Clicked “En savoir plus”")).toBeTruthy());
+    expect(screen.getByText("1 followup")).toBeTruthy();
+  });
+
+  test("send a message as a member and create a user", async () => {
+    const { user } = setup("/admin/simulator");
+    await loginAsOwner(user);
+    const input = await screen.findByRole("textbox", { name: "Message" });
+    await user.type(input, "Salut **tout le monde**{Enter}");
+    expect(await screen.findByText("tout le monde")).toBeTruthy();
+    await user.type(screen.getByLabelText("New user name"), "dave");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByRole("button", { name: "dave joins the server" })).toBeTruthy();
+  });
+
+  test("command options accept string or numeric types", () => {
+    expect(normalizeOption({ name: "member", type: 6, required: true })).toMatchObject({
+      name: "member",
+      type: "user",
+      required: true,
+    });
+    expect(
+      normalizeOption({ name: "n", type: "INTEGER", choices: [{ name: "One", value: 1 }] }),
+    ).toMatchObject({ type: "integer", choices: [{ name: "One", value: 1 }] });
+    expect(normalizeOption("nope")).toBeNull();
+  });
+});

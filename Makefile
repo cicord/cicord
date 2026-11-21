@@ -14,7 +14,7 @@ build:
 ## ui: build the JS workspace and copy the admin UI / portal into the Go embed dirs
 ui:
 	pnpm install --frozen-lockfile
-	pnpm -r build
+	pnpm -r --filter "./packages/*" build
 	./scripts/sync-ui.sh
 
 test: test-go test-js

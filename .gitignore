@@ -9,3 +9,6 @@ dist/
 .codi-data/
 bin/
 *.tsbuildinfo
+internal/webui/admin/assets/
+internal/webui/portal/assets/
+internal/webui/*/favicon.svg

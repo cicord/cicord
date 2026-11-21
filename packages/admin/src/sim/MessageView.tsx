@@ -1,0 +1,302 @@
+/** Discord-like rendering of simulator messages: content, embeds, buttons and selects. */
+import type { Message, MessageButton, MessageEmbed, MessageSelect, User } from "@codi/client";
+import { useState } from "react";
+import { Markdown, isSafeUrl } from "../schema-form/index.ts";
+import { IconExternal, IconEye } from "../ui/icons.tsx";
+import { Avatar, Spinner } from "../ui/index.tsx";
+
+export interface MentionResolver {
+  user: (id: string) => string | undefined;
+  role: (id: string) => string | undefined;
+  channel: (id: string) => string | undefined;
+}
+
+export interface MessageListProps {
+  messages: Message[];
+  resolver: MentionResolver;
+  /** Viewer of ephemeral messages (they are shown as "only visible to …"). */
+  viewer?: User | undefined;
+  onComponent?: (message: Message, customId: string, values: string[]) => Promise<void>;
+  /** Message ids with an interaction in flight. */
+  busy?: string | null;
+  botIds?: ReadonlySet<string>;
+}
+
+const timeFmt = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" });
+const dayFmt = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+
+function when(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const today = new Date();
+  return d.toDateString() === today.toDateString()
+    ? `Today at ${timeFmt.format(d)}`
+    : `${dayFmt.format(d)} at ${timeFmt.format(d)}`;
+}
+
+/** Consecutive messages of the same author within 5 minutes are grouped. */
+function grouped(prev: Message | undefined, m: Message): boolean {
+  if (!prev || prev.author.id !== m.author.id || prev.ephemeral !== m.ephemeral) return false;
+  return Date.parse(m.createdAt) - Date.parse(prev.createdAt) < 5 * 60000;
+}
+
+export function MessageList(props: MessageListProps) {
+  return (
+    <ol className="msg-list">
+      {props.messages.map((m, i) => (
+        <MessageItem
+          key={m.id}
+          message={m}
+          compact={grouped(props.messages[i - 1], m)}
+          {...props}
+        />
+      ))}
+    </ol>
+  );
+}
+
+export function MessageItem({
+  message,
+  compact,
+  resolver,
+  viewer,
+  onComponent,
+  busy,
+  botIds,
+}: Omit<MessageListProps, "messages"> & { message: Message; compact?: boolean }) {
+  const m = message;
+  const isBot = (m.author as User & { bot?: boolean }).bot || botIds?.has(m.author.id);
+  const name = m.author.displayName || m.author.username;
+  const edited = (m as Message & { editedAt?: string }).editedAt;
+  return (
+    <li
+      className="msg"
+      data-compact={compact || undefined}
+      data-ephemeral={m.ephemeral || undefined}
+    >
+      {compact ? (
+        <span className="msg-gutter-time" aria-hidden="true">
+          {timeFmt.format(new Date(m.createdAt))}
+        </span>
+      ) : (
+        <Avatar name={name} url={m.author.avatarUrl} size={36} bot={isBot} />
+      )}
+      <div className="msg-main">
+        {compact ? null : (
+          <div className="msg-head">
+            <span className="msg-author">{name}</span>
+            {isBot ? <span className="msg-bot-tag">BOT</span> : null}
+            <time className="msg-time" dateTime={m.createdAt}>
+              {when(m.createdAt)}
+            </time>
+          </div>
+        )}
+        {m.content ? (
+          <div className="msg-content">
+            <Markdown source={m.content} resolveMention={(kind, id) => resolver[kind](id)} />
+            {edited ? <span className="msg-edited">(edited)</span> : null}
+          </div>
+        ) : null}
+        {(m.embeds ?? []).map((e, i) => (
+          <Embed key={i} embed={e} resolver={resolver} />
+        ))}
+        {(m.components ?? []).length ? (
+          <div className="msg-components">
+            {m.components.map((row, i) => (
+              <div className="msg-row" key={i}>
+                {(row.components ?? []).map((c, j) =>
+                  c.type === "select" ? (
+                    <SelectMenu
+                      key={j}
+                      select={c}
+                      disabled={!onComponent || busy === m.id}
+                      onPick={(values) => onComponent?.(m, c.customId, values)}
+                    />
+                  ) : (
+                    <ComponentButton
+                      key={j}
+                      button={c as MessageButton}
+                      busy={busy === m.id}
+                      onClick={
+                        onComponent
+                          ? () => onComponent(m, (c as MessageButton).customId, [])
+                          : undefined
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {m.ephemeral ? (
+          <p className="msg-ephemeral">
+            <IconEye size={12} /> Only{" "}
+            {viewer ? viewer.displayName || viewer.username : "the invoking user"} can see this
+          </p>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function Embed({ embed, resolver }: { embed: MessageEmbed; resolver: MentionResolver }) {
+  const e = embed as MessageEmbed & { imageUrl?: string; thumbnailUrl?: string };
+  const image = e.image?.url ?? e.imageUrl;
+  const thumb = e.thumbnail?.url ?? e.thumbnailUrl;
+  return (
+    <div className="embed" style={{ borderLeftColor: e.color || undefined }}>
+      <div className="embed-body">
+        {e.author?.name ? <div className="embed-author">{e.author.name}</div> : null}
+        {e.title ? (
+          <div className="embed-title">
+            {e.url && isSafeUrl(e.url) ? (
+              <a href={e.url} target="_blank" rel="noreferrer">
+                {e.title}
+              </a>
+            ) : (
+              e.title
+            )}
+          </div>
+        ) : null}
+        {e.description ? (
+          <div className="embed-desc">
+            <Markdown source={e.description} resolveMention={(k, id) => resolver[k](id)} />
+          </div>
+        ) : null}
+        {e.fields?.length ? (
+          <div className="embed-fields">
+            {e.fields.map((f, i) => (
+              <div key={i} className="embed-field" data-inline={f.inline || undefined}>
+                <div className="embed-field-name">{f.name}</div>
+                <div className="embed-field-value">
+                  <Markdown source={f.value} resolveMention={(k, id) => resolver[k](id)} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {image && isSafeUrl(image) ? <img className="embed-image" src={image} alt="" /> : null}
+        {e.footer?.text ? <div className="embed-footer">{e.footer.text}</div> : null}
+      </div>
+      {thumb && isSafeUrl(thumb) ? <img className="embed-thumb" src={thumb} alt="" /> : null}
+    </div>
+  );
+}
+
+function ComponentButton({
+  button,
+  busy,
+  onClick,
+}: {
+  button: MessageButton;
+  busy: boolean;
+  onClick: (() => Promise<void>) | undefined;
+}) {
+  const b = button as Omit<MessageButton, "type"> & { type: string };
+  const link = b.style === "link" || b.type === "link" || (!!b.url && !b.customId);
+  const style = link ? "link" : b.style || "secondary";
+  const content = (
+    <>
+      {b.emoji ? <span className="btn-emoji">{b.emoji}</span> : null}
+      {b.label ? <span>{b.label}</span> : null}
+      {link ? <IconExternal size={12} /> : null}
+    </>
+  );
+  if (link) {
+    if (!b.url || !isSafeUrl(b.url))
+      return (
+        <span className="dbtn dbtn-link" aria-disabled="true">
+          {content}
+        </span>
+      );
+    return (
+      <a
+        className="dbtn dbtn-link"
+        href={b.url}
+        target="_blank"
+        rel="noreferrer"
+        title={b.url}
+        aria-disabled={b.disabled || undefined}
+      >
+        {content}
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`dbtn dbtn-${style}`}
+      disabled={b.disabled || busy || !onClick}
+      onClick={() => void onClick?.()}
+      title={b.customId ? `customId: ${b.customId}` : undefined}
+    >
+      {busy ? <Spinner size={12} /> : null}
+      {content}
+    </button>
+  );
+}
+
+function SelectMenu({
+  select,
+  disabled,
+  onPick,
+}: {
+  select: MessageSelect;
+  disabled: boolean;
+  onPick: (values: string[]) => void;
+}) {
+  const multi = (select.maxValues ?? 1) > 1;
+  const [picked, setPicked] = useState<string[]>(
+    select.options.filter((o) => o.default).map((o) => o.value),
+  );
+  if (!multi)
+    return (
+      <select
+        className="dselect"
+        disabled={disabled}
+        value=""
+        aria-label={select.placeholder || "Select an option"}
+        onChange={(e) => e.target.value && onPick([e.target.value])}
+      >
+        <option value="">{select.placeholder || "Make a selection"}</option>
+        {select.options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.emoji ? `${o.emoji} ` : ""}
+            {o.label}
+            {o.description ? ` — ${o.description}` : ""}
+          </option>
+        ))}
+      </select>
+    );
+  return (
+    <fieldset className="dselect-multi" disabled={disabled}>
+      <legend>{select.placeholder || "Pick options"}</legend>
+      {select.options.map((o) => (
+        <label key={o.value}>
+          <input
+            type="checkbox"
+            checked={picked.includes(o.value)}
+            onChange={(e) =>
+              setPicked((p) =>
+                e.target.checked ? [...p, o.value] : p.filter((v) => v !== o.value),
+              )
+            }
+          />
+          {o.emoji ? `${o.emoji} ` : ""}
+          {o.label}
+        </label>
+      ))}
+      <button
+        type="button"
+        className="dbtn dbtn-primary"
+        disabled={
+          picked.length < (select.minValues ?? 1) || picked.length > (select.maxValues ?? 25)
+        }
+        onClick={() => onPick(picked)}
+      >
+        Submit
+      </button>
+    </fieldset>
+  );
+}

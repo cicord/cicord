@@ -15,7 +15,6 @@ const notOurs = [
   "pnpm-lock.yaml",
   "**/dist/**",
   "**/node_modules/**",
-  "packages/admin/**",
   "examples/**/*.yaml",
   "examples/**/*.yml",
   "examples/**/*.json",
@@ -35,7 +34,12 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
     overrides: [
       {
-        files: ["packages/react/**", "packages/ui/**", "packages/create-codi-portal/**"],
+        files: [
+          "packages/react/**",
+          "packages/ui/**",
+          "packages/create-codi-portal/**",
+          "packages/admin/**",
+        ],
         plugins: ["typescript", "react"],
       },
     ],

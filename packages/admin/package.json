@@ -1,0 +1,37 @@
+{
+  "name": "@codi/admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generic CODI admin console (React + Vite+), prebuilt and embedded in the codi binary under /admin/.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "dev:mock": "vp dev --mode mock",
+    "build": "tsc --noEmit && vp build",
+    "preview": "vp preview",
+    "test": "vp test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@codi/client": "workspace:*",
+    "@codi/react": "workspace:*",
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
