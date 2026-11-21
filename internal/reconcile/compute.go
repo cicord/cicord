@@ -253,8 +253,14 @@ func (p *planner) resolve(kind state.ResourceKind, key string, alive func(id str
 			p.ids[kind][key] = m.ID
 			return
 		}
-		// The mapped resource was deleted in Discord: adopt a matching unmapped one
-		// (e.g. a once-per-server AutoMod rule recreated by hand), else create.
+		// The mapped resource was deleted in Discord. Only AutoMod rules may then adopt a
+		// matching unmapped one (a once-per-server rule recreated by hand). A role or
+		// channel is recreated: adopting a same-named one would hand the managed
+		// permissions to whoever created it and its members.
+		if kind != state.KindAutoMod {
+			p.how[kind][key] = "create"
+			return
+		}
 	}
 	if id := adopt(); id != "" {
 		p.consumed[id] = true

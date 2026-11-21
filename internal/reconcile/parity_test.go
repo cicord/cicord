@@ -638,3 +638,36 @@ func TestParityAutoModStaleMappingAdopts(t *testing.T) {
 	}
 	e.mustEmptyPlan(r)
 }
+
+// A managed role deleted in Discord is recreated, never replaced by a same-named role
+// someone created meanwhile (it would inherit the managed permissions with its members).
+func TestStaleRoleMappingIsNotAdopted(t *testing.T) {
+	desired, root := parityRepo(t, "  roles:\n    admin: {name: Admin, permissions: [Administrator]}\n")
+	e := newEnv(t, desired, root)
+	r := e.reconciler(e.session)
+	ctx := context.Background()
+	if p, res, err := r.Sync(ctx); err != nil || len(res.Failed) > 0 {
+		t.Fatalf("sync: %v\n%s", err, p)
+	}
+	m, err := e.store.Resources().Get(ctx, e.desired.Metadata.Name, state.KindRole, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.session.DeleteRole(ctx, e.srv.ID, m.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	impostor, err := e.session.CreateRole(ctx, e.srv.ID, discord.RoleParams{Name: ptrTo("Admin")}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _, err := r.Sync(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.store.Resources().Get(ctx, e.desired.Metadata.Name, state.KindRole, "admin")
+	if err != nil || got.ID == impostor.ID {
+		t.Fatalf("stale mapping adopted the same-named role: %+v %v\n%s", got, err, p)
+	}
+}
+
+func ptrTo[T any](v T) *T { return &v }
