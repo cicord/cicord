@@ -115,7 +115,9 @@ func sameTree(a, b *yaml.Node) bool {
 			return false
 		}
 	}
-	return a.Kind != yaml.AliasNode || sameTree(a.Alias, b.Alias)
+	// Aliases are compared by anchor name (Value) above; the anchored nodes are compared
+	// where they appear. Never follow Alias pointers (alias-expansion DoS).
+	return true
 }
 
 func setNode(n *yaml.Node, path []PathElem, value any) error {
