@@ -20,6 +20,8 @@ No public release until the product is complete.
 - [ ] Real Discord: test member join (needs a second account)
 
 ## Discord parity (docs/discord-parity.md)
+- [ ] Live status: boost level + boost count, features (Community…) in contract/API/admin UI; boost-gated fields blocked in plans with a reason
+- [ ] Server icon + banner (cover): declarable in YAML and editable (upload) from the admin UI
 - [ ] Community: enable + rules/public updates channels, explicit content filter, safety alerts channel
 - [ ] Server: system message flags, AFK channel/timeout, widget, preferred locale, boost progress bar, banner
 - [ ] AutoMod rules

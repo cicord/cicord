@@ -98,9 +98,18 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | Server template | 🚫 | |
 | Boost perks | 🚫 | |
 
+## Live server status (read-only, shown in the admin UI and used by the planner)
+| Information | CODI | Notes |
+|---|---|---|
+| Boost level and boost count | ❌ | `premium_tier`, `premium_subscription_count`: features locked by boost level (banner, role icons, gradient role colors, splash, upload limits…) must be **blocked in the plan with a clear reason** ("banner requires boost level 2, server is level 0") instead of failing on apply |
+| Community enabled | ❌ | `features` contains `COMMUNITY` (also `DISCOVERABLE`, `WELCOME_SCREEN_ENABLED`, `ROLE_ICONS`…) |
+| Icon / banner currently set | 🟡 | icon URL only; banner URL missing |
+
 ## Priorities
-1. Community (enable + required channels + explicit filter), system message flags, AFK, widget,
-   locale, progress bar, safety alerts channel.
+1. Live status (boost level/count, features incl. Community) in the contract, API and admin UI,
+   with boost-gated fields blocked in plans; icon + banner (cover) declarable and editable from
+   the admin UI. Then Community (enable + required channels + explicit filter), system message
+   flags, AFK, widget, locale, progress bar, safety alerts channel.
 2. AutoMod rules.
 3. Discord native onboarding + welcome screen.
 4. Role icons (image + emoji) and gradient colors; channel extras (region, video quality,
