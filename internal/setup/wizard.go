@@ -452,7 +452,7 @@ func (w *Wizard) view(ctx context.Context, s State) View {
 	if r := s.Repo; r != nil {
 		v.Repo = &RepoView{Provider: r.Provider, URL: r.URL, Branch: r.Branch, TokenStored: r.TokenRef != "" && w.opts.Secrets.Has(ctx, r.TokenRef)}
 	}
-	v.Login = LoginView{LoginState: s.Login, RedirectURL: strings.TrimRight(w.opts.PublicURL, "/") + "/auth/callback"}
+	v.Login = LoginView{LoginState: s.Login, RedirectURL: w.redirectURL()}
 	if s.Bot != nil {
 		v.Login.ClientID = s.Bot.ApplicationID
 		v.Login.PortalURL = PortalOAuthURL(s.Bot.ApplicationID)
@@ -1080,10 +1080,40 @@ func (w *Wizard) SaveOAuth(ctx context.Context, secret string) (View, error) {
 			return View{}, explainProbeErr(err)
 		}
 	}
+	if err := w.checkRedirect(ctx, s.Bot); err != nil {
+		return View{}, err
+	}
 	if err := w.opts.Secrets.Set(ctx, OAuthSecretName, secret); err != nil {
 		return View{}, err
 	}
 	return w.update(ctx, func(st *State) error { st.Login.Configured, st.Login.Skipped = true, false; return nil })
+}
+
+// redirectURL is where Discord sends members back after "Continue with Discord".
+func (w *Wizard) redirectURL() string {
+	return strings.TrimRight(w.opts.PublicURL, "/") + "/auth/callback"
+}
+
+// checkRedirect fails when the application does not list CODI's callback among its
+// OAuth2 redirects: Discord would answer "invalid redirect_uri" at the first login.
+// It is skipped when the redirects cannot be read (simulator, probe error).
+func (w *Wizard) checkRedirect(ctx context.Context, bot *BotState) error {
+	tok, ok := w.secret(bot.SecretRef)
+	if !ok {
+		return nil
+	}
+	id, err := w.opts.Probe.Identify(ctx, tok)
+	if err != nil || id.RedirectURIs == nil {
+		return nil
+	}
+	want := w.redirectURL()
+	if slices.Contains(id.RedirectURIs, want) {
+		return nil
+	}
+	return &Error{Status: http.StatusUnprocessableEntity, Code: "redirect_missing",
+		Message: "Discord does not know CODI's login address yet.",
+		Hint:    "In the Developer Portal open OAuth2 → Redirects, add " + want + " exactly as written, save, then try again.",
+		Link:    PortalOAuthURL(bot.ApplicationID)}
 }
 
 // LoginTested records a successful test login.

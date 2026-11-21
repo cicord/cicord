@@ -64,6 +64,9 @@ type Identity struct {
 	ApplicationID   string
 	ApplicationName string
 	Flags           int
+	// RedirectURIs are the OAuth2 redirects registered on the application; nil when
+	// the probe cannot tell (the redirect check is then skipped).
+	RedirectURIs []string
 }
 
 // ServerSummary is a server the bot is a member of.
@@ -190,14 +193,18 @@ func (p *HTTPProbe) Identify(ctx context.Context, token string) (Identity, error
 		return Identity{}, errors.New("this token belongs to a user account, not a bot: copy the token from the Bot page of your application")
 	}
 	var app struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Flags int    `json:"flags"`
+		ID           string    `json:"id"`
+		Name         string    `json:"name"`
+		Flags        int       `json:"flags"`
+		RedirectURIs *[]string `json:"redirect_uris"`
 	}
 	if err := p.get(ctx, token, "/oauth2/applications/@me", &app); err != nil {
 		return Identity{}, err
 	}
 	id := Identity{BotUserID: me.ID, BotUsername: me.Username, ApplicationID: app.ID, ApplicationName: app.Name, Flags: app.Flags}
+	if app.RedirectURIs != nil {
+		id.RedirectURIs = append([]string{}, *app.RedirectURIs...)
+	}
 	if me.Avatar != "" {
 		id.BotAvatarURL = fmt.Sprintf("%s/avatars/%s/%s.png", p.cdn(), me.ID, me.Avatar)
 	}
