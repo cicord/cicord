@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../../../spec/schemas/bot.schema.json
+apiVersion: codi.dev/v1alpha1
+kind: Bot
+metadata:
+  name: moderator
+spec:
+  applicationId: "998877665544332211"
+  token:
+    secretRef: DISCORD_TOKEN_MODERATOR
+  profile:
+    username: Gardien
+  presence:
+    status: online
+    activity:
+      type: watching
+      name: la commu
+  servers: [ma-commu]
+  plugins:
+    - name: welcome
+      source: ../../plugins/welcome
+      grants:
+        - discord.messages.send
+        - discord.channels.read
+        - discord.members.read
+        - discord.roles.assign
+        - discord.dm.send
+        - portal.links
+        - storage.kv
+      config:
+        channel: general
+        message: "Bienvenue {member} sur {server} ! 👋"
+        autoRole: member
+        dmOnboarding: true
+      overrides:
+        ma-commu:
+          config:
+            message: "Salut {member}, bienvenue sur {server} ! Passe lire le règlement."

@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codi.dev/schemas/v1alpha1/server.schema.json",
+  "title": "CODI Server",
+  "description": "Desired state of one Discord server. File: servers/<metadata.name>.yaml",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
+    "kind": { "const": "Server" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["discordId"],
+      "properties": {
+        "discordId": { "$ref": "common.schema.json#/$defs/snowflake" },
+        "profile": { "$ref": "#/$defs/profile" },
+        "syncPolicy": { "$ref": "#/$defs/syncPolicy" },
+        "everyone": {
+          "description": "Permissions of the @everyone role.",
+          "type": "object",
+          "properties": {
+            "permissions": { "$ref": "common.schema.json#/$defs/permissions" }
+          },
+          "additionalProperties": false
+        },
+        "roles": {
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": { "$ref": "#/$defs/role" }
+        },
+        "hierarchy": {
+          "description": "Role keys from highest to lowest. Managed roles not listed are placed below, in key order.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "uniqueItems": true
+        },
+        "categories": {
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": { "$ref": "#/$defs/category" }
+        },
+        "channels": {
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": { "$ref": "#/$defs/channel" }
+        },
+        "access": { "$ref": "#/$defs/access" },
+        "portal": { "$ref": "#/$defs/portal" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 120 },
+        "icon": { "$ref": "common.schema.json#/$defs/relativePath" },
+        "verificationLevel": { "enum": ["none", "low", "medium", "high", "highest"] },
+        "defaultNotifications": { "enum": ["allMessages", "onlyMentions"] },
+        "systemChannel": { "$ref": "common.schema.json#/$defs/key" },
+        "rulesChannel": { "$ref": "common.schema.json#/$defs/key" }
+      },
+      "additionalProperties": false
+    },
+    "syncPolicy": {
+      "type": "object",
+      "properties": {
+        "selfHeal": {
+          "description": "Revert manual changes made in Discord instead of only reporting drift.",
+          "type": "boolean",
+          "default": false
+        },
+        "prune": {
+          "description": "Delete resources that were managed and have been removed from the config.",
+          "type": "boolean",
+          "default": false
+        },
+        "deletionProtection": {
+          "description": "Refuse any deletion, even when prune is enabled.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "role": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "color": { "$ref": "common.schema.json#/$defs/color" },
+        "hoist": { "type": "boolean", "default": false },
+        "mentionable": { "type": "boolean", "default": false },
+        "icon": { "$ref": "common.schema.json#/$defs/relativePath" },
+        "permissions": { "$ref": "common.schema.json#/$defs/permissions" }
+      },
+      "additionalProperties": false
+    },
+    "category": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "position": { "type": "integer", "minimum": 0 },
+        "overwrites": { "$ref": "common.schema.json#/$defs/overwrites" }
+      },
+      "additionalProperties": false
+    },
+    "channel": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "type": { "enum": ["text", "voice", "announcement", "stage", "forum", "media"] },
+        "category": { "$ref": "common.schema.json#/$defs/key" },
+        "position": {
+          "description": "Order inside the category (ascending, ties broken by key).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "topic": { "type": "string", "maxLength": 1024 },
+        "nsfw": { "type": "boolean", "default": false },
+        "slowmode": {
+          "description": "Seconds between messages per member.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 21600
+        },
+        "bitrate": { "type": "integer", "minimum": 8000 },
+        "userLimit": { "type": "integer", "minimum": 0, "maximum": 99 },
+        "syncWithCategory": {
+          "description": "Inherit the category overwrites. Defaults to true when no overwrites are set.",
+          "type": "boolean"
+        },
+        "overwrites": { "$ref": "common.schema.json#/$defs/overwrites" }
+      },
+      "additionalProperties": false
+    },
+    "principals": {
+      "type": "object",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "uniqueItems": true
+        },
+        "users": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/snowflake" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "access": {
+      "description": "Who can use the admin UI for this server. The server owner is always admin.",
+      "type": "object",
+      "properties": {
+        "admins": { "$ref": "#/$defs/principals" },
+        "moderators": { "$ref": "#/$defs/principals" }
+      },
+      "additionalProperties": false
+    },
+    "portal": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "type": "object",
+          "properties": {
+            "primary": { "$ref": "common.schema.json#/$defs/color" },
+            "accent": { "$ref": "common.schema.json#/$defs/color" },
+            "logo": { "$ref": "common.schema.json#/$defs/relativePath" },
+            "mode": { "enum": ["light", "dark", "system"], "default": "system" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

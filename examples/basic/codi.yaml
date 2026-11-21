@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../spec/schemas/project.schema.json
+apiVersion: codi.dev/v1alpha1
+kind: Project
+metadata:
+  name: ma-commu
+spec:
+  engine: ">=0.1.0 <0.2.0"
+  source:
+    provider: github
+    repo: https://github.com/example/ma-commu-codi
+    branch: main
+  runtime:
+    url: https://codi.ma-commu.example
+  registries:
+    - name: codi
+      url: https://github.com/codi-dev/registry
+  writeBack:
+    defaultMode: pullRequest
+    policies:
+      # Plugin settings edited in the admin UI are committed directly…
+      - paths: ["bots/**"]
+        mode: commit
+      # …while structural changes (roles, channels, permissions) need a review.
+      - paths: ["servers/**"]
+        mode: pullRequest

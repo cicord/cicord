@@ -1,0 +1,98 @@
+# yaml-language-server: $schema=../../../spec/schemas/server.schema.json
+apiVersion: codi.dev/v1alpha1
+kind: Server
+metadata:
+  name: ma-commu
+spec:
+  discordId: "112233445566778899"
+  profile:
+    name: Ma Commu
+    verificationLevel: medium
+    defaultNotifications: onlyMentions
+    systemChannel: general
+    rulesChannel: rules
+
+  syncPolicy:
+    selfHeal: false
+    prune: false
+    deletionProtection: true
+
+  everyone:
+    permissions: [ViewChannel, ReadMessageHistory, AddReactions, UseApplicationCommands]
+
+  roles:
+    admin:
+      name: Admin
+      color: "#e74c3c"
+      hoist: true
+      permissions: [Administrator]
+    modo:
+      name: Modo
+      color: "#e67e22"
+      hoist: true
+      permissions: [KickMembers, ModerateMembers, ManageMessages, ManageThreads]
+    member:
+      name: Membre
+      color: "#3498db"
+      permissions: [SendMessages, EmbedLinks, AttachFiles, Connect, Speak]
+
+  hierarchy: [admin, modo, member]
+
+  categories:
+    info:
+      name: Infos
+      position: 0
+      overwrites:
+        "@everyone":
+          deny: [SendMessages]
+    community:
+      name: Communauté
+      position: 1
+    staff:
+      name: Staff
+      position: 2
+      overwrites:
+        "@everyone":
+          deny: [ViewChannel]
+        modo:
+          allow: [ViewChannel]
+
+  channels:
+    rules:
+      name: règlement
+      type: text
+      category: info
+      position: 0
+    announcements:
+      name: annonces
+      type: announcement
+      category: info
+      position: 1
+    general:
+      name: général
+      type: text
+      category: community
+      topic: Discussions générales
+      position: 0
+    voice:
+      name: Vocal
+      type: voice
+      category: community
+      position: 1
+      userLimit: 10
+    staff-chat:
+      name: staff
+      type: text
+      category: staff
+
+  access:
+    admins:
+      roles: [admin]
+    moderators:
+      roles: [modo]
+
+  portal:
+    theme:
+      primary: "#5865f2"
+      accent: "#eb459e"
+      mode: dark

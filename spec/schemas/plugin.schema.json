@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codi.dev/schemas/v1alpha1/plugin.schema.json",
+  "title": "CODI Plugin manifest",
+  "description": "Static, reviewable description of a plugin. File: plugin.yaml at the plugin root. Commands, handlers and routes come from the code (definePlugin).",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
+    "kind": { "const": "Plugin" },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "$ref": "common.schema.json#/$defs/key" },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+        },
+        "displayName": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 280 },
+        "authors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "license": {
+          "description": "SPDX identifier.",
+          "type": "string"
+        },
+        "homepage": { "type": "string", "format": "uri" },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 10
+        }
+      },
+      "additionalProperties": false
+    },
+    "spec": {
+      "type": "object",
+      "required": ["engine", "entry"],
+      "properties": {
+        "engine": { "$ref": "common.schema.json#/$defs/semverRange" },
+        "entry": {
+          "description": "TypeScript/JavaScript entry module, default-exporting definePlugin(...).",
+          "$ref": "common.schema.json#/$defs/relativePath"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/capability" },
+          "uniqueItems": true
+        },
+        "network": {
+          "description": "Hosts reachable with http.fetch. Required when http.fetch is requested.",
+          "type": "object",
+          "properties": {
+            "allow": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^(\\*\\.)?[a-z0-9.-]+(:[0-9]+)?$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": ["allow"],
+          "additionalProperties": false
+        },
+        "intents": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/intent" },
+          "uniqueItems": true
+        },
+        "config": {
+          "type": "object",
+          "required": ["schema"],
+          "properties": {
+            "schema": {
+              "description": "JSON Schema of the plugin config. Supports x-codi-ref and x-codi-widget.",
+              "$ref": "common.schema.json#/$defs/relativePath"
+            }
+          },
+          "additionalProperties": false
+        },
+        "client": {
+          "description": "Optional npm package with React components for the community portal.",
+          "type": "object",
+          "required": ["package"],
+          "properties": {
+            "package": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "capabilities": { "type": "array", "contains": { "const": "http.fetch" } }
+        },
+        "required": ["capabilities"]
+      },
+      "then": { "required": ["network"] }
+    }
+  },
+  "additionalProperties": false
+}

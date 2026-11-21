@@ -1,0 +1,21 @@
+# ADR-0013 — Licensing
+
+**Status:** Proposed — "probably open source" is agreed; the split below is not decided yet.
+
+## Context
+The project is open source and monetized through hosting (SaaS). The SDKs must be easy to
+adopt; the runtime should not be re-hosted by a competitor without contributing back.
+
+## Proposal
+- **Apache-2.0** for SDKs and authoring tools: `@codi/sdk`, `@codi/client`, `@codi/react`,
+  `@codi/ui`, `create-codi-portal`, JSON Schemas.
+- **AGPL-3.0** for the runtime and CLI (`codi`).
+- Plugins choose their own license (declared in `plugin.yaml`).
+
+## Alternatives
+- Everything Apache-2.0/MIT: maximum adoption, no protection of the SaaS.
+- FSL / BSL (source-available, converts to open source after N years): protection, but not
+  OSI-approved, which may hurt community trust.
+
+## To decide
+Before the first public release.

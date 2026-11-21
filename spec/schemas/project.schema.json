@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codi.dev/schemas/v1alpha1/project.schema.json",
+  "title": "CODI Project",
+  "description": "Repository-level settings. File: codi.yaml at the repo root.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
+    "kind": { "const": "Project" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["engine"],
+      "properties": {
+        "engine": {
+          "description": "Compatible CODI engine versions.",
+          "$ref": "common.schema.json#/$defs/semverRange"
+        },
+        "source": {
+          "description": "Where the runtime reads this repo from.",
+          "type": "object",
+          "required": ["provider"],
+          "properties": {
+            "provider": { "enum": ["github", "git", "embedded"] },
+            "repo": {
+              "description": "Repository URL (github / git providers).",
+              "type": "string"
+            },
+            "branch": { "type": "string", "default": "main" },
+            "path": {
+              "description": "Sub-directory containing codi.yaml, for monorepos.",
+              "type": "string",
+              "default": "."
+            },
+            "pollInterval": {
+              "description": "Fallback polling interval when webhooks are missed, e.g. 3m.",
+              "type": "string",
+              "pattern": "^[0-9]+(s|m|h)$",
+              "default": "3m"
+            }
+          },
+          "additionalProperties": false,
+          "if": {
+            "properties": { "provider": { "enum": ["github", "git"] } }
+          },
+          "then": { "required": ["provider", "repo"] }
+        },
+        "runtime": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "description": "Public URL of the runtime (used by the CLI and the portal).",
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": false
+        },
+        "registries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "url"],
+            "properties": {
+              "name": { "$ref": "common.schema.json#/$defs/key" },
+              "url": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "writeBack": {
+          "description": "How changes made in the admin UI are committed.",
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "branch": {
+              "description": "Target branch. Defaults to source.branch.",
+              "type": "string"
+            },
+            "defaultMode": { "enum": ["commit", "pullRequest"], "default": "pullRequest" },
+            "policies": {
+              "description": "Evaluated in order; the first policy whose paths match the changed file wins.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["paths", "mode"],
+                "properties": {
+                  "paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "minItems": 1
+                  },
+                  "mode": { "enum": ["commit", "pullRequest"] }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "portal": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "Directory of a custom portal app built by CI and served by the runtime.",
+              "$ref": "common.schema.json#/$defs/relativePath"
+            },
+            "url": {
+              "description": "External portal URL (when hosted elsewhere).",
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

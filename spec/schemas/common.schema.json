@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codi.dev/schemas/v1alpha1/common.schema.json",
+  "title": "CODI common definitions",
+  "$defs": {
+    "apiVersion": {
+      "const": "codi.dev/v1alpha1"
+    },
+    "key": {
+      "description": "Stable resource key. Never changes when the display name changes. Used for references and state.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "snowflake": {
+      "description": "Discord ID.",
+      "type": "string",
+      "pattern": "^[0-9]{17,20}$"
+    },
+    "secretRef": {
+      "description": "Name of a secret resolved by the runtime (environment variable when self-hosted).",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "semverRange": {
+      "description": "Semver range, e.g. ^1.2.0, >=0.1.0 <0.2.0.",
+      "type": "string",
+      "minLength": 1
+    },
+    "relativePath": {
+      "description": "Path relative to the file that declares it.",
+      "type": "string",
+      "pattern": "^\\.{1,2}/"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/key" },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "permission": {
+      "description": "Discord permission, CODI naming (server instead of guild). See spec/README.md for the mapping.",
+      "enum": [
+        "CreateInstantInvite", "KickMembers", "BanMembers", "Administrator", "ManageChannels",
+        "ManageServer", "AddReactions", "ViewAuditLog", "PrioritySpeaker", "Stream", "ViewChannel",
+        "SendMessages", "SendTTSMessages", "ManageMessages", "EmbedLinks", "AttachFiles",
+        "ReadMessageHistory", "MentionEveryone", "UseExternalEmojis", "ViewServerInsights",
+        "Connect", "Speak", "MuteMembers", "DeafenMembers", "MoveMembers", "UseVAD",
+        "ChangeNickname", "ManageNicknames", "ManageRoles", "ManageWebhooks", "ManageExpressions",
+        "UseApplicationCommands", "RequestToSpeak", "ManageEvents", "ManageThreads",
+        "CreatePublicThreads", "CreatePrivateThreads", "UseExternalStickers",
+        "SendMessagesInThreads", "UseEmbeddedActivities", "ModerateMembers",
+        "ViewCreatorMonetizationAnalytics", "UseSoundboard", "CreateExpressions", "CreateEvents",
+        "UseExternalSounds", "SendVoiceMessages", "SendPolls", "UseExternalApps"
+      ]
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/permission" },
+      "uniqueItems": true
+    },
+    "intent": {
+      "description": "Gateway intent, CODI naming. See spec/README.md for the mapping.",
+      "enum": [
+        "Servers", "ServerMembers", "ServerModeration", "ServerExpressions", "ServerIntegrations",
+        "ServerWebhooks", "ServerInvites", "ServerVoiceStates", "ServerPresences", "ServerMessages",
+        "ServerMessageReactions", "ServerMessageTyping", "DirectMessages", "DirectMessageReactions",
+        "DirectMessageTyping", "MessageContent", "ServerScheduledEvents",
+        "AutoModerationConfiguration", "AutoModerationExecution", "ServerMessagePolls",
+        "DirectMessagePolls"
+      ]
+    },
+    "capability": {
+      "description": "Plugin capability. See spec/README.md for what each one allows.",
+      "enum": [
+        "discord.messages.read", "discord.messages.send", "discord.messages.manage",
+        "discord.reactions.manage", "discord.members.read", "discord.members.manage",
+        "discord.members.moderate", "discord.roles.assign", "discord.channels.read",
+        "discord.channels.manage", "discord.threads.manage", "discord.dm.send",
+        "storage.kv", "scheduler", "http.fetch", "portal.routes", "portal.links",
+        "events.publish", "events.subscribe"
+      ]
+    },
+    "overwriteTarget": {
+      "description": "Permission overwrite target: @everyone, a role key, or member:<discord id>.",
+      "type": "string",
+      "pattern": "^(@everyone|[a-z][a-z0-9-]{0,62}|member:[0-9]{17,20})$"
+    },
+    "overwrites": {
+      "description": "Permission overwrites keyed by target.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/overwriteTarget" },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "allow": { "$ref": "#/$defs/permissions" },
+          "deny": { "$ref": "#/$defs/permissions" }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

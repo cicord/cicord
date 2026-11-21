@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codi.dev/schemas/v1alpha1/bot.schema.json",
+  "title": "CODI Bot",
+  "description": "One Discord application (one token, one identity). File: bots/<metadata.name>/bot.yaml",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
+    "kind": { "const": "Bot" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["applicationId", "token", "servers"],
+      "properties": {
+        "applicationId": { "$ref": "common.schema.json#/$defs/snowflake" },
+        "token": {
+          "type": "object",
+          "required": ["secretRef"],
+          "properties": {
+            "secretRef": { "$ref": "common.schema.json#/$defs/secretRef" }
+          },
+          "additionalProperties": false
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "username": { "type": "string", "minLength": 2, "maxLength": 32 },
+            "avatar": { "$ref": "common.schema.json#/$defs/relativePath" },
+            "banner": { "$ref": "common.schema.json#/$defs/relativePath" }
+          },
+          "additionalProperties": false
+        },
+        "presence": {
+          "type": "object",
+          "properties": {
+            "status": { "enum": ["online", "idle", "dnd", "invisible"], "default": "online" },
+            "activity": {
+              "type": "object",
+              "required": ["type", "name"],
+              "properties": {
+                "type": { "enum": ["playing", "streaming", "listening", "watching", "competing", "custom"] },
+                "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "url": { "type": "string", "format": "uri" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "servers": {
+          "description": "Keys of the servers this bot joins.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "intents": {
+          "description": "Extra intents, on top of those required by plugins.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/intent" },
+          "uniqueItems": true
+        },
+        "plugins": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pluginInstance" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "pluginInstance": {
+      "type": "object",
+      "required": ["name", "source"],
+      "properties": {
+        "name": {
+          "description": "Instance key, unique within the bot.",
+          "$ref": "common.schema.json#/$defs/key"
+        },
+        "source": {
+          "description": "Local path relative to this bot.yaml (./plugins/x, ../../plugins/x) or registry reference (<registry>/<plugin>).",
+          "type": "string",
+          "pattern": "^(\\.{1,2}/[A-Za-z0-9._/-]+|[a-z][a-z0-9-]*/[a-z][a-z0-9-]*)$"
+        },
+        "version": { "$ref": "common.schema.json#/$defs/semverRange" },
+        "servers": {
+          "description": "Restrict to a subset of the bot's servers. Defaults to all of them.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "grants": {
+          "description": "Capabilities granted to this plugin. Must cover every capability its manifest requests.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/capability" },
+          "uniqueItems": true
+        },
+        "config": {
+          "description": "Plugin config, validated against the plugin's config.schema.json.",
+          "type": "object"
+        },
+        "overrides": {
+          "description": "Per-server config, applied as a JSON merge patch on top of config.",
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/key" },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "config": { "type": "object" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": { "source": { "type": "string", "pattern": "^\\." } }
+      },
+      "then": {
+        "not": { "required": ["version"] }
+      },
+      "else": {
+        "required": ["version"]
+      }
+    }
+  }
+}
