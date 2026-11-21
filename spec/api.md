@@ -45,7 +45,8 @@ mirrors every shape below.
   `invalid_token`, `intents_disallowed`, `rate_limited`, `discord_unavailable`, `timeout`,
   `bot_not_connected`, `no_bot`, `unresolved_reference`, `revision_rejected`,
   `fetch_failed`, `bad_request`, `unknown`; for blocked plan operations also
-  `deletion_protection`, `ownership`, `managed_role`, `type_change`, `recreate_required`
+  `deletion_protection`, `ownership`, `managed_role`, `type_change`, `recreate_required`,
+  `undeletable`
   (and `role_hierarchy`, `no_bot`, `boost_required`, `community_required`, `limit_reached`:
   blocked reasons prefixed `boost: `, `community: `, `limit: `). Clients must accept unknown codes. It appears as:
   - `error` on a server of `/status` and `/servers/{server}` (Degraded or Missing with a

@@ -158,6 +158,7 @@ type wireAutoModAction struct {
 type wireAutoModRule struct {
 	ID              string              `json:"id,omitempty"`
 	GuildID         string              `json:"guild_id,omitempty"`
+	CreatorID       string              `json:"creator_id,omitempty"`
 	Name            string              `json:"name"`
 	EventType       int                 `json:"event_type"`
 	TriggerType     int                 `json:"trigger_type,omitempty"`

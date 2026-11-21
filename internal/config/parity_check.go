@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -293,6 +294,9 @@ func (l *loader) checkServerParity(s *Server, doc *document) {
 		for i, ck := range o.DefaultChannels {
 			chanRef(fmt.Sprintf("/spec/onboarding/defaultChannels/%d", i), ck)
 		}
+		if o.Enabled {
+			checkOnboardingAccess(sp, o, errf)
+		}
 		keys := map[string]bool{}
 		for i, pr := range o.Prompts {
 			base := fmt.Sprintf("/spec/onboarding/prompts/%d", i)
@@ -358,4 +362,70 @@ func orDefaultStr(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// checkOnboardingAccess applies Discord's onboarding rules that depend on @everyone's
+// permissions, when the YAML declares them (spec.everyone): every default channel must be
+// open to @everyone (voice and stage: Connect too), and at least
+// discord.OnboardingMinChattable counted channels must let @everyone send messages.
+func checkOnboardingAccess(sp *ServerSpec, o *OnboardingSpec, errf func(path, format string, args ...any)) {
+	if sp.Everyone == nil {
+		return // @everyone is not managed: its live permissions are unknown here
+	}
+	base, err := discord.ParsePermissions(sp.Everyone.Permissions)
+	if err != nil {
+		return // reported by the permission checks
+	}
+	admin := discord.MustPermissions("Administrator")
+	view, send, connect := discord.MustPermissions("ViewChannel"), discord.MustPermissions("SendMessages"), discord.MustPermissions("Connect")
+	everyone := func(c Channel) discord.Permissions {
+		if base&admin != 0 {
+			return ^discord.Permissions(0)
+		}
+		ows := c.Overwrites
+		if c.SyncsWithCategory() {
+			ows = sp.Categories[c.Category].Overwrites
+		}
+		p := base
+		if ow, ok := ows["@everyone"]; ok {
+			deny, _ := discord.ParsePermissions(ow.Deny)
+			allow, _ := discord.ParsePermissions(ow.Allow)
+			p = p&^deny | allow
+		}
+		return p
+	}
+	isVoice := func(c Channel) bool { return c.Type == "voice" || c.Type == "stage" }
+	for i, ck := range o.DefaultChannels {
+		c, ok := sp.Channels[ck]
+		if !ok {
+			continue
+		}
+		p := everyone(c)
+		switch {
+		case !p.Has(view):
+			errf(fmt.Sprintf("/spec/onboarding/defaultChannels/%d", i), "@everyone cannot see channel %q: Discord only accepts default channels open to @everyone", ck)
+		case isVoice(c) && !p.Has(connect):
+			errf(fmt.Sprintf("/spec/onboarding/defaultChannels/%d", i), "@everyone cannot connect to voice channel %q: Discord only accepts default channels open to @everyone (add Connect to everyone.permissions or allow it on the channel)", ck)
+		}
+	}
+	counted := append([]string{}, o.DefaultChannels...)
+	if orDefaultStr(o.Mode, "default") == "advanced" {
+		for _, pr := range o.Prompts {
+			for _, op := range pr.Options {
+				counted = append(counted, op.Channels...)
+			}
+		}
+	}
+	slices.Sort(counted)
+	counted = slices.Compact(counted)
+	chattable := 0
+	for _, ck := range counted {
+		if c, ok := sp.Channels[ck]; ok && everyone(c).Has(view|send) {
+			chattable++
+		}
+	}
+	if len(counted) >= discord.OnboardingMinDefaultChans && chattable < discord.OnboardingMinChattable {
+		errf("/spec/onboarding/defaultChannels", "Discord onboarding needs %d default channels where @everyone can send messages; %d here (add SendMessages to everyone.permissions, or allow it on those channels)",
+			discord.OnboardingMinChattable, chattable)
+	}
 }

@@ -57,10 +57,19 @@ func (s *session) ListAutoModRules(ctx context.Context, serverID string) ([]disc
 	}
 	out := make([]discord.AutoModRule, 0, len(ws))
 	for _, w := range ws {
+		if w.CreatorID == autoModSystemUserID {
+			continue // a placeholder, see autoModSystemUserID
+		}
 		out = append(out, autoModRuleFromWire(w))
 	}
 	return out, nil
 }
+
+// autoModSystemUserID is Discord's AutoMod system user. Community servers list a default
+// "Block Mention Spam" rule created by it that does not exist yet: it cannot be updated
+// or deleted (HTTP 404) and does not count toward the rule caps — creating a real
+// mentionSpam rule replaces it. The runtime therefore ignores it.
+const autoModSystemUserID = "1008776202191634432"
 
 func (s *session) CreateAutoModRule(ctx context.Context, serverID string, r discord.AutoModRule, reason string) (discord.AutoModRule, error) {
 	if err := checkIDs("CreateAutoModRule", serverID); err != nil {

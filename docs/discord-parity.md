@@ -152,6 +152,25 @@ spec:
   soundboard: {horn: {name: Horn, sound: ./assets/horn.ogg, volume: 0.6}}
 ```
 
+## Behaviour observed on real Discord
+
+Verified on the test server (Community enabled by CODI, 2026-11-21):
+
+- **Default mention spam rule.** A community server lists a "Block Mention Spam" rule
+  created by Discord's AutoMod system user (`1008776202191634432`). It is a placeholder:
+  `PATCH`/`DELETE` answer 404 and it does not count toward the caps. The adapter ignores
+  it; creating a real `mentionSpam` rule replaces it.
+- **Once-per-server triggers** (`mentionSpam`, `spam`, `keywordPreset`, `memberProfile`):
+  an existing rule with that trigger is adopted whatever its name (and renamed), also when
+  the mapped rule was deleted and recreated by hand.
+- **The mention spam rule cannot be deleted on a community server** (403, code 200006):
+  removing its key with prune is blocked in the plan (`undeletable`); set `enabled: false`.
+- **Onboarding default channels must be open to @everyone** (`ViewChannel`, plus
+  `Connect` for voice and stage; `DEFAULT_CHANNEL_REQUIRES_EVERYONE_ACCESS`), and 5 of the
+  counted channels must let @everyone send messages. `codi validate` reports both when
+  `spec.everyone` is declared.
+- Boost gating (banner, role icon) is blocked in the plan at level 0, as designed.
+
 ## Native onboarding and the CODI onboarding plugin
 
 They are complementary and can run together:

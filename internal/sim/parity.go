@@ -338,6 +338,10 @@ func (w *World) deleteAutoMod(a actor, serverID, ruleID, reason string) error {
 	if err == nil && s.automod[ruleID] == nil {
 		err = notFound("unknown auto moderation rule %s", ruleID)
 	}
+	if err == nil && s.automod[ruleID].Trigger == discord.AutoModMentionSpam && s.info.HasFeature(discord.FeatureCommunity) {
+		// Discord: 403 code 200006 "Mention Spam AutoMod rule cannot be deleted from community servers"
+		err = forbidden("Mention Spam AutoMod rule cannot be deleted from community servers")
+	}
 	if err != nil {
 		return w.record(a, "DeleteAutoModRule", serverID, ruleID, reason, err)
 	}
@@ -346,6 +350,8 @@ func (w *World) deleteAutoMod(a actor, serverID, ruleID, reason string) error {
 	w.changed()
 	return nil
 }
+
+var permConnect = discord.MustPermissions("Connect")
 
 // ───────────────────────────────────────────────────────────── onboarding
 
@@ -404,6 +410,14 @@ func (w *World) updateOnboarding(a actor, serverID string, o discord.Onboarding,
 	for _, id := range o.DefaultChannelIDs {
 		if !chanOK(id) {
 			return fail(badRequest("default_channel_ids: unknown channel %s", id))
+		}
+		// Discord: DEFAULT_CHANNEL_REQUIRES_EVERYONE_ACCESS (view; voice and stage: connect too).
+		need := discord.Permissions(0)
+		if t := w.channels[id].ch.Type; t == discord.ChannelVoice || t == discord.ChannelStage {
+			need = permConnect
+		}
+		if !w.everyoneCan(s, w.channels[id], need) {
+			return fail(badRequest("default_channel_ids: Default channel requires @everyone access (%s)", id))
 		}
 	}
 	counted := append([]string{}, o.DefaultChannelIDs...)

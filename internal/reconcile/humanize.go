@@ -76,6 +76,7 @@ const (
 	ErrCodeManagedRole        = "managed_role"
 	ErrCodeTypeChange         = "type_change"
 	ErrCodeRecreateRequired   = "recreate_required"
+	ErrCodeUndeletable        = "undeletable"
 )
 
 var (
@@ -367,6 +368,10 @@ func ExplainBlocked(b Blocked) *HumanError {
 		h.Code = ErrCodeRecreateRequired
 		h.Message = capitalize(strings.TrimPrefix(reason, prefixRecreate))
 		h.Hint = "Restore the previous file, or declare the new file under a new key."
+	case strings.HasPrefix(reason, prefixUndeletable):
+		h.Code = ErrCodeUndeletable
+		h.Message = strings.TrimPrefix(reason, prefixUndeletable)
+		h.Hint = "Keep it in the YAML (set enabled: false to turn it off), or set syncPolicy.prune: false to stop managing it."
 	case strings.Contains(reason, "no connected bot"):
 		h.Code = ErrCodeNoBot
 		h.Message = "No connected bot can sync this server"

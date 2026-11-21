@@ -253,8 +253,8 @@ func (p *planner) resolve(kind state.ResourceKind, key string, alive func(id str
 			p.ids[kind][key] = m.ID
 			return
 		}
-		p.how[kind][key] = "create" // mapped resource deleted in Discord
-		return
+		// The mapped resource was deleted in Discord: adopt a matching unmapped one
+		// (e.g. a once-per-server AutoMod rule recreated by hand), else create.
 	}
 	if id := adopt(); id != "" {
 		p.consumed[id] = true
@@ -1237,6 +1237,8 @@ func (p *planner) planOrphans() {
 					op:      &op{phase: phaseUnmanage, rk: rk}})
 			case p.protect:
 				p.block(ActionDelete, kind, key, m.ID, "deletionProtection")
+			case rk == state.KindAutoMod && p.communityAfter && p.autoModTrigger(m.ID) == discord.AutoModMentionSpam:
+				p.block(ActionDelete, kind, key, m.ID, prefixUndeletable+"Discord does not allow deleting the mention spam AutoMod rule of a community server")
 			case above:
 				p.block(ActionDelete, kind, key, m.ID, reasonHierarchy)
 			default:
@@ -1246,6 +1248,16 @@ func (p *planner) planOrphans() {
 			}
 		}
 	}
+}
+
+// autoModTrigger is the trigger of a live AutoMod rule ("" when unknown).
+func (p *planner) autoModTrigger(id string) string {
+	for _, r := range p.in.Live.AutoMod {
+		if r.ID == id {
+			return r.Trigger
+		}
+	}
+	return ""
 }
 
 func (p *planner) declared(rk state.ResourceKind, key string) bool {

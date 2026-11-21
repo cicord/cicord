@@ -30,6 +30,8 @@ const (
 	prefixCommunity = "community: "
 	prefixLimit     = "limit: "
 	prefixRecreate  = "recreate: "
+	// prefixUndeletable: Discord refuses the deletion whatever the permissions.
+	prefixUndeletable = "undeletable: "
 )
 
 func hashOf(b []byte) string {
@@ -602,6 +604,21 @@ func (p *planner) resolveParity() {
 				var cands []string
 				for _, r := range live.AutoMod {
 					if r.Name == spec.Name && r.Trigger == spec.Trigger {
+						cands = append(cands, r.ID)
+					}
+				}
+				if id := p.pick(cands); id != "" {
+					return id
+				}
+				// Triggers allowed once per server (mentionSpam, spam…): the existing rule
+				// is the one the key describes, whatever its name — Discord creates a
+				// "Block Mention Spam" rule itself when Community is enabled.
+				if discord.AutoModRuleLimit(spec.Trigger) != 1 {
+					return ""
+				}
+				cands = cands[:0]
+				for _, r := range live.AutoMod {
+					if r.Trigger == spec.Trigger {
 						cands = append(cands, r.ID)
 					}
 				}

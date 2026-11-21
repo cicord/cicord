@@ -44,7 +44,9 @@ No public release until the product is complete.
 - [x] Channels: voice region, video quality, thread archive/slowmode defaults, forum tags & settings
 - [x] Emojis, stickers, soundboard from repository assets (slot limits per boost level)
 - [x] Document "Discord UI only" settings in the admin UI
-- [ ] Verify the parity checklist on the real Discord test server (final report of the parity work: onboarding IDs, sticker multipart, Community toggle, role colors, slot-limit error codes)
+- [x] Verify the parity checklist on the real Discord test server: Community toggle, AFK/locale/flags/filter, icon upload, widget, welcome screen, AutoMod (+ default mention spam placeholder), emoji upload, native onboarding, boost gating (docs/discord-parity.md "Behaviour observed on real Discord")
+- [ ] Real Discord, still untested: stickers (multipart), soundboard, role gradient colors / icons (need boosts)
+- [ ] Setup wizard on real Discord: token + intents + server pick OK; hierarchy check blocks until the bot role is moved up (expected) — finish repo/import/verify/plugin
 - [ ] Gateway events for the new kinds (AUTO_MODERATION_RULE_*, GUILD_EMOJIS_UPDATE, GUILD_STICKERS_UPDATE,
       GUILD_SOUNDBOARD_SOUND_*, widget/onboarding have none): today hand edits of AutoMod rules, expressions,
       widget, onboarding and welcome screen only show as drift at the next plan (status refresh / sync), and

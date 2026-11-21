@@ -189,3 +189,33 @@ func TestTruncatedStringWarning(t *testing.T) {
 	}
 	t.Fatalf("expected a truncation warning, got %v", ds)
 }
+
+// Discord onboarding rules that depend on @everyone's permissions are reported before
+// Discord refuses them (DEFAULT_CHANNEL_REQUIRES_EVERYONE_ACCESS, chattable channels).
+func TestOnboardingEveryoneAccess(t *testing.T) {
+	extra := "    c1: {name: c1, type: text, category: community}\n    c2: {name: c2, type: text, category: community}\n    c3: {name: c3, type: text, category: community}\n    staff-chat:\n"
+	onboarding := "  onboarding:\n    enabled: true\n    defaultChannels: [rules, announcements, general, voice, c1, c2, c3]\n    prompts:\n      - {key: games, title: Games, options: [{title: Minecraft, roles: [minecraft]}]}\n\n  syncPolicy:"
+	load := func(everyone string) []string {
+		dir := copyExample(t)
+		f := filepath.Join(dir, "servers/ma-commu.yaml")
+		edit(t, f, "    staff-chat:\n", extra)
+		edit(t, f, "  syncPolicy:", onboarding)
+		edit(t, f, "permissions: [ViewChannel, ReadMessageHistory, AddReactions, UseApplicationCommands]", everyone)
+		_, ds := Load(dir, LoadOptions{EngineVersion: "0.1.0"})
+		var out []string
+		for _, d := range ds.Errors() {
+			out = append(out, d.String())
+		}
+		return out
+	}
+	errs := strings.Join(load("permissions: [ViewChannel, ReadMessageHistory]"), "\n")
+	for _, want := range []string{`@everyone cannot connect to voice channel "voice"`, "needs 5 default channels where @everyone can send messages; 0 here"} {
+		if !strings.Contains(errs, want) {
+			t.Errorf("missing %q in:\n%s", want, errs)
+		}
+	}
+	// rules and announcements deny SendMessages (category "info"): 5 chattable remain.
+	if errs := load("permissions: [ViewChannel, ReadMessageHistory, SendMessages, Connect]"); len(errs) != 0 {
+		t.Errorf("unexpected errors: %v", errs)
+	}
+}

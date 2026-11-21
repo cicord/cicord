@@ -545,3 +545,96 @@ func TestHumanizeParityErrors(t *testing.T) {
 		}
 	}
 }
+
+// Discord creates a "Block Mention Spam" rule itself when Community is enabled: a key with
+// a once-per-server trigger adopts it (and renames it) instead of being blocked by the cap.
+func TestParityAutoModAdoptsSingletonTrigger(t *testing.T) {
+	desired, root := parityRepo(t, "  automod:\n    mentions: {name: Spam de mentions, trigger: mentionSpam, mentionLimit: 5, actions: {block: {}}}\n")
+	e := newEnv(t, desired, root)
+	ctx := context.Background()
+	builtin, err := e.session.CreateAutoModRule(ctx, e.srv.ID, discord.AutoModRule{
+		Name: "Block Mention Spam", Trigger: discord.AutoModMentionSpam, MentionLimit: 20, Enabled: true,
+		Actions: []discord.AutoModAction{{Type: discord.AutoModActionBlock}},
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := e.reconciler(e.session)
+	p, res, err := r.Sync(ctx)
+	if err != nil || len(res.Failed) > 0 || len(p.Blocked) > 0 {
+		t.Fatalf("sync: %v\n%s", err, p)
+	}
+	rules := e.w.AutoModRules(e.srv.ID)
+	if len(rules) != 1 || rules[0].ID != builtin.ID || rules[0].Name != "Spam de mentions" || rules[0].MentionLimit != 5 {
+		t.Fatalf("rules = %+v\n%s", rules, p)
+	}
+	e.mustEmptyPlan(r)
+}
+
+// On community servers Discord refuses to delete the mentionSpam rule (403, 200006): a
+// removed key is blocked with a clear reason instead of failing on apply.
+func TestParityAutoModMentionSpamUndeletableOnCommunity(t *testing.T) {
+	desired, root := parityRepo(t, `
+  profile: {verificationLevel: low, explicitContentFilter: allMembers}
+  community: {enabled: true, rulesChannel: rules, updatesChannel: mods}
+  syncPolicy: {prune: true, deletionProtection: false}
+  channels:
+    rules: {name: rules, type: text}
+    mods: {name: mods, type: text}
+  automod:
+    mentions: {name: Mentions, trigger: mentionSpam, mentionLimit: 5, actions: {block: {}}}
+`)
+	e := newEnv(t, desired, root)
+	r := e.reconciler(e.session)
+	ctx := context.Background()
+	if p, res, err := r.Sync(ctx); err != nil || len(res.Failed) > 0 || len(p.Blocked) > 0 {
+		t.Fatalf("sync: %v\n%s", err, p)
+	}
+	cut := *e.desired
+	cut.Spec.AutoMod = nil
+	r.SetDesired(&cut, root)
+	p, res, err := r.Sync(ctx)
+	if err != nil || len(res.Failed) > 0 {
+		t.Fatalf("sync: %v\n%s", err, p)
+	}
+	b := blockedWith(p, KindAutoMod, "undeletable: Discord does not allow deleting the mention spam")
+	if b == nil {
+		t.Fatalf("delete not blocked:\n%s", p)
+	}
+	if h := ExplainBlocked(*b); h.Code != ErrCodeUndeletable || h.Hint == "" {
+		t.Errorf("explained = %+v", h)
+	}
+	if n := len(e.w.AutoModRules(e.srv.ID)); n != 1 {
+		t.Errorf("rules = %d", n)
+	}
+}
+
+// A mapped rule deleted in Discord and recreated by hand (once-per-server trigger) is
+// adopted again instead of being blocked by the cap.
+func TestParityAutoModStaleMappingAdopts(t *testing.T) {
+	desired, root := parityRepo(t, "  automod:\n    mentions: {name: Mentions, trigger: mentionSpam, mentionLimit: 5, actions: {block: {}}}\n")
+	e := newEnv(t, desired, root)
+	r := e.reconciler(e.session)
+	ctx := context.Background()
+	if p, _, err := r.Sync(ctx); err != nil || len(p.Blocked) > 0 {
+		t.Fatalf("sync: %v\n%s", err, p)
+	}
+	old := e.w.AutoModRules(e.srv.ID)[0]
+	if err := e.session.DeleteAutoModRule(ctx, e.srv.ID, old.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	manual, err := e.session.CreateAutoModRule(ctx, e.srv.ID, discord.AutoModRule{Name: "Hand made", Trigger: discord.AutoModMentionSpam,
+		MentionLimit: 9, Enabled: true, Actions: []discord.AutoModAction{{Type: discord.AutoModActionBlock}}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, res, err := r.Sync(ctx)
+	if err != nil || len(res.Failed) > 0 || len(p.Blocked) > 0 {
+		t.Fatalf("sync: %v\n%s", err, p)
+	}
+	rules := e.w.AutoModRules(e.srv.ID)
+	if len(rules) != 1 || rules[0].ID != manual.ID || rules[0].Name != "Mentions" || rules[0].MentionLimit != 5 {
+		t.Fatalf("rules = %+v\n%s", rules, p)
+	}
+	e.mustEmptyPlan(r)
+}

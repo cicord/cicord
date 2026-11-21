@@ -149,7 +149,8 @@ func TestAutoModREST(t *testing.T) {
 	  "trigger_metadata":{"keyword_filter":["foo*"],"regex_patterns":[],"allow_list":["food"]},
 	  "actions":[{"type":1,"metadata":{"custom_message":"no"}},{"type":2,"metadata":{"channel_id":"7"}},{"type":3,"metadata":{"duration_seconds":60}}],
 	  "enabled":true,"exempt_roles":["3"],"exempt_channels":[]}`
-	f.json("GET /guilds/1/auto-moderation/rules", 200, "["+resp+`,{"id":"91","name":"presets","event_type":1,"trigger_type":4,"trigger_metadata":{"presets":[1,3]},"actions":[],"enabled":false}]`)
+	f.json("GET /guilds/1/auto-moderation/rules", 200, "["+resp+`,{"id":"91","name":"presets","event_type":1,"trigger_type":4,"trigger_metadata":{"presets":[1,3]},"actions":[],"enabled":false},
+	  {"id":"1030554520465440818","creator_id":"1008776202191634432","name":"Block Mention Spam","event_type":1,"trigger_type":5,"trigger_metadata":{"mention_total_limit":20},"actions":[{"type":1}],"enabled":true}]`)
 	f.json("POST /guilds/1/auto-moderation/rules", 200, resp)
 	f.json("PATCH /guilds/1/auto-moderation/rules/90", 200, resp)
 	f.json("DELETE /guilds/1/auto-moderation/rules/90", 204, "")
