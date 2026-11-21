@@ -40,8 +40,11 @@ No public release until the product is complete.
 - [ ] Repository: embedded (default) or GitHub; automatic import + first commit
 - [ ] OAuth step, verification checklist, first plugin from a bundled catalog
 
-## Store (core of the vision)
-- [ ] Create the plugin registry repository (`codi-dev/registry`, index.yaml)
+## Store (core of the vision) — apt/Homebrew-style sources (ADR-0011 update)
+- [ ] Create the official plugin registry repository (`codi-dev/registry`, index.yaml) with the official plugins
+- [ ] Registry trust levels (`official` / `unofficial`) in `codi.yaml spec.registries`; unofficial clearly labelled + explicit confirmation
+- [ ] `codi registry add|remove|list|update`; index refresh in the runtime
+- [ ] Admin UI: manage sources (add/remove unofficial repos, write-back to codi.yaml), search across sources, install
 - [ ] `codi plugin publish`; verified publishers; signing
 - [ ] Official plugins: moderation (warn/timeout/automod), XP & levels (+ portal leaderboard),
       tickets, reaction roles, audit logging, polls, scheduled announcements
