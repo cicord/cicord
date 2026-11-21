@@ -64,7 +64,7 @@ type Runtime struct {
 	lastErr string
 	bots    map[string]*botHost
 
-	wake chan struct{}
+	wake  chan struct{}
 	sched *scheduler
 }
 
@@ -594,9 +594,9 @@ func (r *Runtime) Revision() (source.Revision, bool) {
 	return source.Revision{}, false
 }
 
-func (r *Runtime) Store() state.Store { return r.opts.Store }
+func (r *Runtime) Store() state.Store   { return r.opts.Store }
 func (r *Runtime) Signer() *auth.Signer { return r.opts.Signer }
-func (r *Runtime) Mode() string { return r.opts.Mode }
+func (r *Runtime) Mode() string         { return r.opts.Mode }
 
 // Client returns a Discord client able to act on a server (its reconciling bot, or any
 // bot that lists it).

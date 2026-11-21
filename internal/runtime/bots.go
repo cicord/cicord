@@ -40,11 +40,11 @@ type botHost struct {
 }
 
 type routing struct {
-	byServer    map[string][]*instanceRT            // serverID → instances
-	byName      map[string]map[string]*instanceRT   // instance name → serverID → instance
-	commands    map[string]map[string]*instanceRT   // serverID → command → instance
-	reconcilers map[string]*serverRT                // serverID → server (when this bot reconciles it)
-	caches      map[string]*serverCache             // serverID → cache
+	byServer    map[string][]*instanceRT          // serverID → instances
+	byName      map[string]map[string]*instanceRT // instance name → serverID → instance
+	commands    map[string]map[string]*instanceRT // serverID → command → instance
+	reconcilers map[string]*serverRT              // serverID → server (when this bot reconciles it)
+	caches      map[string]*serverCache           // serverID → cache
 }
 
 var botErrors sync.Map // bot key → last connection error

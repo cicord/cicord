@@ -177,3 +177,15 @@ func TestMergePatchAndDefaults(t *testing.T) {
 		t.Errorf("defaults = %v", cfg)
 	}
 }
+
+func TestTruncatedStringWarning(t *testing.T) {
+	dir := copyExample(t)
+	edit(t, filepath.Join(dir, "bots/moderator/bot.yaml"), `message: "Bienvenue {member} sur {server} ! 👋"`, `message: Bienvenue, passe dans #général`)
+	_, ds := Load(dir, LoadOptions{})
+	for _, d := range ds {
+		if d.Severity == SeverityWarning && strings.Contains(d.Message, "YAML reads as a comment") && d.Line > 0 {
+			return
+		}
+	}
+	t.Fatalf("expected a truncation warning, got %v", ds)
+}

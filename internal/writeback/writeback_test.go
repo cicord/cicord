@@ -153,7 +153,7 @@ func TestGitWriter(t *testing.T) {
 
 	// PR mode without GitHub: pushes a branch, main unchanged
 	res2, err := w.Write(context.Background(), Request{
-		Edits: map[string]EditFunc{"bots/moderator/bot.yaml": PluginConfigEdit("welcome", "", map[string]any{"channel": "general", "message": "PR"})},
+		Edits:   map[string]EditFunc{"bots/moderator/bot.yaml": PluginConfigEdit("welcome", "", map[string]any{"channel": "general", "message": "PR"})},
 		Message: "config: via PR", Mode: ModePullRequest,
 	})
 	if err != nil {

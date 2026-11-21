@@ -179,13 +179,13 @@ func safeJoin(root, rel string) (string, error) {
 // ───────────────────────────────────────────────────────────── git
 
 type GitOptions struct {
-	URL      string // remote URL
-	Branch   string // target branch (default main)
-	Path     string // sub-directory containing codi.yaml
-	WorkDir  string // working clone location
-	Token    string // HTTPS token (also used for the GitHub API)
-	Author   string // default "codi[bot]"
-	Email    string // default "codi[bot]@users.noreply.github.com"
+	URL     string // remote URL
+	Branch  string // target branch (default main)
+	Path    string // sub-directory containing codi.yaml
+	WorkDir string // working clone location
+	Token   string // HTTPS token (also used for the GitHub API)
+	Author  string // default "codi[bot]"
+	Email   string // default "codi[bot]@users.noreply.github.com"
 	// GitHubRepo "owner/name" enables pull requests through the GitHub API.
 	GitHubRepo string
 	// GitHubAPI overrides https://api.github.com (tests).

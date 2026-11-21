@@ -20,11 +20,11 @@ type Project struct {
 }
 
 type ProjectSpec struct {
-	Engine     string        `yaml:"engine" json:"engine"`
-	Source     *SourceSpec   `yaml:"source,omitempty" json:"source,omitempty"`
-	Runtime    *RuntimeSpec  `yaml:"runtime,omitempty" json:"runtime,omitempty"`
-	Registries []Registry    `yaml:"registries,omitempty" json:"registries,omitempty"`
-	WriteBack  *WriteBack    `yaml:"writeBack,omitempty" json:"writeBack,omitempty"`
+	Engine     string         `yaml:"engine" json:"engine"`
+	Source     *SourceSpec    `yaml:"source,omitempty" json:"source,omitempty"`
+	Runtime    *RuntimeSpec   `yaml:"runtime,omitempty" json:"runtime,omitempty"`
+	Registries []Registry     `yaml:"registries,omitempty" json:"registries,omitempty"`
+	WriteBack  *WriteBack     `yaml:"writeBack,omitempty" json:"writeBack,omitempty"`
 	Portal     *ProjectPortal `yaml:"portal,omitempty" json:"portal,omitempty"`
 }
 
@@ -75,16 +75,16 @@ type Server struct {
 }
 
 type ServerSpec struct {
-	DiscordID  string               `yaml:"discordId" json:"discordId"`
-	Profile    *ServerProfile       `yaml:"profile,omitempty" json:"profile,omitempty"`
-	SyncPolicy SyncPolicy           `yaml:"syncPolicy,omitempty" json:"syncPolicy,omitempty"`
-	Everyone   *EveryoneSpec        `yaml:"everyone,omitempty" json:"everyone,omitempty"`
-	Roles      map[string]RoleSpec  `yaml:"roles,omitempty" json:"roles,omitempty"`
-	Hierarchy  []string             `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
-	Categories map[string]Category  `yaml:"categories,omitempty" json:"categories,omitempty"`
-	Channels   map[string]Channel   `yaml:"channels,omitempty" json:"channels,omitempty"`
-	Access     *Access              `yaml:"access,omitempty" json:"access,omitempty"`
-	Portal     *ServerPortal        `yaml:"portal,omitempty" json:"portal,omitempty"`
+	DiscordID  string              `yaml:"discordId" json:"discordId"`
+	Profile    *ServerProfile      `yaml:"profile,omitempty" json:"profile,omitempty"`
+	SyncPolicy SyncPolicy          `yaml:"syncPolicy,omitempty" json:"syncPolicy,omitempty"`
+	Everyone   *EveryoneSpec       `yaml:"everyone,omitempty" json:"everyone,omitempty"`
+	Roles      map[string]RoleSpec `yaml:"roles,omitempty" json:"roles,omitempty"`
+	Hierarchy  []string            `yaml:"hierarchy,omitempty" json:"hierarchy,omitempty"`
+	Categories map[string]Category `yaml:"categories,omitempty" json:"categories,omitempty"`
+	Channels   map[string]Channel  `yaml:"channels,omitempty" json:"channels,omitempty"`
+	Access     *Access             `yaml:"access,omitempty" json:"access,omitempty"`
+	Portal     *ServerPortal       `yaml:"portal,omitempty" json:"portal,omitempty"`
 }
 
 type ServerProfile struct {

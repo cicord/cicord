@@ -21,9 +21,11 @@ type PathElem struct {
 	MatchValue string
 }
 
-func Key(k string) PathElem                { return PathElem{Key: k, Index: -1} }
-func Match(field, value string) PathElem   { return PathElem{Index: -1, MatchField: field, MatchValue: value} }
-func Index(i int) PathElem                 { return PathElem{Index: i} }
+func Key(k string) PathElem { return PathElem{Key: k, Index: -1} }
+func Match(field, value string) PathElem {
+	return PathElem{Index: -1, MatchField: field, MatchValue: value}
+}
+func Index(i int) PathElem { return PathElem{Index: i} }
 
 func (p PathElem) String() string {
 	switch {

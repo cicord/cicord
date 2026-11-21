@@ -140,3 +140,25 @@ func jsonPointer(tokens ...string) string {
 	}
 	return b.String()
 }
+
+// suspiciousComments finds plain (unquoted) scalars followed by a comment that starts
+// with "#" directly followed by text (e.g. `message: rendez-vous dans #général`), which
+// YAML silently truncates. Returns (line, value, comment) triples.
+func (d *document) suspiciousComments() [][3]string {
+	var out [][3]string
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		if n == nil {
+			return
+		}
+		if n.Kind == yaml.ScalarNode && n.Style == 0 && n.Tag == "!!str" &&
+			len(n.LineComment) > 1 && n.LineComment[0] == '#' && n.LineComment[1] != ' ' && n.LineComment[1] != '#' {
+			out = append(out, [3]string{strconv.Itoa(n.Line), n.Value, n.LineComment})
+		}
+		for _, c := range n.Content {
+			walk(c)
+		}
+	}
+	walk(d.root)
+	return out
+}

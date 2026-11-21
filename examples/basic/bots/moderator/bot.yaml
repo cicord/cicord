@@ -81,6 +81,6 @@ spec:
                 emoji: "🔔"
                 description: Tu seras mentionné à chaque nouvel événement
         completedRole: member
-        successMessage: C'est tout bon ! Tes rôles sont à jour, file dire bonjour dans #général.
+        successMessage: "C'est tout bon ! Tes rôles sont à jour, file dire bonjour dans #général."
         linkMessage: "Choisis tes rôles sur le portail de la commu :"
         buttonLabel: Choisir mes rôles

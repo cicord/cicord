@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -101,6 +102,10 @@ func (l *loader) readDoc(abs string) *document {
 		return nil
 	}
 	l.docs[file] = doc
+	for _, sc := range doc.suspiciousComments() {
+		line, _ := strconv.Atoi(sc[0])
+		l.sink.warnf(file, line, "", "%q is followed by %q, which YAML reads as a comment: quote the value if the text continues", sc[1], sc[2])
+	}
 	return doc
 }
 

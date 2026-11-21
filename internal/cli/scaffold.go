@@ -76,7 +76,7 @@ func renderTree(sub, dst string, data any, rename func(string) string, force boo
 func newInitCmd() *cobra.Command {
 	var o struct {
 		project, server, serverID, bot, appID, repo, provider string
-		force                                                  bool
+		force                                                 bool
 	}
 	cmd := &cobra.Command{
 		Use:   "init [dir]",
