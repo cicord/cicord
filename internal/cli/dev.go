@@ -134,7 +134,9 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	rt := runtime.New(runtime.Options{
 		Source: src, Connector: connector, Store: store, Secrets: secrets, Resolver: resolver,
 		Signer: auth.NewSigner(key), PortalURL: public, Mode: "dev", Simulator: useSim,
-		AllowPrivateNetworks: true, Logger: log,
+		// Plugins may reach local test services only against the simulator: with real
+		// Discord tokens the normal egress rules apply.
+		AllowPrivateNetworks: useSim, Logger: log,
 	})
 	token := os.Getenv("CODI_RUNTIME_TOKEN")
 	generated := false

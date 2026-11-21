@@ -390,6 +390,13 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	if err != nil {
 		return err
 	}
+	if f.publicURL == "" && proj.Spec.Runtime != nil && proj.Spec.Runtime.URL != "" {
+		f.publicURL = proj.Spec.Runtime.URL // the operator's own codi.yaml
+	}
+	if f.publicURL == "" {
+		log.Warn("no --public-url (or codi.yaml spec.runtime.url): OAuth redirects, portal links and the CSRF origin check use " +
+			"http://<listen address>; set it to the URL users reach (e.g. https://codi.example.org)")
+	}
 	public := publicURLFor(f.publicURL, ln)
 	portalURL := public
 	if proj.Spec.Portal != nil && proj.Spec.Portal.URL != "" {
