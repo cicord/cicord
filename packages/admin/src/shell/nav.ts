@@ -76,7 +76,19 @@ export function pathFor(item: NavItem, serverKey: string | undefined): string {
 export interface Route {
   page: PageId;
   serverKey?: string;
+  /** A plugin instance's page (/servers/:key/plugins/:bot/:instance). */
+  instance?: { bot: string; instance: string };
+  /** A Store plugin's page (/servers/:key/store/:source/:plugin). */
+  storePlugin?: { source: string; plugin: string };
 }
+
+/** Path of a plugin instance's page. */
+export const instancePath = (serverKey: string, bot: string, instance: string): string =>
+  `/servers/${encodeURIComponent(serverKey)}/plugins/${encodeURIComponent(bot)}/${encodeURIComponent(instance)}`;
+
+/** Path of a Store plugin's page. */
+export const storePluginPath = (serverKey: string, source: string, plugin: string): string =>
+  `/servers/${encodeURIComponent(serverKey)}/store/${encodeURIComponent(source)}/${encodeURIComponent(plugin)}`;
 
 const SEGMENTS: Record<string, PageId> = Object.fromEntries(
   NAV.filter((n) => n.segment).map((n) => [n.segment!, n.id]),
@@ -94,5 +106,17 @@ export function parseRoute(path: string): Route {
     const page = SEGMENTS[seg];
     if (page) return { page, serverKey: p["key"]! };
   }
+  if ((p = match("/servers/:key/plugins/:bot/:instance", path)))
+    return {
+      page: "plugins",
+      serverKey: p["key"]!,
+      instance: { bot: p["bot"]!, instance: p["instance"]! },
+    };
+  if ((p = match("/servers/:key/store/:source/:plugin", path)))
+    return {
+      page: "store",
+      serverKey: p["key"]!,
+      storePlugin: { source: p["source"]!, plugin: p["plugin"]! },
+    };
   return { page: "notFound" };
 }

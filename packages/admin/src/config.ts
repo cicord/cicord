@@ -31,7 +31,7 @@ export function watch401(fetch: FetchLike): FetchLike {
 export async function createAdminConfig(): Promise<AdminConfig> {
   if (import.meta.env.MODE === "mock") {
     const { createMockRuntime } = await import("./mock/runtime.ts");
-    const runtime = createMockRuntime();
+    const runtime = createMockRuntime({ demoInstances: 75 });
     return {
       client: createCodiClient({ fetch: watch401(runtime.fetch) }),
       loginUrl: `${BASE}login?mock-oauth=1`,

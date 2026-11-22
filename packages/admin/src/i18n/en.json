@@ -477,9 +477,7 @@
   },
   "plugins": {
     "title": "Plugins",
-    "description": "Plugin instances running on this server. Saving settings commits to git; the runtime then activates the new revision.",
-    "count_one": "{{count}} instance",
-    "count_other": "{{count}} instances",
+    "description": "Plugin instances running on this server. Open one to change its settings: saving commits to git, then the runtime activates the new revision.",
     "empty": {
       "title": "No plugins on this server",
       "text": "Add a plugin to a bot's spec.plugins and list this server in spec.servers."
@@ -579,6 +577,81 @@
       "commitNote": "Committed to git, then applied by the runtime",
       "back": "Back to editing",
       "save": "Save to git"
+    },
+    "table": "Plugin instances",
+    "search": {
+      "label": "Search plugins",
+      "placeholder": "Search by name, instance, bot or source"
+    },
+    "columns": {
+      "plugin": "Plugin",
+      "instance": "Instance",
+      "bot": "Bot",
+      "version": "Version",
+      "source": "Source",
+      "health": "Health",
+      "commands": "Commands"
+    },
+    "instance": {
+      "back": "All plugins",
+      "notFound": {
+        "title": "This plugin instance does not exist",
+        "text": "There is no instance {{bot}}/{{instance}} on this server. It may have been uninstalled or renamed."
+      },
+      "sections": {
+        "label": "{{name}} sections",
+        "settings": "Settings",
+        "overview": "Overview",
+        "danger": "Danger zone"
+      },
+      "facts": {
+        "plugin": "Plugin",
+        "version": "Version",
+        "instance": "Instance",
+        "server": "Server",
+        "source": "Source"
+      }
+    },
+    "uninstall": {
+      "title": "Uninstall from {{server}}",
+      "lead": "Removes {{name}} from this server's configuration in git. The runtime stops it once the new revision is active.",
+      "open": "Uninstall…",
+      "failed": "Could not uninstall the plugin",
+      "confirm": {
+        "title": "Uninstall {{name}} from {{server}}?",
+        "lead": "This changes the configuration in git:",
+        "removed": "The instance {{instance}} is removed from {{server}}.",
+        "otherServers": "If it also runs on other servers, only {{server}} is removed from it; the other servers keep it.",
+        "last": "If it is the last instance of {{name}}, its codi.lock entry (registry plugin) or its plugins/{{name}}/ folder (copied by the Store) is deleted too.",
+        "repo": "Plugins written in the repository are never deleted.",
+        "data": "Its stored data (key-value storage) is kept.",
+        "git": "Committed to git, or opened as a pull request, depending on the write-back policy.",
+        "submit": "Uninstall",
+        "pending": "Uninstalling…"
+      },
+      "invalid": {
+        "title": "Something depends on this plugin",
+        "hint": "Another plugin or setting may depend on it: change that first, then uninstall again.",
+        "list": "Problems"
+      },
+      "conflict": {
+        "title": "The repository changed meanwhile",
+        "hint": "Try again."
+      },
+      "forbidden": {
+        "title": "You cannot uninstall this plugin",
+        "hint": "Uninstalling needs the admin role on this server, and write-back enabled in codi.yaml."
+      },
+      "done": {
+        "title": "{{name}} was uninstalled from {{server}}",
+        "removed": "The instance {{instance}} was deleted from bot.yaml.",
+        "serverOnly": "{{instance}} still runs on its other servers; only {{server}} was removed from it.",
+        "cleaned": "Also removed:",
+        "dataKept": "Its stored data is kept.",
+        "pr": "Pull request opened",
+        "prText": "The plugin is uninstalled once the pull request is merged.",
+        "openPr": "Open the pull request"
+      }
     }
   },
   "settings": {
@@ -1288,12 +1361,9 @@
     },
     "search": {
       "label": "Search plugins",
-      "placeholder": "Search by name, description or keyword",
+      "placeholder": "Search by name, description, keyword or publisher",
       "results_one": "{{count}} plugin",
-      "results_other": "{{count}} plugins",
-      "noMatch": "No plugin matches “{{query}}”",
-      "noMatchText": "Try another word, or clear the search to see every plugin.",
-      "clear": "Clear search"
+      "results_other": "{{count}} plugins"
     },
     "empty": {
       "title": "No plugins available",
@@ -1303,36 +1373,30 @@
       "official": "Official",
       "unofficial": "Unofficial",
       "officialTip": "Published by CODI, or listed by the official registry.",
-      "unofficialTip": "Not reviewed by CODI. Install only if you trust the publisher."
+      "unofficialTip": "Not reviewed by CODI. Install only if you trust the publisher.",
+      "local": "Local",
+      "localTip": "Written in the configuration repository."
     },
     "kind": {
       "bundled": "Built in",
       "git": "Git registry"
     },
     "source": {
-      "label": "Source {{name}}",
-      "fetched": "Fetched",
       "plugins_one": "{{count}} plugin",
       "plugins_other": "{{count}} plugins",
-      "none": "This source lists no plugins.",
-      "fetchFailed": "Could not fetch this source",
+      "fetchFailed": "Could not fetch the source {{name}}",
       "fetchHint": "The other sources still work. Fix the URL or access, then refresh the sources."
     },
     "card": {
-      "open": "View {{name}}",
       "verified": "Verified",
-      "by": "by {{publisher}}",
-      "installedHere": "Installed",
       "installedTip": "Already installed on this server"
     },
     "detail": {
       "title": "{{name}} plugin",
-      "close": "Close",
       "loadFailed": "Could not load this plugin",
       "repo": "Repository",
       "version": "Version",
       "publisher": "Publisher",
-      "source": "Source",
       "commit": "Commit",
       "unofficial": {
         "title": "Unofficial source: {{source}}",
@@ -1358,7 +1422,12 @@
       "instanceOn": "{{bot}}/{{instance}} on {{server}}",
       "install": "Install on {{server}}",
       "installAgain": "Install another instance",
-      "portal": "Open the developer portal"
+      "portal": "Open the developer portal",
+      "back": "Back to the Store",
+      "notFound": {
+        "title": "This plugin is not in the Store",
+        "text": "No source lists {{plugin}}. It may have been removed from its registry, or the registry was removed."
+      }
     },
     "install": {
       "title": "Install {{name}}",
@@ -1397,7 +1466,7 @@
       },
       "conflict": {
         "title": "That instance name is taken",
-        "hint": "Pick another instance name, or edit the existing instance on the Plugins page."
+        "hint": "Pick another instance name, or open the existing instance from the Plugins page."
       },
       "done": {
         "title": "{{name}} is installed",
@@ -1409,7 +1478,8 @@
         "prText": "The plugin is installed once the pull request is merged.",
         "openPr": "Open the pull request",
         "plugins": "Go to Plugins",
-        "close": "Done"
+        "open": "Open its settings",
+        "back": "Back to the Store"
       }
     },
     "sources": {
@@ -1446,7 +1516,10 @@
           "urlInvalid": "Enter a valid URL",
           "urlHttps": "Only https:// URLs are accepted",
           "urlTaken": "This URL is already declared"
-        }
+        },
+        "token": "Access token (private registry)",
+        "optional": "optional",
+        "tokenHint": "Only for private registries. Stored in the runtime's secret store, only sent to the registry's host, never shown again."
       },
       "confirmRemove": {
         "title": "Remove the source {{name}}?",
@@ -1467,7 +1540,77 @@
         "committed": "Committed",
         "pr": "Pull request opened",
         "prText": "The change applies once the pull request is merged."
+      },
+      "private": "Private",
+      "privateTip": "This registry needs an access token, kept in the runtime's secret store.",
+      "token": {
+        "set": "Set token",
+        "replace": "Replace token",
+        "remove": "Remove token",
+        "setLabel": "Set the access token of {{name}}",
+        "replaceLabel": "Replace the access token of {{name}}",
+        "removeLabel": "Remove the access token of {{name}}",
+        "setTitle": "Set the access token of {{name}}",
+        "replaceTitle": "Replace the access token of {{name}}",
+        "dialogText": "CODI checks that the registry index can be read with it before saving.",
+        "label": "Access token",
+        "hint": "Stored in the runtime's secret store, only sent to {{host}}, never shown again.",
+        "required": "Enter the token",
+        "save": "Save token",
+        "saving": "Checking…",
+        "saved": "Token of {{name}} saved",
+        "secretOnly": "Stored in the runtime's secret store; codi.yaml did not change.",
+        "failed": "Could not save the token",
+        "removed": "Token of {{name}} removed",
+        "removeFailed": "Could not remove the token",
+        "missing": {
+          "title": "The token is missing on this runtime",
+          "hint": "codi.yaml marks this registry as private, but this runtime's secret store has no token for it: its plugins cannot be listed or installed. Set the token again."
+        },
+        "confirmRemove": {
+          "title": "Remove the access token of {{name}}?",
+          "text": "The registry becomes public in codi.yaml. If it is private, CODI can no longer read it. The token is deleted from the secret store when the admin UI created it.",
+          "confirm": "Remove token"
+        }
       }
+    },
+    "table": "Store plugins",
+    "columns": {
+      "plugin": "Plugin",
+      "source": "Source",
+      "trust": "Trust",
+      "version": "Version",
+      "publisher": "Publisher",
+      "installed": "Installed",
+      "here": "Here"
+    },
+    "filters": {
+      "source": "Source",
+      "allSources": "All sources",
+      "trust": "Trust",
+      "anyTrust": "Any trust",
+      "installed": "Installed",
+      "anyInstalled": "All plugins",
+      "installedYes": "Installed",
+      "installedNo": "Not installed"
+    }
+  },
+  "table": {
+    "loadFailed": "Could not load this list",
+    "clear": "Clear filters",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "rowsPerPage": "Rows per page",
+    "pagination": "Pagination",
+    "first": "First page",
+    "previous": "Previous page",
+    "next": "Next page",
+    "last": "Last page",
+    "page": "Page {{page}}",
+    "noResults": {
+      "title": "No results",
+      "query": "Nothing matches “{{query}}” with these filters. Try another word or clear the search.",
+      "text": "Nothing matches these filters.",
+      "clear": "Clear search and filters"
     }
   }
 }

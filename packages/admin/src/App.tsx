@@ -2,7 +2,7 @@ import type { Me } from "@codi/client";
 import { CodiProvider, codiKeys, useCodi, useLogout, useMe } from "@codi/react";
 import { Loader2, LogOut, Moon, Sun } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, type ReactNode } from "react";
-import { useStatus } from "./api.ts";
+import { usePlugin, useStatus, useStoreDetail } from "./api.ts";
 import { EmptyState, Sha } from "./components/common.tsx";
 import { ErrorState } from "./components/errors.tsx";
 import { CodiApiError } from "@codi/client";
@@ -34,11 +34,12 @@ import { useTranslation } from "./i18n/index.ts";
 import { AuditPage } from "./pages/Audit.tsx";
 import { LoginPage } from "./pages/Login.tsx";
 import { OverviewPage } from "./pages/Overview.tsx";
+import { PluginInstancePage } from "./pages/PluginInstance.tsx";
 import { PluginsPage } from "./pages/Plugins.tsx";
 import { ResourcesPage } from "./pages/Resources.tsx";
 import { ServerSettingsPage } from "./pages/ServerSettings.tsx";
 import { SettingsPage } from "./pages/Settings.tsx";
-import { StorePage } from "./pages/Store.tsx";
+import { StorePage, StorePluginPage } from "./pages/Store.tsx";
 import { DriftPage, HistoryPage, PlanPage } from "./pages/Sync.tsx";
 import { DiagnosticsPage } from "./pages/Diagnostics.tsx";
 import { SetupPage } from "./setup/SetupPage.tsx";
@@ -210,10 +211,28 @@ function Shell() {
       page = <ServerSettingsPage serverKey={key} key={key} />;
       break;
     case "plugins":
-      page = <PluginsPage serverKey={key} key={key} />;
+      page = route.instance ? (
+        <PluginInstancePage
+          serverKey={key}
+          bot={route.instance.bot}
+          instance={route.instance.instance}
+          key={`${key}/${route.instance.bot}/${route.instance.instance}`}
+        />
+      ) : (
+        <PluginsPage serverKey={key} key={key} />
+      );
       break;
     case "store":
-      page = <StorePage serverKey={key} key={key} />;
+      page = route.storePlugin ? (
+        <StorePluginPage
+          serverKey={key}
+          source={route.storePlugin.source}
+          plugin={route.storePlugin.plugin}
+          key={`${key}/${route.storePlugin.source}/${route.storePlugin.plugin}`}
+        />
+      ) : (
+        <StorePage serverKey={key} key={key} />
+      );
       break;
     case "plan":
       page = <PlanPage serverKey={key} key={key} />;
@@ -245,7 +264,7 @@ function Shell() {
       <SidebarProvider>
         <AppSidebar page={route.page} />
         <SidebarInset>
-          <Header page={route.page} onSearch={() => setPaletteOpen(true)} />
+          <Header route={route} onSearch={() => setPaletteOpen(true)} />
           <main id="main" className="flex-1">
             {page}
           </main>
@@ -256,18 +275,45 @@ function Shell() {
   );
 }
 
-function Header({ page, onSearch }: { page: PageId; onSearch: () => void }) {
+/** Label of a detail page's last crumb (the plugin's display name, the raw id meanwhile). */
+function useDetailLabel(route: Route): string | undefined {
+  const ws = useWorkspace();
+  const key = route.serverKey ?? ws.serverKey ?? "";
+  const instance = usePlugin(key, route.instance?.bot, route.instance?.instance);
+  const store = useStoreDetail(
+    ws.isAdmin ? route.storePlugin?.source : undefined,
+    ws.isAdmin ? route.storePlugin?.plugin : undefined,
+  );
+  if (route.instance) {
+    const p = instance.data?.plugin;
+    return p?.displayName || p?.name || route.instance.instance;
+  }
+  if (route.storePlugin) {
+    const d = store.data;
+    return d?.displayName || d?.name || route.storePlugin.plugin;
+  }
+  return undefined;
+}
+
+function Header({ route, onSearch }: { route: Route; onSearch: () => void }) {
   const { t } = useTranslation();
   const ws = useWorkspace();
   const config = useAdminConfig();
   const { theme, toggle } = useTheme();
+  const page = route.page;
   const item = navItem(page);
+  const detail = useDetailLabel(route);
   const crumbs: { label: string; to?: string }[] = [];
   if (item?.segment !== undefined && ws.server)
     crumbs.push({ label: ws.server.name, to: `/servers/${ws.server.key}` });
-  if (item?.section) crumbs.push({ label: t(`nav.sections.${item.section}`) });
+  if (item?.section && detail === undefined)
+    crumbs.push({ label: t(`nav.sections.${item.section}`) });
   if (item && page !== "home" && page !== "notFound")
-    crumbs.push({ label: t(`nav.pages.${item.id as Exclude<PageId, "home" | "notFound">}`) });
+    crumbs.push({
+      label: t(`nav.pages.${item.id as Exclude<PageId, "home" | "notFound">}`),
+      ...(detail !== undefined && ws.server ? { to: pathFor(item, ws.server.key) } : {}),
+    });
+  if (detail !== undefined) crumbs.push({ label: detail });
   const rev = ws.status?.revision;
   return (
     <header className="sticky top-0 z-[5] flex h-(--header-h) shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur-md md:px-4">

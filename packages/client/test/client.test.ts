@@ -274,6 +274,43 @@ describe("admin & machine", () => {
     expect(calls[8]?.body).toEqual({ config: { a: 1 }, scope: "base", revision: "r" });
   });
 
+  test("paged plugin list, single instance and uninstall", async () => {
+    const page = { items: [], total: 0, offset: 0, limit: 25, sort: "name", order: "asc" };
+    const { fetch, calls } = mockFetch((c) =>
+      c.method === "DELETE"
+        ? json({ removed: true, cleaned: ["codi.lock: acme/xp"], mode: "commit", revision: "r2" })
+        : c.url.includes("?")
+          ? json(page)
+          : json({ bot: "b", instance: "i" }),
+    );
+    const client = createCodiClient({ fetch });
+    await expect(
+      client.admin.pluginsPage("s", {
+        q: "  wel come ",
+        sort: "health",
+        order: "desc",
+        offset: 25,
+        limit: 25,
+      }),
+    ).resolves.toEqual(page);
+    // Empty values are left out of the query.
+    await client.admin.pluginsPage("s", { q: " ", limit: 50 });
+    await client.admin.plugin("s", "b", "my instance");
+    await expect(client.admin.uninstallPlugin("s", "b", "xp")).resolves.toEqual({
+      removed: true,
+      cleaned: ["codi.lock: acme/xp"],
+      mode: "commit",
+      revision: "r2",
+    });
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/v1/servers/s/plugins?q=wel+come&sort=health&order=desc&offset=25&limit=25",
+      "GET /api/v1/servers/s/plugins?limit=50",
+      "GET /api/v1/servers/s/plugins/b/my%20instance",
+      "DELETE /api/v1/servers/s/plugins/b/xp",
+    ]);
+    expect(calls[3]?.headers.get("X-Codi-Request")).toBe("1");
+  });
+
   test("server asset upload", async () => {
     const { fetch, calls } = mockFetch(() => json({ mode: "commit", warnings: [] }));
     const client = createCodiClient({ fetch });
@@ -350,6 +387,56 @@ describe("store & registries", () => {
     expect(calls[1]?.headers.get("X-Codi-Request")).toBe("1");
     expect(calls[3]?.headers.get("X-Codi-Request")).toBe("1");
     expect(calls[3]?.headers.get("Content-Type")).toBe("application/json");
+  });
+
+  test("store summary and paged plugins with filters", async () => {
+    const summary = { ...source, private: true, credentials: "missing", pluginCount: 3 };
+    const page = { items: [], total: 0, offset: 50, limit: 50, sort: "installed", order: "desc" };
+    const { fetch, calls } = mockFetch((c) =>
+      c.url.includes("/store/plugins") ? json(page) : json({ sources: [summary] }),
+    );
+    const client = createCodiClient({ fetch });
+    await expect(client.store.sources()).resolves.toEqual([summary]);
+    await client.store.sources({ summary: false });
+    await expect(
+      client.store.plugins({
+        q: "xp",
+        sort: "installed",
+        order: "desc",
+        offset: 50,
+        limit: 50,
+        source: "acme",
+        trust: "unofficial",
+        installed: false,
+      }),
+    ).resolves.toEqual(page);
+    await client.store.plugins();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/v1/store?summary=1",
+      "GET /api/v1/store",
+      "GET /api/v1/store/plugins?q=xp&sort=installed&order=desc&offset=50&limit=50&source=acme&trust=unofficial&installed=false",
+      "GET /api/v1/store/plugins",
+    ]);
+  });
+
+  test("private registry tokens", async () => {
+    const { fetch, calls } = mockFetch(() => json({ mode: "commit", revision: "r" }));
+    const client = createCodiClient({ fetch });
+    await client.registries.add({ name: "acme", url: "https://git.acme.dev/p.git", token: "tok" });
+    await client.registries.setToken("acme", "new-token");
+    await client.registries.removeToken("acme");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "POST /api/v1/registries",
+      "PUT /api/v1/registries/acme/token",
+      "DELETE /api/v1/registries/acme/token",
+    ]);
+    expect(calls[0]?.body).toEqual({
+      name: "acme",
+      url: "https://git.acme.dev/p.git",
+      token: "tok",
+    });
+    expect(calls[1]?.body).toEqual({ token: "new-token" });
+    expect(calls.every((c) => c.headers.get("X-Codi-Request") === "1")).toBe(true);
   });
 
   test("registry endpoints", async () => {

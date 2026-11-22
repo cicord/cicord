@@ -338,6 +338,8 @@ export interface MockRegistry {
   url: string;
   /** Index fetch failure (the registry is listed with an error and no plugins). */
   error?: { code: string; message: string; hint?: string; details?: string };
+  /** Private registry: the secret holding its access token (codi.yaml `secretRef`). */
+  secretRef?: string;
   plugins: (MockStorePlugin & { commit: string; integrity: string })[];
 }
 
@@ -418,6 +420,8 @@ export const seedRegistries = (): MockRegistry[] => [
   {
     name: "community",
     url: "https://git.example.org/community/codi-plugins.git",
+    // Private, but the token is not in this runtime's secret store.
+    secretRef: "CODI_REGISTRY_COMMUNITY_TOKEN",
     error: {
       code: "fetch_failed",
       message: "Could not fetch the registry index",
@@ -427,4 +431,87 @@ export const seedRegistries = (): MockRegistry[] => [
     },
     plugins: [],
   },
+  {
+    name: "hub",
+    url: "https://git.codi-hub.dev/hub/codi-plugins.git",
+    secretRef: "CODI_REGISTRY_HUB_TOKEN",
+    plugins: hubPlugins(),
+  },
 ];
+
+// ───────────────────────────────────────────────────────────── generated registry
+
+const HUB_TOPICS = [
+  ["birthday", "Birthdays", "Wishes members a happy birthday and gives them a role for the day."],
+  ["counter", "Counting game", "A channel where members count together; a wrong number resets it."],
+  ["starboard", "Starboard", "Reposts messages that collect enough stars in a highlights channel."],
+  ["reminders", "Reminders", "Personal and channel reminders with natural dates."],
+  ["autorole", "Auto roles", "Gives roles from reactions, buttons or activity."],
+  ["logs", "Server logs", "Logs joins, leaves, edits and deletions to a staff channel."],
+  [
+    "music-queue",
+    "Music queue",
+    "A shared queue of tracks for the voice channel, with votes to skip.",
+  ],
+  ["trivia", "Trivia", "Quiz rounds with a scoreboard and weekly winners."],
+  ["suggestions", "Suggestions", "Members post ideas, the community votes, staff marks them done."],
+  [
+    "welcome-cards",
+    "Welcome cards",
+    "Image cards for new members with their avatar and member count.",
+  ],
+  [
+    "events",
+    "Event planner",
+    "Plan game nights with RSVP buttons and reminders before they start.",
+  ],
+  ["translate", "Translate", "Translates messages on demand with a context menu command."],
+] as const;
+const HUB_PUBLISHERS = ["hub", "lumen", "nordic-bots", "pixel", "acme"];
+
+/** ~120 plugins to exercise the Store table (pagination, sorting, search). */
+function hubPlugins(): MockRegistry["plugins"] {
+  const out: MockRegistry["plugins"] = [];
+  for (let i = 0; i < 120; i++) {
+    const [base, title, description] = HUB_TOPICS[i % HUB_TOPICS.length]!;
+    const n = Math.floor(i / HUB_TOPICS.length);
+    const name = n ? `${base}-${n + 1}` : base;
+    const hex = (i * 2654435761).toString(16).padStart(8, "0").slice(-8);
+    out.push({
+      name,
+      displayName: n ? `${title} ${n + 1}` : title,
+      description,
+      keywords: [base.split("-")[0]!, "community"],
+      version: `${(i % 3) + (n % 2)}.${(i * 7) % 12}.${i % 5}`,
+      publisher: HUB_PUBLISHERS[i % HUB_PUBLISHERS.length]!,
+      verified: false,
+      repo: `https://git.codi-hub.dev/hub/${name}`,
+      capabilities: ["discord.messages.send", "discord.channels.read", "storage.kv"].concat(
+        i % 4 === 0 ? ["discord.roles.assign"] : [],
+      ),
+      intents: i % 5 === 0 ? ["ServerMessages"] : [],
+      network: i % 9 === 0 ? ["api.codi-hub.dev"] : [],
+      schema: {
+        type: "object",
+        properties: {
+          channel: {
+            type: "string",
+            title: "Channel",
+            "x-codi-ref": "channel",
+            default: "general",
+          },
+          enabled: {
+            type: "boolean",
+            title: "Enabled",
+            default: true,
+            "x-codi-access": "moderator",
+          },
+        },
+      } as unknown as JsonSchema,
+      commands: null,
+      commit: hex.repeat(5),
+      integrity: `sha256-${hex}${"A".repeat(35)}=`,
+    });
+  }
+  return out;
+}

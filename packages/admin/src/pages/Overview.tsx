@@ -36,6 +36,7 @@ import { useTranslation } from "../i18n/index.ts";
 import { errorOf } from "../lib/errors.ts";
 import { groupHistory } from "../lib/history.ts";
 import { Link } from "../router.tsx";
+import { instancePath } from "../shell/nav.ts";
 import { relevantHistory, SyncButton } from "./Sync.tsx";
 
 export function OverviewPage({ serverKey }: { serverKey: string }) {
@@ -296,7 +297,7 @@ function BotItem({ bot, serverKey }: { bot: BotStatus; serverKey: string }) {
           {plugins.map((p) => (
             <li key={p.instance}>
               <Link
-                to={`/servers/${serverKey}/plugins#${bot.key}-${p.instance}`}
+                to={instancePath(serverKey, bot.key, p.instance)}
                 className="group flex items-center gap-2.5 rounded-md px-1.5 py-1 -mx-1.5 hover:bg-surface-hover"
               >
                 <PluginGlyph size={22} />

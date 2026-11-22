@@ -267,6 +267,31 @@ export interface Items<T> {
   items: T[];
 }
 
+/** Sort direction of a paged list. */
+export type SortOrder = "asc" | "desc";
+
+/**
+ * Query of a *paged* list (spec/api.md "Data tables"): `q` keeps items containing every word
+ * (case-insensitive), `sort` is one of the endpoint's keys, `limit` is capped at 200.
+ */
+export interface PageParams<S extends string = string> {
+  q?: string;
+  sort?: S;
+  order?: SortOrder;
+  offset?: number;
+  limit?: number;
+}
+
+/** A window of a paged list; `total` counts the filtered items before the window. */
+export interface Page<T> {
+  items: T[];
+  total: number;
+  offset: number;
+  limit: number;
+  sort: string;
+  order: SortOrder;
+}
+
 // ───────────────────────────────────────────────────────────── servers (§4)
 
 export interface ServerDetail extends ServerStatus {
@@ -418,6 +443,31 @@ export interface PluginInstance {
   routes: string[];
   health: HealthState;
   message: string;
+  /** `codi` (official catalog), a registry name, or `local` (written in the repository). */
+  source: string;
+  trust: PluginTrust;
+}
+
+/** Where a plugin instance comes from: Store trust, or `local` for plugins written in the repo. */
+export type PluginTrust = "official" | "unofficial" | "local";
+
+/** Sort keys of `GET /servers/{server}/plugins`. */
+export type PluginSortKey = "name" | "instance" | "bot" | "version" | "health" | "source";
+
+export type PluginListParams = PageParams<PluginSortKey>;
+
+/** `DELETE /servers/{server}/plugins/{bot}/{instance}`. */
+export interface UninstallResult {
+  /**
+   * `true` when the instance was deleted from bot.yaml; `false` when it also runs on other
+   * servers and only this server was removed from it.
+   */
+  removed: boolean;
+  /** What went with the last instance of the plugin (`codi.lock: acme/xp`, `plugins/xp/`). */
+  cleaned: string[];
+  mode: "commit" | "pullRequest";
+  revision?: string;
+  pullRequestUrl?: string;
 }
 
 export type ConfigScope = "server" | "base";
@@ -808,15 +858,45 @@ export interface StorePlugin {
   installed: StoreInstallation[];
 }
 
-/** A plugin source (`GET /store`). A registry that cannot be fetched has an `error` and no plugins. */
-export interface StoreSource {
+/**
+ * A plugin source as listed by `GET /store?summary=1` (no plugins). A registry that cannot be
+ * fetched has an `error`.
+ */
+export interface StoreSourceSummary {
   name: string;
   kind: StoreSourceKind;
   url?: string;
   trust: StoreTrust;
   fetchedAt?: Timestamp;
   error?: HumanError;
+  /** A registry with an access token (`secretRef` in codi.yaml). */
+  private: boolean;
+  /** Private registries: whether this runtime has the token. */
+  credentials?: "ok" | "missing";
+  pluginCount: number;
+}
+
+/** A plugin source (`GET /store`). A registry that cannot be fetched has an `error` and no plugins. */
+export interface StoreSource extends StoreSourceSummary {
   plugins: StorePlugin[];
+}
+
+/** Sort keys of `GET /store/plugins`. */
+export type StorePluginSortKey =
+  | "name"
+  | "source"
+  | "trust"
+  | "version"
+  | "publisher"
+  | "installed";
+
+/** `GET /store/plugins` (default limit 50). */
+export interface StorePluginParams extends PageParams<StorePluginSortKey> {
+  /** Only this source. */
+  source?: string;
+  trust?: StoreTrust;
+  /** Only plugins with (`true`) or without (`false`) an instance. */
+  installed?: boolean;
 }
 
 /**
@@ -882,6 +962,11 @@ export interface AddRegistryRequest {
   name: string;
   /** `https://` only, unique. */
   url: string;
+  /**
+   * Access token of a private registry: kept in the runtime's secret store, sent to the
+   * registry's host only, never returned.
+   */
+  token?: string;
 }
 
 /** Result of a `codi.yaml` write-back (`POST /registries`, `DELETE /registries/{name}`). */

@@ -178,11 +178,9 @@ describe("overview & server", () => {
 
 describe("plugin settings", () => {
   test("edit, review the diff and commit", async () => {
-    const { user, runtime } = setup("/admin/servers/ma-commu/plugins");
+    const { user, runtime } = setup("/admin/servers/ma-commu/plugins/moderator/welcome");
     await loginAsOwner(user);
-    const card = await screen.findByRole("article", { name: /Welcome/ });
-    expect(within(card).getByText("Send DMs")).toBeTruthy();
-    expect(within(card).getByText("welcome-preview")).toBeTruthy();
+    const card = await screen.findByRole("region", { name: "Welcome settings" });
     const message = within(card).getByRole("textbox", { name: "Message" });
     await user.clear(message);
     await user.type(message, "Coucou {{member}");
@@ -202,7 +200,7 @@ describe("plugin settings", () => {
   });
 
   test("client validation blocks review; 422 diagnostics land on fields", async () => {
-    const { user } = setup("/admin/servers/ma-commu/plugins", (url, init) => {
+    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/onboarding", (url, init) => {
       if (init.method === "PUT" && url.pathname.endsWith("/onboarding/config"))
         return json(
           {
@@ -223,7 +221,7 @@ describe("plugin settings", () => {
       return undefined;
     });
     await loginAsOwner(user);
-    const card = await screen.findByRole("article", { name: /Onboarding/ });
+    const card = await screen.findByRole("region", { name: "Onboarding settings" });
     const title = within(card).getByRole("textbox", { name: "Title" });
     await user.clear(title);
     await user.click(within(card).getByRole("button", { name: "Review changes" }));
@@ -243,7 +241,7 @@ describe("plugin settings", () => {
 
   test("409 conflict offers a reload; pull request mode links the PR", async () => {
     let mode: "conflict" | "pr" = "conflict";
-    const { user } = setup("/admin/servers/ma-commu/plugins", (_url, init) => {
+    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/welcome", (_url, init) => {
       if (init.method !== "PUT") return undefined;
       return mode === "conflict"
         ? json(
@@ -257,7 +255,7 @@ describe("plugin settings", () => {
           });
     });
     await loginAsOwner(user);
-    const card = await screen.findByRole("article", { name: /Welcome/ });
+    const card = await screen.findByRole("region", { name: "Welcome settings" });
     await user.click(within(card).getByRole("switch", { name: "Dm onboarding" }));
     await user.click(within(card).getByRole("button", { name: "Review changes" }));
     await user.click(within(card).getByRole("button", { name: "Save to git" }));
@@ -275,12 +273,15 @@ describe("plugin settings", () => {
 
   test("base scope edits spec.plugins[].config, not the effective values", async () => {
     let sent: { config: Record<string, unknown>; scope: string } | undefined;
-    const { user, runtime } = setup("/admin/servers/ma-commu/plugins", (_url, init) => {
-      if (init.method === "PUT") sent = JSON.parse(init.body as string) as typeof sent;
-      return undefined;
-    });
+    const { user, runtime } = setup(
+      "/admin/servers/ma-commu/plugins/moderator/welcome",
+      (_url, init) => {
+        if (init.method === "PUT") sent = JSON.parse(init.body as string) as typeof sent;
+        return undefined;
+      },
+    );
     await loginAsOwner(user);
-    const card = await screen.findByRole("article", { name: /Welcome/ });
+    const card = await screen.findByRole("region", { name: "Welcome settings" });
     expect(within(card).getByText("message", { selector: ".editor-note code" })).toBeTruthy();
     await user.click(within(card).getByRole("radio", { name: "Base config" }));
     const message = within(card).getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
@@ -302,13 +303,13 @@ describe("plugin settings", () => {
   });
 
   test("moderators see admin-only fields locked and 403 is explained", async () => {
-    const { user } = setup("/admin/servers/ma-commu/plugins", (_url, init) =>
+    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/welcome", (_url, init) =>
       init.method === "PUT"
         ? json({ error: { code: "forbidden", message: "you may not change: channel" } }, 403)
         : undefined,
     );
     await user.click(await screen.findByRole("button", { name: /Mina/ }));
-    const card = await screen.findByRole("article", { name: /Welcome/ });
+    const card = await screen.findByRole("region", { name: "Welcome settings" });
     expect(
       (within(card).getByRole("combobox", { name: "Channel" }) as HTMLButtonElement).disabled,
     ).toBe(true);
@@ -327,12 +328,152 @@ describe("plugin settings", () => {
         : undefined,
     );
     await loginAsOwner(user);
-    await screen.findByRole("article", { name: /Welcome/ });
+    await screen.findByRole("link", { name: /Welcome/ });
     expired = true;
     await user.click(screen.getByRole("link", { name: "Overview" }));
     expect(
       await screen.findByRole("heading", { name: "Sign in to the operator console" }),
     ).toBeTruthy();
+  });
+});
+
+describe("plugins table and instance page", () => {
+  test("rows link to the instance page; overview, breadcrumb and back link", async () => {
+    const { user } = setup("/admin/servers/ma-commu/plugins");
+    await loginAsOwner(user);
+    const table = await screen.findByRole("table", { name: "Plugin instances" });
+    const welcome = await within(table).findByRole("link", { name: /Welcome/ });
+    expect(welcome.getAttribute("href")).toMatch(
+      /\/servers\/ma-commu\/plugins\/moderator\/welcome$/,
+    );
+    const row = welcome.closest("tr") as HTMLElement;
+    expect(within(row).getByText("welcome@0.1.0")).toBeTruthy();
+    expect(within(row).getByText("Official")).toBeTruthy();
+    expect(within(row).getByText("2")).toBeTruthy();
+    const onboarding = within(table)
+      .getByRole("link", { name: /Onboarding/ })
+      .closest("tr")!;
+    expect(within(onboarding as HTMLElement).getByText("Local")).toBeTruthy();
+    expect(
+      within(table)
+        .getByRole("columnheader", { name: /Plugin/ })
+        .getAttribute("aria-sort"),
+    ).toBe("ascending");
+
+    // A click anywhere on the row opens the instance's page.
+    await user.click(within(row).getByText("welcome", { selector: "code" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Welcome" })).toBeTruthy();
+    expect(window.location.pathname).toMatch(/\/plugins\/moderator\/welcome$/);
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(crumbs).getByRole("link", { name: "Plugins" })).toBeTruthy();
+    expect(within(crumbs).getByText("Welcome")).toBeTruthy();
+    // Settings first, then the overview in the sub-navigation.
+    expect(screen.getByRole("region", { name: "Welcome settings" })).toBeTruthy();
+    const sections = screen.getByRole("navigation", { name: "Welcome sections" });
+    await user.click(within(sections).getByRole("link", { name: "Overview" }));
+    expect(window.location.search).toBe("?section=overview");
+    expect(await screen.findByText("Send DMs")).toBeTruthy();
+    expect(screen.getByText("welcome-preview")).toBeTruthy();
+    expect(screen.getByText("ServerMembers")).toBeTruthy();
+
+    await user.click(screen.getByRole("link", { name: "All plugins" }));
+    expect(await screen.findByRole("table", { name: "Plugin instances" })).toBeTruthy();
+  });
+
+  test("an unknown instance shows a not-found state", async () => {
+    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/nope");
+    await loginAsOwner(user);
+    expect(await screen.findByText("This plugin instance does not exist")).toBeTruthy();
+    expect(screen.getByText(/no instance moderator\/nope on this server/)).toBeTruthy();
+  });
+
+  test("uninstall: confirm, result on the table, the instance is gone", async () => {
+    const { user, runtime } = setup(
+      "/admin/servers/ma-commu/plugins/moderator/welcome?section=danger",
+    );
+    await loginAsOwner(user);
+    await user.click(await screen.findByRole("button", { name: "Uninstall…" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Uninstall Welcome from Ma Commu?",
+    });
+    // What happens is spelled out before confirming.
+    expect(within(dialog).getByText(/only Ma Commu is removed from it/)).toBeTruthy();
+    expect(within(dialog).getByText(/its codi.lock entry/)).toBeTruthy();
+    expect(within(dialog).getByText(/stored data \(key-value storage\) is kept/)).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Uninstall" }));
+
+    // Back on the table, with the result.
+    const table = await screen.findByRole("table", { name: "Plugin instances" });
+    expect(window.location.pathname).toMatch(/\/servers\/ma-commu\/plugins$/);
+    const notice = screen
+      .getByText("Welcome was uninstalled from Ma Commu", { selector: "[role=status] p" })
+      .closest("[role=status]")!;
+    expect(within(notice as HTMLElement).getByText("plugins/welcome/")).toBeTruthy();
+    expect(within(notice as HTMLElement).getByText("is now the active revision")).toBeTruthy();
+    await waitFor(() => expect(within(table).queryByRole("link", { name: /Welcome/ })).toBeNull());
+    expect(runtime.state.instances.map((i) => i.instance)).toEqual(["onboarding"]);
+    expect(runtime.state.audit[0]).toMatchObject({
+      action: "plugin.uninstall",
+      target: "moderator/welcome",
+    });
+  });
+
+  test("uninstall errors: 422 dependency, 409 conflict, 403", async () => {
+    let mode: "mock" | "conflict" | "forbidden" = "mock";
+    const { user } = setup(
+      "/admin/servers/ma-commu/plugins/moderator/onboarding?section=danger",
+      (_url, init) =>
+        init.method !== "DELETE" || mode === "mock"
+          ? undefined
+          : mode === "conflict"
+            ? json(
+                {
+                  error: {
+                    code: "conflict",
+                    message: "The repository changed meanwhile.",
+                    hint: "Try again.",
+                  },
+                },
+                409,
+              )
+            : json(
+                { error: { code: "forbidden", message: "write-back is disabled in codi.yaml" } },
+                403,
+              ),
+    );
+    await loginAsOwner(user);
+    const confirm = async () => {
+      await user.click(await screen.findByRole("button", { name: "Uninstall…" }));
+      const dialog = await screen.findByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: "Uninstall" }));
+    };
+    // welcome's DM links to the onboarding portal: the runtime refuses.
+    await confirm();
+    expect(await screen.findByText("Something depends on this plugin")).toBeTruthy();
+    const problems = screen.getByRole("list", { name: "Problems" });
+    expect(within(problems).getByText(/dmOnboarding links to the onboarding portal/)).toBeTruthy();
+    expect(screen.getByText("Another plugin or setting may depend on it.")).toBeTruthy();
+    expect(window.location.pathname).toMatch(/\/onboarding$/);
+
+    mode = "conflict";
+    await confirm();
+    expect(
+      await screen.findByText("The repository changed meanwhile", { selector: "p" }),
+    ).toBeTruthy();
+    mode = "forbidden";
+    await confirm();
+    expect(await screen.findByText("You cannot uninstall this plugin")).toBeTruthy();
+    expect(screen.getByText("write-back is disabled in codi.yaml")).toBeTruthy();
+  });
+
+  test("moderators have no danger zone", async () => {
+    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/welcome?section=danger");
+    await user.click(await screen.findByRole("button", { name: /Mina/ }));
+    // Falls back to the settings.
+    expect(await screen.findByRole("region", { name: "Welcome settings" })).toBeTruthy();
+    const sections = screen.getByRole("navigation", { name: "Welcome sections" });
+    expect(within(sections).queryByRole("link", { name: "Danger zone" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Uninstall…" })).toBeNull();
   });
 });
 

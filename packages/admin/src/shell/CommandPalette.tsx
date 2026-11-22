@@ -20,7 +20,7 @@ import { Kbd } from "../components/ui/kbd.tsx";
 import { useWorkspace } from "../context.tsx";
 import { useTranslation } from "../i18n/index.ts";
 import { navigate } from "../router.tsx";
-import { NAV, pathFor, type PageId } from "./nav.ts";
+import { instancePath, NAV, pathFor, type PageId } from "./nav.ts";
 import { useTheme } from "./theme.tsx";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -135,7 +135,7 @@ export function CommandPalette({
                   <CommandItem
                     key={`${p.bot}/${p.instance}`}
                     value={`plugin ${p.plugin.displayName || p.plugin.name} ${p.instance} ${p.bot}`}
-                    onSelect={() => go(`/servers/${ws.serverKey}/plugins#${p.bot}-${p.instance}`)}
+                    onSelect={() => go(instancePath(ws.serverKey!, p.bot, p.instance))}
                   >
                     <PluginGlyph size={18} />
                     <span>{p.plugin.displayName || p.plugin.name}</span>

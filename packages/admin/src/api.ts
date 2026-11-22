@@ -11,8 +11,10 @@ import type {
   ServerResources,
   SimCommand,
   SimState,
+  PluginListParams,
   StoreDetail,
-  StoreSource,
+  StorePluginParams,
+  StoreSourceSummary,
   SyncRecord,
 } from "@codi/client";
 import { useCodi, useCodiQuery, type QueryResult } from "@codi/react";
@@ -25,9 +27,17 @@ export const keys = {
   resources: (key: string) => ["admin", "server", key, "resources"] as const,
   plan: (key: string) => ["admin", "server", key, "plan"] as const,
   audit: (key: string, before: string) => ["admin", "server", key, "audit", before] as const,
+  /** Prefix of every plugin query of a server (list, pages, single instances). */
   plugins: (key: string) => ["admin", "server", key, "plugins"] as const,
+  pluginsAll: (key: string) => ["admin", "server", key, "plugins", "all"] as const,
+  pluginsPage: (key: string, params: PluginListParams) =>
+    ["admin", "server", key, "plugins", "page", JSON.stringify(params)] as const,
+  plugin: (key: string, bot: string, instance: string) =>
+    ["admin", "server", key, "plugins", "one", bot, instance] as const,
   store: () => ["admin", "store"] as const,
   storeSources: () => ["admin", "store", "sources"] as const,
+  storePlugins: (params: StorePluginParams) =>
+    ["admin", "store", "plugins", JSON.stringify(params)] as const,
   storeDetail: (source: string, plugin: string) =>
     ["admin", "store", "detail", source, plugin] as const,
   sim: () => ["sim"] as const,
@@ -78,17 +88,32 @@ export function useAudit(key: string, before: string): QueryResult<AuditEntry[]>
   );
 }
 
+/** Every plugin instance of a server (⌘K palette). */
 export function usePlugins(key: string | undefined): QueryResult<PluginInstance[]> {
   const { client } = useCodi();
-  return useCodiQuery(key ? keys.plugins(key) : null, (signal) =>
+  return useCodiQuery(key ? keys.pluginsAll(key) : null, (signal) =>
     client.admin.plugins(key!, { signal }),
   );
 }
 
-/** Store sources (`GET /store`). */
-export function useStoreSources(): QueryResult<StoreSource[]> {
+/** One plugin instance (`GET /servers/{server}/plugins/{bot}/{instance}`). */
+export function usePlugin(
+  key: string,
+  bot: string | undefined,
+  instance: string | undefined,
+): QueryResult<PluginInstance> {
   const { client } = useCodi();
-  return useCodiQuery(keys.storeSources(), (signal) => client.store.list({ signal }));
+  return useCodiQuery(bot && instance ? keys.plugin(key, bot, instance) : null, (signal) =>
+    client.admin.plugin(key, bot!, instance!, { signal }),
+  );
+}
+
+/** Store sources with their plugin counts (`GET /store?summary=1`). */
+export function useStoreSources(enabled = true): QueryResult<StoreSourceSummary[]> {
+  const { client } = useCodi();
+  return useCodiQuery(keys.storeSources(), (signal) => client.store.sources({}, { signal }), {
+    enabled,
+  });
 }
 
 /** What a Store plugin requests at its latest version (`GET /store/{source}/{plugin}`). */

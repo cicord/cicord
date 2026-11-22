@@ -16,8 +16,11 @@ import type {
   HistoryQuery,
   Me,
   Message,
+  Page,
+  PageParams,
   Plan,
   PluginInstance,
+  PluginListParams,
   PortalMe,
   PortalServer,
   RemotePlanResult,
@@ -34,10 +37,14 @@ import type {
   SimState,
   StoreDetail,
   StoreInstallRequest,
+  StorePlugin,
+  StorePluginParams,
   StoreSource,
+  StoreSourceSummary,
   SyncRecord,
   SyncResult,
   TokenSession,
+  UninstallResult,
   UpdatePluginConfigRequest,
   User,
   WriteBackResult,
@@ -211,6 +218,17 @@ const seg = (value: string): string => encodeURIComponent(value);
 
 function trimSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+/** Query string of a paged list (spec/api.md "Data tables"); empty values are left out. */
+function pageQuery(params: PageParams = {}): Query {
+  return {
+    q: params.q?.trim() || undefined,
+    sort: params.sort || undefined,
+    order: params.order,
+    offset: params.offset,
+    limit: params.limit,
+  };
 }
 
 function withQuery(url: string, query?: Query): string {
@@ -577,10 +595,52 @@ export class CodiClient {
           ...options,
         })
       ).items,
-    /** `GET /servers/{server}/plugins` (moderator). */
+    /** `GET /servers/{server}/plugins` (moderator): every instance. */
     plugins: async (server: string, options?: CallOptions): Promise<PluginInstance[]> =>
       (await this.#api<Items<PluginInstance>>("GET", `/servers/${seg(server)}/plugins`, options))
         .items,
+    /**
+     * `GET /servers/{server}/plugins?q&sort&order&offset&limit` (moderator): one page of
+     * instances. Without `limit` the page holds every instance. Rejects with `invalid` (400)
+     * on an unknown sort key.
+     */
+    pluginsPage: (
+      server: string,
+      params: PluginListParams = {},
+      options?: CallOptions,
+    ): Promise<Page<PluginInstance>> =>
+      this.#api<Page<PluginInstance>>("GET", `/servers/${seg(server)}/plugins`, {
+        query: pageQuery(params),
+        ...options,
+      }),
+    /** `GET /servers/{server}/plugins/{bot}/{instance}` (moderator). Rejects with `not_found`. */
+    plugin: (
+      server: string,
+      bot: string,
+      instance: string,
+      options?: CallOptions,
+    ): Promise<PluginInstance> =>
+      this.#api<PluginInstance>(
+        "GET",
+        `/servers/${seg(server)}/plugins/${seg(bot)}/${seg(instance)}`,
+        options,
+      ),
+    /**
+     * `DELETE /servers/{server}/plugins/{bot}/{instance}` (admin): uninstalls the instance from
+     * the server (plugin data is kept). Rejects with `invalid` + `diagnostics` (422, something
+     * depends on it), `conflict` (409), `forbidden` (403) or `not_found` (404).
+     */
+    uninstallPlugin: (
+      server: string,
+      bot: string,
+      instance: string,
+      options?: CallOptions,
+    ): Promise<UninstallResult> =>
+      this.#api<UninstallResult>(
+        "DELETE",
+        `/servers/${seg(server)}/plugins/${seg(bot)}/${seg(instance)}`,
+        options,
+      ),
     /**
      * `PUT /servers/{server}/plugins/{bot}/{instance}/config` (moderator, field-restricted).
      * Rejects with `forbidden` (403), `invalid` + `diagnostics` (422) or `conflict` (409).
@@ -631,6 +691,34 @@ export class CodiClient {
     /** `GET /store` (admin of a server): every source, `codi` first, then the registries. */
     list: async (options?: CallOptions): Promise<StoreSource[]> =>
       (await this.#api<{ sources: StoreSource[] }>("GET", "/store", options)).sources,
+    /**
+     * `GET /store?summary=1` (admin of a server): every source with its plugin count, without
+     * the plugins (`summary: false` is `list()`).
+     */
+    sources: async (
+      { summary = true }: { summary?: boolean } = {},
+      options?: CallOptions,
+    ): Promise<StoreSourceSummary[]> =>
+      (
+        await this.#api<{ sources: StoreSourceSummary[] }>("GET", "/store", {
+          ...(summary ? { query: { summary: 1 } } : {}),
+          ...options,
+        })
+      ).sources,
+    /**
+     * `GET /store/plugins` (admin of a server): one page of the plugins of every source,
+     * filtered by `source`, `trust` and `installed` (default limit 50).
+     */
+    plugins: (params: StorePluginParams = {}, options?: CallOptions): Promise<Page<StorePlugin>> =>
+      this.#api<Page<StorePlugin>>("GET", "/store/plugins", {
+        query: {
+          ...pageQuery(params),
+          source: params.source || undefined,
+          trust: params.trust,
+          installed: params.installed,
+        },
+        ...options,
+      }),
     /** `POST /store/refresh` (admin of a server): refetches every registry index. */
     refresh: async (options?: CallOptions): Promise<StoreSource[]> =>
       (await this.#api<{ sources: StoreSource[] }>("POST", "/store/refresh", options)).sources,
@@ -666,6 +754,19 @@ export class CodiClient {
     /** `DELETE /registries/{name}`. Rejects with `not_found` (404) or `in_use` (409). */
     remove: (name: string, options?: CallOptions): Promise<WriteResult> =>
       this.#api<WriteResult>("DELETE", `/registries/${seg(name)}`, options),
+    /**
+     * `PUT /registries/{name}/token`: stores the access token of a private registry (checked
+     * against its index first). Rejects with `invalid` (422, the index cannot be read with it),
+     * `not_found` (404) or `unavailable` (503, no secret store).
+     */
+    setToken: (name: string, token: string, options?: CallOptions): Promise<WriteResult> =>
+      this.#api<WriteResult>("PUT", `/registries/${seg(name)}/token`, {
+        body: { token },
+        ...options,
+      }),
+    /** `DELETE /registries/{name}/token`: makes the registry public again. */
+    removeToken: (name: string, options?: CallOptions): Promise<WriteResult> =>
+      this.#api<WriteResult>("DELETE", `/registries/${seg(name)}/token`, options),
   };
 
   // ─────────────────────────────────────────────────────────── machine (§7)

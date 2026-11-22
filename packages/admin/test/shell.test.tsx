@@ -98,8 +98,10 @@ describe("layout", () => {
     await user.click(screen.getByRole("button", { name: "Search pages, servers and plugins" }));
     const again = await screen.findByRole("dialog", { name: "Command palette" });
     await user.click(await within(again).findByRole("option", { name: /Welcome/ }));
-    await waitFor(() => expect(window.location.hash).toBe("#moderator-welcome"));
-    expect(await screen.findByRole("article", { name: /Welcome/ })).toBeTruthy();
+    await waitFor(() =>
+      expect(window.location.pathname).toMatch(/\/servers\/ma-commu\/plugins\/moderator\/welcome$/),
+    );
+    expect(await screen.findByRole("region", { name: "Welcome settings" })).toBeTruthy();
   });
 
   test("theme toggle is applied and persisted; settings page", async () => {
