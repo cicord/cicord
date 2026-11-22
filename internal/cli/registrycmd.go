@@ -89,6 +89,8 @@ plugins only if you trust them.`,
 				return fmt.Errorf("registry names use 1 to 32 lowercase letters, digits and dashes")
 			case name == config.OfficialRegistryName:
 				return fmt.Errorf("the name %q is reserved for the official CODI plugins", name)
+			case registry.HasUserinfo(url):
+				return fmt.Errorf("registry URLs must not contain credentials: codi.yaml is committed and shown in the admin UI")
 			}
 			repo, err := loadProject(cmd)
 			if err != nil {

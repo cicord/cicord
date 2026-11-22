@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -47,6 +48,28 @@ type IndexEntry struct {
 	Publisher   string   `yaml:"publisher,omitempty"`
 	Verified    bool     `yaml:"verified,omitempty"`
 }
+
+// NameRe is the shape of registry and plugin names. Both become cache directories, so
+// anything else (dots, slashes) is refused.
+var NameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+// CheckSource validates "<registry>/<plugin>".
+func CheckSource(source string) (registryName, plugin string, err error) {
+	reg, name, ok := strings.Cut(source, "/")
+	if !ok || !NameRe.MatchString(reg) || !NameRe.MatchString(name) {
+		return "", "", fmt.Errorf("invalid plugin reference %q: use <registry>/<plugin> with lowercase letters, digits and dashes", source)
+	}
+	return reg, name, nil
+}
+
+// userinfoRe matches the credentials of a URL ("https://user:token@host").
+var userinfoRe = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@`)
+
+// Redact removes URL credentials from s (a URL or an error message).
+func Redact(s string) string { return userinfoRe.ReplaceAllString(s, "${1}***@") }
+
+// HasUserinfo reports whether a URL embeds credentials.
+func HasUserinfo(raw string) bool { return userinfoRe.MatchString(raw) }
 
 // Trust levels of a plugin source (ADR-0011).
 const (
@@ -247,7 +270,10 @@ func (r *Resolver) Resolve(source, versionRange string) (string, string, error) 
 
 // Materialize ensures the locked plugin is in the cache and its integrity matches.
 func Materialize(ctx context.Context, cacheDir, source string, e LockEntry) (string, error) {
-	dir := filepath.Join(cacheDir, filepath.FromSlash(source), e.Version+"-"+shortSHA(e.Commit))
+	dir, err := cachePath(cacheDir, source, e)
+	if err != nil {
+		return "", err
+	}
 	marker := filepath.Join(dir, ".codi-integrity")
 	if data, err := os.ReadFile(marker); err == nil && strings.TrimSpace(string(data)) == e.Integrity {
 		return dir, nil
@@ -283,6 +309,29 @@ func Materialize(ctx context.Context, cacheDir, source string, e LockEntry) (str
 	}
 	return dir, nil
 }
+
+// cachePath is <cacheDir>/<registry>/<plugin>/<version>-<sha>, refusing anything that
+// would leave cacheDir (the names come from codi.lock and registry indexes).
+func cachePath(cacheDir, source string, e LockEntry) (string, error) {
+	reg, name, err := CheckSource(source)
+	if err != nil {
+		return "", err
+	}
+	v, err := semver.NewVersion(e.Version)
+	if err != nil {
+		return "", fmt.Errorf("%s: invalid version %q", source, e.Version)
+	}
+	if !shaRe.MatchString(e.Commit) {
+		return "", fmt.Errorf("%s: invalid commit %q", source, e.Commit)
+	}
+	dir := filepath.Join(cacheDir, reg, name, v.String()+"-"+shortSHA(e.Commit))
+	if rel, err := filepath.Rel(cacheDir, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s: cache path escapes the cache directory", source)
+	}
+	return dir, nil
+}
+
+var shaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 func shortSHA(s string) string {
 	if len(s) > 12 {
@@ -394,9 +443,9 @@ type Resolution struct {
 // ResolveLatest resolves "<registry>/<name>" with a semver range against the registry
 // index and the plugin repository tags, downloads it and computes its lock entry.
 func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, source, versionRange string) (*Resolution, error) {
-	regName, name, ok := strings.Cut(source, "/")
-	if !ok {
-		return nil, fmt.Errorf("registry reference must be <registry>/<plugin>, got %q", source)
+	regName, name, err := CheckSource(source)
+	if err != nil {
+		return nil, err
 	}
 	var regURL string
 	for _, r := range registries {
@@ -464,7 +513,10 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 		return nil, err
 	}
 	entry := LockEntry{Version: best.String(), Repo: ie.Repo, Commit: bestHash.String()}
-	dir := filepath.Join(cacheDir, filepath.FromSlash(source), entry.Version+"-"+shortSHA(entry.Commit))
+	dir, err := cachePath(cacheDir, source, entry)
+	if err != nil {
+		return nil, err
+	}
 	os.RemoveAll(dir)
 	sum, err := exportTree(commit, dir)
 	if err != nil {

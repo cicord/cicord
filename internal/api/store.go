@@ -118,7 +118,7 @@ func (s *server) failStore(w http.ResponseWriter, err error) {
 	case errors.As(err, &ue):
 		s.failSetup(w, &setup.Error{Status: http.StatusBadGateway, Code: "registry_unavailable",
 			Message: fmt.Sprintf("The %s source could not be read.", ue.Source),
-			Hint:    "Refresh the sources, check the registry URL, or try again later.", Details: ue.Err.Error()})
+			Hint:    "Refresh the sources, check the registry URL, or try again later.", Details: registry.Redact(ue.Err.Error())})
 	default:
 		s.fail(w, err)
 	}
@@ -285,6 +285,9 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	case !registry.IsRemoteURL(body.URL):
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must start with https://"))
+		return
+	case registry.HasUserinfo(body.URL):
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must not contain credentials (private registries are not supported yet)"))
 		return
 	}
 	repo := s.rt.Repo()

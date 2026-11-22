@@ -55,3 +55,29 @@ func TestCheckPublicHost(t *testing.T) {
 		t.Error("sameHost")
 	}
 }
+
+func TestNamesAndCachePaths(t *testing.T) {
+	for _, s := range []string{"acme/../x", "../x/y", "acme/..", "acme/a/b", "acme/A", "acme", ".x/y"} {
+		if _, _, err := CheckSource(s); err == nil {
+			t.Errorf("CheckSource(%q) accepted", s)
+		}
+	}
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	if _, err := cachePath(t.TempDir(), "acme/hello", LockEntry{Version: "1.0.0", Commit: sha}); err != nil {
+		t.Errorf("valid cache path: %v", err)
+	}
+	for _, e := range []LockEntry{{Version: "../../x", Commit: sha}, {Version: "1.0.0", Commit: "../x"}} {
+		if _, err := cachePath(t.TempDir(), "acme/hello", e); err == nil {
+			t.Errorf("cachePath accepted %+v", e)
+		}
+	}
+	if _, err := Materialize(t.Context(), t.TempDir(), "acme/../../etc", LockEntry{Version: "1.0.0", Commit: sha}); err == nil {
+		t.Error("Materialize accepted a traversal source")
+	}
+	if got := Redact("clone https://bob:s3cret@git.example/r.git: auth failed"); got != "clone https://***@git.example/r.git: auth failed" {
+		t.Errorf("Redact = %q", got)
+	}
+	if !HasUserinfo("https://tok@github.com/a/b") || HasUserinfo("https://github.com/a/b") {
+		t.Error("HasUserinfo")
+	}
+}

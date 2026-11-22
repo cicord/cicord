@@ -99,7 +99,7 @@ type UnavailableError struct {
 }
 
 func (e *UnavailableError) Error() string {
-	return fmt.Sprintf("registry %q: %v", e.Source, e.Err)
+	return registry.Redact(fmt.Sprintf("registry %q: %v", e.Source, e.Err))
 }
 func (e *UnavailableError) Unwrap() error { return e.Err }
 
@@ -213,7 +213,7 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 	wg.Wait()
 	for i, r := range regs {
 		c := results[i]
-		src := Source{Name: r.Name, Kind: KindGit, URL: r.URL, Trust: registry.Trust(r.URL), Plugins: []Plugin{}}
+		src := Source{Name: r.Name, Kind: KindGit, URL: registry.Redact(r.URL), Trust: registry.Trust(r.URL), Plugins: []Plugin{}}
 		at := c.at
 		src.FetchedAt = &at
 		if c.err != nil {
@@ -223,7 +223,9 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 		}
 		names := make([]string, 0, len(c.idx.Plugins))
 		for n := range c.idx.Plugins {
-			names = append(names, n)
+			if registry.NameRe.MatchString(n) { // other keys could not be installed (cache paths)
+				names = append(names, n)
+			}
 		}
 		slices.Sort(names)
 		for _, n := range names {
@@ -237,7 +239,7 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 
 func fromIndex(r config.Registry, name string, e registry.IndexEntry, inst []Installation) Plugin {
 	p := Plugin{Source: r.Name, Name: name, DisplayName: e.DisplayName, Description: e.Description,
-		Keywords: nonNil(e.Keywords), Publisher: e.Publisher, Repo: e.Repo, Trust: registry.Trust(r.URL),
+		Keywords: nonNil(e.Keywords), Publisher: e.Publisher, Repo: registry.Redact(e.Repo), Trust: registry.Trust(r.URL),
 		Installed: nonNilInst(inst)}
 	// "verified" only means something in the official registry.
 	p.Verified = e.Verified && p.Trust == registry.TrustOfficial
@@ -264,6 +266,9 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 			Trust: registry.TrustOfficial, Installed: nonNilInst(inst[source+"/"+name])}}
 		fill(&d, e)
 		return d, nil
+	}
+	if !registry.NameRe.MatchString(source) || !registry.NameRe.MatchString(name) {
+		return Detail{}, ErrUnknownPlugin
 	}
 	var reg *config.Registry
 	for _, r := range registries(repo) {
@@ -363,7 +368,7 @@ func installations(repo *config.Repo, cat *catalog.Catalog) map[string][]Install
 
 // ExplainFetch turns a fetch error into a message for people.
 func ExplainFetch(err error) *SourceError {
-	msg := err.Error()
+	msg := registry.Redact(err.Error())
 	e := &SourceError{Message: "This source could not be read.", Details: msg}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
