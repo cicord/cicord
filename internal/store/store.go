@@ -45,7 +45,11 @@ type Source struct {
 	Trust     string       `json:"trust"`
 	FetchedAt *time.Time   `json:"fetchedAt,omitempty"`
 	Error     *SourceError `json:"error,omitempty"`
-	Plugins   []Plugin     `json:"plugins"`
+	// Private: the registry has a secretRef; Credentials is "ok" when that secret is
+	// available to the runtime, "missing" otherwise. The token itself is never returned.
+	Private     bool     `json:"private"`
+	Credentials string   `json:"credentials,omitempty"`
+	Plugins     []Plugin `json:"plugins"`
 }
 
 // Installation is an instance using a Store plugin.
@@ -107,8 +111,10 @@ func (e *UnavailableError) Unwrap() error { return e.Err }
 type Service struct {
 	Catalog  *catalog.Catalog
 	CacheDir string
-	// TTL of a fetched index (default 30 min).
+	// TTL of a fetched index (default 30 min); Run refreshes them at this interval.
 	TTL time.Duration
+	// FirstRefresh delays Run's first refresh (default 10 s).
+	FirstRefresh time.Duration
 	// FetchTimeout bounds one index fetch (default 20 s).
 	FetchTimeout time.Duration
 	// Fetch reads a registry index (default registry.FetchIndex).
@@ -116,6 +122,8 @@ type Service struct {
 	// Resolve resolves "<registry>/<plugin>" (default registry.ResolveLatest).
 	Resolve func(ctx context.Context, regs []config.Registry, cacheDir, source, rng string) (*registry.Resolution, error)
 	Now     func() time.Time
+	// Secret resolves the secretRef of private registries (nil: anonymous fetches).
+	Secret func(name string) (string, bool)
 	// PublicOnly makes https fetches refuse non-public addresses (registry.WithPublicOnly):
 	// set when the Store serves admin UI users, who must not reach the runtime's network.
 	PublicOnly bool
@@ -165,8 +173,21 @@ func (s *Service) fetch(ctx context.Context, url string) (*registry.Index, error
 	return f(ctx, url)
 }
 
+// withToken attaches the registry's token, when it has one.
+func (s *Service) withToken(ctx context.Context, r config.Registry) context.Context {
+	if r.SecretRef == "" || s.Secret == nil {
+		return ctx
+	}
+	if tok, ok := s.Secret(r.SecretRef); ok {
+		return registry.WithToken(ctx, r.URL, tok)
+	}
+	return ctx
+}
+
 // index returns the cached index of a registry, fetching it when stale or forced.
-func (s *Service) index(ctx context.Context, url string, force bool) cached {
+func (s *Service) index(ctx context.Context, r config.Registry, force bool) cached {
+	url := r.URL
+	ctx = s.withToken(ctx, r)
 	key := config.NormalizeRegistryURL(url)
 	s.mu.Lock()
 	c, ok := s.cache[key]
@@ -185,9 +206,47 @@ func (s *Service) index(ctx context.Context, url string, force bool) cached {
 	return c
 }
 
+// Run refreshes the registry indexes of the active configuration in the background: a
+// first time shortly after start, then every TTL, so that browsing the Store rarely
+// waits for git. It returns when stop is closed.
+func (s *Service) Run(stop <-chan struct{}, repo func() *config.Repo) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-stop
+		cancel()
+	}()
+	first := s.FirstRefresh
+	if first == 0 {
+		first = 10 * time.Second
+	}
+	t := time.NewTimer(first)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if r := repo(); len(registries(r)) > 0 {
+			_, _ = s.Sources(ctx, r, true)
+		}
+		t.Reset(s.ttl())
+	}
+}
+
 // Check fetches a registry index now (and caches it): nil when it is a valid registry.
-func (s *Service) Check(ctx context.Context, url string) error {
-	return s.index(ctx, url, true).err
+func (s *Service) Check(ctx context.Context, r config.Registry) error {
+	return s.index(ctx, r, true).err
+}
+
+// CheckWithToken is Check with a token that is not stored yet ("" = the registry's own).
+func (s *Service) CheckWithToken(ctx context.Context, r config.Registry, token string) error {
+	if token != "" {
+		ctx = registry.WithToken(ctx, r.URL, token)
+		r.SecretRef = "" // the given token wins over a stored one
+	}
+	return s.index(ctx, r, true).err
 }
 
 // Sources lists every source: "codi" first, then the registries in codi.yaml order.
@@ -217,7 +276,7 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = s.index(ctx, r.URL, force)
+			results[i] = s.index(ctx, r, force)
 		}()
 	}
 	wg.Wait()
@@ -226,6 +285,14 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 		src := Source{Name: r.Name, Kind: KindGit, URL: registry.Redact(r.URL), Trust: registry.Trust(r.URL), Plugins: []Plugin{}}
 		at := c.at
 		src.FetchedAt = &at
+		if r.SecretRef != "" {
+			src.Private, src.Credentials = true, "missing"
+			if s.Secret != nil {
+				if _, ok := s.Secret(r.SecretRef); ok {
+					src.Credentials = "ok"
+				}
+			}
+		}
 		if c.err != nil {
 			src.Error = ExplainFetch(c.err)
 			out = append(out, src)
@@ -290,7 +357,7 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 	if reg == nil {
 		return Detail{}, ErrUnknownSource
 	}
-	c := s.index(ctx, reg.URL, false)
+	c := s.index(ctx, *reg, false)
 	if c.err != nil {
 		return Detail{}, &UnavailableError{Source: source, Err: c.err}
 	}
@@ -302,7 +369,7 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 	if resolve == nil {
 		resolve = registry.ResolveLatest
 	}
-	rctx, cancel := context.WithTimeout(s.guard(ctx), 2*time.Minute)
+	rctx, cancel := context.WithTimeout(s.withToken(s.guard(ctx), *reg), 2*time.Minute)
 	defer cancel()
 	res, err := resolve(rctx, []config.Registry{*reg}, s.CacheDir, source+"/"+name, "*")
 	if err != nil {

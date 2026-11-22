@@ -13,6 +13,7 @@ import (
 
 	"github.com/npjonath/codi/internal/api"
 	"github.com/npjonath/codi/internal/auth"
+	"github.com/npjonath/codi/internal/catalog"
 	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/discord"
 	"github.com/npjonath/codi/internal/discord/disgoadapter"
@@ -121,7 +122,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	stored := secrets.Resolver(sec, nil) // environment first, then the secret store
 
 	cacheDir := registry.DefaultCacheDir()
-	resolver := func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir) }
+	resolver := func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, stored) }
 
 	var (
 		connector discord.Connector
@@ -189,6 +190,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 			return err
 		}
 	}
+	cat := catalog.Official()
 	h := api.New(api.Options{
 		Runtime: rt, Writer: writer, Mode: "dev", Sim: world,
 		RuntimeToken: token, WebhookSecret: os.Getenv("CODI_WEBHOOK_SECRET"),
@@ -196,6 +198,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
 		PublicURL: public, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
 		Stopping: stopping, Setup: wz, Checker: checker,
+		Catalog: cat, SecretStore: sec, Secret: stored, PluginStore: runtimePluginStore(cat, stored, stopping, rt.Repo),
 	})
 
 	fmt.Fprintf(stdout, "CODI dev runtime listening on %s\n", public)

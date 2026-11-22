@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -70,5 +71,40 @@ func TestSourcesCacheAndErrors(t *testing.T) {
 	var ue *UnavailableError
 	if _, err := s.Detail(context.Background(), repo, "down", "a"); !errors.As(err, &ue) {
 		t.Errorf("down: %v", err)
+	}
+}
+
+func TestRunRefreshesInBackground(t *testing.T) {
+	var mu sync.Mutex
+	n := 0
+	s := &Service{TTL: 20 * time.Millisecond, FirstRefresh: time.Millisecond,
+		Fetch: func(context.Context, string) (*registry.Index, error) {
+			mu.Lock()
+			n++
+			mu.Unlock()
+			return &registry.Index{}, nil
+		}}
+	repo := repoWith(config.Registry{Name: "acme", URL: "https://acme.example/r.git"})
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() { s.Run(stop, func() *config.Repo { return repo }); close(done) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		got := n
+		mu.Unlock()
+		if got >= 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d background refreshes", got)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(stop)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not stop")
 	}
 }

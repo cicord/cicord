@@ -32,7 +32,8 @@ const (
 
 // EditFunc computes the new content of a file from its current content (nil when the
 // file does not exist). It is called on the latest version of the branch, so edits are
-// rebased automatically; returning an error aborts the change.
+// rebased automatically; returning an error aborts the change. Returning nil content
+// deletes the file (use []byte{} for an empty file).
 type EditFunc func(current []byte) ([]byte, error)
 
 type Request struct {
@@ -158,6 +159,12 @@ func (w *DirWriter) Write(ctx context.Context, req Request) (Result, error) {
 		out[p] = next
 	}
 	for p, data := range out {
+		if data == nil {
+			if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return Result{}, err
+			}
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return Result{}, err
 		}
@@ -291,13 +298,22 @@ func (w *GitWriter) Write(ctx context.Context, req Request) (Result, error) {
 		if err != nil {
 			return Result{}, fmt.Errorf("%w: %s: %v", ErrConflict, rel, err)
 		}
+		inRepo, _ := filepath.Rel(w.opts.WorkDir, p)
+		if next == nil {
+			if cur == nil {
+				continue
+			}
+			if _, err := wt.Remove(filepath.ToSlash(inRepo)); err != nil {
+				return Result{}, err
+			}
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return Result{}, err
 		}
 		if err := os.WriteFile(p, next, 0o644); err != nil {
 			return Result{}, err
 		}
-		inRepo, _ := filepath.Rel(w.opts.WorkDir, p)
 		if _, err := wt.Add(filepath.ToSlash(inRepo)); err != nil {
 			return Result{}, err
 		}

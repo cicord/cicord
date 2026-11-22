@@ -23,6 +23,7 @@ import (
 
 	"github.com/npjonath/codi/internal/api"
 	"github.com/npjonath/codi/internal/auth"
+	"github.com/npjonath/codi/internal/catalog"
 	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/discord/disgoadapter"
 	"github.com/npjonath/codi/internal/registry"
@@ -419,7 +420,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	cacheDir := registry.DefaultCacheDir()
 	rt := runtime.New(runtime.Options{
 		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
-		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir) },
+		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
 	})
 	stopping := make(chan struct{})
@@ -427,6 +428,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	if runtimeToken == "" {
 		log.Warn("CODI_RUNTIME_TOKEN is not set: machine endpoints (codi plan --remote, /api/v1/sync) are disabled")
 	}
+	cat := catalog.Official()
 	h := api.New(api.Options{
 		Runtime: rt, Writer: writer, Mode: "serve", RuntimeToken: runtimeToken,
 		WebhookSecret: os.Getenv("CODI_WEBHOOK_SECRET"), Branch: branch,
@@ -434,6 +436,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
 		PublicURL: public, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
 		Stopping: stopping, Checker: &setup.Checker{Runtime: rt, Probe: defaultProbe(), Secrets: resolve, Writer: writer},
+		Catalog: cat, SecretStore: sec, Secret: resolve, PluginStore: runtimePluginStore(cat, resolve, stopping, rt.Repo),
 	})
 	fmt.Fprintf(stdout, "CODI runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, public, dataDir)
 	return runHTTP(ctx, log, ln, h, rt, stopping)

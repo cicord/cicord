@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +16,9 @@ import (
 	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/registry"
 	"github.com/npjonath/codi/internal/runtime"
+	"github.com/npjonath/codi/internal/secrets"
+	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/codi/internal/store"
 )
 
 func gitRepo(t *testing.T, files map[string]string, tags ...string) string {
@@ -201,6 +207,66 @@ func TestStoreBrowseAndInstallFromRegistry(t *testing.T) {
 	if r := c.do("POST", install, req); r.status != 409 {
 		t.Fatalf("second install: %d %s", r.status, r.body)
 	}
+
+	// Uninstall: the instance and its codi.lock entry go; the registry can then be removed.
+	var un struct {
+		Removed bool
+		Cleaned []string
+		Mode    string
+	}
+	c.expect(200, "DELETE", "/api/v1/servers/"+serverKey+"/plugins/moderator/hello", nil).json(t, &un)
+	if !un.Removed || un.Mode != "commit" || len(un.Cleaned) != 1 || un.Cleaned[0] != "codi.lock: acme/hello" {
+		t.Fatalf("uninstall = %+v", un)
+	}
+	bot, _ = os.ReadFile(filepath.Join(e.dir, "bots", "moderator", "bot.yaml"))
+	if strings.Contains(string(bot), "acme/hello") {
+		t.Errorf("bot.yaml still has the instance:\n%s", bot)
+	}
+	if lock, _ := registry.ReadLock(e.dir); len(lock.Plugins) != 0 {
+		t.Errorf("codi.lock = %+v", lock.Plugins)
+	}
+	e.waitFor("instance gone", func() bool { return len(e.rt.Instances(serverKey)) > 0 && !hasInstance(e, "hello") })
+	c.expect(404, "DELETE", "/api/v1/servers/"+serverKey+"/plugins/moderator/hello", nil)
+	c.expect(200, "DELETE", "/api/v1/registries/acme", nil)
+}
+
+func hasInstance(e *env, name string) bool {
+	for _, i := range e.rt.Instances(serverKey) {
+		if i.Config.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func TestUninstallCopiedPlugin(t *testing.T) {
+	e := start(t)
+	c := e.client()
+	c.login(e.seed.Owner.ID)
+	mod := e.client()
+	mod.login(e.moderator().ID)
+	if r := mod.do("DELETE", "/api/v1/servers/"+serverKey+"/plugins/moderator/welcome", nil); r.status != 403 {
+		t.Fatalf("moderator uninstall: %d %s", r.status, r.body)
+	}
+	if _, err := os.Stat(filepath.Join(e.dir, "plugins", "welcome", "plugin.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	var un struct {
+		Removed bool
+		Cleaned []string
+		Mode    string
+	}
+	r := c.do("DELETE", "/api/v1/servers/"+serverKey+"/plugins/moderator/welcome", nil)
+	if r.status != 200 {
+		t.Fatalf("uninstall: %d %s", r.status, r.body)
+	}
+	r.json(t, &un)
+	if !un.Removed || len(un.Cleaned) != 1 || un.Cleaned[0] != "plugins/welcome/" {
+		t.Fatalf("uninstall = %+v", un)
+	}
+	if _, err := os.Stat(filepath.Join(e.dir, "plugins", "welcome", "plugin.yaml")); !os.IsNotExist(err) {
+		t.Errorf("plugin directory not deleted: %v", err)
+	}
 }
 
 func TestStoreRegistryManagement(t *testing.T) {
@@ -247,4 +313,150 @@ func TestStoreRegistryManagement(t *testing.T) {
 		return r != nil && len(r.Project.Spec.Registries) == 0
 	})
 	owner.expect(404, "DELETE", "/api/v1/registries/acme", nil)
+}
+
+// Private registries: the token goes to the secret store, codi.yaml only names it, the
+// index fetch carries it for the registry host, and it can be replaced or removed.
+func TestPrivateRegistryTokens(t *testing.T) {
+	db, err := sqlite.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	sec, err := secrets.Open(t.Context(), db, make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const regURL = "https://8.8.8.8/private/registry.git"
+	var mu sync.Mutex
+	var sawAuth []bool
+	ps := &store.Service{
+		Secret: secrets.Resolver(sec, func(string) (string, bool) { return "", false }),
+		Fetch: func(ctx context.Context, url string) (*registry.Index, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			auth := registry.AuthFor(ctx, url)
+			sawAuth = append(sawAuth, auth != nil)
+			if auth == nil {
+				return nil, errors.New("clone: authentication required")
+			}
+			return &registry.Index{Plugins: map[string]registry.IndexEntry{"xp": {Repo: "https://8.8.8.8/private/xp.git"}}}, nil
+		},
+	}
+	e := startFull(t, nil, nil, func(o *Options) {
+		o.SecretStore, o.Secret, o.PluginStore = sec, ps.Secret, ps
+	})
+	c := e.client()
+	c.login(e.seed.Owner.ID)
+
+	// Without a token the private registry cannot be read: nothing is written.
+	if r := c.do("POST", "/api/v1/registries", map[string]string{"name": "corp", "url": regURL}); r.status != 422 {
+		t.Fatalf("add without token: %d %s", r.status, r.body)
+	}
+	c.expect(200, "POST", "/api/v1/registries", map[string]string{"name": "corp", "url": regURL, "token": "t0k3n"})
+	data, _ := os.ReadFile(filepath.Join(e.dir, "codi.yaml"))
+	if !strings.Contains(string(data), "secretRef: CODI_REGISTRY_CORP_TOKEN") || strings.Contains(string(data), "t0k3n") {
+		t.Fatalf("codi.yaml:\n%s", data)
+	}
+	if v, err := sec.Get(t.Context(), "CODI_REGISTRY_CORP_TOKEN"); err != nil || v != "t0k3n" {
+		t.Fatalf("secret = %q, %v", v, err)
+	}
+	e.waitFor("registry active", func() bool { r := e.rt.Repo(); return r != nil && len(r.Project.Spec.Registries) == 1 })
+
+	var list struct {
+		Sources []struct {
+			Name, Credentials string
+			Private           bool
+			Error             any
+		}
+	}
+	r := c.expect(200, "POST", "/api/v1/store/refresh", nil)
+	r.json(t, &list)
+	if len(list.Sources) != 2 || !list.Sources[1].Private || list.Sources[1].Credentials != "ok" || list.Sources[1].Error != nil {
+		t.Fatalf("sources = %+v", list.Sources)
+	}
+	if strings.Contains(string(r.body), "t0k3n") {
+		t.Fatal("the token leaked into the Store listing")
+	}
+
+	// Replace the token (no commit: codi.yaml already names the secret), then remove it.
+	c.expect(200, "PUT", "/api/v1/registries/corp/token", map[string]string{"token": "n3w"})
+	if v, _ := sec.Get(t.Context(), "CODI_REGISTRY_CORP_TOKEN"); v != "n3w" {
+		t.Errorf("token not replaced: %q", v)
+	}
+	c.expect(200, "DELETE", "/api/v1/registries/corp/token", nil)
+	if sec.Has(t.Context(), "CODI_REGISTRY_CORP_TOKEN") {
+		t.Error("token not deleted")
+	}
+	data, _ = os.ReadFile(filepath.Join(e.dir, "codi.yaml"))
+	if strings.Contains(string(data), "secretRef") {
+		t.Errorf("secretRef left in codi.yaml:\n%s", data)
+	}
+	mod := e.client()
+	mod.login(e.moderator().ID)
+	if r := mod.do("PUT", "/api/v1/registries/corp/token", map[string]string{"token": "x"}); r.status != 403 {
+		t.Errorf("moderator token: %d", r.status)
+	}
+}
+
+func TestPaginatedTables(t *testing.T) {
+	e := startStore(t)
+	c := e.client()
+	c.login(e.seed.Owner.ID)
+
+	type pageDTO struct {
+		Items []struct {
+			Name, Source, Trust, Instance string
+			Plugin                        struct{ Name string }
+		}
+		Total, Offset, Limit int
+		Sort, Order          string
+	}
+	var p pageDTO
+	c.expect(200, "GET", "/api/v1/store/plugins?limit=2&sort=name&order=desc", nil).json(t, &p)
+	if p.Total != 7 || len(p.Items) != 2 || p.Limit != 2 || p.Order != "desc" || p.Items[0].Name != "welcome" {
+		t.Fatalf("page = %+v", p)
+	}
+	c.expect(200, "GET", "/api/v1/store/plugins?trust=unofficial", nil).json(t, &p)
+	if p.Total != 1 || p.Items[0].Source != "acme" || p.Limit != 50 {
+		t.Fatalf("unofficial = %+v", p)
+	}
+	c.expect(200, "GET", "/api/v1/store/plugins?q=greet&offset=0", nil).json(t, &p)
+	for _, it := range p.Items {
+		if it.Name != "hello" && it.Name != "welcome" {
+			t.Errorf("q=greet returned %s", it.Name)
+		}
+	}
+	c.expect(200, "GET", "/api/v1/store/plugins?installed=true", nil).json(t, &p)
+	if p.Total != 2 || p.Items[0].Name != "onboarding" || p.Items[1].Name != "welcome" {
+		t.Errorf("installed = %+v", p)
+	}
+	for _, bad := range []string{"sort=nope", "order=up", "limit=0", "offset=-1"} {
+		c.expect(400, "GET", "/api/v1/store/plugins?"+bad, nil)
+	}
+	var sum struct {
+		Sources []struct {
+			Name        string
+			PluginCount int
+			Plugins     []any
+		}
+	}
+	c.expect(200, "GET", "/api/v1/store?summary=1", nil).json(t, &sum)
+	if len(sum.Sources) != 2 || sum.Sources[0].PluginCount != 6 || sum.Sources[0].Plugins != nil {
+		t.Errorf("summary = %+v", sum)
+	}
+
+	// Installed instances: paginated, with their origin.
+	c.expect(200, "GET", "/api/v1/servers/"+serverKey+"/plugins?limit=1&sort=instance", nil).json(t, &p)
+	if p.Total < 1 || len(p.Items) != 1 || p.Items[0].Source != "codi" || p.Items[0].Trust != "official" {
+		t.Fatalf("instances = %+v", p)
+	}
+	var one struct {
+		Instance, Bot, Source string
+	}
+	c.expect(200, "GET", "/api/v1/servers/"+serverKey+"/plugins/moderator/welcome", nil).json(t, &one)
+	if one.Instance != "welcome" || one.Source != "codi" {
+		t.Errorf("instance = %+v", one)
+	}
+	c.expect(404, "GET", "/api/v1/servers/"+serverKey+"/plugins/moderator/nope", nil)
 }

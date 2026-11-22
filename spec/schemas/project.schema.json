@@ -64,7 +64,12 @@
             "required": ["name", "url"],
             "properties": {
               "name": { "$ref": "common.schema.json#/$defs/key" },
-              "url": { "type": "string" }
+              "url": { "type": "string" },
+              "secretRef": {
+                "description": "Secret holding an access token for a private registry (environment variable or `codi secret set`). Never the token itself.",
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$"
+              }
             },
             "additionalProperties": false
           }

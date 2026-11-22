@@ -196,7 +196,7 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 	cacheDir := registry.DefaultCacheDir()
 	rt := runtime.New(runtime.Options{
 		Source: src, Connector: e.connector, Store: e.store, Secrets: e.resolve,
-		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir) },
+		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, e.resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: e.public, Mode: e.mode, Simulator: e.world != nil,
 		AllowPrivateNetworks: e.world != nil, Logger: e.log,
 	})
@@ -209,13 +209,15 @@ func (e *runtimeEnv) checker(rt *runtime.Runtime, w writeback.Writer) *setup.Che
 
 // apiOptions are the full API options for a running runtime.
 func (e *runtimeEnv) apiOptions(rt *runtime.Runtime, w writeback.Writer, branch string, wz *setup.Wizard) api.Options {
+	cat := catalog.Official()
 	return api.Options{
 		Runtime: rt, Writer: w, Mode: e.mode, Sim: e.world, RuntimeToken: e.runtimeTok,
 		WebhookSecret: os.Getenv("CODI_WEBHOOK_SECRET"), Branch: branch,
 		OAuth: api.OAuth{ClientID: os.Getenv("CODI_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CODI_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(e.secrets, nil)},
 		PublicURL: e.public, CORSOrigins: e.cors, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: e.log,
-		Stopping: e.stopping, Setup: wz, Checker: e.checker(rt, w), Catalog: catalog.Official(),
+		Stopping: e.stopping, Setup: wz, Checker: e.checker(rt, w), Catalog: cat,
+		SecretStore: e.secrets, Secret: e.resolve, PluginStore: runtimePluginStore(cat, e.resolve, e.stopping, rt.Repo),
 	}
 }
 

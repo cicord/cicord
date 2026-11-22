@@ -106,3 +106,26 @@ func TestNamesAndCachePaths(t *testing.T) {
 		t.Error("HasUserinfo")
 	}
 }
+
+func TestTokensScopedToHost(t *testing.T) {
+	ctx := WithToken(t.Context(), "https://git.acme.example/plugins/registry.git", "s3cret")
+	if a := AuthFor(ctx, "https://GIT.acme.example/plugins/xp.git"); a == nil {
+		t.Error("no auth for a repository on the registry host")
+	}
+	for _, u := range []string{"https://evil.example/x.git", "http://git.acme.example/x.git", "/srv/git.acme.example/x"} {
+		if a := AuthFor(ctx, u); a != nil {
+			t.Errorf("token sent to %s", u)
+		}
+	}
+	if WithToken(t.Context(), "http://insecure.example/r.git", "tok") != t.Context() {
+		t.Error("tokens must never be attached to http URLs")
+	}
+	regs := []config.Registry{{Name: "a", URL: "https://a.example/r.git", SecretRef: "A_TOKEN"}, {Name: "b", URL: "https://b.example/r.git"}}
+	ctx = WithRegistryTokens(t.Context(), regs, func(n string) (string, bool) { return "x", n == "A_TOKEN" })
+	if AuthFor(ctx, "https://a.example/p.git") == nil || AuthFor(ctx, "https://b.example/p.git") != nil {
+		t.Error("WithRegistryTokens")
+	}
+	if SecretRefFor("my-reg") != "CODI_REGISTRY_MY_REG_TOKEN" {
+		t.Error(SecretRefFor("my-reg"))
+	}
+}

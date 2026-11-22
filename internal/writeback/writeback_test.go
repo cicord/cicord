@@ -166,6 +166,19 @@ func TestGitWriter(t *testing.T) {
 	if ref2.Hash() != ref.Hash() {
 		t.Errorf("PR mode must not move main")
 	}
+
+	// A nil edit result deletes the file.
+	if _, err := w.Write(context.Background(), Request{
+		Edits:   map[string]EditFunc{"bots/moderator/bot.yaml": func([]byte) ([]byte, error) { return nil, nil }, "missing.txt": func([]byte) ([]byte, error) { return nil, nil }},
+		Message: "remove", Mode: ModeCommit,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ref3, _ := br.Reference("refs/heads/main", true)
+	c3, _ := br.CommitObject(ref3.Hash())
+	if _, err := c3.File("bots/moderator/bot.yaml"); err == nil {
+		t.Error("bot.yaml was not deleted")
+	}
 }
 
 func TestDirWriter(t *testing.T) {
@@ -182,6 +195,12 @@ func TestDirWriter(t *testing.T) {
 	data, _ := os.ReadFile(p)
 	if !strings.Contains(string(data), "channel: x") {
 		t.Errorf("not written:\n%s", data)
+	}
+	if _, err := w.Write(context.Background(), Request{Edits: map[string]EditFunc{"bots/moderator/bot.yaml": func([]byte) ([]byte, error) { return nil, nil }}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Errorf("bot.yaml not deleted: %v", err)
 	}
 	if _, err := w.Write(context.Background(), Request{Edits: map[string]EditFunc{"../evil": func([]byte) ([]byte, error) { return nil, nil }}}); err == nil {
 		t.Errorf("path escape must fail")

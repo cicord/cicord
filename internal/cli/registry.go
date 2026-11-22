@@ -54,7 +54,8 @@ func newPluginAddCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("unknown bot %q", bot)
 			}
-			res, err := registry.ResolveLatest(cmd.Context(), repo.Project.Spec.Registries, registry.DefaultCacheDir(), source, rng)
+			ctx := registry.WithRegistryTokens(cmd.Context(), repo.Project.Spec.Registries, os.LookupEnv)
+			res, err := registry.ResolveLatest(ctx, repo.Project.Spec.Registries, registry.DefaultCacheDir(), source, rng)
 			if err != nil {
 				return err
 			}

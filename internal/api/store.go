@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/npjonath/codi/internal/config"
@@ -81,6 +82,13 @@ func (s *server) handleStoreRefresh(w http.ResponseWriter, r *http.Request) {
 	s.writeStore(w, r, true)
 }
 
+// storeSourceDTO is a Source with its plugin count; Plugins is omitted with ?summary=1.
+type storeSourceDTO struct {
+	store.Source
+	PluginCount int            `json:"pluginCount"`
+	Plugins     []store.Plugin `json:"plugins,omitempty"`
+}
+
 func (s *server) writeStore(w http.ResponseWriter, r *http.Request, force bool) {
 	if _, err := s.requireAnyAdmin(r); err != nil {
 		s.fail(w, err)
@@ -91,7 +99,81 @@ func (s *server) writeStore(w http.ResponseWriter, r *http.Request, force bool) 
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sources": srcs})
+	summary := r.URL.Query().Get("summary") == "1"
+	out := make([]storeSourceDTO, 0, len(srcs))
+	for _, src := range srcs {
+		d := storeSourceDTO{Source: src, PluginCount: len(src.Plugins), Plugins: src.Plugins}
+		if summary {
+			d.Plugins = nil
+		} else if d.Plugins == nil {
+			d.Plugins = []store.Plugin{}
+		}
+		out = append(out, d)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sources": out})
+}
+
+// handleStorePlugins is the Store's plugin table: every source, paginated, sortable,
+// filterable (?source=&trust=&installed=true|false).
+func (s *server) handleStorePlugins(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.requireAnyAdmin(r); err != nil {
+		s.fail(w, err)
+		return
+	}
+	pq, err := parsePage(r, []string{"name", "source", "trust", "version", "publisher", "installed"}, "name")
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if !pq.limited {
+		pq.limit, pq.limited = 50, true
+	}
+	srcs, err := s.pluginStore().Sources(r.Context(), s.rt.Repo(), false)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	v := r.URL.Query()
+	var all []store.Plugin
+	for _, src := range srcs {
+		if f := v.Get("source"); f != "" && f != src.Name {
+			continue
+		}
+		for _, p := range src.Plugins {
+			if f := v.Get("trust"); f != "" && f != p.Trust {
+				continue
+			}
+			if f := v.Get("installed"); f != "" && (f == "true") != (len(p.Installed) > 0) {
+				continue
+			}
+			all = append(all, p)
+		}
+	}
+	items, meta := page(all, pq,
+		func(p store.Plugin) string {
+			return strings.Join(append([]string{p.Name, p.DisplayName, p.Description, p.Source, p.Publisher}, p.Keywords...), " ")
+		},
+		func(p store.Plugin, k string) string {
+			switch k {
+			case "source":
+				return p.Source
+			case "trust":
+				return p.Trust
+			case "version":
+				return p.Version
+			case "publisher":
+				return p.Publisher
+			case "installed":
+				return strconv.Itoa(len(p.Installed))
+			}
+			return p.DisplayName
+		},
+		func(p store.Plugin) string { return p.Source + "/" + p.Name })
+	if items == nil {
+		items = []store.Plugin{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": meta.Total, "offset": meta.Offset,
+		"limit": meta.Limit, "sort": meta.Sort, "order": meta.Order})
 }
 
 func (s *server) handleStoreDetail(w http.ResponseWriter, r *http.Request) {
@@ -258,6 +340,37 @@ func (s *server) handleStoreInstall(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+func (s *server) handlePluginUninstall(w http.ResponseWriter, r *http.Request) {
+	serverKey, botKey, instance := r.PathValue("server"), r.PathValue("bot"), r.PathValue("instance")
+	id, _, err := s.requireRole(r, serverKey, roleAdmin)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	repo := s.rt.Repo()
+	if repo == nil || repo.Project == nil {
+		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "no active configuration yet"))
+		return
+	}
+	if wb := repo.Project.Spec.WriteBack; wb != nil && wb.Enabled != nil && !*wb.Enabled {
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in codi.yaml"))
+		return
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	in := setup.Installer{Runtime: s.rt, Writer: s.opts.Writer, Catalog: s.opts.Catalog, Timeout: s.opts.ActivationTimeout}
+	res, err := in.Uninstall(r.Context(), serverKey, botKey, instance, "admin-ui", id.actor())
+	if err != nil {
+		s.failSetup(w, err)
+		return
+	}
+	s.audit(r.Context(), state.AuditEntry{Server: serverKey, Actor: id.auditActor(), Action: "plugin.uninstall",
+		Target: botKey + "/" + instance, Details: mustJSON(map[string]any{
+			"removed": res.Removed, "cleaned": res.Cleaned, "mode": res.Mode, "revision": res.Revision, "pullRequestUrl": res.PullRequestURL,
+		})})
+	writeJSON(w, http.StatusOK, res)
+}
+
 type registryWriteResult struct {
 	Mode           string `json:"mode"`
 	Revision       string `json:"revision,omitempty"`
@@ -270,12 +383,17 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	var body config.Registry
-	if err := s.decodeJSON(w, r, &body); err != nil {
+	var req struct {
+		Name  string `json:"name"`
+		URL   string `json:"url"`
+		Token string `json:"token"`
+	}
+	if err := s.decodeJSON(w, r, &req); err != nil {
 		s.fail(w, err)
 		return
 	}
-	body.Name, body.URL = strings.TrimSpace(body.Name), strings.TrimSpace(body.URL)
+	body := config.Registry{Name: strings.TrimSpace(req.Name), URL: strings.TrimSpace(req.URL)}
+	token := strings.TrimSpace(req.Token)
 	switch {
 	case !registryNameRe.MatchString(body.Name):
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry names use 1 to 32 lowercase letters, digits and dashes"))
@@ -287,7 +405,7 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must start with https://"))
 		return
 	case registry.HasUserinfo(body.URL):
-		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must not contain credentials (private registries are not supported yet)"))
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must not contain credentials: give the access token separately"))
 		return
 	}
 	repo := s.rt.Repo()
@@ -309,21 +427,121 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must point to a public host (%v); declare registries on your own network in codi.yaml", err))
 		return
 	}
-	if err := s.pluginStore().Check(r.Context(), body.URL); err != nil {
+	if token != "" {
+		if s.opts.SecretStore == nil {
+			s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "this runtime has no secret store: set the token as an environment variable and declare secretRef in codi.yaml"))
+			return
+		}
+		body.SecretRef = registry.SecretRefFor(body.Name)
+	}
+	if err := s.pluginStore().CheckWithToken(r.Context(), body, token); err != nil {
 		se := store.ExplainFetch(err)
 		s.failSetup(w, &setup.Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
 			Message: se.Message, Hint: se.Hint, Details: se.Details})
 		return
 	}
 	reg := body
+	if token != "" {
+		if err := s.opts.SecretStore.Set(r.Context(), reg.SecretRef, token); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
 	edit := func(cur []byte) ([]byte, error) {
 		if cur == nil {
 			return nil, errors.New("codi.yaml does not exist")
 		}
 		return writeback.AppendYAML(cur, []writeback.PathElem{writeback.Key("spec"), writeback.Key("registries")}, reg)
 	}
-	s.writeProject(w, r, id, edit, fmt.Sprintf("registry: add %s\n\nURL: %s (%s)", reg.Name, reg.URL, registry.Trust(reg.URL)),
-		"registry.add", reg.Name, map[string]any{"url": reg.URL, "trust": registry.Trust(reg.URL)})
+	if !s.writeProject(w, r, id, edit, fmt.Sprintf("registry: add %s\n\nURL: %s (%s)", reg.Name, reg.URL, registry.Trust(reg.URL)),
+		"registry.add", reg.Name, map[string]any{"url": reg.URL, "trust": registry.Trust(reg.URL), "private": token != ""}) && token != "" {
+		_ = s.opts.SecretStore.Delete(r.Context(), reg.SecretRef)
+	}
+}
+
+// handleRegistryToken sets (PUT {"token"}) or removes (DELETE) the access token of a
+// registry. The token goes to the secret store; codi.yaml only gets the secretRef.
+func (s *server) handleRegistryToken(w http.ResponseWriter, r *http.Request) {
+	id, err := s.requireProjectAdmin(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	name := r.PathValue("name")
+	repo := s.rt.Repo()
+	if repo == nil || repo.Project == nil {
+		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "no active configuration yet"))
+		return
+	}
+	i := slices.IndexFunc(repo.Project.Spec.Registries, func(rg config.Registry) bool { return rg.Name == name })
+	if i < 0 {
+		s.fail(w, httpErr(http.StatusNotFound, "not_found", "unknown registry %q", name))
+		return
+	}
+	reg := repo.Project.Spec.Registries[i]
+	if s.opts.SecretStore == nil {
+		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "this runtime has no secret store"))
+		return
+	}
+	at := []writeback.PathElem{writeback.Key("spec"), writeback.Key("registries"), writeback.Match("name", name), writeback.Key("secretRef")}
+	if r.Method == http.MethodDelete {
+		if reg.SecretRef == "" {
+			writeJSON(w, http.StatusOK, registryWriteResult{Mode: writeback.ModeCommit})
+			return
+		}
+		// Only the secret the admin UI created is deleted; an operator's secret stays.
+		if reg.SecretRef == registry.SecretRefFor(name) {
+			_ = s.opts.SecretStore.Delete(r.Context(), reg.SecretRef)
+		}
+		s.writeProject(w, r, id, func(cur []byte) ([]byte, error) { return writeback.SetYAML(cur, at, nil) },
+			"registry: "+name+" is public (token removed)", "registry.token", name, map[string]any{"removed": true})
+		return
+	}
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := s.decodeJSON(w, r, &body); err != nil {
+		s.fail(w, err)
+		return
+	}
+	token := strings.TrimSpace(body.Token)
+	if token == "" {
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "token is required (DELETE removes it)"))
+		return
+	}
+	ref := reg.SecretRef
+	if ref == "" {
+		ref = registry.SecretRefFor(name)
+	}
+	check := reg
+	check.SecretRef = ref
+	if registry.IsRemoteURL(reg.URL) {
+		if err := registry.CheckPublicHost(r.Context(), reg.URL); err != nil {
+			s.fail(w, httpErr(http.StatusBadRequest, "invalid", "%v", err))
+			return
+		}
+	}
+	if err := s.pluginStore().CheckWithToken(r.Context(), check, token); err != nil {
+		se := store.ExplainFetch(err)
+		s.failSetup(w, &setup.Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
+			Message: "The registry cannot be read with this token. " + se.Message, Hint: se.Hint, Details: se.Details})
+		return
+	}
+	if err := s.opts.SecretStore.Set(r.Context(), ref, token); err != nil {
+		s.fail(w, err)
+		return
+	}
+	for _, k := range s.rt.ServerKeys() {
+		s.audit(r.Context(), state.AuditEntry{Server: k, Actor: id.auditActor(), Action: "registry.token", Target: name, Details: mustJSON(map[string]any{"set": true})})
+	}
+	if reg.SecretRef == ref {
+		// codi.yaml already names this secret: nothing to commit.
+		_, _ = s.pluginStore().Sources(r.Context(), repo, true)
+		writeJSON(w, http.StatusOK, registryWriteResult{Mode: writeback.ModeCommit})
+		return
+	}
+	s.writeProject(w, r, id, func(cur []byte) ([]byte, error) { return writeback.SetYAML(cur, at, ref) },
+		"registry: "+name+" is private (token stored as "+ref+")", "registry.token", name, map[string]any{"set": true})
 }
 
 func (s *server) handleRegistryRemove(w http.ResponseWriter, r *http.Request) {
@@ -370,15 +588,19 @@ func (s *server) handleRegistryRemove(w http.ResponseWriter, r *http.Request) {
 		}
 		return writeback.SetYAML(cur, []writeback.PathElem{writeback.Key("spec"), writeback.Key("registries"), writeback.Match("name", name)}, nil)
 	}
-	s.writeProject(w, r, id, edit, "registry: remove "+name, "registry.remove", name, map[string]any{})
+	ref := repo.Project.Spec.Registries[slices.IndexFunc(repo.Project.Spec.Registries, func(rg config.Registry) bool { return rg.Name == name })].SecretRef
+	if s.writeProject(w, r, id, edit, "registry: remove "+name, "registry.remove", name, map[string]any{}) &&
+		ref == registry.SecretRefFor(name) && s.opts.SecretStore != nil {
+		_ = s.opts.SecretStore.Delete(r.Context(), ref)
+	}
 }
 
 // writeProject writes codi.yaml through write-back and audits the change on every server.
 func (s *server) writeProject(w http.ResponseWriter, r *http.Request, id *identity, edit writeback.EditFunc,
-	message, action, target string, details map[string]any) {
+	message, action, target string, details map[string]any) bool {
 	if s.opts.Writer == nil {
 		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "write-back is not configured"))
-		return
+		return false
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -386,7 +608,7 @@ func (s *server) writeProject(w http.ResponseWriter, r *http.Request, id *identi
 	wb := repo.Project.Spec.WriteBack
 	if wb != nil && wb.Enabled != nil && !*wb.Enabled {
 		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in codi.yaml"))
-		return
+		return false
 	}
 	rev, _ := s.rt.Revision()
 	mode := writeback.ModeFor(wb, []string{"codi.yaml"})
@@ -398,11 +620,11 @@ func (s *server) writeProject(w http.ResponseWriter, r *http.Request, id *identi
 	if err != nil {
 		if errors.Is(err, writeback.ErrConflict) {
 			s.fail(w, httpErr(http.StatusConflict, "conflict", "%v", err))
-			return
+			return false
 		}
 		s.log.Error("write-back failed", "err", err)
 		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "write-back failed: %v", err))
-		return
+		return false
 	}
 	if res.Mode == "" {
 		res.Mode = mode
@@ -421,4 +643,5 @@ func (s *server) writeProject(w http.ResponseWriter, r *http.Request, id *identi
 		out.Revision = ""
 	}
 	writeJSON(w, http.StatusOK, out)
+	return true
 }

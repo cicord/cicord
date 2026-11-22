@@ -76,9 +76,10 @@ No public release until the product is complete.
 - [x] `codi registry list|add|remove|update|search` (file:// and local paths for dev registries)
 - [x] Admin UI Store page: browse/search by source, trust badges, permissions review, install (bot, instance, config, unofficial confirmation, `changed` re-review), sources add/remove
 - [ ] Create the official registry repository (needs a GitHub org/account decision), then add its URL to `registry.OfficialURLs` and list it implicitly
-- [ ] Periodic background refresh of registry indexes (today: lazy, 30 min TTL + manual refresh)
-- [ ] Uninstall from the Store/Plugins page (remove instance + lock entry + plugin dir); `codi plugin update` from the admin
-- [ ] Private registries (git credentials per source)
+- [x] Background refresh of registry indexes (10 s after start, then every 30 min)
+- [x] Uninstall (API: instance, lock entry or copied plugin dir; per-server for multi-server instances)
+- [ ] `codi plugin update` / version upgrades from the admin
+- [x] Private registries: `secretRef` per registry, token in the secret store, sent to the registry host only; `codi registry add --secret-ref`
 - [ ] `codi plugin publish`; verified publishers; signing of the official index
 - [ ] More official plugins: reaction roles, audit logging, scheduled announcements (welcome, onboarding, tickets, polls, levels, moderation exist)
 

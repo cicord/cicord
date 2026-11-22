@@ -75,6 +75,11 @@ mirrors every shape below.
   Preflights (`OPTIONS` with `Access-Control-Request-Method`) answer `204`; for an allowed
   origin they allow the methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`, the headers
   `Content-Type`, `Authorization`, `X-Codi-Request` and `Last-Event-ID`, max age 600 s.
+- **Data tables** (lists marked *paged*): `?q=<words>&sort=<key>&order=asc|desc&offset=<n>&limit=<n>`.
+  `q` keeps items containing every word (case-insensitive); `sort` must be one of the keys
+  listed for the endpoint (`400 invalid` otherwise); `limit` is capped at 200. The
+  response adds `{"total", "offset", "limit", "sort", "order"}` next to `items`; `total`
+  counts the filtered items before the window.
 - Limits: JSON bodies ≤ 1 MiB (`413 invalid`), `POST /api/v1/plan` uploads ≤ 32 MiB,
   GitHub webhook payloads ≤ 25 MiB; handlers time out after 60 s (`503 unavailable`),
   except the SSE stream.
@@ -351,7 +356,8 @@ declared in YAML (has a key); unmanaged resources have `key: ""`.
 
 ## 5. Plugin instances & configuration
 
-`GET /api/v1/servers/{server}/plugins` (moderator) →
+`GET /api/v1/servers/{server}/plugins` (moderator, *paged*: sort `name` (default),
+`instance`, `bot`, `version`, `health`, `source`; without `limit` every instance is returned) →
 
 ```json
 { "items": [ {
@@ -365,8 +371,28 @@ declared in YAML (has a key); unmanaged resources have `key: ""`.
   "editable": ["message"],                                  // fields this user may edit (x-codi-access)
   "commands": [ { "name": "welcome-preview", "description": "…" } ],
   "routes": ["GET /steps", "POST /complete"],                // portal routes (§6)
-  "health": "Healthy", "message": ""
-} ] }
+  "health": "Healthy", "message": "",
+  "source": "codi",       // "codi" (official catalog), a registry name, or "local" (written in the repo)
+  "trust": "official"     // official | unofficial | local
+} ], "total": 1, "offset": 0, "limit": 1, "sort": "name", "order": "asc" }
+```
+
+`GET /api/v1/servers/{server}/plugins/{bot}/{instance}` (moderator) → one item (the
+admin's per-plugin page); unknown → `404`.
+
+`DELETE /api/v1/servers/{server}/plugins/{bot}/{instance}` (admin) uninstalls an instance
+from the server:
+- An instance that also runs on other servers only loses this one (`servers` list, and
+  its `overrides.<server>` go); `removed: false`.
+- Otherwise it is deleted from bot.yaml (`removed: true`). When no other instance uses the
+  plugin, its `codi.lock` entry (registry plugin) or its `plugins/<name>/` directory
+  (copied by the Store or the wizard) goes too, listed in `cleaned`. Plugins written in
+  the repository elsewhere are never deleted. Plugin data (KV) is kept.
+- Validated on a copy of the active revision first (`422 invalid` when something depends
+  on it). Mode, activation wait and errors as a config `PUT`. Audit `plugin.uninstall`.
+
+```json
+{ "removed": true, "cleaned": ["codi.lock: acme/xp"], "mode": "commit", "revision"?: "…", "pullRequestUrl"?: "…" }
 ```
 
 - `schema` is the schema file's JSON with its key order preserved (`{"type": "object"}` when
@@ -758,15 +784,22 @@ Who: browsing and installing need the `admin` role on a server (bearer: everywhe
 Adding or removing a source changes `codi.yaml` (the whole project): bearer, or `admin` on
 **every** server the runtime manages.
 
-The runtime caches registry indexes (refreshed every 30 min and on demand). A registry
-that cannot be fetched is listed with an `error` and no plugins; the others still work.
+The runtime caches registry indexes and refreshes them in the background (10 s after start,
+then every 30 min) and on demand. A registry that cannot be fetched is listed with an
+`error` and no plugins; the others still work.
+
+**Private registries**: a registry may have a `secretRef` (codi.yaml) naming the secret that
+holds an access token (environment variable or the runtime's secret store). The token is
+sent, as HTTP basic auth over https, to the registry's host only (its index and the plugin
+repositories on the same host), never to other hosts. It is never returned by the API.
 
 ### Shapes
 
 ```json
 // Source
 { "name": "codi", "kind": "bundled|git", "url"?: "https://…", "trust": "official|unofficial",
-  "fetchedAt"?: "…", "error"?: Error, "plugins": [StorePlugin] }
+  "fetchedAt"?: "…", "error"?: Error, "private": false, "credentials"?: "ok|missing",
+  "pluginCount": 6, "plugins": [StorePlugin] }     // plugins omitted with ?summary=1
 // StorePlugin (browse; from the catalog or the registry index)
 { "source": "codi", "name": "welcome", "displayName": "Welcome", "description": "…",
   "keywords": [], "version"?: "0.1.0", "publisher"?: "…", "verified": false, "repo"?: "https://…",
@@ -786,12 +819,15 @@ only done for `official` sources before installation.
 
 | Method | Path | Role | Result |
 |---|---|---|---|
-| GET | `/api/v1/store` | admin of a server | `{"sources": [Source]}`, `codi` first, then registries in `codi.yaml` order |
+| GET | `/api/v1/store[?summary=1]` | admin of a server | `{"sources": [Source]}`, `codi` first, then registries in `codi.yaml` order |
+| GET | `/api/v1/store/plugins` | admin of a server | *paged* `{"items": [StorePlugin], …}` across sources; sort `name` (default), `source`, `trust`, `version`, `publisher`, `installed`; filters `source`, `trust`, `installed=true\|false`; default limit 50 |
 | POST | `/api/v1/store/refresh` | admin of a server | refetches every registry index → as `GET /store` |
 | GET | `/api/v1/store/{source}/{plugin}` | admin of a server | `StoreDetail` for the latest version (`404` unknown source or plugin, `502 registry_unavailable`) |
 | POST | `/api/v1/servers/{server}/store/install` | admin of `{server}` | `InstallResult` (§10) |
 | POST | `/api/v1/registries` | project (see above) | `WriteResult` |
 | DELETE | `/api/v1/registries/{name}` | project | `WriteResult` |
+| PUT | `/api/v1/registries/{name}/token` | project | `WriteResult` (`{"token"}`) |
+| DELETE | `/api/v1/registries/{name}/token` | project | `WriteResult` |
 
 `POST /servers/{server}/store/install` request:
 ```json
@@ -810,14 +846,23 @@ only done for `official` sources before installation.
 - Mode, activation wait and response as the wizard install (§10). Audit `store.install`
   (target `<bot>/<instance>`, details `{source, plugin, version, commit, trust, mode}`).
 
-`POST /registries` request: `{"name": "acme", "url": "https://github.com/acme/codi-plugins.git"}`
+`POST /registries` request: `{"name": "acme", "url": "https://github.com/acme/codi-plugins.git", "token"?: "…"}`
+- `token` makes it a private registry: stored in the secret store as
+  `CODI_REGISTRY_<NAME>_TOKEN`, `secretRef` written to codi.yaml (`503` when the runtime has
+  no secret store). URLs with credentials (`https://user:pass@…`) → `400`.
 - `name`: `^[a-z0-9][a-z0-9-]{0,31}$`, not `codi`, unique; `url`: `https://` only and
   unique (the CLI also accepts `file://` and local paths) → `400 invalid`.
 - The index is fetched first; unreachable or invalid → `422 invalid` (nothing written).
 - Writes `codi.yaml` (`spec.registries`), audit `registry.add`.
 
 `DELETE /registries/{name}`: unknown → `404`; used by `codi.lock` or a bot plugin →
-`409 in_use` (`details` lists them). Audit `registry.remove`.
+`409 in_use` (`details` lists them). Its stored token is deleted. Audit `registry.remove`.
+
+`PUT /registries/{name}/token` `{"token"}` checks the index with the new token first
+(`422 invalid` when it cannot be read), stores it, and writes `secretRef` to codi.yaml when
+it was not there (otherwise nothing is committed: `{"mode": "commit"}`).
+`DELETE /registries/{name}/token` removes `secretRef` from codi.yaml and deletes the token
+when the admin UI created it (an operator's secret is left alone). Audit `registry.token`.
 
 ```json
 // WriteResult

@@ -246,6 +246,195 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 	}
 }
 
+// UninstallResult is the outcome of an uninstall.
+type UninstallResult struct {
+	// Removed is true when the instance was deleted; false when it keeps running on its
+	// other servers (only this server was taken off its list).
+	Removed bool `json:"removed"`
+	// Cleaned lists what went with the last instance of the plugin: the codi.lock entry
+	// or the plugin directory.
+	Cleaned        []string `json:"cleaned"`
+	Mode           string   `json:"mode"`
+	Revision       string   `json:"revision,omitempty"`
+	PullRequestURL string   `json:"pullRequestUrl,omitempty"`
+}
+
+// Uninstall takes a plugin instance off a server. An instance that also runs on other
+// servers only loses this one; otherwise it is deleted from bot.yaml and, when no other
+// instance uses the plugin any more, its codi.lock entry (registry plugin) or its
+// plugins/<name>/ directory (copied plugin) goes with it. Plugin data (KV storage) is
+// kept: reinstalling an instance with the same name finds it again.
+func (in *Installer) Uninstall(ctx context.Context, serverKey, botKey, instance, source, actor string) (UninstallResult, error) {
+	rt := in.Runtime
+	repo := rt.Repo()
+	rev, ok := rt.Revision()
+	if repo == nil || !ok {
+		return UninstallResult{}, errorf(http.StatusServiceUnavailable, "unavailable", "", "No active configuration yet.")
+	}
+	if in.Writer == nil {
+		return UninstallResult{}, errorf(http.StatusServiceUnavailable, "unavailable", "", "Write-back is not configured: plugins cannot be uninstalled from the admin.")
+	}
+	bot := repo.Bots[botKey]
+	if bot == nil || !slices.Contains(bot.Spec.Servers, serverKey) {
+		return UninstallResult{}, errorf(http.StatusNotFound, "not_found", "", "Bot %q does not manage server %q.", botKey, serverKey)
+	}
+	idx := slices.IndexFunc(bot.Spec.Plugins, func(p config.PluginInstance) bool { return p.Name == instance })
+	if idx < 0 {
+		return UninstallResult{}, errorf(http.StatusNotFound, "not_found", "", "No plugin instance %q on bot %q.", instance, botKey)
+	}
+	pi := bot.Spec.Plugins[idx]
+	servers := pi.Servers
+	if len(servers) == 0 {
+		servers = bot.Spec.Servers
+	}
+	if !slices.Contains(servers, serverKey) {
+		return UninstallResult{}, errorf(http.StatusNotFound, "not_found", "", "%q does not run on %q.", instance, serverKey)
+	}
+	at := []writeback.PathElem{writeback.Key("spec"), writeback.Key("plugins"), writeback.Match("name", instance)}
+	edits := map[string]writeback.EditFunc{}
+	out := UninstallResult{Cleaned: []string{}}
+	others := slices.DeleteFunc(slices.Clone(servers), func(s string) bool { return s == serverKey })
+	if len(others) > 0 {
+		_, hasOverride := pi.Overrides[serverKey]
+		edits[bot.File] = func(cur []byte) ([]byte, error) {
+			next, err := writeback.SetYAML(cur, append(slices.Clone(at), writeback.Key("servers")), others)
+			if err != nil || !hasOverride {
+				return next, err
+			}
+			// The server override of this server goes too.
+			return writeback.SetYAML(next, append(slices.Clone(at), writeback.Key("overrides"), writeback.Key(serverKey)), nil)
+		}
+	} else {
+		out.Removed = true
+		edits[bot.File] = func(cur []byte) ([]byte, error) { return writeback.SetYAML(cur, at, nil) }
+		// Is the plugin still used by another instance (any bot)?
+		pluginKey := func(b *config.Bot, p config.PluginInstance) string {
+			if p.IsLocal() {
+				return path.Clean(path.Join(path.Dir(b.File), p.Source))
+			}
+			return p.Source
+		}
+		key := pluginKey(bot, pi)
+		used := false
+		for _, b := range repo.Bots {
+			for _, p := range b.Spec.Plugins {
+				if (b != bot || p.Name != instance) && pluginKey(b, p) == key {
+					used = true
+				}
+			}
+		}
+		if !used {
+			switch {
+			case !pi.IsLocal():
+				src := pi.Source
+				edits[registry.LockFile] = func(cur []byte) ([]byte, error) {
+					l, err := registry.ParseLock(cur)
+					if err != nil {
+						return nil, err
+					}
+					if _, ok := l.Plugins[src]; !ok {
+						return cur, nil
+					}
+					delete(l.Plugins, src)
+					return registry.MarshalLock(l)
+				}
+				out.Cleaned = append(out.Cleaned, registry.LockFile+": "+src)
+			case strings.HasPrefix(key, "plugins/") && strings.Count(key, "/") == 1:
+				// A copied plugin (Store / wizard install): delete its directory.
+				files, err := listFiles(filepath.Join(rev.Dir, filepath.FromSlash(key)))
+				if err != nil {
+					return UninstallResult{}, err
+				}
+				for _, f := range files {
+					edits[key+"/"+f] = func([]byte) ([]byte, error) { return nil, nil }
+				}
+				out.Cleaned = append(out.Cleaned, key+"/")
+			}
+		}
+	}
+
+	if ds, err := in.validate(rev.Dir, edits); err != nil {
+		return UninstallResult{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
+			Message: "The plugin cannot be removed from the configuration.", Hint: "See the details.", Details: err.Error()}
+	} else if ds.HasErrors() {
+		msgs := make([]string, 0, len(ds.Errors()))
+		for _, d := range ds.Errors() {
+			msgs = append(msgs, d.Message)
+		}
+		return UninstallResult{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
+			Message: "Removing it would break the configuration: " + msgs[0],
+			Hint:    "Another plugin or setting may depend on it.", Diagnostics: ds.Errors(), Details: strings.Join(msgs, "\n")}
+	}
+
+	paths := make([]string, 0, len(edits))
+	for p := range edits {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	mode := writeback.ModeFor(repo.Project.Spec.WriteBack, paths)
+	prevErr := rt.Status().LastError
+	res, err := in.Writer.Write(ctx, writeback.Request{Edits: edits,
+		Message: fmt.Sprintf("plugin(%s): uninstall %s from %s", botKey, instance, serverKey),
+		Actor:   actor, Source: source, Mode: mode})
+	if err != nil {
+		if errors.Is(err, writeback.ErrConflict) {
+			return UninstallResult{}, &Error{Status: http.StatusConflict, Code: "conflict", Message: "The repository changed meanwhile.", Hint: "Try again.", Details: err.Error()}
+		}
+		return UninstallResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not save the change to the repository.",
+			Hint: "Check the repository access (Diagnostics → write-back), then try again.", Details: err.Error()}
+	}
+	out.Mode, out.PullRequestURL = res.Mode, res.PullRequestURL
+	if out.Mode == "" {
+		out.Mode = mode
+	}
+	if out.Mode != writeback.ModeCommit {
+		return out, nil
+	}
+	rt.Trigger()
+	timeout := in.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	wctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if cur, ok := rt.Revision(); ok && cur.SHA != rev.SHA {
+			out.Revision = cur.ID
+			return out, nil
+		}
+		if e := rt.Status().LastError; e != "" && e != prevErr {
+			return out, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid", Message: "The runtime rejected the new configuration.",
+				Hint: "See the details; the previous configuration stays active.", Details: e}
+		}
+		select {
+		case <-wctx.Done():
+			return out, nil
+		case <-tick.C:
+		}
+	}
+}
+
+// listFiles lists the regular files under dir, slash-separated and relative to it.
+func listFiles(dir string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type().IsRegular() {
+			rel, _ := filepath.Rel(dir, p)
+			out = append(out, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return out, err
+}
+
 func (in *Installer) validate(revDir string, edits map[string]writeback.EditFunc) (config.Diagnostics, error) {
 	tmp, err := os.MkdirTemp("", "codi-install-*")
 	if err != nil {
@@ -266,6 +455,12 @@ func (in *Installer) validate(revDir string, edits map[string]writeback.EditFunc
 		next, err := edit(cur)
 		if err != nil {
 			return nil, err
+		}
+		if next == nil {
+			if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return nil, err
+			}
+			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return nil, err

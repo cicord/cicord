@@ -672,6 +672,16 @@ version that was reviewed: if a new tag appears between review and install, it a
 review again. Before installation, the Store reads what an unofficial plugin requests from
 its `plugin.yaml` only; its code (and so its slash commands) runs only once installed.
 
+**Private registries.** A registry can require an access token (a private GitHub/GitLab
+repository). Give the token in the admin UI (Store → Sources), or declare
+`secretRef: ACME_TOKEN` in `codi.yaml` and provide `ACME_TOKEN` as an environment variable or
+with `codi secret set`. `codi.yaml` only stores the secret's name. The token is sent to the
+registry's host only (its index and the plugin repositories on that host).
+
+**Uninstalling** from the admin UI (a plugin's page → Uninstall) removes the instance from
+the bot; when no other instance uses the plugin, its `codi.lock` entry or its copied
+`plugins/<name>/` directory goes too. Its stored data is kept.
+
 `codi registry list|add|remove|update|search` manages sources from the command line
 (`file://` URLs and local paths are allowed there, for development registries; the admin
 UI only accepts `https://`).

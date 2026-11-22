@@ -25,6 +25,7 @@ import (
 	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/registry"
 	"github.com/npjonath/codi/internal/runtime"
+	"github.com/npjonath/codi/internal/secrets"
 	"github.com/npjonath/codi/internal/setup"
 	"github.com/npjonath/codi/internal/sim"
 	"github.com/npjonath/codi/internal/state"
@@ -98,6 +99,10 @@ type Options struct {
 	Checker *setup.Checker
 	// Catalog is the plugin catalog (default: the official plugins bundled in the binary).
 	Catalog *catalog.Catalog
+	// SecretStore keeps registry access tokens set from the admin (nil: tokens can only
+	// come from the environment). Secret resolves secret names (env first, then the store).
+	SecretStore *secrets.Store
+	Secret      func(name string) (string, bool)
 	// PluginStore lists and describes Store plugins (default: Catalog + the registries of
 	// the active codi.yaml, cached in registry.DefaultCacheDir()).
 	PluginStore *store.Service
@@ -170,7 +175,7 @@ func newServer(opts Options) *server {
 	}
 	if opts.PluginStore == nil {
 		opts.PluginStore = &store.Service{Catalog: opts.Catalog, CacheDir: registry.DefaultCacheDir(),
-			PublicOnly: !registry.AllowPrivateRegistries()}
+			PublicOnly: !registry.AllowPrivateRegistries(), Secret: opts.Secret}
 	}
 	s := &server{opts: opts, rt: opts.Runtime, store: opts.Store, log: opts.Logger, mux: http.NewServeMux()}
 	s.members.entries = map[string]memberEntry{}
@@ -200,6 +205,7 @@ func (s *server) routes() {
 	h("POST /api/v1/servers/{server}/sync", s.handleServerSync)
 	h("GET /api/v1/servers/{server}/audit", s.handleAudit)
 	h("GET /api/v1/servers/{server}/plugins", s.handlePlugins)
+	h("GET /api/v1/servers/{server}/plugins/{bot}/{instance}", s.handlePlugin)
 	h("PUT /api/v1/servers/{server}/plugins/{bot}/{instance}/config", s.handleConfigPut)
 	h("GET /api/v1/servers/{server}/assets/{kind}", s.handleAssetGet)
 	h("PUT /api/v1/servers/{server}/assets/{kind}", s.handleAssetPut)

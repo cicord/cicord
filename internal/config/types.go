@@ -45,6 +45,9 @@ type RuntimeSpec struct {
 type Registry struct {
 	Name string `yaml:"name" json:"name"`
 	URL  string `yaml:"url" json:"url"`
+	// SecretRef names the secret holding an access token for a private registry (and the
+	// private plugin repositories on the same host). Never the token itself.
+	SecretRef string `yaml:"secretRef,omitempty" json:"secretRef,omitempty"`
 }
 
 // OfficialRegistryName is the source name of the official CODI plugins. It is reserved:

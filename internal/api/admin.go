@@ -11,11 +11,14 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/npjonath/codi/internal/catalog"
 	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/discord"
 	"github.com/npjonath/codi/internal/reconcile"
+	"github.com/npjonath/codi/internal/registry"
 	"github.com/npjonath/codi/internal/runtime"
 	"github.com/npjonath/codi/internal/state"
 )
@@ -586,6 +589,10 @@ type pluginItemDTO struct {
 	Routes     []string       `json:"routes"`
 	Health     string         `json:"health"`
 	Message    string         `json:"message"`
+	// Source is where the plugin comes from ("codi", a registry, or "local") and Trust
+	// its trust level ("official", "unofficial" or "local").
+	Source string `json:"source"`
+	Trust  string `json:"trust"`
 }
 
 // editableFields lists the top-level config fields a role may edit (x-codi-access).
@@ -620,36 +627,115 @@ func (s *server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	pq, err := parsePage(r, []string{"name", "instance", "bot", "version", "health", "source"}, "name")
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
 	items := []pluginItemDTO{}
 	for _, in := range s.rt.Instances(key) {
-		m := in.Config.Plugin.Manifest
-		schema := in.Config.Plugin.SchemaDoc
-		if schema == nil {
-			schema = map[string]any{"type": "object"}
-		}
-		base, override := s.rawInstanceConfig(in.Config.Bot, in.Config.Name, key)
-		it := pluginItemDTO{
-			Bot: in.Config.Bot, Instance: in.Config.Name, Server: in.Config.Server,
-			Plugin: pluginInfoDTO{Name: m.Metadata.Name, Version: m.Metadata.Version, DisplayName: m.Metadata.DisplayName,
-				Description: m.Metadata.Description, Capabilities: strs(m.Spec.Capabilities), Intents: strs(m.Spec.Intents)},
-			Config: in.Config.Config, Schema: rawSchema(in.Config.Plugin, schema), Editable: editableFields(schema, ro),
-			BaseConfig: base, Override: override,
-			Commands: []commandDTO{}, Routes: []string{}, Health: in.Health, Message: in.Message,
-		}
-		if it.Config == nil {
-			it.Config = map[string]any{}
-		}
-		if in.Definition != nil {
-			for _, c := range in.Definition.Commands {
-				it.Commands = append(it.Commands, commandDTO{Name: c.Name, Description: c.Description})
-			}
-			for _, rt := range in.Definition.Routes {
-				it.Routes = append(it.Routes, rt.Key())
-			}
-		}
-		items = append(items, it)
+		items = append(items, s.pluginItem(in, key, ro))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	out, meta := page(items, pq,
+		func(it pluginItemDTO) string {
+			return strings.Join([]string{it.Plugin.Name, it.Plugin.DisplayName, it.Plugin.Description, it.Instance, it.Bot, it.Source}, " ")
+		},
+		func(it pluginItemDTO, k string) string {
+			switch k {
+			case "instance":
+				return it.Instance
+			case "bot":
+				return it.Bot
+			case "version":
+				return it.Plugin.Version
+			case "health":
+				return it.Health
+			case "source":
+				return it.Source
+			}
+			if it.Plugin.DisplayName != "" {
+				return it.Plugin.DisplayName
+			}
+			return it.Plugin.Name
+		},
+		func(it pluginItemDTO) string { return it.Bot + "/" + it.Instance })
+	writeJSON(w, http.StatusOK, map[string]any{"items": out, "total": meta.Total, "offset": meta.Offset,
+		"limit": meta.Limit, "sort": meta.Sort, "order": meta.Order})
+}
+
+// handlePlugin is one instance (the admin's per-plugin page).
+func (s *server) handlePlugin(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("server")
+	_, ro, err := s.requireRole(r, key, roleModerator)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	for _, in := range s.rt.Instances(key) {
+		if in.Config.Bot == r.PathValue("bot") && in.Config.Name == r.PathValue("instance") {
+			writeJSON(w, http.StatusOK, s.pluginItem(in, key, ro))
+			return
+		}
+	}
+	s.fail(w, httpErr(http.StatusNotFound, "not_found", "no plugin instance %s/%s on %s", r.PathValue("bot"), r.PathValue("instance"), key))
+}
+
+func (s *server) pluginItem(in runtime.InstanceInfo, key string, ro role) pluginItemDTO {
+	m := in.Config.Plugin.Manifest
+	schema := in.Config.Plugin.SchemaDoc
+	if schema == nil {
+		schema = map[string]any{"type": "object"}
+	}
+	base, override := s.rawInstanceConfig(in.Config.Bot, in.Config.Name, key)
+	it := pluginItemDTO{
+		Bot: in.Config.Bot, Instance: in.Config.Name, Server: in.Config.Server,
+		Plugin: pluginInfoDTO{Name: m.Metadata.Name, Version: m.Metadata.Version, DisplayName: m.Metadata.DisplayName,
+			Description: m.Metadata.Description, Capabilities: strs(m.Spec.Capabilities), Intents: strs(m.Spec.Intents)},
+		Config: in.Config.Config, Schema: rawSchema(in.Config.Plugin, schema), Editable: editableFields(schema, ro),
+		BaseConfig: base, Override: override,
+		Commands: []commandDTO{}, Routes: []string{}, Health: in.Health, Message: in.Message,
+	}
+	it.Source, it.Trust = s.pluginOrigin(in.Config.Plugin)
+	if it.Config == nil {
+		it.Config = map[string]any{}
+	}
+	if in.Definition != nil {
+		for _, c := range in.Definition.Commands {
+			it.Commands = append(it.Commands, commandDTO{Name: c.Name, Description: c.Description})
+		}
+		for _, rt := range in.Definition.Routes {
+			it.Routes = append(it.Routes, rt.Key())
+		}
+	}
+	return it
+}
+
+// pluginOrigin is the Store source of a loaded plugin ("codi", a registry name, or
+// "local" for a plugin written in the repository) and its trust.
+func (s *server) pluginOrigin(lp *config.LoadedPlugin) (source, trust string) {
+	if lp == nil || lp.Manifest == nil {
+		return "local", "local"
+	}
+	if !strings.HasPrefix(lp.Source, ".") {
+		reg, _, _ := strings.Cut(lp.Source, "/")
+		trust = registry.TrustUnofficial
+		if repo := s.rt.Repo(); repo != nil && repo.Project != nil {
+			for _, rg := range repo.Project.Spec.Registries {
+				if rg.Name == reg {
+					trust = registry.Trust(rg.URL)
+				}
+			}
+		}
+		return reg, trust
+	}
+	name := lp.Manifest.Metadata.Name
+	if repo := s.rt.Repo(); repo != nil && s.opts.Catalog != nil {
+		if _, ok := s.opts.Catalog.Get(name); ok &&
+			filepath.Clean(lp.Dir) == filepath.Join(repo.Root, filepath.FromSlash(catalog.PluginDir(name))) {
+			return config.OfficialRegistryName, registry.TrustOfficial
+		}
+	}
+	return "local", "local"
 }
 
 // rawSchema returns the config schema file bytes (key order preserved), falling back to

@@ -187,8 +187,10 @@ type Resolver struct {
 	CacheDir string
 	// PublicOnly downloads locked plugins only from public addresses (see WithPublicOnly).
 	PublicOnly bool
-	mu         sync.Mutex
-	lock       *Lock
+	// Secret resolves the secretRef of private registries (nil: anonymous downloads).
+	Secret func(name string) (string, bool)
+	mu     sync.Mutex
+	lock   *Lock
 }
 
 var _ config.PluginResolver = (*Resolver)(nil)
@@ -198,10 +200,12 @@ func NewResolver(repoRoot, cacheDir string) *Resolver {
 }
 
 // NewRuntimeResolver is the resolver of a running runtime: downloads of locked plugins
-// only reach public addresses unless CODI_ALLOW_PRIVATE_REGISTRIES=true.
-func NewRuntimeResolver(repoRoot, cacheDir string) *Resolver {
+// only reach public addresses unless CODI_ALLOW_PRIVATE_REGISTRIES=true;
+// secret resolves the secretRef of private registries.
+func NewRuntimeResolver(repoRoot, cacheDir string, secret func(string) (string, bool)) *Resolver {
 	r := NewResolver(repoRoot, cacheDir)
 	r.PublicOnly = !AllowPrivateRegistries()
+	r.Secret = secret
 	return r
 }
 
@@ -238,7 +242,7 @@ func (r *Resolver) Resolve(source, versionRange string) (string, string, error) 
 	if err != nil || !c.Check(v) {
 		return "", "", fmt.Errorf("locked version %s of %q does not satisfy %q (run `codi plugin update`)", e.Version, source, versionRange)
 	}
-	ctx := context.Background()
+	ctx := WithRegistryTokens(context.Background(), projectRegistries(r.RepoRoot), r.Secret)
 	if r.PublicOnly {
 		ctx = WithPublicOnly(ctx)
 	}
@@ -322,9 +326,10 @@ func shortSHA(s string) string {
 }
 
 func cloneMem(ctx context.Context, url string) (*git.Repository, error) {
-	r, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{URL: url, Tags: git.AllTags, NoCheckout: true})
+	r, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{URL: url, Tags: git.AllTags, NoCheckout: true,
+		Auth: AuthFor(ctx, url)})
 	if err != nil {
-		return nil, fmt.Errorf("clone %s: %w", url, err)
+		return nil, fmt.Errorf("clone %s: %w", Redact(url), err)
 	}
 	return r, nil
 }

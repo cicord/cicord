@@ -23,7 +23,10 @@ func init() {
 	extraCommands = append(extraCommands, newRegistryCmd)
 }
 
-var registryNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+var (
+	registryNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+	secretRefRe    = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+)
 
 // newRegistryCmd manages plugin sources (ADR-0011): `codi registry add|remove|list|update|search`.
 // It edits codi.yaml locally, like the admin UI does through write-back.
@@ -58,20 +61,29 @@ plugins only if you trust them.`,
 				return err
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(tw, "NAME\tTRUST\tURL")
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", config.OfficialRegistryName, registry.TrustOfficial, "(bundled with codi)")
+			fmt.Fprintln(tw, "NAME\tTRUST\tURL\tTOKEN")
+			fmt.Fprintf(tw, "%s\t%s\t%s\t-\n", config.OfficialRegistryName, registry.TrustOfficial, "(bundled with codi)")
 			for _, r := range repo.Project.Spec.Registries {
-				fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Name, registry.Trust(r.URL), r.URL)
+				tok := "-"
+				if r.SecretRef != "" {
+					tok = r.SecretRef
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Name, registry.Trust(r.URL), r.URL, tok)
 			}
 			return tw.Flush()
 		},
 	}
 
 	var noCheck bool
+	var secretRef string
 	add := &cobra.Command{
 		Use:   "add <name> <url>",
 		Short: "Add a registry to codi.yaml (https://, file:// or a local path)",
+		Long: `Add a registry to codi.yaml. For a private registry, --secret-ref names the secret
+holding an access token (an environment variable, or ` + "`codi secret set`" + ` on the runtime);
+codi.yaml only stores that name. The token is sent to the registry's host only.`,
 		Example: `  codi registry add acme https://github.com/acme/codi-plugins.git
+  ACME_TOKEN=… codi registry add acme https://github.com/acme/private-plugins.git --secret-ref ACME_TOKEN
   codi registry add dev ../my-registry`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -90,7 +102,9 @@ plugins only if you trust them.`,
 			case name == config.OfficialRegistryName:
 				return fmt.Errorf("the name %q is reserved for the official CODI plugins", name)
 			case registry.HasUserinfo(url):
-				return fmt.Errorf("registry URLs must not contain credentials: codi.yaml is committed and shown in the admin UI")
+				return fmt.Errorf("registry URLs must not contain credentials: use --secret-ref (codi.yaml is committed and shown in the admin UI)")
+			case secretRef != "" && !secretRefRe.MatchString(secretRef):
+				return fmt.Errorf("--secret-ref must be an environment variable name (A-Z, 0-9, _)")
 			}
 			repo, err := loadProject(cmd)
 			if err != nil {
@@ -105,7 +119,15 @@ plugins only if you trust them.`,
 				}
 			}
 			if !noCheck {
-				idx, err := registry.FetchIndex(cmd.Context(), url)
+				ctx := cmd.Context()
+				if secretRef != "" {
+					tok, ok := os.LookupEnv(secretRef)
+					if !ok || tok == "" {
+						return fmt.Errorf("%s is not set: export the token to check the registry (or use --no-check)", secretRef)
+					}
+					ctx = registry.WithToken(ctx, url, tok)
+				}
+				idx, err := registry.FetchIndex(ctx, url)
 				if err != nil {
 					se := store.ExplainFetch(err)
 					return fmt.Errorf("%s %s\n  %s", se.Message, se.Hint, se.Details)
@@ -114,7 +136,7 @@ plugins only if you trust them.`,
 			}
 			if err := editProject(repo.Root, func(cur []byte) ([]byte, error) {
 				return writeback.AppendYAML(cur, []writeback.PathElem{writeback.Key("spec"), writeback.Key("registries")},
-					config.Registry{Name: name, URL: url})
+					config.Registry{Name: name, URL: url, SecretRef: secretRef})
 			}); err != nil {
 				return err
 			}
@@ -127,6 +149,7 @@ plugins only if you trust them.`,
 		},
 	}
 	add.Flags().BoolVar(&noCheck, "no-check", false, "do not fetch the index before adding")
+	add.Flags().StringVar(&secretRef, "secret-ref", "", "secret (environment variable) holding the access token of a private registry")
 
 	remove := &cobra.Command{
 		Use:   "remove <name>",
@@ -179,7 +202,7 @@ plugins only if you trust them.`,
 			if err != nil {
 				return err
 			}
-			s := &store.Service{CacheDir: registry.DefaultCacheDir()}
+			s := &store.Service{CacheDir: registry.DefaultCacheDir(), Secret: os.LookupEnv}
 			srcs, err := s.Sources(cmd.Context(), repo, true)
 			if err != nil {
 				return err
@@ -192,7 +215,11 @@ plugins only if you trust them.`,
 					fmt.Fprintf(w, "✗ %s: %s %s\n", src.Name, src.Error.Message, src.Error.Hint)
 					continue
 				}
-				fmt.Fprintf(w, "✓ %s (%s): %d plugin(s)\n", src.Name, src.Trust, len(src.Plugins))
+				private := ""
+				if src.Private {
+					private = ", private"
+				}
+				fmt.Fprintf(w, "✓ %s (%s%s): %d plugin(s)\n", src.Name, src.Trust, private, len(src.Plugins))
 			}
 			if len(srcs) == 1 {
 				fmt.Fprintln(w, "No registry in codi.yaml: only the official plugins bundled with codi are available.")
@@ -217,7 +244,7 @@ plugins only if you trust them.`,
 			if len(args) == 1 {
 				q = strings.ToLower(args[0])
 			}
-			s := &store.Service{Catalog: catalog.Official(), CacheDir: registry.DefaultCacheDir()}
+			s := &store.Service{Catalog: catalog.Official(), CacheDir: registry.DefaultCacheDir(), Secret: os.LookupEnv}
 			srcs, err := s.Sources(cmd.Context(), repo, false)
 			if err != nil {
 				return err
@@ -250,6 +277,14 @@ plugins only if you trust them.`,
 
 	cmd.AddCommand(list, add, remove, update, search)
 	return cmd
+}
+
+// runtimePluginStore is the Store of a running runtime: guarded fetches, registry tokens
+// from secret, and indexes refreshed in the background until stopping is closed.
+func runtimePluginStore(cat *catalog.Catalog, secret func(string) (string, bool), stopping <-chan struct{}, repo func() *config.Repo) *store.Service {
+	s := &store.Service{Catalog: cat, CacheDir: registry.DefaultCacheDir(), PublicOnly: !registry.AllowPrivateRegistries(), Secret: secret}
+	go s.Run(stopping, repo)
+	return s
 }
 
 // editProject rewrites codi.yaml with edit and checks the result still loads.
