@@ -23,10 +23,7 @@ func init() {
 	extraCommands = append(extraCommands, newRegistryCmd)
 }
 
-var (
-	registryNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
-	secretRefRe    = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
-)
+var registryNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 // newRegistryCmd manages plugin sources (ADR-0011): `codi registry add|remove|list|update|search`.
 // It edits codi.yaml locally, like the admin UI does through write-back.
@@ -74,16 +71,16 @@ plugins only if you trust them.`,
 		},
 	}
 
-	var noCheck bool
-	var secretRef string
+	var noCheck, private bool
 	add := &cobra.Command{
 		Use:   "add <name> <url>",
 		Short: "Add a registry to codi.yaml (https://, file:// or a local path)",
-		Long: `Add a registry to codi.yaml. For a private registry, --secret-ref names the secret
-holding an access token (an environment variable, or ` + "`codi secret set`" + ` on the runtime);
-codi.yaml only stores that name. The token is sent to the registry's host only.`,
+		Long: `Add a registry to codi.yaml. For a private registry, --private reads its access token
+from CODI_REGISTRY_<NAME>_TOKEN (environment variable here; on the runtime, an environment
+variable or ` + "`codi secret set`" + `); codi.yaml only stores that name. The token is sent to
+the registry's host only.`,
 		Example: `  codi registry add acme https://github.com/acme/codi-plugins.git
-  ACME_TOKEN=… codi registry add acme https://github.com/acme/private-plugins.git --secret-ref ACME_TOKEN
+  CODI_REGISTRY_ACME_TOKEN=… codi registry add acme https://github.com/acme/private-plugins.git --private
   codi registry add dev ../my-registry`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -103,8 +100,10 @@ codi.yaml only stores that name. The token is sent to the registry's host only.`
 				return fmt.Errorf("the name %q is reserved for the official CODI plugins", name)
 			case registry.HasUserinfo(url):
 				return fmt.Errorf("registry URLs must not contain credentials: use --secret-ref (codi.yaml is committed and shown in the admin UI)")
-			case secretRef != "" && !secretRefRe.MatchString(secretRef):
-				return fmt.Errorf("--secret-ref must be an environment variable name (A-Z, 0-9, _)")
+			}
+			secretRef := ""
+			if private {
+				secretRef = registry.SecretRefFor(name)
 			}
 			repo, err := loadProject(cmd)
 			if err != nil {
@@ -123,7 +122,7 @@ codi.yaml only stores that name. The token is sent to the registry's host only.`
 				if secretRef != "" {
 					tok, ok := os.LookupEnv(secretRef)
 					if !ok || tok == "" {
-						return fmt.Errorf("%s is not set: export the token to check the registry (or use --no-check)", secretRef)
+						return fmt.Errorf("%s is not set: export the registry token to check it (or use --no-check)", secretRef)
 					}
 					ctx = registry.WithToken(ctx, url, tok)
 				}
@@ -149,7 +148,7 @@ codi.yaml only stores that name. The token is sent to the registry's host only.`
 		},
 	}
 	add.Flags().BoolVar(&noCheck, "no-check", false, "do not fetch the index before adding")
-	add.Flags().StringVar(&secretRef, "secret-ref", "", "secret (environment variable) holding the access token of a private registry")
+	add.Flags().BoolVar(&private, "private", false, "private registry: its token is CODI_REGISTRY_<NAME>_TOKEN")
 
 	remove := &cobra.Command{
 		Use:   "remove <name>",

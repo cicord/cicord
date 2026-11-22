@@ -674,8 +674,10 @@ its `plugin.yaml` only; its code (and so its slash commands) runs only once inst
 
 **Private registries.** A registry can require an access token (a private GitHub/GitLab
 repository). Give the token in the admin UI (Store → Sources), or declare
-`secretRef: ACME_TOKEN` in `codi.yaml` and provide `ACME_TOKEN` as an environment variable or
-with `codi secret set`. `codi.yaml` only stores the secret's name. The token is sent to the
+`secretRef: CODI_REGISTRY_ACME_TOKEN` in `codi.yaml` (`codi registry add acme <url> --private`)
+and provide it as an environment variable or with `codi secret set`. The secret name is
+always `CODI_REGISTRY_<NAME>_TOKEN` for the registry's own name, so a `codi.yaml` edit can
+never send another secret (a bot token, another registry's token) to a registry host. `codi.yaml` only stores the secret's name. The token is sent to the
 registry's host only (its index and the plugin repositories on that host).
 
 **Uninstalling** from the admin UI (a plugin's page → Uninstall) removes the instance from

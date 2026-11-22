@@ -788,8 +788,9 @@ The runtime caches registry indexes and refreshes them in the background (10 s a
 then every 30 min) and on demand. A registry that cannot be fetched is listed with an
 `error` and no plugins; the others still work.
 
-**Private registries**: a registry may have a `secretRef` (codi.yaml) naming the secret that
-holds an access token (environment variable or the runtime's secret store). The token is
+**Private registries**: a registry may have a `secretRef` (codi.yaml), always
+`CODI_REGISTRY_<NAME>_TOKEN` for its own name, naming the secret that holds an access token
+(environment variable or the runtime's secret store). The token is
 sent, as HTTP basic auth over https, to the registry's host only (its index and the plugin
 repositories on the same host), never to other hosts. It is never returned by the API.
 
@@ -861,8 +862,8 @@ only done for `official` sources before installation.
 `PUT /registries/{name}/token` `{"token"}` checks the index with the new token first
 (`422 invalid` when it cannot be read), stores it, and writes `secretRef` to codi.yaml when
 it was not there (otherwise nothing is committed: `{"mode": "commit"}`).
-`DELETE /registries/{name}/token` removes `secretRef` from codi.yaml and deletes the token
-when the admin UI created it (an operator's secret is left alone). Audit `registry.token`.
+`DELETE /registries/{name}/token` removes `secretRef` from codi.yaml and deletes the token.
+Both only ever touch `CODI_REGISTRY_<NAME>_TOKEN` of that registry. Audit `registry.token`.
 
 ```json
 // WriteResult

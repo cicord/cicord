@@ -66,9 +66,9 @@
               "name": { "$ref": "common.schema.json#/$defs/key" },
               "url": { "type": "string" },
               "secretRef": {
-                "description": "Secret holding an access token for a private registry (environment variable or `codi secret set`). Never the token itself.",
+                "description": "Secret holding an access token for a private registry (environment variable or `codi secret set`), which must be CODI_REGISTRY_<NAME>_TOKEN for this registry name. Never the token itself.",
                 "type": "string",
-                "pattern": "^[A-Z][A-Z0-9_]*$"
+                "pattern": "^CODI_REGISTRY_[A-Z0-9_]+_TOKEN$"
               }
             },
             "additionalProperties": false

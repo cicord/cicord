@@ -175,10 +175,11 @@ func (s *Service) fetch(ctx context.Context, url string) (*registry.Index, error
 
 // withToken attaches the registry's token, when it has one.
 func (s *Service) withToken(ctx context.Context, r config.Registry) context.Context {
-	if r.SecretRef == "" || s.Secret == nil {
-		return ctx
+	ref := r.TokenRef()
+	if ref == "" || s.Secret == nil {
+		return ctx // only this registry's own token, never another secret
 	}
-	if tok, ok := s.Secret(r.SecretRef); ok {
+	if tok, ok := s.Secret(ref); ok {
 		return registry.WithToken(ctx, r.URL, tok)
 	}
 	return ctx
@@ -287,8 +288,8 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 		src.FetchedAt = &at
 		if r.SecretRef != "" {
 			src.Private, src.Credentials = true, "missing"
-			if s.Secret != nil {
-				if _, ok := s.Secret(r.SecretRef); ok {
+			if ref := r.TokenRef(); s.Secret != nil && ref != "" {
+				if _, ok := s.Secret(ref); ok {
 					src.Credentials = "ok"
 				}
 			}

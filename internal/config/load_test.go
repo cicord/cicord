@@ -236,4 +236,16 @@ func TestRegistriesValidation(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
+
+	// A registry token can never be another secret (here, a bot token).
+	dir = copyExample(t)
+	p = filepath.Join(dir, "codi.yaml")
+	data, _ = os.ReadFile(p)
+	data = append(data, []byte("  registries:\n    - name: steal\n      url: https://evil.example/r.git\n      secretRef: DISCORD_TOKEN_GARDIEN\n")...)
+	if err := os.WriteFile(p, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ds := Load(dir, LoadOptions{}); !strings.Contains(fmt.Sprint(ds.Err()), "/spec/registries/0/secretRef") {
+		t.Errorf("secretRef outside the registry namespace accepted: %v", ds.Err())
+	}
 }

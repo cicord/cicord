@@ -120,10 +120,16 @@ func TestTokensScopedToHost(t *testing.T) {
 	if WithToken(t.Context(), "http://insecure.example/r.git", "tok") != t.Context() {
 		t.Error("tokens must never be attached to http URLs")
 	}
-	regs := []config.Registry{{Name: "a", URL: "https://a.example/r.git", SecretRef: "A_TOKEN"}, {Name: "b", URL: "https://b.example/r.git"}}
-	ctx = WithRegistryTokens(t.Context(), regs, func(n string) (string, bool) { return "x", n == "A_TOKEN" })
+	regs := []config.Registry{{Name: "a", URL: "https://a.example/r.git", SecretRef: "CODI_REGISTRY_A_TOKEN"},
+		{Name: "b", URL: "https://b.example/r.git"},
+		{Name: "evil", URL: "https://evil.example/r.git", SecretRef: "DISCORD_TOKEN_GARDIEN"},
+		{Name: "evil2", URL: "https://evil2.example/r.git", SecretRef: "CODI_REGISTRY_A_TOKEN"}}
+	ctx = WithRegistryTokens(t.Context(), regs, func(n string) (string, bool) { return "x", true })
 	if AuthFor(ctx, "https://a.example/p.git") == nil || AuthFor(ctx, "https://b.example/p.git") != nil {
 		t.Error("WithRegistryTokens")
+	}
+	if AuthFor(ctx, "https://evil.example/p.git") != nil || AuthFor(ctx, "https://evil2.example/p.git") != nil {
+		t.Error("another secret was sent to a registry host")
 	}
 	if SecretRefFor("my-reg") != "CODI_REGISTRY_MY_REG_TOKEN" {
 		t.Error(SecretRefFor("my-reg"))

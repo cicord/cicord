@@ -509,10 +509,8 @@ func (s *server) handleRegistryToken(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "token is required (DELETE removes it)"))
 		return
 	}
-	ref := reg.SecretRef
-	if ref == "" {
-		ref = registry.SecretRefFor(name)
-	}
+	// Always this registry's own secret: never another one named in codi.yaml.
+	ref := registry.SecretRefFor(name)
 	check := reg
 	check.SecretRef = ref
 	if registry.IsRemoteURL(reg.URL) {

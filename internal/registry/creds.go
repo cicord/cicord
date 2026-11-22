@@ -54,20 +54,19 @@ func WithRegistryTokens(ctx context.Context, regs []config.Registry, secret func
 		return ctx
 	}
 	for _, r := range regs {
-		if r.SecretRef == "" {
-			continue
+		ref := r.TokenRef()
+		if ref == "" {
+			continue // only this registry's own token, never another secret
 		}
-		if tok, ok := secret(r.SecretRef); ok {
+		if tok, ok := secret(ref); ok {
 			ctx = WithToken(ctx, r.URL, tok)
 		}
 	}
 	return ctx
 }
 
-// SecretRefFor is the secret name the admin UI uses for a registry's token.
-func SecretRefFor(name string) string {
-	return "CODI_REGISTRY_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_TOKEN"
-}
+// SecretRefFor is the secret name of a registry's token (config.RegistryTokenRef).
+func SecretRefFor(name string) string { return config.RegistryTokenRef(name) }
 
 // projectRegistries reads spec.registries of codi.yaml in root (nil on any error).
 func projectRegistries(root string) []config.Registry {

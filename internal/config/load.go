@@ -274,6 +274,10 @@ func (l *loader) checkRegistries(doc *document, regs []Registry) {
 			l.sink.errorf(doc.file, doc.lineOf(at+"/name"), at+"/name", "duplicate registry name %q", r.Name)
 		}
 		names[r.Name] = true
+		if r.SecretRef != "" && r.TokenRef() == "" {
+			l.sink.errorf(doc.file, doc.lineOf(at+"/secretRef"), at+"/secretRef",
+				"the secretRef of registry %q must be %s (a registry token cannot reuse another secret)", r.Name, RegistryTokenRef(r.Name))
+		}
 		if u := NormalizeRegistryURL(r.URL); urls[u] {
 			l.sink.errorf(doc.file, doc.lineOf(at+"/url"), at+"/url", "registry %q repeats the URL of another registry", r.Name)
 		} else {

@@ -50,6 +50,22 @@ type Registry struct {
 	SecretRef string `yaml:"secretRef,omitempty" json:"secretRef,omitempty"`
 }
 
+// RegistryTokenRef is the only secretRef a registry may have: CODI_REGISTRY_<NAME>_TOKEN,
+// derived from its own name (names have no "_", so the mapping is one-to-one). A codi.yaml
+// edit can thus never make the runtime send another secret — a bot token, or another
+// registry's token — to a registry host.
+func RegistryTokenRef(name string) string {
+	return "CODI_REGISTRY_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_TOKEN"
+}
+
+// TokenRef is the secret of a private registry ("" when it has none or an invalid one).
+func (r Registry) TokenRef() string {
+	if r.SecretRef != "" && r.SecretRef == RegistryTokenRef(r.Name) {
+		return r.SecretRef
+	}
+	return ""
+}
+
 // OfficialRegistryName is the source name of the official CODI plugins. It is reserved:
 // no registry of codi.yaml may use it.
 const OfficialRegistryName = "codi"
