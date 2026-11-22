@@ -39,3 +39,19 @@ func TestTrustAndURLs(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckPublicHost(t *testing.T) {
+	ctx := t.Context()
+	for _, u := range []string{"https://127.0.0.1/r.git", "https://10.1.2.3/r.git", "https://169.254.169.254/latest",
+		"https://[::1]/r", "https://localhost/r", "https://git.localhost/r", "https://0.0.0.0/r", "https://192.168.1.10:8443/r", "not a url"} {
+		if err := CheckPublicHost(ctx, u); err == nil {
+			t.Errorf("CheckPublicHost(%q) accepted", u)
+		}
+	}
+	if err := CheckPublicHost(ctx, "https://8.8.8.8/r.git"); err != nil {
+		t.Errorf("public IP refused: %v", err)
+	}
+	if !sameHost("https://git.example.org/r.git", "https://GIT.example.org/p.git") || sameHost("https://a.example/r", "https://b.example/r") {
+		t.Error("sameHost")
+	}
+}

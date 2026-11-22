@@ -125,7 +125,13 @@ func Describe(dir string, inspect bool) (Entry, error) {
 		return Entry{}, err
 	}
 	defer os.RemoveAll(tmp)
-	return describe(os.DirFS(dir), ".", tmp, inspect)
+	// os.Root refuses paths that escape dir, through ".." or symlinks.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return Entry{}, err
+	}
+	defer root.Close()
+	return describe(root.FS(), ".", tmp, inspect)
 }
 
 func describe(fsys fs.FS, dir, tmp string, inspect bool) (Entry, error) {

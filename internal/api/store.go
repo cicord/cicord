@@ -302,6 +302,10 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := registry.CheckPublicHost(r.Context(), body.URL); err != nil {
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must point to a public host (%v); declare registries on your own network in codi.yaml", err))
+		return
+	}
 	if err := s.pluginStore().Check(r.Context(), body.URL); err != nil {
 		se := store.ExplainFetch(err)
 		s.failSetup(w, &setup.Error{Status: http.StatusUnprocessableEntity, Code: "invalid",

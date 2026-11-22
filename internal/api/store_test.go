@@ -214,6 +214,8 @@ func TestStoreRegistryManagement(t *testing.T) {
 		{"name": "local", "url": "file:///etc"},
 		{"name": "local", "url": "/tmp/registry"},
 		{"name": "acme", "url": "https://example.org/other.git"},
+		{"name": "internal", "url": "https://127.0.0.1/registry.git"},
+		{"name": "metadata", "url": "https://169.254.169.254/latest"},
 	} {
 		if r := owner.do("POST", "/api/v1/registries", body); r.status != 400 {
 			t.Errorf("add %v: %d %s", body, r.status, r.body)
