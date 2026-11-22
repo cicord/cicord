@@ -224,6 +224,11 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 			for _, i := range rt.Instances(t.Server) {
 				if i.Config.Bot == t.Bot && i.Config.Name == instance {
 					out.Health, out.Message = i.Health, i.Message
+					// Commands of plugins that were not inspected before install
+					// (unofficial sources) are known once the instance runs.
+					if out.Command == "" && i.Definition != nil && len(i.Definition.Commands) > 0 {
+						out.Command = i.Definition.Commands[0].Name
+					}
 					return out, nil
 				}
 			}

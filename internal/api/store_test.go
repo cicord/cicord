@@ -170,7 +170,7 @@ func TestStoreBrowseAndInstallFromRegistry(t *testing.T) {
 		Instance, Mode, Health, Command string
 	}
 	c.expect(200, "POST", install, req).json(t, &res)
-	if res.Instance != "hello" || res.Mode != "commit" || res.Health != "Healthy" {
+	if res.Instance != "hello" || res.Mode != "commit" || res.Health != "Healthy" || res.Command != "hello" {
 		t.Fatalf("install = %+v", res)
 	}
 
