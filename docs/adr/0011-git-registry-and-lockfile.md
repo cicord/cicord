@@ -38,3 +38,22 @@ Product decision: the store works like `apt` sources / Homebrew taps.
   admin UI spans all registries, grouped by source.
 - `codi plugin add` / `codi.lock` unchanged; `codi registry add|remove|list|update` mirror the
   admin UI. The runtime refreshes registry indexes periodically and on demand.
+
+## Update (2026-11-22): implementation decisions
+
+- **Trust is computed, never declared.** A registry is `official` only when its normalized
+  URL is the official registry's; any other entry of `spec.registries` is `unofficial`.
+  `verified` in an index is ignored outside the official registry.
+- **The official source is implicit.** It is not declared in `codi.yaml`; the name `codi` is
+  reserved (`codi validate` rejects a registry named `codi`). Until the official registry
+  repository exists, the official source is the plugin catalog bundled in the binary;
+  installing from it copies the plugin to `plugins/<name>/`.
+- **Review = install.** The admin UI shows what a plugin requests from its `plugin.yaml` at
+  the resolved version; the install request carries that version, commit and integrity,
+  and the runtime refuses (`409 changed`) when the latest version now resolves differently.
+- **No code from unofficial sources before consent.** Listing slash commands evaluates the
+  plugin, so it is only done for official sources before installation.
+- **URLs.** The admin UI accepts `https://` registries only; an https registry may only list
+  https plugin repositories. `file://` and local paths are for the CLI (development).
+- **Project-level rights.** Adding or removing a source changes `codi.yaml`: bearer, or admin
+  on every server of the project. Installing needs admin on the target server.

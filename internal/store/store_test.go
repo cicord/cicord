@@ -1,0 +1,74 @@
+package store
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/codi/internal/registry"
+)
+
+func repoWith(regs ...config.Registry) *config.Repo {
+	return &config.Repo{Project: &config.Project{Spec: config.ProjectSpec{Registries: regs}}}
+}
+
+func TestSourcesCacheAndErrors(t *testing.T) {
+	now := time.Date(2026, 11, 22, 10, 0, 0, 0, time.UTC)
+	fetches := map[string]int{}
+	s := &Service{
+		Now: func() time.Time { return now },
+		Fetch: func(_ context.Context, url string) (*registry.Index, error) {
+			fetches[url]++
+			if url == "https://down.example/r.git" {
+				return nil, errors.New("clone https://down.example/r.git: repository not found")
+			}
+			return &registry.Index{Plugins: map[string]registry.IndexEntry{
+				"b": {Repo: "https://x/b.git", Verified: true},
+				"a": {Repo: "https://x/a.git", DisplayName: "Alpha", Keywords: []string{"k"}},
+			}}, nil
+		},
+	}
+	repo := repoWith(config.Registry{Name: "acme", URL: "https://acme.example/r.git"}, config.Registry{Name: "down", URL: "https://down.example/r.git"})
+	srcs, err := s.Sources(context.Background(), repo, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(srcs) != 3 || srcs[0].Name != "codi" || srcs[1].Name != "acme" || srcs[2].Name != "down" {
+		t.Fatalf("sources = %+v", srcs)
+	}
+	acme := srcs[1]
+	if acme.Trust != registry.TrustUnofficial || len(acme.Plugins) != 2 || acme.Plugins[0].Name != "a" || acme.Plugins[0].DisplayName != "Alpha" {
+		t.Fatalf("acme = %+v", acme)
+	}
+	if acme.Plugins[1].Verified {
+		t.Error("verified is only honoured for official registries")
+	}
+	if srcs[2].Error == nil || srcs[2].Error.Message != "The repository was not found or is private." || len(srcs[2].Plugins) != 0 {
+		t.Errorf("down = %+v", srcs[2])
+	}
+
+	// Cached until the TTL, refetched when forced or stale.
+	_, _ = s.Sources(context.Background(), repo, false)
+	if fetches["https://acme.example/r.git"] != 1 {
+		t.Errorf("fetches = %v", fetches)
+	}
+	_, _ = s.Sources(context.Background(), repo, true)
+	now = now.Add(31 * time.Minute)
+	_, _ = s.Sources(context.Background(), repo, false)
+	if fetches["https://acme.example/r.git"] != 3 {
+		t.Errorf("fetches = %v", fetches)
+	}
+
+	if _, err := s.Detail(context.Background(), repo, "nope", "a"); !errors.Is(err, ErrUnknownSource) {
+		t.Errorf("unknown source: %v", err)
+	}
+	if _, err := s.Detail(context.Background(), repo, "acme", "zzz"); !errors.Is(err, ErrUnknownPlugin) {
+		t.Errorf("unknown plugin: %v", err)
+	}
+	var ue *UnavailableError
+	if _, err := s.Detail(context.Background(), repo, "down", "a"); !errors.As(err, &ue) {
+		t.Errorf("down: %v", err)
+	}
+}

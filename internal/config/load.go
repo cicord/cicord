@@ -156,6 +156,7 @@ func (l *loader) load(dir string) *Repo {
 	if l.decodeKind(pdoc, "Project", &p) {
 		repo.Project = &p
 		l.checkEngine(pdoc, p.Spec.Engine)
+		l.checkRegistries(pdoc, p.Spec.Registries)
 	} else {
 		repo.Project = &p
 	}
@@ -256,6 +257,28 @@ func (l *loader) checkEngine(doc *document, rng string) {
 	if !c.Check(v) {
 		l.sink.errorf(doc.file, doc.lineOf("/spec/engine"), "/spec/engine",
 			"this repository requires CODI %s, running %s", rng, l.opts.EngineVersion)
+	}
+}
+
+// checkRegistries rejects duplicate registry names or URLs and the reserved name of the
+// official source (an unofficial registry named "codi" would make its plugins look official).
+func (l *loader) checkRegistries(doc *document, regs []Registry) {
+	names, urls := map[string]bool{}, map[string]bool{}
+	for i, r := range regs {
+		at := fmt.Sprintf("/spec/registries/%d", i)
+		switch {
+		case r.Name == OfficialRegistryName:
+			l.sink.errorf(doc.file, doc.lineOf(at+"/name"), at+"/name",
+				"the registry name %q is reserved for the official CODI plugins", r.Name)
+		case names[r.Name]:
+			l.sink.errorf(doc.file, doc.lineOf(at+"/name"), at+"/name", "duplicate registry name %q", r.Name)
+		}
+		names[r.Name] = true
+		if u := NormalizeRegistryURL(r.URL); urls[u] {
+			l.sink.errorf(doc.file, doc.lineOf(at+"/url"), at+"/url", "registry %q repeats the URL of another registry", r.Name)
+		} else {
+			urls[u] = true
+		}
 	}
 }
 

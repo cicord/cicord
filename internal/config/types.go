@@ -2,6 +2,8 @@
 // plugins) into typed structures. See spec/README.md for the semantics.
 package config
 
+import "strings"
+
 const APIVersion = "codi.dev/v1alpha1"
 
 type Metadata struct {
@@ -43,6 +45,26 @@ type RuntimeSpec struct {
 type Registry struct {
 	Name string `yaml:"name" json:"name"`
 	URL  string `yaml:"url" json:"url"`
+}
+
+// OfficialRegistryName is the source name of the official CODI plugins. It is reserved:
+// no registry of codi.yaml may use it.
+const OfficialRegistryName = "codi"
+
+// NormalizeRegistryURL returns a comparable form of a git URL: lower-case scheme and
+// host, no trailing slash or ".git".
+func NormalizeRegistryURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimSuffix(strings.TrimSuffix(s, "/"), ".git")
+	s = strings.TrimSuffix(s, "/")
+	if scheme, rest, ok := strings.Cut(s, "://"); ok {
+		host, p, _ := strings.Cut(rest, "/")
+		s = strings.ToLower(scheme) + "://" + strings.ToLower(host)
+		if p != "" {
+			s += "/" + p
+		}
+	}
+	return s
 }
 
 type WriteBack struct {

@@ -634,3 +634,44 @@ runtime (no unit tests). To test a plugin end to end, run
 `codi dev --sim` and drive it from the admin UI's **Simulator** panel
 (`http://127.0.0.1:7420/admin/`): you can join members, send messages, run slash commands,
 click buttons and submit modals.
+
+## 9. Publishing: registries and the Store
+
+Plugins are installed from **sources**, like apt sources or Homebrew taps (ADR-0011):
+- **`codi`**, the official plugins bundled with the binary (welcome, onboarding, tickets,
+  polls, levels, moderation). Always available.
+- **Registries**: git repositories with an `index.yaml`, declared in `codi.yaml`
+  `spec.registries`. They are **unofficial** (trust is computed from the URL, never
+  declared): the admin UI labels them everywhere and asks for an explicit confirmation,
+  showing the capabilities and network egress being granted, before installing from them.
+
+To publish a plugin:
+1. Put it in its own git repository (`plugin.yaml` at the root) and tag releases with
+   semver tags (`v1.2.0`).
+2. List it in a registry's `index.yaml`:
+   ```yaml
+   plugins:
+     xp:
+       repo: https://github.com/acme/codi-xp.git   # https registries may only list https repos
+       displayName: XP & levels
+       description: Levels and a portal leaderboard
+       keywords: [xp, levels]
+       publisher: acme
+   ```
+3. Users add the registry and install:
+   ```sh
+   codi registry add acme https://github.com/acme/codi-plugins.git
+   codi registry search xp
+   codi plugin add acme/xp --bot moderator
+   ```
+   or from the admin UI: **Store** → Sources → Add, then Install on a plugin.
+
+Installing pins the version in `codi.lock` (commit + content hash) and adds
+`source: acme/xp` with `version: ^1.2.0` to the bot. The admin UI installs exactly the
+version that was reviewed: if a new tag appears between review and install, it asks to
+review again. Before installation, the Store reads what an unofficial plugin requests from
+its `plugin.yaml` only; its code (and so its slash commands) runs only once installed.
+
+`codi registry list|add|remove|update|search` manages sources from the command line
+(`file://` URLs and local paths are allowed there, for development registries; the admin
+UI only accepts `https://`).

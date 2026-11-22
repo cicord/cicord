@@ -11,9 +11,6 @@ spec:
     branch: main
   runtime:
     url: https://codi.ma-commu.example
-  registries:
-    - name: codi
-      url: https://github.com/codi-dev/registry
   writeBack:
     defaultMode: pullRequest
     policies:

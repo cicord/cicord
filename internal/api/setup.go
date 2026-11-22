@@ -28,6 +28,12 @@ const (
 func (s *server) setupRoutes(h func(string, func(http.ResponseWriter, *http.Request))) {
 	// Always available (normal mode too).
 	h("GET /api/v1/catalog", s.handleCatalog)
+	h("GET /api/v1/store", s.handleStore)
+	h("POST /api/v1/store/refresh", s.handleStoreRefresh)
+	h("GET /api/v1/store/{source}/{plugin}", s.handleStoreDetail)
+	h("POST /api/v1/servers/{server}/store/install", s.handleStoreInstall)
+	h("POST /api/v1/registries", s.handleRegistryAdd)
+	h("DELETE /api/v1/registries/{name}", s.handleRegistryRemove)
 	h("GET /api/v1/servers/{server}/diagnostics", s.handleDiagnostics)
 
 	h("GET /api/v1/setup/status", s.handleSetupStatus)

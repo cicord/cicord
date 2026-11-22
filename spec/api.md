@@ -21,6 +21,8 @@ mirrors every shape below.
   | `setup_required` | 503 (setup mode: no configured repository yet, §10) |
   | `gone` | 410 (setup endpoints after the setup completed, §10) |
   | `invalid_token`, `intents` | 422 / 409 (setup wizard explanations, §10) |
+  | `changed`, `confirmation_required`, `in_use` | 409 (Store, §11) |
+  | `registry_unavailable` | 502 (Store: a registry could not be fetched, §11) |
 
   `Diagnostic = {"severity": "error" | "warning", "file"?, "line"?, "path"? (JSON pointer), "message"}`.
 - **Error object** (humanized errors, `internal/reconcile/humanize.go`). The runtime keeps
@@ -739,3 +741,98 @@ checks by `id`, and `message` / `hint` are written for people.
 - `GET /api/v1/servers/{server}/diagnostics[?since=<RFC 3339>]` (admin) → `Report`. This is
   the Verify checklist on demand. `since` bounds the `events` check; by default any message
   since the runtime started counts.
+
+## 11. Store (plugin sources)
+
+The Store lists the plugins of every **source** and installs them through write-back
+(ADR-0011, apt/Homebrew-style sources). There are two kinds of sources:
+- **`codi`**: the official plugins bundled in the binary (the catalog of §10). Trust
+  `official`. Installing copies the plugin sources to `plugins/<name>/` (a local plugin).
+- **Registries** declared in `codi.yaml spec.registries` (`{name, url}`): git repositories
+  with an `index.yaml`. Trust is **computed, never declared**: `official` only for the
+  official registry URL (none exists yet), otherwise `unofficial`. The name `codi` is
+  reserved. Installing writes a `codi.lock` entry and a bot.yaml instance with
+  `source: <registry>/<plugin>`, in one write-back.
+
+Who: browsing and installing need the `admin` role on a server (bearer: everywhere).
+Adding or removing a source changes `codi.yaml` (the whole project): bearer, or `admin` on
+**every** server the runtime manages.
+
+The runtime caches registry indexes (refreshed every 30 min and on demand). A registry
+that cannot be fetched is listed with an `error` and no plugins; the others still work.
+
+### Shapes
+
+```json
+// Source
+{ "name": "codi", "kind": "bundled|git", "url"?: "https://…", "trust": "official|unofficial",
+  "fetchedAt"?: "…", "error"?: Error, "plugins": [StorePlugin] }
+// StorePlugin (browse; from the catalog or the registry index)
+{ "source": "codi", "name": "welcome", "displayName": "Welcome", "description": "…",
+  "keywords": [], "version"?: "0.1.0", "publisher"?: "…", "verified": false, "repo"?: "https://…",
+  "trust": "official|unofficial",
+  "installed": [{ "server", "bot", "instance" }] }        // instances using this source/plugin
+// StoreDetail = StorePlugin + what the plugin requests, read from its plugin.yaml at the
+// resolved version (not from the index):
+{ …StorePlugin, "version": "1.2.0", "commit"?: "<sha>", "integrity"?: "sha256-…",
+  "capabilities": [], "intents": [], "privilegedIntents": [], "network": [],
+  "schema": {…}, "commands": [{"name", "description"}] | null }
+```
+
+`commands` is `null` when unknown: listing commands evaluates the plugin's code, which is
+only done for `official` sources before installation.
+
+### Endpoints
+
+| Method | Path | Role | Result |
+|---|---|---|---|
+| GET | `/api/v1/store` | admin of a server | `{"sources": [Source]}`, `codi` first, then registries in `codi.yaml` order |
+| POST | `/api/v1/store/refresh` | admin of a server | refetches every registry index → as `GET /store` |
+| GET | `/api/v1/store/{source}/{plugin}` | admin of a server | `StoreDetail` for the latest version (`404` unknown source or plugin, `502 registry_unavailable`) |
+| POST | `/api/v1/servers/{server}/store/install` | admin of `{server}` | `InstallResult` (§10) |
+| POST | `/api/v1/registries` | project (see above) | `WriteResult` |
+| DELETE | `/api/v1/registries/{name}` | project | `WriteResult` |
+
+`POST /servers/{server}/store/install` request:
+```json
+{ "source": "acme", "plugin": "xp", "bot"?: "gardien", "instance"?: "xp", "config"?: {…},
+  "version"?: "1.2.0", "commit"?: "<sha>", "integrity"?: "sha256-…", "confirmUnofficial"?: false }
+```
+- `bot` defaults to the only bot managing the server (`400` when several do).
+  `instance` defaults to the plugin name (`409 conflict` when taken on that bot).
+- Registry plugins: `version`, `commit` and `integrity` are the values of the reviewed
+  `StoreDetail` and are required. If the latest version now resolves differently →
+  `409 changed` (review again): the installed code is always the reviewed code.
+- `unofficial` source without `confirmUnofficial: true` → `409 confirmation_required`.
+- Every capability the plugin requests is granted (`grants`), as reviewed. Privileged
+  intents are checked as in §10 (`409 intents`). The configuration is validated on a copy
+  of the active revision before anything is written (`422 invalid` with diagnostics).
+- Mode, activation wait and response as the wizard install (§10). Audit `store.install`
+  (target `<bot>/<instance>`, details `{source, plugin, version, commit, trust, mode}`).
+
+`POST /registries` request: `{"name": "acme", "url": "https://github.com/acme/codi-plugins.git"}`
+- `name`: `^[a-z0-9][a-z0-9-]{0,31}$`, not `codi`, unique; `url`: `https://` only and
+  unique (the CLI also accepts `file://` and local paths) → `400 invalid`.
+- The index is fetched first; unreachable or invalid → `422 invalid` (nothing written).
+- Writes `codi.yaml` (`spec.registries`), audit `registry.add`.
+
+`DELETE /registries/{name}`: unknown → `404`; used by `codi.lock` or a bot plugin →
+`409 in_use` (`details` lists them). Audit `registry.remove`.
+
+```json
+// WriteResult
+{ "mode": "commit|pullRequest", "revision"?: "…", "pullRequestUrl"?: "…" }
+```
+
+### Registry index (`index.yaml` at the root of the registry repository)
+
+```yaml
+plugins:
+  xp:
+    repo: https://github.com/acme/codi-xp.git    # plugin repository, semver tags v1.2.0
+    displayName: XP & levels                     # optional
+    description: Levels and a portal leaderboard
+    keywords: [xp, levels]
+    publisher: acme
+    verified: false                              # only meaningful in the official registry
+```

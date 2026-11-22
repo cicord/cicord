@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,5 +218,22 @@ func TestOnboardingEveryoneAccess(t *testing.T) {
 	// rules and announcements deny SendMessages (category "info"): 5 chattable remain.
 	if errs := load("permissions: [ViewChannel, ReadMessageHistory, SendMessages, Connect]"); len(errs) != 0 {
 		t.Errorf("unexpected errors: %v", errs)
+	}
+}
+
+func TestRegistriesValidation(t *testing.T) {
+	dir := copyExample(t)
+	p := filepath.Join(dir, "codi.yaml")
+	data, _ := os.ReadFile(p)
+	data = append(data, []byte("  registries:\n    - name: codi\n      url: https://example.org/a.git\n    - name: acme\n      url: https://example.org/b.git\n    - name: acme\n      url: https://EXAMPLE.org/b\n")...)
+	if err := os.WriteFile(p, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, ds := Load(dir, LoadOptions{})
+	got := fmt.Sprint(ds.Err())
+	for _, want := range []string{`"codi" is reserved`, `duplicate registry name "acme"`, "repeats the URL"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
 	}
 }

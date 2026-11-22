@@ -47,7 +47,8 @@ type Entry struct {
 	PrivilegedIntents []string       `json:"privilegedIntents"`
 	Network           []string       `json:"network"`
 	Schema            map[string]any `json:"schema"`
-	Commands          []Command      `json:"commands"`
+	// Commands is nil when unknown (the plugin's code was not inspected).
+	Commands []Command `json:"commands"`
 
 	dir string // directory inside the embedded FS
 }
@@ -106,7 +107,29 @@ func (c *Catalog) load() ([]Entry, error) {
 }
 
 func (c *Catalog) loadOne(dir, tmp string) (Entry, error) {
-	raw, err := fs.ReadFile(c.fsys, path.Join(dir, "plugin.yaml"))
+	e, err := describe(c.fsys, dir, tmp, true)
+	if err != nil {
+		return Entry{}, err
+	}
+	e.Source, e.dir = "official", dir
+	return e, nil
+}
+
+// Describe reads the plugin in a directory on disk (a registry plugin downloaded to the
+// cache): manifest, config schema and, when inspect is true, its slash commands.
+// Listing commands builds and evaluates the plugin's code (in the sandbox, without host
+// APIs): callers only pass inspect for trusted sources. Commands is nil when not inspected.
+func Describe(dir string, inspect bool) (Entry, error) {
+	tmp, err := os.MkdirTemp("", "codi-describe-*")
+	if err != nil {
+		return Entry{}, err
+	}
+	defer os.RemoveAll(tmp)
+	return describe(os.DirFS(dir), ".", tmp, inspect)
+}
+
+func describe(fsys fs.FS, dir, tmp string, inspect bool) (Entry, error) {
+	raw, err := fs.ReadFile(fsys, path.Join(dir, "plugin.yaml"))
 	if err != nil {
 		return Entry{}, err
 	}
@@ -115,9 +138,9 @@ func (c *Catalog) loadOne(dir, tmp string) (Entry, error) {
 		return Entry{}, fmt.Errorf("plugin.yaml: %w", err)
 	}
 	e := Entry{Name: m.Metadata.Name, DisplayName: m.Metadata.DisplayName, Description: m.Metadata.Description,
-		Version: m.Metadata.Version, Keywords: nonNil(m.Metadata.Keywords), Source: "official",
-		Capabilities: nonNil(m.Spec.Capabilities), Intents: nonNil(m.Spec.Intents), Network: []string{}, dir: dir,
-		Schema: map[string]any{}, Commands: []Command{}, PrivilegedIntents: []string{}}
+		Version: m.Metadata.Version, Keywords: nonNil(m.Metadata.Keywords),
+		Capabilities: nonNil(m.Spec.Capabilities), Intents: nonNil(m.Spec.Intents), Network: []string{},
+		Schema: map[string]any{}, PrivilegedIntents: []string{}}
 	if e.DisplayName == "" {
 		e.DisplayName = e.Name
 	}
@@ -128,7 +151,7 @@ func (c *Catalog) loadOne(dir, tmp string) (Entry, error) {
 		e.PrivilegedIntents = nonNil((in & discord.PrivilegedIntents).Names())
 	}
 	if m.Spec.Config != nil && m.Spec.Config.Schema != "" {
-		data, err := fs.ReadFile(c.fsys, path.Join(dir, path.Clean(m.Spec.Config.Schema)))
+		data, err := fs.ReadFile(fsys, path.Join(dir, path.Clean(m.Spec.Config.Schema)))
 		if err != nil {
 			return Entry{}, err
 		}
@@ -136,9 +159,12 @@ func (c *Catalog) loadOne(dir, tmp string) (Entry, error) {
 			return Entry{}, fmt.Errorf("config schema: %w", err)
 		}
 	}
+	if !inspect {
+		return e, nil
+	}
 	// Build and inspect the plugin to list its slash commands.
 	work := filepath.Join(tmp, e.Name)
-	files, err := c.files(dir)
+	files, err := readTree(fsys, dir)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -159,6 +185,7 @@ func (c *Catalog) loadOne(dir, tmp string) (Entry, error) {
 	if err != nil {
 		return Entry{}, fmt.Errorf("inspect: %w", err)
 	}
+	e.Commands = []Command{}
 	for _, cmd := range def.Commands {
 		e.Commands = append(e.Commands, Command{Name: cmd.Name, Description: cmd.Description})
 	}
@@ -173,17 +200,22 @@ func nonNil(s []string) []string {
 }
 
 // files returns the plugin sources, relative to the plugin directory.
-func (c *Catalog) files(dir string) (map[string][]byte, error) {
+func (c *Catalog) files(dir string) (map[string][]byte, error) { return readTree(c.fsys, dir) }
+
+func readTree(fsys fs.FS, dir string) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	err := fs.WalkDir(c.fsys, dir, func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		data, err := fs.ReadFile(c.fsys, p)
+		data, err := fs.ReadFile(fsys, p)
 		if err != nil {
 			return err
 		}
-		rel := strings.TrimPrefix(p, dir+"/")
+		rel := p
+		if dir != "." {
+			rel = strings.TrimPrefix(p, dir+"/")
+		}
 		if rel == "tsconfig.json" {
 			data = portableTSConfig(data)
 		}

@@ -23,10 +23,12 @@ import (
 
 	"github.com/npjonath/codi/internal/catalog"
 	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/codi/internal/registry"
 	"github.com/npjonath/codi/internal/runtime"
 	"github.com/npjonath/codi/internal/setup"
 	"github.com/npjonath/codi/internal/sim"
 	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/codi/internal/store"
 	"github.com/npjonath/codi/internal/writeback"
 )
 
@@ -96,6 +98,9 @@ type Options struct {
 	Checker *setup.Checker
 	// Catalog is the plugin catalog (default: the official plugins bundled in the binary).
 	Catalog *catalog.Catalog
+	// PluginStore lists and describes Store plugins (default: Catalog + the registries of
+	// the active codi.yaml, cached in registry.DefaultCacheDir()).
+	PluginStore *store.Service
 }
 
 type server struct {
@@ -162,6 +167,9 @@ func newServer(opts Options) *server {
 	opts.PublicURL = strings.TrimRight(opts.PublicURL, "/")
 	if opts.Catalog == nil {
 		opts.Catalog = catalog.Official()
+	}
+	if opts.PluginStore == nil {
+		opts.PluginStore = &store.Service{Catalog: opts.Catalog, CacheDir: registry.DefaultCacheDir()}
 	}
 	s := &server{opts: opts, rt: opts.Runtime, store: opts.Store, log: opts.Logger, mux: http.NewServeMux()}
 	s.members.entries = map[string]memberEntry{}

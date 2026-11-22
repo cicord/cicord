@@ -85,8 +85,18 @@ func start(t *testing.T) *env { t.Helper(); return startWith(t, nil) }
 // startWith is start with a hook to adjust the API options.
 func startWith(t *testing.T, mod func(*Options)) *env {
 	t.Helper()
+	return startFull(t, nil, nil, mod)
+}
+
+// startFull is start with hooks on the repository (before loading), the runtime options
+// and the API options.
+func startFull(t *testing.T, prepare func(dir string), rtMod func(*runtime.Options), mod func(*Options)) *env {
+	t.Helper()
 	dir := t.TempDir()
 	copyTree(t, "../../examples/basic", dir)
+	if prepare != nil {
+		prepare(dir)
+	}
 	repo, _ := config.Load(dir, config.LoadOptions{})
 	if repo == nil || repo.Servers[serverKey] == nil {
 		t.Fatal("cannot load examples/basic")
@@ -114,11 +124,15 @@ func startWith(t *testing.T, mod func(*Options)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt := runtime.New(runtime.Options{
+	rtOpts := runtime.Options{
 		Source: src, Connector: w, Store: store, Mode: "dev", Simulator: true,
 		Secrets:   func(n string) (string, bool) { v, ok := seed.Secrets[n]; return v, ok },
 		PortalURL: ts.URL, Logger: testLogger(), ResyncInterval: -1,
-	})
+	}
+	if rtMod != nil {
+		rtMod(&rtOpts)
+	}
+	rt := runtime.New(rtOpts)
 	opts := Options{
 		Runtime: rt, Writer: &writeback.DirWriter{Root: dir}, Mode: "dev", Sim: w,
 		RuntimeToken: testToken, WebhookSecret: testSecret, Logger: testLogger(), MemberCacheTTL: -1,
