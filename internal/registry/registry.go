@@ -62,7 +62,8 @@ func CheckSource(source string) (registryName, plugin string, err error) {
 }
 
 // userinfoRe matches the credentials of a URL ("https://user:token@host").
-var userinfoRe = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@`)
+// The userinfo runs to the last "@" of the authority (a password may contain "@").
+var userinfoRe = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/?#\s]*@`)
 
 // Redact removes URL credentials from s (a URL or an error message).
 func Redact(s string) string { return userinfoRe.ReplaceAllString(s, "${1}***@") }

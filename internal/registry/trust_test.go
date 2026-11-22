@@ -94,6 +94,9 @@ func TestNamesAndCachePaths(t *testing.T) {
 	if got := Redact("clone https://bob:s3cret@git.example/r.git: auth failed"); got != "clone https://***@git.example/r.git: auth failed" {
 		t.Errorf("Redact = %q", got)
 	}
+	if got := Redact("fetch https://user:p@ss@host.example/r.git?x=1 and https://a@b.example/c"); got != "fetch https://***@host.example/r.git?x=1 and https://***@b.example/c" {
+		t.Errorf("Redact = %q", got)
+	}
 	if !HasUserinfo("https://tok@github.com/a/b") || HasUserinfo("https://github.com/a/b") {
 		t.Error("HasUserinfo")
 	}
