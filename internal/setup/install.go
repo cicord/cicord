@@ -308,9 +308,18 @@ func pruneEmpty(m map[string]any) map[string]any {
 				continue
 			}
 		case []any:
-			if len(tv) == 0 {
+			// Blank rows of a list field (an added but empty picker) are dropped too.
+			items := make([]any, 0, len(tv))
+			for _, it := range tv {
+				if it == nil || it == "" {
+					continue
+				}
+				items = append(items, it)
+			}
+			if len(items) == 0 {
 				continue
 			}
+			v = items
 		case map[string]any:
 			sub := pruneEmpty(tv)
 			if len(sub) == 0 {

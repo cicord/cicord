@@ -12,6 +12,7 @@ import {
   fieldKind,
   fieldLabel,
   initialValue,
+  itemSchemaOf,
   resolve,
   type JsonSchema,
 } from "./schema.ts";
@@ -627,7 +628,7 @@ function ArrayField(props: FieldProps) {
   const { schema, path, value, name } = props;
   const { ctx, locked, errors, id } = useFieldState(path);
   const list = Array.isArray(value) ? value : [];
-  const itemSchema = resolve(schema.items ?? {}, ctx.root);
+  const itemSchema = resolve(itemSchemaOf(schema), ctx.root);
   const itemKind = fieldKind(itemSchema);
   const canAdd = !locked && (schema.maxItems === undefined || list.length < schema.maxItems);
   const canRemove = !locked && list.length > (schema.minItems ?? 0);

@@ -11,6 +11,8 @@ import type {
   ServerResources,
   SimCommand,
   SimState,
+  StoreDetail,
+  StoreSource,
   SyncRecord,
 } from "@codi/client";
 import { useCodi, useCodiQuery, type QueryResult } from "@codi/react";
@@ -24,6 +26,10 @@ export const keys = {
   plan: (key: string) => ["admin", "server", key, "plan"] as const,
   audit: (key: string, before: string) => ["admin", "server", key, "audit", before] as const,
   plugins: (key: string) => ["admin", "server", key, "plugins"] as const,
+  store: () => ["admin", "store"] as const,
+  storeSources: () => ["admin", "store", "sources"] as const,
+  storeDetail: (source: string, plugin: string) =>
+    ["admin", "store", "detail", source, plugin] as const,
   sim: () => ["sim"] as const,
   simState: () => ["sim", "state"] as const,
   simCommands: (serverId: string) => ["sim", "commands", serverId] as const,
@@ -76,6 +82,23 @@ export function usePlugins(key: string | undefined): QueryResult<PluginInstance[
   const { client } = useCodi();
   return useCodiQuery(key ? keys.plugins(key) : null, (signal) =>
     client.admin.plugins(key!, { signal }),
+  );
+}
+
+/** Store sources (`GET /store`). */
+export function useStoreSources(): QueryResult<StoreSource[]> {
+  const { client } = useCodi();
+  return useCodiQuery(keys.storeSources(), (signal) => client.store.list({ signal }));
+}
+
+/** What a Store plugin requests at its latest version (`GET /store/{source}/{plugin}`). */
+export function useStoreDetail(
+  source: string | undefined,
+  plugin: string | undefined,
+): QueryResult<StoreDetail> {
+  const { client } = useCodi();
+  return useCodiQuery(source && plugin ? keys.storeDetail(source, plugin) : null, (signal) =>
+    client.store.detail(source!, plugin!, { signal }),
   );
 }
 

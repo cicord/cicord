@@ -71,14 +71,16 @@ No public release until the product is complete.
 - [ ] Setup wizard: manage several servers / bots; Store page on top of the catalog (registries)
 
 ## Store (core of the vision) — apt/Homebrew-style sources (ADR-0011 update)
-- [ ] Create the official plugin registry repository (`codi-dev/registry`, index.yaml) with the official plugins
-- [ ] Registry trust levels (`official` / `unofficial`) in `codi.yaml spec.registries`; unofficial clearly labelled + explicit confirmation
-- [ ] `codi registry add|remove|list|update`; index refresh in the runtime
-- [ ] Admin UI: manage sources (add/remove unofficial repos, write-back to codi.yaml), search across sources, install
-- [ ] `codi plugin publish`; verified publishers; signing
-- [ ] Official plugins: moderation (warn/timeout/automod), XP & levels (+ portal leaderboard),
-      tickets, reaction roles, audit logging, polls, scheduled announcements
-- [ ] Store page in the admin UI (browse, permissions review, install via commit/PR)
+- [x] Sources: bundled official plugins (`codi`, reserved) + `codi.yaml spec.registries`; trust computed from the URL (unofficial unless official URL), `verified` only honoured for official
+- [x] Store API (§11): browse, detail from plugin.yaml at the resolved version (no unofficial code run before consent), install with reviewed version/commit/integrity (`409 changed`), explicit confirmation for unofficial, registries add/remove (project admins, https only, `in_use`)
+- [x] `codi registry list|add|remove|update|search` (file:// and local paths for dev registries)
+- [x] Admin UI Store page: browse/search by source, trust badges, permissions review, install (bot, instance, config, unofficial confirmation, `changed` re-review), sources add/remove
+- [ ] Create the official registry repository (needs a GitHub org/account decision), then add its URL to `registry.OfficialURLs` and list it implicitly
+- [ ] Periodic background refresh of registry indexes (today: lazy, 30 min TTL + manual refresh)
+- [ ] Uninstall from the Store/Plugins page (remove instance + lock entry + plugin dir); `codi plugin update` from the admin
+- [ ] Private registries (git credentials per source)
+- [ ] `codi plugin publish`; verified publishers; signing of the official index
+- [ ] More official plugins: reaction roles, audit logging, scheduled announcements (welcome, onboarding, tickets, polls, levels, moderation exist)
 
 ## Production hardening
 - [ ] GitHub App authentication (instead of a token) + commit statuses on synced SHAs

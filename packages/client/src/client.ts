@@ -6,8 +6,10 @@ import {
   type ServerSentEvent,
 } from "./sse.ts";
 import type {
+  AddRegistryRequest,
   AuditEntry,
   AuditQuery,
+  InstallResult,
   InteractionResult,
   Items,
   Json,
@@ -30,12 +32,16 @@ import type {
   SimModalRequest,
   SimSendMessageRequest,
   SimState,
+  StoreDetail,
+  StoreInstallRequest,
+  StoreSource,
   SyncRecord,
   SyncResult,
   TokenSession,
   UpdatePluginConfigRequest,
   User,
   WriteBackResult,
+  WriteResult,
 } from "./types.ts";
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
@@ -617,6 +623,49 @@ export class CodiClient {
     /** URL of the image declared in `spec.profile.<kind>` (moderator), for previews. */
     serverAssetUrl: (server: string, kind: ServerAssetKind): string =>
       this.url(`${this.apiPath}/servers/${seg(server)}/assets/${seg(kind)}`),
+  };
+
+  // ─────────────────────────────────────────────────────────── store (§11)
+
+  readonly store = {
+    /** `GET /store` (admin of a server): every source, `codi` first, then the registries. */
+    list: async (options?: CallOptions): Promise<StoreSource[]> =>
+      (await this.#api<{ sources: StoreSource[] }>("GET", "/store", options)).sources,
+    /** `POST /store/refresh` (admin of a server): refetches every registry index. */
+    refresh: async (options?: CallOptions): Promise<StoreSource[]> =>
+      (await this.#api<{ sources: StoreSource[] }>("POST", "/store/refresh", options)).sources,
+    /**
+     * `GET /store/{source}/{plugin}` (admin of a server): the latest version and what it
+     * requests. Rejects with `not_found` (404) or `registry_unavailable` (502).
+     */
+    detail: (source: string, plugin: string, options?: CallOptions): Promise<StoreDetail> =>
+      this.#api<StoreDetail>("GET", `/store/${seg(source)}/${seg(plugin)}`, options),
+    /**
+     * `POST /servers/{server}/store/install` (admin of `server`). Rejects with `changed`,
+     * `confirmation_required`, `intents`, `conflict` (409) or `invalid` + `diagnostics` (422).
+     */
+    install: (
+      server: string,
+      request: StoreInstallRequest,
+      options?: CallOptions,
+    ): Promise<InstallResult> =>
+      this.#api<InstallResult>("POST", `/servers/${seg(server)}/store/install`, {
+        body: request,
+        ...options,
+      }),
+  };
+
+  readonly registries = {
+    /**
+     * `POST /registries` (bearer, or admin of every server): adds a registry to
+     * `codi.yaml`. Rejects with `invalid` (400 bad name / URL, 422 unreachable index) or
+     * `forbidden` (403).
+     */
+    add: (request: AddRegistryRequest, options?: CallOptions): Promise<WriteResult> =>
+      this.#api<WriteResult>("POST", "/registries", { body: request, ...options }),
+    /** `DELETE /registries/{name}`. Rejects with `not_found` (404) or `in_use` (409). */
+    remove: (name: string, options?: CallOptions): Promise<WriteResult> =>
+      this.#api<WriteResult>("DELETE", `/registries/${seg(name)}`, options),
   };
 
   // ─────────────────────────────────────────────────────────── machine (§7)

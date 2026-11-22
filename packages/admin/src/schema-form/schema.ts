@@ -83,8 +83,18 @@ export function primaryType(schema: JsonSchema): string | undefined {
   return undefined;
 }
 
+/**
+ * Item schema of an array. `x-codi-ref` on the array itself (a list of resource keys, as in
+ * `{"type": "array", "items": {"type": "string"}, "x-codi-ref": "role"}`) applies to its items.
+ */
+export function itemSchemaOf(schema: JsonSchema): JsonSchema {
+  const items = schema.items ?? {};
+  const ref = schema["x-codi-ref"];
+  return ref && !items["x-codi-ref"] && !items.$ref ? { ...items, "x-codi-ref": ref } : items;
+}
+
 export function fieldKind(schema: JsonSchema): FieldKind {
-  if (schema["x-codi-ref"]) return "ref";
+  if (schema["x-codi-ref"] && primaryType(schema) !== "array") return "ref";
   if (Array.isArray(schema.enum) && schema.enum.length > 0) return "enum";
   if (schema.const !== undefined) return "enum";
   if (schema.oneOf || schema.anyOf) {
@@ -169,7 +179,7 @@ export function initialValue(schema: JsonSchema, root: JsonSchema = schema): Jso
     case "array": {
       const out: Json[] = [];
       for (let i = 0; i < (s.minItems ?? 0); i++) {
-        const item = initialValue(s.items ?? {}, root);
+        const item = initialValue(itemSchemaOf(s), root);
         if (item !== undefined) out.push(item);
       }
       return out;

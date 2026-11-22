@@ -770,3 +770,123 @@ export interface SimCommand {
   description: string;
   options: SimCommandOption[];
 }
+
+// ───────────────────────────────────────────────────────────── store (§10, §11)
+
+/**
+ * Trust of a Store source. Computed by the runtime, never declared: `official` only for the
+ * bundled `codi` source and the official registry URL; every other registry is `unofficial`.
+ */
+export type StoreTrust = "official" | "unofficial";
+
+/** `bundled`: the official plugins in the binary (source `codi`); `git`: a registry. */
+export type StoreSourceKind = "bundled" | "git";
+
+/** An instance created from a Store plugin. */
+export interface StoreInstallation {
+  server: string;
+  bot: string;
+  instance: string;
+}
+
+/** A plugin as listed by the Store (from the catalog or the registry index). */
+export interface StorePlugin {
+  /** Source name (`codi` or a registry of `codi.yaml spec.registries`). */
+  source: string;
+  name: string;
+  displayName: string;
+  description: string;
+  keywords: string[];
+  version?: string;
+  publisher?: string;
+  /** Only meaningful in official sources. */
+  verified: boolean;
+  /** Plugin repository. */
+  repo?: string;
+  trust: StoreTrust;
+  /** Instances using this source/plugin. */
+  installed: StoreInstallation[];
+}
+
+/** A plugin source (`GET /store`). A registry that cannot be fetched has an `error` and no plugins. */
+export interface StoreSource {
+  name: string;
+  kind: StoreSourceKind;
+  url?: string;
+  trust: StoreTrust;
+  fetchedAt?: Timestamp;
+  error?: HumanError;
+  plugins: StorePlugin[];
+}
+
+/**
+ * `GET /store/{source}/{plugin}`: the plugin at its latest resolved version, with what it
+ * requests (read from its plugin.yaml at that version, not from the index).
+ */
+export interface StoreDetail extends StorePlugin {
+  version: string;
+  /** Resolved commit (registry plugins); send it back with the install. */
+  commit?: string;
+  /** `sha256-…` of the reviewed sources (registry plugins); send it back with the install. */
+  integrity?: string;
+  capabilities: string[];
+  intents: string[];
+  /** The subset of `intents` that must be enabled in the Discord developer portal. */
+  privilegedIntents: string[];
+  /** Hosts the plugin may call (network egress). */
+  network: string[];
+  /** config.schema.json (`{"type": "object"}` when the plugin has none). */
+  schema: { [key: string]: Json };
+  /**
+   * Slash commands, or `null` when unknown: listing them evaluates the plugin's code, which
+   * the runtime only does for `official` sources before installation.
+   */
+  commands: PluginCommandSummary[] | null;
+}
+
+/** `POST /servers/{server}/store/install`. */
+export interface StoreInstallRequest {
+  source: string;
+  plugin: string;
+  /** Default: the only bot managing the server (`400` when several do). */
+  bot?: string;
+  /** Default: the plugin name (`409 conflict` when taken on that bot). */
+  instance?: string;
+  config?: { [key: string]: Json };
+  /**
+   * Registry plugins: the `version`, `commit` and `integrity` of the reviewed `StoreDetail`
+   * (required). `409 changed` when the latest version now resolves differently.
+   */
+  version?: string;
+  commit?: string;
+  integrity?: string;
+  /** Required (`true`) for `unofficial` sources, otherwise `409 confirmation_required`. */
+  confirmUnofficial?: boolean;
+}
+
+/** Result of a plugin install (setup wizard §10 and Store §11). */
+export interface InstallResult {
+  instance: string;
+  health: HealthState | (string & {});
+  message?: string;
+  /** First slash command of the plugin, to try it. */
+  command?: string;
+  revision?: string;
+  mode: "commit" | "pullRequest";
+  pullRequestUrl?: string;
+}
+
+/** `POST /registries` request. */
+export interface AddRegistryRequest {
+  /** `^[a-z0-9][a-z0-9-]{0,31}$`, not `codi`, unique. */
+  name: string;
+  /** `https://` only, unique. */
+  url: string;
+}
+
+/** Result of a `codi.yaml` write-back (`POST /registries`, `DELETE /registries/{name}`). */
+export interface WriteResult {
+  mode: "commit" | "pullRequest";
+  revision?: string;
+  pullRequestUrl?: string;
+}

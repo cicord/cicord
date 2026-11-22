@@ -3,7 +3,14 @@
  * `x-codi-ref` checks, 422 diagnostics); this covers the common keywords only.
  */
 import type { Json, ServerResources } from "@codi/client";
-import { enumOptions, fieldKind, primaryType, resolve, type JsonSchema } from "./schema.ts";
+import {
+  enumOptions,
+  fieldKind,
+  itemSchemaOf,
+  primaryType,
+  resolve,
+  type JsonSchema,
+} from "./schema.ts";
 import { deepEqual, isObject, toPointer, type Segment } from "./values.ts";
 import { i18n } from "../i18n/index.ts";
 
@@ -120,7 +127,7 @@ function check(
       const seen = value.map((v) => JSON.stringify(v));
       if (new Set(seen).size !== seen.length) fail(i18n.t("form.errors.unique"));
     }
-    value.forEach((item, i) => check(s.items ?? {}, root, item, [...path, i], out, resources));
+    value.forEach((item, i) => check(itemSchemaOf(s), root, item, [...path, i], out, resources));
     return;
   }
   if (type === "object") {

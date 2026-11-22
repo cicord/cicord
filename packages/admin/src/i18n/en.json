@@ -46,6 +46,7 @@
       "resources": "Roles & channels",
       "serverSettings": "Server settings",
       "plugins": "Plugins",
+      "store": "Store",
       "plan": "Plan",
       "history": "History",
       "drift": "Drift",
@@ -1267,5 +1268,206 @@
     "run": "Run the checks",
     "ranAt": "Last run",
     "sinceStart": "Live events count any message since the runtime started."
+  },
+  "store": {
+    "title": "Store",
+    "description": "Plugins from CODI and from the sources declared in codi.yaml. Installing one commits it to git; the runtime then activates the new revision.",
+    "refresh": "Refresh sources",
+    "refreshed": "Sources refreshed",
+    "refreshFailed": "Could not refresh the sources",
+    "sourcesCount_one": "{{count}} source",
+    "sourcesCount_other": "{{count}} sources",
+    "adminOnly": {
+      "title": "Admins only",
+      "text": "Browsing and installing plugins needs the admin role on this server."
+    },
+    "tabs": {
+      "label": "Store sections",
+      "browse": "Browse",
+      "sources": "Sources"
+    },
+    "search": {
+      "label": "Search plugins",
+      "placeholder": "Search by name, description or keyword",
+      "results_one": "{{count}} plugin",
+      "results_other": "{{count}} plugins",
+      "noMatch": "No plugin matches “{{query}}”",
+      "noMatchText": "Try another word, or clear the search to see every plugin.",
+      "clear": "Clear search"
+    },
+    "empty": {
+      "title": "No plugins available",
+      "text": "No source lists any plugin yet. Add a registry in the Sources tab, or refresh the sources."
+    },
+    "trust": {
+      "official": "Official",
+      "unofficial": "Unofficial",
+      "officialTip": "Published by CODI, or listed by the official registry.",
+      "unofficialTip": "Not reviewed by CODI. Install only if you trust the publisher."
+    },
+    "kind": {
+      "bundled": "Built in",
+      "git": "Git registry"
+    },
+    "source": {
+      "label": "Source {{name}}",
+      "fetched": "Fetched",
+      "plugins_one": "{{count}} plugin",
+      "plugins_other": "{{count}} plugins",
+      "none": "This source lists no plugins.",
+      "fetchFailed": "Could not fetch this source",
+      "fetchHint": "The other sources still work. Fix the URL or access, then refresh the sources."
+    },
+    "card": {
+      "open": "View {{name}}",
+      "verified": "Verified",
+      "by": "by {{publisher}}",
+      "installedHere": "Installed",
+      "installedTip": "Already installed on this server"
+    },
+    "detail": {
+      "title": "{{name}} plugin",
+      "close": "Close",
+      "loadFailed": "Could not load this plugin",
+      "repo": "Repository",
+      "version": "Version",
+      "publisher": "Publisher",
+      "source": "Source",
+      "commit": "Commit",
+      "unofficial": {
+        "title": "Unofficial source: {{source}}",
+        "text": "CODI has not reviewed this plugin's code. It runs with the permissions below on your server. Install it only if you trust {{publisher}}."
+      },
+      "review": "What this plugin requests",
+      "reviewHint": "Every capability below is granted when you install it.",
+      "capabilities": "Capabilities",
+      "noCapabilities": "No Discord or runtime capability.",
+      "intents": "Gateway intents",
+      "noIntents": "No gateway intent.",
+      "privileged": "Privileged",
+      "privilegedHint": "Privileged intents must be enabled for the bot in the Discord developer portal (Bot → Privileged Gateway Intents).",
+      "network": "Network access",
+      "noNetwork": "No internet access.",
+      "networkHint": "The plugin may send data to these hosts.",
+      "commands": "Slash commands",
+      "noCommands": "No slash command.",
+      "commandsUnknown": "Known after install",
+      "commandsUnknownHint": "Listing commands runs the plugin's code, which CODI only does for official sources before installing.",
+      "installed": "Installed",
+      "notInstalled": "Not installed yet.",
+      "instanceOn": "{{bot}}/{{instance}} on {{server}}",
+      "install": "Install on {{server}}",
+      "installAgain": "Install another instance",
+      "portal": "Open the developer portal"
+    },
+    "install": {
+      "title": "Install {{name}}",
+      "lead": "Adds the plugin to a bot of {{server}} and commits it to git.",
+      "back": "Back to review",
+      "bot": "Bot",
+      "botHint": "Several bots manage this server: pick the one that runs the plugin.",
+      "instance": "Instance name",
+      "instanceHint": "Unique on the bot. Several instances of a plugin can run side by side.",
+      "instanceRequired": "Enter an instance name",
+      "settings": "Settings",
+      "noSettings": "This plugin has no settings.",
+      "intentsWarning": "Needs {{intents}} enabled in the Discord developer portal, otherwise the install is refused.",
+      "confirm": "I trust {{publisher}}, the publisher of {{name}} from the unofficial source {{source}}, and grant it:",
+      "confirmNothing": "no capability",
+      "confirmNetwork": "Network access to: {{hosts}}",
+      "confirmNoNetwork": "No network access",
+      "confirmRequired": "Confirm that you trust this unofficial source first.",
+      "submit": "Install",
+      "installing": "Installing…",
+      "fixFirst": "Fix the highlighted fields first",
+      "failed": "Could not install the plugin",
+      "rejected": "The runtime rejected the configuration",
+      "changed": {
+        "title": "This plugin changed since you reviewed it",
+        "hint": "Its latest version now resolves to different code. Review it again: CODI only installs the code you reviewed.",
+        "reload": "Reload and review"
+      },
+      "confirmation": {
+        "title": "Confirmation required",
+        "hint": "Tick the confirmation box after reviewing what the plugin requests."
+      },
+      "intents": {
+        "title": "A privileged intent is off",
+        "hint": "Turn it on in the Discord developer portal (Bot → Privileged Gateway Intents), save, then install again."
+      },
+      "conflict": {
+        "title": "That instance name is taken",
+        "hint": "Pick another instance name, or edit the existing instance on the Plugins page."
+      },
+      "done": {
+        "title": "{{name}} is installed",
+        "active": "committed; the runtime activated it",
+        "committedNoRev": "Committed to git; the runtime activated it.",
+        "tryIt": "Try it on {{server}}:",
+        "noCommand": "It has no slash command to try.",
+        "pr": "Pull request opened",
+        "prText": "The plugin is installed once the pull request is merged.",
+        "openPr": "Open the pull request",
+        "plugins": "Go to Plugins",
+        "close": "Done"
+      }
+    },
+    "sources": {
+      "title": "Sources",
+      "description": "Where CODI looks for plugins. The built-in codi source is always there; registries are declared in codi.yaml (spec.registries).",
+      "name": "Name",
+      "url": "URL",
+      "trust": "Trust",
+      "status": "Status",
+      "ok": "Fetched",
+      "error": "Fetch failed",
+      "builtin": "Built into CODI",
+      "remove": "Remove",
+      "removeLabel": "Remove source {{name}}",
+      "cannotRemove": "The built-in codi source cannot be removed",
+      "add": {
+        "title": "Add a registry",
+        "text": "A registry is a git repository with an index.yaml listing plugins.",
+        "risk": "Registries you add are unofficial: CODI does not review their plugins. Add only sources you trust; installing their plugins is at your own risk.",
+        "name": "Name",
+        "nameHint": "Lowercase letters, digits and dashes, up to 32 characters.",
+        "url": "Git URL (https)",
+        "urlPlaceholder": "https://github.com/acme/codi-plugins.git",
+        "submit": "Add registry",
+        "adding": "Adding…",
+        "added": "Registry {{name}} added",
+        "failed": "Could not add the registry",
+        "errors": {
+          "nameRequired": "Enter a name",
+          "namePattern": "Start with a letter or digit; use only a-z, 0-9 and -, up to 32 characters",
+          "nameReserved": "codi is reserved for the built-in source",
+          "nameTaken": "A source with this name already exists",
+          "urlRequired": "Enter the repository URL",
+          "urlInvalid": "Enter a valid URL",
+          "urlHttps": "Only https:// URLs are accepted",
+          "urlTaken": "This URL is already declared"
+        }
+      },
+      "confirmRemove": {
+        "title": "Remove the source {{name}}?",
+        "text": "Its plugins can no longer be installed. This changes codi.yaml for the whole project. Instances already using the source block the removal.",
+        "confirm": "Remove source"
+      },
+      "removed": "Source {{name}} removed",
+      "removeFailed": "Could not remove the source",
+      "inUse": {
+        "title": "{{name}} is still in use",
+        "text": "Remove these instances first:"
+      },
+      "forbidden": {
+        "title": "You cannot change the sources",
+        "text": "Sources live in codi.yaml and apply to the whole project: adding or removing one needs the admin role on every server CODI manages."
+      },
+      "result": {
+        "committed": "Committed",
+        "pr": "Pull request opened",
+        "prText": "The change applies once the pull request is merged."
+      }
+    }
   }
 }

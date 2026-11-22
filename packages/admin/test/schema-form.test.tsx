@@ -325,6 +325,22 @@ describe("validation", () => {
     expect(isDuration("1h30m")).toBe(true);
     expect(isDuration("10 minutes")).toBe(false);
   });
+
+  test("x-codi-ref on an array applies to its items (lists of roles or channels)", () => {
+    // As in the showcase plugins: polls.managerRoles, levels.ignoredChannels.
+    const schema = {
+      type: "object",
+      properties: {
+        roles: { type: "array", items: { type: "string" }, default: [], "x-codi-ref": "role" },
+      },
+    } as unknown as JsonSchema;
+    expect(validate(schema, { roles: [] }, resources)).toEqual([]);
+    expect(validate(schema, { roles: ["admin", "pc"] }, resources)).toEqual([]);
+    expect(validate(schema, { roles: ["admin", "xbox"] }, resources)).toEqual([
+      { pointer: "/roles/1", message: expect.stringMatching(/xbox/) },
+    ]);
+    expect(collectPointers(schema, { roles: ["admin"] }).has("/roles/0")).toBe(true);
+  });
 });
 
 describe("diagnostics mapping", () => {

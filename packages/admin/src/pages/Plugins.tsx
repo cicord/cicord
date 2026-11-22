@@ -110,7 +110,7 @@ export function PluginsPage({ serverKey }: { serverKey: string }) {
 
 // ───────────────────────────────────────────────────────────── capabilities
 
-const RISK: Record<string, "high" | "medium"> = {
+export const RISK: Record<string, "high" | "medium"> = {
   "discord.messages.manage": "medium",
   "discord.members.manage": "medium",
   "discord.members.moderate": "high",

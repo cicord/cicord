@@ -4,7 +4,7 @@
  * or `/spec/plugins/0/config/channel`; the part after the first `/config` is the field.
  */
 import type { Diagnostic, Json } from "@codi/client";
-import { fieldKind, resolve, type JsonSchema } from "./schema.ts";
+import { fieldKind, itemSchemaOf, resolve, type JsonSchema } from "./schema.ts";
 import type { FieldError } from "./validate.ts";
 import { isObject, toPointer, type Segment } from "./values.ts";
 
@@ -75,7 +75,7 @@ export function collectPointers(schema: JsonSchema, value: Json | undefined): Se
       for (const [key, prop] of Object.entries(s.properties ?? {}))
         walk(prop, isObject(v) ? v[key] : undefined, [...path, key]);
     } else if (kind === "array" && Array.isArray(v)) {
-      v.forEach((item, i) => walk(s.items ?? {}, item, [...path, i]));
+      v.forEach((item, i) => walk(itemSchemaOf(s), item, [...path, i]));
     }
   };
   walk(schema, value, []);

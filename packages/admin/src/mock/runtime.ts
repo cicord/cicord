@@ -17,11 +17,18 @@ import type {
   SyncRecord,
   User,
 } from "@codi/client";
+import { applyDefaults } from "../schema-form/schema.ts";
 import { validate } from "../schema-form/validate.ts";
 import { deepEqual, isObject, jsonText } from "../schema-form/values.ts";
 import {
   bot,
+  bundledPlugins,
   categories,
+  ENABLED_INTENTS,
+  PRIVILEGED_INTENTS,
+  seedRegistries,
+  type MockRegistry,
+  type MockStorePlugin,
   channels,
   onboardingBase,
   plugins,
@@ -68,6 +75,18 @@ interface MockState {
   audit: AuditEntry[];
   welcomed: number;
   seq: number;
+  /** Store (§11): codi.yaml spec.registries and the instances installed from the Store. */
+  registries: MockRegistry[];
+  storeInstalls: StoreInstall[];
+  storeFetchedAt: string;
+}
+
+interface StoreInstall {
+  source: string;
+  plugin: string;
+  server: string;
+  bot: string;
+  instance: string;
 }
 
 const STORAGE = "codi-admin:mock";
@@ -289,6 +308,9 @@ function seed(): MockState {
     ],
     welcomed: 0,
     seq: 1,
+    registries: seedRegistries(),
+    storeInstalls: [],
+    storeFetchedAt: ago(12),
   };
 }
 
@@ -355,7 +377,14 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (persist) {
       try {
         const raw = sessionStorage.getItem(STORAGE);
-        if (raw) return JSON.parse(raw) as MockState;
+        if (raw) {
+          const saved = JSON.parse(raw) as MockState;
+          // State saved before the Store existed.
+          saved.registries ??= seedRegistries();
+          saved.storeInstalls ??= [];
+          saved.storeFetchedAt ??= new Date().toISOString();
+          return saved;
+        }
       } catch {
         // fresh state
       }
@@ -878,6 +907,230 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     ],
   });
 
+  // ───────────────────────────────────────────── store (§11)
+
+  const registryName = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+  function storeInstalled(source: string, name: string) {
+    const local =
+      source === "codi"
+        ? state.instances
+            .filter((i) => i.instance === name)
+            .map((i) => ({ server: SERVER_KEY, bot: i.bot, instance: i.instance }))
+        : [];
+    return [
+      ...local,
+      ...state.storeInstalls
+        .filter((i) => i.source === source && i.plugin === name)
+        .map(({ server, bot, instance }) => ({ server, bot, instance })),
+    ];
+  }
+
+  function storePlugin(source: string, p: MockStorePlugin) {
+    return {
+      source,
+      name: p.name,
+      displayName: p.displayName,
+      description: p.description,
+      keywords: p.keywords,
+      version: p.version,
+      ...(p.publisher ? { publisher: p.publisher } : {}),
+      verified: source === "codi" ? p.verified : false,
+      ...(p.repo ? { repo: p.repo } : {}),
+      trust: source === "codi" ? "official" : "unofficial",
+      installed: storeInstalled(source, p.name),
+    };
+  }
+
+  const storeSources = () => [
+    {
+      name: "codi",
+      kind: "bundled",
+      trust: "official",
+      plugins: bundledPlugins.map((p) => storePlugin("codi", p)),
+    },
+    ...state.registries.map((r) => ({
+      name: r.name,
+      kind: "git",
+      url: r.url,
+      trust: "unofficial",
+      fetchedAt: state.storeFetchedAt,
+      ...(r.error ? { error: r.error } : {}),
+      plugins: r.error ? [] : r.plugins.map((p) => storePlugin(r.name, p)),
+    })),
+  ];
+
+  function findStorePlugin(source: string, name: string) {
+    if (source === "codi") {
+      const p = bundledPlugins.find((x) => x.name === name);
+      return p ? { plugin: p, registry: undefined } : undefined;
+    }
+    const registry = state.registries.find((r) => r.name === source);
+    const p = registry?.plugins.find((x) => x.name === name);
+    return registry && p ? { plugin: p, registry } : undefined;
+  }
+
+  function storeDetail(source: string, name: string): Response {
+    const found = findStorePlugin(source, name);
+    if (!found) {
+      const registry = state.registries.find((r) => r.name === source);
+      if (registry?.error)
+        return fail(502, "registry_unavailable", `registry ${source}: ${registry.error.message}`);
+      return fail(404, "not_found", `unknown plugin ${source}/${name}`);
+    }
+    const p = found.plugin;
+    const extra = found.registry
+      ? {
+          commit: (p as MockRegistry["plugins"][number]).commit,
+          integrity: (p as MockRegistry["plugins"][number]).integrity,
+        }
+      : {};
+    return json({
+      ...storePlugin(source, p),
+      version: p.version,
+      ...extra,
+      capabilities: p.capabilities,
+      intents: p.intents,
+      privilegedIntents: p.intents.filter((i) => PRIVILEGED_INTENTS.includes(i)),
+      network: p.network,
+      schema: p.schema,
+      commands: found.registry ? null : p.commands,
+    });
+  }
+
+  const explained = (status: number, error: Obj): Response => json({ error }, status);
+
+  function storeInstall(viewer: string, body: Obj): Response {
+    const source = jsonText(body["source"]);
+    const name = jsonText(body["plugin"]);
+    const found = findStorePlugin(source, name);
+    if (!found) return fail(404, "not_found", `unknown plugin ${source}/${name}`);
+    const p = found.plugin;
+    if (found.registry) {
+      const reg = p as MockRegistry["plugins"][number];
+      if (!body["version"] || !body["commit"] || !body["integrity"])
+        return fail(
+          400,
+          "invalid",
+          "version, commit and integrity are required for registry plugins",
+        );
+      if (
+        body["version"] !== reg.version ||
+        body["commit"] !== reg.commit ||
+        body["integrity"] !== reg.integrity
+      )
+        return explained(409, {
+          code: "changed",
+          message: `${source}/${name} now resolves to ${reg.version} (${reg.commit.slice(0, 7)}), not the version you reviewed`,
+          hint: "Review the plugin again before installing it.",
+        });
+      if (body["confirmUnofficial"] !== true)
+        return explained(409, {
+          code: "confirmation_required",
+          message: `${source} is an unofficial source: confirm that you trust it`,
+          hint: "Send confirmUnofficial: true after reviewing what the plugin requests.",
+        });
+    }
+    const botKey = jsonText(body["bot"]) || "moderator";
+    if (botKey !== "moderator") return fail(404, "not_found", `unknown bot ${botKey}`);
+    const instance = jsonText(body["instance"]) || name;
+    if (
+      state.instances.some((i) => i.bot === botKey && i.instance === instance) ||
+      state.storeInstalls.some((i) => i.bot === botKey && i.instance === instance)
+    )
+      return fail(409, "conflict", `bot ${botKey} already has an instance named "${instance}"`);
+    const missing = p.intents.filter(
+      (i) => PRIVILEGED_INTENTS.includes(i) && !ENABLED_INTENTS.includes(i),
+    );
+    if (missing.length)
+      return explained(409, {
+        code: "intents",
+        message: `${p.displayName} needs the ${missing.join(", ")} privileged intent, which is off for Gardien`,
+        hint: "Turn it on in the Discord developer portal (Bot → Privileged Gateway Intents), save, then install again.",
+        link: "https://discord.com/developers/applications/900/bot",
+      });
+    const cfg = isObject(body["config"]) ? body["config"] : {};
+    const errors = validate(p.schema, applyDefaults(p.schema, cfg), resources());
+    if (errors.length)
+      return fail(
+        422,
+        "invalid",
+        "the configuration is invalid",
+        errors.map((e) => ({
+          severity: "error",
+          file: "bots/moderator/bot.yaml",
+          path: `/spec/plugins/${state.instances.length + state.storeInstalls.length}/config${e.pointer}`,
+          message: `[server ${SERVER_KEY}] ${e.message}`,
+        })),
+      );
+    const user = userById(viewer)!;
+    state.storeInstalls.push({ source, plugin: name, server: SERVER_KEY, bot: botKey, instance });
+    newRevision(
+      `feat(store): install ${source}/${name} as ${botKey}/${instance}`,
+      user.displayName,
+    );
+    addAudit(`discord:${viewer} (${user.displayName})`, "store.install", `${botKey}/${instance}`, {
+      source,
+      plugin: name,
+      version: p.version,
+      commit: found.registry ? (p as MockRegistry["plugins"][number]).commit : "",
+      trust: found.registry ? "unofficial" : "official",
+      mode: "commit",
+    });
+    changed();
+    const command = found.registry ? undefined : p.commands?.[0]?.name;
+    return json({
+      instance,
+      health: "Healthy",
+      ...(command ? { command } : {}),
+      revision: state.revision.id,
+      mode: "commit",
+    });
+  }
+
+  function addRegistry(viewer: string, body: Obj): Response {
+    const name = jsonText(body["name"]).trim();
+    const url = jsonText(body["url"]).trim();
+    if (!registryName.test(name))
+      return fail(400, "invalid", `invalid registry name "${name}": use a-z, 0-9 and -`);
+    if (name === "codi") return fail(400, "invalid", "the name codi is reserved");
+    if (state.registries.some((r) => r.name === name))
+      return fail(400, "invalid", `a registry named ${name} already exists`);
+    if (!url.startsWith("https://"))
+      return fail(400, "invalid", "the registry URL must be https://");
+    if (state.registries.some((r) => r.url === url))
+      return fail(400, "invalid", `${url} is already declared`);
+    if (url.includes(".invalid"))
+      return fail(422, "invalid", `could not fetch ${url}/index.yaml: repository not found`);
+    state.registries.push({ name, url, plugins: [] });
+    const user = userById(viewer)!;
+    newRevision(`chore(store): add registry ${name}`, user.displayName);
+    addAudit(`discord:${viewer} (${user.displayName})`, "registry.add", name, { url });
+    changed();
+    return json({ mode: "commit", revision: state.revision.id });
+  }
+
+  function removeRegistry(viewer: string, name: string): Response {
+    const registry = state.registries.find((r) => r.name === name);
+    if (!registry) return fail(404, "not_found", `unknown registry ${name}`);
+    const users = state.storeInstalls.filter((i) => i.source === name);
+    if (users.length)
+      return explained(409, {
+        code: "in_use",
+        message: `registry ${name} is used by ${users.length} plugin instance(s)`,
+        hint: "Remove these instances from bot.yaml first.",
+        details: users
+          .map((i) => `bots/${i.bot}/bot.yaml: ${i.instance} (${i.source}/${i.plugin})`)
+          .join("\n"),
+      });
+    state.registries = state.registries.filter((r) => r !== registry);
+    const user = userById(viewer)!;
+    newRevision(`chore(store): remove registry ${name}`, user.displayName);
+    addAudit(`discord:${viewer} (${user.displayName})`, "registry.remove", name, {});
+    changed();
+    return json({ mode: "commit", revision: state.revision.id });
+  }
+
   // ───────────────────────────────────────────── routing
 
   function route(method: string, url: URL, body: Obj): Response {
@@ -910,6 +1163,26 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       const limit = Number(url.searchParams.get("limit") ?? 50);
       return staff(() => json({ items: state.history.slice(0, limit) }));
     }
+
+    if (method === "GET" && path === `${API}/store`)
+      return staff(() => json({ sources: storeSources() }), true);
+    if (method === "POST" && path === `${API}/store/refresh`)
+      return staff(() => {
+        state.storeFetchedAt = new Date().toISOString();
+        changed();
+        return json({ sources: storeSources() });
+      }, true);
+    const detail = /^\/api\/v1\/store\/([^/]+)\/([^/]+)$/.exec(path);
+    if (method === "GET" && detail)
+      return staff(
+        () => storeDetail(decodeURIComponent(detail[1]!), decodeURIComponent(detail[2]!)),
+        true,
+      );
+    if (method === "POST" && path === `${API}/registries`)
+      return staff((v) => addRegistry(v, body), true);
+    const registry = /^\/api\/v1\/registries\/([^/]+)$/.exec(path);
+    if (method === "DELETE" && registry)
+      return staff((v) => removeRegistry(v, decodeURIComponent(registry[1]!)), true);
 
     const server = /^\/api\/v1\/servers\/([^/]+)(\/.*)?$/.exec(path);
     if (server) {
@@ -996,6 +1269,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         });
       if (method === "GET" && rest === "/plugins")
         return staff((v) => json({ items: pluginItems(v) }));
+      if (method === "POST" && rest === "/store/install")
+        return staff((v) => storeInstall(v, body), true);
       const put = /^\/plugins\/([^/]+)\/([^/]+)\/config$/.exec(rest);
       if (method === "PUT" && put) {
         const inst = state.instances.find((i) => i.bot === put[1] && i.instance === put[2]);

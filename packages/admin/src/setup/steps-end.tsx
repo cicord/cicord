@@ -508,7 +508,7 @@ export function VerifyStep({ view, api, onView }: StepProps) {
 // ───────────────────────────────────────────────────────────── first plugin
 
 /** t() for keys built at runtime (capabilities, intents). */
-function dyn(t: ReturnType<typeof useTranslation>["t"]) {
+export function dyn(t: ReturnType<typeof useTranslation>["t"]) {
   return t as unknown as (key: string, options?: Record<string, unknown>) => string;
 }
 
@@ -517,7 +517,7 @@ function intentToggle(t: ReturnType<typeof useTranslation>["t"], name: string) {
 }
 
 /** Only what differs from the schema defaults goes to bot.yaml. */
-function nonDefaults(schema: JsonSchema, draft: JsonObject): JsonObject {
+export function nonDefaults(schema: JsonSchema, draft: JsonObject): JsonObject {
   const defaults = applyDefaults(schema, {});
   return Object.fromEntries(
     Object.entries(draft).filter(([k, v]) => !deepEqual(v, defaults[k])),

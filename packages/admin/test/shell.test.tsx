@@ -58,6 +58,7 @@ describe("layout", () => {
       "Roles & channels",
       "Server settings",
       "Plugins",
+      "Store",
       "Plan",
       "History",
       "Drift",

@@ -44,3 +44,10 @@ func TestCheckRedirect(t *testing.T) {
 		})
 	}
 }
+
+func TestPruneEmptyDropsBlankListRows(t *testing.T) {
+	got := pruneEmpty(map[string]any{"roles": []any{"modo", "", nil}, "empty": []any{""}, "name": ""})
+	if r, ok := got["roles"].([]any); !ok || len(r) != 1 || r[0] != "modo" || len(got) != 1 {
+		t.Errorf("pruneEmpty = %v", got)
+	}
+}

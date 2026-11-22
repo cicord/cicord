@@ -11,6 +11,7 @@ import {
   Settings,
   Shapes,
   SlidersHorizontal,
+  Store,
   type LucideIcon,
 } from "lucide-react";
 import { match } from "../router.tsx";
@@ -20,6 +21,7 @@ export type PageId =
   | "resources"
   | "serverSettings"
   | "plugins"
+  | "store"
   | "plan"
   | "history"
   | "drift"
@@ -49,6 +51,7 @@ export const NAV: NavItem[] = [
   { id: "resources", icon: Shapes, segment: "resources", section: "configuration" },
   { id: "serverSettings", icon: SlidersHorizontal, segment: "settings", section: "configuration" },
   { id: "plugins", icon: Puzzle, segment: "plugins", section: "configuration" },
+  { id: "store", icon: Store, segment: "store", section: "configuration", adminOnly: true },
   { id: "plan", icon: ListChecks, segment: "plan", section: "sync", adminOnly: true },
   { id: "history", icon: History, segment: "history", section: "sync" },
   { id: "drift", icon: GitCompareArrows, segment: "drift", section: "sync" },

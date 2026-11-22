@@ -38,6 +38,7 @@ import { PluginsPage } from "./pages/Plugins.tsx";
 import { ResourcesPage } from "./pages/Resources.tsx";
 import { ServerSettingsPage } from "./pages/ServerSettings.tsx";
 import { SettingsPage } from "./pages/Settings.tsx";
+import { StorePage } from "./pages/Store.tsx";
 import { DriftPage, HistoryPage, PlanPage } from "./pages/Sync.tsx";
 import { DiagnosticsPage } from "./pages/Diagnostics.tsx";
 import { SetupPage } from "./setup/SetupPage.tsx";
@@ -210,6 +211,9 @@ function Shell() {
       break;
     case "plugins":
       page = <PluginsPage serverKey={key} key={key} />;
+      break;
+    case "store":
+      page = <StorePage serverKey={key} key={key} />;
       break;
     case "plan":
       page = <PlanPage serverKey={key} key={key} />;

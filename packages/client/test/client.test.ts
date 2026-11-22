@@ -306,6 +306,130 @@ describe("admin & machine", () => {
   });
 });
 
+describe("store & registries", () => {
+  const source = {
+    name: "acme",
+    kind: "git",
+    url: "https://github.com/acme/codi-plugins.git",
+    trust: "unofficial",
+    plugins: [],
+  };
+
+  test("store endpoints", async () => {
+    const { fetch, calls } = mockFetch((c) =>
+      c.url.endsWith("/store") || c.url.endsWith("/store/refresh")
+        ? json({ sources: [source] })
+        : json({ instance: "xp", health: "Healthy", mode: "commit", revision: "abc" }),
+    );
+    const client = createCodiClient({ fetch });
+    await expect(client.store.list()).resolves.toEqual([source]);
+    await expect(client.store.refresh()).resolves.toEqual([source]);
+    await client.store.detail("acme", "x/p");
+    const request = {
+      source: "acme",
+      plugin: "xp",
+      instance: "levels",
+      config: { channel: "general" },
+      version: "1.2.0",
+      commit: "c0ffee",
+      integrity: "sha256-abc",
+      confirmUnofficial: true,
+    };
+    await expect(client.store.install("ma commu", request)).resolves.toMatchObject({
+      instance: "xp",
+      mode: "commit",
+    });
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/v1/store",
+      "POST /api/v1/store/refresh",
+      "GET /api/v1/store/acme/x%2Fp",
+      "POST /api/v1/servers/ma%20commu/store/install",
+    ]);
+    expect(calls[3]?.body).toEqual(request);
+    // CSRF header on the state-changing calls.
+    expect(calls[1]?.headers.get("X-Codi-Request")).toBe("1");
+    expect(calls[3]?.headers.get("X-Codi-Request")).toBe("1");
+    expect(calls[3]?.headers.get("Content-Type")).toBe("application/json");
+  });
+
+  test("registry endpoints", async () => {
+    const { fetch, calls } = mockFetch(() => json({ mode: "pullRequest", pullRequestUrl: "u" }));
+    const client = createCodiClient({ fetch });
+    await expect(
+      client.registries.add({ name: "acme", url: "https://github.com/acme/codi-plugins.git" }),
+    ).resolves.toEqual({ mode: "pullRequest", pullRequestUrl: "u" });
+    await client.registries.remove("acme");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "POST /api/v1/registries",
+      "DELETE /api/v1/registries/acme",
+    ]);
+    expect(calls[0]?.body).toEqual({
+      name: "acme",
+      url: "https://github.com/acme/codi-plugins.git",
+    });
+    expect(calls.every((c) => c.headers.get("X-Codi-Request") === "1")).toBe(true);
+  });
+
+  test("abort signals are passed through", async () => {
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const fetch: FetchLike = async (_url, init) => {
+      signals.push(init.signal);
+      return json({ sources: [] });
+    };
+    const client = createCodiClient({ fetch });
+    const ctrl = new AbortController();
+    await client.store.list({ signal: ctrl.signal });
+    await client.store.detail("codi", "welcome", { signal: ctrl.signal });
+    expect(signals).toEqual([ctrl.signal, ctrl.signal]);
+  });
+
+  test("store errors keep their code, hint and body", async () => {
+    const { fetch } = mockFetch((c) =>
+      c.url.includes("/install")
+        ? json(
+            {
+              error: {
+                code: "changed",
+                message: "xp now resolves to 1.3.0 (was 1.2.0)",
+                hint: "Review the plugin again.",
+              },
+            },
+            409,
+          )
+        : c.method === "DELETE"
+          ? json(
+              {
+                error: {
+                  code: "in_use",
+                  message: "registry acme is in use",
+                  details: "bots/moderator/bot.yaml: xp",
+                },
+              },
+              409,
+            )
+          : json({ error: { code: "registry_unavailable", message: "fetch failed" } }, 502),
+    );
+    const client = createCodiClient({ fetch });
+    const changed = await client.store
+      .install("s", { source: "acme", plugin: "xp" })
+      .catch((e: unknown) => e);
+    expect(changed).toBeInstanceOf(CodiApiError);
+    expect(changed).toMatchObject({
+      code: "changed",
+      status: 409,
+      hint: "Review the plugin again.",
+    });
+    await expect(client.registries.remove("acme")).rejects.toMatchObject({
+      code: "in_use",
+      details: "bots/moderator/bot.yaml: xp",
+    });
+    await expect(client.store.detail("acme", "xp")).rejects.toMatchObject({
+      code: "registry_unavailable",
+      status: 502,
+    });
+  });
+});
+
 describe("simulator", () => {
   test("sim endpoints", async () => {
     const { fetch, calls } = mockFetch(() => json({ items: [] }));
