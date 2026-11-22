@@ -185,14 +185,24 @@ func SetLockEntry(cur []byte, source string, e LockEntry) ([]byte, error) {
 type Resolver struct {
 	RepoRoot string
 	CacheDir string
-	mu       sync.Mutex
-	lock     *Lock
+	// PublicOnly downloads locked plugins only from public addresses (see WithPublicOnly).
+	PublicOnly bool
+	mu         sync.Mutex
+	lock       *Lock
 }
 
 var _ config.PluginResolver = (*Resolver)(nil)
 
 func NewResolver(repoRoot, cacheDir string) *Resolver {
 	return &Resolver{RepoRoot: repoRoot, CacheDir: cacheDir}
+}
+
+// NewRuntimeResolver is the resolver of a running runtime: downloads of locked plugins
+// only reach public addresses unless CODI_ALLOW_PRIVATE_REGISTRIES=true.
+func NewRuntimeResolver(repoRoot, cacheDir string) *Resolver {
+	r := NewResolver(repoRoot, cacheDir)
+	r.PublicOnly = !AllowPrivateRegistries()
+	return r
 }
 
 // DefaultCacheDir is ~/.cache/codi/plugins (or $CODI_CACHE_DIR/plugins).
@@ -228,7 +238,11 @@ func (r *Resolver) Resolve(source, versionRange string) (string, string, error) 
 	if err != nil || !c.Check(v) {
 		return "", "", fmt.Errorf("locked version %s of %q does not satisfy %q (run `codi plugin update`)", e.Version, source, versionRange)
 	}
-	dir, err := Materialize(context.Background(), r.CacheDir, source, e)
+	ctx := context.Background()
+	if r.PublicOnly {
+		ctx = WithPublicOnly(ctx)
+	}
+	dir, err := Materialize(ctx, r.CacheDir, source, e)
 	if err != nil {
 		return "", "", err
 	}

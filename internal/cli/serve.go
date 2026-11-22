@@ -276,7 +276,7 @@ Environment:
   CODI_LINK_SECRET            portal link signing key (default: generated in the data dir)
   CODI_DISCORD_CLIENT_SECRET  Discord OAuth2 client secret (admin UI / portal login)
   CODI_DISCORD_CLIENT_ID      OAuth2 client ID (default: the first bot's application ID)
-  CODI_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store reach registries on private networks`,
+  CODI_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store and plugin downloads reach private networks`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -419,7 +419,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	cacheDir := registry.DefaultCacheDir()
 	rt := runtime.New(runtime.Options{
 		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
-		Resolver: func(root string) config.PluginResolver { return registry.NewResolver(root, cacheDir) },
+		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
 	})
 	stopping := make(chan struct{})

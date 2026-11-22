@@ -7,7 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
+	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -78,23 +78,28 @@ func guardedControl(network, address string, _ syscall.RawConn) error {
 }
 
 func init() {
-	base := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
-	guarded := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: guardedControl}
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if publicOnly(ctx) {
-			return guarded.DialContext(ctx, network, addr)
-		}
-		return base.DialContext(ctx, network, addr)
-	}
-	tr.Proxy = func(r *http.Request) (*url.URL, error) {
-		if publicOnly(r.Context()) {
-			return nil, nil // a proxy would hide the real destination from the guard
-		}
-		return http.ProxyFromEnvironment(r)
-	}
-	client.InstallProtocol("https", githttp.NewClient(&http.Client{Transport: tr}))
+	// Two transports, two connection pools: a guarded request never reuses a connection
+	// opened without the guard (and vice versa).
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	guarded := http.DefaultTransport.(*http.Transport).Clone()
+	guarded.Proxy = nil // a proxy would hide the real destination from the guard
+	guarded.DialContext = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: guardedControl}).DialContext
+	client.InstallProtocol("https", githttp.NewClient(&http.Client{Transport: switchTransport{base: base, guarded: guarded}}))
 }
+
+// switchTransport sends WithPublicOnly requests to the guarded transport.
+type switchTransport struct{ base, guarded http.RoundTripper }
+
+func (t switchTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if publicOnly(r.Context()) {
+		return t.guarded.RoundTrip(r)
+	}
+	return t.base.RoundTrip(r)
+}
+
+// AllowPrivateRegistries reports whether the operator lets registry fetches reach private
+// networks (CODI_ALLOW_PRIVATE_REGISTRIES=true).
+func AllowPrivateRegistries() bool { return os.Getenv("CODI_ALLOW_PRIVATE_REGISTRIES") == "true" }
 
 // CheckPublicHost refuses URLs whose host is, or resolves to, a non-public address. It
 // gives an early, clear error; the dialer guard (WithPublicOnly) is what enforces it.

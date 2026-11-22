@@ -196,7 +196,7 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 	cacheDir := registry.DefaultCacheDir()
 	rt := runtime.New(runtime.Options{
 		Source: src, Connector: e.connector, Store: e.store, Secrets: e.resolve,
-		Resolver: func(root string) config.PluginResolver { return registry.NewResolver(root, cacheDir) },
+		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir) },
 		Signer:   auth.NewSigner(key), PortalURL: e.public, Mode: e.mode, Simulator: e.world != nil,
 		AllowPrivateNetworks: e.world != nil, Logger: e.log,
 	})

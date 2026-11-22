@@ -71,6 +71,11 @@ func TestCheckPublicHost(t *testing.T) {
 	if _, err := FetchIndex(WithPublicOnly(ctx), srv.URL+"/r.git"); !errors.Is(err, ErrNotPublic) {
 		t.Errorf("guarded fetch of a loopback server: %v", err)
 	}
+	// A guarded locked-plugin download is refused too.
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	if _, err := Materialize(WithPublicOnly(ctx), t.TempDir(), "acme/hello", LockEntry{Version: "1.0.0", Repo: srv.URL + "/p.git", Commit: sha}); !errors.Is(err, ErrNotPublic) {
+		t.Errorf("guarded materialize: %v", err)
+	}
 }
 
 func TestNamesAndCachePaths(t *testing.T) {

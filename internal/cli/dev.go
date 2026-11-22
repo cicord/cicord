@@ -121,7 +121,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	stored := secrets.Resolver(sec, nil) // environment first, then the secret store
 
 	cacheDir := registry.DefaultCacheDir()
-	resolver := func(root string) config.PluginResolver { return registry.NewResolver(root, cacheDir) }
+	resolver := func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir) }
 
 	var (
 		connector discord.Connector
