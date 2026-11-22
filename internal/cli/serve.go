@@ -275,7 +275,8 @@ Environment:
   CODI_WEBHOOK_SECRET         GitHub webhook secret
   CODI_LINK_SECRET            portal link signing key (default: generated in the data dir)
   CODI_DISCORD_CLIENT_SECRET  Discord OAuth2 client secret (admin UI / portal login)
-  CODI_DISCORD_CLIENT_ID      OAuth2 client ID (default: the first bot's application ID)`,
+  CODI_DISCORD_CLIENT_ID      OAuth2 client ID (default: the first bot's application ID)
+  CODI_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store reach registries on private networks`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."

@@ -1,6 +1,10 @@
 package registry
 
 import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
 	"testing"
 
 	"github.com/npjonath/codi/internal/config"
@@ -51,8 +55,21 @@ func TestCheckPublicHost(t *testing.T) {
 	if err := CheckPublicHost(ctx, "https://8.8.8.8/r.git"); err != nil {
 		t.Errorf("public IP refused: %v", err)
 	}
-	if !sameHost("https://git.example.org/r.git", "https://GIT.example.org/p.git") || sameHost("https://a.example/r", "https://b.example/r") {
-		t.Error("sameHost")
+	for _, a := range []string{"100.64.1.1", "198.18.0.1", "0.1.2.3", "64:ff9b::a00:1", "2002:a00:1::1", "fd00::1", "::ffff:127.0.0.1", "fe80::1", "224.0.0.1"} {
+		if IsPublicAddr(netip.MustParseAddr(a)) {
+			t.Errorf("IsPublicAddr(%s) = true", a)
+		}
+	}
+	for _, a := range []string{"8.8.8.8", "2606:4700::1111"} {
+		if !IsPublicAddr(netip.MustParseAddr(a)) {
+			t.Errorf("IsPublicAddr(%s) = false", a)
+		}
+	}
+	// The dialer guard refuses a loopback git server even when the URL looks fine.
+	srv := httptest.NewTLSServer(http.NotFoundHandler())
+	defer srv.Close()
+	if _, err := FetchIndex(WithPublicOnly(ctx), srv.URL+"/r.git"); !errors.Is(err, ErrNotPublic) {
+		t.Errorf("guarded fetch of a loopback server: %v", err)
 	}
 }
 

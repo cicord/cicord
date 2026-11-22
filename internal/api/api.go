@@ -169,7 +169,8 @@ func newServer(opts Options) *server {
 		opts.Catalog = catalog.Official()
 	}
 	if opts.PluginStore == nil {
-		opts.PluginStore = &store.Service{Catalog: opts.Catalog, CacheDir: registry.DefaultCacheDir()}
+		opts.PluginStore = &store.Service{Catalog: opts.Catalog, CacheDir: registry.DefaultCacheDir(),
+			PublicOnly: os.Getenv("CODI_ALLOW_PRIVATE_REGISTRIES") != "true"}
 	}
 	s := &server{opts: opts, rt: opts.Runtime, store: opts.Store, log: opts.Logger, mux: http.NewServeMux()}
 	s.members.entries = map[string]memberEntry{}

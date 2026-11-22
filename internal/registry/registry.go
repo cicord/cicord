@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net"
 	neturl "net/url"
 	"os"
 	"path"
@@ -98,45 +97,12 @@ func IsRemoteURL(raw string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "https://")
 }
 
-// CheckPublicHost refuses URLs whose host is, or resolves to, a loopback, private,
-// link-local, multicast or unspecified address: the admin UI must not make the runtime
-// reach its own network (SSRF). Operators who host a registry on their network declare it
-// in codi.yaml or with the CLI, which do not call this.
-func CheckPublicHost(ctx context.Context, raw string) error {
+func hostOf(raw string) string {
 	u, err := neturl.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Hostname() == "" {
-		return fmt.Errorf("invalid URL %q", raw)
+	if err != nil {
+		return ""
 	}
-	host := u.Hostname()
-	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
-		return fmt.Errorf("%s is not a public host", host)
-	}
-	var ips []net.IP
-	if ip := net.ParseIP(host); ip != nil {
-		ips = []net.IP{ip}
-	} else {
-		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-		if err != nil {
-			return fmt.Errorf("cannot resolve %s: %w", host, err)
-		}
-		for _, a := range addrs {
-			ips = append(ips, a.IP)
-		}
-	}
-	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-			ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
-			return fmt.Errorf("%s is not a public host", host)
-		}
-	}
-	return nil
-}
-
-// sameHost reports whether two URLs have the same host.
-func sameHost(a, b string) bool {
-	ua, err1 := neturl.Parse(a)
-	ub, err2 := neturl.Parse(b)
-	return err1 == nil && err2 == nil && ua.Hostname() != "" && strings.EqualFold(ua.Hostname(), ub.Hostname())
+	return u.Hostname()
 }
 
 // CheckRepoURL refuses plugin repositories that a registry may not point to: an https
@@ -467,11 +433,9 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	if err := CheckRepoURL(regURL, ie.Repo); err != nil {
 		return nil, err
 	}
-	// An https registry is reachable from outside; the plugin repositories it lists must be
-	// public too, unless they live on the registry's own host.
-	if IsRemoteURL(regURL) && !sameHost(regURL, ie.Repo) {
+	if publicOnly(ctx) && IsRemoteURL(ie.Repo) {
 		if err := CheckPublicHost(ctx, ie.Repo); err != nil {
-			return nil, fmt.Errorf("plugin repository %q: %w", ie.Repo, err)
+			return nil, fmt.Errorf("plugin repository %q: %w", Redact(ie.Repo), err)
 		}
 	}
 	if versionRange == "" {

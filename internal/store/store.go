@@ -116,6 +116,9 @@ type Service struct {
 	// Resolve resolves "<registry>/<plugin>" (default registry.ResolveLatest).
 	Resolve func(ctx context.Context, regs []config.Registry, cacheDir, source, rng string) (*registry.Resolution, error)
 	Now     func() time.Time
+	// PublicOnly makes https fetches refuse non-public addresses (registry.WithPublicOnly):
+	// set when the Store serves admin UI users, who must not reach the runtime's network.
+	PublicOnly bool
 
 	mu    sync.Mutex
 	cache map[string]cached // by normalized URL
@@ -141,6 +144,13 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
+func (s *Service) guard(ctx context.Context) context.Context {
+	if s.PublicOnly {
+		return registry.WithPublicOnly(ctx)
+	}
+	return ctx
+}
+
 func (s *Service) fetch(ctx context.Context, url string) (*registry.Index, error) {
 	f := s.Fetch
 	if f == nil {
@@ -150,7 +160,7 @@ func (s *Service) fetch(ctx context.Context, url string) (*registry.Index, error
 	if t == 0 {
 		t = 20 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(ctx, t)
+	ctx, cancel := context.WithTimeout(s.guard(ctx), t)
 	defer cancel()
 	return f(ctx, url)
 }
@@ -292,7 +302,7 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 	if resolve == nil {
 		resolve = registry.ResolveLatest
 	}
-	rctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	rctx, cancel := context.WithTimeout(s.guard(ctx), 2*time.Minute)
 	defer cancel()
 	res, err := resolve(rctx, []config.Registry{*reg}, s.CacheDir, source+"/"+name, "*")
 	if err != nil {

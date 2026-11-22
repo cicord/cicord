@@ -55,5 +55,11 @@ Product decision: the store works like `apt` sources / Homebrew taps.
   plugin, so it is only done for official sources before installation.
 - **URLs.** The admin UI accepts `https://` registries only; an https registry may only list
   https plugin repositories. `file://` and local paths are for the CLI (development).
+  Store fetches made for admin UI users only connect to public addresses: the check runs in
+  the dialer, for every connection (DNS rebinding, redirects), with proxies bypassed.
+  `CODI_ALLOW_PRIVATE_REGISTRIES=true` lifts it for registries on the operator's network.
+- **Names.** Registry and plugin names match `^[a-z0-9][a-z0-9-]{0,63}$` (they become cache
+  directories); index keys that do not are ignored. Registry URLs may not embed
+  credentials, and URLs are redacted from errors.
 - **Project-level rights.** Adding or removing a source changes `codi.yaml`: bearer, or admin
   on every server of the project. Installing needs admin on the target server.
