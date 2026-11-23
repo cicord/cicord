@@ -61,8 +61,26 @@ spec:
       name: Legend
       color: "#f1c40f"
       hoist: true
+    # Self-assignable roles (plugin "reaction-roles"): no permissions, below every staff role.
+    red:
+      name: Red
+      color: "#e74c3c"
+    blue:
+      name: Blue
+      color: "#3498db"
+    green:
+      name: Green
+      color: "#2ecc71"
+    events-ping:
+      name: Events
+    news-ping:
+      name: News
+    minecraft:
+      name: Minecraft
+    chess:
+      name: Chess
 
-  hierarchy: [admin, mod, support, legend, veteran, regular, member]
+  hierarchy: [admin, mod, support, legend, veteran, regular, member, red, blue, green, events-ping, news-ping, minecraft, chess]
 
   categories:
     info:
@@ -119,6 +137,15 @@ spec:
       overwrites:
         "@everyone":
           deny: [SendMessages]
+    roles:
+      name: roles
+      type: text
+      category: community
+      topic: Pick your roles (name color, notifications, games)
+      position: 3
+      overwrites:
+        "@everyone":
+          deny: [SendMessages]
     help-desk:
       name: help-desk
       type: text
@@ -133,6 +160,10 @@ spec:
       category: staff
     mod-log:
       name: mod-log
+      type: text
+      category: staff
+    audit-log:
+      name: audit-log
       type: text
       category: staff
     staff-chat:

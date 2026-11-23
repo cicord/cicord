@@ -15,6 +15,7 @@ const examples = "../../examples/basic/plugins"
 var examplePlugins = []string{
 	"basic/plugins/welcome", "basic/plugins/onboarding",
 	"showcase/plugins/tickets", "showcase/plugins/polls", "showcase/plugins/levels", "showcase/plugins/moderation",
+	"showcase/plugins/reaction-roles", "showcase/plugins/audit-log", "showcase/plugins/announcements",
 }
 
 // codeLines drops comment lines, so hand-written headers do not matter.

@@ -149,6 +149,23 @@ func appendTo(t *testing.T, file, text string) {
 	}
 }
 
+// tasksOf lists the pending tasks of a plugin instance due before t (other instances, such as
+// the audit-log batch flushes, schedule tasks too).
+func (s *showcase) tasksOf(ctx context.Context, instance string, t time.Time) []state.Task {
+	s.t.Helper()
+	all, err := s.store.Tasks().Due(ctx, t, 100)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	var out []state.Task
+	for _, task := range all {
+		if task.Scope == "plugin:"+showcaseBot+"/"+instance+"/"+showcaseServer {
+			out = append(out, task)
+		}
+	}
+	return out
+}
+
 // kv is the KV store of a plugin instance of the showcase bot.
 func (s *showcase) kv(instance string) state.KV {
 	return s.store.KV("plugin:" + showcaseBot + "/" + instance + "/" + showcaseServer)
@@ -583,7 +600,7 @@ func TestShowcasePolls(t *testing.T) {
 	if len(threads) != 1 || threads[0].Name != "Poll: Game night?" {
 		t.Errorf("threads = %+v", threads)
 	}
-	tasks, _ := s.store.Tasks().Due(ctx, time.Now().Add(3*time.Hour), 10)
+	tasks := s.tasksOf(ctx, "polls", time.Now().Add(3*time.Hour))
 	if len(tasks) != 1 || tasks[0].Name != "close" {
 		t.Fatalf("scheduled tasks = %+v", tasks)
 	}
@@ -610,7 +627,7 @@ func TestShowcasePolls(t *testing.T) {
 	if st.Message == nil || len(st.Message.Components) != 0 || !strings.Contains(textOf(*st.Message), "Friday** 🏆") {
 		t.Fatalf("closed poll = %+v", st.Message)
 	}
-	if tasks, _ := s.store.Tasks().Due(ctx, time.Now().Add(3*time.Hour), 10); len(tasks) != 0 {
+	if tasks := s.tasksOf(ctx, "polls", time.Now().Add(3*time.Hour)); len(tasks) != 0 {
 		t.Errorf("schedule.cancel did not remove the task: %+v", tasks)
 	}
 	s.waitFor("poll bonus XP", func() bool { return xpOf(t, s, bob.ID) == 10 && xpOf(t, s, mia.ID) == 10 })

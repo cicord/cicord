@@ -123,7 +123,7 @@ func TestInitWorkflow(t *testing.T) {
 // TestShowcasePlugins: every plugin of examples/showcase builds without warnings, has an
 // up-to-date codi-env.d.ts and passes `codi plugin test` without a --config.
 func TestShowcasePlugins(t *testing.T) {
-	for _, name := range []string{"tickets", "polls", "levels", "moderation"} {
+	for _, name := range []string{"tickets", "polls", "levels", "moderation", "reaction-roles", "audit-log", "announcements"} {
 		t.Run(name, func(t *testing.T) {
 			dir := "../../examples/showcase/plugins/" + name
 			code, out, errOut := run(t, "plugin", "build", dir)

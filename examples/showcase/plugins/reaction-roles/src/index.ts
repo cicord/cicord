@@ -151,9 +151,10 @@ async function apply(
       return false;
     }
   };
-  // Removals first: in single mode, never leave a member with two roles of the panel.
-  for (const o of remove) if (!(await run(o, false))) return { ok: false, lines };
+  // Additions first: when a role cannot be given (hierarchy), the member keeps the roles
+  // they had instead of losing them in a half-done swap.
   for (const o of add) if (!(await run(o, true))) return { ok: false, lines };
+  for (const o of remove) if (!(await run(o, false))) return { ok: false, lines };
   return { ok: true, lines };
 }
 
@@ -175,8 +176,8 @@ async function prepare(
   ctx: Context,
   interaction: ComponentInteraction,
 ): Promise<{ panel: Panel; member: Member; options: ResolvedOption[] } | undefined> {
-  // Role changes can take a moment: answer privately, then edit that answer.
-  await interaction.defer({ ephemeral: true });
+  // No explicit defer: a component deferral is a silent "deferred update", which the
+  // runtime also does on its own after 2 s; the ephemeral reply then becomes a follow-up.
   const panel = findPanel(ctx, panelOf(interaction));
   if (!panel || panel.style === "reactions") {
     await reply(interaction, "This panel is no longer available.");

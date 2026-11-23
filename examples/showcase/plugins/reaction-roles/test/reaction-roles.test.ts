@@ -191,13 +191,13 @@ describe("buttons", () => {
     const click = (id: string) => runComponent(plugin, t, id, { user: "2", message });
 
     let r = await click("rr:colors:role-red");
-    expect(r.deferred).toEqual({ ephemeral: true });
+    expect(r.updates).toEqual([]); // the shared panel message is never edited by a click
     expect(r.replies[0]).toMatchObject({ content: "Added <@&role-red>.", ephemeral: true });
     expect(roleKeys(t, "2")).toEqual(["red"]);
 
     r = await click("rr:colors:role-blue");
     expect((r.replies[0] as { content: string }).content).toBe(
-      "Removed <@&role-red>.\nAdded <@&role-blue>.",
+      "Added <@&role-blue>.\nRemoved <@&role-red>.",
     );
     expect(roleKeys(t, "2")).toEqual(["blue"]);
 
@@ -222,6 +222,7 @@ describe("buttons", () => {
 
   test("explains the role hierarchy when Discord refuses the change", async () => {
     const t = setup();
+    await t.member("2")!.addRole("blue"); // the current color, kept when the swap fails
     t.member("2")!.addRole = async () => {
       throw new Error(
         "discord AddMemberRole: discord: missing permissions (HTTP 403 50013: Missing Permissions)",
@@ -233,6 +234,7 @@ describe("buttons", () => {
     expect(t.logs.some((l) => l.level === "warn" && l.message.includes("role change failed"))).toBe(
       true,
     );
+    expect(roleKeys(t, "2")).toEqual(["blue"]);
   });
 });
 
