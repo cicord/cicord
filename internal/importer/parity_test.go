@@ -85,7 +85,7 @@ func TestImportParityRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := Generate(Options{ServerKey: "parity", Snapshot: snap})
+	res, err := Generate(context.Background(), Options{ServerKey: "parity", Snapshot: snap})
 	if err != nil {
 		t.Fatal(err)
 	}

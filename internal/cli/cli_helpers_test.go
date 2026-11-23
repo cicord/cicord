@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/codi/internal/importer"
 	"github.com/npjonath/codi/internal/sim"
 )
 
@@ -29,13 +30,14 @@ func run(t *testing.T, args ...string) (int, string, string) {
 // useSim makes local commands connect to the simulator, with secrets from env.
 func useSim(t *testing.T, w *sim.World, secrets map[string]string) {
 	t.Helper()
-	oldC, oldS := newConnector, lookupSecret
+	oldC, oldS, oldD := newConnector, lookupSecret, newDownloader
 	newConnector = func() discord.Connector { return w }
+	newDownloader = func() importer.Downloader { return w.Download }
 	lookupSecret = func(n string) (string, bool) {
 		v, ok := secrets[n]
 		return v, ok
 	}
-	t.Cleanup(func() { newConnector, lookupSecret = oldC, oldS })
+	t.Cleanup(func() { newConnector, lookupSecret, newDownloader = oldC, oldS, oldD })
 }
 
 // withStdin simulates a terminal answering line.

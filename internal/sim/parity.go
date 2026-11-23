@@ -679,6 +679,7 @@ func (w *World) createEmoji(a actor, serverID string, p discord.EmojiParams, rea
 	}
 	e.ID = w.newID()
 	s.emojis[e.ID] = &e
+	w.cdnPut(e.ImageURL(), p.Image)
 	w.record(a, "CreateEmoji", serverID, e.ID, reason, nil)
 	w.emit(discord.EmojisUpdateEvent{ServerID: serverID, Emojis: sortedEmojis(s)})
 	return cloneEmoji(e), nil
@@ -814,6 +815,7 @@ func (w *World) createSticker(a actor, serverID string, p discord.StickerParams,
 	}
 	st := discord.Sticker{ID: w.newID(), Name: p.Name, Description: p.Description, Tags: p.Tags, Format: f}
 	s.stickers[st.ID] = &st
+	w.cdnPut(st.FileURL(), p.File)
 	w.record(a, "CreateSticker", serverID, st.ID, reason, nil)
 	w.emit(discord.StickersUpdateEvent{ServerID: serverID, Stickers: sortedStickers(s)})
 	return st, nil
@@ -926,6 +928,7 @@ func (w *World) createSound(a actor, serverID string, p discord.SoundParams, rea
 	}
 	x := discord.SoundboardSound{ID: w.newID(), Name: p.Name, Volume: p.Volume, Emoji: p.Emoji}
 	s.sounds[x.ID] = &x
+	w.cdnPut(x.FileURL(), p.Sound)
 	w.record(a, "CreateSoundboardSound", serverID, x.ID, reason, nil)
 	w.emit(discord.SoundCreateEvent{ServerID: serverID, Sound: x})
 	return x, nil

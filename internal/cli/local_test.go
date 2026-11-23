@@ -93,6 +93,10 @@ func buildLiveServer(t *testing.T) *simServer {
 	ok(cl.UpdateServerWidget(context.Background(), srv.ID, discord.ServerWidget{Enabled: true, ChannelID: general.ID}, ""))
 	ok(cl.UpdateWelcomeScreen(context.Background(), srv.ID, discord.WelcomeScreen{Enabled: true, Description: "Bienvenue !",
 		Channels: []discord.WelcomeChannel{{ChannelID: rules.ID, Description: "Lis le règlement", Emoji: "📜"}}}, ""))
+	// files the import downloads into the repository
+	fakePNG := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
+	ok(w.AdminUpdateServer(srv.ID, discord.ServerParams{Icon: &fakePNG}))
+	ok(cl.CreateEmoji(context.Background(), srv.ID, discord.EmojiParams{Name: "coucou", Image: fakePNG}, ""))
 	_ = botRole
 	return &simServer{w: w, serverID: srv.ID, appID: appID, token: token, botID: bot.ID}
 }
@@ -136,6 +140,8 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 		"updatesChannel: staff-2", "afk:\n    channel: vocal\n    timeout: 900", "widget:\n    enabled: true\n    channel: general",
 		"type: forum", "sortOrder: creationDate", "layout: list", "threadArchiveAfter: 3d", "moderated: true", `emoji: "🛡️"`,
 		"secondary: '#3498db'", "automod:\n    gros-mots:", "trigger: keyword", "timeout: 10m", "alert: staff-2", "welcomeScreen:",
+		// downloaded files
+		"icon: ./assets/ma-commu/icon.png", "image: ./assets/ma-commu/emojis/coucou.png",
 	} {
 		if !strings.Contains(yamlText, want) {
 			t.Errorf("servers/ma-commu.yaml misses %q:\n%s", want, yamlText)
@@ -159,7 +165,7 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 	}
 	rs, _ := store.Resources().List(context.Background(), "ma-commu")
 	store.Close()
-	if len(rs) != 16 { // 4 roles + 3 categories + 8 channels + 1 AutoMod rule
+	if len(rs) != 17 { // 4 roles + 3 categories + 8 channels + 1 AutoMod rule + 1 emoji
 		t.Errorf("resource map has %d entries: %+v", len(rs), rs)
 	}
 
@@ -218,11 +224,13 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 		t.Error("plan created the state database")
 	}
 	code, out, errOut = run(t, "adopt", dir, "--yes")
-	if code != 0 || !strings.Contains(out, "16 to adopt") || !strings.Contains(out, "= channel general → text channel #discussions") {
+	if code != 0 || !strings.Contains(out, "17 to adopt") || !strings.Contains(out, "= channel general → text channel #discussions") {
 		t.Fatalf("adopt = %d\n%s\n%s", code, out, errOut)
 	}
+	// Everything is mapped again; the icon upload record lived in the lost database, so
+	// the icon is uploaded once more.
 	code, out, _ = run(t, "plan", dir, "--detailed-exitcode")
-	if code != 0 || strings.Contains(out, "adopt") {
+	if code != 2 || strings.Contains(out, "adopt") || !strings.Contains(out, "Plan: 0 to create, 1 to update, 0 to delete.") || !strings.Contains(out, ": icon") {
 		t.Errorf("plan after adopt = %d\n%s", code, out)
 	}
 	if code, out, _ := run(t, "adopt", dir, "--yes"); code != 0 || !strings.Contains(out, "Nothing to change") {

@@ -1,9 +1,13 @@
 package setup
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"sync"
 
 	"github.com/npjonath/codi/internal/discord"
@@ -68,6 +72,15 @@ func (e *SimEnv) CreateServer(name string) (discord.Server, error) {
 			return srv, err
 		}
 	}
+	// A server icon and a custom emoji: the import downloads them into the repository.
+	ctx, admin := context.Background(), w.AdminClient(srv.ID)
+	icon := solidPNG(128, color.RGBA{0x58, 0x65, 0xF2, 0xFF})
+	if _, err := admin.UpdateServer(ctx, srv.ID, discord.ServerParams{Icon: &icon}); err != nil {
+		return srv, err
+	}
+	if _, err := admin.CreateEmoji(ctx, srv.ID, discord.EmojiParams{Name: "pixel", Image: solidPNG(32, color.RGBA{0xEB, 0x45, 0x9E, 0xFF})}, ""); err != nil {
+		return srv, err
+	}
 	e.mu.Lock()
 	e.servers = append(e.servers, srv.ID)
 	e.mu.Unlock()
@@ -75,6 +88,19 @@ func (e *SimEnv) CreateServer(name string) (discord.Server, error) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// solidPNG is a square PNG of one color.
+func solidPNG(size int, c color.Color) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
+	for x := 0; x < size; x++ {
+		for y := 0; y < size; y++ {
+			img.Set(x, y, c)
+		}
+	}
+	var b bytes.Buffer
+	_ = png.Encode(&b, img)
+	return b.Bytes()
+}
 
 // CreateBot creates an application with its bot (privileged intents off, like a new
 // application) and returns its token.
