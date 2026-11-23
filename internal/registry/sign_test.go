@@ -9,35 +9,45 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/codi/internal/state/sqlite"
 )
 
-// useOfficial makes url the official registry, trusting a fresh test key (restored at
-// cleanup). Tests using it must not run in parallel.
-func useOfficial(t *testing.T, url string) ed25519.PrivateKey {
+// useOfficial makes urls the official registry, trusting a fresh test key, with a fresh
+// in-memory serial store (all restored at cleanup). Tests using it must not run in parallel.
+func useOfficial(t *testing.T, urls ...string) ed25519.PrivateKey {
 	t.Helper()
 	t.Setenv(DevOfficialRegistryEnv, "")
-	oldURLs, oldKeys := OfficialURLs, OfficialKeys
-	t.Cleanup(func() { OfficialURLs, OfficialKeys = oldURLs, oldKeys })
+	oldURLs, oldKeys, oldDev := OfficialURLs, OfficialKeys, devOfficialKey
+	restore := UseSerialStore(&memorySerials{m: map[string]uint64{}})
+	t.Cleanup(func() { OfficialURLs, OfficialKeys, devOfficialKey = oldURLs, oldKeys, oldDev; restore() })
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	OfficialURLs, OfficialKeys = []string{url}, []string{EncodePublicKey(pub)}
+	OfficialURLs, OfficialKeys, devOfficialKey = urls, []string{EncodePublicKey(pub)}, ""
 	return priv
 }
 
-func mustSign(t *testing.T, index string, keys ...ed25519.PrivateKey) string {
+func envFor(url string, serial uint64) Envelope {
+	return Envelope{Registry: url, Serial: serial, Expires: time.Now().Add(24 * time.Hour)}
+}
+
+func mustSign(t *testing.T, index string, env Envelope, keys ...ed25519.PrivateKey) string {
 	t.Helper()
-	sig, err := SignIndex([]byte(index), keys...)
+	sig, err := SignIndex([]byte(index), env, keys...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return string(sig)
 }
+
+const regURL = "https://registry.codi.example/official"
 
 func TestSignAndVerify(t *testing.T) {
 	pub, privFile, err := GenerateSigningKey()
@@ -57,53 +67,77 @@ func TestSignAndVerify(t *testing.T) {
 		}
 	}
 	index := []byte("plugins:\n  xp:\n    repo: https://example.org/xp.git\n    verified: true\n")
-	sig, _ := SignIndex(index, priv)
+	sig, err := SignIndex(index, envFor(regURL+".git/", 7), priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(sig), "registry: "+regURL+"\n") || !strings.Contains(string(sig), "serial: 7\n") {
+		t.Errorf("envelope:\n%s", sig)
+	}
 	trusted := []string{EncodePublicKey(pub)}
-	id, err := VerifyIndex(index, sig, trusted)
-	if err != nil || id != KeyID(pub) {
-		t.Fatalf("VerifyIndex = %q, %v", id, err)
+	opts := VerifyOptions{Registries: []string{regURL}}
+	env, id, err := VerifyIndex(index, sig, trusted, opts)
+	if err != nil || id != KeyID(pub) || env.Serial != 7 || env.Registry != regURL {
+		t.Fatalf("VerifyIndex = %+v %q, %v", env, id, err)
+	}
+	if e, err := ParseEnvelope(sig); err != nil || e.Serial != 7 {
+		t.Errorf("ParseEnvelope = %+v, %v", e, err)
 	}
 
 	_, other, _ := ed25519.GenerateKey(rand.Reader)
 	otherPub := EncodePublicKey(other.Public().(ed25519.PublicKey))
 	tampered := append([]byte{}, index...)
 	tampered[len(tampered)-2] = 'X'
+	expired := []byte(mustSign(t, string(index), Envelope{Registry: regURL, Serial: 8, Expires: time.Now().Add(-time.Minute)}, priv))
+	reSerial := []byte(strings.Replace(string(sig), "serial: 7", "serial: 9", 1))
+	reURL := []byte(strings.Replace(string(sig), "registry: "+regURL, "registry: https://evil.example/r", 1))
+	unknown := []byte(strings.Replace(string(sig), "serial: 7\n", "serial: 7\nnote: hi\n", 1))
+	missing := []byte(strings.Replace(string(sig), "serial: 7\n", "", 1))
+	repeated := []byte(strings.Replace(string(sig), "serial: 7\n", "serial: 7\nserial: 7\n", 1))
 	cases := map[string]struct {
 		index, sig []byte
 		trusted    []string
+		opts       VerifyOptions
 	}{
-		"tampered index":          {tampered, sig, trusted},
-		"one more space":          {append(append([]byte{}, index...), ' '), sig, trusted},
-		"no signature":            {index, nil, trusted},
-		"no trusted key":          {index, sig, nil},
-		"signed by another key":   {index, mustSignB(t, index, other), trusted},
-		"untrusted key only":      {index, sig, []string{otherPub}},
-		"garbage":                 {index, []byte("ed25519 zz !!!\nnot a line\n"), trusted},
-		"right key id, wrong sig": {index, []byte("ed25519 " + KeyID(pub) + " " + strings.Repeat("A", 86) + "==\n"), trusted},
-		"bad embedded key":        {index, sig, []string{"not-a-key"}},
+		"tampered index":          {tampered, sig, trusted, opts},
+		"one more space":          {append(append([]byte{}, index...), ' '), sig, trusted, opts},
+		"no signature":            {index, nil, trusted, opts},
+		"no trusted key":          {index, sig, nil, opts},
+		"signed by another key":   {index, []byte(mustSign(t, string(index), envFor(regURL, 7), other)), trusted, opts},
+		"untrusted key only":      {index, sig, []string{otherPub}, opts},
+		"garbage":                 {index, []byte("ed25519 zz !!!\nnot a line\n"), trusted, opts},
+		"right key id, wrong sig": {index, []byte(strings.SplitAfter(string(sig), "\ned25519 ")[0] + KeyID(pub) + " " + strings.Repeat("A", 86) + "==\n"), trusted, opts},
+		"bad embedded key":        {index, sig, []string{"not-a-key"}, opts},
+		"wrong registry URL":      {index, sig, trusted, VerifyOptions{Registries: []string{"https://registry.codi.example/other"}}},
+		"expired":                 {index, expired, trusted, opts},
+		"edited serial":           {index, reSerial, trusted, opts},
+		"edited registry":         {index, reURL, trusted, VerifyOptions{}},
+		"unknown field":           {index, unknown, trusted, opts},
+		"missing field":           {index, missing, trusted, opts},
+		"repeated field":          {index, repeated, trusted, opts},
 	}
 	for name, c := range cases {
-		if _, err := VerifyIndex(c.index, c.sig, c.trusted); !errors.Is(err, ErrBadSignature) {
+		if _, _, err := VerifyIndex(c.index, c.sig, c.trusted, c.opts); !errors.Is(err, ErrBadSignature) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+	if _, _, err := VerifyIndex(index, sig, trusted, VerifyOptions{Registries: []string{regURL}, Now: time.Now().Add(48 * time.Hour)}); err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Errorf("expiry against Now: %v", err)
+	}
 
 	// Rotation: an index signed by the old and the new key verifies with either.
-	both, _ := SignIndex(index, other, priv)
+	both, _ := SignIndex(index, envFor(regURL, 10), other, priv)
 	for _, k := range [][]string{trusted, {otherPub}, {"junk", otherPub}} {
-		if _, err := VerifyIndex(index, both, k); err != nil {
+		if _, _, err := VerifyIndex(index, both, k, opts); err != nil {
 			t.Errorf("rotation with %v: %v", k, err)
 		}
 	}
-}
-
-func mustSignB(t *testing.T, index []byte, k ed25519.PrivateKey) []byte {
-	t.Helper()
-	b, err := SignIndex(index, k)
-	if err != nil {
-		t.Fatal(err)
+	for _, e := range []Envelope{{Registry: "", Serial: 1, Expires: time.Now()}, {Registry: regURL, Serial: 0, Expires: time.Now()},
+		{Registry: regURL, Serial: 1}, {Registry: "https://tok@x.example/r", Serial: 1, Expires: time.Now()}} {
+		if _, err := SignIndex(index, e, priv); err == nil {
+			t.Errorf("SignIndex(%+v) accepted", e)
+		}
 	}
-	return b
 }
 
 func TestOfficialIndexMustBeSigned(t *testing.T) {
@@ -113,23 +147,26 @@ func TestOfficialIndexMustBeSigned(t *testing.T) {
 
 	_, stranger, _ := ed25519.GenerateKey(rand.Reader)
 	unsigned := initRepo(t, map[string]string{"index.yaml": index})
-	key := useOfficial(t, unsigned)
-	// The same files, signed with the official key, under the official URL.
-	good := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, key)})
-	OfficialURLs = []string{good, unsigned}
-	if Trust(good) != TrustOfficial || Trust(unsigned) != TrustOfficial {
-		t.Fatal("test setup: official URLs")
-	}
+	key := useOfficial(t, regURL)
+	good := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, envFor(regURL, 5), key)})
+	OfficialURLs = []string{regURL, good, unsigned}
 	idx, err := FetchIndex(ctx, good)
 	if err != nil || idx.SignedBy != KeyID(key.Public().(ed25519.PublicKey)) || !idx.Plugins["hello"].Verified {
 		t.Fatalf("signed official index: %+v, %v", idx, err)
 	}
 
-	// Fails closed: unsigned, signed by an unknown key, or signature of other bytes.
-	unknown := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, stranger)})
-	stale := initRepo(t, map[string]string{"index.yaml": index + "  evil:\n    repo: " + plugin + "\n", "index.yaml.sig": mustSign(t, index, key)})
-	for name, url := range map[string]string{"unsigned": unsigned, "unknown key": unknown, "stale signature": stale} {
-		OfficialURLs = []string{good, url}
+	// Fails closed: unsigned, unknown key, stale signature, another registry, expired.
+	repos := map[string]string{
+		"unsigned":    unsigned,
+		"unknown key": initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, envFor(regURL, 6), stranger)}),
+		"stale":       initRepo(t, map[string]string{"index.yaml": index + "  evil:\n    repo: " + plugin + "\n", "index.yaml.sig": mustSign(t, index, envFor(regURL, 6), key)}),
+		"other registry": initRepo(t, map[string]string{"index.yaml": index,
+			"index.yaml.sig": mustSign(t, index, envFor("https://staging.codi.example/registry", 6), key)}),
+		"expired": initRepo(t, map[string]string{"index.yaml": index,
+			"index.yaml.sig": mustSign(t, index, Envelope{Registry: regURL, Serial: 6, Expires: time.Now().Add(-time.Hour)}, key)}),
+	}
+	for name, url := range repos {
+		OfficialURLs = []string{regURL, good, url}
 		if idx, err := FetchIndex(ctx, url); !errors.Is(err, ErrBadSignature) || idx != nil {
 			t.Errorf("%s: %+v, %v", name, idx, err)
 		}
@@ -144,7 +181,7 @@ func TestOfficialIndexMustBeSigned(t *testing.T) {
 		t.Errorf("no official key: %v", err)
 	}
 
-	// A signature is irrelevant for unofficial registries ("verified" is dropped later).
+	// A signature is irrelevant for unofficial registries ("verified" is dropped).
 	OfficialURLs = nil
 	if idx, err := FetchIndex(ctx, unsigned); err != nil || idx.SignedBy != "" {
 		t.Errorf("unofficial: %+v, %v", idx, err)
@@ -152,6 +189,64 @@ func TestOfficialIndexMustBeSigned(t *testing.T) {
 	res, err := ResolveLatest(ctx, []config.Registry{{Name: "acme", URL: unsigned}}, t.TempDir(), "acme/hello", "*")
 	if err != nil || res.Index.Verified {
 		t.Errorf("unofficial verified flag: %+v, %v", res, err)
+	}
+}
+
+func TestSerialRollback(t *testing.T) {
+	ctx := context.Background()
+	index := "plugins: {}\n"
+	key := useOfficial(t, regURL)
+	newer := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, envFor(regURL, 20), key)})
+	older := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, envFor(regURL, 10), key)})
+	OfficialURLs = []string{regURL, newer, older} // the same registry, served from two places
+
+	// Trust on first use: the older index is accepted while nothing newer was seen.
+	db := filepath.Join(t.TempDir(), "codi.db")
+	st, err := sqlite.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := UseSerialStore(KVSerialStore(st.KV(SerialKVScope)))
+	if _, err := FetchIndex(ctx, older); err != nil {
+		t.Fatalf("first seen: %v", err)
+	}
+	if _, err := FetchIndex(ctx, newer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := FetchIndex(ctx, newer); err != nil {
+		t.Errorf("the same serial again: %v", err)
+	}
+	if _, err := FetchIndex(ctx, older); !errors.Is(err, ErrBadSignature) || !strings.Contains(err.Error(), "older") {
+		t.Errorf("rollback: %v", err)
+	}
+	restore()
+	st.Close()
+
+	// After a restart, the persisted serial still refuses the older index.
+	st, err = sqlite.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	defer UseSerialStore(KVSerialStore(st.KV(SerialKVScope)))()
+	if _, err := FetchIndex(ctx, older); !errors.Is(err, ErrBadSignature) {
+		t.Errorf("rollback after restart: %v", err)
+	}
+	if _, err := FetchIndex(ctx, newer); err != nil {
+		t.Errorf("newer after restart: %v", err)
+	}
+
+	// The CLI's file store behaves the same, across runs.
+	file := filepath.Join(t.TempDir(), "serials.json")
+	restore = UseSerialStore(FileSerialStore(file))
+	if _, err := FetchIndex(ctx, newer); err != nil {
+		t.Fatal(err)
+	}
+	restore()
+	restore = UseSerialStore(FileSerialStore(file))
+	defer restore()
+	if _, err := FetchIndex(ctx, older); !errors.Is(err, ErrBadSignature) {
+		t.Errorf("file store after restart: %v", err)
 	}
 }
 
@@ -167,9 +262,9 @@ func TestImplicitOfficialRegistry(t *testing.T) {
 
 	plugin := initRepo(t, map[string]string{"plugin.yaml": manifest, "src/index.ts": "export default {}"}, "v1.2.0")
 	index := "plugins:\n  hello:\n    repo: " + plugin + "\n    verified: true\n"
-	placeholder := t.TempDir()
-	key := useOfficial(t, placeholder)
-	url := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, key)})
+	key := useOfficial(t)
+	url := initRepo(t, map[string]string{"index.yaml": index})
+	writeSig(t, url, mustSign(t, index, envFor(url, 1), key))
 	OfficialURLs = []string{url, "https://old.example/registry.git"}
 	off, ok := Official()
 	if !ok || off.Name != config.OfficialRegistryName || off.URL != url {
@@ -203,15 +298,47 @@ func TestImplicitOfficialRegistry(t *testing.T) {
 		t.Errorf("Resolve = %q, %v", key, err)
 	}
 
-	// The development override replaces the URL, never the keys: an unsigned registry
-	// there is still refused.
+	// A release build ignores the development override: an environment variable cannot
+	// redefine what is official.
+	staging := initRepo(t, map[string]string{"index.yaml": index})
+	writeSig(t, staging, mustSign(t, index, envFor(staging, 1), key))
+	t.Setenv(DevOfficialRegistryEnv, staging)
+	if off, _ := Official(); off.URL != url || Trust(staging) == TrustOfficial {
+		t.Errorf("override honoured in a release build: %+v", off)
+	}
+	// A development build (a dev key compiled in) honours it; the index there must still
+	// be signed for that URL by a trusted key.
+	_, devKey, _ := ed25519.GenerateKey(rand.Reader)
+	devOfficialKey = EncodePublicKey(devKey.Public().(ed25519.PublicKey))
+	if off, _ := Official(); off.URL != staging || Trust(url) == TrustOfficial {
+		t.Errorf("override in a development build: %+v", off)
+	}
+	if _, err := ResolveLatest(ctx, nil, t.TempDir(), "codi/hello", "*"); err != nil {
+		t.Errorf("signed staging registry: %v", err)
+	}
 	unsigned := initRepo(t, map[string]string{"index.yaml": index})
 	t.Setenv(DevOfficialRegistryEnv, unsigned)
-	if off, _ := Official(); off.URL != unsigned || Trust(url) == TrustOfficial {
-		t.Errorf("override: %+v", off)
-	}
 	if _, err := ResolveLatest(ctx, nil, t.TempDir(), "codi/hello", "*"); !errors.Is(err, ErrBadSignature) {
 		t.Errorf("override to an unsigned registry: %v", err)
+	}
+}
+
+// writeSig commits index.yaml.sig to a test registry repository.
+func writeSig(t *testing.T, dir, sig string) {
+	t.Helper()
+	r, err := git.PlainOpen(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, SignatureFile), []byte(sig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wt, _ := r.Worktree()
+	if _, err := wt.Add(SignatureFile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wt.Commit("sign", &git.CommitOptions{Author: &object.Signature{Name: "dev", Email: "d@x", When: time.Now()}}); err != nil {
+		t.Fatal(err)
 	}
 }
 

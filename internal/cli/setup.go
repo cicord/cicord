@@ -339,6 +339,7 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 		return err
 	}
 	defer store.Close()
+	defer registry.UseSerialStore(registry.KVSerialStore(store.KV(registry.SerialKVScope)))() // anti-rollback of the official index
 	sec, err := openSecrets(ctx, store, dataDir, false)
 	if err != nil {
 		return err
@@ -414,6 +415,7 @@ func runDevSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absDir
 		return err
 	}
 	defer store.Close()
+	defer registry.UseSerialStore(registry.KVSerialStore(store.KV(registry.SerialKVScope)))() // anti-rollback of the official index
 	if !useSim {
 		if _, found, err := setup.LoadState(ctx, store); err == nil && !found {
 			if why := dataDirInUse(ctx, store, f.dataDir); why != "" {

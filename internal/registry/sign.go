@@ -12,29 +12,44 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/npjonath/codi/internal/config"
 )
 
 // Signed official index (ADR-0011, "Update (2026-11-23)").
 //
-// The official registry's index.yaml is signed with ed25519: index.yaml.sig, next to it,
-// holds one detached signature per signing key over the exact bytes of index.yaml. The
-// runtime embeds the official public keys (OfficialKeys, a list for key rotation: sign
-// with the old and the new key during a rotation, then drop the old one). An index fetched
-// from an official URL is only used when one of its signatures verifies with an official
-// key: a missing or invalid signature is an error (ErrBadSignature), never a fallback to
-// an unsigned, unofficial reading.
+// The official registry's index.yaml comes with index.yaml.sig: a signature envelope that
+// binds the registry URL, a monotonically increasing serial, an expiry and the SHA-256 of
+// the exact bytes of index.yaml, followed by one ed25519 signature of that envelope per
+// signing key:
+//
+//	# Signatures of index.yaml (codi registry sign). Do not edit.
+//	format: codi-registry-signature-v1
+//	registry: https://github.com/codi-dev/registry
+//	serial: 1764000000
+//	expires: 2026-12-23T00:00:00Z
+//	index-sha256: 9f86d081…
+//	ed25519 <key-id> <base64 signature>
+//
+// The signed message is the canonical envelope (signedMessage). The runtime embeds the
+// official public keys (OfficialKeys, a list for key rotation). An index read from an
+// official URL is only used when a signature by an official key verifies, the envelope
+// names an official registry URL, has not expired, and its serial is not lower than the
+// highest serial already seen for that registry (SerialStore: no replay of an older
+// index). Anything else is ErrBadSignature, never a fallback to an unofficial reading.
 
 const (
 	// IndexFile is the registry index at the root of a registry repository.
 	IndexFile = "index.yaml"
-	// SignatureFile holds the detached signatures of IndexFile.
+	// SignatureFile holds the signature envelope of IndexFile.
 	SignatureFile = "index.yaml.sig"
-	// sigAlgo prefixes every signature line.
-	sigAlgo = "ed25519"
+	// SignatureFormat is the envelope version.
+	SignatureFormat = "codi-registry-signature-v1"
+	sigAlgo         = "ed25519"
 	// maxSignatureFile bounds what is read from a registry.
 	maxSignatureFile = 64 << 10
 )
@@ -51,25 +66,29 @@ var OfficialKeys = []string{}
 //
 //	go build -ldflags "-X github.com/npjonath/codi/internal/registry.devOfficialKey=<base64>"
 //
-// Release builds never set it. It cannot be changed by codi.yaml, the API or the
-// environment of a running runtime.
+// Release builds never set it. It is also what makes a build a development build for
+// DevOfficialRegistryEnv. It cannot be changed by codi.yaml, the API or the environment.
 var devOfficialKey = ""
 
-// DevOfficialRegistryEnv overrides the official registry URL. Development only: the
-// index there must still be signed by an official key (OfficialKeys, or devOfficialKey
-// in a development build), so it cannot make an arbitrary registry official.
+// DevOfficialRegistryEnv overrides the official registry URL in development builds
+// (devOfficialKey set) only; a release build ignores it, so an environment variable can
+// never redefine what is official in production. Even then, the index there must be
+// signed (for that URL) by a trusted key.
 const DevOfficialRegistryEnv = "CODI_DEV_OFFICIAL_REGISTRY"
 
-// ErrBadSignature: an official index without a valid signature by an official key.
-var ErrBadSignature = errors.New("the official registry index is not signed by an official key")
+// ErrBadSignature: an official index without a valid, current signature by an official key.
+var ErrBadSignature = errors.New("the official registry index is not validly signed by an official key")
 
 var devWarnOnce sync.Once
 
 // officialURLs is OfficialURLs, or the development override.
 func officialURLs() []string {
+	if devOfficialKey == "" {
+		return OfficialURLs // release build: the environment cannot change it
+	}
 	if u := strings.TrimSpace(os.Getenv(DevOfficialRegistryEnv)); u != "" {
 		devWarnOnce.Do(func() {
-			slog.Warn("development override of the official plugin registry", "env", DevOfficialRegistryEnv, "url", Redact(u))
+			slog.Warn("development build: official plugin registry overridden", "env", DevOfficialRegistryEnv, "url", Redact(u))
 		})
 		return []string{u}
 	}
@@ -111,6 +130,8 @@ func WithOfficial(regs []config.Registry) []config.Registry {
 	}
 	return append(out, off)
 }
+
+// ───────────────────────────────────────────────────────────── keys
 
 // KeyID is the short identifier of a public key in signature files (16 hex digits of its
 // SHA-256).
@@ -169,32 +190,157 @@ func ParsePrivateKey(data []byte) (ed25519.PrivateKey, error) {
 	return ed25519.NewKeyFromSeed(seed), nil
 }
 
-// SignIndex returns the content of index.yaml.sig: one signature of index per key.
-func SignIndex(index []byte, keys ...ed25519.PrivateKey) ([]byte, error) {
+// ───────────────────────────────────────────────────────────── envelope
+
+// Envelope is what a signature covers, besides the index bytes (through their hash).
+type Envelope struct {
+	// Registry is the normalized URL of the registry the index is for.
+	Registry string
+	// Serial increases with every signature; a runtime refuses a lower serial than the
+	// highest it has seen for that registry.
+	Serial uint64
+	// Expires bounds how long this signature is valid (re-sign before).
+	Expires time.Time
+	// IndexSHA256 is the hex SHA-256 of index.yaml.
+	IndexSHA256 string
+}
+
+func indexHash(index []byte) string {
+	sum := sha256.Sum256(index)
+	return hex.EncodeToString(sum[:])
+}
+
+// signedMessage is the canonical form of an envelope: the exact bytes that are signed.
+func signedMessage(e Envelope) []byte {
+	return fmt.Appendf(nil, "%s\nregistry: %s\nserial: %d\nexpires: %s\nindex-sha256: %s\n",
+		SignatureFormat, e.Registry, e.Serial, e.Expires.UTC().Format(time.RFC3339), e.IndexSHA256)
+}
+
+// SignIndex returns the content of index.yaml.sig for index, signed by every key. env's
+// Registry is normalized, IndexSHA256 computed.
+func SignIndex(index []byte, env Envelope, keys ...ed25519.PrivateKey) ([]byte, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("no signing key")
 	}
+	env.Registry = config.NormalizeRegistryURL(env.Registry)
+	if env.Registry == "" || strings.ContainsAny(env.Registry, " \n\r\t") {
+		return nil, errors.New("the registry URL to sign for is required (no spaces)")
+	}
+	if HasUserinfo(env.Registry) {
+		return nil, errors.New("the registry URL must not contain credentials")
+	}
+	if env.Serial == 0 {
+		return nil, errors.New("the serial must be positive")
+	}
+	if env.Expires.IsZero() {
+		return nil, errors.New("an expiry is required")
+	}
+	env.Expires = env.Expires.UTC().Truncate(time.Second)
+	env.IndexSHA256 = indexHash(index)
+	msg := signedMessage(env)
 	var b bytes.Buffer
 	b.WriteString("# Signatures of index.yaml (codi registry sign). Do not edit.\n")
+	fmt.Fprintf(&b, "format: %s\nregistry: %s\nserial: %d\nexpires: %s\nindex-sha256: %s\n",
+		SignatureFormat, env.Registry, env.Serial, env.Expires.Format(time.RFC3339), env.IndexSHA256)
 	for _, k := range keys {
 		pub := k.Public().(ed25519.PublicKey)
-		fmt.Fprintf(&b, "%s %s %s\n", sigAlgo, KeyID(pub), base64.StdEncoding.EncodeToString(ed25519.Sign(k, index)))
+		fmt.Fprintf(&b, "%s %s %s\n", sigAlgo, KeyID(pub), base64.StdEncoding.EncodeToString(ed25519.Sign(k, msg)))
 	}
 	return b.Bytes(), nil
 }
 
-// VerifyIndex checks that sig holds a valid signature of index by one of the trusted keys
-// and returns that key's ID. It fails closed: no trusted key, no signature, a malformed
-// file or only unknown/invalid signatures are all ErrBadSignature.
-func VerifyIndex(index, sig []byte, trusted []string) (string, error) {
+type sigLine struct{ keyID, sig string }
+
+// ParseEnvelope reads the envelope of a signature file without verifying it (e.g. to
+// pick the next serial). Unknown or repeated header fields are refused.
+func ParseEnvelope(sig []byte) (Envelope, error) {
+	e, _, err := parseSignatureFile(sig)
+	return e, err
+}
+
+func parseSignatureFile(sig []byte) (Envelope, []sigLine, error) {
+	var e Envelope
+	var lines []sigLine
+	seen := map[string]bool{}
+	sc := bufio.NewScanner(bytes.NewReader(sig))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if f := strings.Fields(line); len(f) == 3 && f[0] == sigAlgo {
+			lines = append(lines, sigLine{f[1], f[2]})
+			continue
+		}
+		k, v, ok := strings.Cut(line, ": ")
+		if !ok || seen[k] {
+			return e, nil, fmt.Errorf("malformed or repeated line %q", line)
+		}
+		seen[k] = true
+		v = strings.TrimSpace(v)
+		switch k {
+		case "format":
+			if v != SignatureFormat {
+				return e, nil, fmt.Errorf("unsupported signature format %q", v)
+			}
+		case "registry":
+			e.Registry = v
+		case "serial":
+			n, err := strconv.ParseUint(v, 10, 64)
+			if err != nil || n == 0 {
+				return e, nil, fmt.Errorf("invalid serial %q", v)
+			}
+			e.Serial = n
+		case "expires":
+			t, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				return e, nil, fmt.Errorf("invalid expiry %q", v)
+			}
+			e.Expires = t
+		case "index-sha256":
+			e.IndexSHA256 = v
+		default:
+			return e, nil, fmt.Errorf("unknown field %q", k)
+		}
+	}
+	for _, k := range []string{"format", "registry", "serial", "expires", "index-sha256"} {
+		if !seen[k] {
+			return e, nil, fmt.Errorf("missing field %q", k)
+		}
+	}
+	return e, lines, nil
+}
+
+// VerifyOptions are the checks of VerifyIndex besides the signature itself.
+type VerifyOptions struct {
+	// Registries are the URLs the envelope may name (normalized before comparison);
+	// empty: any (only for `codi registry verify` on a checkout).
+	Registries []string
+	// Now is the time the expiry is checked against (zero: time.Now()).
+	Now time.Time
+}
+
+// VerifyIndex checks that sig is a current signature envelope of index by one of the
+// trusted keys and returns the envelope and the key's ID. It fails closed: no trusted
+// key, no or malformed envelope, another index hash, a registry that is not one of
+// opts.Registries, an expired envelope, or only unknown/invalid signatures are all
+// ErrBadSignature. The serial (anti-rollback) is checked by the caller (checkSerial).
+func VerifyIndex(index, sig []byte, trusted []string, opts VerifyOptions) (Envelope, string, error) {
+	bad := func(format string, a ...any) (Envelope, string, error) {
+		return Envelope{}, "", fmt.Errorf("%w (%s)", ErrBadSignature, fmt.Sprintf(format, a...))
+	}
 	if len(trusted) == 0 {
-		return "", fmt.Errorf("%w (this build embeds no official public key)", ErrBadSignature)
+		return bad("this build embeds no official public key")
 	}
 	if len(sig) == 0 {
-		return "", fmt.Errorf("%w (no %s)", ErrBadSignature, SignatureFile)
+		return bad("no %s", SignatureFile)
 	}
 	if len(sig) > maxSignatureFile {
-		return "", fmt.Errorf("%w (%s is too large)", ErrBadSignature, SignatureFile)
+		return bad("%s is too large", SignatureFile)
+	}
+	env, lines, err := parseSignatureFile(sig)
+	if err != nil {
+		return bad("%s: %v", SignatureFile, err)
 	}
 	keys := map[string]ed25519.PublicKey{}
 	for _, s := range trusted {
@@ -204,27 +350,47 @@ func VerifyIndex(index, sig []byte, trusted []string) (string, error) {
 		}
 		keys[KeyID(pub)] = pub
 	}
-	sc := bufio.NewScanner(bytes.NewReader(sig))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		f := strings.Fields(line)
-		if len(f) != 3 || f[0] != sigAlgo {
-			continue
-		}
-		pub, ok := keys[f[1]]
+	msg := signedMessage(env)
+	keyID := ""
+	for _, l := range lines {
+		pub, ok := keys[l.keyID]
 		if !ok {
 			continue // signed by a key this build does not trust (rotation)
 		}
-		s, err := base64.StdEncoding.DecodeString(f[2])
+		s, err := base64.StdEncoding.DecodeString(l.sig)
 		if err != nil || len(s) != ed25519.SignatureSize {
 			continue
 		}
-		if ed25519.Verify(pub, index, s) {
-			return f[1], nil
+		if ed25519.Verify(pub, msg, s) {
+			keyID = l.keyID
+			break
 		}
 	}
-	return "", fmt.Errorf("%w (no valid signature by a trusted key in %s)", ErrBadSignature, SignatureFile)
+	// The envelope is only trusted once a signature over it verified.
+	switch {
+	case keyID == "":
+		return bad("no valid signature by a trusted key in %s", SignatureFile)
+	case env.IndexSHA256 != indexHash(index):
+		return bad("the signature is for another version of index.yaml")
+	case len(opts.Registries) > 0 && !containsURL(opts.Registries, env.Registry):
+		return bad("the signature is for the registry %s, not this one", Redact(env.Registry))
+	}
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if !now.Before(env.Expires) {
+		return bad("the signature expired on %s", env.Expires.UTC().Format(time.RFC3339))
+	}
+	return env, keyID, nil
+}
+
+func containsURL(urls []string, u string) bool {
+	n := config.NormalizeRegistryURL(u)
+	for _, x := range urls {
+		if config.NormalizeRegistryURL(x) == n {
+			return true
+		}
+	}
+	return false
 }

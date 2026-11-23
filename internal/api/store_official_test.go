@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/registry"
@@ -25,14 +26,17 @@ func TestStoreImplicitOfficialRegistry(t *testing.T) {
 	}
 	plugin := gitRepo(t, map[string]string{"plugin.yaml": helloManifest, "src/index.ts": helloSource}, "v1.0.0")
 	index := "plugins:\n  hello:\n    repo: " + plugin + "\n    publisher: CODI\n    verified: true\n    version: 1.0.0\n"
-	sig, err := registry.SignIndex([]byte(index), key)
+	const officialURL = "https://registry.codi.example/official"
+	sig, err := registry.SignIndex([]byte(index), registry.Envelope{Registry: officialURL, Serial: 1, Expires: time.Now().Add(time.Hour)}, key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	reg := gitRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": string(sig)})
 	oldURLs, oldKeys := registry.OfficialURLs, registry.OfficialKeys
 	t.Cleanup(func() { registry.OfficialURLs, registry.OfficialKeys = oldURLs, oldKeys })
-	registry.OfficialURLs, registry.OfficialKeys = []string{reg}, []string{registry.EncodePublicKey(pub)}
+	t.Cleanup(registry.UseSerialStore(registry.FileSerialStore(filepath.Join(t.TempDir(), "serials.json"))))
+	// The local copy is served from reg, an alias of the official URL it is signed for.
+	registry.OfficialURLs, registry.OfficialKeys = []string{reg, officialURL}, []string{registry.EncodePublicKey(pub)}
 
 	cache := registry.DefaultCacheDir()
 	e := startFull(t, func(dir string) {

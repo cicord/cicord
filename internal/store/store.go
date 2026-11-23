@@ -476,7 +476,7 @@ func ExplainFetch(err error) *SourceError {
 	e := &SourceError{Message: "This source could not be read.", Details: msg}
 	switch {
 	case errors.Is(err, registry.ErrBadSignature):
-		e.Message = "The signature of the official registry index is missing or invalid: its plugins are not listed."
+		e.Message = "The official registry index has no valid, current signature (missing, invalid, expired or older than one already seen): its plugins are not listed."
 		e.Hint = "This is never ignored. Try again later; if it persists, report it to the CODI maintainers."
 	case errors.Is(err, context.DeadlineExceeded):
 		e.Message, e.Hint = "This source did not answer in time.", "Try again later, or check the URL."

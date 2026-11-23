@@ -54,6 +54,7 @@ func newPluginAddCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("unknown bot %q", bot)
 			}
+			defer registry.UseSerialStore(registry.FileSerialStore(registry.DefaultSerialFile()))()
 			ctx := registry.WithRegistryTokens(cmd.Context(), repo.Project.Spec.Registries, os.LookupEnv)
 			res, err := registry.ResolveLatest(ctx, repo.Project.Spec.Registries, registry.DefaultCacheDir(), source, rng)
 			if err != nil {

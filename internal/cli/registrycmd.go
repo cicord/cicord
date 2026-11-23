@@ -205,6 +205,7 @@ the registry's host only.`,
 			if err != nil {
 				return err
 			}
+			defer registry.UseSerialStore(registry.FileSerialStore(registry.DefaultSerialFile()))()
 			s := &store.Service{Catalog: catalog.Official(), CacheDir: registry.DefaultCacheDir(), Secret: os.LookupEnv}
 			srcs, err := s.Sources(cmd.Context(), repo, true)
 			if err != nil {
@@ -253,6 +254,7 @@ the registry's host only.`,
 			if len(args) == 1 {
 				q = strings.ToLower(args[0])
 			}
+			defer registry.UseSerialStore(registry.FileSerialStore(registry.DefaultSerialFile()))()
 			s := &store.Service{Catalog: catalog.Official(), CacheDir: registry.DefaultCacheDir(), Secret: os.LookupEnv}
 			srcs, err := s.Sources(cmd.Context(), repo, false)
 			if err != nil {

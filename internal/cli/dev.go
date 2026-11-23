@@ -115,6 +115,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 		return err
 	}
 	defer store.Close()
+	defer registry.UseSerialStore(registry.KVSerialStore(store.KV(registry.SerialKVScope)))() // anti-rollback of the official index
 	sec, err := openSecrets(ctx, store, f.dataDir, useSim)
 	if err != nil {
 		return err

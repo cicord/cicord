@@ -434,7 +434,12 @@ func FetchIndex(ctx context.Context, url string) (*Index, error) {
 			}
 			sig = []byte(s)
 		}
-		if signedBy, err = VerifyIndex([]byte(content), sig, officialKeys()); err != nil {
+		err := checkSerial(ctx, func() (Envelope, error) {
+			env, id, err := VerifyIndex([]byte(content), sig, officialKeys(), VerifyOptions{Registries: officialURLs()})
+			signedBy = id
+			return env, err
+		})
+		if err != nil {
 			return nil, fmt.Errorf("%s: %w", Redact(url), err)
 		}
 	}
