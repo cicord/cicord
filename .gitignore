@@ -7,7 +7,7 @@ dist/
 .DS_Store
 .codi/
 .codi-data/
-bin/
+/bin/
 *.tsbuildinfo
 internal/webui/admin/assets/
 internal/webui/portal/assets/

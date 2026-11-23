@@ -1,0 +1,24 @@
+// Unit tests with the in-memory fakes of @codi/sdk/testing (docs/plugins.md §8).
+// Run them with `npm test` (Node 24 runs TypeScript directly: no build step). Keep the
+// sources type-strippable: `.ts` extensions on relative imports, no enums or namespaces.
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { createTestContext, runCommand } from "@codi/sdk/testing";
+import schema from "../config.schema.json" with { type: "json" };
+import plugin from "../src/index.ts";
+
+const grants = ["discord.messages.send"];
+const members = [{ id: "1", username: "alice" }];
+
+test("/hello replies with the default greeting", async () => {
+  // `schema` applies the config defaults like the runtime does.
+  const t = createTestContext({ schema, grants, members });
+  const result = await runCommand(plugin, t, "hello", { user: "1" });
+  assert.deepEqual(result.replies, ["Hello!"]);
+});
+
+test("the greeting comes from the config", async () => {
+  const t = createTestContext({ schema, grants, members, config: { greeting: "Salut !" } });
+  const result = await runCommand(plugin, t, "hello", { user: "1" });
+  assert.deepEqual(result.replies, ["Salut !"]);
+});

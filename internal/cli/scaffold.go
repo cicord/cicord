@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -212,11 +213,20 @@ func newPluginCmd() *cobra.Command {
 			if err := writeSDKTypes(abs); err != nil {
 				return err
 			}
-			for _, f := range files {
+			testFiles, testErr := scaffoldPluginTests(abs, name, force)
+			if testErr != nil && !errors.Is(testErr, errNoSDKTarball) {
+				return testErr
+			}
+			for _, f := range append(files, testFiles...) {
 				rel, _ := filepath.Rel(abs, f)
 				fmt.Fprintln(cmd.OutOrStdout(), "  created", rel)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "  created .codi/codi-sdk.d.ts")
+			if testErr != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nNo unit test setup: %v.\n", testErr)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nUnit tests (Node 24, @codi/sdk/testing vendored in vendor/):\n    cd %s && npm install && npm test\n", args[0])
+			}
 			where, source := "a bot", "<relative path from bot.yaml to "+args[0]+">"
 			if botFile := findBotFile(abs); botFile != "" {
 				if rel, err := filepath.Rel(filepath.Dir(botFile), abs); err == nil {

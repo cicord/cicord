@@ -1,0 +1,16 @@
+{
+  "name": "{{.Name}}",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CODI plugin. The runtime bundles src/ itself: this package.json only serves the unit tests.",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@codi/sdk": "{{.SDKSpec}}"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

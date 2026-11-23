@@ -149,7 +149,7 @@ func TestEmbeddedKitIsConsistent(t *testing.T) {
 	for _, p := range pkgs {
 		names[p.Name] = true
 	}
-	for _, n := range []string{"@codi/client", "@codi/react", "@codi/ui"} {
+	for _, n := range []string{"@codi/sdk", "@codi/client", "@codi/react", "@codi/ui"} {
 		if !names[n] {
 			t.Errorf("kit misses %s (%v)", n, names)
 		}

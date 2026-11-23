@@ -3,7 +3,8 @@
 # embeds them:
 #   packages/admin/dist              → internal/webui/admin
 #   packages/create-codi-portal/dist → internal/webui/portal
-#   pnpm pack of @codi/client, @codi/react, @codi/ui → internal/webui/kit/packages/*.tgz
+#   pnpm pack of @codi/sdk, @codi/client, @codi/react, @codi/ui → internal/webui/kit/packages/*.tgz
+#     (@codi/sdk for the unit tests of `codi plugin new`, the others for `codi portal init`)
 #   the reference portal template    → internal/webui/kit/template (codi portal init)
 # A UI that has not been built is left as is (placeholder index.html); a missing kit only
 # disables `codi portal init` (it explains how to build it).
@@ -25,7 +26,7 @@ sync_one() {
 
 sync_kit() {
   local kit="$root/internal/webui/kit"
-  for p in client react ui; do
+  for p in sdk client react ui; do
     if [[ ! -f "$root/packages/$p/dist/index.mjs" ]]; then
       echo "skip portal kit: packages/$p is not built (pnpm -r build)" >&2
       return 0
@@ -37,7 +38,7 @@ sync_kit() {
   fi
   rm -rf "$kit/packages" "$kit/template"
   mkdir -p "$kit/packages"
-  for p in client react ui; do
+  for p in sdk client react ui; do
     # pnpm pack rewrites workspace:/catalog: specifiers to real versions.
     (cd "$root/packages/$p" && pnpm pack --pack-destination "$kit/packages" >/dev/null)
   done
