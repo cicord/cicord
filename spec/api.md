@@ -780,6 +780,17 @@ The Store lists the plugins of every **source** and installs them through write-
   reserved. Installing writes a `codi.lock` entry and a bot.yaml instance with
   `source: <registry>/<plugin>`, in one write-back.
 
+**Official registry** (once it exists; ADR-0011 update 2026-11-23): its `index.yaml` must
+carry a valid, current signature by an official key (`index.yaml.sig`: bound to the
+registry URL, a serial and an expiry). It is implicit: source `codi` lists the union of the
+bundled plugins and its plugins (a plugin in both comes from the registry only when its
+index `version` is a semver greater than the bundled one), with `url` and `signature` set.
+An official URL whose signature is missing, invalid, expired, for another registry or older
+than one already seen has `signature: "invalid"`, an `error`, and no plugins from it
+(`codi` keeps its bundled plugins). `verified` is only `true` from a verified official
+index. A `codi` plugin from the registry has a `repo`, and its `StoreDetail` a
+`commit`/`integrity`; installing it locks `codi/<name>` in `codi.lock`.
+
 Who: browsing and installing need the `admin` role on a server (bearer: everywhere).
 Adding or removing a source changes `codi.yaml` (the whole project): bearer, or `admin` on
 **every** server the runtime manages.
@@ -800,6 +811,7 @@ repositories on the same host), never to other hosts. It is never returned by th
 // Source
 { "name": "codi", "kind": "bundled|git", "url"?: "https://…", "trust": "official|unofficial",
   "fetchedAt"?: "…", "error"?: Error, "private": false, "credentials"?: "ok|missing",
+  "signature"?: "verified|invalid",                // official URLs only (see above)
   "pluginCount": 6, "plugins": [StorePlugin] }     // plugins omitted with ?summary=1
 // StorePlugin (browse; from the catalog or the registry index)
 { "source": "codi", "name": "welcome", "displayName": "Welcome", "description": "…",
@@ -840,6 +852,10 @@ only done for `official` sources before installation.
 - Registry plugins: `version`, `commit` and `integrity` are the values of the reviewed
   `StoreDetail` and are required. If the latest version now resolves differently →
   `409 changed` (review again): the installed code is always the reviewed code.
+- `codi` plugins: send `version`/`commit`/`integrity` when the reviewed `StoreDetail` has a
+  `commit` (it comes from the official registry), none for a bundled plugin. When the
+  origin changed since the review (bundled ↔ registry) → `409 changed`. No
+  `confirmUnofficial` is needed.
 - `unofficial` source without `confirmUnofficial: true` → `409 confirmation_required`.
 - Every capability the plugin requests is granted (`grants`), as reviewed. Privileged
   intents are checked as in §10 (`409 intents`). The configuration is validated on a copy
@@ -880,5 +896,11 @@ plugins:
     description: Levels and a portal leaderboard
     keywords: [xp, levels]
     publisher: acme
-    verified: false                              # only meaningful in the official registry
+    verified: false                              # only honoured from the signed official index
+    version: 1.2.0                               # optional: latest release (codi plugin publish)
+    commit: 3f1c…                                # optional: its tag's commit (a moved tag is refused)
 ```
+
+The official registry also has `index.yaml.sig`, the signature envelope (`format`,
+`registry`, `serial`, `expires`, `index-sha256`, then `ed25519 <key-id> <base64>` lines;
+`codi registry sign`, docs/plugins.md §9).
