@@ -696,6 +696,8 @@ export function normalizeRouteResponse(response: RouteResponse): RouteResult {
     const env = response as { status: number; body?: Json; headers?: Record<string, string> };
     return { status: env.status, body: env.body, headers: env.headers ?? {} };
   }
+  // Like the runtime: a handler returning nothing answers 204.
+  if (response === undefined) return { status: 204, body: undefined, headers: {} };
   return { status: 200, body: response as Json, headers: {} };
 }
 

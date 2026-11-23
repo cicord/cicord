@@ -106,7 +106,7 @@ func TestPortalInit(t *testing.T) {
 		t.Errorf("vite override lost: %v", pj.Pnpm.Overrides)
 	}
 	wf := readFile(t, filepath.Join(repo, ".github/workflows/codi-portal.yml"))
-	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**"]`} {
+	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "codi portal typegen --check"} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow misses %q:\n%s", want, wf)
 		}

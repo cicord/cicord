@@ -387,7 +387,9 @@
 
   function command(definition) { return definition; }
 
-  const sdk = freeze({ definePlugin, command, CapabilityError });
+  function defineRoutes(routes) { return routes; }
+
+  const sdk = freeze({ definePlugin, command, defineRoutes, CapabilityError });
 
   const entries = (o) => (o && typeof o === "object" ? Object.keys(o).map((k) => [k, o[k]]) : []);
   const fns = (o) => entries(o).map(([name, f]) => ({ name, type: typeof f }));

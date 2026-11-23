@@ -1,8 +1,14 @@
-import { createCodiClient, type FetchLike, type OnboardingSteps } from "@codi/client";
+import {
+  createCodiClient,
+  type FetchLike,
+  type OnboardingSteps,
+  type PollResults,
+  type RouteEntry,
+} from "@codi/client";
 import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode, type ReactNode } from "react";
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, describe, expect, expectTypeOf, test, vi } from "vite-plus/test";
 import {
   CodiProvider,
   OnboardingFlow,
@@ -11,7 +17,22 @@ import {
   useMember,
   usePluginMutation,
   usePluginQuery,
+  useRouteMutation,
+  useRouteQuery,
 } from "../src/index.ts";
+
+// As written by `codi portal typegen` for a plugin with a contract.
+declare module "@codi/client" {
+  interface PluginRouteRegistry {
+    counter: {
+      "POST /items/:id/votes": RouteEntry<
+        "member",
+        { "POST /items/:id/votes": { body: { by: number }; response: { votes: number } } },
+        "POST /items/:id/votes"
+      >;
+    };
+  }
+}
 
 afterEach(() => {
   cleanup();
@@ -193,6 +214,53 @@ describe("hooks", () => {
     });
     expect(result.current.m.data).toEqual({ count: 2 });
     await waitFor(() => expect(result.current.q.data).toEqual({ count: 2 }));
+  });
+
+  test("useRouteQuery + useRouteMutation find the instance and type the route", async () => {
+    let votes = 0;
+    const server = {
+      ...portalServer,
+      plugins: [
+        ...portalServer.plugins,
+        { bot: "bot", instance: "polls-1", plugin: "polls", routes: ["GET /polls/:id"] },
+        { bot: "bot", instance: "counter", plugin: "counter", routes: ["POST /items/:id/votes"] },
+      ],
+    };
+    const { wrapper, calls } = setup((method, path, body) => {
+      if (path === "/api/v1/portal/ma-commu") return json(server);
+      if (path === "/api/v1/portal/ma-commu/plugins/bot/polls-1/polls/p%201")
+        return json({ id: "p 1", question: "?", voters: votes });
+      if (
+        method === "POST" &&
+        path === "/api/v1/portal/ma-commu/plugins/bot/counter/items/7/votes"
+      ) {
+        votes += (body as { by: number }).by;
+        return json({ votes });
+      }
+      return undefined;
+    });
+    const { result } = renderHook(
+      () => ({
+        poll: useRouteQuery("polls", "GET /polls/:id", { params: { id: "p 1" } }),
+        vote: useRouteMutation("counter", "POST /items/:id/votes"),
+        missing: useRouteQuery("levels", "GET /leaderboard"),
+      }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.poll.data?.voters).toBe(0));
+    // Typed by the official polls contract (OfficialPluginRoutes): `voters` is a number.
+    expectTypeOf(result.current.poll.data).toEqualTypeOf<PollResults | undefined>();
+    expect(result.current.poll.instance?.instance).toBe("polls-1");
+    await act(async () => {
+      await result.current.vote.mutateAsync({ params: { id: "7" }, body: { by: 3 } });
+    });
+    expect(result.current.vote.data).toEqual({ votes: 3 });
+    // Only the mutated plugin's queries are refetched.
+    expect(result.current.poll.data?.voters).toBe(0);
+    // levels is not installed: no instance, no request.
+    expect(result.current.missing.instance).toBeUndefined();
+    expect(result.current.missing.status).toBe("idle");
+    expect(calls.some((c) => c.path.includes("leaderboard"))).toBe(false);
   });
 });
 

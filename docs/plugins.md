@@ -443,10 +443,66 @@ routes: {
 },
 ```
 
+#### Typed routes: the route contract
+
+A plugin can declare the types of its routes, so that portals get a typed client for them
+(`codi portal typegen`, [docs/portal.md](portal.md#typed-plugin-routes)) and its handlers
+are checked against them. Write a **route contract**: a type-only, self-contained file
+(no imports, only `interface` and `type` declarations, since it is copied verbatim into
+the portals) that exports `interface Routes`, and declare it in `plugin.yaml`:
+
+```yaml
+spec:
+  routes:
+    types: ./src/routes.ts
+```
+
+```ts
+// src/routes.ts
+export interface PollResults { id: string; question: string; voters: number }
+
+export interface Routes {
+  "GET /polls/:id": { response: PollResults };                 // params come from the key
+  "GET /polls": { query: { status?: "open" | "closed" }; response: { items: PollResults[] } };
+  "POST /polls/:id/votes": { body: { choice: number }; response: { votes: number } };
+  "DELETE /polls/:id": {};                                     // no response: 204
+}
+```
+
+Then wrap the routes with `defineRoutes<Routes>()` (identity at run time):
+
+```ts
+import { definePlugin, defineRoutes } from "@codi/sdk";
+import type { Routes } from "./routes.ts";
+
+export default definePlugin({
+  routes: defineRoutes<Routes>({
+    "GET /polls/:id": {
+      access: "public",
+      async handler(ctx, request) {
+        const poll = await getPoll(ctx, request.params.id); // params: { id: string }
+        if (!poll) return { status: 404, body: { error: { code: "not_found", message: "no such poll" } } };
+        return toResults(poll); // checked against PollResults
+      },
+    },
+    // … every route of Routes must be implemented
+  }),
+});
+```
+
+`request.params` is typed from the key, `request.query` has the declared keys (as the
+strings of the URL), `request.body` is the declared body, and the handler must return the
+declared `response` or an envelope `{ status, body?, headers? }`. The runtime does **not**
+validate the query or the body against the types: check them like any input. Interfaces
+can be returned directly (no `as unknown as Json`). `codi plugin build` reports a contract
+that cannot be copied (an import, a value…). [`levels`](../examples/showcase/plugins/levels/src/routes.ts)
+and [`polls`](../examples/showcase/plugins/polls/src/routes.ts) are examples.
+
 `ctx.portal.link(path, { member, expiresInSeconds })` (capability `portal.links`) returns a
 signed portal URL. With `member`, opening it signs that member in, restricted to this server.
 Links last 15 minutes by default, 24 hours at most. In the portal, `@codi/client`'s
-`client.plugin(server, bot, instance)` and `@codi/react`'s `usePluginQuery` call the routes.
+`client.routes(plugin, server, instance)` / `client.plugin(server, bot, instance)` and
+`@codi/react`'s `useRouteQuery` / `usePluginQuery` call the routes.
 
 ### Schedules and tasks
 

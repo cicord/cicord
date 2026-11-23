@@ -88,6 +88,16 @@
           },
           "additionalProperties": false
         },
+        "routes": {
+          "type": "object",
+          "properties": {
+            "types": {
+              "description": "Type-only, self-contained TypeScript file exporting `interface Routes` (the declared query, body and response of each portal route). `codi portal typegen` copies it into the portals; handlers are checked against it with defineRoutes<Routes>().",
+              "$ref": "common.schema.json#/$defs/relativePath"
+            }
+          },
+          "additionalProperties": false
+        },
         "client": {
           "description": "Optional npm package with React components for the community portal.",
           "type": "object",

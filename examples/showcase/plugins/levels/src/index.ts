@@ -1,11 +1,10 @@
 import {
   command,
   definePlugin,
+  defineRoutes,
   type Context,
-  type Json,
   type Member,
   type Message,
-  type RouteResponse,
 } from "@codi/sdk";
 import {
   authorKey,
@@ -22,6 +21,7 @@ import {
   standings,
   xpKey,
 } from "./levels.ts";
+import type { Routes } from "./routes.ts";
 
 const WEEK = 7 * 24 * 3600;
 
@@ -252,22 +252,23 @@ export default definePlugin({
     },
   },
 
-  routes: {
+  // Checked against the portal contract in routes.ts (copied into portals by `codi portal typegen`).
+  routes: defineRoutes<Routes>({
     /** Public leaderboard for the community portal. `?limit=` 1-100 (default 25). */
     "GET /leaderboard": {
       access: "public",
-      async handler(ctx, request): Promise<RouteResponse> {
+      async handler(ctx, request) {
         const limit = Math.min(
           100,
-          Math.max(1, Math.trunc(Number(request.query["limit"] ?? 25)) || 25),
+          Math.max(1, Math.trunc(Number(request.query.limit ?? 25)) || 25),
         );
-        return { items: (await leaderboard(ctx, limit)) as unknown as Json };
+        return { items: await leaderboard(ctx, limit) };
       },
     },
     /** The viewer's own standing. */
     "GET /me": {
       access: "member",
-      async handler(ctx, request): Promise<RouteResponse> {
+      async handler(ctx, request) {
         const viewer = request.viewer;
         if (!viewer)
           return {
@@ -280,5 +281,5 @@ export default definePlugin({
         return { userId: viewer.user.id, rank: i >= 0 ? i + 1 : null, xp, ...progress(xp) };
       },
     },
-  },
+  }),
 });

@@ -1,8 +1,7 @@
-import type { LeaderboardEntry } from "@codi/client";
-import { useLogout, useMe, useMember, usePluginQuery } from "@codi/react";
+import { useLogout, useMe, useMember, useRouteQuery } from "@codi/react";
 import { Button, MemberCard, Notice, ProgressBar, Spinner } from "@codi/ui";
 import { useT } from "../i18n/index.tsx";
-import { SignIn, useNumber, usePages, usePlugin } from "../portal.tsx";
+import { SignIn, useNumber, usePages } from "../portal.tsx";
 import { Link, navigate } from "../router.tsx";
 
 export function Profile() {
@@ -75,29 +74,27 @@ export function Profile() {
   );
 }
 
-/** The viewer's entry of the `levels` plugin (`GET /me`, member), when installed. */
+/**
+ * The viewer's standing in the `levels` plugin (`GET /me`, member), when installed. Typed by
+ * the plugin's route contract (src/codi-routes.d.ts).
+ */
 function LevelCard() {
   const t = useT();
   const fmt = useNumber();
-  const levels = usePlugin("levels", "GET /me");
-  const mine = usePluginQuery<Partial<LeaderboardEntry> & { nextLevelXp?: number }>(
-    levels ? { bot: levels.bot, instance: levels.instance } : undefined,
-    "/me",
-  );
+  const mine = useRouteQuery("levels", "GET /me");
   const d = mine.data;
-  if (!d || typeof d.level !== "number") return null;
-  const next = typeof d.nextLevelXp === "number" && d.nextLevelXp > 0 ? d.nextLevelXp : undefined;
+  if (!d) return null;
   return (
     <div className="profile__level">
       <div className="profile__level-head">
         <strong>{t.me.level(d.level)}</strong>
         <span>
-          {t.me.xp(fmt(d.xp ?? 0))}
-          {typeof d.rank === "number" ? ` · ${t.me.rank(d.rank)}` : ""}
+          {t.me.xp(fmt(d.xp))}
+          {d.rank !== null ? ` · ${t.me.rank(d.rank)}` : ""}
         </span>
       </div>
-      {next ? (
-        <ProgressBar value={Math.min(1, (d.xp ?? 0) / next)} label={t.me.level(d.level + 1)} />
+      {d.needed > 0 ? (
+        <ProgressBar value={Math.min(1, d.current / d.needed)} label={t.me.level(d.level + 1)} />
       ) : null}
     </div>
   );

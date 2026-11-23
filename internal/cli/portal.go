@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/codi/internal/typegen"
 	"github.com/npjonath/codi/internal/webui"
 )
 
@@ -40,7 +41,7 @@ func newPortalCmd() *cobra.Command {
 repository. Its build output is committed too and served by the runtime at / instead of
 the default portal (codi.yaml spec.portal.path). See docs/portal.md.`,
 	}
-	cmd.AddCommand(newPortalInitCmd(), newPortalBuildCmd())
+	cmd.AddCommand(newPortalInitCmd(), newPortalBuildCmd(), newPortalTypegenCmd())
 	return cmd
 }
 
@@ -212,6 +213,11 @@ func portalInit(w io.Writer, dir string, force bool) error {
 		pj.Pnpm.Overrides = map[string]string{}
 	}
 	for _, p := range pkgs {
+		_, dep := pj.Dependencies[p.Name]
+		_, devDep := pj.DevDependencies[p.Name]
+		if !dep && !devDep {
+			continue // e.g. @codi/sdk, embedded for `codi plugin new`
+		}
 		if err := write("vendor/"+p.File, p.Data); err != nil {
 			return err
 		}
@@ -241,6 +247,23 @@ func portalInit(w io.Writer, dir string, force bool) error {
 		return err
 	}
 	if err := write(".gitignore", []byte(portalGitignore)); err != nil {
+		return err
+	}
+	// The template's route types describe the monorepo examples: replace them with the
+	// plugins of this repository (none outside a repository).
+	types := ""
+	if repoRoot != "" {
+		if types, err = routeTypes(io.Discard, repoRoot); err != nil {
+			fmt.Fprintf(w, "  warning: plugin route types not generated (%v): run `codi portal typegen` once fixed\n", err)
+			types = ""
+		}
+	}
+	if types == "" {
+		if types, err = typegen.GenerateRoutes(nil); err != nil {
+			return err
+		}
+	}
+	if err := write(routeTypesFile, []byte(types)); err != nil {
 		return err
 	}
 
@@ -301,10 +324,10 @@ var portalWorkflow = template.Must(template.New("wf").Delims("[[", "]]").Parse(`
 name: codi-portal
 on:
   pull_request:
-    paths: ["[[.Dir]]/**"]
+    paths: ["[[.Dir]]/**", "plugins/**", "bots/**", "codi.lock"]
   push:
     branches: [main]
-    paths: ["[[.Dir]]/**"]
+    paths: ["[[.Dir]]/**", "plugins/**", "bots/**", "codi.lock"]
 
 permissions:
   contents: read
@@ -317,6 +340,14 @@ jobs:
         working-directory: [[.Dir]]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      # Until binary releases exist.
+      - run: go install github.com/npjonath/codi/cmd/codi@latest
+      - name: The plugin route types match the plugins (src/codi-routes.d.ts)
+        working-directory: .
+        run: codi portal typegen --check
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -411,6 +442,21 @@ func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
 	if pm == "" {
 		return errors.New("neither pnpm nor npm is installed: install Node.js 24 and pnpm (corepack enable)")
 	}
+	if usesCodiClient(src) {
+		// The types of the plugin routes follow the plugins of the revision.
+		changed, err := writeRouteTypes(stderr, root, filepath.Join(src, filepath.FromSlash(routeTypesFile)), check)
+		if err != nil {
+			return fmt.Errorf("plugin route types: %w", err)
+		}
+		typesRel := filepath.ToSlash(relOr(root, filepath.Join(src, filepath.FromSlash(routeTypesFile))))
+		if check && changed {
+			fmt.Fprintf(stderr, "%s is out of date: run `codi portal typegen` and commit it\n", typesRel)
+			return exitError{1}
+		}
+		if changed {
+			fmt.Fprintf(stdout, "wrote %s\n", typesRel)
+		}
+	}
 	before, _ := hashTree(out)
 	run := func(args ...string) error {
 		fmt.Fprintf(stdout, "$ %s %s   (in %s)\n", pm, strings.Join(args, " "), relOr(root, src))
@@ -444,6 +490,28 @@ func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
 	}
 	fmt.Fprintf(stdout, "✓ portal built into %s\n", rel)
 	return nil
+}
+
+// usesCodiClient reports whether the portal package depends on @codi/client or @codi/react
+// (the consumers of src/codi-routes.d.ts).
+func usesCodiClient(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err != nil {
+		return false
+	}
+	var pj struct{ Dependencies, DevDependencies map[string]string }
+	if json.Unmarshal(data, &pj) != nil {
+		return false
+	}
+	for _, name := range []string{"@codi/client", "@codi/react"} {
+		if _, ok := pj.Dependencies[name]; ok {
+			return true
+		}
+		if _, ok := pj.DevDependencies[name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func relOr(root, p string) string {

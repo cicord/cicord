@@ -343,6 +343,11 @@ Implemented by `internal/plugin` (the package documentation is the detailed refe
 - **Config typing**: `codi plugin typegen` generates a `PluginConfig` module augmentation
   from `config.schema.json`, with the same rules (fields that are required or have an
   applied default are non-optional).
+- **Route typing**: `plugin.yaml` `spec.routes.types` names a type-only, self-contained
+  file exporting `interface Routes` (per route key: `query`, `body`, `response`).
+  `defineRoutes<Routes>(routes)` (identity at run time) checks the handlers against it;
+  `codi portal typegen` copies it into the portals' `src/codi-routes.d.ts`. The runtime
+  does not validate requests against it.
 - **Message content**: gated per plugin. Without the `MessageContent` intent in its own
   manifest, a plugin sees empty `content` and `attachments` (events and
   `channel.messages()`), except for the bot's own messages, messages mentioning the bot and

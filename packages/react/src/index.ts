@@ -15,6 +15,8 @@ export {
   usePortalServer,
   usePortalServers,
   useRoles,
+  useRouteMutation,
+  useRouteQuery,
   useSession,
 } from "./hooks.ts";
 export type {
@@ -24,6 +26,8 @@ export type {
   PluginRef,
   QueryOptions,
   QueryResult,
+  RouteQueryOptions,
+  RouteTarget,
 } from "./hooks.ts";
 export { OnboardingFlow, useOnboarding } from "./onboarding.tsx";
 export type {

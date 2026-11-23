@@ -1,4 +1,5 @@
 import { CodiApiError } from "./errors.ts";
+import { resolveRoute, type TypedPluginRoutes } from "./routes.ts";
 import {
   openEventStream,
   type EventStream,
@@ -554,6 +555,39 @@ export class CodiClient {
       patch: withBody("PATCH"),
       delete: <T = Json>(path: string, options?: CallOptions) =>
         request<T>("DELETE", path, options),
+    };
+  }
+
+  /**
+   * Typed calls to the routes of an instance of plugin `plugin` (types from the generated
+   * `src/codi-routes.d.ts`, see `PluginRouteRegistry`). `at` is the instance, typically
+   * found in `PortalServer.plugins` by plugin name.
+   */
+  routes<N extends string>(
+    plugin: N,
+    server: string,
+    at: { bot: string; instance: string },
+  ): TypedPluginRoutes<N> {
+    const routes = this.plugin(server, at.bot, at.instance);
+    type Loose = { params?: Record<string, string>; query?: object; body?: unknown };
+    return {
+      plugin,
+      server,
+      bot: at.bot,
+      instance: at.instance,
+      call: ((route: string, options: Loose & RequestOptions = {}) => {
+        const { params, query, body, ...rest } = options;
+        const [method, path] = resolveRoute(route, params);
+        return routes.request(method, path, {
+          ...rest,
+          ...(query ? { query: query as Query } : {}),
+          ...(body === undefined ? {} : { body }),
+        });
+      }) as TypedPluginRoutes<N>["call"],
+      url: ((route: string, options: Loose = {}) => {
+        const [, path] = resolveRoute(route, options.params);
+        return routes.url(path, options.query as Query | undefined);
+      }) as TypedPluginRoutes<N>["url"],
     };
   }
 

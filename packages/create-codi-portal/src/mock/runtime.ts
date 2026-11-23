@@ -194,7 +194,18 @@ export function createMockRuntime() {
       case `GET ${API}/portal/${key}/plugins/moderator/levels/leaderboard`:
         return json({ items: leaderboard });
       case `GET ${API}/portal/${key}/plugins/moderator/levels/me`:
-        return auth(() => json({ ...leaderboard[0], nextLevelXp: 20000 }));
+        // The shape of the levels contract (`Standing`, examples/showcase/plugins/levels/src/routes.ts).
+        return auth(() => {
+          const top = leaderboard[0]!;
+          return json({
+            userId: top.userId,
+            rank: top.rank,
+            xp: top.xp,
+            level: top.level,
+            current: 1260,
+            needed: 2080,
+          });
+        });
       case `GET ${API}/portal/${key}/plugins/moderator/tickets/tickets`:
         // A moderator route: `?role=moderator` makes the mock viewer a moderator.
         return auth(() =>

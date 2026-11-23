@@ -427,6 +427,74 @@ export interface RouteDefinition {
 /** Keys are "<METHOD> <path>", e.g. "GET /leaderboard" or "POST /answers/:id". */
 export type RouteKey = `${"GET" | "POST" | "PUT" | "PATCH" | "DELETE"} /${string}`;
 
+/**
+ * Declared types of one route: what the portal sends (`query`, `body`) and receives
+ * (`response`, the JSON of a `200`; omit it for routes that answer `204`). A plugin lists
+ * them in a type-only contract file (plugin.yaml `spec.routes.types`, e.g.
+ * `src/routes.ts`: `export interface Routes { "GET /polls/:id": { response: Poll } }`),
+ * checks its handlers against it with `defineRoutes<Routes>()`, and `codi portal typegen`
+ * copies it into the portals, which get a typed client for the routes.
+ */
+export interface RouteTypes {
+  /** Query parameters sent by the portal. They arrive as strings: see `TypedRouteRequest`. */
+  query?: object;
+  /** JSON body sent by the portal (POST, PUT, PATCH). */
+  body?: unknown;
+  /** JSON answered with status 200. */
+  response?: unknown;
+}
+
+/** `{ id: string }` for "GET /polls/:id": the `:name` segments of a route key. */
+export type RouteParams<K extends string> = K extends `${string}/:${infer Rest}`
+  ? Rest extends `${infer Name}/${infer Tail}`
+    ? { [P in Name]: string } & RouteParams<`/${Tail}`>
+    : { [P in Rest]: string }
+  : {};
+
+/** An explicit response: `{ status: 404, body: { error: … } }`. */
+export interface RouteEnvelope {
+  status: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+}
+
+/**
+ * The request of a route declared with `defineRoutes<Routes>()`. `query` values are the
+ * strings of the URL and `body` is the JSON sent: the runtime does not validate them
+ * against the declared types, so check them like any input.
+ */
+export interface TypedRouteRequest<K extends string, T extends RouteTypes> {
+  readonly params: Readonly<RouteParams<K>>;
+  readonly query: { readonly [Q in keyof T["query"]]?: string } & Readonly<Record<string, string>>;
+  readonly body: (T extends { body?: infer B } ? B : Json) | undefined;
+  /** Authenticated viewer, present unless access is "public" and the viewer is anonymous. */
+  readonly viewer?: { readonly user: User; readonly member?: Member };
+}
+
+/** A route whose handler is checked against its declared types (`defineRoutes`). */
+export interface TypedRouteDefinition<K extends string, T extends RouteTypes> {
+  access: Access;
+  handler(
+    ctx: Context,
+    request: TypedRouteRequest<K, T>,
+  ): Awaitable<(T extends { response: infer R } ? R : void) | RouteEnvelope>;
+}
+
+/**
+ * Routes checked against a contract: every route of `Routes` must be implemented, with the
+ * declared parameters, query, body and response. Identity at run time.
+ *
+ * ```ts
+ * import type { Routes } from "./routes.ts";
+ * routes: defineRoutes<Routes>({
+ *   "GET /polls/:id": { access: "public", async handler(ctx, request) { … request.params.id … } },
+ * }),
+ * ```
+ */
+export declare function defineRoutes<Routes extends { [K in keyof Routes]: RouteTypes }>(routes: {
+  [K in keyof Routes & RouteKey]: TypedRouteDefinition<K, Routes[K]>;
+}): { [K in RouteKey]?: RouteDefinition };
+
 // ───────────────────────────────────────────────────────────── plugin definition
 
 export interface EventHandlers {
