@@ -185,6 +185,9 @@ The index is checked first: plugin names, https:// repositories without credenti
 				serial = max(uint64(time.Now().Unix()), prev+1)
 			case serial <= prev:
 				return fmt.Errorf("--serial %d must be greater than the current serial %d", serial, prev)
+			case serial > uint64(time.Now().Add(366*24*time.Hour).Unix()):
+				// Runtimes remember the highest serial: a huge one would block every later signature.
+				return fmt.Errorf("--serial %d is far above the current Unix time: runtimes would refuse every later signature", serial)
 			}
 			var privs []ed25519.PrivateKey
 			var pubs []string

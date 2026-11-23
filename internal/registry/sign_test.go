@@ -236,6 +236,24 @@ func TestSerialRollback(t *testing.T) {
 		t.Errorf("newer after restart: %v", err)
 	}
 
+	// Every official URL shares one serial: an older envelope signed for another official
+	// URL (alias B) is refused after a higher serial was seen through alias A.
+	aliasB := "https://mirror.codi.example/official"
+	OfficialURLs = append(OfficialURLs, aliasB)
+	viaB := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, envFor(aliasB, 15), key)})
+	OfficialURLs = append(OfficialURLs, viaB)
+	if _, err := FetchIndex(ctx, viaB); !errors.Is(err, ErrBadSignature) || !strings.Contains(err.Error(), "older") {
+		t.Errorf("rollback through another official URL: %v", err)
+	}
+	newerB := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, envFor(aliasB, 25), key)})
+	OfficialURLs = append(OfficialURLs, newerB)
+	if _, err := FetchIndex(ctx, newerB); err != nil {
+		t.Errorf("newer through alias B: %v", err)
+	}
+	if _, err := FetchIndex(ctx, newer); !errors.Is(err, ErrBadSignature) {
+		t.Errorf("serial 20 for alias A after 25 for alias B: %v", err)
+	}
+
 	// The CLI's file store behaves the same, across runs.
 	file := filepath.Join(t.TempDir(), "serials.json")
 	restore = UseSerialStore(FileSerialStore(file))

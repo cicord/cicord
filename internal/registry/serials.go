@@ -11,15 +11,21 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/state"
 )
 
-// Anti-rollback: the highest signature serial seen per official registry. Trust on first
-// use: the first verified index sets it; afterwards a lower serial is refused (an older,
-// validly signed index replayed by a mirror or an attacker).
+// Anti-rollback: the highest signature serial seen for the official registry. Trust on
+// first use: the first verified index sets it; afterwards a lower serial is refused (an
+// older, validly signed index replayed by a mirror or an attacker).
+//
+// Every official URL (OfficialURLs: aliases and mirrors of one logical registry, signed by
+// the same keys) shares ONE serial, under OfficialSerialKey: an old envelope signed for
+// alias B cannot be replayed after a higher serial was seen through alias A.
 
-// SerialStore remembers the highest serial per registry (normalized URL).
+// OfficialSerialKey is the serial store key of the official registry.
+const OfficialSerialKey = "official"
+
+// SerialStore remembers the highest serial per registry identity.
 type SerialStore interface {
 	Highest(ctx context.Context, registry string) (uint64, error) // 0 when none
 	Record(ctx context.Context, registry string, serial uint64) error
@@ -48,9 +54,9 @@ func UseSerialStore(s SerialStore) (restore func()) {
 	}
 }
 
-// checkSerial runs verify, then refuses the envelope when its serial is lower than the
-// highest one seen for its registry (the envelope's registry, so every URL of the
-// official registry shares one serial), and records it otherwise.
+// checkSerial runs verify (an official index: its envelope names one of the official
+// URLs), then refuses the envelope when its serial is lower than the highest one seen for
+// the official registry, whatever URL it came from or names, and records it otherwise.
 func checkSerial(ctx context.Context, verify func() (Envelope, error)) error {
 	env, err := verify()
 	if err != nil {
@@ -58,14 +64,14 @@ func checkSerial(ctx context.Context, verify func() (Envelope, error)) error {
 	}
 	serialsMu.Lock()
 	defer serialsMu.Unlock()
-	key := config.NormalizeRegistryURL(env.Registry)
+	key := OfficialSerialKey
 	min, err := serials.Highest(ctx, key)
 	if err != nil {
 		return fmt.Errorf("%w (cannot read the last serial seen: %v)", ErrBadSignature, err)
 	}
 	if env.Serial < min {
-		return fmt.Errorf("%w (serial %d is older than serial %d already seen for %s: refusing an older index)",
-			ErrBadSignature, env.Serial, min, Redact(key))
+		return fmt.Errorf("%w (serial %d is older than serial %d already seen for the official registry: refusing an older index)",
+			ErrBadSignature, env.Serial, min)
 	}
 	if env.Serial > min {
 		if err := serials.Record(ctx, key, env.Serial); err != nil {

@@ -745,10 +745,11 @@ one serial and one expiry. The runtime only uses an index read from an official 
 - `registry` is the official registry's URL (a signature made for another registry, e.g.
   a staging copy, is refused);
 - it has not expired;
-- `serial` is not lower than the highest serial this runtime has already seen for that
-  registry (trust on first use, stored in the runtime's state database so it survives
-  restarts; the CLI keeps it next to its plugin cache). An older, validly signed index
-  replayed by a mirror or an attacker is refused.
+- `serial` is not lower than the highest serial this runtime has already seen for the
+  official registry (trust on first use, stored in the runtime's state database so it
+  survives restarts; the CLI keeps it next to its plugin cache). All official URLs
+  (aliases, mirrors) share this one serial. An older, validly signed index replayed by a
+  mirror or an attacker, through any official URL, is refused.
 
 Otherwise the source is an **error** source (`signature: "invalid"`): no plugins are
 listed or installable from it, and it is never downgraded to an unofficial source with its
@@ -772,6 +773,11 @@ official index; in any other registry it is ignored.
   signature, hash, registry and expiry, for the registry's CI.
 - Key rotation: embed the new public key, sign with both keys (`--key old --key new`)
   until runtimes trusting only the old key are gone, then drop it.
+- Serials only go up: `sign` refuses a `--serial` not above the current one, or more than
+  a year above the current Unix time (runtimes would then refuse every later signature).
+  If a wrong serial was ever published, a runtime recovers by deleting the key `official`
+  of the KV scope `codi:registry-serials` in its state database (the CLI: the
+  `registry-serials.json` file next to its plugin cache).
 
 **Implicit official registry.** The official registry needs no `codi.yaml` entry: its
 plugins are part of source `codi` (the name is reserved), merged with the bundled ones.

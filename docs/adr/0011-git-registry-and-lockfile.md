@@ -78,7 +78,10 @@ Product decision: the store works like `apt` sources / Homebrew taps.
   (`ErrBadSignature`, fail closed) an index from an official URL unless a signature by an
   embedded official key verifies, the hash matches, `registry` is an official URL, the
   envelope has not expired, and `serial` is not lower than the highest serial already seen
-  for that registry. The highest serial is stored per registry (trust on first use) in the
+  for the official registry. There is one serial for the official registry (key
+  `official`), shared by all its URLs (aliases, mirrors: one logical registry signed by
+  the same keys), so an old envelope signed for one URL cannot be replayed after a higher
+  serial was seen through another. It is stored on first use (trust on first use) in the
   runtime's state store (KV scope `codi:registry-serials`, survives restarts) or, for the
   CLI, in a file next to the plugin cache. Such a source is an error source
   (`signature: "invalid"`), never an unofficial fallback; the Store checks it again
