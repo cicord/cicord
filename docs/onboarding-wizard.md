@@ -207,7 +207,8 @@ Each step is validated by the runtime before moving on.
    permissions, hierarchy, commands, events) run every time.
 
 7. **First plugin**: the **bundled catalog** (`examples/catalog.go` embeds the official
-   plugins at build time: welcome, onboarding, tickets, polls, levels, moderation).
+   plugins at build time: welcome, onboarding, tickets, polls, levels, moderation,
+   reaction-roles, audit-log, announcements).
    - Pick a plugin to review it:
      - its capabilities, in plain words;
      - its gateway intents and the websites it may call;
