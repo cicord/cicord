@@ -16,8 +16,9 @@ var errNoSDKTarball = errors.New("this codi binary embeds no @codi/sdk package (
 // scaffoldPluginTests writes the unit test setup of a new plugin: package.json (test
 // script: node --test), test/<name>.test.ts using @codi/sdk/testing, .gitignore, and
 // the embedded @codi/sdk tarball in vendor/ (a file: dependency: no npm publication
-// needed, works outside the CODI repository). It returns the written files.
-func scaffoldPluginTests(dir, name string, force bool) ([]string, error) {
+// needed, works outside the CODI repository), or "^<version>" of the npm registry with
+// fromNPM. It returns the written files.
+func scaffoldPluginTests(dir, name string, force, fromNPM bool) ([]string, error) {
 	kit, err := portalKit()
 	if err != nil {
 		return nil, errNoSDKTarball
@@ -36,12 +37,15 @@ func scaffoldPluginTests(dir, name string, force bool) ([]string, error) {
 		return nil, errNoSDKTarball
 	}
 	vendored := filepath.Join(dir, "vendor", sdk.File)
-	if _, err := os.Stat(vendored); err == nil && !force {
+	spec := "file:vendor/" + sdk.File
+	if fromNPM {
+		spec = "^" + sdk.Version // the npm registry: same version as the embedded kit
+	} else if _, err := os.Stat(vendored); err == nil && !force {
 		return nil, fmt.Errorf("%s already exists (use --force to overwrite)", vendored)
 	}
 	files, err := renderTree("plugin-test", dir, map[string]any{
 		"Name":    name,
-		"SDKSpec": "file:vendor/" + sdk.File,
+		"SDKSpec": spec,
 	}, func(rel string) string {
 		switch rel {
 		case "gitignore":
@@ -53,6 +57,9 @@ func scaffoldPluginTests(dir, name string, force bool) ([]string, error) {
 	}, force)
 	if err != nil {
 		return nil, err
+	}
+	if fromNPM {
+		return files, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(vendored), 0o755); err != nil {
 		return nil, err

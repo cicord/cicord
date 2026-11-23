@@ -2,19 +2,47 @@
   "name": "@codi/ui",
   "version": "0.1.0",
   "description": "Styled React components for CODI community portals, driven by the server theme.",
+  "keywords": [
+    "codi",
+    "community-portal",
+    "components",
+    "discord",
+    "react",
+    "ui"
+  ],
+  "homepage": "https://github.com/npjonath/codi/tree/main/packages/ui#readme",
+  "bugs": {
+    "url": "https://github.com/npjonath/codi/issues"
+  },
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/npjonath/codi.git",
+    "directory": "packages/ui"
+  },
   "files": [
     "dist",
+    "README.md",
     "LICENSE"
   ],
   "type": "module",
   "sideEffects": [
     "**/*.css"
   ],
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
-    ".": "./dist/index.mjs",
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
     "./styles.css": "./dist/styles.css",
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "vp pack && node -e \"require('node:fs').copyFileSync('src/styles.css','dist/styles.css')\"",

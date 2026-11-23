@@ -63,6 +63,42 @@ func TestPluginNewTestSetup(t *testing.T) {
 	}
 }
 
+func TestFromNPM(t *testing.T) {
+	useKit(t, minimalKit(t), nil)
+	plugin := filepath.Join(t.TempDir(), "hello")
+	if code, _, stderr := run(t, "plugin", "new", plugin, "--from-npm"); code != 0 {
+		t.Fatal(stderr)
+	}
+	if pj := readFile(t, filepath.Join(plugin, "package.json")); !strings.Contains(pj, `"@codi/sdk": "^0.1.0"`) {
+		t.Errorf("plugin package.json:\n%s", pj)
+	}
+	if _, err := os.Stat(filepath.Join(plugin, "vendor")); err == nil {
+		t.Error("vendor/ written with --from-npm")
+	}
+
+	t.Setenv("CODI_FROM_NPM", "true") // same as --from-npm
+	portal := filepath.Join(t.TempDir(), "portal")
+	if code, _, stderr := run(t, "portal", "init", portal); code != 0 {
+		t.Fatal(stderr)
+	}
+	var pj struct {
+		Dependencies map[string]string
+		Overrides    map[string]string
+		Pnpm         struct{ Overrides map[string]string }
+	}
+	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(portal, "package.json"))), &pj); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"@codi/client", "@codi/react", "@codi/ui"} {
+		if pj.Dependencies[n] != "^0.1.0" || pj.Overrides[n] != "" || pj.Pnpm.Overrides[n] != "" {
+			t.Errorf("%s = %q (overrides %q %q)", n, pj.Dependencies[n], pj.Overrides[n], pj.Pnpm.Overrides[n])
+		}
+	}
+	if _, err := os.Stat(filepath.Join(portal, "vendor")); err == nil {
+		t.Error("vendor/ written with CODI_FROM_NPM")
+	}
+}
+
 func TestPluginNewWithoutKit(t *testing.T) {
 	useKit(t, nil, webui.ErrNoKit)
 	dir := filepath.Join(t.TempDir(), "hello")

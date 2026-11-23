@@ -99,10 +99,25 @@ codi portal init           # → portal/ (or: codi portal init <dir>)
   in-browser fake runtime for `pnpm dev`);
 - `vendor/*.tgz` — `@codi/client`, `@codi/react` and `@codi/ui`, embedded in the `codi`
   binary, referenced as `file:` dependencies (+ `pnpm.overrides`, because `@codi/react`
-  depends on `@codi/client` by version). The packages are not on npm yet; once they are,
-  switch with a one-line change per package: `"@codi/client": "^0.1.0"` instead of
-  `"file:vendor/…"`, and delete the `@codi/*` overrides and `vendor/`;
+  depends on `@codi/client` by version). The packages are not on npm yet (see
+  [npm packages](#npm-packages) below);
+- `src/codi-routes.d.ts` — the types of the repository's plugin routes
+  ([typed plugin routes](#typed-plugin-routes));
 - `.github/workflows/codi-portal.yml` (when run inside a CODI repository) — see §4.
+
+### npm packages
+
+Publication of `@codi/sdk`, `@codi/client`, `@codi/react` and `@codi/ui` is prepared
+(package metadata, READMEs, ESM + `.d.ts` builds, the manual/tag-triggered
+`release-npm.yml` workflow with npm provenance) but not done yet: the owner's steps are in
+[RELEASING.md](../RELEASING.md). Until then the default stays the embedded tarballs. Once
+published:
+
+- `codi portal init --from-npm` (or `CODI_FROM_NPM=true codi portal init`) writes
+  `"@codi/client": "^<version of codi>"` (same for react and ui), with no `vendor/` and no
+  `@codi/*` overrides; `codi plugin new --from-npm` does the same for `@codi/sdk`;
+- an existing portal switches with a one-line change per package (`"^0.1.0"` instead of
+  `"file:vendor/…"`), then delete the `@codi/*` overrides and `vendor/`.
 
 The `Developers` page of the portal is a live map of the SDK: session (cookie or token),
 every portal endpoint with the SDK call that uses it, every plugin route of the server (GET
