@@ -84,6 +84,13 @@ export default definePlugin({
 // repository listing the plugin "hello") and plugin write-backs in commit mode.
 func startStore(t *testing.T) *env {
 	t.Helper()
+	e, _ := startStoreRepo(t)
+	return e
+}
+
+// startStoreRepo is startStore, also returning the plugin repository (to release versions).
+func startStoreRepo(t *testing.T) (*env, string) {
+	t.Helper()
 	t.Setenv("CODI_CACHE_DIR", t.TempDir())
 	plugin := gitRepo(t, map[string]string{"plugin.yaml": helloManifest, "src/index.ts": helloSource}, "v1.0.0")
 	reg := gitRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: " + plugin + "\n    publisher: acme\n    verified: true\n    keywords: [greetings]\n"})
@@ -101,7 +108,7 @@ func startStore(t *testing.T) *env {
 		}
 	}, func(o *runtime.Options) {
 		o.Resolver = func(root string) config.PluginResolver { return registry.NewResolver(root, cache) }
-	}, nil)
+	}, nil), plugin
 }
 
 type storeSourcesDTO struct {

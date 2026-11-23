@@ -21,6 +21,7 @@ import (
 	"github.com/npjonath/codi/internal/registry"
 	"github.com/npjonath/codi/internal/runtime"
 	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/codi/internal/store"
 )
 
 // visibleServers returns the servers where the caller has at least min.
@@ -593,6 +594,8 @@ type pluginItemDTO struct {
 	// its trust level ("official", "unofficial" or "local").
 	Source string `json:"source"`
 	Trust  string `json:"trust"`
+	// Update is set when a newer version of the plugin is available (Store §11).
+	Update *store.UpdateInfo `json:"update,omitempty"`
 }
 
 // editableFields lists the top-level config fields a role may edit (x-codi-access).
@@ -633,8 +636,14 @@ func (s *server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items := []pluginItemDTO{}
+	ups := s.pluginStore().Updates(r.Context(), s.rt.Repo(), store.CacheOnly)
+	onlyUpdates := r.URL.Query().Get("updates")
 	for _, in := range s.rt.Instances(key) {
-		items = append(items, s.pluginItem(in, key, ro))
+		it := s.pluginItem(in, key, ro, ups)
+		if onlyUpdates != "" && (onlyUpdates == "true") != (it.Update != nil) {
+			continue
+		}
+		items = append(items, it)
 	}
 	out, meta := page(items, pq,
 		func(it pluginItemDTO) string {
@@ -673,14 +682,14 @@ func (s *server) handlePlugin(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, in := range s.rt.Instances(key) {
 		if in.Config.Bot == r.PathValue("bot") && in.Config.Name == r.PathValue("instance") {
-			writeJSON(w, http.StatusOK, s.pluginItem(in, key, ro))
+			writeJSON(w, http.StatusOK, s.pluginItem(in, key, ro, s.pluginStore().Updates(r.Context(), s.rt.Repo(), store.CacheOnly)))
 			return
 		}
 	}
 	s.fail(w, httpErr(http.StatusNotFound, "not_found", "no plugin instance %s/%s on %s", r.PathValue("bot"), r.PathValue("instance"), key))
 }
 
-func (s *server) pluginItem(in runtime.InstanceInfo, key string, ro role) pluginItemDTO {
+func (s *server) pluginItem(in runtime.InstanceInfo, key string, ro role, ups map[string]store.UpdateInfo) pluginItemDTO {
 	m := in.Config.Plugin.Manifest
 	schema := in.Config.Plugin.SchemaDoc
 	if schema == nil {
@@ -696,6 +705,9 @@ func (s *server) pluginItem(in runtime.InstanceInfo, key string, ro role) plugin
 		Commands: []commandDTO{}, Routes: []string{}, Health: in.Health, Message: in.Message,
 	}
 	it.Source, it.Trust = s.pluginOrigin(in.Config.Plugin)
+	if u, ok := ups[it.Source+"/"+m.Metadata.Name]; ok && it.Source != "local" {
+		it.Update = &u
+	}
 	if it.Config == nil {
 		it.Config = map[string]any{}
 	}

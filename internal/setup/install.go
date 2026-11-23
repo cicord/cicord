@@ -113,21 +113,8 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 			"%s is already installed as %q.", pkg.DisplayName, instance)
 	}
 
-	// Privileged intents: a plugin needing an intent the application has not enabled
-	// would make Discord refuse the bot's gateway connection.
-	if len(pkg.PrivilegedIntents) > 0 && in.Probe != nil && in.Secrets != nil {
-		if tok, has := in.Secrets(bot.Spec.Token.SecretRef); has {
-			id, err := in.Probe.Identify(ctx, tok)
-			if err != nil {
-				return InstallResult{}, explainProbeErr(err)
-			}
-			need, _ := discord.ParseIntents(pkg.PrivilegedIntents)
-			if c := IntentsCheck(bot.Spec.ApplicationID, id.Flags, need, 0); c.Status == StatusFail {
-				return InstallResult{}, &Error{Status: http.StatusConflict, Code: "intents",
-					Message: fmt.Sprintf("%s needs a privileged intent that is turned off. %s", pkg.DisplayName, c.Message),
-					Hint:    c.Hint, Link: c.Link}
-			}
-		}
+	if err := in.checkIntents(ctx, bot, pkg.DisplayName, pkg.PrivilegedIntents); err != nil {
+		return InstallResult{}, err
 	}
 
 	pi := config.PluginInstance{Name: instance, Grants: slices.Clone(pkg.Capabilities)}
@@ -244,6 +231,29 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 		case <-tick.C:
 		}
 	}
+}
+
+// checkIntents: a plugin needing a privileged intent the bot's application has not
+// enabled would make Discord refuse the bot's gateway connection (409 intents).
+func (in *Installer) checkIntents(ctx context.Context, bot *config.Bot, displayName string, privileged []string) error {
+	if len(privileged) == 0 || in.Probe == nil || in.Secrets == nil {
+		return nil
+	}
+	tok, has := in.Secrets(bot.Spec.Token.SecretRef)
+	if !has {
+		return nil
+	}
+	id, err := in.Probe.Identify(ctx, tok)
+	if err != nil {
+		return explainProbeErr(err)
+	}
+	need, _ := discord.ParseIntents(privileged)
+	if c := IntentsCheck(bot.Spec.ApplicationID, id.Flags, need, 0); c.Status == StatusFail {
+		return &Error{Status: http.StatusConflict, Code: "intents",
+			Message: fmt.Sprintf("%s needs a privileged intent that is turned off. %s", displayName, c.Message),
+			Hint:    c.Hint, Link: c.Link}
+	}
+	return nil
 }
 
 // UninstallResult is the outcome of an uninstall.
@@ -444,33 +454,42 @@ func (in *Installer) validate(revDir string, edits map[string]writeback.EditFunc
 	if err := copyDir(revDir, tmp); err != nil {
 		return nil, err
 	}
+	if err := ApplyEdits(tmp, edits); err != nil {
+		return nil, err
+	}
+	_, _, ds, _ := in.Runtime.LoadAndBuild(tmp)
+	return ds, nil
+}
+
+// ApplyEdits applies write-back edits to the files of a directory (a nil result deletes
+// the file), like the writer does in the repository.
+func ApplyEdits(dir string, edits map[string]writeback.EditFunc) error {
 	for rel, edit := range edits {
-		p := filepath.Join(tmp, filepath.FromSlash(rel))
+		p := filepath.Join(dir, filepath.FromSlash(rel))
 		cur, err := os.ReadFile(p)
 		if errors.Is(err, fs.ErrNotExist) {
 			cur = nil
 		} else if err != nil {
-			return nil, err
+			return err
 		}
 		next, err := edit(cur)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if next == nil {
 			if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return nil, err
+				return err
 			}
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return nil, err
+			return err
 		}
 		if err := os.WriteFile(p, next, 0o644); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	_, _, ds, _ := in.Runtime.LoadAndBuild(tmp)
-	return ds, nil
+	return nil
 }
 
 func copyDir(src, dst string) error {
