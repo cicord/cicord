@@ -528,7 +528,15 @@ type PluginSpec struct {
 	Network      *Network          `yaml:"network,omitempty" json:"network,omitempty"`
 	Intents      []string          `yaml:"intents,omitempty" json:"intents,omitempty"`
 	Config       *PluginConfigSpec `yaml:"config,omitempty" json:"config,omitempty"`
+	Routes       *PluginRoutesSpec `yaml:"routes,omitempty" json:"routes,omitempty"`
 	Client       *PluginClient     `yaml:"client,omitempty" json:"client,omitempty"`
+}
+
+// PluginRoutesSpec describes the portal routes of a plugin for the portals.
+type PluginRoutesSpec struct {
+	// Types is the route contract: a type-only TypeScript file exporting `interface Routes`,
+	// copied into the portals by `codi portal typegen`.
+	Types string `yaml:"types,omitempty" json:"types,omitempty"`
 }
 
 type Network struct {

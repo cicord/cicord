@@ -2,16 +2,43 @@
   "name": "@codi/react",
   "version": "0.1.0",
   "description": "React bindings for CODI community portals: provider, data hooks and headless components (<OnboardingFlow>).",
+  "keywords": [
+    "codi",
+    "community-portal",
+    "discord",
+    "hooks",
+    "react"
+  ],
+  "homepage": "https://github.com/npjonath/codi/tree/main/packages/react#readme",
+  "bugs": {
+    "url": "https://github.com/npjonath/codi/issues"
+  },
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/npjonath/codi.git",
+    "directory": "packages/react"
+  },
   "files": [
     "dist",
+    "README.md",
     "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
-    ".": "./dist/index.mjs",
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "vp pack",

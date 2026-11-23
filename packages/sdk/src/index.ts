@@ -39,6 +39,13 @@ export function command<const O extends Record<string, Spec.CommandOption> = {}>
   return definition;
 }
 
+/** Routes checked against a declared contract (`defineRoutes<Routes>({...})`). Identity at run time. */
+export function defineRoutes<Routes extends { [K in keyof Routes]: Spec.RouteTypes }>(routes: {
+  [K in keyof Routes & Spec.RouteKey]: Spec.TypedRouteDefinition<K, Routes[K]>;
+}): { [K in Spec.RouteKey]?: Spec.RouteDefinition } {
+  return routes as unknown as { [K in Spec.RouteKey]?: Spec.RouteDefinition };
+}
+
 // ───────────────────────────────────────────────────────────── conformance with the spec
 // Type-level only: these assignments break `tsc` when the runtime and the spec disagree.
 type Assert<T extends true> = T;
@@ -50,5 +57,6 @@ type SameConstructor = typeof CapabilityError extends typeof Spec.CapabilityErro
 export type __SpecConformance = [
   Assert<typeof definePlugin extends typeof Spec.definePlugin ? true : false>,
   Assert<typeof command extends typeof Spec.command ? true : false>,
+  Assert<typeof defineRoutes extends typeof Spec.defineRoutes ? true : false>,
   Assert<SameConstructor>,
 ];

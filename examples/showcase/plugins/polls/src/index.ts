@@ -1,10 +1,10 @@
 import {
   command,
   definePlugin,
+  defineRoutes,
   type ComponentInteraction,
   type Context,
   type Json,
-  type RouteResponse,
 } from "@codi/sdk";
 import {
   MAX_CHOICES,
@@ -18,6 +18,7 @@ import {
   voteKey,
   type Poll,
 } from "./polls.ts";
+import type { Routes } from "./routes.ts";
 
 const HOUR = 3_600_000;
 
@@ -207,12 +208,13 @@ export default definePlugin({
     },
   },
 
-  routes: {
+  // Checked against the portal contract in routes.ts (copied into portals by `codi portal typegen`).
+  routes: defineRoutes<Routes>({
     /** Results of a poll (public: polls are posted in public channels). */
     "GET /polls/:id": {
       access: "public",
-      async handler(ctx, request): Promise<RouteResponse> {
-        const poll = await getPoll(ctx, request.params["id"] ?? "");
+      async handler(ctx, request) {
+        const poll = await getPoll(ctx, request.params.id);
         if (!poll)
           return { status: 404, body: { error: { code: "not_found", message: "no such poll" } } };
         const t = await tally(ctx, poll);
@@ -229,5 +231,5 @@ export default definePlugin({
         };
       },
     },
-  },
+  }),
 });

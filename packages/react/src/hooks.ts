@@ -1,5 +1,12 @@
 import {
   CodiApiError,
+  resolveRoute,
+  type OptionalArg,
+  type RouteInput,
+  type RouteKeyOf,
+  type RouteMethod,
+  type RouteResponseOf,
+  type RoutesOf,
   type Json,
   type Me,
   type PortalMe,
@@ -353,6 +360,158 @@ export function usePluginMutation<TBody = Json, TResult = Json>(
     mutateAsync,
     mutate: useCallback(
       (body: TBody) => void mutateAsync(body).catch(() => undefined),
+      [mutateAsync],
+    ),
+    reset: useCallback(() => setState({ status: "idle", data: undefined, error: undefined }), []),
+  };
+}
+
+// ───────────────────────────────────────────────────────────── typed plugin routes
+
+/** Which instance of the plugin to call. Default: the first one of the provider's server. */
+export interface RouteTarget {
+  server?: string;
+  bot?: string;
+  instance?: string;
+}
+
+export type RouteQueryOptions<
+  N extends string,
+  K extends keyof RoutesOf<N> & string,
+> = QueryOptions & RouteTarget & RouteInput<K, RoutesOf<N>[K]>;
+
+type LooseInput = RouteTarget &
+  QueryOptions & { params?: Record<string, string>; query?: object; body?: unknown };
+
+function routeTarget(o: RouteTarget): RouteTarget {
+  return {
+    ...(o.server ? { server: o.server } : {}),
+    ...(o.bot ? { bot: o.bot } : {}),
+    ...(o.instance ? { instance: o.instance } : {}),
+  };
+}
+
+/**
+ * `GET` on a typed plugin route, cached: the instance is found by plugin name in
+ * `PortalServer.plugins` and the types come from the generated `src/codi-routes.d.ts`
+ * (`PluginRouteRegistry`).
+ *
+ * ```ts
+ * const board = useRouteQuery("levels", "GET /leaderboard", { query: { limit: 50 } });
+ * const poll = useRouteQuery("polls", "GET /polls/:id", { params: { id } });
+ * ```
+ *
+ * `instance` is the plugin instance: undefined while the server loads or when the plugin is
+ * not installed (the query then stays idle).
+ */
+export function useRouteQuery<N extends string, K extends RouteKeyOf<N, "GET"> & string>(
+  plugin: N,
+  route: K,
+  ...options: OptionalArg<RouteQueryOptions<N, K>>
+): QueryResult<RouteResponseOf<RoutesOf<N>[K]>> & { instance: PortalPlugin | undefined } {
+  type T = RouteResponseOf<RoutesOf<N>[K]>;
+  const opts = (options[0] ?? {}) as LooseInput;
+  const { client } = useCodi();
+  const { instance } = usePortalPlugin(plugin, routeTarget(opts));
+  const server = useServerKey(opts.server);
+  // An invalid parameter (".." from the page URL…) is an error state, never a request.
+  let path: string | undefined;
+  let invalid: unknown;
+  try {
+    [, path] = resolveRoute(route, opts.params);
+  } catch (error) {
+    invalid = error;
+  }
+  const query = opts.query as Query | undefined;
+  const key =
+    instance && server
+      ? codiKeys.plugin(
+          server,
+          instance.bot,
+          instance.instance,
+          path ?? `${route} ${JSON.stringify(opts.params ?? {})}`,
+          query,
+        )
+      : null;
+  const result = useCodiQuery<T>(
+    key,
+    (signal) =>
+      invalid !== undefined || path === undefined
+        ? Promise.reject(invalid)
+        : client
+            .plugin(server as string, instance!.bot, instance!.instance)
+            .get<T>(path, query, { signal }),
+    opts.enabled === undefined ? {} : { enabled: opts.enabled },
+  );
+  return { ...result, instance };
+}
+
+/**
+ * `POST`/`PUT`/`PATCH`/`DELETE` on a typed plugin route: `mutate({ params, body })`. On
+ * success, the plugin's cached queries are refetched (and the member query too).
+ */
+export function useRouteMutation<
+  N extends string,
+  K extends RouteKeyOf<N, Exclude<RouteMethod, "GET">> & string,
+>(
+  plugin: N,
+  route: K,
+  options: RouteTarget & {
+    onSuccess?: (result: RouteResponseOf<RoutesOf<N>[K]>) => void;
+    /** Default true. */
+    invalidate?: boolean;
+  } = {},
+): MutationResult<RouteInput<K, RoutesOf<N>[K]>, RouteResponseOf<RoutesOf<N>[K]>> & {
+  instance: PortalPlugin | undefined;
+} {
+  type T = RouteResponseOf<RoutesOf<N>[K]>;
+  type I = RouteInput<K, RoutesOf<N>[K]>;
+  const { client, cache } = useCodi();
+  const { instance } = usePortalPlugin(plugin, routeTarget(options));
+  const server = useServerKey(options.server);
+  const [state, setState] = useState<{
+    status: MutationStatus;
+    data: T | undefined;
+    error: unknown;
+  }>({ status: "idle", data: undefined, error: undefined });
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
+  const mutateAsync = useCallback(
+    async (input: I): Promise<T> => {
+      if (!instance || !server)
+        throw new Error(`@codi/react: the ${plugin} plugin is not installed on this server`);
+      const { params, body } = input as LooseInput;
+      setState({ status: "pending", data: undefined, error: undefined });
+      try {
+        const [method, path] = resolveRoute(route, params);
+        const result = await client
+          .plugin(server, instance.bot, instance.instance)
+          .request<T>(method, path, body === undefined ? {} : { body });
+        setState({ status: "success", data: result, error: undefined });
+        const { invalidate = true, onSuccess } = optionsRef.current;
+        if (invalidate) {
+          void cache.invalidate(["codi", "plugin", server, instance.bot, instance.instance]);
+          void cache.invalidate(codiKeys.member(server));
+        }
+        onSuccess?.(result);
+        return result;
+      } catch (error) {
+        setState({ status: "error", data: undefined, error });
+        throw error;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [client, cache, server, instance?.bot, instance?.instance, plugin, route],
+  );
+
+  return {
+    ...state,
+    instance,
+    isPending: state.status === "pending",
+    mutateAsync,
+    mutate: useCallback(
+      (input: I) => void mutateAsync(input).catch(() => undefined),
       [mutateAsync],
     ),
     reset: useCallback(() => setState({ status: "idle", data: undefined, error: undefined }), []),

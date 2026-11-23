@@ -25,6 +25,8 @@ export { openEventStream, SseParser } from "./sse.ts";
 export type { EventStream, EventStreamOptions, ServerSentEvent, StreamFetch } from "./sse.ts";
 export { onboardingApi } from "./onboarding.ts";
 export { levelsApi, ticketsApi } from "./showcase.ts";
+export { resolveRoute } from "./routes.ts";
+export type * from "./routes.ts";
 export type * from "./showcase.ts";
 export type * from "./onboarding.ts";
 export type * from "./types.ts";

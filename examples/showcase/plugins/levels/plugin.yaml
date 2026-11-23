@@ -26,3 +26,5 @@ spec:
   intents: [ServerMessages, MessageContent, ServerMessageReactions]
   config:
     schema: ./config.schema.json
+  routes:
+    types: ./src/routes.ts       # portal contract (codi portal typegen)

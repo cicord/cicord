@@ -201,6 +201,12 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 	if slices.Contains(m.Spec.Capabilities, "http.fetch") && (m.Spec.Network == nil || len(m.Spec.Network.Allow) == 0) {
 		r.Errors = append(r.Errors, "http.fetch requires spec.network.allow")
 	}
+	// The route contract is copied into the portals (codi portal typegen).
+	if _, err := readRouteContract(dir, m); err != nil {
+		r.Errors = append(r.Errors, err.Error())
+	} else if m.Spec.Routes != nil && m.Spec.Routes.Types != "" && len(def.Routes) == 0 {
+		r.Warnings = append(r.Warnings, "plugin.yaml declares spec.routes.types but the plugin has no routes")
+	}
 	return r, nil
 }
 

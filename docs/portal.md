@@ -99,10 +99,25 @@ codi portal init           # → portal/ (or: codi portal init <dir>)
   in-browser fake runtime for `pnpm dev`);
 - `vendor/*.tgz` — `@codi/client`, `@codi/react` and `@codi/ui`, embedded in the `codi`
   binary, referenced as `file:` dependencies (+ `pnpm.overrides`, because `@codi/react`
-  depends on `@codi/client` by version). The packages are not on npm yet; once they are,
-  switch with a one-line change per package: `"@codi/client": "^0.1.0"` instead of
-  `"file:vendor/…"`, and delete the `@codi/*` overrides and `vendor/`;
+  depends on `@codi/client` by version). The packages are not on npm yet (see
+  [npm packages](#npm-packages) below);
+- `src/codi-routes.d.ts` — the types of the repository's plugin routes
+  ([typed plugin routes](#typed-plugin-routes));
 - `.github/workflows/codi-portal.yml` (when run inside a CODI repository) — see §4.
+
+### npm packages
+
+Publication of `@codi/sdk`, `@codi/client`, `@codi/react` and `@codi/ui` is prepared
+(package metadata, READMEs, ESM + `.d.ts` builds, the manual/tag-triggered
+`release-npm.yml` workflow with npm provenance) but not done yet: the owner's steps are in
+[RELEASING.md](../RELEASING.md). Until then the default stays the embedded tarballs. Once
+published:
+
+- `codi portal init --from-npm` (or `CODI_FROM_NPM=true codi portal init`) writes
+  `"@codi/client": "^<version of codi>"` (same for react and ui), with no `vendor/` and no
+  `@codi/*` overrides; `codi plugin new --from-npm` does the same for `@codi/sdk`;
+- an existing portal switches with a one-line change per package (`"^0.1.0"` instead of
+  `"file:vendor/…"`), then delete the `@codi/*` overrides and `vendor/`.
 
 The `Developers` page of the portal is a live map of the SDK: session (cookie or token),
 every portal endpoint with the SDK call that uses it, every plugin route of the server (GET
@@ -111,10 +126,52 @@ shown to moderators and admins and in development (mock mode, `codi dev --sim`);
 `/developers` always works. Delete it in your fork if you do not want it.
 
 Plugins are consumed through their routes: find the instance in `PortalServer.plugins` by
-plugin name (never hard-code bot / instance keys), then `client.plugin(server, bot,
-instance).get("/leaderboard")`, or `usePluginQuery(ref, "/leaderboard")` in React. Typed
-wrappers like `ticketsApi` / `levelsApi` (`@codi/client`) show how to type a plugin's
-contract.
+plugin name (never hard-code bot / instance keys), then call its routes with the typed
+helpers below, or untyped with `client.plugin(server, bot, instance).get("/leaderboard")`
+/ `usePluginQuery(ref, "/leaderboard")`.
+
+### Typed plugin routes
+
+`codi portal init` and `codi portal build` write `src/codi-routes.d.ts` (or run
+`codi portal typegen` yourself): the routes of **every plugin installed in the
+repository** (every plugin instance of every bot, local or from a registry), keyed by
+plugin name then route key, with their access level, their path parameters and the
+query, body and response types of the plugin's route contract (plugin.yaml
+`spec.routes.types`, [docs/plugins.md](plugins.md#typed-routes-the-route-contract)). Routes
+of plugins without a contract are typed as untyped JSON. The file is a module
+augmentation of `PluginRouteRegistry` (`@codi/client`); commit it.
+
+```tsx
+import { useRouteQuery, useRouteMutation } from "@codi/react";
+
+// The instance is found by plugin name in PortalServer.plugins; no instance → idle query.
+const board = useRouteQuery("levels", "GET /leaderboard", { query: { limit: 50 } });
+board.data?.items[0]?.displayName;                       // typed from the levels contract
+const poll = useRouteQuery("polls", "GET /polls/:id", { params: { id } });
+// With the polls contract of docs/plugins.md (the showcase polls has no POST route):
+const vote = useRouteMutation("polls", "POST /polls/:id/votes");
+vote.mutate({ params: { id }, body: { choice: 2 } });
+```
+
+```ts
+const levels = server.plugins.find((p) => p.plugin === "levels");
+if (!levels) return;
+const top = await client.routes("levels", server.key, levels).call("GET /leaderboard");
+client.routes("polls", server.key, polls).url("GET /polls/:id", { params: { id } });
+```
+
+An unknown route, a missing or extra path parameter, a wrong query or body and a wrong use
+of the response are type errors, so a portal build (`tsc --noEmit && vp build`) fails when
+a plugin changes its contract. `codi portal typegen --check` (a step of the generated
+`codi-portal.yml`, which also runs on changes of `plugins/`, `bots/` and `codi.lock`) and
+`codi portal build --check` fail when `codi-routes.d.ts` is out of date with the
+repository's plugins.
+
+A plugin the generated file does not list falls back to the contracts of the official
+plugins (`levels`, `polls`, `tickets`, `onboarding`, `OfficialPluginRoutes` in
+`@codi/client`), else to untyped JSON: the reference portal type-checks in a repository
+without them. The reference portal's own `codi-routes.d.ts` is generated from
+`examples/showcase`, and its `Leaderboard` and `Profile` pages use `useRouteQuery`.
 
 ## 4. Build and serve a custom portal
 
@@ -284,6 +341,19 @@ Considered and **not** chosen:
   code on the runtime's origin, next to the admin session.
 
 Plugins may still ship optional React components (a package imported at build time by the
-portals that want them, so they are reviewed and pinned like any dependency) and typed
-route contracts (like `ticketsApi` / `levelsApi` in `@codi/client`); generating those types
-from `definePlugin({routes})` is planned.
+portals that want them, so they are reviewed and pinned like any dependency). Their route
+types reach the portals through the route contract (`spec.routes.types`), copied by
+`codi portal typegen` into `src/codi-routes.d.ts`.
+
+Considered for the route types and **not** chosen:
+
+- *Importing the plugin sources into the portal* (`typeof import("../plugins/levels/src")`)
+  so that tsc infers the handlers' types: every plugin augments `@codi/sdk`'s
+  `PluginConfig`, so two plugins in one program collide; registry plugins live in a cache
+  outside the repository; and the portal would type-check the plugins' code with its own
+  settings.
+- *JSON Schemas on the routes, converted by Go*: self-contained, but authors would describe
+  their responses twice (TypeScript and JSON Schema).
+
+The contract is plain TypeScript that the plugin's handlers are checked against
+(`defineRoutes<Routes>()`), and a type-only file can be copied anywhere.

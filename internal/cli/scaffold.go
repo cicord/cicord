@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -194,7 +195,7 @@ func newPluginCmd() *cobra.Command {
 		Use:   "plugin",
 		Short: "Create and manage plugins",
 	}
-	var force bool
+	var force, fromNPM bool
 	newCmd := &cobra.Command{
 		Use:   "new <dir>",
 		Short: "Scaffold a TypeScript plugin",
@@ -212,11 +213,20 @@ func newPluginCmd() *cobra.Command {
 			if err := writeSDKTypes(abs); err != nil {
 				return err
 			}
-			for _, f := range files {
+			testFiles, testErr := scaffoldPluginTests(abs, name, force, fromNPM)
+			if testErr != nil && !errors.Is(testErr, errNoSDKTarball) {
+				return testErr
+			}
+			for _, f := range append(files, testFiles...) {
 				rel, _ := filepath.Rel(abs, f)
 				fmt.Fprintln(cmd.OutOrStdout(), "  created", rel)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "  created .codi/codi-sdk.d.ts")
+			if testErr != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nNo unit test setup: %v.\n", testErr)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nUnit tests (Node 24, @codi/sdk/testing):\n    cd %s && npm install && npm test\n", args[0])
+			}
 			where, source := "a bot", "<relative path from bot.yaml to "+args[0]+">"
 			if botFile := findBotFile(abs); botFile != "" {
 				if rel, err := filepath.Rel(filepath.Dir(botFile), abs); err == nil {
@@ -237,6 +247,7 @@ func newPluginCmd() *cobra.Command {
 		},
 	}
 	newCmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
+	newCmd.Flags().BoolVar(&fromNPM, "from-npm", fromNPMDefault(), "depend on @codi/sdk from the npm registry instead of vendoring the embedded tarball")
 	sdkCmd := &cobra.Command{
 		Use:   "sdk-types <plugin-dir>",
 		Short: "Write the @codi/sdk type definitions into <plugin-dir>/.codi for editors and tsc",

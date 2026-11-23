@@ -128,4 +128,25 @@ func TestShowcaseRouteAccess(t *testing.T) {
 	if !strings.Contains(string(res.body), `"items":[]`) {
 		t.Errorf("empty leaderboard = %s", res.body)
 	}
+
+	// Dot segments in {path...} never reach another instance's route: encoded ones are
+	// literal parameter values (no such poll), literal ones are answered by the mux with
+	// a redirect to the cleaned URL, never by the polls instance.
+	for _, p := range []string{
+		"polls/polls/%2E%2E%2F%2E%2E%2Flevels%2Fleaderboard",
+		"polls/polls/%2e%2e",
+		"polls/polls/%2E%2E/%2E%2E/levels/leaderboard",
+		"polls/polls/..%2F..%2Flevels%2Fleaderboard",
+	} {
+		res := viewers["admin"].do("GET", base+p, nil)
+		if res.status != http.StatusNotFound || strings.Contains(string(res.body), "items") {
+			t.Errorf("GET %s = %d %s, want 404 (a literal poll id)", p, res.status, res.body)
+		}
+	}
+	for _, p := range []string{"polls/polls/../../levels/leaderboard", "polls/../levels/leaderboard"} {
+		res := viewers["admin"].do("GET", base+p, nil)
+		if res.status < 300 || res.status >= 400 || strings.Contains(string(res.body), "items") {
+			t.Errorf("GET %s = %d %s, want a redirect to the cleaned path", p, res.status, res.body)
+		}
+	}
 }

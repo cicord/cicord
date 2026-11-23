@@ -3,6 +3,9 @@
  * community portal: keep the shape stable.
  */
 import type { Context, Json, User } from "@codi/sdk";
+import type { LeaderboardEntry } from "./routes.ts";
+
+export type { LeaderboardEntry };
 
 /** XP needed to go from `level` to `level + 1` (the classic 5n² + 50n + 100 curve). */
 export const stepXp = (level: number): number => 5 * level * level + 50 * level + 100;
@@ -45,15 +48,6 @@ export interface Profile {
 
 export interface Standing {
   userId: string;
-  xp: number;
-}
-
-export interface LeaderboardEntry {
-  rank: number;
-  userId: string;
-  displayName: string;
-  avatarUrl: string | null;
-  level: number;
   xp: number;
 }
 

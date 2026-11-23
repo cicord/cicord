@@ -22,3 +22,5 @@ spec:
     - portal.routes             # GET /polls/:id
   config:
     schema: ./config.schema.json
+  routes:
+    types: ./src/routes.ts       # portal contract (codi portal typegen)

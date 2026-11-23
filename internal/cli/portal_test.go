@@ -106,7 +106,7 @@ func TestPortalInit(t *testing.T) {
 		t.Errorf("vite override lost: %v", pj.Pnpm.Overrides)
 	}
 	wf := readFile(t, filepath.Join(repo, ".github/workflows/codi-portal.yml"))
-	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**"]`} {
+	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "codi portal typegen --check --out portal/src/codi-routes.d.ts"} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow misses %q:\n%s", want, wf)
 		}
@@ -149,7 +149,7 @@ func TestEmbeddedKitIsConsistent(t *testing.T) {
 	for _, p := range pkgs {
 		names[p.Name] = true
 	}
-	for _, n := range []string{"@codi/client", "@codi/react", "@codi/ui"} {
+	for _, n := range []string{"@codi/sdk", "@codi/client", "@codi/react", "@codi/ui"} {
 		if !names[n] {
 			t.Errorf("kit misses %s (%v)", n, names)
 		}

@@ -2,9 +2,27 @@
   "name": "@codi/sdk",
   "version": "0.1.0",
   "description": "CODI plugin SDK: authoring types (spec/sdk/codi-sdk.d.ts) and a tiny runtime for unit tests in Node.",
+  "keywords": [
+    "codi",
+    "discord",
+    "discord-bot",
+    "gitops",
+    "plugin",
+    "sdk"
+  ],
+  "homepage": "https://github.com/npjonath/codi/tree/main/packages/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/npjonath/codi/issues"
+  },
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/npjonath/codi.git",
+    "directory": "packages/sdk"
+  },
   "files": [
     "dist",
+    "README.md",
     "LICENSE"
   ],
   "type": "module",
@@ -20,6 +38,10 @@
       "default": "./dist/testing.mjs"
     },
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "vp pack && tsc -p tsconfig.build.json && node scripts/copy-spec-types.mjs",
