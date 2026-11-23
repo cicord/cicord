@@ -55,6 +55,16 @@ func (r *Runtime) botError(key string) string {
 	return "not connected"
 }
 
+// enabledIntents returns the privileged intents enabled for a bot's application, when
+// known (config.LoadOptions.PrivilegedIntents).
+func (r *Runtime) enabledIntents(bot string) (discord.Intents, bool) {
+	v, ok := r.appIntents.Load(bot)
+	if !ok {
+		return 0, false
+	}
+	return v.(discord.Intents), true
+}
+
 func (r *Runtime) bot(key string) *botHost {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -85,16 +95,9 @@ func (r *Runtime) reconcilingBot(repo *config.Repo, server string) *botHost {
 	return nil
 }
 
+// botIntents are the gateway intents requested for a bot (config.Repo.GatewayIntents).
 func botIntents(repo *config.Repo, key string) discord.Intents {
-	names := []string{"Servers"}
-	b := repo.Bots[key]
-	names = append(names, b.Spec.Intents...)
-	for _, in := range repo.Instances {
-		if in.Bot == key {
-			names = append(names, in.Plugin.Manifest.Spec.Intents...)
-		}
-	}
-	intents, _ := discord.ParseIntents(names) // validated by config.Load
+	intents, _ := discord.ParseIntents(repo.GatewayIntents(key)) // validated by config.Load
 	return intents
 }
 
@@ -128,6 +131,21 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 			r.botErrs.Store(key, fmt.Sprintf("token belongs to application %s, bot.yaml says %s", sess.ApplicationID(), b.Spec.ApplicationID))
 			_ = sess.Close(ctx)
 			continue
+		}
+		if fr, ok := sess.(discord.ApplicationFlagsReader); ok {
+			enabled := discord.IntentsFromFlags(fr.ApplicationFlags())
+			r.appIntents.Store(key, enabled)
+			if missing := intents & discord.PrivilegedIntents &^ enabled; missing != 0 {
+				// Discord would close the gateway with 4014: say which toggle to turn on.
+				msg := fmt.Sprintf("the privileged intent(s) %s are not enabled for the application: turn them on in the Discord developer portal (%s → Privileged Gateway Intents), then restart CODI or push a new revision",
+					strings.Join(missing.Names(), ", "), discord.PortalBotURL(b.Spec.ApplicationID))
+				r.botErrs.Store(key, msg)
+				r.log.Error("bot privileged intents not enabled", "bot", key, "missing", strings.Join(missing.Names(), ","), "portal", discord.PortalBotURL(b.Spec.ApplicationID))
+				_ = sess.Close(ctx)
+				continue
+			}
+		} else {
+			r.appIntents.Delete(key)
 		}
 		h := &botHost{rt: r, key: key, tokenHash: th, intents: intents, session: sess, cmdHashes: map[string]string{}}
 		h.routing.Store(&routing{})

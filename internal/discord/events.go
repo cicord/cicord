@@ -62,6 +62,43 @@ type RoleDeleteEvent struct {
 
 type ServerUpdateEvent struct{ Server Server }
 
+// AutoMod rule events need the AutoModerationConfiguration intent.
+type AutoModRuleCreateEvent struct {
+	ServerID string
+	Rule     AutoModRule
+}
+type AutoModRuleUpdateEvent struct {
+	ServerID string
+	Rule     AutoModRule
+}
+type AutoModRuleDeleteEvent struct {
+	ServerID string
+	Rule     AutoModRule
+}
+
+// Expression events need the ServerExpressions intent. Emojis and stickers are
+// reported as the full new list of the server.
+type EmojisUpdateEvent struct {
+	ServerID string
+	Emojis   []Emoji
+}
+type StickersUpdateEvent struct {
+	ServerID string
+	Stickers []Sticker
+}
+type SoundCreateEvent struct {
+	ServerID string
+	Sound    SoundboardSound
+}
+type SoundUpdateEvent struct {
+	ServerID string
+	Sound    SoundboardSound
+}
+type SoundDeleteEvent struct {
+	ServerID string
+	SoundID  string
+}
+
 func (ReadyEvent) isEvent()             {}
 func (MemberJoinEvent) isEvent()        {}
 func (MemberLeaveEvent) isEvent()       {}
@@ -79,6 +116,14 @@ func (RoleCreateEvent) isEvent()        {}
 func (RoleUpdateEvent) isEvent()        {}
 func (RoleDeleteEvent) isEvent()        {}
 func (ServerUpdateEvent) isEvent()      {}
+func (AutoModRuleCreateEvent) isEvent() {}
+func (AutoModRuleUpdateEvent) isEvent() {}
+func (AutoModRuleDeleteEvent) isEvent() {}
+func (EmojisUpdateEvent) isEvent()      {}
+func (StickersUpdateEvent) isEvent()    {}
+func (SoundCreateEvent) isEvent()       {}
+func (SoundUpdateEvent) isEvent()       {}
+func (SoundDeleteEvent) isEvent()       {}
 
 // ServerIDOf returns the server an event belongs to ("" for DMs / global events).
 func ServerIDOf(e Event) string {
@@ -115,6 +160,22 @@ func ServerIDOf(e Event) string {
 		return ev.ServerID
 	case ServerUpdateEvent:
 		return ev.Server.ID
+	case AutoModRuleCreateEvent:
+		return ev.ServerID
+	case AutoModRuleUpdateEvent:
+		return ev.ServerID
+	case AutoModRuleDeleteEvent:
+		return ev.ServerID
+	case EmojisUpdateEvent:
+		return ev.ServerID
+	case StickersUpdateEvent:
+		return ev.ServerID
+	case SoundCreateEvent:
+		return ev.ServerID
+	case SoundUpdateEvent:
+		return ev.ServerID
+	case SoundDeleteEvent:
+		return ev.ServerID
 	}
 	return ""
 }

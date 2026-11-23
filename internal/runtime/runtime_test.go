@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/npjonath/codi/internal/config"
 	"github.com/npjonath/codi/internal/discord"
 	"github.com/npjonath/codi/internal/plugin"
 	"github.com/npjonath/codi/internal/sim"
@@ -27,6 +28,7 @@ type env struct {
 	appID    string
 	bot      discord.User
 	cancel   context.CancelFunc
+	logs     *syncBuffer
 }
 
 func copyTree(t *testing.T, src, dst string) {
@@ -70,10 +72,19 @@ func replaceIn(t *testing.T, file, old, new string) {
 // startExample deploys examples/basic on a simulated Discord.
 func startExample(t *testing.T) *env {
 	t.Helper()
+	return startExampleWith(t, nil)
+}
+
+// startExampleWith is startExample with a hook run on the world before the runtime starts.
+func startExampleWith(t *testing.T, prepare func(w *sim.World, appID string)) *env {
+	t.Helper()
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
 	srv := w.CreateServer("Ma Commu", owner.ID)
 	token, bot, appID := w.CreateBot("Gardien")
+	if prepare != nil {
+		prepare(w, appID)
+	}
 	if _, err := w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator")); err != nil {
 		t.Fatal(err)
 	}
@@ -91,10 +102,12 @@ func startExample(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logs := &syncBuffer{}
+	var out io.Writer = logs
 	if testing.Verbose() {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		out = io.MultiWriter(logs, os.Stderr)
 	}
+	logger := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	rt := New(Options{
 		Source: src, Connector: w, Store: store, Mode: "dev", Simulator: true,
 		Secrets:   func(n string) (string, bool) { return token, n == "DISCORD_TOKEN_MODERATOR" },
@@ -103,7 +116,7 @@ func startExample(t *testing.T) *env {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = rt.Run(ctx); close(done) }()
-	e := &env{t: t, world: w, rt: rt, dir: dir, serverID: srv.ID, appID: appID, bot: bot, cancel: cancel}
+	e := &env{t: t, world: w, rt: rt, dir: dir, serverID: srv.ID, appID: appID, bot: bot, cancel: cancel, logs: logs}
 	t.Cleanup(func() {
 		cancel()
 		<-done
@@ -253,4 +266,60 @@ func TestExampleEndToEnd(t *testing.T) {
 	if r, _ := e.rt.Revision(); r.SHA != rev2.SHA {
 		t.Errorf("invalid revision was activated")
 	}
+}
+
+// TestPrivilegedIntentsFromLiveFlags: the runtime checks the privileged intents against
+// the live application flags. Enabled: no reminder is logged. Missing: the bot is not
+// connected and its status names the intent and the developer portal page.
+func TestPrivilegedIntentsFromLiveFlags(t *testing.T) {
+	t.Run("enabled", func(t *testing.T) {
+		e := startExample(t)
+		if logs := e.logs.String(); strings.Contains(logs, "privileged intent") {
+			t.Errorf("a privileged intent line was logged although every intent is enabled:\n%s", logs)
+		}
+		if st := e.rt.Status(); st.Bots[0].Health != HealthHealthy {
+			t.Errorf("bot status = %+v", st.Bots[0])
+		}
+		// The live check also reaches the validation API (no reminder).
+		_, _, ds, err := e.rt.LoadAndBuild(e.dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range ds {
+			if d.Code == config.CodePrivilegedIntent {
+				t.Errorf("unexpected diagnostic %s", d)
+			}
+		}
+	})
+	t.Run("missing", func(t *testing.T) {
+		e := startExampleWith(t, func(w *sim.World, appID string) {
+			if err := w.SetPrivilegedIntents(appID, discord.MustIntents("MessageContent")); err != nil {
+				t.Fatal(err)
+			}
+		})
+		bs := e.rt.Status().Bots[0]
+		if bs.Health != HealthMissing || !strings.Contains(bs.Message, "ServerMembers") ||
+			!strings.Contains(bs.Message, "https://discord.com/developers/applications/"+e.appID+"/bot") {
+			t.Fatalf("bot status = %+v", bs)
+		}
+		if logs := e.logs.String(); !strings.Contains(logs, "level=ERROR") || !strings.Contains(logs, "bot privileged intents not enabled") {
+			t.Errorf("no error logged:\n%s", logs)
+		}
+		_, _, ds, err := e.rt.LoadAndBuild(e.dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, d := range ds {
+			if d.Code == config.CodePrivilegedIntent {
+				found = true
+				if !strings.Contains(d.Message, "not enabled for the application") || strings.Contains(d.Message, "make sure") {
+					t.Errorf("diagnostic = %s", d)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("no privileged intent diagnostic: %v", ds)
+		}
+	})
 }

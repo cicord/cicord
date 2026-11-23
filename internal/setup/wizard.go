@@ -207,6 +207,9 @@ type Options struct {
 	Activate func(ctx context.Context, repo RepoConfig) (*Activation, error)
 	// Sim is the simulated Discord of `codi dev --sim --setup`.
 	Sim *SimEnv
+	// Download fetches the server's files from the Discord CDN during the import
+	// (default: the simulator's CDN with Sim, HTTP otherwise).
+	Download importer.Downloader
 	// Env looks environment variables up (default os.LookupEnv).
 	Env    func(string) (string, bool)
 	Logger *slog.Logger
@@ -247,6 +250,13 @@ func New(opts Options) *Wizard {
 	}
 	if opts.ActivationTimeout == 0 {
 		opts.ActivationTimeout = 30 * time.Second
+	}
+	if opts.Download == nil {
+		if opts.Sim != nil {
+			opts.Download = opts.Sim.World.Download
+		} else {
+			opts.Download = importer.HTTPDownloader(nil)
+		}
 	}
 	return &Wizard{opts: opts, log: opts.Logger}
 }
@@ -916,7 +926,7 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 			return ImportResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not read the server from Discord.",
 				Hint: "Check that the bot is still in the server (Server step), then try again.", Details: err.Error()}
 		}
-		gen, err := importer.Generate(importer.Options{ServerKey: s.Server.Key, Snapshot: snap})
+		gen, err := importer.Generate(ctx, importer.Options{ServerKey: s.Server.Key, Snapshot: snap, Download: w.opts.Download})
 		if err != nil {
 			return ImportResult{}, err
 		}
@@ -928,6 +938,9 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 			ApplicationID: s.Bot.ApplicationID, SecretRef: s.Bot.SecretRef, Repo: *s.Repo, PublicURL: publicURLForRepo(w.opts)}.Generate()
 		if err != nil {
 			return ImportResult{}, err
+		}
+		for p, data := range gen.FileMap() {
+			files[p] = data
 		}
 		res.Files = catalog.SortedPaths(files)
 		tmp, err := os.MkdirTemp("", "codi-import-*")
@@ -944,6 +957,9 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 				Message: "The imported configuration does not validate (please report this bug).", Diagnostics: ds.Errors(), Details: ds.Err().Error()}
 		}
 		if err := replaceGitMappings(ctx, w.opts.Store, gen.Key, gen.Resources); err != nil {
+			return ImportResult{}, err
+		}
+		if err := gen.RecordFiles(ctx, w.opts.Store.KV("reconcile:"+gen.Key)); err != nil {
 			return ImportResult{}, err
 		}
 		rec := reconcile.New(reconcile.Options{Server: repo.Servers[gen.Key], RepoRoot: tmp, Client: sess,

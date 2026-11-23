@@ -178,15 +178,6 @@ func (g *gen) importParity() {
 		}
 		g.welcomeScreen = spec
 	}
-	if n := len(snap.Emojis); n > 0 {
-		g.warn("%d emoji(s) not imported: export their images to the repository and declare them under spec.emojis", n)
-	}
-	if n := len(snap.Stickers); n > 0 {
-		g.warn("%d sticker(s) not imported: export their files to the repository and declare them under spec.stickers", n)
-	}
-	if n := len(snap.Sounds); n > 0 {
-		g.warn("%d soundboard sound(s) not imported: export their files to the repository and declare them under spec.soundboard", n)
-	}
 }
 
 func quoteName(s string) string { return "\"" + s + "\"" }

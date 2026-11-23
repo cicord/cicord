@@ -292,7 +292,7 @@ func (w *World) createAutoMod(a actor, serverID string, r discord.AutoModRule, r
 	r.ID = w.newID()
 	s.automod[r.ID] = &r
 	w.record(a, "CreateAutoModRule", serverID, r.ID, reason, nil)
-	w.changed()
+	w.emit(discord.AutoModRuleCreateEvent{ServerID: serverID, Rule: cloneAutoMod(r)})
 	return cloneAutoMod(r), nil
 }
 
@@ -324,7 +324,7 @@ func (w *World) updateAutoMod(a actor, serverID, ruleID string, r discord.AutoMo
 	r.ID = ruleID
 	s.automod[ruleID] = &r
 	w.record(a, "UpdateAutoModRule", serverID, ruleID, reason, nil)
-	w.changed()
+	w.emit(discord.AutoModRuleUpdateEvent{ServerID: serverID, Rule: cloneAutoMod(r)})
 	return cloneAutoMod(r), nil
 }
 
@@ -345,9 +345,10 @@ func (w *World) deleteAutoMod(a actor, serverID, ruleID, reason string) error {
 	if err != nil {
 		return w.record(a, "DeleteAutoModRule", serverID, ruleID, reason, err)
 	}
+	old := cloneAutoMod(*s.automod[ruleID])
 	delete(s.automod, ruleID)
 	w.record(a, "DeleteAutoModRule", serverID, ruleID, reason, nil)
-	w.changed()
+	w.emit(discord.AutoModRuleDeleteEvent{ServerID: serverID, Rule: old})
 	return nil
 }
 
@@ -678,8 +679,9 @@ func (w *World) createEmoji(a actor, serverID string, p discord.EmojiParams, rea
 	}
 	e.ID = w.newID()
 	s.emojis[e.ID] = &e
+	w.cdnPut(e.ImageURL(), p.Image)
 	w.record(a, "CreateEmoji", serverID, e.ID, reason, nil)
-	w.changed()
+	w.emit(discord.EmojisUpdateEvent{ServerID: serverID, Emojis: sortedEmojis(s)})
 	return cloneEmoji(e), nil
 }
 
@@ -718,7 +720,7 @@ func (w *World) updateEmoji(a actor, serverID, emojiID string, p discord.EmojiPa
 		e.RoleIDs = append([]string{}, *p.RoleIDs...)
 	}
 	w.record(a, "UpdateEmoji", serverID, emojiID, reason, nil)
-	w.changed()
+	w.emit(discord.EmojisUpdateEvent{ServerID: serverID, Emojis: sortedEmojis(s)})
 	return cloneEmoji(*e), nil
 }
 
@@ -737,7 +739,7 @@ func (w *World) deleteEmoji(a actor, serverID, emojiID, reason string) error {
 	}
 	delete(s.emojis, emojiID)
 	w.record(a, "DeleteEmoji", serverID, emojiID, reason, nil)
-	w.changed()
+	w.emit(discord.EmojisUpdateEvent{ServerID: serverID, Emojis: sortedEmojis(s)})
 	return nil
 }
 
@@ -813,8 +815,9 @@ func (w *World) createSticker(a actor, serverID string, p discord.StickerParams,
 	}
 	st := discord.Sticker{ID: w.newID(), Name: p.Name, Description: p.Description, Tags: p.Tags, Format: f}
 	s.stickers[st.ID] = &st
+	w.cdnPut(st.FileURL(), p.File)
 	w.record(a, "CreateSticker", serverID, st.ID, reason, nil)
-	w.changed()
+	w.emit(discord.StickersUpdateEvent{ServerID: serverID, Stickers: sortedStickers(s)})
 	return st, nil
 }
 
@@ -840,7 +843,7 @@ func (w *World) updateSticker(a actor, serverID, stickerID string, p discord.Sti
 	}
 	st.Name, st.Description, st.Tags = p.Name, p.Description, p.Tags
 	w.record(a, "UpdateSticker", serverID, stickerID, reason, nil)
-	w.changed()
+	w.emit(discord.StickersUpdateEvent{ServerID: serverID, Stickers: sortedStickers(s)})
 	return *st, nil
 }
 
@@ -859,7 +862,7 @@ func (w *World) deleteSticker(a actor, serverID, stickerID, reason string) error
 	}
 	delete(s.stickers, stickerID)
 	w.record(a, "DeleteSticker", serverID, stickerID, reason, nil)
-	w.changed()
+	w.emit(discord.StickersUpdateEvent{ServerID: serverID, Stickers: sortedStickers(s)})
 	return nil
 }
 
@@ -925,8 +928,9 @@ func (w *World) createSound(a actor, serverID string, p discord.SoundParams, rea
 	}
 	x := discord.SoundboardSound{ID: w.newID(), Name: p.Name, Volume: p.Volume, Emoji: p.Emoji}
 	s.sounds[x.ID] = &x
+	w.cdnPut(x.FileURL(), p.Sound)
 	w.record(a, "CreateSoundboardSound", serverID, x.ID, reason, nil)
-	w.changed()
+	w.emit(discord.SoundCreateEvent{ServerID: serverID, Sound: x})
 	return x, nil
 }
 
@@ -952,7 +956,7 @@ func (w *World) updateSound(a actor, serverID, soundID string, p discord.SoundPa
 	}
 	x.Name, x.Volume, x.Emoji = p.Name, p.Volume, p.Emoji
 	w.record(a, "UpdateSoundboardSound", serverID, soundID, reason, nil)
-	w.changed()
+	w.emit(discord.SoundUpdateEvent{ServerID: serverID, Sound: *x})
 	return *x, nil
 }
 
@@ -971,7 +975,7 @@ func (w *World) deleteSound(a actor, serverID, soundID, reason string) error {
 	}
 	delete(s.sounds, soundID)
 	w.record(a, "DeleteSoundboardSound", serverID, soundID, reason, nil)
-	w.changed()
+	w.emit(discord.SoundDeleteEvent{ServerID: serverID, SoundID: soundID})
 	return nil
 }
 

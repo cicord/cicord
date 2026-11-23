@@ -12,13 +12,19 @@
 // managed by an integration (name, color, hoist, mentionable, permissions) with the
 // hierarchy, categories and channels (name, type, category, position, topic, nsfw,
 // slowmode, bitrate, user limit, permission overwrites; a channel whose overwrites equal
-// its category's is left synced). Not imported: the server and role icons, threads,
-// channel types CODI does not manage, and overwrites targeting managed roles (they
-// cannot be referenced by key: a warning is returned for each).
+// its category's is left synced), the parity blocks (AutoMod, onboarding, widget,
+// welcome screen) and, with a Downloader, the files: the server icon, banner and invite
+// splash, role icons, emojis, stickers and soundboard sounds are downloaded from the
+// Discord CDN into servers/assets/<key>/ (Result.Files) and referenced from the YAML;
+// Result.RecordFiles records them for the reconciler so that the first plan is empty.
+// Not imported: threads, channel types CODI does not manage, managed emojis, files over
+// Discord's upload limits, and overwrites targeting managed roles (they cannot be
+// referenced by key: a warning is returned for each).
 package importer
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -46,6 +52,9 @@ type Options struct {
 	ServerKey string
 	// Snapshot is the live state (reconcile.Fetch).
 	Snapshot reconcile.Snapshot
+	// Download fetches the files (server and role images, expressions) from the
+	// Discord CDN. nil: they are not imported (a warning says what to export by hand).
+	Download Downloader
 }
 
 // Result is a generated server.
@@ -57,6 +66,9 @@ type Result struct {
 	Server config.ServerSpec
 	// Resources are the resource map entries (owner git) to record.
 	Resources []state.Resource
+	// Files are the downloaded files the YAML references (to write into the
+	// repository, then record with RecordFiles).
+	Files []File
 	// Warnings describe what could not be imported.
 	Warnings []string
 }
@@ -64,8 +76,8 @@ type Result struct {
 // defaultBitrate is Discord's default voice bitrate: not written to keep files short.
 const defaultBitrate = 64000
 
-// Generate builds the Server YAML of a live snapshot.
-func Generate(o Options) (*Result, error) {
+// Generate builds the Server YAML of a live snapshot (ctx bounds the downloads).
+func Generate(ctx context.Context, o Options) (*Result, error) {
 	snap := o.Snapshot
 	srv := snap.Server
 	if srv.ID == "" {
@@ -79,11 +91,12 @@ func Generate(o Options) (*Result, error) {
 		return nil, fmt.Errorf("importer: %q is not a valid server key", key)
 	}
 	g := &gen{res: &Result{Key: key}, serverID: srv.ID, roleKeys: map[string]string{}, chanKeys: map[string]string{},
-		roleNS: newNamespace(), chanNS: newNamespace(), snap: snap}
+		roleNS: newNamespace(), chanNS: newNamespace(), snap: snap, ctx: ctx, dl: o.Download}
 	g.importRoles()
 	g.importChannels()
 	g.importProfile()
 	g.importParity()
+	g.importExpressions()
 	sp := g.spec()
 	g.res.Server = sp
 	doc, err := g.document(sp)
@@ -98,6 +111,8 @@ type gen struct {
 	res      *Result
 	serverID string
 	snap     reconcile.Snapshot
+	ctx      context.Context
+	dl       Downloader
 
 	roleNS, chanNS *namespace
 	roleKeys       map[string]string // role ID → key
@@ -119,6 +134,11 @@ type gen struct {
 	automod       map[string]config.AutoModSpec
 	onboarding    *config.OnboardingSpec
 	welcomeScreen *config.WelcomeScreenSpec
+
+	emojiOrder, stickerOrder, soundOrder []string
+	emojis                               map[string]config.EmojiSpec
+	stickers                             map[string]config.StickerSpec
+	sounds                               map[string]config.SoundboardSpec
 }
 
 func (g *gen) warn(format string, args ...any) {
@@ -165,7 +185,8 @@ func (g *gen) importRoles() {
 		if r.UnicodeEmoji != "" {
 			spec.Emoji = r.UnicodeEmoji
 		} else if r.IconURL != "" {
-			g.warn("role %q has an icon image: not imported (download it and set roles.%s.icon to its path)", r.Name, k)
+			spec.Icon = g.download("role:"+k, r.IconURL, "roles/"+k, maxRoleIcon, sniffImage,
+				fmt.Sprintf("the icon of role %q", r.Name), "roles."+k+".icon")
 		}
 		g.roles[k] = spec
 		g.record(state.KindRole, k, r.ID)
@@ -416,15 +437,9 @@ func (g *gen) importProfile() {
 			g.afk = a
 		}
 	}
-	if s.IconURL != "" {
-		g.warn("the server icon is not imported: download it and set profile.icon to its path")
-	}
-	if s.BannerURL != "" {
-		g.warn("the server banner is not imported: download it and set profile.banner to its path")
-	}
-	if s.SplashURL != "" {
-		g.warn("the invite splash is not imported: download it and set profile.splash to its path")
-	}
+	p.Icon = g.download("icon", s.IconURL, "icon", maxServerImage, sniffImage, "the server icon", "profile.icon")
+	p.Banner = g.download("banner", s.BannerURL, "banner", maxServerImage, sniffImage, "the server banner", "profile.banner")
+	p.Splash = g.download("splash", s.SplashURL, "splash", maxServerImage, sniffImage, "the invite splash", "profile.splash")
 	g.profileV = p
 }
 
@@ -440,6 +455,7 @@ func (g *gen) spec() config.ServerSpec {
 	if len(g.automod) > 0 {
 		sp.AutoMod = g.automod
 	}
+	sp.Emojis, sp.Stickers, sp.Soundboard = g.emojis, g.stickers, g.sounds
 	return sp
 }
 
@@ -528,6 +544,11 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 		if p.Description != "" {
 			pm.add("description", str(p.Description))
 		}
+		for _, f := range [][2]string{{"icon", p.Icon}, {"banner", p.Banner}, {"splash", p.Splash}} {
+			if f[1] != "" {
+				pm.add(f[0], str(f[1]))
+			}
+		}
 		if p.VerificationLevel != "" {
 			pm.add("verificationLevel", str(p.VerificationLevel))
 		}
@@ -585,6 +606,9 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 			}
 			if r.Emoji != "" {
 				e.add("emoji", quoted(r.Emoji))
+			}
+			if r.Icon != "" {
+				e.add("icon", str(r.Icon))
 			}
 			if r.Hoist {
 				e.add("hoist", boolean(true))
@@ -661,6 +685,27 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 	}
 	if sp.WelcomeScreen != nil {
 		spec.add("welcomeScreen", encode(sp.WelcomeScreen))
+	}
+	if len(g.emojiOrder) > 0 {
+		m := newMap()
+		for _, k := range g.emojiOrder {
+			m.add(k, encode(sp.Emojis[k]))
+		}
+		spec.add("emojis", m.n)
+	}
+	if len(g.stickerOrder) > 0 {
+		m := newMap()
+		for _, k := range g.stickerOrder {
+			m.add(k, encode(sp.Stickers[k]))
+		}
+		spec.add("stickers", m.n)
+	}
+	if len(g.soundOrder) > 0 {
+		m := newMap()
+		for _, k := range g.soundOrder {
+			m.add(k, encode(sp.Soundboard[k]))
+		}
+		spec.add("soundboard", m.n)
 	}
 	root.add("spec", spec.n)
 

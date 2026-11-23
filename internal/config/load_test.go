@@ -56,7 +56,8 @@ func TestLoadExample(t *testing.T) {
 	// privileged intent warning
 	var warned bool
 	for _, d := range ds {
-		if d.Severity == SeverityWarning && strings.Contains(d.Message, "ServerMembers") {
+		if d.Severity == SeverityWarning && d.Code == CodePrivilegedIntent && strings.Contains(d.Message, "ServerMembers") &&
+			strings.Contains(d.Message, "make sure it is enabled") {
 			warned = true
 		}
 	}

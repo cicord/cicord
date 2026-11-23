@@ -169,3 +169,59 @@ describe("layout", () => {
     expect(document.body.textContent).not.toMatch(/_errors/);
   });
 });
+
+describe("server switcher while the status loads", () => {
+  // Holds GET /status until release() (a deep link opened before the status is known).
+  async function startHeld(path: string) {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const runtime = createMockRuntime({ latency: 0, persist: false });
+    const fetch: FetchLike = async (input, init) => {
+      if (new URL(input, window.location.origin).pathname.endsWith("/api/v1/status")) await held;
+      return runtime.fetch(input, init);
+    };
+    const config: AdminConfig = {
+      client: createCodiClient({ fetch: watch401(fetch) }),
+      loginUrl: "/auth/login",
+      mock: true,
+    };
+    window.history.replaceState(null, "", `${import.meta.env.BASE_URL.replace(/\/$/, "")}${path}`);
+    render(<App config={config} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Owner/ }, { timeout: 3000 }));
+    const nav = await screen.findByRole("complementary", { name: "Main navigation" });
+    return { release, nav };
+  }
+
+  test("a deep link shows placeholders and the server name, never the raw key", async () => {
+    const { release, nav } = await startHeld("/servers/ma-commu/store");
+    const switcher = within(nav).getByRole("button", { name: /^Server: Ma Commu/ });
+    expect(switcher.getAttribute("aria-busy")).toBe("true");
+    expect(switcher.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
+    expect(switcher.textContent).toContain("Ma Commu");
+    expect(switcher.textContent).not.toContain("ma-commu");
+    expect(switcher.textContent).not.toContain("Pick a server");
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(crumbs).getByText("Ma Commu")).toBeTruthy();
+
+    release();
+    await waitFor(() => expect(switcher.getAttribute("aria-busy")).toBeNull());
+    expect(switcher.querySelectorAll('[data-slot="skeleton"]').length).toBe(0);
+    expect(switcher.textContent).not.toContain("Pick a server");
+  });
+
+  test("an unknown server: placeholders while loading, then Pick a server", async () => {
+    const { release, nav } = await startHeld("/servers/elsewhere/plan");
+    const switcher = within(nav).getByRole("button", { name: /^Server: Loading server/ });
+    expect(switcher.getAttribute("aria-busy")).toBe("true");
+    expect(switcher.textContent).not.toContain("elsewhere");
+    expect(switcher.textContent).not.toContain("Pick a server");
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(crumbs).getByRole("status").textContent).toBe("Loading server…");
+
+    release();
+    await waitFor(() => expect(switcher.textContent).toContain("Pick a server"));
+    expect(switcher.getAttribute("aria-busy")).toBeNull();
+    expect(within(crumbs).queryByRole("status")).toBeNull();
+  });
+});

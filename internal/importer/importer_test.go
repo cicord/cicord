@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -59,7 +60,7 @@ func TestGenerate(t *testing.T) {
 				Overwrites: []discord.Overwrite{{ID: "11", Type: discord.OverwriteRole, Allow: discord.MustPermissions("Connect")}}},
 		},
 	}
-	res, err := Generate(Options{Snapshot: snap})
+	res, err := Generate(context.Background(), Options{Snapshot: snap})
 	if err != nil {
 		t.Fatal(err)
 	}

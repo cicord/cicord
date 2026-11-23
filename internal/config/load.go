@@ -14,6 +14,8 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
+
+	"github.com/npjonath/codi/internal/discord"
 )
 
 // Repo is a loaded CODI repository.
@@ -64,6 +66,10 @@ type LoadOptions struct {
 	EngineVersion string
 	// Resolver for registry plugins; nil makes registry references an error.
 	Resolver PluginResolver
+	// PrivilegedIntents reports the privileged intents enabled for a bot's application
+	// when they are known (the runtime reads the live application flags). When nil or
+	// unknown, each privileged intent a plugin uses gets a reminder warning.
+	PrivilegedIntents func(bot string) (discord.Intents, bool)
 }
 
 // Load reads and validates the repository rooted at dir. The returned Repo is non-nil
@@ -380,6 +386,35 @@ func (l *loader) checkUniqueIDs(repo *Repo) {
 
 // ───────────────────────────────────────────────────────────── bot checks
 
+// checkPrivilegedIntents reports the privileged intents a plugin instance uses: a
+// reminder when the application flags are unknown (offline validation), nothing when
+// they are enabled, a warning when the live flags say one is not enabled.
+func (l *loader) checkPrivilegedIntents(b *Bot, botKey, path string, line int, lp *LoadedPlugin) {
+	var enabled discord.Intents
+	known := false
+	if l.opts.PrivilegedIntents != nil {
+		enabled, known = l.opts.PrivilegedIntents(botKey)
+	}
+	for _, intent := range lp.Manifest.Spec.Intents {
+		in, err := discord.ParseIntents([]string{intent})
+		if err != nil || in&discord.PrivilegedIntents == 0 {
+			continue
+		}
+		var msg string
+		switch {
+		case !known:
+			msg = fmt.Sprintf("plugin %q uses the privileged intent %s: make sure it is enabled in the Discord developer portal (Bot → Privileged Gateway Intents)",
+				lp.Manifest.Metadata.Name, intent)
+		case !enabled.Has(in):
+			msg = fmt.Sprintf("plugin %q uses the privileged intent %s, which is not enabled for the application: turn it on in the Discord developer portal (%s → Privileged Gateway Intents)",
+				lp.Manifest.Metadata.Name, intent, discord.PortalBotURL(b.Spec.ApplicationID))
+		default:
+			continue
+		}
+		l.sink.ds = append(l.sink.ds, Diagnostic{Severity: SeverityWarning, File: b.File, Line: line, Path: path, Code: CodePrivilegedIntent, Message: msg})
+	}
+}
+
 func (l *loader) checkBots(repo *Repo) {
 	for _, bk := range sortedKeys(repo.Bots) {
 		b := repo.Bots[bk]
@@ -422,12 +457,7 @@ func (l *loader) checkBots(repo *Repo) {
 				l.sink.errorf(b.File, doc.lineOf(base+"/grants"), base+"/grants",
 					"plugin %q requests capabilities that are not granted: %s", lp.Manifest.Metadata.Name, strings.Join(missing, ", "))
 			}
-			for _, intent := range lp.Manifest.Spec.Intents {
-				if intent == "ServerMembers" || intent == "ServerPresences" || intent == "MessageContent" {
-					l.sink.warnf(b.File, doc.lineOf(base), base,
-						"plugin %q uses the privileged intent %s: enable it in the Discord developer portal", lp.Manifest.Metadata.Name, intent)
-				}
-			}
+			l.checkPrivilegedIntents(b, bk, base, doc.lineOf(base), lp)
 
 			// servers of this instance
 			servers := b.Spec.Servers

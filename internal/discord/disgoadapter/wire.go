@@ -24,7 +24,8 @@ type wireUser struct {
 }
 
 type wireApplication struct {
-	ID string `json:"id"`
+	ID    string `json:"id"`
+	Flags int    `json:"flags"`
 }
 
 type wireMember struct {
@@ -244,6 +245,27 @@ type wireSound struct {
 
 type wireSoundList struct {
 	Items []wireSound `json:"items"`
+}
+
+// Gateway payloads of the expression events.
+type wireEmojisUpdate struct {
+	GuildID string           `json:"guild_id"`
+	Emojis  []wireGuildEmoji `json:"emojis"`
+}
+
+type wireStickersUpdate struct {
+	GuildID  string        `json:"guild_id"`
+	Stickers []wireSticker `json:"stickers"`
+}
+
+type wireSoundEvent struct {
+	wireSound
+	GuildID string `json:"guild_id"`
+}
+
+type wireSoundsUpdate struct {
+	GuildID string      `json:"guild_id"`
+	Sounds  []wireSound `json:"soundboard_sounds"`
 }
 
 type wireEmbedField struct {

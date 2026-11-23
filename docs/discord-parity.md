@@ -84,6 +84,14 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | Stickers | ✅ `stickers: {key: {name, description, emoji, file}}` | |
 | Soundboard sounds | ✅ `soundboard: {key: {name, sound, volume, emoji}}` | |
 
+`codi import` (and the setup wizard's import) downloads the server icon, banner and invite
+splash, role icons, emojis (GIF when animated), stickers and soundboard sounds from the
+Discord CDN into `servers/assets/<server>/` and records them as uploaded, so the first
+plan is empty. Files over Discord's upload limits and managed emojis are reported and
+skipped. Hand edits of managed AutoMod rules, emojis, stickers and sounds reach the
+reconciler through the gateway (`AUTO_MODERATION_RULE_*`, `GUILD_EMOJIS_UPDATE`,
+`GUILD_STICKERS_UPDATE`, `GUILD_SOUNDBOARD_SOUND_*`) and trigger selfHeal.
+
 ## Moderation
 | Discord setting | CODI | Notes |
 |---|---|---|

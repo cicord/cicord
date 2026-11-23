@@ -105,7 +105,7 @@ func (c *connector) Connect(ctx context.Context, token string) (discord.Session,
 		return nil, err
 	}
 	s.self = userFromWire(me)
-	s.appID = app.ID
+	s.appID, s.appFlags = app.ID, app.Flags
 	return s, nil
 }
 
@@ -116,8 +116,9 @@ type session struct {
 	logger *slog.Logger
 	rest   rest.Client
 
-	self  discord.User
-	appID string
+	self     discord.User
+	appID    string
+	appFlags int
 
 	members *memberCache
 
@@ -130,7 +131,10 @@ type session struct {
 	closed   bool
 }
 
-var _ discord.Session = (*session)(nil)
+var (
+	_ discord.Session                = (*session)(nil)
+	_ discord.ApplicationFlagsReader = (*session)(nil)
+)
 
 func newSession(cfg config, token string) *session {
 	logger := cfg.logger.With(slog.String("component", "discord"))
@@ -163,6 +167,9 @@ func (s *session) Self() discord.User {
 	return s.self
 }
 func (s *session) ApplicationID() string { return s.appID }
+
+// ApplicationFlags are the application flags read by Connect (privileged intents).
+func (s *session) ApplicationFlags() int { return s.appFlags }
 
 // do performs one REST call through disgo's client (which blocks on rate limits
 // and retries 429s) and maps the error.
