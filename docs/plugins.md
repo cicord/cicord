@@ -185,7 +185,12 @@ plugin that only needs who posted and when (flood protection, ticket activity) d
 | `reactionAdd`, `reactionRemove` | `ServerMessageReactions` |
 
 A bot connects with the union of its plugins' intents, plus `spec.intents` and what the
-reconciler needs. Privileged intents must also be enabled in the Discord developer portal.
+reconciler needs (`AutoModerationConfiguration` when a server it lists declares
+`spec.automod`, `ServerExpressions` for emojis, stickers and soundboard sounds, so that
+hand edits of those reach selfHeal). Privileged intents must also be enabled in the Discord
+developer portal: the runtime reads the application flags when the bot connects and, when
+one is missing, does not open the gateway and reports which toggle to turn on in the bot
+status.
 
 ## 4. Configuration
 

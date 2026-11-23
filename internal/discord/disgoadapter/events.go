@@ -209,6 +209,71 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 			return nil, err
 		}
 		return []discord.Event{discord.RoleDeleteEvent{ServerID: r.GuildID, RoleID: r.RoleID}}, nil
+
+	case "AUTO_MODERATION_RULE_CREATE", "AUTO_MODERATION_RULE_UPDATE", "AUTO_MODERATION_RULE_DELETE":
+		var r wireAutoModRule
+		if err := json.Unmarshal(d, &r); err != nil {
+			return nil, err
+		}
+		if r.CreatorID == autoModSystemUserID {
+			return nil, nil // placeholder rule, ignored like ListAutoModRules does
+		}
+		rule := autoModRuleFromWire(r)
+		switch t {
+		case "AUTO_MODERATION_RULE_CREATE":
+			return []discord.Event{discord.AutoModRuleCreateEvent{ServerID: r.GuildID, Rule: rule}}, nil
+		case "AUTO_MODERATION_RULE_UPDATE":
+			return []discord.Event{discord.AutoModRuleUpdateEvent{ServerID: r.GuildID, Rule: rule}}, nil
+		}
+		return []discord.Event{discord.AutoModRuleDeleteEvent{ServerID: r.GuildID, Rule: rule}}, nil
+
+	case "GUILD_EMOJIS_UPDATE":
+		var u wireEmojisUpdate
+		if err := json.Unmarshal(d, &u); err != nil {
+			return nil, err
+		}
+		emojis := make([]discord.Emoji, 0, len(u.Emojis))
+		for _, e := range u.Emojis {
+			emojis = append(emojis, emojiFromGuildWire(e))
+		}
+		return []discord.Event{discord.EmojisUpdateEvent{ServerID: u.GuildID, Emojis: emojis}}, nil
+
+	case "GUILD_STICKERS_UPDATE":
+		var u wireStickersUpdate
+		if err := json.Unmarshal(d, &u); err != nil {
+			return nil, err
+		}
+		stickers := make([]discord.Sticker, 0, len(u.Stickers))
+		for _, st := range u.Stickers {
+			stickers = append(stickers, stickerFromWire(st))
+		}
+		return []discord.Event{discord.StickersUpdateEvent{ServerID: u.GuildID, Stickers: stickers}}, nil
+
+	case "GUILD_SOUNDBOARD_SOUND_CREATE", "GUILD_SOUNDBOARD_SOUND_UPDATE":
+		var e wireSoundEvent
+		if err := json.Unmarshal(d, &e); err != nil {
+			return nil, err
+		}
+		if t == "GUILD_SOUNDBOARD_SOUND_CREATE" {
+			return []discord.Event{discord.SoundCreateEvent{ServerID: e.GuildID, Sound: soundFromWire(e.wireSound)}}, nil
+		}
+		return []discord.Event{discord.SoundUpdateEvent{ServerID: e.GuildID, Sound: soundFromWire(e.wireSound)}}, nil
+	case "GUILD_SOUNDBOARD_SOUND_DELETE":
+		var e wireSoundEvent
+		if err := json.Unmarshal(d, &e); err != nil {
+			return nil, err
+		}
+		return []discord.Event{discord.SoundDeleteEvent{ServerID: e.GuildID, SoundID: e.SoundID}}, nil
+	case "GUILD_SOUNDBOARD_SOUNDS_UPDATE":
+		var u wireSoundsUpdate
+		if err := json.Unmarshal(d, &u); err != nil {
+			return nil, err
+		}
+		out := make([]discord.Event, 0, len(u.Sounds))
+		for _, x := range u.Sounds {
+			out = append(out, discord.SoundUpdateEvent{ServerID: u.GuildID, Sound: soundFromWire(x)})
+		}
+		return out, nil
 	}
 	return nil, nil
 }

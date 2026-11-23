@@ -221,6 +221,8 @@ var (
 	intentDMs             = discord.MustIntents("DirectMessages")
 	intentDMReactions     = discord.MustIntents("DirectMessageReactions")
 	intentMessageContent  = discord.MustIntents("MessageContent")
+	intentAutoModConfig   = discord.MustIntents("AutoModerationConfiguration")
+	intentExpressions     = discord.MustIntents("ServerExpressions")
 	permView              = discord.MustPermissions("ViewChannel")
 	permAdmin             = discord.MustPermissions("Administrator")
 	permReadHistory       = discord.MustPermissions("ReadMessageHistory")
@@ -347,6 +349,22 @@ func (w *World) filterFor(s *Session, ev discord.Event) (discord.Event, bool) {
 		return discord.ChannelDeleteEvent{Channel: cloneChannel(e.Channel)}, has(intentServers)
 	case discord.RoleCreateEvent, discord.RoleUpdateEvent, discord.RoleDeleteEvent, discord.ServerUpdateEvent:
 		return e, has(intentServers)
+	case discord.AutoModRuleCreateEvent:
+		return discord.AutoModRuleCreateEvent{ServerID: e.ServerID, Rule: cloneAutoMod(e.Rule)}, has(intentAutoModConfig)
+	case discord.AutoModRuleUpdateEvent:
+		return discord.AutoModRuleUpdateEvent{ServerID: e.ServerID, Rule: cloneAutoMod(e.Rule)}, has(intentAutoModConfig)
+	case discord.AutoModRuleDeleteEvent:
+		return discord.AutoModRuleDeleteEvent{ServerID: e.ServerID, Rule: cloneAutoMod(e.Rule)}, has(intentAutoModConfig)
+	case discord.EmojisUpdateEvent:
+		emojis := make([]discord.Emoji, 0, len(e.Emojis))
+		for _, x := range e.Emojis {
+			emojis = append(emojis, cloneEmoji(x))
+		}
+		return discord.EmojisUpdateEvent{ServerID: e.ServerID, Emojis: emojis}, has(intentExpressions)
+	case discord.StickersUpdateEvent:
+		return discord.StickersUpdateEvent{ServerID: e.ServerID, Stickers: append([]discord.Sticker{}, e.Stickers...)}, has(intentExpressions)
+	case discord.SoundCreateEvent, discord.SoundUpdateEvent, discord.SoundDeleteEvent:
+		return e, has(intentExpressions)
 	}
 	return nil, false
 }

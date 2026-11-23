@@ -142,6 +142,7 @@
 // # Drift and selfHeal
 //
 // Drift returns one entry per differing field of the current plan (spec/api.md §3).
-// HandleEvent marks drift for role/channel events on git-owned resources, @everyone and
-// server updates; with syncPolicy.selfHeal it schedules a debounced Sync.
+// HandleEvent marks drift for role, channel, AutoMod rule, emoji, sticker and
+// soundboard sound events on git-owned resources, @everyone and server updates; with
+// syncPolicy.selfHeal it schedules a debounced Sync.
 package reconcile

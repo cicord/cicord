@@ -95,16 +95,9 @@ func (r *Runtime) reconcilingBot(repo *config.Repo, server string) *botHost {
 	return nil
 }
 
+// botIntents are the gateway intents requested for a bot (config.Repo.GatewayIntents).
 func botIntents(repo *config.Repo, key string) discord.Intents {
-	names := []string{"Servers"}
-	b := repo.Bots[key]
-	names = append(names, b.Spec.Intents...)
-	for _, in := range repo.Instances {
-		if in.Bot == key {
-			names = append(names, in.Plugin.Manifest.Spec.Intents...)
-		}
-	}
-	intents, _ := discord.ParseIntents(names) // validated by config.Load
+	intents, _ := discord.ParseIntents(repo.GatewayIntents(key)) // validated by config.Load
 	return intents
 }
 
