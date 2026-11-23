@@ -107,7 +107,11 @@ export default definePlugin({
       if (added.length > 0) parts.push(`+ ${roleList(added)}`);
       if (removed.length > 0) parts.push(`− ${roleList(removed)}`);
       if (parts.length > 0)
-        await record(ctx, { group: "members", icon: "🎭", text: `${who} roles: ${parts.join(" ")}` });
+        await record(ctx, {
+          group: "members",
+          icon: "🎭",
+          text: `${who} roles: ${parts.join(" ")}`,
+        });
     },
 
     // Only to know who wrote a message that gets deleted later (no content is read).
@@ -191,8 +195,7 @@ export default definePlugin({
     sweep: {
       cron: "@every 1m",
       async run(ctx) {
-        if (ctx.config.batchSeconds > 0)
-          await flush(ctx, (ctx.config.batchSeconds + 60) * 1000);
+        if (ctx.config.batchSeconds > 0) await flush(ctx, (ctx.config.batchSeconds + 60) * 1000);
       },
     },
   },

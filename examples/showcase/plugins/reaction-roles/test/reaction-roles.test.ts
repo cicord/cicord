@@ -40,7 +40,11 @@ const panels = [
     name: "games",
     channel: "roles",
     style: "reactions",
-    options: [{ role: "chess", emoji: "♟️" }, { role: "go", emoji: "<a:go:223456789012345678>" }, { role: "news" }],
+    options: [
+      { role: "chess", emoji: "♟️" },
+      { role: "go", emoji: "<a:go:223456789012345678>" },
+      { role: "news" },
+    ],
   },
 ];
 
@@ -128,7 +132,10 @@ describe("panels", () => {
       ...(t.ctx.config.panels[0] as object),
       title: "Colours",
     };
-    const r = await runCommand(plugin, t, "role-panel", { user: "1", options: { panel: "colors" } });
+    const r = await runCommand(plugin, t, "role-panel", {
+      user: "1",
+      options: { panel: "colors" },
+    });
     expect(r.replies).toEqual(["**colors**: updated in <#channel-roles>."]);
     expect(t.edits).toHaveLength(1);
     expect(t.edits[0]!.id).toBe(first.id);
@@ -147,7 +154,10 @@ describe("panels", () => {
       ...(t.ctx.config.panels[0] as object),
       channel: "general",
     };
-    const moved = await runCommand(plugin, t, "role-panel", { user: "1", options: { panel: "colors" } });
+    const moved = await runCommand(plugin, t, "role-panel", {
+      user: "1",
+      options: { panel: "colors" },
+    });
     expect(moved.replies[0]).toBe(
       "**colors**: posted in its new channel <#channel-general>. Delete the old message by hand.",
     );
@@ -259,7 +269,11 @@ describe("reactions", () => {
     const user = t.member("2")!.user;
     await plugin.events!.reactionAdd!(t.ctx, { message: games, user, emoji: "♟" }); // no FE0F
     expect(roleKeys(t, "2")).toEqual(["chess"]);
-    await plugin.events!.reactionAdd!(t.ctx, { message: games, user, emoji: "go:223456789012345678" });
+    await plugin.events!.reactionAdd!(t.ctx, {
+      message: games,
+      user,
+      emoji: "go:223456789012345678",
+    });
     expect(roleKeys(t, "2")).toEqual(["chess", "go"]);
     await plugin.events!.reactionRemove!(t.ctx, { message: games, user, emoji: "♟️" });
     expect(roleKeys(t, "2")).toEqual(["go"]);

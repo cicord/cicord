@@ -258,8 +258,7 @@ export default definePlugin({
             const r = await syncPanel(ctx, panel, force);
             let line = `**${panel.name}**: ${STATUS_TEXT[r.status]} ${r.channel}.`;
             if (r.status === "moved") line += " Delete the old message by hand.";
-            if (r.skipped.length > 0)
-              line += ` Left out (no emoji): ${r.skipped.join(", ")}.`;
+            if (r.skipped.length > 0) line += ` Left out (no emoji): ${r.skipped.join(", ")}.`;
             lines.push(line);
           } catch (error) {
             ctx.log.warn("reaction-roles: could not post a panel", {

@@ -87,7 +87,8 @@ describe("batching", () => {
 
   test("a batch larger than maxPerBatch is cut and the rest is counted", async () => {
     const t = setup({ maxPerBatch: 5 });
-    for (let i = 0; i < 8; i++) await events.memberLeave!(t.ctx, t.member("150000000000000000")!.user);
+    for (let i = 0; i < 8; i++)
+      await events.memberLeave!(t.ctx, t.member("150000000000000000")!.user);
     expect(t.scheduled).toHaveLength(1);
     await flushTask(t);
     const lines = descriptions(t)[0]!.split("\n");
@@ -134,7 +135,9 @@ describe("events", () => {
     await events.memberUpdate!(t.ctx, after, before);
     expect(descriptions(t)).toEqual([
       expect.stringContaining("🏷️ <@1573125724569600000> **alice** nickname: — → Ally"),
-      expect.stringContaining("🎭 <@1573125724569600000> **alice** roles: + <@&role-mod> − <@&role-member>"),
+      expect.stringContaining(
+        "🎭 <@1573125724569600000> **alice** roles: + <@&role-mod> − <@&role-member>",
+      ),
     ]);
     await events.memberUpdate!(t.ctx, after, undefined);
     await events.memberJoin!(t.ctx, t.member("9")!);
@@ -212,7 +215,9 @@ describe("subscriptions", () => {
 test("helpers", () => {
   expect(esc("a_b*c")).toBe("a\\_b\\*c");
   // Discord's documented example snowflake: 2016-04-30 11:18:25.796 UTC.
-  expect(new Date(snowflakeTime("175928847299117063")).toISOString()).toBe("2016-04-30T11:18:25.796Z");
+  expect(new Date(snowflakeTime("175928847299117063")).toISOString()).toBe(
+    "2016-04-30T11:18:25.796Z",
+  );
   const many: Entry[] = Array.from({ length: 30 }, (_, i) => ({
     at: 0,
     group: "members",
