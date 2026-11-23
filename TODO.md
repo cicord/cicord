@@ -79,7 +79,7 @@ No public release until the product is complete.
 - [x] Background refresh of registry indexes (10 s after start, then every 30 min)
 - [x] Uninstall (API: instance, lock entry or copied plugin dir; per-server for multi-server instances)
 - [x] Plugin updates: detection (registry tags, bundled copies with modified-copy detection), review with permission diff, update in one write-back, `codi plugin update`, admin badges/filters/review page
-- [x] Private registries: `secretRef` per registry, token in the secret store, sent to the registry host only; `codi registry add --secret-ref`
+- [x] Private registries: `secretRef` per registry, token in the secret store, sent to the registry host only; `codi registry add --private`
 - [x] `codi plugin publish` (checks, tag, index entry); verified publishers honoured only from the verified official index
 - [ ] `codi plugin publish`: build from the tagged tree (today: the working tree)
 - [x] Official plugins: reaction-roles, audit-log, announcements (9 in the catalog); moderation publishes `moderation.case`

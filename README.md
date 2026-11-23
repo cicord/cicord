@@ -229,16 +229,33 @@ spec:
 
 ## Project status
 
-Done: config loader/validator, local and git sources (GitHub, plain git, embedded repo)
-with revisions and hot swap, server reconciler (plan / apply / drift / self-heal, adoption,
-deletion protection), bot host over disgo, Sobek plugin host with capabilities, KV storage,
-commands, components, modals, schedules, tasks and portal routes, SQLite state, git
-write-back (commits and GitHub pull requests), HTTP API v1, admin UI with schema-generated
-settings and the simulator panel, portal SDK (`@codi/client`, `@codi/react`, `@codi/ui`,
-`create-codi-portal`), `codi plugin add` against git registries.
+**v1alpha1, pre-release.** No binaries or npm packages are published yet: build from source
+(`make all`) or build the container image (`docker build .`).
 
-In progress: the remaining CLI commands (`plan`, `apply`, `status`, `sync`, `import`,
-`adopt`, `mv`, `plugin build | typegen | test`). Not started: registry publishing, SaaS.
-See the [roadmap](ARCHITECTURE.md#12-roadmap).
+Done:
+- Config loader/validator; local and git sources (GitHub, plain git, embedded repo) with
+  revisions and hot swap.
+- Server reconciler with Discord settings parity (plan / apply / drift / self-heal, adoption,
+  deletion protection, live drift for roles, channels, AutoMod, emojis, stickers, sounds).
+- Bot host over disgo; Sobek plugin host with capabilities, KV storage, commands, components,
+  modals, schedules, tasks, cross-plugin events and typed portal routes.
+- SQLite state, git write-back (commits and GitHub pull requests), HTTP API v1.
+- Admin console (data tables, per-plugin pages, Store, simulator panel), setup wizard
+  (imports an existing server with its files, empty first plan).
+- Plugin Store: bundled official plugins (9), git registries (private ones with tokens),
+  computed trust, permission review, install / update / uninstall, signed official index,
+  `codi plugin publish`.
+- Portal SDK (`@codi/client`, `@codi/react`, `@codi/ui`, `create-codi-portal`), npm
+  publication prepared.
+- CLI: `init`, `validate`, `plan`, `apply`, `status`, `sync`, `import`, `adopt`, `mv`,
+  `dev`, `serve`, `secret`, `registry`, `plugin` (new / build / typegen / test / add /
+  update / publish), `portal`.
+
+Next: the official registry and npm publication (owner decisions), production hardening
+(GitHub App, metrics, Postgres), then the hosted offering. See [TODO.md](TODO.md) and the
+[roadmap](ARCHITECTURE.md#12-roadmap).
+
+Websites: the landing page (`sites/landing`) and the documentation (`sites/docs`) are Astro
+sites, deployed together by `.github/workflows/sites.yml`.
 
 License: see [ADR-0013](docs/adr/0013-licensing.md).

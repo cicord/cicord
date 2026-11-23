@@ -1,0 +1,37 @@
+---
+title: Glossary
+description: The vocabulary of CODI, from adoption to write-back.
+---
+
+- **Adoption**: When a declared key has no mapping yet, the reconciler takes over an existing, unmapped Discord resource of the same kind with exactly the same display name, instead of creating a duplicate. See [Reconciliation](../../concepts/reconciliation/#adoption-by-name).
+- **Admin console**: The web UI embedded in the binary, served at `/admin/`. Every save is written back to git.
+- **Blocked**: A plan operation CODI refuses, with a reason (`boost:`, `community:`, `limit:`, `deletionProtection`, `hierarchy:`…). Blocked operations never fail the plan; they keep the server `OutOfSync`.
+- **Bot**: One Discord application (one token, one identity), declared in `bots/<key>/bot.yaml`.
+- **Capability**: A permission a plugin requests in its manifest (`discord.messages.send`, `storage.kv`, `http.fetch`…) and that must be granted in `bot.yaml`.
+- **codi.lock**: The generated file that pins registry plugins (version, commit, content hash, capabilities).
+- **Data directory**: The runtime's state on disk (`--data-dir`, default `.codi-data`): the SQLite database, keys, and the embedded repository.
+- **Deletion protection**: `syncPolicy.deletionProtection` (default `true`): refuse every deletion, even with `prune`.
+- **Drift**: A difference between the YAML and the live server, usually a manual change in Discord. Reported, or reverted with `selfHeal`.
+- **Grant**: A capability listed in a plugin instance's `grants` in `bot.yaml`.
+- **Instance (plugin instance)**: A plugin running for one (bot, server) pair, with its own config, storage and schedules. An entry of `bot.yaml` `spec.plugins` produces one instance per server.
+- **Intent**: A Discord gateway intent, in CODI naming (`ServerMembers`, `MessageContent`…). Privileged intents must be enabled in the Discord developer portal.
+- **Key**: The stable identifier of a resource (`general`), separate from its display name. Keys are used for references and never change.
+- **Official / unofficial**: The trust level of a plugin source, computed from its URL. Source `codi` (the bundled plugins) is official; registries are unofficial.
+- **Plan**: The ordered list of changes (`create`, `update`, `delete`, `adopt`, `reorder`, `unmanage`) between the YAML and Discord. Shown by `codi plan`.
+- **Plugin**: A TypeScript module with a static manifest (`plugin.yaml`), run sandboxed by the runtime.
+- **Plugin-owned resource**: A channel created at run time by a plugin (`ctx.server.createChannel`). The reconciler never touches or prunes it.
+- **Portal**: The community-facing website, built on the SDK (`@codi/client`, `@codi/react`, `@codi/ui`). The runtime serves a reference portal at `/`.
+- **Project**: The repository-level settings, in `codi.yaml`.
+- **Prune**: `syncPolicy.prune`: delete managed resources whose key was removed from the YAML.
+- **Registry**: A git repository with an `index.yaml` listing plugins. Declared in `codi.yaml` `spec.registries`.
+- **Resource map**: The table, in the runtime's database, linking each (server, kind, key) to a Discord ID and an owner. Never in git.
+- **Revision**: An immutable, validated and built snapshot of the repository at one commit. The runtime runs exactly one active revision and hot-swaps to the next.
+- **Route contract**: A type-only TypeScript file (`spec.routes.types`) describing a plugin's portal routes, copied into portals by `codi portal typegen`.
+- **Runtime**: `codi serve` (or `codi dev`): the long-running process that follows the repository, reconciles servers, runs bots and plugins, and serves the API and UIs.
+- **Self-heal**: `syncPolicy.selfHeal`: revert drift automatically instead of only reporting it.
+- **Server**: A Discord server (a *guild* in Discord's API), declared in `servers/<key>.yaml`. CODI never says guild.
+- **Setup wizard**: The guided setup in the admin console when the runtime starts without `codi.yaml`.
+- **Simulator**: An in-memory Discord used by `codi dev --sim`, `codi plugin test` and CODI's own tests.
+- **Source**: Where the runtime reads the repository from (`spec.source`: `github`, `git`, `embedded`, or a local directory). Also: a plugin source in the Store (`codi` or a registry).
+- **Unmanage**: Dropping the mapping of a removed key while leaving the Discord resource as it is (the default when `prune` is off).
+- **Write-back**: Turning an admin console edit into a git commit or a pull request, according to `spec.writeBack` policies.

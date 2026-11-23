@@ -1,0 +1,75 @@
+---
+import Base from "../layouts/Base.astro";
+import { links } from "../lib/links";
+---
+
+<Base
+  title="Page not found: CODI"
+  description="This page does not exist on the CODI site."
+  noindex
+>
+  <section class="nf wrap" aria-labelledby="nf-title">
+    <pre class="nf__plan" aria-hidden="true"><code><span class="nf__prompt">$ </span>codi plan
+Server site: 0 change(s), 1 blocked
+  <span class="nf__del">! blocked: page not found (404)</span></code></pre>
+    <h1 id="nf-title">This page does not exist</h1>
+    <p>
+      The address may be mistyped, or the page moved when the docs were reorganized. The
+      documentation and the home page are good places to start again.
+    </p>
+    <p class="nf__actions">
+      <a class="btn btn--primary" href={links.docs}>Open the docs</a>
+      <a class="btn btn--ghost" href={links.home}>Back to the home page</a>
+    </p>
+  </section>
+</Base>
+
+<style>
+  .nf {
+    display: grid;
+    gap: 1.25rem;
+    padding-block: clamp(4rem, 12vw, 8rem) 0;
+  }
+
+  .nf__plan {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    justify-self: start;
+  }
+
+  .nf__plan code {
+    font-size: inherit;
+  }
+
+  .nf__prompt {
+    color: var(--subtle);
+  }
+
+  .nf__del {
+    color: var(--del);
+  }
+
+  h1 {
+    margin-top: 1rem;
+    font-size: clamp(2.25rem, 6vw, 4rem);
+    letter-spacing: -0.035em;
+  }
+
+  p {
+    max-width: 52ch;
+    color: var(--muted);
+  }
+
+  .nf__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+</style>

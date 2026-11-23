@@ -48,6 +48,8 @@ codi serve [dir] [--data-dir DIR] [--listen ADDR] [--public-url URL] [--cors-ori
 | `CODI_LINK_SECRET` | Signing key of portal links (`ctx.portal.link()`). Default: generated once in the data dir (`link.key`). |
 | `CODI_PUBLIC_URL`, `CODI_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`. |
 | `CODI_CACHE_DIR` | Plugin download cache (`<dir>/plugins`). Default: the user cache dir. The Docker image sets `/data/cache`. |
+| `CODI_SECRET_KEY` | Key of the encrypted secret store (bot tokens, OAuth and registry secrets set from the wizard or the admin). Default: generated once in the data dir (`secret.key`). |
+| `CODI_ALLOW_PRIVATE_REGISTRIES` | `true` lets the Store and plugin downloads reach registries on private networks (default: public addresses only). |
 
 In the Discord developer portal, add `<public-url>/auth/callback` as an OAuth2 redirect
 URL of the application used for login.
@@ -58,6 +60,7 @@ URL of the application used for login.
 |---|---|---|
 | `codi.db` (+ `codi.db-wal`, `codi.db-shm`) | SQLite (WAL mode): resource ID map, plugin KV/state, sessions, audit log, sync history. | **Yes** |
 | `link.key` | Portal link signing key (when `CODI_LINK_SECRET` is not set). Losing it invalidates outstanding links. | Yes |
+| `secret.key` | Key of the encrypted secret store (when `CODI_SECRET_KEY` is not set). Losing it makes the stored secrets unreadable. | **Yes**, separately from `codi.db` |
 | `repo.git` | Bare repository of the `embedded` provider: this *is* your configuration. | **Yes** |
 | `source/` | Clone/cache of the git source. | No (refetched) |
 | `writeback/` | Work tree used to commit and push admin UI edits. | No |
@@ -92,7 +95,8 @@ docker run -d --name codi --restart unless-stopped \
   -v codi-data:/data \
   -v "$PWD/codi.yaml:/repo/codi.yaml:ro" \
   --env-file codi.env \
-  codi --public-url https://codi.example.org
+  -e CODI_PUBLIC_URL=https://codi.example.org \
+  codi
 ```
 
 Arguments after the image name replace the default command, so repeat the defaults when

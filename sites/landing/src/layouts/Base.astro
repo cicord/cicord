@@ -1,0 +1,97 @@
+---
+import "../styles/global.css";
+import Logo from "../components/Logo.astro";
+import { links, url } from "../lib/links";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Set on pages that must not be indexed (the 404). */
+  noindex?: boolean;
+}
+
+const { title, description, noindex = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/svg+xml" href={url("favicon.svg")} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CODI" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap site-header__inner">
+        <a class="brand" href={links.home} aria-label="CODI home">
+          <Logo />
+          <span class="brand__word" aria-hidden="true">codi</span>
+        </a>
+        <nav aria-label="Main">
+          <ul class="nav">
+            <li><a href={links.docs}>Docs</a></li>
+            <li class="nav__wide"><a href={links.plugins}>Plugins</a></li>
+            <li class="nav__wide"><a href={links.deploy}>Self-hosting</a></li>
+            <li><a href={links.github}>GitHub</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap site-footer__inner">
+        <div class="site-footer__brand">
+          <a class="brand" href={links.home} aria-label="CODI home">
+            <Logo />
+            <span class="brand__word" aria-hidden="true">codi</span>
+          </a>
+          <p>CI/CD Oriented Discord Integration. GitOps for Discord servers and bots.</p>
+        </div>
+        <nav aria-label="Footer">
+          <ul class="site-footer__links">
+            <li><a href={links.docs}>Documentation</a></li>
+            <li><a href={links.install}>Installation</a></li>
+            <li><a href={links.quickStart}>Quick start</a></li>
+            <li><a href={links.plugins}>Plugins</a></li>
+            <li><a href={links.deploy}>Self-hosting</a></li>
+            <li><a href={links.github}>GitHub</a></li>
+          </ul>
+        </nav>
+        <div class="site-footer__legal">
+          <p>
+          The SDKs (<code>@codi/sdk</code>, <code>@codi/client</code>, <code>@codi/react</code>,
+          <code>@codi/ui</code>, <code>create-codi-portal</code>) are licensed under Apache-2.0. The
+          license of the runtime, the CLI and the admin console is to be announced. CODI is an
+          independent project, not affiliated with Discord.
+          </p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

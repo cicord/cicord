@@ -15,6 +15,8 @@ const notOurs = [
   "pnpm-lock.yaml",
   "**/dist/**",
   "**/node_modules/**",
+  // Astro sites: generated types and build caches.
+  "**/.astro/**",
   "examples/**/*.yaml",
   "examples/**/*.yml",
   "examples/**/*.json",

@@ -1,0 +1,93 @@
+/*
+ * CODI brand on top of Starlight's color tokens (same palette as the admin console and the
+ * landing page): true black, Discord blurple accent, green for success. Starlight's
+ * `:root` tokens are the dark theme; `[data-theme="light"]` is the light theme.
+ */
+
+:root {
+  --codi-blurple: #5865f2;
+  --codi-blurple-dark: #4752c4;
+  --codi-blurple-soft: #8b94f7;
+  --codi-green: #3dd68c;
+
+  /* Dark theme (default) */
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #ededef;
+  --sl-color-gray-2: #d4d4d8;
+  --sl-color-gray-3: #a0a0a8;
+  --sl-color-gray-4: #6b6b74;
+  --sl-color-gray-5: #2a2a2e;
+  --sl-color-gray-6: #141416;
+  --sl-color-black: #000000;
+
+  --sl-color-accent-low: #181b45;
+  --sl-color-accent: var(--codi-blurple);
+  --sl-color-accent-high: var(--codi-blurple-soft);
+
+  --sl-hue-green: 151;
+  --sl-color-green-low: #0d2e1f;
+  --sl-color-green: var(--codi-green);
+  --sl-color-green-high: #9ef0c6;
+
+  --sl-color-text: var(--sl-color-gray-1);
+  --sl-color-text-accent: var(--codi-blurple-soft);
+  --sl-color-bg: #000000;
+  --sl-color-bg-nav: #000000;
+  --sl-color-bg-sidebar: #000000;
+  --sl-color-bg-inline-code: #18181b;
+  --sl-color-hairline-light: #2a2a2e;
+  --sl-color-hairline: #2a2a2e;
+  --sl-color-hairline-shade: #000000;
+  --sl-color-backdrop-overlay: rgb(0 0 0 / 0.7);
+}
+
+:root[data-theme="light"] {
+  --sl-color-white: #09090b;
+  --sl-color-gray-1: #18181b;
+  --sl-color-gray-2: #3f3f46;
+  --sl-color-gray-3: #52525b;
+  --sl-color-gray-4: #71717a;
+  --sl-color-gray-5: #d4d4d8;
+  --sl-color-gray-6: #ececef;
+  --sl-color-gray-7: #f6f6f7;
+  --sl-color-black: #ffffff;
+
+  --sl-color-accent-low: #e2e5fd;
+  --sl-color-accent: var(--codi-blurple-dark);
+  --sl-color-accent-high: #2f3790;
+
+  --sl-color-green-low: #d6f7e6;
+  --sl-color-green: #1f9d62;
+  --sl-color-green-high: #11643d;
+
+  --sl-color-text: var(--sl-color-gray-1);
+  --sl-color-text-accent: var(--codi-blurple-dark);
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #ffffff;
+  --sl-color-bg-inline-code: #f0f0f3;
+  --sl-color-hairline-light: #e4e4e7;
+  --sl-color-hairline: #e4e4e7;
+  --sl-color-hairline-shade: #e4e4e7;
+}
+
+/* Header and sidebar: separated by a hairline instead of a tinted background. */
+header.header {
+  border-bottom: 1px solid var(--sl-color-hairline);
+}
+
+/* Inline code: a subtle border keeps it readable on pure black. */
+.sl-markdown-content :is(p, li, td) > code {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.25rem;
+}
+
+/* Tables: hairline borders, a tinted header row. */
+.sl-markdown-content table th {
+  background-color: var(--sl-color-gray-6);
+}
+
+/* Home page hero: tighter tagline width. */
+.hero .tagline {
+  max-width: 38rem;
+}

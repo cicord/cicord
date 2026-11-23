@@ -1,0 +1,201 @@
+---
+title: Quick start
+description: Connect CODI to a real Discord server with the setup wizard, or try everything offline against the built-in Discord simulator.
+---
+
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+There are two ways to start. The **setup wizard** connects CODI to a real Discord server and
+checks every step live. The **simulator** (`codi dev --sim`) needs no Discord account at all.
+Both assume `codi` is [installed](../installation/).
+
+<Tabs syncKey="quickstart">
+<TabItem label="Real Discord (setup wizard)">
+
+## Set up a real server with the wizard
+
+Started in a directory without `codi.yaml`, the runtime enters **setup mode** and prints a
+one-time link to the setup wizard.
+
+<Steps>
+
+1. Start the runtime in an empty directory:
+
+   ```sh
+   mkdir my-community && cd my-community
+   codi serve --public-url https://codi.example.org
+   ```
+
+   To work on your own machine instead, run `codi dev`: it writes the repository files
+   into the directory and hot-reloads them. The log prints the link:
+
+   ```text
+   CODI is not set up yet: setup mode on http://127.0.0.1:7420
+     open the setup wizard: http://127.0.0.1:7420/admin/setup?token=…
+   ```
+
+   The token is single-use and a restart prints a new link. The wizard state is kept in
+   the data directory, so it **resumes after a restart**.
+
+2. **Welcome.** Choose between an existing server and a new community (the wizard explains
+   how to create a server first).
+
+3. **Discord application.** Follow the numbered instructions in the
+   [Discord developer portal](https://discord.com/developers/applications): New
+   Application, then _Bot_, _Reset Token_, _Copy_. Paste **only the token**. CODI derives
+   the application ID from it and names the exact privileged intents to turn on
+   ("Server Members Intent", "Message Content Intent"), with a **Re-check** button.
+
+4. **Server.** Open the invite link (scopes `bot applications.commands`, Administrator
+   permission) and authorize the bot. The server appears by itself, no ID to copy. CODI
+   then checks the bot's permissions and that **its role is above every role it will
+   manage**; if not, it tells you which role to drag, for example "drag the role CODI above
+   Admin" in Server Settings → Roles.
+
+5. **Repository.** Choose where the configuration lives:
+   - **Managed by CODI**: a git repository inside the data directory. No git knowledge
+     needed; every change is still a commit.
+   - **GitHub**: an HTTPS repository URL, a branch and a token.
+   - With `codi dev`, **This folder** writes the files into the current directory.
+
+   **Import and activate** reads the server as it is, writes `codi.yaml`,
+   `servers/<key>.yaml` and `bots/<bot>/bot.yaml`, and computes a preflight plan. The first
+   plan must be empty: everything is **adopted**, nothing changes on Discord. CODI then
+   writes the first commit and activates it without a restart.
+
+6. **Admin login** (optional). Add the redirect URL `<public-url>/auth/callback` in the
+   application's OAuth2 settings and paste the client secret, so that you can sign in to
+   the admin console with Discord. **Test login** checks the round trip.
+
+7. **Verify.** A checklist runs until everything is green: token, intents, membership,
+   permissions, role hierarchy, slash commands, live events (send a message in the server
+   when asked), an empty plan and a write-back probe.
+
+8. **First plugin.** Pick one of the [official plugins](../../plugins/official/), review
+   what it may do, configure it and install it. The wizard waits for the new revision and
+   suggests a slash command to try (`/poll`, `/rank`…).
+
+9. **Done.** Click **Finish**. The setup endpoints are closed and the admin console is at
+   `<public-url>/admin/`.
+
+</Steps>
+
+:::note[Where secrets go]
+Tokens and secrets pasted in the wizard are stored **encrypted** in the data directory
+(key from `CODI_SECRET_KEY`, or a generated `secret.key`). Environment variables always
+take precedence. Manage them later with [`codi secret`](../../self-hosting/backups-and-secrets/).
+:::
+
+The same checks are available at any time on each server's **Diagnostics** page in the admin
+console. The wizard manages one server and one bot; add more by editing the repository.
+
+</TabItem>
+<TabItem label="Offline (simulator)">
+
+## Try CODI offline with the simulator
+
+`codi dev --sim` replaces Discord with an in-memory simulator seeded from your YAML. No
+token, no Discord account.
+
+<Steps>
+
+1. Scaffold a repository. Without `--server-id` and `--application-id`, `codi init` uses
+   placeholder IDs that work with the simulator:
+
+   ```sh
+   codi init my-community
+   cd my-community
+   codi validate
+   ```
+
+   ```text
+   ✓ my-community: 1 server(s), 1 bot(s), 0 plugin instance(s)
+   ```
+
+2. Start the runtime on the simulator:
+
+   ```sh
+   codi dev --sim
+   ```
+
+   The simulated world has a user `owner` who owns every server, each bot invited with
+   Administrator, and the users `alice`, `bob` and `charlie` (not members yet). The
+   servers start empty: the first sync creates your roles, categories and channels.
+
+3. Open **http://127.0.0.1:7420/admin/** and sign in as a simulated user.
+
+   :::caution[Use 127.0.0.1]
+   The default public URL is `http://127.0.0.1:7420`, and state-changing requests from
+   another origin are rejected. To use `localhost`, start with
+   `--public-url http://localhost:7420`.
+   :::
+
+4. Use the **Simulator** panel to join servers, send messages, run slash commands, click
+   buttons and submit modals, while you watch the reconciler and your plugins react.
+
+5. Edit a file: every save becomes a new revision (hot reload), and edits made in the admin
+   console are written back to your files.
+
+</Steps>
+
+To try the **setup wizard** itself offline, run it against a simulated Discord:
+
+```sh
+codi dev --sim --setup ./my-community
+```
+
+The simulated world then has a server "Pixel Pals" with roles, channels and members, and
+_Simulate_ buttons stand in for discord.com (create a bot, turn intents on, authorize the
+invite, drag the role, send a message).
+
+:::danger[Never expose dev mode]
+`codi dev` lets anyone who can reach it sign in as any user and edits the working tree. It
+only answers loopback host names and is meant for your own machine only.
+:::
+
+</TabItem>
+</Tabs>
+
+## Prefer to set things up by hand?
+
+The wizard does all of this for you, but every step can be done manually:
+
+<Steps>
+
+1. **Create the bot** in the Discord developer portal: a new application, then _Bot_ →
+   reset and copy the token. Under _Privileged Gateway Intents_, enable what your plugins
+   declare (`ServerMembers` for `memberJoin`, `MessageContent` to read message text).
+
+2. **Scaffold the repository** with your real IDs:
+
+   ```sh
+   codi init my-community --server-id <discord server id> --application-id <discord application id>
+   cd my-community
+   codi validate
+   ```
+
+   To start from a server that already exists, `codi import <server-id>` writes
+   `servers/<key>.yaml` from the live server (see the [CLI reference](../../reference/cli/#codi-import)).
+
+3. **Invite the bot** with the `bot` and `applications.commands` scopes and the
+   Administrator permission, for example
+   `https://discord.com/oauth2/authorize?client_id=<application id>&scope=bot+applications.commands&permissions=8`.
+   Move its role high enough: a bot can only manage roles below its own.
+
+4. **Run the runtime** with the token in the variable named by `token.secretRef`:
+
+   ```sh
+   export DISCORD_TOKEN_BOT=...
+   codi serve --local --public-url https://codi.example.org
+   ```
+
+   `--local` serves the directory as is. Without it, `codi serve` follows
+   `codi.yaml` `spec.source` (see [Deploy](../../self-hosting/deploy/)).
+
+5. **Admin login.** Set `CODI_DISCORD_CLIENT_SECRET` (the application's OAuth2 client
+   secret) and add `<public-url>/auth/callback` as a redirect URL. Server owners are admins;
+   `spec.access` grants admin or moderator to roles and users.
+
+</Steps>
+
+Next: [make your first change](../first-change/).

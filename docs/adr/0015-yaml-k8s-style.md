@@ -15,7 +15,7 @@ machines, and versioned over time.
   resource key is `metadata.name` and must match the file/directory name.
 - Collections of named resources (roles, categories, channels) are **maps keyed by stable
   key**, not lists (ADR-0003).
-- Breaking changes bump `apiVersion`; `codi migrate` converts files.
+- Breaking changes bump `apiVersion`; a `codi migrate` command (planned, not implemented yet) will convert files.
 
 ## Consequences
 - Familiar to the DevOps audience; for the general public the admin UI hides YAML.

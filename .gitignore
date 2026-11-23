@@ -12,3 +12,6 @@ dist/
 internal/webui/admin/assets/
 internal/webui/portal/assets/
 internal/webui/*/favicon.svg
+
+# Astro sites (sites/*)
+.astro/

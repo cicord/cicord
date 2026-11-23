@@ -34,10 +34,10 @@
               "default": "."
             },
             "pollInterval": {
-              "description": "Fallback polling interval when webhooks are missed, e.g. 3m.",
+              "description": "Fallback polling interval when webhooks are missed, e.g. 1m.",
               "type": "string",
               "pattern": "^[0-9]+(s|m|h)$",
-              "default": "3m"
+              "default": "1m"
             }
           },
           "additionalProperties": false,

@@ -215,7 +215,7 @@ configuration; `moderators` can use moderation features and plugin settings mark
 ## 5. Project semantics
 
 - `engine`: the runtime refuses a revision whose range excludes its own version.
-- `source.provider`: `github` (GitHub App: webhooks, commit statuses, write-back, PRs),
+- `source.provider`: `github` (token `CODI_GIT_TOKEN`: webhooks, write-back, PRs; a GitHub App with commit statuses is planned),
   `git` (any remote, polling), `embedded` (repo hosted inside the runtime).
 - `writeBack.policies` are evaluated **in order**; the first policy with a `paths` glob
   matching the changed file decides `commit` or `pullRequest`. Otherwise `defaultMode` applies.

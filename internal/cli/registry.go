@@ -37,8 +37,8 @@ func newPluginAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <registry>/<plugin>[@<range>]",
 		Short: "Add a registry plugin to a bot and lock it in codi.lock",
-		Example: `  codi plugin add codi/welcome --bot moderator
-  codi plugin add codi/xp@^1.2.0 --bot moderator --name xp`,
+		Example: `  codi plugin add acme/hello --bot moderator
+  codi plugin add acme/xp@^1.2.0 --bot moderator --name xp`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			source, rng, _ := strings.Cut(args[0], "@")
