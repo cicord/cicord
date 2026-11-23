@@ -3,6 +3,7 @@
 // @codi/client (`client.routes(plugin, …)`) and @codi/react (`useRouteQuery`,
 // `useRouteMutation`). `codi portal build` regenerates it; see docs/portal.md.
 //
+//   announcements 0.1.0 (../../plugins/announcements): 1 route(s), untyped (no spec.routes.types)
 //   levels 0.1.0 (../../plugins/levels): 2 route(s), typed
 //   moderation 0.1.0 (../../plugins/moderation): 2 route(s), untyped (no spec.routes.types)
 //   polls 0.1.0 (../../plugins/polls): 1 route(s), typed
@@ -83,6 +84,9 @@ declare namespace codi_polls {
 
 declare module "@codi/client" {
   interface PluginRouteRegistry {
+    "announcements": {
+      "GET /scheduled": RouteEntry<"moderator">;
+    };
     "levels": {
       "GET /leaderboard": RouteEntry<"public", codi_levels.Routes, "GET /leaderboard">;
       "GET /me": RouteEntry<"member", codi_levels.Routes, "GET /me">;

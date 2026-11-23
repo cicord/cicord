@@ -30,8 +30,14 @@ var released = map[string]map[string][]string{
 	"welcome":    {"0.1.0": {"sha256-Vc5USPwpH2u+lnQSZpc7phHFxtp6xb5jmy/BFXbVPJ8="}},
 	"onboarding": {"0.1.0": {"sha256-MKVQjq2L+jA2skWMdzZCUozF1n3y59TwnxOVjEPuqNg="}},
 	"tickets":    {"0.1.0": {"sha256-L5+NgFlgHE/P0n5n8GyrW+DumWbmKl+n5jRpVWNrOP8="}},
-	"polls":      {"0.1.0": {"sha256-J2By/eEG8diCTxf6xekJyQyBzyn+qX9wskGmRmVptBs="}},
-	"levels":     {"0.1.0": {"sha256-FrdXmmfH7j5m0hN6XwwyttgOVU1cBvNlLmXW4vZrBO0="}},
+	"polls": {"0.1.0": {
+		"sha256-J2By/eEG8diCTxf6xekJyQyBzyn+qX9wskGmRmVptBs=",
+		"sha256-innGAtvVzpodj1AtwyVMX5tTMbc4AM0WSw8g/khOXoA=", // route contract (src/routes.ts)
+	}},
+	"levels": {"0.1.0": {
+		"sha256-FrdXmmfH7j5m0hN6XwwyttgOVU1cBvNlLmXW4vZrBO0=",
+		"sha256-Phlqcqh1igaLpy2gCf7Jd/uSblJxNSU+G8b1JpchAUY=", // route contract (src/routes.ts)
+	}},
 	"moderation": {"0.1.0": {
 		"sha256-JYpd9sY6f38cc9ZI3APfJX6LYab0MGuBUcURYXyjx2A=",
 		"sha256-ciiRRkOU3+n/3+Cs1xlgz4LV4QsiA/1uVlhvo/G7RJ0=", // publishes moderation.case
