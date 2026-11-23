@@ -575,7 +575,8 @@ export class CodiClient {
       server,
       bot: at.bot,
       instance: at.instance,
-      call: ((route: string, options: Loose & RequestOptions = {}) => {
+      // async: an invalid parameter rejects like any failed call.
+      call: (async (route: string, options: Loose & RequestOptions = {}) => {
         const { params, query, body, ...rest } = options;
         const [method, path] = resolveRoute(route, params);
         return routes.request(method, path, {

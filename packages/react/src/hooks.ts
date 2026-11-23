@@ -414,18 +414,33 @@ export function useRouteQuery<N extends string, K extends RouteKeyOf<N, "GET"> &
   const { client } = useCodi();
   const { instance } = usePortalPlugin(plugin, routeTarget(opts));
   const server = useServerKey(opts.server);
-  const [, path] = resolveRoute(route, opts.params);
+  // An invalid parameter (".." from the page URL…) is an error state, never a request.
+  let path: string | undefined;
+  let invalid: unknown;
+  try {
+    [, path] = resolveRoute(route, opts.params);
+  } catch (error) {
+    invalid = error;
+  }
   const query = opts.query as Query | undefined;
   const key =
     instance && server
-      ? codiKeys.plugin(server, instance.bot, instance.instance, path, query)
+      ? codiKeys.plugin(
+          server,
+          instance.bot,
+          instance.instance,
+          path ?? `${route} ${JSON.stringify(opts.params ?? {})}`,
+          query,
+        )
       : null;
   const result = useCodiQuery<T>(
     key,
     (signal) =>
-      client
-        .plugin(server as string, instance!.bot, instance!.instance)
-        .get<T>(path, query, { signal }),
+      invalid !== undefined || path === undefined
+        ? Promise.reject(invalid)
+        : client
+            .plugin(server as string, instance!.bot, instance!.instance)
+            .get<T>(path, query, { signal }),
     opts.enabled === undefined ? {} : { enabled: opts.enabled },
   );
   return { ...result, instance };

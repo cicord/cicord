@@ -244,6 +244,8 @@ describe("hooks", () => {
         poll: useRouteQuery("polls", "GET /polls/:id", { params: { id: "p 1" } }),
         vote: useRouteMutation("counter", "POST /items/:id/votes"),
         missing: useRouteQuery("levels", "GET /leaderboard"),
+        // e.g. an id read from the page URL: an error, never a request outside the route.
+        traversal: useRouteQuery("polls", "GET /polls/:id", { params: { id: ".." } }),
       }),
       { wrapper },
     );
@@ -261,6 +263,9 @@ describe("hooks", () => {
     expect(result.current.missing.instance).toBeUndefined();
     expect(result.current.missing.status).toBe("idle");
     expect(calls.some((c) => c.path.includes("leaderboard"))).toBe(false);
+    await waitFor(() => expect(result.current.traversal.status).toBe("error"));
+    expect(String(result.current.traversal.error)).toMatch(/invalid parameter id/);
+    expect(calls.some((c) => c.path.includes("..") || c.path.endsWith("/polls"))).toBe(false);
   });
 });
 

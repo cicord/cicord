@@ -195,7 +195,15 @@ export function resolveRoute(
       const value = params[segment.slice(1)];
       if (value === undefined || value === "")
         throw new Error(`@codi/client: missing parameter ${segment.slice(1)} of ${route}`);
-      return encodeURIComponent(String(value));
+      // A value taken from the page URL must never climb out of the route ("..": another
+      // route of the instance, another plugin, another API endpoint with the viewer's
+      // cookies). Dots are encoded too, so no segment can be a dot-segment; the runtime
+      // reads %2E as a literal dot.
+      if (value === "." || value === "..")
+        throw new Error(
+          `@codi/client: invalid parameter ${segment.slice(1)} of ${route}: ${value}`,
+        );
+      return encodeURIComponent(String(value)).replace(/\./g, "%2E");
     })
     .join("/");
   return [method, path];

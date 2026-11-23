@@ -84,6 +84,25 @@ describe("typed plugin routes", () => {
     expect(resolveRoute("GET /a/:id/b", { id: 4 })).toEqual(["GET", "/a/4/b"]);
     expect(() => resolveRoute("GET /a/:id")).toThrow(/missing parameter id/);
     expect(() => resolveRoute("FETCH /a")).toThrow(/invalid route key/);
+    expect(() => resolveRoute("GET /a/:id", { id: "" })).toThrow(/missing parameter id/);
+  });
+
+  test("parameters can never be dot-segments (no path traversal)", async () => {
+    expect(() => resolveRoute("GET /polls/:id", { id: "." })).toThrow(/invalid parameter id/);
+    expect(() => resolveRoute("GET /polls/:id", { id: ".." })).toThrow(/invalid parameter id/);
+    expect(resolveRoute("GET /polls/:id", { id: "a/b" })).toEqual(["GET", "/polls/a%2Fb"]);
+    expect(resolveRoute("GET /polls/:id", { id: "%2e%2e" })).toEqual(["GET", "/polls/%252e%252e"]);
+    expect(resolveRoute("GET /polls/:id", { id: "../x" })).toEqual(["GET", "/polls/%2E%2E%2Fx"]);
+    expect(resolveRoute("GET /polls/:id", { id: "v1.2" })).toEqual(["GET", "/polls/v1%2E2"]);
+    // What fetch() would request: still inside the instance.
+    const { calls, client } = recorder();
+    await expect(
+      client.routes("demo", "s", at).call("GET /items/:id", { params: { id: ".." } }),
+    ).rejects.toThrow(/invalid parameter/);
+    await client.routes("demo", "s", at).call("GET /items/:id", { params: { id: "..." } });
+    expect(new URL(calls[0]!.url, "https://codi.example").pathname).toBe(
+      "/api/v1/portal/s/plugins/helper/demo-1/items/%2E%2E%2E",
+    );
   });
 
   test("types come from the registry", () => {
