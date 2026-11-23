@@ -24,7 +24,8 @@ type wireUser struct {
 }
 
 type wireApplication struct {
-	ID string `json:"id"`
+	ID    string `json:"id"`
+	Flags int    `json:"flags"`
 }
 
 type wireMember struct {

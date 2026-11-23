@@ -57,12 +57,7 @@ type Check struct {
 func (c Check) Blocking() bool { return c.Status == StatusFail }
 
 // PortalBotURL is the developer portal page with the token and the privileged intents.
-func PortalBotURL(appID string) string {
-	if appID == "" {
-		return "https://discord.com/developers/applications"
-	}
-	return "https://discord.com/developers/applications/" + appID + "/bot"
-}
+func PortalBotURL(appID string) string { return discord.PortalBotURL(appID) }
 
 // PortalOAuthURL is the developer portal page with the client secret and the redirects.
 func PortalOAuthURL(appID string) string {

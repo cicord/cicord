@@ -20,7 +20,13 @@ type Diagnostic struct {
 	Line     int      `json:"line,omitempty"`
 	Path     string   `json:"path,omitempty"` // JSON pointer inside the document
 	Message  string   `json:"message"`
+	// Code identifies a kind of finding a consumer may handle itself ("" = none).
+	Code string `json:"code,omitempty"`
 }
+
+// CodePrivilegedIntent marks the findings about a privileged intent a plugin uses (the
+// runtime checks the live application flags itself).
+const CodePrivilegedIntent = "privileged-intent"
 
 func (d Diagnostic) String() string {
 	var b strings.Builder
@@ -93,9 +99,9 @@ type diagSink struct {
 }
 
 func (s *diagSink) errorf(file string, line int, path, format string, args ...any) {
-	s.ds = append(s.ds, Diagnostic{SeverityError, file, line, path, fmt.Sprintf(format, args...)})
+	s.ds = append(s.ds, Diagnostic{Severity: SeverityError, File: file, Line: line, Path: path, Message: fmt.Sprintf(format, args...)})
 }
 
 func (s *diagSink) warnf(file string, line int, path, format string, args ...any) {
-	s.ds = append(s.ds, Diagnostic{SeverityWarning, file, line, path, fmt.Sprintf(format, args...)})
+	s.ds = append(s.ds, Diagnostic{Severity: SeverityWarning, File: file, Line: line, Path: path, Message: fmt.Sprintf(format, args...)})
 }

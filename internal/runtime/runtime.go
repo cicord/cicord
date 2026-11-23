@@ -69,6 +69,9 @@ type Runtime struct {
 	lastErr string
 	bots    map[string]*botHost
 	botErrs sync.Map // bot key → last connection error
+	// appIntents: bot key → privileged intents enabled for its application (live
+	// application flags read when the bot connects).
+	appIntents sync.Map
 
 	wake  chan struct{}
 	sched *scheduler
@@ -231,7 +234,7 @@ func (r *Runtime) LoadAndBuild(dir string) (*config.Repo, map[string]*builtPlugi
 	if r.opts.Resolver != nil {
 		resolver = r.opts.Resolver(dir)
 	}
-	repo, ds := config.Load(dir, config.LoadOptions{EngineVersion: version.Version, Resolver: resolver})
+	repo, ds := config.Load(dir, config.LoadOptions{EngineVersion: version.Version, Resolver: resolver, PrivilegedIntents: r.enabledIntents})
 	if ds.HasErrors() || repo == nil {
 		return repo, nil, ds, ds.Err()
 	}
@@ -327,14 +330,18 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		r.setErr(err.Error())
 		return &RejectedError{Revision: rev.ID, Diagnostics: ds}
 	}
-	for _, d := range ds {
-		log.Warn(d.String())
-	}
-
 	next := &active{rev: rev, repo: repo, builds: builds, servers: map[string]*serverRT{}}
 
 	// 1. bot sessions
 	r.connectBots(ctx, repo)
+	for _, d := range ds {
+		// Privileged intents are checked against the live application flags when the
+		// bots connect (connectBots logs an error when one is missing).
+		if d.Code == config.CodePrivilegedIntent {
+			continue
+		}
+		log.Warn(d.String())
+	}
 
 	// 2. servers: reconcile with the first connected bot that lists them
 	for _, key := range sortedKeys(repo.Servers) {

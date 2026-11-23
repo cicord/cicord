@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	_ discord.Connector = (*World)(nil)
-	_ discord.Session   = (*Session)(nil)
-	_ discord.Client    = (*Client)(nil)
+	_ discord.Connector              = (*World)(nil)
+	_ discord.Session                = (*Session)(nil)
+	_ discord.Client                 = (*Client)(nil)
+	_ discord.ApplicationFlagsReader = (*Session)(nil)
 )
 
 // Session is a simulated bot session: the REST client of the bot plus a gateway
@@ -59,6 +60,14 @@ func (s *Session) Self() discord.User {
 
 // ApplicationID returns the bot's application ID.
 func (s *Session) ApplicationID() string { return s.bot.appID }
+
+// ApplicationFlags returns the application flags of the privileged intents enabled in
+// the simulated developer portal (World.SetPrivilegedIntents).
+func (s *Session) ApplicationFlags() int {
+	s.w.mu.Lock()
+	defer s.w.mu.Unlock()
+	return discord.FlagsFromIntents(s.bot.privileged)
+}
 
 // Intents returns the intents the gateway was opened with.
 func (s *Session) Intents() discord.Intents {
