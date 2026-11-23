@@ -361,7 +361,7 @@ jobs:
       - run: go install github.com/npjonath/codi/cmd/codi@latest
       - name: The plugin route types match the plugins (src/codi-routes.d.ts)
         working-directory: .
-        run: codi portal typegen --check
+        run: codi portal typegen --check --out [[.Dir]]/src/codi-routes.d.ts
       - uses: pnpm/action-setup@v4
         with:
           version: 10
