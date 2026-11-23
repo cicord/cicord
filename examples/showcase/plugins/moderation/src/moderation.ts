@@ -89,6 +89,8 @@ export async function recordCase(ctx: Context, c: Omit<Case, "number" | "at">): 
     ctx,
     `Case #${full.number} · ${TITLES[full.action]}: ${full.member.name} — ${full.reason || "no reason"}${full.moderator ? ` (by ${full.moderator.name})` : ""}`,
   );
+  // moderation.case: other plugins (audit-log) can record sanctions.
+  await ctx.events.publish("case", full as unknown as Json);
   return full;
 }
 

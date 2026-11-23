@@ -148,6 +148,8 @@ func TestShowcaseAuditLog(t *testing.T) {
 	poll := pollMessage(s, s.channel("polls").ID, "1")
 	wait(t, w.ClickButton(mia.ID, poll, cid(t, "polls", "vote:1:0")))
 	wait(t, w.ClickButton(alice.ID, poll, cid(t, "polls", "end:1")))
+	// A warning by a moderator: moderation.case reaches the audit log.
+	wait(t, w.InvokeCommand(mia.ID, s.serverID, general.ID, s.appID, "warn", map[string]any{"member": alice.ID, "reason": "spam"}))
 	w.WaitIdle()
 
 	// Nothing is posted before the batch flush; then one compact message.
@@ -159,7 +161,7 @@ func TestShowcaseAuditLog(t *testing.T) {
 	}
 	s.waitFor("all events queued", func() bool {
 		v, err := s.kv("audit-log").Get(ctx, "seq")
-		return err == nil && string(v) == "6" // 2 joins, 2 role changes (mia: Moderator), deletion, poll
+		return err == nil && string(v) == "7" // 2 joins, 2 role changes (mia: Moderator), deletion, poll, warning
 	})
 	s.rt.sched.runTasks(ctx, time.Now().Add(11*time.Second))
 	batch := s.waitMessage("batch", auditCh.ID, func(m discord.Message) bool { return len(m.Embeds) > 0 })
@@ -170,6 +172,7 @@ func TestShowcaseAuditLog(t *testing.T) {
 		"🗑️ A message by <@" + alice.ID + "> **alice** was deleted in <#" + general.ID + ">",
 		"🎭 <@" + alice.ID + "> **alice** roles: + <@&" + s.role("Member").ID + ">",
 		"📊 Poll #1 “Pizza?” closed: Yes (1 voter)",
+		"case #1 · **warn** <@" + alice.ID + "> **alice** by <@" + mia.ID + "> — spam",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("audit batch misses %q:\n%s", want, text)

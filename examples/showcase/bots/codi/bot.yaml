@@ -87,6 +87,7 @@ spec:
         - storage.kv
         - http.fetch
         - portal.routes
+        - events.publish
       config:
         logChannel: mod-log
         warningDays: 30

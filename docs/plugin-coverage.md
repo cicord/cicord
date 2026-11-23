@@ -184,13 +184,12 @@ timestamps, no pings).
   `scheduler`, `events.subscribe`. Intents: `ServerMembers` (privileged), `ServerMessages`
   (no `MessageContent`: the log never shows what people wrote).
 - **`moderation.case`**: the payload is the moderation plugin's `Case` (`number`, `action`,
-  `member {id, name}`, `moderator {id, name} | null`, `reason`, `durationMinutes`). The
-  moderation plugin does not publish it yet (it would need `events.publish`), so this
-  category stays empty until it does.
+  `member {id, name}`, `moderator {id, name} | null`, `reason`, `durationMinutes`),
+  published by the moderation plugin for every case (capability `events.publish`).
 
 | Feature | Test |
 |---|---|
-| Joins, role changes, deletion with the author, `polls.closed`, one batched message | rt/AuditLog |
+| Joins, role changes, deletion with the author, `polls.closed`, a `/warn` case (`moderation.case`), one batched message | rt/AuditLog |
 | Flush task per batch, `maxPerBatch` cut, sweep, per-category channels, `batchSeconds: 0` | unit tests |
 | Nickname changes, edits, `moderation.case`, categories turned off | unit tests |
 

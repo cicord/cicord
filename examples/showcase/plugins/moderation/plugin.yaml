@@ -21,6 +21,7 @@ spec:
     - storage.kv                 # warnings (expiring), case numbers
     - http.fetch                 # optional webhook
     - portal.routes              # warnings for the staff portal
+    - events.publish             # moderation.case, for the audit log
   # ServerMembers: join/leave/update log. ServerMessages: flood protection, which only needs
   # who posts and when, never the content (no MessageContent).
   intents: [ServerMembers, ServerMessages]
