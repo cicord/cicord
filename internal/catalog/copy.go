@@ -32,7 +32,13 @@ var released = map[string]map[string][]string{
 	"tickets":    {"0.1.0": {"sha256-L5+NgFlgHE/P0n5n8GyrW+DumWbmKl+n5jRpVWNrOP8="}},
 	"polls":      {"0.1.0": {"sha256-J2By/eEG8diCTxf6xekJyQyBzyn+qX9wskGmRmVptBs="}},
 	"levels":     {"0.1.0": {"sha256-FrdXmmfH7j5m0hN6XwwyttgOVU1cBvNlLmXW4vZrBO0="}},
-	"moderation": {"0.1.0": {"sha256-JYpd9sY6f38cc9ZI3APfJX6LYab0MGuBUcURYXyjx2A="}},
+	"moderation": {"0.1.0": {
+		"sha256-JYpd9sY6f38cc9ZI3APfJX6LYab0MGuBUcURYXyjx2A=",
+		"sha256-ciiRRkOU3+n/3+Cs1xlgz4LV4QsiA/1uVlhvo/G7RJ0=", // publishes moderation.case
+	}},
+	"reaction-roles": {"0.1.0": {"sha256-QdfT6KQQqvWVZqz8jX1DVgDkm37ZCkG5BVzECErUDCw="}},
+	"audit-log":      {"0.1.0": {"sha256-CqUKC4C6sA9vNJBI0tClq77TpE8X7PgJGsq0Jyz1YjQ="}},
+	"announcements":  {"0.1.0": {"sha256-2FUTA2TWaOuUgM7FFhDbaYT41VFR1QW5LLJdXNWDuJk="}},
 }
 
 // PluginFiles returns the files of a catalog plugin relative to its directory (what an

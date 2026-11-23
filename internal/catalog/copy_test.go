@@ -22,7 +22,8 @@ func TestReleasedIntegrity(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !slices.Contains(released[e.Name][e.Version], sum) {
-			t.Errorf("the files of %s %s changed: add %q to released[%q][%q] in copy.go (or bump its version)", e.Name, e.Version, sum, e.Name, e.Version)
+			t.Errorf("the files of %s %s are not recorded as released: add %q to released[%q][%q] in copy.go (keep the older values), or bump its version",
+				e.Name, e.Version, sum, e.Name, e.Version)
 		}
 	}
 }
