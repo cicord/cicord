@@ -13,8 +13,7 @@ No public release until the product is complete.
       `plugin test` → unit tests with `@codi/sdk/testing` (component/modal runners, schema
       defaults, richer fakes); friction fixed (init placeholders work with `--sim`, `plugin new`
       prints the bot.yaml snippet, array-item defaults, `plugin test` docs)
-- [ ] Unit tests of a plugin outside the monorepo (`codi plugin new` scaffolds no test setup;
-      needs `@codi/sdk` installable, e.g. the tarballs embedded for `codi portal init`)
+- [x] Unit tests of a plugin outside the monorepo: `codi plugin new` scaffolds `node --test` with the vendored @codi/sdk
 - [ ] SDK: fetch a message by id (`channel.message(id)`) instead of the `messages({ before })`
       workaround (needs `GetMessage` in the Discord contract)
 - [ ] Community portal customization (docs/portal.md):
@@ -25,8 +24,10 @@ No public release until the product is complete.
   - [x] `@codi/*` usable outside the monorepo before npm publication (tarballs embedded in `codi`, vendored by `portal init`)
   - [x] embeddable in third-party sites (token mode: portal-scoped bearer sessions, `spec.portal.allowedOrigins`, examples/embed) — decision: SDK-first, plugin UI = plugin routes via the SDK (ADR-0008)
   - [x] reference portal = complete showcase of everything the SDK can do (leaderboard, tickets, developers page, en/fr)
-  - [ ] generated route types for plugin routes (`definePlugin({routes})` → typed client)
-  - [ ] publish `@codi/*` on npm, then make `codi portal init` use registry versions
+  - [x] typed plugin routes: route contracts (`spec.routes.types`, `defineRoutes`), `codi portal typegen`, `client.routes`, `useRouteQuery` (levels, polls)
+  - [ ] route contracts for tickets, moderation, announcements
+  - [x] npm publication prepared (package metadata, release workflow, `--from-npm`), RELEASING.md
+  - [ ] **Owner:** create the npm org `codi`, NPM_TOKEN secret, public repo, then run the release workflow (RELEASING.md)
 - [ ] Real Discord: test member join (needs a second account)
 - [x] Admin console redesign: shadcn/ui + Tailwind v4, collapsible sidebar with server switcher,
       ⌘K palette, true-black dark + light themes, i18n (`src/i18n/en.json`, typed keys), one
@@ -48,14 +49,12 @@ No public release until the product is complete.
 - [ ] Real Discord, still untested: stickers (multipart), soundboard, role gradient colors / icons (need boosts)
 - [x] Setup wizard on real Discord: token, intents, server, hierarchy, embedded repo, import (empty plan), OAuth secret, verify, welcome plugin (commands registered), finish
 - [x] Wizard on real Discord, by hand: live events check (member message received) and a real "Log in with Discord" round trip; all 9 diagnostics green
-- [ ] Import: download the server icon and emojis into the repository instead of only warning
-- [ ] Plugin privileged-intent warning is printed even when the intent is enabled in the portal: check the live application flags first
-- [ ] Gateway events for the new kinds (AUTO_MODERATION_RULE_*, GUILD_EMOJIS_UPDATE, GUILD_STICKERS_UPDATE,
-      GUILD_SOUNDBOARD_SOUND_*, widget/onboarding have none): today hand edits of AutoMod rules, expressions,
-      widget, onboarding and welcome screen only show as drift at the next plan (status refresh / sync), and
-      selfHeal does not trigger on them
+- [x] Import downloads icon, banner, splash, role icons, emojis, stickers, sounds (empty first plan)
+- [x] Privileged intents checked against the live application flags (bot not connected + clear status when missing)
+- [x] Gateway events for AutoMod rules, emojis, stickers, soundboard sounds: hand edits of managed ones trigger a resync (intents requested only when managed)
+- [ ] Widget, onboarding and welcome screen still drift until the next plan (Discord has no events for them)
 - [ ] Invites (declared permanent invite links), webhooks (secrets)
-- [ ] `codi import`: download icon/banner/role icons/emojis/stickers/sounds into the repository (today: warnings)
+- [ ] `codi import --force` leaves stale files in servers/assets/<key>/
 - [ ] Holographic role style preset (`colors: holographic`) instead of the three magic colors
 - [ ] Admin UI: plan page refreshes on live server updates (boost level changes need a manual Refresh)
 
@@ -75,13 +74,18 @@ No public release until the product is complete.
 - [x] Store API (§11): browse, detail from plugin.yaml at the resolved version (no unofficial code run before consent), install with reviewed version/commit/integrity (`409 changed`), explicit confirmation for unofficial, registries add/remove (project admins, https only, `in_use`)
 - [x] `codi registry list|add|remove|update|search` (file:// and local paths for dev registries)
 - [x] Admin UI Store page: browse/search by source, trust badges, permissions review, install (bot, instance, config, unofficial confirmation, `changed` re-review), sources add/remove
-- [ ] Create the official registry repository (needs a GitHub org/account decision), then add its URL to `registry.OfficialURLs` and list it implicitly
+- [x] Signed official index (ed25519 envelope bound to URL, serial, expiry; anti-rollback serial), implicit official registry merged into source `codi`, `codi registry keygen|sign|verify`
+- [ ] **Owner:** create the official registry repository + production signing key, set `registry.OfficialURLs` / `OfficialKeys`, schedule the re-signing CI job (docs/plugins.md §9)
 - [x] Background refresh of registry indexes (10 s after start, then every 30 min)
 - [x] Uninstall (API: instance, lock entry or copied plugin dir; per-server for multi-server instances)
-- [ ] `codi plugin update` / version upgrades from the admin
+- [x] Plugin updates: detection (registry tags, bundled copies with modified-copy detection), review with permission diff, update in one write-back, `codi plugin update`, admin badges/filters/review page
 - [x] Private registries: `secretRef` per registry, token in the secret store, sent to the registry host only; `codi registry add --secret-ref`
-- [ ] `codi plugin publish`; verified publishers; signing of the official index
-- [ ] More official plugins: reaction roles, audit logging, scheduled announcements (welcome, onboarding, tickets, polls, levels, moderation exist)
+- [x] `codi plugin publish` (checks, tag, index entry); verified publishers honoured only from the verified official index
+- [ ] `codi plugin publish`: build from the tagged tree (today: the working tree)
+- [x] Official plugins: reaction-roles, audit-log, announcements (9 in the catalog); moderation publishes `moderation.case`
+- [ ] SDK gaps found while writing them: subcommands, channel/role/ban events and actor, message content before edit/delete, allowedMentions id lists, Intl/time zones in the plugin host, removing others' reactions, role hierarchy info
+
+- [ ] Admin login loses the deep link (redirects to /admin/ instead of the page that asked for login)
 
 ## Production hardening
 - [ ] GitHub App authentication (instead of a token) + commit statuses on synced SHAs
