@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/npjonath/codi/internal/catalog"
@@ -32,6 +33,9 @@ type updateReviewDTO struct {
 	// MissingAdmin lists the servers running the plugin where the caller is not admin
 	// (the update is refused while it is not empty).
 	MissingAdmin []string `json:"missingAdmin"`
+	// Restricted: for each server of MissingAdmin, the number of instances there (their
+	// details are not returned: they belong to another server's admins).
+	Restricted []restrictedServer `json:"restricted"`
 }
 
 // updateSpec resolves the latest version of an installed Store plugin.
@@ -112,8 +116,34 @@ func (s *server) handleStoreUpdateReview(w http.ResponseWriter, r *http.Request)
 		}
 		plan.Modified = st.Modified
 	}
+	// Instances (their config diagnostics, grants and ranges) are only shown for servers
+	// where the caller is admin: for the others, only how many instances block the update.
+	missing := s.missingAdmin(r.Context(), id, plan.Servers)
+	restricted := []restrictedServer{}
+	if len(missing) > 0 {
+		visible := []setup.UpdateInstance{}
+		for _, ui := range plan.Instances {
+			if !slices.Contains(missing, ui.Server) {
+				visible = append(visible, ui)
+				continue
+			}
+			if i := slices.IndexFunc(restricted, func(r restrictedServer) bool { return r.Server == ui.Server }); i >= 0 {
+				restricted[i].Instances++
+			} else {
+				restricted = append(restricted, restrictedServer{Server: ui.Server, Instances: 1})
+			}
+		}
+		plan.Instances = visible
+		d.Installed = slices.DeleteFunc(d.Installed, func(i store.Installation) bool { return slices.Contains(missing, i.Server) })
+	}
 	writeJSON(w, http.StatusOK, updateReviewDTO{Available: d.Update != nil, Update: d.Update, Detail: d, UpdatePlan: plan,
-		ConfigValid: plan.ConfigValid(), MissingAdmin: s.missingAdmin(r.Context(), id, plan.Servers)})
+		ConfigValid: plan.ConfigValid(), MissingAdmin: missing, Restricted: restricted})
+}
+
+// restrictedServer is a server where the caller is not admin: its instances are not shown.
+type restrictedServer struct {
+	Server    string `json:"server"`
+	Instances int    `json:"instances"`
 }
 
 func (s *server) failPlan(w http.ResponseWriter, source, name string, err error) {

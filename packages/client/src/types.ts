@@ -446,6 +446,11 @@ export interface PluginInstance {
   /** `codi` (official catalog), a registry name, or `local` (written in the repository). */
   source: string;
   trust: PluginTrust;
+  /**
+   * Set when a newer version of the plugin is available (§11). Registry versions come from
+   * the runtime's cache (filled by the background refresh and by browsing the Store).
+   */
+  update?: PluginUpdate;
 }
 
 /** Where a plugin instance comes from: Store trust, or `local` for plugins written in the repo. */
@@ -454,7 +459,10 @@ export type PluginTrust = "official" | "unofficial" | "local";
 /** Sort keys of `GET /servers/{server}/plugins`. */
 export type PluginSortKey = "name" | "instance" | "bot" | "version" | "health" | "source";
 
-export type PluginListParams = PageParams<PluginSortKey>;
+export interface PluginListParams extends PageParams<PluginSortKey> {
+  /** Only instances with (`true`) or without (`false`) an available update. */
+  updates?: boolean;
+}
 
 /** `DELETE /servers/{server}/plugins/{bot}/{instance}`. */
 export interface UninstallResult {
@@ -856,6 +864,31 @@ export interface StorePlugin {
   trust: StoreTrust;
   /** Instances using this source/plugin. */
   installed: StoreInstallation[];
+  /** Set when the installed version is not the latest (installed plugins only). */
+  update?: PluginUpdate;
+}
+
+/**
+ * `registry`: the codi.lock version is not the highest release tag of the plugin repository
+ * (any major version). `bundled`: a copy of an official plugin (`plugins/<name>/`) is older
+ * than the version bundled in the runtime.
+ */
+export type PluginUpdateKind = "registry" | "bundled";
+
+/** The highest part of the version that changes. */
+export type PluginUpdateLevel = "major" | "minor" | "patch";
+
+/** An available update of an installed plugin. */
+export interface PluginUpdate {
+  kind: PluginUpdateKind;
+  current: string;
+  latest: string;
+  level: PluginUpdateLevel;
+  /**
+   * Bundled copies: the copy was changed in the repository (or cannot be told apart from a
+   * local change). Updating overwrites it and must be forced.
+   */
+  modified?: boolean;
 }
 
 /**
@@ -897,6 +930,8 @@ export interface StorePluginParams extends PageParams<StorePluginSortKey> {
   trust?: StoreTrust;
   /** Only plugins with (`true`) or without (`false`) an instance. */
   installed?: boolean;
+  /** Only installed plugins with (`true`) or without (`false`) an available update. */
+  updates?: boolean;
 }
 
 /**
@@ -942,6 +977,124 @@ export interface StoreInstallRequest {
   integrity?: string;
   /** Required (`true`) for `unofficial` sources, otherwise `409 confirmation_required`. */
   confirmUnofficial?: boolean;
+}
+
+/** What a new version adds to and removes from a list (sorted). */
+export interface ListDiff {
+  added: string[];
+  removed: string[];
+}
+
+/** What the new version requests compared with the installed one. */
+export interface PermissionDiff {
+  capabilities: ListDiff;
+  intents: ListDiff;
+  /** Intents that must be enabled in the Discord developer portal. */
+  privilegedIntents: ListDiff;
+  /** Hosts the plugin may call. */
+  network: ListDiff;
+}
+
+/** The installed version of a plugin (read from the active configuration). */
+export interface InstalledPluginVersion {
+  version: string;
+  /** Registry plugins: the codi.lock entry. */
+  commit?: string;
+  integrity?: string;
+  repo?: string;
+  capabilities: string[];
+  intents: string[];
+  privilegedIntents: string[];
+  network: string[];
+}
+
+/** What an update changes for one instance on one server. */
+export interface PluginUpdateInstance {
+  server: string;
+  bot: string;
+  instance: string;
+  /** Registry plugins: the version range of the instance (bot.yaml). */
+  range?: string;
+  /** The range the update writes, when the new version is outside `range`. */
+  newRange?: string;
+  /** Grants are set to what the new version requests. */
+  grantsAdded: string[];
+  grantsRemoved: string[];
+  /** The instance's current config is not valid for the new version's config schema. */
+  diagnostics: Diagnostic[];
+}
+
+/** What a bundled update does to `plugins/<name>/` (paths relative to it). */
+export interface PluginUpdateFiles {
+  changed: string[];
+  added: string[];
+  removed: string[];
+}
+
+/**
+ * `GET /store/{source}/{plugin}/update` (admin of a server): the latest version against what
+ * is installed. Computed without evaluating the new version's code.
+ */
+export interface StoreUpdateReview {
+  /** `false` when the installed version is the latest. */
+  available: boolean;
+  update: PluginUpdate | null;
+  /** The new version, as `GET /store/{source}/{plugin}`: send its version/commit/integrity back. */
+  detail: StoreDetail;
+  current: InstalledPluginVersion;
+  diff: PermissionDiff;
+  instances: PluginUpdateInstance[];
+  /** Bundled copies only. */
+  files?: PluginUpdateFiles;
+  /** Bundled copies: modified locally (the update needs `force`). */
+  modified: boolean;
+  /** Registry plugins: the registry index now points to another repository than codi.lock. */
+  repoChanged: boolean;
+  /** Servers where an instance runs: the update needs the admin role on each of them. */
+  servers: string[];
+  /** `false` when an instance's config is invalid for the new version (`instances[].diagnostics`). */
+  configValid: boolean;
+  /** Servers among `servers` where the caller is not admin (the update is refused). */
+  missingAdmin: string[];
+  /**
+   * For each server of `missingAdmin`, how many instances run there. Their details (config
+   * diagnostics, grants) are not returned: `instances` and `detail.installed` only cover the
+   * servers where the caller is admin.
+   */
+  restricted: { server: string; instances: number }[];
+}
+
+/** `POST /store/{source}/{plugin}/update`. */
+export interface StoreUpdateRequest {
+  /** `detail.version` of the review (required). */
+  version: string;
+  /** `detail.commit` and `detail.integrity` (required for registry plugins). */
+  commit?: string;
+  integrity?: string;
+  /** Required (`true`) for `unofficial` sources. */
+  confirmUnofficial?: boolean;
+  /** Overwrite a locally modified copy of an official plugin. */
+  force?: boolean;
+}
+
+/** An instance once the update is active. */
+export interface UpdatedInstance {
+  server: string;
+  bot: string;
+  instance: string;
+  health: HealthState | (string & {});
+  message?: string;
+}
+
+/** Result of `POST /store/{source}/{plugin}/update`. */
+export interface StoreUpdateResult {
+  version: string;
+  mode: "commit" | "pullRequest";
+  revision?: string;
+  pullRequestUrl?: string;
+  message?: string;
+  /** Health of every instance (commit mode, once the new revision is active). */
+  instances: UpdatedInstance[];
 }
 
 /** Result of a plugin install (setup wizard §10 and Store §11). */
