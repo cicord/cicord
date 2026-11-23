@@ -61,6 +61,7 @@
     "servers": "Servers",
     "none": "No server",
     "pick": "Pick a server",
+    "loading": "Loading server…",
     "current": "Current server",
     "empty": "No servers visible"
   },
