@@ -37,6 +37,9 @@ const LockFile = "codi.lock"
 // Index is the content of a registry's index.yaml.
 type Index struct {
 	Plugins map[string]IndexEntry `yaml:"plugins"`
+	// SignedBy is the ID of the official key whose signature verified (FetchIndex sets it
+	// for official URLs only; "" otherwise). Never read from the file.
+	SignedBy string `yaml:"-"`
 }
 
 type IndexEntry struct {
@@ -46,6 +49,10 @@ type IndexEntry struct {
 	Keywords    []string `yaml:"keywords,omitempty"`
 	Publisher   string   `yaml:"publisher,omitempty"`
 	Verified    bool     `yaml:"verified,omitempty"`
+	// Version is the latest published version (written by `codi plugin publish`), and
+	// Commit the commit of its tag: resolving that version fails if the tag moved.
+	Version string `yaml:"version,omitempty"`
+	Commit  string `yaml:"commit,omitempty"`
 }
 
 // NameRe is the shape of registry and plugin names. Both become cache directories, so
@@ -77,14 +84,20 @@ const (
 	TrustUnofficial = "unofficial"
 )
 
-// OfficialURLs are the URLs of the official CODI registry (normalized). None exists yet:
-// the official plugins are bundled in the binary (internal/catalog).
+// OfficialURLs are the URLs of the official CODI registry, the first being its address
+// (Official) and the others aliases. None exists yet: the official plugins are bundled in
+// the binary (internal/catalog). An index read from one of these URLs must be signed by
+// an official key (sign.go). Tests set it; DevOfficialRegistryEnv overrides it in
+// development.
+//
+// TODO(owner): set it once the official registry repository exists.
 var OfficialURLs = []string{}
 
-// Trust is computed from the registry URL, never declared in codi.yaml.
+// Trust is computed from the registry URL, never declared in codi.yaml. "official" here
+// means "an official URL": its index is only used when its signature verifies (FetchIndex).
 func Trust(url string) string {
 	u := config.NormalizeRegistryURL(url)
-	for _, o := range OfficialURLs {
+	for _, o := range officialURLs() {
 		if config.NormalizeRegistryURL(o) == u {
 			return TrustOfficial
 		}
@@ -387,7 +400,9 @@ func exportTree(c *object.Commit, dir string) (string, error) {
 
 // ───────────────────────────────────────────────────────────── add / update
 
-// FetchIndex reads index.yaml from a registry repository.
+// FetchIndex reads index.yaml from a registry repository. For an official URL, the index
+// must be signed by an official key (index.yaml.sig in the same commit, over the exact
+// bytes): otherwise it fails with ErrBadSignature and returns no index.
 func FetchIndex(ctx context.Context, url string) (*Index, error) {
 	r, err := cloneMem(ctx, url)
 	if err != nil {
@@ -401,17 +416,46 @@ func FetchIndex(ctx context.Context, url string) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := c.File("index.yaml")
+	f, err := c.File(IndexFile)
 	if err != nil {
-		return nil, fmt.Errorf("%s: no index.yaml: %w", url, err)
+		return nil, fmt.Errorf("%s: no index.yaml: %w", Redact(url), err)
 	}
 	content, err := f.Contents()
 	if err != nil {
 		return nil, err
 	}
+	signedBy := ""
+	if Trust(url) == TrustOfficial {
+		var sig []byte
+		if sf, err := c.File(SignatureFile); err == nil && sf.Size <= maxSignatureFile {
+			s, err := sf.Contents()
+			if err != nil {
+				return nil, err
+			}
+			sig = []byte(s)
+		}
+		err := checkSerial(ctx, func() (Envelope, error) {
+			env, id, err := VerifyIndex([]byte(content), sig, officialKeys(), VerifyOptions{Registries: officialURLs()})
+			signedBy = id
+			return env, err
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", Redact(url), err)
+		}
+	}
+	idx, err := ParseIndex([]byte(content))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", Redact(url), err)
+	}
+	idx.SignedBy = signedBy
+	return idx, nil
+}
+
+// ParseIndex decodes index.yaml.
+func ParseIndex(data []byte) (*Index, error) {
 	var idx Index
-	if err := yaml.Unmarshal([]byte(content), &idx); err != nil {
-		return nil, fmt.Errorf("%s: index.yaml: %w", url, err)
+	if err := yaml.Unmarshal(data, &idx); err != nil {
+		return nil, fmt.Errorf("index.yaml: %w", err)
 	}
 	return &idx, nil
 }
@@ -434,7 +478,7 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 		return nil, err
 	}
 	var regURL string
-	for _, r := range registries {
+	for _, r := range WithOfficial(registries) {
 		if r.Name == regName {
 			regURL = r.URL
 		}
@@ -449,6 +493,9 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	ie, ok := idx.Plugins[name]
 	if !ok {
 		return nil, fmt.Errorf("plugin %q not found in registry %q", name, regName)
+	}
+	if idx.SignedBy == "" {
+		ie.Verified = false // only a verified official index vouches for its publishers
 	}
 	if err := CheckRepoURL(regURL, ie.Repo); err != nil {
 		return nil, err
@@ -491,6 +538,10 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	})
 	if best == nil {
 		return nil, fmt.Errorf("no version of %s matches %q", source, versionRange)
+	}
+	if iv, err := semver.NewVersion(ie.Version); err == nil && ie.Commit != "" && iv.Equal(best) && bestHash.String() != ie.Commit {
+		return nil, fmt.Errorf("%s: tag v%s points to %s, but the registry index published it at %s (the tag moved)",
+			source, best, shortSHA(bestHash.String()), shortSHA(ie.Commit))
 	}
 	commit, err := repo.CommitObject(bestHash)
 	if err != nil {

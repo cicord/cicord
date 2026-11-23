@@ -266,7 +266,11 @@ func (s *server) handleStoreInstall(w http.ResponseWriter, r *http.Request) {
 
 	var pkg setup.Package
 	trust := registry.TrustOfficial
-	if req.Source == config.OfficialRegistryName {
+	officialReg, remoteOfficial, ok := s.officialOrigin(w, r, req.Source, req.Plugin, req.Commit)
+	if !ok {
+		return
+	}
+	if req.Source == config.OfficialRegistryName && !remoteOfficial {
 		e, ok := s.opts.Catalog.Get(req.Plugin)
 		if !ok {
 			s.fail(w, httpErr(http.StatusNotFound, "not_found", "unknown plugin"))
@@ -278,8 +282,11 @@ func (s *server) handleStoreInstall(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		var reg *config.Registry
+		if remoteOfficial {
+			reg = &officialReg
+		}
 		for _, rg := range repo.Project.Spec.Registries {
-			if rg.Name == req.Source {
+			if reg == nil && rg.Name == req.Source {
 				reg = &rg
 				break
 			}

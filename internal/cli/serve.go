@@ -342,6 +342,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		return err
 	}
 	defer store.Close()
+	defer registry.UseSerialStore(registry.KVSerialStore(store.KV(registry.SerialKVScope)))() // anti-rollback of the official index
 	sec, err := openSecrets(ctx, store, dataDir, false)
 	if err != nil {
 		return err

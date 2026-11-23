@@ -927,7 +927,8 @@ function InstallForm({
       toast.error(t("store.install.fixFirst"));
       return;
     }
-    const registry = detail.source !== "codi";
+    // A codi plugin from the official registry has a reviewed commit like a registry one.
+    const registry = detail.source !== "codi" || detail.commit !== undefined;
     const request: StoreInstallRequest = {
       source: detail.source,
       plugin: detail.name,
@@ -1423,6 +1424,15 @@ function Sources({ sources }: { sources: StoreSourceSummary[] }) {
                       <Badge tone="violet" title={t("store.sources.privateTip")}>
                         <Lock aria-hidden="true" />
                         {t("store.sources.private")}
+                      </Badge>
+                    ) : null}
+                    {s.signature === "verified" ? (
+                      <Badge tone="success" title={t("store.sources.signedTip")}>
+                        {t("store.sources.signed")}
+                      </Badge>
+                    ) : s.signature === "invalid" ? (
+                      <Badge tone="danger" title={t("store.sources.badSignatureTip")}>
+                        {t("store.sources.badSignature")}
                       </Badge>
                     ) : null}
                     {s.error ? (

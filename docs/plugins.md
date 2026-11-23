@@ -639,15 +639,16 @@ click buttons and submit modals.
 
 Plugins are installed from **sources**, like apt sources or Homebrew taps (ADR-0011):
 - **`codi`**, the official plugins bundled with the binary (welcome, onboarding, tickets,
-  polls, levels, moderation). Always available.
+  polls, levels, moderation). Always available. Once the official registry exists, `codi`
+  also lists its plugins (see *The official registry* below), without any `codi.yaml` entry.
 - **Registries**: git repositories with an `index.yaml`, declared in `codi.yaml`
   `spec.registries`. They are **unofficial** (trust is computed from the URL, never
   declared): the admin UI labels them everywhere and asks for an explicit confirmation,
   showing the capabilities and network egress being granted, before installing from them.
 
 To publish a plugin:
-1. Put it in its own git repository (`plugin.yaml` at the root) and tag releases with
-   semver tags (`v1.2.0`).
+1. Put it in its own git repository (`plugin.yaml` at the root), commit, and release it
+   with `codi plugin publish` (below), or tag releases by hand with semver tags (`v1.2.0`).
 2. List it in a registry's `index.yaml`:
    ```yaml
    plugins:
@@ -657,6 +658,8 @@ To publish a plugin:
        description: Levels and a portal leaderboard
        keywords: [xp, levels]
        publisher: acme
+       version: 1.2.0     # latest release (written by publish)
+       commit: 3f1c…      # its tag's commit: resolving 1.2.0 fails if the tag moved
    ```
 3. Users add the registry and install:
    ```sh
@@ -687,3 +690,108 @@ the bot; when no other instance uses the plugin, its `codi.lock` entry or its co
 `codi registry list|add|remove|update|search` manages sources from the command line
 (`file://` URLs and local paths are allowed there, for development registries; the admin
 UI only accepts `https://`).
+
+### `codi plugin publish`
+
+Run it in the plugin's repository when `metadata.version` in `plugin.yaml` is the version
+to release:
+
+```sh
+codi plugin publish --dry-run                       # check everything, change nothing
+codi plugin publish --push --registry ../codi-plugins --publisher acme
+```
+
+It
+1. builds and inspects the plugin like `codi plugin build` (any error stops it);
+2. refuses a dirty working tree (the tag must point at the code that was validated), a
+   `metadata.name` that is not a valid registry key, and a version that is not a semver
+   greater than every existing tag (local tags; with `--push`, the remote's too);
+3. creates the annotated tag `v<version>` on `HEAD`, and pushes it with `--push` (to
+   `--remote`, default `origin`, with your git credentials);
+4. computes the index entry: `repo` from `--repo` or the remote URL (`git@host:a/b.git`
+   becomes `https://host/a/b.git`; URLs with credentials are refused), `displayName`,
+   `description` and `keywords` from `plugin.yaml`, `publisher`, `version` and `commit`.
+   With `--registry <dir>` (a local checkout of the registry repository) it adds or
+   updates the entry in that `index.yaml`, keeping comments and the fields it does not
+   manage; an existing entry keeps its `verified` flag and `publisher`, and its `repo`
+   only changes with `--replace-repo`. Then commit there and open a pull request. Without
+   `--registry` (or with an https URL) it prints the entry and the steps.
+
+Everything is checked before the tag is created. `publish` never sets `verified`:
+registry maintainers do. If the registry's index is signed (`index.yaml.sig`), it warns
+that the signature is now stale: the maintainers sign again after merging.
+
+### The official registry: signed index, verified publishers
+
+The official registry is a git repository maintained by the CODI project. Its
+`index.yaml` is **signed**: `index.yaml.sig`, next to it, is a signature envelope followed
+by one ed25519 signature per signing key:
+
+```
+# Signatures of index.yaml (codi registry sign). Do not edit.
+format: codi-registry-signature-v1
+registry: https://github.com/codi-dev/registry   # normalized URL of the registry
+serial: 1764000000                               # increases with every signature
+expires: 2026-12-23T00:00:00Z                    # the signature is refused after this
+index-sha256: 9f86d081…                          # SHA-256 of the exact bytes of index.yaml
+ed25519 <key-id> <base64 signature>
+```
+
+Each signature covers the canonical envelope (the five fields, in this order, as
+`name: value` lines after the format line), so it binds the index content to one registry,
+one serial and one expiry. The runtime only uses an index read from an official URL when:
+- a signature by one of the official public keys embedded in the binary (a list, for
+  rotation) verifies, and the hash matches `index.yaml`;
+- `registry` is the official registry's URL (a signature made for another registry, e.g.
+  a staging copy, is refused);
+- it has not expired;
+- `serial` is not lower than the highest serial this runtime has already seen for the
+  official registry (trust on first use, stored in the runtime's state database so it
+  survives restarts; the CLI keeps it next to its plugin cache). All official URLs
+  (aliases, mirrors) share this one serial. An older, validly signed index replayed by a
+  mirror or an attacker, through any official URL, is refused.
+
+Otherwise the source is an **error** source (`signature: "invalid"`): no plugins are
+listed or installable from it, and it is never downgraded to an unofficial source with its
+`verified` flags. `verified: true` (a verified publisher) is only honoured from a verified
+official index; in any other registry it is ignored.
+
+**Maintainers.**
+- `codi registry keygen --out <file>` creates a key pair (the private key file is mode
+  0600 and never overwritten; keep it out of any repository) and prints the public key to
+  embed in the runtime (`internal/registry` `OfficialKeys`).
+- `codi registry sign <checkout> --key <file> --registry-url <official URL>` (or
+  `--key env:NAME` to read the key from an environment variable, e.g. a CI secret) writes
+  `index.yaml.sig`; commit both files together. The serial defaults to the current Unix
+  time (always above the previous one), the validity to 30 days (`--expires-in`, at most
+  180 days).
+- **Re-sign after every change to `index.yaml`, and on a schedule**: a weekly CI job that
+  signs again (new serial, new 30-day expiry) keeps the signature valid with three weeks
+  of margin. If it lapses, runtimes stop listing the official registry's plugins (the
+  bundled ones remain) until it is signed again.
+- `codi registry verify <checkout> [--public-key <b64>] [--registry-url <url>]` checks the
+  signature, hash, registry and expiry, for the registry's CI.
+- Key rotation: embed the new public key, sign with both keys (`--key old --key new`)
+  until runtimes trusting only the old key are gone, then drop it.
+- Serials only go up: `sign` refuses a `--serial` not above the current one, or more than
+  a year above the current Unix time (runtimes would then refuse every later signature).
+  If a wrong serial was ever published, a runtime recovers by deleting the key `official`
+  of the KV scope `codi:registry-serials` in its state database (the CLI: the
+  `registry-serials.json` file next to its plugin cache).
+
+**Implicit official registry.** The official registry needs no `codi.yaml` entry: its
+plugins are part of source `codi` (the name is reserved), merged with the bundled ones.
+When a plugin is in both, the registry version is used only if its index `version` is a
+valid semver **greater** than the bundled version; otherwise the bundled copy is used
+(it ships with the binary). Installing a bundled plugin copies it to `plugins/<name>/`;
+installing one from the official registry locks it in `codi.lock` as `codi/<name>`, like
+any registry plugin, and `codi plugin add codi/<name>` works the same way. If the official
+index cannot be read or verified, `codi` still lists the bundled plugins and shows the
+error. Until the official registry repository and its key exist (the URL and key list in
+this build are empty), `codi` is the bundled plugins only.
+
+**Development.** A development build embeds a test key at build time
+(`-ldflags "-X github.com/npjonath/codi/internal/registry.devOfficialKey=<base64>"`); only
+such a build honours `CODI_DEV_OFFICIAL_REGISTRY=<url>`, which points the official registry
+at another URL (its index must be signed for that URL). Release builds ignore the variable:
+nothing in the environment, `codi.yaml` or the admin UI can change what is official.

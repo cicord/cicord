@@ -825,7 +825,9 @@ export interface SimCommand {
 
 /**
  * Trust of a Store source. Computed by the runtime, never declared: `official` only for the
- * bundled `codi` source and the official registry URL; every other registry is `unofficial`.
+ * `codi` source (bundled plugins, plus the official registry once it exists) and the official
+ * registry URL, whose index must be signed by an official key; every other registry is
+ * `unofficial`.
  */
 export type StoreTrust = "official" | "unofficial";
 
@@ -873,8 +875,17 @@ export interface StoreSourceSummary {
   private: boolean;
   /** Private registries: whether this runtime has the token. */
   credentials?: "ok" | "missing";
+  /**
+   * Official registry index signature: `verified` (signed by an official key) or `invalid`
+   * (missing or wrong: the source has an `error` and lists no remote plugins). Absent for
+   * unofficial registries and for a `codi` source with only bundled plugins.
+   */
+  signature?: StoreSignature;
   pluginCount: number;
 }
+
+/** Signature state of an official registry index. */
+export type StoreSignature = "verified" | "invalid";
 
 /** A plugin source (`GET /store`). A registry that cannot be fetched has an `error` and no plugins. */
 export interface StoreSource extends StoreSourceSummary {
