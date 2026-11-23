@@ -357,7 +357,8 @@ declared in YAML (has a key); unmanaged resources have `key: ""`.
 ## 5. Plugin instances & configuration
 
 `GET /api/v1/servers/{server}/plugins` (moderator, *paged*: sort `name` (default),
-`instance`, `bot`, `version`, `health`, `source`; without `limit` every instance is returned) →
+`instance`, `bot`, `version`, `health`, `source`; filter `updates=true|false`; without
+`limit` every instance is returned) →
 
 ```json
 { "items": [ {
@@ -373,9 +374,14 @@ declared in YAML (has a key); unmanaged resources have `key: ""`.
   "routes": ["GET /steps", "POST /complete"],                // portal routes (§6)
   "health": "Healthy", "message": "",
   "source": "codi",       // "codi" (official catalog), a registry name, or "local" (written in the repo)
-  "trust": "official"     // official | unofficial | local
+  "trust": "official",    // official | unofficial | local
+  "update"?: PluginUpdate // a newer version is available (§11)
 } ], "total": 1, "offset": 0, "limit": 1, "sort": "name", "order": "asc" }
 ```
+
+`update` on instance items comes from the runtime's cache only (no fetch on this
+endpoint): registry versions are known once the background refresh or a Store page has
+looked them up.
 
 `GET /api/v1/servers/{server}/plugins/{bot}/{instance}` (moderator) → one item (the
 admin's per-plugin page); unknown → `404`.
@@ -818,7 +824,11 @@ repositories on the same host), never to other hosts. It is never returned by th
 { "source": "codi", "name": "welcome", "displayName": "Welcome", "description": "…",
   "keywords": [], "version"?: "0.1.0", "publisher"?: "…", "verified": false, "repo"?: "https://…",
   "trust": "official|unofficial",
-  "installed": [{ "server", "bot", "instance" }] }        // instances using this source/plugin
+  "installed": [{ "server", "bot", "instance" }],         // instances using this source/plugin
+  "update"?: PluginUpdate }                               // installed plugins with a newer version
+// PluginUpdate
+{ "kind": "registry|bundled", "current": "1.0.0", "latest": "1.1.0",
+  "level": "major|minor|patch", "modified"?: true }
 // StoreDetail = StorePlugin + what the plugin requests, read from its plugin.yaml at the
 // resolved version (not from the index):
 { …StorePlugin, "version": "1.2.0", "commit"?: "<sha>", "integrity"?: "sha256-…",
@@ -829,14 +839,31 @@ repositories on the same host), never to other hosts. It is never returned by th
 `commands` is `null` when unknown: listing commands evaluates the plugin's code, which is
 only done for `official` sources before installation.
 
+**Updates.** A plugin version is shared by every instance using it, so an update changes
+all of them at once:
+- `kind: "registry"`: the `codi.lock` version of `<registry>/<plugin>` (including
+  `codi/<plugin>` locked from the official registry) is not the highest release tag of the
+  plugin repository, **any major version** (prereleases ignored, like resolving `*`). The
+  lookup lists the repository's tags only (no clone), with the registry's token and the
+  public-only rule like every Store fetch, and is cached with the index TTL: the background
+  refresh and `POST /store/refresh` refetch it, browsing the Store fetches what is missing
+  or stale, instance items never fetch.
+- `kind: "bundled"`: a copy of an official plugin in `plugins/<name>/` whose `plugin.yaml`
+  version is older than the version bundled in the binary. `modified: true` when the copy
+  is neither the content of a released version of that plugin (the binary records the
+  integrity of every bundled version) nor the current version with only another
+  `metadata.version`: updating would overwrite local changes and must be forced.
+
 ### Endpoints
 
 | Method | Path | Role | Result |
 |---|---|---|---|
 | GET | `/api/v1/store[?summary=1]` | admin of a server | `{"sources": [Source]}`, `codi` first, then registries in `codi.yaml` order |
-| GET | `/api/v1/store/plugins` | admin of a server | *paged* `{"items": [StorePlugin], …}` across sources; sort `name` (default), `source`, `trust`, `version`, `publisher`, `installed`; filters `source`, `trust`, `installed=true\|false`; default limit 50 |
+| GET | `/api/v1/store/plugins` | admin of a server | *paged* `{"items": [StorePlugin], …}` across sources; sort `name` (default), `source`, `trust`, `version`, `publisher`, `installed`; filters `source`, `trust`, `installed=true\|false`, `updates=true\|false`; default limit 50 |
 | POST | `/api/v1/store/refresh` | admin of a server | refetches every registry index → as `GET /store` |
 | GET | `/api/v1/store/{source}/{plugin}` | admin of a server | `StoreDetail` for the latest version (`404` unknown source or plugin, `502 registry_unavailable`) |
+| GET | `/api/v1/store/{source}/{plugin}/update` | admin of a server | `UpdateReview` (`404 not_installed`, `502 registry_unavailable`) |
+| POST | `/api/v1/store/{source}/{plugin}/update` | admin of **every** server running it | `UpdateResult` |
 | POST | `/api/v1/servers/{server}/store/install` | admin of `{server}` | `InstallResult` (§10) |
 | POST | `/api/v1/registries` | project (see above) | `WriteResult` |
 | DELETE | `/api/v1/registries/{name}` | project | `WriteResult` |
@@ -863,6 +890,70 @@ only done for `official` sources before installation.
   of the active revision before anything is written (`422 invalid` with diagnostics).
 - Mode, activation wait and response as the wizard install (§10). Audit `store.install`
   (target `<bot>/<instance>`, details `{source, plugin, version, commit, trust, mode}`).
+
+#### Updating a plugin
+
+`GET /store/{source}/{plugin}/update` reviews the latest version against what is installed.
+It never evaluates the new version's code (its config schema and `plugin.yaml` only):
+
+```json
+// UpdateReview
+{ "available": true, "update": PluginUpdate | null,
+  "detail": StoreDetail,                     // the new version: send its version/commit/integrity back
+  "current": { "version": "1.0.0", "commit"?: "…", "integrity"?: "…", "repo"?: "…",
+               "capabilities": [], "intents": [], "privilegedIntents": [], "network": [] },
+  "diff": { "capabilities": {"added": [], "removed": []}, "intents": {…},
+            "privilegedIntents": {…}, "network": {…} },
+  "instances": [{ "server", "bot", "instance", "range"?: "^1.0.0", "newRange"?: "^2.0.0",
+                  "grantsAdded": [], "grantsRemoved": [], "diagnostics": [Diagnostic] }],
+  "files"?: { "changed": [], "added": [], "removed": [] },   // bundled copies (plugin-relative)
+  "modified": false, "repoChanged": false, "servers": ["ma-commu"], "configValid": true,
+  "missingAdmin": [], "restricted": [{ "server", "instances": 2 }] }
+```
+- `instances` has one entry per instance and server. `diagnostics`: the instance's
+  current config (base ⊕ server override, defaults of the **new** schema) validated
+  against the new config schema and `x-codi-ref` — an incompatible settings change shows
+  up here before anything is written (`configValid: false`).
+- `newRange` is written when the new version is outside the instance's `version` range
+  (`^<new>`); `grantsAdded`/`grantsRemoved` make the grants what the new version requests.
+- `repoChanged`: the registry index now points to another repository than `codi.lock`.
+- `missingAdmin`: servers running the plugin where the caller is not admin. Their
+  instances are **not** detailed (no config diagnostics, grants, names, and they are left
+  out of `detail.installed`): `restricted` only gives how many instances run there.
+
+`POST /store/{source}/{plugin}/update` request:
+```json
+{ "version": "1.1.0", "commit"?: "<sha>", "integrity"?: "sha256-…",
+  "confirmUnofficial"?: false, "force"?: false }
+```
+- Needs the `admin` role on **every** server where an instance of the plugin runs (bearer:
+  everywhere) → `403 forbidden` naming the missing servers. Write-back disabled → `403`.
+- Registry plugins (`codi/<plugin>` locked from the official registry included): `version`,
+  `commit` and `integrity` of the reviewed `detail` are required (`400`); when the latest
+  version now resolves differently → `409 changed`. Bundled copies: `version` (and
+  optionally `integrity`) of the reviewed `detail`. `unofficial` sources need
+  `confirmUnofficial: true` (`409 confirmation_required`). Already the latest →
+  `409 up_to_date`. A modified bundled copy without `force: true` → `409 modified`
+  (`details` lists the changed and deleted files).
+- One write-back: the `codi.lock` entry (refused when it changed meanwhile), every
+  instance's `version` range when needed and `grants`; for bundled copies, the files of
+  `plugins/<name>/` (files the new version no longer ships are deleted). Privileged intents
+  are checked for every bot running it (`409 intents`); the change is validated on a copy
+  of the active revision, plugins built (`422 invalid` with `diagnostics`).
+- Mode and activation wait as an install. Audit `plugin.update` on each server (target
+  `<source>/<plugin>`, details `{from, to, commit, trust, capabilitiesAdded,
+  capabilitiesRemoved, forced, mode, revision, pullRequestUrl}`).
+
+```json
+// UpdateResult
+{ "version": "1.1.0", "mode": "commit|pullRequest", "revision"?: "…", "pullRequestUrl"?: "…",
+  "message"?: "…", "instances": [{ "server", "bot", "instance", "health", "message"? }] }
+```
+
+The CLI equivalent is `codi plugin update [<registry>/<plugin>] [--to <range>] [--force]`:
+without argument it lists the available updates; with a plugin it updates `codi.lock`,
+the ranges and grants of `bot.yaml` (or `plugins/<name>/`) locally and prints the
+capability diff.
 
 `POST /registries` request: `{"name": "acme", "url": "https://github.com/acme/codi-plugins.git", "token"?: "…"}`
 - `token` makes it a private registry: stored in the secret store as

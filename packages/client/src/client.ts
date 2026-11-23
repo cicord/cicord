@@ -41,6 +41,9 @@ import type {
   StorePluginParams,
   StoreSource,
   StoreSourceSummary,
+  StoreUpdateRequest,
+  StoreUpdateResult,
+  StoreUpdateReview,
   SyncRecord,
   SyncResult,
   TokenSession,
@@ -610,7 +613,7 @@ export class CodiClient {
       options?: CallOptions,
     ): Promise<Page<PluginInstance>> =>
       this.#api<Page<PluginInstance>>("GET", `/servers/${seg(server)}/plugins`, {
-        query: pageQuery(params),
+        query: { ...pageQuery(params), updates: params.updates },
         ...options,
       }),
     /** `GET /servers/{server}/plugins/{bot}/{instance}` (moderator). Rejects with `not_found`. */
@@ -716,6 +719,7 @@ export class CodiClient {
           source: params.source || undefined,
           trust: params.trust,
           installed: params.installed,
+          updates: params.updates,
         },
         ...options,
       }),
@@ -738,6 +742,33 @@ export class CodiClient {
       options?: CallOptions,
     ): Promise<InstallResult> =>
       this.#api<InstallResult>("POST", `/servers/${seg(server)}/store/install`, {
+        body: request,
+        ...options,
+      }),
+    /**
+     * `GET /store/{source}/{plugin}/update` (admin of a server): the latest version, what is
+     * installed and the permission diff. Rejects with `not_installed` / `not_found` (404) or
+     * `registry_unavailable` (502).
+     */
+    updateReview: (
+      source: string,
+      plugin: string,
+      options?: CallOptions,
+    ): Promise<StoreUpdateReview> =>
+      this.#api<StoreUpdateReview>("GET", `/store/${seg(source)}/${seg(plugin)}/update`, options),
+    /**
+     * `POST /store/{source}/{plugin}/update` (admin of every server where the plugin runs):
+     * updates every instance in one write-back. Rejects with `changed`, `confirmation_required`,
+     * `modified`, `up_to_date`, `intents`, `conflict` (409), `invalid` + `diagnostics` (422) or
+     * `forbidden` (403, not admin on one of the servers).
+     */
+    update: (
+      source: string,
+      plugin: string,
+      request: StoreUpdateRequest,
+      options?: CallOptions,
+    ): Promise<StoreUpdateResult> =>
+      this.#api<StoreUpdateResult>("POST", `/store/${seg(source)}/${seg(plugin)}/update`, {
         body: request,
         ...options,
       }),

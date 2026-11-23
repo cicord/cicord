@@ -382,11 +382,9 @@ func exportTree(c *object.Commit, dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
-	h := sha256.New()
+	files := make(map[string][]byte, len(entries))
 	for _, e := range entries {
-		fmt.Fprintf(h, "%s\x00%d\x00", e.name, len(e.data))
-		h.Write(e.data)
+		files[e.name] = e.data
 		p := filepath.Join(dir, filepath.FromSlash(e.name))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return "", err
@@ -395,7 +393,23 @@ func exportTree(c *object.Commit, dir string) (string, error) {
 			return "", err
 		}
 	}
-	return "sha256-" + base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
+	return Integrity(files), nil
+}
+
+// Integrity is the content hash of a plugin ("sha256-<base64>") over its files sorted by
+// path (slash-separated, relative to the plugin directory): what codi.lock pins.
+func Integrity(files map[string][]byte) string {
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	h := sha256.New()
+	for _, n := range names {
+		fmt.Fprintf(h, "%s\x00%d\x00", n, len(files[n]))
+		h.Write(files[n])
+	}
+	return "sha256-" + base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
 // ───────────────────────────────────────────────────────────── add / update
@@ -573,12 +587,12 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	return &Resolution{Source: source, Entry: entry, Dir: dir, Index: ie, Manifest: &m}, nil
 }
 
-// remoteTags is kept for callers that only need versions without cloning objects.
-func remoteTags(ctx context.Context, url string) ([]string, error) {
+// ListTags lists the tag names of a git repository without cloning it (ls-remote).
+func ListTags(ctx context.Context, url string) ([]string, error) {
 	rem := git.NewRemote(memory.NewStorage(), &gitconfig.RemoteConfig{Name: "origin", URLs: []string{url}})
-	refs, err := rem.ListContext(ctx, &git.ListOptions{})
+	refs, err := rem.ListContext(ctx, &git.ListOptions{Auth: AuthFor(ctx, url)})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list %s: %w", Redact(url), err)
 	}
 	var out []string
 	for _, r := range refs {

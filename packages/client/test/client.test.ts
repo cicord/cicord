@@ -419,6 +419,35 @@ describe("store & registries", () => {
     ]);
   });
 
+  test("plugin updates", async () => {
+    const result = { version: "1.1.0", mode: "commit", revision: "r2", instances: [] };
+    const { fetch, calls } = mockFetch((c) =>
+      c.method === "POST" ? json(result) : json({ available: true, items: [], total: 0 }),
+    );
+    const client = createCodiClient({ fetch });
+    await client.store.updateReview("acme", "xp");
+    const request = {
+      version: "1.1.0",
+      commit: "c0ffee",
+      integrity: "sha256-abc",
+      confirmUnofficial: true,
+    };
+    await expect(client.store.update("acme", "xp", request)).resolves.toEqual(result);
+    await client.store.update("codi", "welcome", { version: "0.2.0", force: true });
+    await client.store.plugins({ updates: true });
+    await client.admin.pluginsPage("ma-commu", { updates: true, limit: 25 });
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/v1/store/acme/xp/update",
+      "POST /api/v1/store/acme/xp/update",
+      "POST /api/v1/store/codi/welcome/update",
+      "GET /api/v1/store/plugins?updates=true",
+      "GET /api/v1/servers/ma-commu/plugins?limit=25&updates=true",
+    ]);
+    expect(calls[1]?.body).toEqual(request);
+    expect(calls[2]?.body).toEqual({ version: "0.2.0", force: true });
+    expect(calls[1]?.headers.get("X-Codi-Request")).toBe("1");
+  });
+
   test("private registry tokens", async () => {
     const { fetch, calls } = mockFetch(() => json({ mode: "commit", revision: "r" }));
     const client = createCodiClient({ fetch });

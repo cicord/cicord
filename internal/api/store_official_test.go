@@ -124,4 +124,28 @@ func TestStoreImplicitOfficialRegistry(t *testing.T) {
 	if !found {
 		t.Errorf("instances = %+v", insts.Items)
 	}
+
+	// Updates of "codi/<name>" locked from the official registry resolve through it (no
+	// codi.yaml registry), as official: no unofficial confirmation, the reviewed commit.
+	release(t, plugin, map[string]string{"plugin.yaml": strings.Replace(strings.Replace(helloManifest, "version: 1.0.0", "version: 1.1.0", 1),
+		"capabilities: [discord.messages.send]", "capabilities: [discord.messages.send, storage.kv]", 1)}, "v1.1.0")
+	c.expect(200, "POST", "/api/v1/store/refresh", nil)
+	var rv updateReviewTestDTO
+	c.expect(200, "GET", "/api/v1/store/codi/hello/update", nil).json(t, &rv)
+	if !rv.Available || rv.Update == nil || rv.Update.Kind != "registry" || rv.Detail.Version != "1.1.0" || rv.Detail.Trust != "official" ||
+		len(rv.Diff.Capabilities.Added) != 1 || rv.Files != nil {
+		t.Fatalf("review = %+v", rv)
+	}
+	update := "/api/v1/store/codi/hello/update"
+	if r := c.do("POST", update, map[string]any{"version": "1.1.0"}); r.status != 400 {
+		t.Fatalf("update without the reviewed commit: %d %s", r.status, r.body)
+	}
+	var ur updateResultDTO
+	c.expect(200, "POST", update, map[string]any{"version": rv.Detail.Version, "commit": rv.Detail.Commit, "integrity": rv.Detail.Integrity}).json(t, &ur)
+	if ur.Version != "1.1.0" || len(ur.Instances) != 1 || ur.Instances[0].Health != "Healthy" {
+		t.Fatalf("update = %+v", ur)
+	}
+	if lock, _ := registry.ReadLock(e.dir); lock.Plugins["codi/hello"].Version != "1.1.0" {
+		t.Errorf("codi.lock = %+v", lock.Plugins)
+	}
 }

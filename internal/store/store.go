@@ -76,6 +76,8 @@ type Plugin struct {
 	Repo        string         `json:"repo,omitempty"`
 	Trust       string         `json:"trust"`
 	Installed   []Installation `json:"installed"`
+	// Update is set when an installed plugin has a newer version (nil otherwise).
+	Update *UpdateInfo `json:"update,omitempty"`
 }
 
 // Detail is a plugin with what it requests, at its latest version.
@@ -131,9 +133,13 @@ type Service struct {
 	// PublicOnly makes https fetches refuse non-public addresses (registry.WithPublicOnly):
 	// set when the Store serves admin UI users, who must not reach the runtime's network.
 	PublicOnly bool
+	// Latest returns the highest release of a plugin repository listed by a registry
+	// (default registry.LatestVersion: tags only, no clone). Cached like indexes.
+	Latest func(ctx context.Context, registryURL, repoURL string) (string, error)
 
 	mu    sync.Mutex
 	cache map[string]cached // by normalized URL
+	tags  map[string]cachedLatest
 }
 
 type cached struct {
@@ -236,7 +242,7 @@ func (s *Service) Run(stop <-chan struct{}, repo func() *config.Repo) {
 		}
 		r := repo()
 		if _, official := registry.Official(); official || len(registries(r)) > 0 {
-			_, _ = s.Sources(ctx, r, true)
+			_, _ = s.Sources(ctx, r, true) // also refreshes the latest versions of installed plugins
 		}
 		t.Reset(s.ttl())
 	}
@@ -327,6 +333,19 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 		}
 		out = append(out, src)
 	}
+	mode := FetchMissing
+	if force {
+		mode = FetchAll
+	}
+	ups := s.updates(ctx, repo, mode)
+	for i := range out {
+		for j := range out[i].Plugins {
+			p := &out[i].Plugins[j]
+			if u, ok := ups[p.Source+"/"+p.Name]; ok {
+				p.Update = &u
+			}
+		}
+	}
 	return out, nil
 }
 
@@ -345,7 +364,6 @@ func fromIndex(r config.Registry, name string, e registry.IndexEntry, inst []Ins
 // Detail describes a plugin at its latest version. For registries, the plugin is
 // downloaded to the cache and Resolution holds what an install must lock.
 func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name string) (Detail, error) {
-	inst := installations(repo, s.Catalog)
 	var reg *config.Registry
 	if source == config.OfficialRegistryName {
 		off, remote, err := s.OfficialRemote(ctx, name)
@@ -357,18 +375,7 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 		}
 	}
 	if source == config.OfficialRegistryName && reg == nil {
-		if s.Catalog == nil {
-			return Detail{}, ErrUnknownPlugin
-		}
-		e, ok := s.Catalog.Get(name)
-		if !ok {
-			return Detail{}, ErrUnknownPlugin
-		}
-		d := Detail{Plugin: Plugin{Source: source, Name: e.Name, DisplayName: e.DisplayName, Description: e.Description,
-			Keywords: nonNil(e.Keywords), Version: e.Version, Publisher: "CODI", Verified: true,
-			Trust: registry.TrustOfficial, Installed: nonNilInst(inst[source+"/"+name])}}
-		fill(&d, e)
-		return d, nil
+		return s.BundledDetail(repo, name)
 	}
 	if !registry.NameRe.MatchString(source) || !registry.NameRe.MatchString(name) {
 		return Detail{}, ErrUnknownPlugin
@@ -384,7 +391,41 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 	if reg == nil {
 		return Detail{}, ErrUnknownSource
 	}
-	c := s.index(ctx, *reg, false)
+	return s.RegistryDetail(ctx, repo, *reg, name)
+}
+
+// BundledDetail describes the official plugin name bundled in the binary.
+func (s *Service) BundledDetail(repo *config.Repo, name string) (Detail, error) {
+	source := config.OfficialRegistryName
+	if s.Catalog == nil {
+		return Detail{}, ErrUnknownPlugin
+	}
+	e, ok := s.Catalog.Get(name)
+	if !ok {
+		return Detail{}, ErrUnknownPlugin
+	}
+	inst := installations(repo, s.Catalog)
+	d := Detail{Plugin: Plugin{Source: source, Name: e.Name, DisplayName: e.DisplayName, Description: e.Description,
+		Keywords: nonNil(e.Keywords), Version: e.Version, Publisher: "CODI", Verified: true,
+		Trust: registry.TrustOfficial, Installed: nonNilInst(inst[source+"/"+name])}}
+	// The integrity of the bundled files: an update checks it was the reviewed version.
+	d.Integrity, _ = s.Catalog.Integrity(name)
+	if u, ok := s.BundledUpdate(repo, name); ok && len(d.Installed) > 0 {
+		d.Update = &u
+	}
+	fill(&d, e)
+	return d, nil
+}
+
+// RegistryDetail describes plugin name of registry reg (codi.yaml or the official
+// registry) at its latest version, downloaded to the cache.
+func (s *Service) RegistryDetail(ctx context.Context, repo *config.Repo, reg config.Registry, name string) (Detail, error) {
+	source := reg.Name
+	if !registry.NameRe.MatchString(name) {
+		return Detail{}, ErrUnknownPlugin
+	}
+	inst := installations(repo, s.Catalog)
+	c := s.index(ctx, reg, false)
 	if c.err != nil {
 		return Detail{}, &UnavailableError{Source: source, Err: c.err}
 	}
@@ -396,9 +437,9 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 	if resolve == nil {
 		resolve = registry.ResolveLatest
 	}
-	rctx, cancel := context.WithTimeout(s.withToken(s.guard(ctx), *reg), 2*time.Minute)
+	rctx, cancel := context.WithTimeout(s.withToken(s.guard(ctx), reg), 2*time.Minute)
 	defer cancel()
-	res, err := resolve(rctx, []config.Registry{*reg}, s.CacheDir, source+"/"+name, "*")
+	res, err := resolve(rctx, []config.Registry{reg}, s.CacheDir, source+"/"+name, "*")
 	if err != nil {
 		return Detail{}, &UnavailableError{Source: source, Err: err}
 	}
@@ -410,7 +451,7 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 	if e.Name != name {
 		return Detail{}, &UnavailableError{Source: source, Err: fmt.Errorf("the repository of %q contains plugin %q", name, e.Name)}
 	}
-	d := Detail{Plugin: fromIndex(*reg, name, ie, inst[source+"/"+name], c.idx.SignedBy != ""), Commit: res.Entry.Commit,
+	d := Detail{Plugin: fromIndex(reg, name, ie, inst[source+"/"+name], c.idx.SignedBy != ""), Commit: res.Entry.Commit,
 		Integrity: res.Entry.Integrity, Resolution: res}
 	d.Version = res.Entry.Version
 	if d.DisplayName == name && e.DisplayName != "" {
@@ -420,6 +461,22 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 		d.Description = e.Description
 	}
 	fill(&d, e)
+	// What was just resolved is the latest version: keep the update check in line.
+	s.mu.Lock()
+	if s.tags == nil {
+		s.tags = map[string]cachedLatest{}
+	}
+	s.tags[config.NormalizeRegistryURL(ie.Repo)] = cachedLatest{version: d.Version, at: s.now()}
+	s.mu.Unlock()
+	if repo != nil && len(d.Installed) > 0 {
+		if l, err := registry.ReadLock(repo.Root); err == nil {
+			if le, ok := l.Plugins[source+"/"+name]; ok {
+				if lvl := registry.UpdateLevel(le.Version, d.Version); lvl != "" {
+					d.Update = &UpdateInfo{Kind: UpdateRegistry, Current: le.Version, Latest: d.Version, Level: lvl}
+				}
+			}
+		}
+	}
 	return d, nil
 }
 

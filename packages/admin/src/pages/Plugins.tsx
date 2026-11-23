@@ -7,6 +7,7 @@ import { EmptyState, Mono, Page, PageHeader } from "../components/common.tsx";
 import { DataTable, type DataTableColumn, type TableQuery } from "../components/data-table.tsx";
 import { HealthBadge } from "../components/status.tsx";
 import { TrustBadge } from "../components/trust.tsx";
+import { UpdateBadge } from "../components/update.tsx";
 import { useTranslation } from "../i18n/index.ts";
 import { useFlash } from "../lib/flash.ts";
 import { instancePath } from "../shell/nav.ts";
@@ -20,6 +21,7 @@ export const pluginParams = (q: TableQuery): PluginListParams => ({
   order: q.order,
   offset: q.offset,
   limit: q.limit,
+  ...(q.filters["updates"] ? { updates: q.filters["updates"] === "true" } : {}),
 });
 
 export function PluginsPage({ serverKey }: { serverKey: string }) {
@@ -72,7 +74,12 @@ export function PluginsPage({ serverKey }: { serverKey: string }) {
       header: t("plugins.columns.version"),
       sortKey: "version",
       skeleton: "w-12",
-      cell: (p) => <Mono>{p.plugin.version}</Mono>,
+      cell: (p) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <Mono>{p.plugin.version}</Mono>
+          {p.update ? <UpdateBadge update={p.update} /> : null}
+        </span>
+      ),
     },
     {
       id: "source",
@@ -121,6 +128,17 @@ export function PluginsPage({ serverKey }: { serverKey: string }) {
         defaultSort="name"
         rememberAs={`plugins:${serverKey}`}
         search={{ label: t("plugins.search.label"), placeholder: t("plugins.search.placeholder") }}
+        filters={[
+          {
+            id: "updates",
+            label: t("plugins.filters.updates"),
+            allLabel: t("plugins.filters.anyUpdates"),
+            options: [
+              { value: "true", label: t("plugins.filters.updatesYes") },
+              { value: "false", label: t("plugins.filters.updatesNo") },
+            ],
+          },
+        ]}
         empty={
           <EmptyState icon={<Puzzle />} title={t("plugins.empty.title")}>
             {t("plugins.empty.text")}

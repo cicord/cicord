@@ -99,6 +99,21 @@ interface MockState {
   storeFetchedAt: string;
   /** Names of the secrets in the runtime's secret store (registry tokens). */
   secrets: string[];
+  /**
+   * Installed versions of Store plugins by "<source>/<plugin>" (codi.lock entries and copies
+   * of official plugins); the latest version is the one of the source. Absent: the latest.
+   */
+  versions?: Record<string, MockVersion>;
+}
+
+interface MockVersion {
+  version: string;
+  capabilities: string[];
+  intents: string[];
+  network: string[];
+  commit?: string;
+  /** Bundled copies: modified in the repository (the update must be forced). */
+  modified?: boolean;
 }
 
 interface StoreInstall {
@@ -473,6 +488,11 @@ export interface MockRuntimeOptions {
    * Plugins table in `vp dev --mode mock` (default 0).
    */
   demoInstances?: number;
+  /**
+   * Installed plugins with an available update: the welcome copy is older than the bundled
+   * version and acme/giveaways is installed at an older version (default false).
+   */
+  demoUpdates?: boolean;
 }
 
 export function createMockRuntime(options: MockRuntimeOptions = {}) {
@@ -498,6 +518,41 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         instance: p.name,
       });
     }
+    if (options.demoUpdates) {
+      s.versions = {};
+      const welcome = bundledPlugins.find((p) => p.name === "welcome")!;
+      s.versions["codi/welcome"] = {
+        version: "0.0.9",
+        capabilities: welcome.capabilities.slice(0, -1),
+        intents: welcome.intents,
+        network: [],
+      };
+      const giveaways = s.registries
+        .find((r) => r.name === "acme")!
+        .plugins.find((p) => p.name === "giveaways")!;
+      s.instances.push({
+        bot: "moderator",
+        instance: "giveaways",
+        plugin: "giveaways",
+        source: "acme",
+        base: {},
+        override: {},
+      });
+      s.storeInstalls.push({
+        source: "acme",
+        plugin: "giveaways",
+        server: SERVER_KEY,
+        bot: "moderator",
+        instance: "giveaways",
+      });
+      s.versions["acme/giveaways"] = {
+        version: "0.3.2",
+        capabilities: giveaways.capabilities.filter((c) => c !== "scheduler"),
+        intents: [],
+        network: [],
+        commit: "5b2e9c1d0a8f7e6d5c4b3a29180716f5e4d3c2b1",
+      };
+    }
     return s;
   };
   let state: MockState = load();
@@ -515,6 +570,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           saved.storeInstalls ??= [];
           saved.storeFetchedAt ??= new Date().toISOString();
           saved.secrets ??= [];
+          saved.versions ??= {};
           return saved;
         }
       } catch {
@@ -565,8 +621,17 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     };
   };
 
-  /** The plugin of an instance: the two example plugins, a Store plugin, or a generated one. */
+  /** The plugin of an instance, at its installed version (state.versions). */
   function pluginInfo(inst: Instance): PluginInfo {
+    const info = latestPluginInfo(inst);
+    const v = state.versions?.[`${info.source}/${info.name}`];
+    return v
+      ? { ...info, version: v.version, capabilities: v.capabilities, intents: v.intents }
+      : info;
+  }
+
+  /** The plugin of an instance: the two example plugins, a Store plugin, or a generated one. */
+  function latestPluginInfo(inst: Instance): PluginInfo {
     const name = inst.plugin ?? inst.instance;
     const example = plugins[name as keyof typeof plugins];
     if (example && !inst.source)
@@ -772,6 +837,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           : "",
         source,
         trust,
+        ...withUpdate(updateOf(source, info.name)),
       };
     });
   };
@@ -784,9 +850,12 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
   function pluginsPage(viewer: string, url: URL): Response {
     const p = parsePage(url, ["name", "instance", "bot", "version", "health", "source"], "name");
     if (typeof p === "string") return fail(400, "invalid", p);
+    const updates = url.searchParams.get("updates");
     return json(
       pageOf(
-        pluginItems(viewer),
+        pluginItems(viewer).filter(
+          (it) => !updates || (updates === "true") === ("update" in it && !!it.update),
+        ),
         p,
         (it: PluginItem) =>
           [
@@ -1228,7 +1297,247 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       ...(p.repo ? { repo: p.repo } : {}),
       trust: source === "codi" ? "official" : "unofficial",
       installed: storeInstalled(source, p.name),
+      ...withUpdate(updateOf(source, p.name)),
     };
+  }
+
+  // ───────────────────────────── updates
+
+  const semver = (v: string) => v.split(/[.+-]/).slice(0, 3).map(Number);
+
+  function updateLevel(current: string, latest: string): "major" | "minor" | "patch" | "" {
+    const [a, b] = [semver(current), semver(latest)];
+    for (let i = 0; i < 3; i++)
+      if (b[i]! !== a[i]!) return b[i]! > a[i]! ? (["major", "minor", "patch"] as const)[i]! : "";
+    return "";
+  }
+
+  const withUpdate = <U>(u: U | undefined) => (u ? { update: u } : {});
+
+  /** The available update of an installed Store plugin. */
+  function updateOf(source: string, name: string) {
+    const v = state.versions?.[`${source}/${name}`];
+    if (!v || source === "local") return undefined;
+    const latest =
+      source === "codi"
+        ? bundledPlugins.find((x) => x.name === name)
+        : state.registries.find((r) => r.name === source)?.plugins.find((x) => x.name === name);
+    const level = latest ? updateLevel(v.version, latest.version) : "";
+    if (!latest || !level) return undefined;
+    return {
+      kind: source === "codi" ? ("bundled" as const) : ("registry" as const),
+      current: v.version,
+      latest: latest.version,
+      level,
+      ...(source === "codi" && v.modified ? { modified: true } : {}),
+    };
+  }
+
+  function listDiff(a: string[], b: string[]) {
+    return {
+      added: b.filter((x) => !a.includes(x)).sort(),
+      removed: a.filter((x) => !b.includes(x)).sort(),
+    };
+  }
+
+  function updatePlan(source: string, name: string) {
+    const found = findStorePlugin(source, name)!;
+    const p = found.plugin;
+    const v: MockVersion = state.versions?.[`${source}/${name}`] ?? {
+      version: p.version,
+      capabilities: p.capabilities,
+      intents: p.intents,
+      network: p.network,
+    };
+    const privileged = (l: string[]) => l.filter((i) => PRIVILEGED_INTENTS.includes(i));
+    const major = updateLevel(v.version, p.version) === "major";
+    const instances = state.instances
+      .filter((i) => {
+        const info = pluginInfo(i);
+        return info.source === source && info.name === name;
+      })
+      .map((inst) => {
+        const idx = state.instances.indexOf(inst);
+        const grants = listDiff(v.capabilities, p.capabilities);
+        const diagnostics = validate(
+          p.schema,
+          applyDefaults(p.schema, merge(inst.base, inst.override)),
+          resources(),
+        ).map((e) => ({
+          severity: "error" as const,
+          file: "bots/moderator/bot.yaml",
+          path: `/spec/plugins/${idx}/config${e.pointer}`,
+          message: `[server ${SERVER_KEY}] ${e.message}`,
+        }));
+        return {
+          server: SERVER_KEY,
+          bot: inst.bot,
+          instance: inst.instance,
+          ...(found.registry
+            ? { range: `^${v.version}`, ...(major ? { newRange: `^${p.version}` } : {}) }
+            : {}),
+          grantsAdded: grants.added,
+          grantsRemoved: grants.removed,
+          diagnostics,
+        };
+      });
+    return {
+      p,
+      found,
+      v,
+      current: {
+        version: v.version,
+        ...(v.commit ? { commit: v.commit } : {}),
+        capabilities: v.capabilities,
+        intents: v.intents,
+        privilegedIntents: privileged(v.intents),
+        network: v.network,
+      },
+      diff: {
+        capabilities: listDiff(v.capabilities, p.capabilities),
+        intents: listDiff(v.intents, p.intents),
+        privilegedIntents: listDiff(privileged(v.intents), privileged(p.intents)),
+        network: listDiff(v.network, p.network),
+      },
+      instances,
+    };
+  }
+
+  /** GET /store/{source}/{plugin}/update (spec/api.md §11). */
+  function storeUpdateReview(source: string, name: string): Response {
+    const detail = storeDetail(source, name);
+    if (!detail.ok) return detail;
+    if (!storeInstalled(source, name).length)
+      return fail(404, "not_installed", `${source}/${name} is not installed`);
+    const plan = updatePlan(source, name);
+    const bundled = source === "codi";
+    return json({
+      available: !!updateOf(source, name),
+      update: updateOf(source, name) ?? null,
+      detail: storeDetailBody(source, name),
+      current: plan.current,
+      diff: plan.diff,
+      instances: plan.instances,
+      ...(bundled
+        ? {
+            files: {
+              changed: ["plugin.yaml", "src/index.ts"],
+              added: [],
+              removed: plan.v.modified ? ["src/local-tweaks.ts"] : [],
+            },
+          }
+        : {}),
+      modified: !!plan.v.modified,
+      repoChanged: false,
+      servers: [SERVER_KEY],
+      configValid: plan.instances.every((i) => !i.diagnostics.length),
+      missingAdmin: [],
+      restricted: [],
+    });
+  }
+
+  /** POST /store/{source}/{plugin}/update (spec/api.md §11). */
+  function storeUpdate(viewer: string, source: string, name: string, body: Obj): Response {
+    const detail = storeDetail(source, name);
+    if (!detail.ok) return detail;
+    if (!storeInstalled(source, name).length)
+      return fail(404, "not_installed", `${source}/${name} is not installed`);
+    const plan = updatePlan(source, name);
+    const { p, found, v } = plan;
+    if (found.registry) {
+      const reg = p as MockRegistry["plugins"][number];
+      if (body["confirmUnofficial"] !== true)
+        return explained(409, {
+          code: "confirmation_required",
+          message: `${name} comes from an unofficial source.`,
+          hint: "Review what the new version requests and confirm that you trust this source.",
+        });
+      if (!body["version"] || !body["commit"] || !body["integrity"])
+        return fail(
+          400,
+          "invalid",
+          "version, commit and integrity of the reviewed version are required",
+        );
+      if (
+        body["version"] !== reg.version ||
+        body["commit"] !== reg.commit ||
+        body["integrity"] !== reg.integrity
+      )
+        return explained(409, {
+          code: "changed",
+          message: `${p.displayName} changed since you reviewed it (now ${reg.version}).`,
+          hint: "Review the update again.",
+        });
+    } else if (body["version"] !== p.version)
+      return explained(409, {
+        code: "changed",
+        message: `${p.displayName} changed since you reviewed it (now ${p.version}).`,
+        hint: "Review the update again.",
+      });
+    if (!updateOf(source, name))
+      return explained(409, {
+        code: "up_to_date",
+        message: `${p.displayName} ${p.version} is already installed.`,
+      });
+    if (v.modified && body["force"] !== true)
+      return explained(409, {
+        code: "modified",
+        message: `The copy of ${p.displayName} in plugins/${name}/ was modified in the repository.`,
+        hint: "Updating overwrites the local changes: keep them elsewhere, then force the update.",
+        details: "changed: src/index.ts\ndeleted by the update: src/local-tweaks.ts",
+      });
+    const missing = plan.diff.privilegedIntents.added.filter((i) => !ENABLED_INTENTS.includes(i));
+    if (missing.length)
+      return explained(409, {
+        code: "intents",
+        message: `${p.displayName} needs a privileged intent that is turned off. ${missing.join(", ")} is off for Gardien`,
+        hint: "Turn it on in the Discord developer portal (Bot → Privileged Gateway Intents), save, then update again.",
+        link: "https://discord.com/developers/applications/900/bot",
+      });
+    const diagnostics = plan.instances.flatMap((i) => i.diagnostics);
+    if (diagnostics.length)
+      return explained(422, {
+        code: "invalid",
+        message: `The configuration is not valid with ${p.displayName} ${p.version}: ${diagnostics[0]!.message}`,
+        hint: "Fix the configuration of the instances (see the details), then update again.",
+        diagnostics,
+      });
+    const user = userById(viewer)!;
+    const key = `${source}/${name}`;
+    state.versions = {
+      ...state.versions,
+      [key]: {
+        version: p.version,
+        capabilities: p.capabilities,
+        intents: p.intents,
+        network: p.network,
+        ...(found.registry ? { commit: (p as MockRegistry["plugins"][number]).commit } : {}),
+      },
+    };
+    newRevision(`plugin: update ${key} ${v.version} → ${p.version}`, user.displayName);
+    addAudit(`discord:${viewer} (${user.displayName})`, "plugin.update", key, {
+      source,
+      plugin: name,
+      from: v.version,
+      to: p.version,
+      capabilitiesAdded: plan.diff.capabilities.added,
+      capabilitiesRemoved: plan.diff.capabilities.removed,
+      forced: body["force"] === true && !!v.modified,
+      trust: found.registry ? "unofficial" : "official",
+      mode: "commit",
+    });
+    changed();
+    return json({
+      version: p.version,
+      mode: "commit",
+      revision: state.revision.id,
+      instances: plan.instances.map((i) => ({
+        server: i.server,
+        bot: i.bot,
+        instance: i.instance,
+        health: "Healthy",
+      })),
+    });
   }
 
   /** A registry whose token is missing cannot be read. */
@@ -1294,6 +1603,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           if (v.get("trust") && v.get("trust") !== plugin.trust) continue;
           if (v.get("installed") && (v.get("installed") === "true") !== plugin.installed.length > 0)
             continue;
+          if (v.get("updates") && (v.get("updates") === "true") !== "update" in plugin) continue;
           all.push(plugin);
         }
     return json(
@@ -1347,6 +1657,11 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       if (error) return fail(502, "registry_unavailable", `registry ${source}: ${error.message}`);
       return fail(404, "not_found", `unknown plugin ${source}/${name}`);
     }
+    return json(storeDetailBody(source, name));
+  }
+
+  function storeDetailBody(source: string, name: string) {
+    const found = findStorePlugin(source, name)!;
     const p = found.plugin;
     const extra = found.registry
       ? {
@@ -1354,7 +1669,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           integrity: (p as MockRegistry["plugins"][number]).integrity,
         }
       : {};
-    return json({
+    return {
       ...storePlugin(source, p),
       version: p.version,
       ...extra,
@@ -1364,7 +1679,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       network: p.network,
       schema: p.schema,
       commands: found.registry ? null : p.commands,
-    });
+    };
   }
 
   const explained = (status: number, error: Obj): Response => json({ error }, status);
@@ -1431,6 +1746,15 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       );
     const user = userById(viewer)!;
     state.storeInstalls.push({ source, plugin: name, server: SERVER_KEY, bot: botKey, instance });
+    state.versions = {
+      ...state.versions,
+      [`${source}/${name}`]: state.versions?.[`${source}/${name}`] ?? {
+        version: p.version,
+        capabilities: p.capabilities,
+        intents: p.intents,
+        network: p.network,
+      },
+    };
     state.instances.push({ bot: botKey, instance, plugin: name, source, base: cfg, override: {} });
     newRevision(
       `feat(store): install ${source}/${name} as ${botKey}/${instance}`,
@@ -1601,6 +1925,17 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         changed();
         return json({ sources: storeSources() });
       }, true);
+    const upd = /^\/api\/v1\/store\/([^/]+)\/([^/]+)\/update$/.exec(path);
+    if (upd && method === "GET")
+      return staff(
+        () => storeUpdateReview(decodeURIComponent(upd[1]!), decodeURIComponent(upd[2]!)),
+        true,
+      );
+    if (upd && method === "POST")
+      return staff(
+        (v) => storeUpdate(v, decodeURIComponent(upd[1]!), decodeURIComponent(upd[2]!), body),
+        true,
+      );
     const detail = /^\/api\/v1\/store\/([^/]+)\/([^/]+)$/.exec(path);
     if (method === "GET" && detail && detail[1] !== "plugins")
       return staff(

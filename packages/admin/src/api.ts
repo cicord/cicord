@@ -15,6 +15,7 @@ import type {
   StoreDetail,
   StorePluginParams,
   StoreSourceSummary,
+  StoreUpdateReview,
   SyncRecord,
 } from "@codi/client";
 import { useCodi, useCodiQuery, type QueryResult } from "@codi/react";
@@ -40,6 +41,8 @@ export const keys = {
     ["admin", "store", "plugins", JSON.stringify(params)] as const,
   storeDetail: (source: string, plugin: string) =>
     ["admin", "store", "detail", source, plugin] as const,
+  storeUpdate: (source: string, plugin: string) =>
+    ["admin", "store", "update", source, plugin] as const,
   sim: () => ["sim"] as const,
   simState: () => ["sim", "state"] as const,
   simCommands: (serverId: string) => ["sim", "commands", serverId] as const,
@@ -124,6 +127,17 @@ export function useStoreDetail(
   const { client } = useCodi();
   return useCodiQuery(source && plugin ? keys.storeDetail(source, plugin) : null, (signal) =>
     client.store.detail(source!, plugin!, { signal }),
+  );
+}
+
+/** The update review of an installed Store plugin (`GET /store/{source}/{plugin}/update`). */
+export function useStoreUpdateReview(
+  source: string,
+  plugin: string,
+): QueryResult<StoreUpdateReview> {
+  const { client } = useCodi();
+  return useCodiQuery(keys.storeUpdate(source, plugin), (signal) =>
+    client.store.updateReview(source, plugin, { signal }),
   );
 }
 

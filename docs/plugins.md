@@ -692,6 +692,33 @@ always `CODI_REGISTRY_<NAME>_TOKEN` for the registry's own name, so a `codi.yaml
 never send another secret (a bot token, another registry's token) to a registry host. `codi.yaml` only stores the secret's name. The token is sent to the
 registry's host only (its index and the plugin repositories on that host).
 
+**Updating.** Publishing a new tag is all it takes: CODI compares each `codi.lock`
+version with the highest release tag of the plugin repository (any major version) and
+shows "Update available" in the Store, the Plugins table and on the plugin's page. The
+update review shows what the new version requests compared with the installed one
+(capabilities, gateway intents — privileged ones highlighted —, network hosts), what it
+changes for each instance (version range, grants) and whether their current settings are
+still valid with the new config schema. Updating rewrites the lock entry, widens the
+instances' version range when the new version is outside it (`^1.0.0` → `^2.0.0`) and sets
+their grants to what the new version requests, for every instance at once (the version is
+shared), so it needs the admin role on every server where the plugin runs. Unofficial
+sources ask again for an explicit confirmation restating what is newly granted. As for
+installs, the code updated to is the code that was reviewed (`409 changed` otherwise).
+From the command line:
+```sh
+codi plugin update                       # list available updates
+codi plugin update acme/xp               # update to the latest version, print the diff
+codi plugin update acme/xp --to ~1.3.0   # or within a range (written to every instance)
+```
+What this means for publishers: keep the settings of a minor version compatible (a new
+required field makes every existing instance invalid, and the update is refused until
+admins fix it), and release breaking changes as a new major version. New capabilities,
+intents or network hosts are shown to admins as such before they update.
+
+Copies of the bundled official plugins (`plugins/<name>/`) update from the binary: a newer
+CODI version may bundle a newer version. A copy changed in your repository is not
+overwritten unless you force it (admin UI checkbox, `codi plugin update codi/<name> --force`).
+
 **Uninstalling** from the admin UI (a plugin's page → Uninstall) removes the instance from
 the bot; when no other instance uses the plugin, its `codi.lock` entry or its copied
 `plugins/<name>/` directory goes too. Its stored data is kept.

@@ -146,6 +146,9 @@ func (s *server) handleStorePlugins(w http.ResponseWriter, r *http.Request) {
 			if f := v.Get("installed"); f != "" && (f == "true") != (len(p.Installed) > 0) {
 				continue
 			}
+			if f := v.Get("updates"); f != "" && (f == "true") != (p.Update != nil) {
+				continue
+			}
 			all = append(all, p)
 		}
 	}

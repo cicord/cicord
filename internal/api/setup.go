@@ -32,6 +32,8 @@ func (s *server) setupRoutes(h func(string, func(http.ResponseWriter, *http.Requ
 	h("POST /api/v1/store/refresh", s.handleStoreRefresh)
 	h("GET /api/v1/store/plugins", s.handleStorePlugins)
 	h("GET /api/v1/store/{source}/{plugin}", s.handleStoreDetail)
+	h("GET /api/v1/store/{source}/{plugin}/update", s.handleStoreUpdateReview)
+	h("POST /api/v1/store/{source}/{plugin}/update", s.handleStoreUpdate)
 	h("POST /api/v1/servers/{server}/store/install", s.handleStoreInstall)
 	h("DELETE /api/v1/servers/{server}/plugins/{bot}/{instance}", s.handlePluginUninstall)
 	h("POST /api/v1/registries", s.handleRegistryAdd)
