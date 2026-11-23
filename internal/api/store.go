@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -89,8 +90,47 @@ type storeSourceDTO struct {
 	Plugins     []store.Plugin `json:"plugins,omitempty"`
 }
 
+// adminOf returns a predicate telling whether the caller is admin of a server (bearer:
+// every server). Store listings only show instances on those servers: an admin of one
+// server must not learn what runs on the others.
+func (s *server) adminOf(ctx context.Context, id *identity) func(string) bool {
+	if id.bearer {
+		return func(string) bool { return true }
+	}
+	seen := map[string]bool{}
+	return func(server string) bool {
+		ok, done := seen[server]
+		if !done {
+			ro, _, err := s.roleIn(ctx, id, server, false)
+			ok = err == nil && ro >= roleAdmin
+			seen[server] = ok
+		}
+		return ok
+	}
+}
+
+func visibleInstalled(in []store.Installation, ok func(string) bool) []store.Installation {
+	out := []store.Installation{}
+	for _, i := range in {
+		if ok(i.Server) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// visibleSources applies visibleInstalled to every plugin.
+func visibleSources(srcs []store.Source, ok func(string) bool) {
+	for si := range srcs {
+		for pi := range srcs[si].Plugins {
+			srcs[si].Plugins[pi].Installed = visibleInstalled(srcs[si].Plugins[pi].Installed, ok)
+		}
+	}
+}
+
 func (s *server) writeStore(w http.ResponseWriter, r *http.Request, force bool) {
-	if _, err := s.requireAnyAdmin(r); err != nil {
+	id, err := s.requireAnyAdmin(r)
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -99,6 +139,7 @@ func (s *server) writeStore(w http.ResponseWriter, r *http.Request, force bool) 
 		s.fail(w, err)
 		return
 	}
+	visibleSources(srcs, s.adminOf(r.Context(), id))
 	summary := r.URL.Query().Get("summary") == "1"
 	out := make([]storeSourceDTO, 0, len(srcs))
 	for _, src := range srcs {
@@ -116,7 +157,8 @@ func (s *server) writeStore(w http.ResponseWriter, r *http.Request, force bool) 
 // handleStorePlugins is the Store's plugin table: every source, paginated, sortable,
 // filterable (?source=&trust=&installed=true|false).
 func (s *server) handleStorePlugins(w http.ResponseWriter, r *http.Request) {
-	if _, err := s.requireAnyAdmin(r); err != nil {
+	id, err := s.requireAnyAdmin(r)
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -133,6 +175,7 @@ func (s *server) handleStorePlugins(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	visibleSources(srcs, s.adminOf(r.Context(), id))
 	v := r.URL.Query()
 	var all []store.Plugin
 	for _, src := range srcs {
@@ -180,7 +223,8 @@ func (s *server) handleStorePlugins(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleStoreDetail(w http.ResponseWriter, r *http.Request) {
-	if _, err := s.requireAnyAdmin(r); err != nil {
+	id, err := s.requireAnyAdmin(r)
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -189,6 +233,7 @@ func (s *server) handleStoreDetail(w http.ResponseWriter, r *http.Request) {
 		s.failStore(w, err)
 		return
 	}
+	d.Installed = visibleInstalled(d.Installed, s.adminOf(r.Context(), id))
 	writeJSON(w, http.StatusOK, d)
 }
 

@@ -51,6 +51,17 @@ func TestStoreUpdateNeedsAdminEverywhere(t *testing.T) {
 	c := e.client()
 	c.login(u.ID)
 
+	// Store listings only show the instances on servers this admin manages.
+	for _, path := range []string{"/api/v1/store", "/api/v1/store/plugins?source=acme", "/api/v1/store/acme/hello"} {
+		body := string(c.expect(200, "GET", path, nil).body)
+		if strings.Contains(body, "annexe") {
+			t.Errorf("%s shows the annexe instance to a ma-commu admin:\n%s", path, body)
+		}
+		if !strings.Contains(body, `"instance":"hello"`) {
+			t.Errorf("%s hides the ma-commu instance:\n%s", path, body)
+		}
+	}
+
 	r := c.expect(200, "GET", "/api/v1/store/acme/hello/update", nil)
 	var rv struct {
 		updateReviewTestDTO
