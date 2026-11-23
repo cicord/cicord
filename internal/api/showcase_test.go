@@ -114,6 +114,7 @@ func TestShowcaseRouteAccess(t *testing.T) {
 		{"GET", "tickets/tickets", map[string]int{"anonymous": 401, "member": 403, "moderator": 200, "admin": 200}},
 		{"GET", "moderation/warnings/1", map[string]int{"member": 403, "moderator": 200}},
 		{"DELETE", "moderation/warnings/1", map[string]int{"anonymous": 401, "member": 403, "moderator": 403, "admin": 200}},
+		{"GET", "announcements/scheduled", map[string]int{"anonymous": 401, "member": 403, "moderator": 200, "admin": 200}},
 	}
 	for _, r := range routes {
 		for viewer, want := range r.want {
