@@ -48,6 +48,7 @@ import { DataTable, type DataTableColumn, type TableQuery } from "../components/
 import { Callout, ErrorState, HumanErrorCallout, toastError } from "../components/errors.tsx";
 import { HealthBadge } from "../components/status.tsx";
 import { RISK, TrustBadge } from "../components/trust.tsx";
+import { UpdateBadge } from "../components/update.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -100,20 +101,21 @@ import {
 } from "../schema-form/index.ts";
 import { CopyField, ExternalButton } from "../setup/kit.tsx";
 import { dyn, nonDefaults } from "../setup/steps-end.tsx";
-import { instancePath, storePluginPath } from "../shell/nav.ts";
+import { instancePath, storePluginPath, storeUpdatePath } from "../shell/nav.ts";
+import { StoreUpdate } from "./StoreUpdate.tsx";
 
 export { TrustBadge };
 
 type T = ReturnType<typeof useTranslation>["t"];
 
-const DEVELOPER_PORTAL = "https://discord.com/developers/applications";
+export const DEVELOPER_PORTAL = "https://discord.com/developers/applications";
 
 /** Human label of a capability ("Send messages"), the raw name when unknown. */
-const capabilityLabel = (t: T, cap: string) =>
+export const capabilityLabel = (t: T, cap: string) =>
   dyn(t)(`setup.capabilities.${cap.replaceAll(".", "_")}`, { defaultValue: cap });
 
 /** "Message Content Intent" for MessageContent, the raw name when unknown. */
-const intentLabel = (t: T, intent: string) =>
+export const intentLabel = (t: T, intent: string) =>
   dyn(t)(`setup.discord.toggle.${intent}`, { defaultValue: intent });
 
 export const REGISTRY_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -161,7 +163,7 @@ export function validateRegistry(
 }
 
 /** `error.link` of an explained error (developer portal…), when the runtime sent one. */
-function errorLink(error: unknown): string | undefined {
+export function errorLink(error: unknown): string | undefined {
   if (!(error instanceof CodiApiError) || !error.body || typeof error.body !== "object")
     return undefined;
   const e = (error.body as { error?: { link?: unknown } }).error;
@@ -196,7 +198,7 @@ export function inUseItems(error: unknown): string[] {
 
 // ───────────────────────────────────────────────────────────── page
 
-function AdminOnly() {
+export function AdminOnly() {
   const { t } = useTranslation();
   return (
     <Page>
@@ -324,6 +326,7 @@ export const storeParams = (q: TableQuery): StorePluginParams => ({
   ...(q.filters["source"] ? { source: q.filters["source"] } : {}),
   ...(q.filters["trust"] ? { trust: q.filters["trust"] as StoreTrust } : {}),
   ...(q.filters["installed"] ? { installed: q.filters["installed"] === "true" } : {}),
+  ...(q.filters["updates"] ? { updates: q.filters["updates"] === "true" } : {}),
 });
 
 function Browse({ sources, serverKey }: { sources: StoreSourceSummary[]; serverKey: string }) {
@@ -373,8 +376,18 @@ function Browse({ sources, serverKey }: { sources: StoreSourceSummary[]; serverK
       header: t("store.columns.version"),
       sortKey: "version",
       skeleton: "w-12",
-      cell: (p) =>
-        p.version ? <Mono>{p.version}</Mono> : <span className="text-subtle-foreground">—</span>,
+      cell: (p) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          {p.update ? (
+            <Mono>{p.update.current}</Mono>
+          ) : p.version ? (
+            <Mono>{p.version}</Mono>
+          ) : (
+            <span className="text-subtle-foreground">—</span>
+          )}
+          {p.update ? <UpdateBadge update={p.update} /> : null}
+        </span>
+      ),
     },
     {
       id: "publisher",
@@ -462,6 +475,15 @@ function Browse({ sources, serverKey }: { sources: StoreSourceSummary[]; serverK
               { value: "false", label: t("store.filters.installedNo") },
             ],
           },
+          {
+            id: "updates",
+            label: t("store.filters.updates"),
+            allLabel: t("store.filters.anyUpdates"),
+            options: [
+              { value: "true", label: t("store.filters.updatesYes") },
+              { value: "false", label: t("store.filters.updatesNo") },
+            ],
+          },
         ]}
         empty={
           <EmptyState icon={<Puzzle />} title={t("store.empty.title")}>
@@ -486,7 +508,10 @@ export function StorePluginPage({
   plugin: string;
 }) {
   const ws = useWorkspace();
+  const { search } = useLocation();
   if (!ws.isAdmin) return <AdminOnly />;
+  if (search.get("update") === "1")
+    return <StoreUpdate source={source} name={plugin} serverKey={serverKey} />;
   return <PluginDetail source={source} name={plugin} serverKey={serverKey} />;
 }
 
@@ -589,6 +614,12 @@ function PluginDetail({
                   {t("store.install.changed.hint")}
                 </Callout>
               ) : null}
+              {d.update ? (
+                <UpdateCallout
+                  update={d.update}
+                  to={storeUpdatePath(serverKey, d.source, d.name)}
+                />
+              ) : null}
               <Card className="px-4 py-4">
                 <Review detail={d} serverKey={serverKey} />
               </Card>
@@ -616,8 +647,37 @@ function PluginDetail({
   );
 }
 
+/** "Update available" on the page of an installed plugin (Store page, instance page). */
+export function UpdateCallout({
+  update,
+  to,
+}: {
+  update: NonNullable<StoreDetail["update"]>;
+  /** The update review; absent when the viewer cannot update (not admin). */
+  to?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Callout
+      tone={update.modified || update.level === "major" ? "warning" : "info"}
+      title={t("store.update.available.title", { current: update.current, latest: update.latest })}
+      action={
+        to ? (
+          <Button asChild size="sm">
+            <Link to={to}>{t("store.update.available.review")}</Link>
+          </Button>
+        ) : undefined
+      }
+    >
+      <p>{to ? t("store.update.available.text") : t("store.update.available.askAdmin")}</p>
+      {update.level === "major" ? <p>{t("store.update.available.major")}</p> : null}
+      {update.modified ? <p>{t("store.update.available.modified")}</p> : null}
+    </Callout>
+  );
+}
+
 /** Action bar that stays at the bottom of the viewport while the page scrolls. */
-function StickyBar({ children }: { children: ReactNode }) {
+export function StickyBar({ children }: { children: ReactNode }) {
   return (
     <div className="sticky bottom-3 z-[4] flex flex-wrap items-center justify-end gap-2 rounded-lg border border-border-strong bg-popover/95 px-4 py-2.5 shadow-pop backdrop-blur">
       {children}
@@ -625,7 +685,7 @@ function StickyBar({ children }: { children: ReactNode }) {
   );
 }
 
-function DetailHeader({ detail }: { detail: StoreDetail }) {
+export function DetailHeader({ detail }: { detail: StoreDetail }) {
   const { t } = useTranslation();
   const name = detail.displayName || detail.name;
   return (
@@ -700,7 +760,7 @@ function DetailHeader({ detail }: { detail: StoreDetail }) {
   );
 }
 
-function Block({
+export function Block({
   title,
   hint,
   children,
@@ -718,7 +778,7 @@ function Block({
   );
 }
 
-function Nothing({ children }: { children: ReactNode }) {
+export function Nothing({ children }: { children: ReactNode }) {
   return <p className="text-[13px] text-subtle-foreground">{children}</p>;
 }
 
@@ -839,7 +899,7 @@ function Review({ detail, serverKey }: { detail: StoreDetail; serverKey: string 
   );
 }
 
-function CapabilityRow({ cap }: { cap: string }) {
+export function CapabilityRow({ cap }: { cap: string }) {
   const { t } = useTranslation();
   const risk = RISK[cap];
   return (

@@ -652,6 +652,12 @@
         "prText": "The plugin is uninstalled once the pull request is merged.",
         "openPr": "Open the pull request"
       }
+    },
+    "filters": {
+      "updates": "Updates",
+      "anyUpdates": "Any version",
+      "updatesYes": "Update available",
+      "updatesNo": "Up to date"
     }
   },
   "settings": {
@@ -1592,7 +1598,125 @@
       "installed": "Installed",
       "anyInstalled": "All plugins",
       "installedYes": "Installed",
-      "installedNo": "Not installed"
+      "installedNo": "Not installed",
+      "updates": "Updates",
+      "anyUpdates": "Any version",
+      "updatesYes": "Update available",
+      "updatesNo": "Up to date"
+    },
+    "update": {
+      "badge": "Update {{version}}",
+      "badgeTip": "{{current}} → {{latest}} ({{level}} update)",
+      "level": {
+        "major": "major",
+        "minor": "minor",
+        "patch": "patch"
+      },
+      "available": {
+        "title": "Update available: {{current}} → {{latest}}",
+        "text": "Review what the new version requests before updating every instance of the plugin.",
+        "major": "A major version: it may change its settings or behavior.",
+        "modified": "This copy was modified in the repository: updating overwrites the local changes.",
+        "review": "Review the update",
+        "askAdmin": "An admin can review and apply it from the Store."
+      },
+      "title": "Update {{name}}",
+      "lead": "{{current}} → {{latest}}. The version is shared by every instance of the plugin: they are all updated in one commit.",
+      "back": "Back to {{name}}",
+      "loadFailed": "Could not review the update",
+      "notInstalled": {
+        "title": "This plugin is not installed",
+        "text": "{{plugin}} has no instance: install it from the Store instead."
+      },
+      "upToDate": {
+        "title": "{{name}} is up to date",
+        "text": "Version {{version}} is the latest. Refresh the Store to look for a newer release."
+      },
+      "changes": "What changes",
+      "changesHint": "Compared with the installed version {{version}}.",
+      "nothingNew": "The new version requests nothing new.",
+      "new": "New",
+      "gone": "No longer requested",
+      "capabilitiesAdded": "New capabilities",
+      "capabilitiesRemoved": "Capabilities no longer requested (removed from the grants)",
+      "intentsAdded": "New gateway intents",
+      "intentsRemoved": "Gateway intents no longer used",
+      "networkAdded": "New network access",
+      "networkRemoved": "Network access no longer used",
+      "unchanged_one": "{{count}} capability unchanged",
+      "unchanged_other": "{{count}} capabilities unchanged",
+      "repoChanged": {
+        "title": "The plugin moved to another repository",
+        "text": "The registry now points to another repository than the one locked in codi.lock. Make sure the publisher announced it before updating."
+      },
+      "instances": "Instances updated",
+      "instancesHint": "Each instance's grants are set to what the new version requests.",
+      "rangeChange": "version {{from}} → {{to}}",
+      "grantsAdded": "grants + {{caps}}",
+      "grantsRemoved": "grants − {{caps}}",
+      "configOk": "config valid",
+      "configInvalid": {
+        "title_one": "The config of {{count}} instance is not valid for {{version}}",
+        "title_other": "The config of {{count}} instances is not valid for {{version}}",
+        "hint": "The new version changed its settings. Fix the config of these instances first, then update."
+      },
+      "openInstance": "Open the instance",
+      "restricted": {
+        "title": "You cannot apply this update",
+        "text": "The plugin also runs on {{servers}}, where you are not admin. The version is shared by every instance: an admin of every server where it runs must update it.",
+        "server_one": "{{server}}: {{count}} instance",
+        "server_other": "{{server}}: {{count}} instances"
+      },
+      "files": {
+        "title": "Files of plugins/{{name}}/",
+        "changed": "Rewritten",
+        "added": "Added",
+        "removed": "Deleted"
+      },
+      "modified": {
+        "title": "This copy was modified in the repository",
+        "text": "plugins/{{name}}/ differs from every released version of the plugin. Updating replaces it with the bundled version: keep your changes elsewhere first.",
+        "force": "Overwrite the local changes in plugins/{{name}}/"
+      },
+      "confirm": "I trust {{publisher}}, the publisher of {{name}} from the unofficial source {{source}}, and grant version {{version}}:",
+      "confirmNothingNew": "nothing new (same capabilities, intents and network access)",
+      "confirmCapability": "new capability: {{capability}}",
+      "confirmIntent": "new gateway intent: {{intent}}",
+      "confirmNetwork": "new network access to: {{hosts}}",
+      "confirmRequired": "Confirm that you trust this unofficial source first.",
+      "forceRequired": "Allow overwriting the local changes first.",
+      "submit": "Update to {{version}}",
+      "updating": "Updating…",
+      "failed": "Could not update the plugin",
+      "rejected": "The configuration is not valid with the new version",
+      "changed": {
+        "title": "The plugin changed since you reviewed it",
+        "hint": "Its latest version now resolves to different code. Review it again: CODI only installs the code you reviewed.",
+        "reload": "Reload and review"
+      },
+      "modifiedError": {
+        "title": "The copy was modified in the repository",
+        "hint": "Allow overwriting the local changes, or keep them elsewhere first."
+      },
+      "intents": {
+        "title": "A privileged intent is off",
+        "hint": "Turn it on in the Discord developer portal (Bot → Privileged Gateway Intents), save, then update again."
+      },
+      "forbidden": {
+        "title": "You are not admin everywhere the plugin runs",
+        "hint": "Updating changes every server where an instance runs: ask an admin of each of them."
+      },
+      "upToDateError": "Already up to date",
+      "done": {
+        "title": "{{name}} is updated to {{version}}",
+        "active": "is now the active revision",
+        "committedNoRev": "Committed to git; the runtime has not activated it yet.",
+        "pr": "Pull request opened",
+        "prText": "The update applies once the pull request is merged.",
+        "openPr": "Open the pull request",
+        "plugins": "Go to Plugins",
+        "back": "Back to the Store"
+      }
     }
   },
   "table": {

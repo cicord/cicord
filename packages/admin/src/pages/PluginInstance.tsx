@@ -43,6 +43,8 @@ import { listUrl, setFlash } from "../lib/flash.ts";
 import { cn } from "../lib/utils.ts";
 import { Link, navigate, useLocation } from "../router.tsx";
 import { PluginSettings } from "./PluginSettings.tsx";
+import { UpdateCallout } from "./Store.tsx";
+import { storeUpdatePath } from "../shell/nav.ts";
 
 type Section = "settings" | "overview" | "danger";
 
@@ -181,6 +183,14 @@ function InstanceView({
           </>
         }
       />
+      {instance.update ? (
+        <UpdateCallout
+          update={instance.update}
+          {...(ws.isAdmin
+            ? { to: storeUpdatePath(serverKey, instance.source, instance.plugin.name) }
+            : {})}
+        />
+      ) : null}
       {instance.message ? (
         <Callout
           tone={instance.health === "Degraded" ? "danger" : "info"}

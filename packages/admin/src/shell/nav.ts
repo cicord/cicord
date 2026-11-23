@@ -90,6 +90,10 @@ export const instancePath = (serverKey: string, bot: string, instance: string): 
 export const storePluginPath = (serverKey: string, source: string, plugin: string): string =>
   `/servers/${encodeURIComponent(serverKey)}/store/${encodeURIComponent(source)}/${encodeURIComponent(plugin)}`;
 
+/** Path of the update review of an installed Store plugin. */
+export const storeUpdatePath = (serverKey: string, source: string, plugin: string): string =>
+  `${storePluginPath(serverKey, source, plugin)}?update=1`;
+
 const SEGMENTS: Record<string, PageId> = Object.fromEntries(
   NAV.filter((n) => n.segment).map((n) => [n.segment!, n.id]),
 );
