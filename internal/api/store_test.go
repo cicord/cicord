@@ -414,7 +414,7 @@ func TestPaginatedTables(t *testing.T) {
 	}
 	var p pageDTO
 	c.expect(200, "GET", "/api/v1/store/plugins?limit=2&sort=name&order=desc", nil).json(t, &p)
-	if p.Total != 7 || len(p.Items) != 2 || p.Limit != 2 || p.Order != "desc" || p.Items[0].Name != "welcome" {
+	if p.Total != 10 || len(p.Items) != 2 || p.Limit != 2 || p.Order != "desc" || p.Items[0].Name != "welcome" {
 		t.Fatalf("page = %+v", p)
 	}
 	c.expect(200, "GET", "/api/v1/store/plugins?trust=unofficial", nil).json(t, &p)
@@ -442,7 +442,7 @@ func TestPaginatedTables(t *testing.T) {
 		}
 	}
 	c.expect(200, "GET", "/api/v1/store?summary=1", nil).json(t, &sum)
-	if len(sum.Sources) != 2 || sum.Sources[0].PluginCount != 6 || sum.Sources[0].Plugins != nil {
+	if len(sum.Sources) != 2 || sum.Sources[0].PluginCount != 9 || sum.Sources[0].Plugins != nil {
 		t.Errorf("summary = %+v", sum)
 	}
 
