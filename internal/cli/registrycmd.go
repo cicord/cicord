@@ -59,7 +59,11 @@ plugins only if you trust them.`,
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(tw, "NAME\tTRUST\tURL\tTOKEN")
-			fmt.Fprintf(tw, "%s\t%s\t%s\t-\n", config.OfficialRegistryName, registry.TrustOfficial, "(bundled with codi)")
+			officialURL := "(bundled with codi)"
+			if off, ok := registry.Official(); ok {
+				officialURL = "(bundled with codi) + " + registry.Redact(off.URL) + " (signed index)"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t-\n", config.OfficialRegistryName, registry.TrustOfficial, officialURL)
 			for _, r := range repo.Project.Spec.Registries {
 				tok := "-"
 				if r.SecretRef != "" {
@@ -201,14 +205,17 @@ the registry's host only.`,
 			if err != nil {
 				return err
 			}
-			s := &store.Service{CacheDir: registry.DefaultCacheDir(), Secret: os.LookupEnv}
+			s := &store.Service{Catalog: catalog.Official(), CacheDir: registry.DefaultCacheDir(), Secret: os.LookupEnv}
 			srcs, err := s.Sources(cmd.Context(), repo, true)
 			if err != nil {
 				return err
 			}
 			failed := false
 			w := cmd.OutOrStdout()
-			for _, src := range srcs[1:] { // [0] is the bundled source, nothing to fetch
+			for i, src := range srcs {
+				if i == 0 && src.URL == "" {
+					continue // only the bundled plugins: nothing to fetch
+				}
 				if src.Error != nil {
 					failed = true
 					fmt.Fprintf(w, "✗ %s: %s %s\n", src.Name, src.Error.Message, src.Error.Hint)
@@ -218,9 +225,12 @@ the registry's host only.`,
 				if src.Private {
 					private = ", private"
 				}
+				if src.Signature == store.SignatureVerified {
+					private += ", signed"
+				}
 				fmt.Fprintf(w, "✓ %s (%s%s): %d plugin(s)\n", src.Name, src.Trust, private, len(src.Plugins))
 			}
-			if len(srcs) == 1 {
+			if len(srcs) == 1 && srcs[0].URL == "" {
 				fmt.Fprintln(w, "No registry in codi.yaml: only the official plugins bundled with codi are available.")
 			}
 			if failed {
@@ -275,8 +285,14 @@ the registry's host only.`,
 	}
 
 	cmd.AddCommand(list, add, remove, update, search)
+	for _, f := range registrySubcommands {
+		cmd.AddCommand(f())
+	}
 	return cmd
 }
+
+// registrySubcommands lets other files add `codi registry` subcommands (sign, keygen…).
+var registrySubcommands []func() *cobra.Command
 
 // runtimePluginStore is the Store of a running runtime: guarded fetches, registry tokens
 // from secret, and indexes refreshed in the background until stopping is closed.

@@ -47,9 +47,13 @@ type Source struct {
 	Error     *SourceError `json:"error,omitempty"`
 	// Private: the registry has a secretRef; Credentials is "ok" when that secret is
 	// available to the runtime, "missing" otherwise. The token itself is never returned.
-	Private     bool     `json:"private"`
-	Credentials string   `json:"credentials,omitempty"`
-	Plugins     []Plugin `json:"plugins"`
+	Private     bool   `json:"private"`
+	Credentials string `json:"credentials,omitempty"`
+	// Signature is "verified" when the index is signed by an official key, "invalid" for
+	// an official URL whose index is not (the source then has an error and no remote
+	// plugins). Omitted for unofficial registries and the bundled-only "codi" source.
+	Signature string   `json:"signature,omitempty"`
+	Plugins   []Plugin `json:"plugins"`
 }
 
 // Installation is an instance using a Store plugin.
@@ -197,6 +201,7 @@ func (s *Service) index(ctx context.Context, r config.Registry, force bool) cach
 		return c
 	}
 	idx, err := s.fetch(ctx, url)
+	idx, err = checkSigned(url, idx, err)
 	c = cached{idx: idx, err: err, at: s.now()}
 	s.mu.Lock()
 	if s.cache == nil {
@@ -229,7 +234,8 @@ func (s *Service) Run(stop <-chan struct{}, repo func() *config.Repo) {
 			return
 		case <-t.C:
 		}
-		if r := repo(); len(registries(r)) > 0 {
+		r := repo()
+		if _, official := registry.Official(); official || len(registries(r)) > 0 {
 			_, _ = s.Sources(ctx, r, true)
 		}
 		t.Reset(s.ttl())
@@ -271,9 +277,14 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 	out = append(out, official)
 
 	regs := registries(repo)
-	results := make([]cached, len(regs))
+	off, hasOff := registry.Official()
+	fetch := regs
+	if hasOff {
+		fetch = append(slices.Clone(regs), off)
+	}
+	results := make([]cached, len(fetch))
 	var wg sync.WaitGroup
-	for i, r := range regs {
+	for i, r := range fetch {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -281,11 +292,15 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 		}()
 	}
 	wg.Wait()
+	if hasOff {
+		mergeOfficial(&out[0], off, results[len(regs)], inst)
+	}
 	for i, r := range regs {
 		c := results[i]
 		src := Source{Name: r.Name, Kind: KindGit, URL: registry.Redact(r.URL), Trust: registry.Trust(r.URL), Plugins: []Plugin{}}
 		at := c.at
 		src.FetchedAt = &at
+		src.Signature = signatureOf(r.URL, c)
 		if r.SecretRef != "" {
 			src.Private, src.Credentials = true, "missing"
 			if ref := r.TokenRef(); s.Secret != nil && ref != "" {
@@ -308,19 +323,19 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 		slices.Sort(names)
 		for _, n := range names {
 			e := c.idx.Plugins[n]
-			src.Plugins = append(src.Plugins, fromIndex(r, n, e, inst[r.Name+"/"+n]))
+			src.Plugins = append(src.Plugins, fromIndex(r, n, e, inst[r.Name+"/"+n], c.idx.SignedBy != ""))
 		}
 		out = append(out, src)
 	}
 	return out, nil
 }
 
-func fromIndex(r config.Registry, name string, e registry.IndexEntry, inst []Installation) Plugin {
+func fromIndex(r config.Registry, name string, e registry.IndexEntry, inst []Installation, signed bool) Plugin {
 	p := Plugin{Source: r.Name, Name: name, DisplayName: e.DisplayName, Description: e.Description,
 		Keywords: nonNil(e.Keywords), Publisher: e.Publisher, Repo: registry.Redact(e.Repo), Trust: registry.Trust(r.URL),
 		Installed: nonNilInst(inst)}
-	// "verified" only means something in the official registry.
-	p.Verified = e.Verified && p.Trust == registry.TrustOfficial
+	// "verified" only means something in the official registry, from its signed index.
+	p.Verified = e.Verified && p.Trust == registry.TrustOfficial && signed
 	if p.DisplayName == "" {
 		p.DisplayName = name
 	}
@@ -331,7 +346,17 @@ func fromIndex(r config.Registry, name string, e registry.IndexEntry, inst []Ins
 // downloaded to the cache and Resolution holds what an install must lock.
 func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name string) (Detail, error) {
 	inst := installations(repo, s.Catalog)
+	var reg *config.Registry
 	if source == config.OfficialRegistryName {
+		off, remote, err := s.OfficialRemote(ctx, name)
+		if err != nil {
+			return Detail{}, err
+		}
+		if remote {
+			reg = &off
+		}
+	}
+	if source == config.OfficialRegistryName && reg == nil {
 		if s.Catalog == nil {
 			return Detail{}, ErrUnknownPlugin
 		}
@@ -348,11 +373,12 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 	if !registry.NameRe.MatchString(source) || !registry.NameRe.MatchString(name) {
 		return Detail{}, ErrUnknownPlugin
 	}
-	var reg *config.Registry
-	for _, r := range registries(repo) {
-		if r.Name == source {
-			reg = &r
-			break
+	if reg == nil {
+		for _, r := range registries(repo) {
+			if r.Name == source {
+				reg = &r
+				break
+			}
 		}
 	}
 	if reg == nil {
@@ -384,7 +410,7 @@ func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name st
 	if e.Name != name {
 		return Detail{}, &UnavailableError{Source: source, Err: fmt.Errorf("the repository of %q contains plugin %q", name, e.Name)}
 	}
-	d := Detail{Plugin: fromIndex(*reg, name, ie, inst[source+"/"+name]), Commit: res.Entry.Commit,
+	d := Detail{Plugin: fromIndex(*reg, name, ie, inst[source+"/"+name], c.idx.SignedBy != ""), Commit: res.Entry.Commit,
 		Integrity: res.Entry.Integrity, Resolution: res}
 	d.Version = res.Entry.Version
 	if d.DisplayName == name && e.DisplayName != "" {
@@ -449,6 +475,9 @@ func ExplainFetch(err error) *SourceError {
 	msg := registry.Redact(err.Error())
 	e := &SourceError{Message: "This source could not be read.", Details: msg}
 	switch {
+	case errors.Is(err, registry.ErrBadSignature):
+		e.Message = "The signature of the official registry index is missing or invalid: its plugins are not listed."
+		e.Hint = "This is never ignored. Try again later; if it persists, report it to the CODI maintainers."
 	case errors.Is(err, context.DeadlineExceeded):
 		e.Message, e.Hint = "This source did not answer in time.", "Try again later, or check the URL."
 	case strings.Contains(msg, "no index.yaml"):
