@@ -25,8 +25,13 @@ export function useViewer(): Me {
 /** The server selected in the switcher and the runtime status (inside the shell). */
 export interface Workspace {
   status: RuntimeStatus | undefined;
+  /** The runtime status is loading for the first time (no data yet). */
+  loading: boolean;
   serverKey: string | undefined;
   server: ServerStatus | undefined;
+  /** Display name of the current server: the live one, else the session's (known before
+   * the status has loaded). */
+  serverName: string | undefined;
   role: AccessRole | undefined;
   isAdmin: boolean;
   simulator: boolean;

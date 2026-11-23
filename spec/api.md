@@ -763,7 +763,8 @@ checks by `id`, and `message` / `hint` are written for people.
 
 - `GET /api/v1/catalog` (admin of a server, the setup session or bearer) →
   `{"plugins": [CatalogPlugin]}`. These are the official plugins bundled in the binary
-  (welcome, onboarding, tickets, polls, levels, moderation):
+  (welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log,
+  announcements):
 
   ```json
   { "name", "displayName", "description", "version", "keywords": [], "source": "official",

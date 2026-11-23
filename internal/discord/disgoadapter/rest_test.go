@@ -40,7 +40,7 @@ type fakeDiscord struct {
 func newFakeDiscord(t *testing.T) *fakeDiscord {
 	f := &fakeDiscord{t: t, routes: map[string]func(http.ResponseWriter, *http.Request){}}
 	f.json("GET /users/@me", 200, `{"id":"600","username":"codi","bot":true}`)
-	f.json("GET /oauth2/applications/@me", 200, `{"id":"601","name":"CODI"}`)
+	f.json("GET /oauth2/applications/@me", 200, `{"id":"601","name":"CODI","flags":32768}`)
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -110,6 +110,9 @@ func TestConnect(t *testing.T) {
 	s := f.connect(t)
 	if s.Self().ID != "600" || !s.Self().Bot || s.ApplicationID() != "601" {
 		t.Errorf("self = %+v app = %s", s.Self(), s.ApplicationID())
+	}
+	if fr, ok := s.(discord.ApplicationFlagsReader); !ok || discord.IntentsFromFlags(fr.ApplicationFlags()) != discord.MustIntents("ServerMembers") {
+		t.Errorf("application flags not read: %v", ok)
 	}
 	if got := f.all()[0].Auth; got != "Bot test-token" {
 		t.Errorf("authorization = %q", got)

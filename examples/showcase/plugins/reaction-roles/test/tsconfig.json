@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Vitest's types need the DOM lib, which clashes with the plugin-host globals declared by
+    // the SDK contract (`console`): library declarations are not re-checked for the tests.
+    // The plugin sources themselves are checked strictly by ../tsconfig.json.
+    "lib": ["ES2022", "DOM"],
+    "skipLibCheck": false,
+    "resolveJsonModule": true,
+    // One copy of the SDK types: the built @codi/sdk (a verbatim copy of the spec), which
+    // @codi/sdk/testing also references.
+    "paths": {
+      "@codi/sdk": ["../../../../../packages/sdk/dist/index.d.ts"]
+    }
+  },
+  "include": ["../src", "."]
+}

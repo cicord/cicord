@@ -16,6 +16,7 @@ import {
 } from "./components/ui/breadcrumb.tsx";
 import { Button } from "./components/ui/button.tsx";
 import { Separator } from "./components/ui/separator.tsx";
+import { Skeleton } from "./components/ui/skeleton.tsx";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar.tsx";
 import { Toaster } from "./components/ui/sonner.tsx";
 import { Tip, TooltipProvider } from "./components/ui/tooltip.tsx";
@@ -164,19 +165,23 @@ function useWorkspaceState(route: Route): Workspace {
     [route.page],
   );
 
-  const role = serverKey ? me.servers.find((s) => s.key === serverKey)?.role : undefined;
-  return useMemo(
-    () => ({
+  const mine = serverKey ? me.servers.find((s) => s.key === serverKey) : undefined;
+  const role = mine?.role;
+  const loading = status.isLoading && status.data === undefined;
+  return useMemo(() => {
+    const server = status.data?.servers.find((s) => s.key === serverKey);
+    return {
       status: status.data,
+      loading,
       serverKey,
-      server: status.data?.servers.find((s) => s.key === serverKey),
+      server,
+      serverName: server?.name ?? mine?.name,
       role,
       isAdmin: role === "admin",
       simulator: status.data?.simulator ?? false,
       selectServer,
-    }),
-    [status.data, serverKey, role, selectServer],
-  );
+    };
+  }, [status.data, loading, serverKey, mine?.name, role, selectServer]);
 }
 
 // ───────────────────────────────────────────────────────────── shell
@@ -303,15 +308,19 @@ function Header({ route, onSearch }: { route: Route; onSearch: () => void }) {
   const page = route.page;
   const item = navItem(page);
   const detail = useDetailLabel(route);
-  const crumbs: { label: string; to?: string }[] = [];
-  if (item?.segment !== undefined && ws.server)
-    crumbs.push({ label: ws.server.name, to: `/servers/${ws.server.key}` });
+  const crumbs: { label: string; to?: string; loading?: boolean }[] = [];
+  // The server crumb: its name as soon as it is known, a placeholder while the status loads.
+  const crumbKey = ws.server || ws.serverName ? ws.serverKey : undefined;
+  if (item?.segment !== undefined && crumbKey && ws.serverName)
+    crumbs.push({ label: ws.serverName, to: `/servers/${crumbKey}` });
+  else if (item?.segment !== undefined && ws.serverKey && ws.loading)
+    crumbs.push({ label: t("switcher.loading"), loading: true });
   if (item?.section && detail === undefined)
     crumbs.push({ label: t(`nav.sections.${item.section}`) });
   if (item && page !== "home" && page !== "notFound")
     crumbs.push({
       label: t(`nav.pages.${item.id as Exclude<PageId, "home" | "notFound">}`),
-      ...(detail !== undefined && ws.server ? { to: pathFor(item, ws.server.key) } : {}),
+      ...(detail !== undefined && crumbKey ? { to: pathFor(item, crumbKey) } : {}),
     });
   if (detail !== undefined) crumbs.push({ label: detail });
   const rev = ws.status?.revision;
@@ -327,7 +336,12 @@ function Header({ route, onSearch }: { route: Route; onSearch: () => void }) {
               <BreadcrumbItem
                 className={i < crumbs.length - 1 ? "hidden sm:inline-flex" : undefined}
               >
-                {i === crumbs.length - 1 ? (
+                {c.loading ? (
+                  <span role="status" className="inline-flex items-center">
+                    <Skeleton className="h-3.5 w-24" aria-hidden="true" />
+                    <span className="sr-only">{c.label}</span>
+                  </span>
+                ) : i === crumbs.length - 1 ? (
                   <BreadcrumbPage>{c.label}</BreadcrumbPage>
                 ) : c.to ? (
                   <Link to={c.to} className="truncate hover:text-foreground">

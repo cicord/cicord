@@ -16,13 +16,16 @@ Normative references:
   `plugin.yaml` schema.
 - [`examples/basic/plugins/`](../examples/basic/plugins/) holds two complete plugins:
   `welcome` and `onboarding`.
-- [`examples/showcase/`](../examples/showcase/) is a complete repository with four
+- [`examples/showcase/`](../examples/showcase/) is a complete repository with seven
   production-grade plugins that together use the whole SDK: `tickets` (buttons, modals,
   plugin-owned private channels), `polls` (selects, buttons with data ids, live updates,
   tasks, cross-plugin events), `levels` (message content, reactions, role rewards, cron,
-  public portal route) and `moderation` (permissions, DMs, timeouts/kicks/bans, expiring KV,
-  `http.fetch`). [`docs/plugin-coverage.md`](plugin-coverage.md) maps every SDK feature to
-  the plugin and the end-to-end test that exercise it.
+  public portal route), `moderation` (permissions, DMs, timeouts/kicks/bans, expiring KV,
+  `http.fetch`), `reaction-roles` (role panels with buttons, a select menu or reactions,
+  edited in place), `audit-log` (member and message events, subscriptions, batched posts)
+  and `announcements` (time-zone schedules evaluated by a minute tick, `/announce` with a
+  modal and tasks). [`docs/plugin-coverage.md`](plugin-coverage.md) maps every SDK feature
+  to the plugin and the end-to-end test that exercise it.
 
 ## 1. Create a plugin
 
@@ -185,7 +188,12 @@ plugin that only needs who posted and when (flood protection, ticket activity) d
 | `reactionAdd`, `reactionRemove` | `ServerMessageReactions` |
 
 A bot connects with the union of its plugins' intents, plus `spec.intents` and what the
-reconciler needs. Privileged intents must also be enabled in the Discord developer portal.
+reconciler needs (`AutoModerationConfiguration` when a server it lists declares
+`spec.automod`, `ServerExpressions` for emojis, stickers and soundboard sounds, so that
+hand edits of those reach selfHeal). Privileged intents must also be enabled in the Discord
+developer portal: the runtime reads the application flags when the bot connects and, when
+one is missing, does not open the gateway and reports which toggle to turn on in the bot
+status.
 
 ## 4. Configuration
 
@@ -639,8 +647,9 @@ click buttons and submit modals.
 
 Plugins are installed from **sources**, like apt sources or Homebrew taps (ADR-0011):
 - **`codi`**, the official plugins bundled with the binary (welcome, onboarding, tickets,
-  polls, levels, moderation). Always available. Once the official registry exists, `codi`
-  also lists its plugins (see *The official registry* below), without any `codi.yaml` entry.
+  polls, levels, moderation, reaction-roles, audit-log, announcements). Always available.
+  Once the official registry exists, `codi` also lists its plugins (see *The official
+  registry* below), without any `codi.yaml` entry.
 - **Registries**: git repositories with an `index.yaml`, declared in `codi.yaml`
   `spec.registries`. They are **unofficial** (trust is computed from the URL, never
   declared): the admin UI labels them everywhere and asks for an explicit confirmation,

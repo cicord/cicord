@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,17 +54,20 @@ type Reconciler struct {
 	mu      sync.Mutex // serializes plan/apply
 	desired *config.Server
 
-	emu     sync.Mutex // event state
-	managed map[string]bool
-	drifted bool
-	timer   *time.Timer
-	closed  bool
-	running sync.WaitGroup // event-triggered syncs in flight
-	iconMem iconState
-	imgMem  map[string]iconState
-	srvID   string
-	key     string         // server key (immutable)
-	cfg     *config.Server // copy of desired for event filtering
+	emu     sync.Mutex                    // event state
+	managed map[string]state.ResourceKind // git-owned Discord ID → kind
+	// exprSeen is the last seen state of the managed emojis and stickers (ID →
+	// fingerprint): their gateway events carry the whole list of the server.
+	exprSeen map[string]string
+	drifted  bool
+	timer    *time.Timer
+	closed   bool
+	running  sync.WaitGroup // event-triggered syncs in flight
+	iconMem  iconState
+	imgMem   map[string]iconState
+	srvID    string
+	key      string         // server key (immutable)
+	cfg      *config.Server // copy of desired for event filtering
 }
 
 // New creates a reconciler. It panics when a required option is missing.
@@ -83,7 +87,8 @@ func New(opts Options) *Reconciler {
 	if opts.Context == nil {
 		opts.Context = context.Background()
 	}
-	r := &Reconciler{opts: opts, log: opts.Logger, managed: map[string]bool{}, key: opts.Server.Metadata.Name}
+	r := &Reconciler{opts: opts, log: opts.Logger, managed: map[string]state.ResourceKind{}, exprSeen: map[string]string{},
+		key: opts.Server.Metadata.Name}
 	r.setDesired(opts.Server)
 	return r
 }
@@ -150,6 +155,7 @@ func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
 	r.refreshManaged(mapped)
 	r.emu.Lock()
 	r.drifted = !p.Empty() || len(p.Blocked) > 0
+	r.seeExpressions(snap)
 	r.emu.Unlock()
 	return p, nil
 }
@@ -251,10 +257,10 @@ func (r *Reconciler) DriftPending() bool {
 }
 
 func (r *Reconciler) refreshManaged(mapped []state.Resource) {
-	m := make(map[string]bool, len(mapped))
+	m := make(map[string]state.ResourceKind, len(mapped))
 	for _, res := range mapped {
 		if res.Owner == state.OwnerGit {
-			m[res.ID] = true
+			m[res.ID] = res.Kind
 		}
 	}
 	r.emu.Lock()
@@ -262,10 +268,11 @@ func (r *Reconciler) refreshManaged(mapped []state.Resource) {
 	r.emu.Unlock()
 }
 
-// HandleEvent inspects a gateway event. Events about git-managed roles/channels, the
-// @everyone role (when spec.everyone is set) or the server profile (when
-// spec.profile is set) are relevant: drift is marked and, with syncPolicy.selfHeal,
-// a debounced Sync is scheduled. It never blocks on Discord.
+// HandleEvent inspects a gateway event. Events about git-managed roles, channels,
+// AutoMod rules, emojis, stickers and soundboard sounds, the @everyone role (when
+// spec.everyone is set) or the server profile (when spec.profile is set) are relevant:
+// drift is marked and, with syncPolicy.selfHeal, a debounced Sync is scheduled. It
+// never blocks on Discord.
 //
 // The managed set is the one seen by the last Plan/Apply, so call Plan or Sync once
 // before relying on it.
@@ -279,15 +286,35 @@ func (r *Reconciler) HandleEvent(ev discord.Event) bool {
 	sp := &r.cfg.Spec
 	switch e := ev.(type) {
 	case discord.ChannelUpdateEvent:
-		relevant = r.managed[e.Channel.ID]
+		relevant = r.isManaged(e.Channel.ID)
 	case discord.ChannelDeleteEvent:
-		relevant = r.managed[e.Channel.ID]
+		relevant = r.isManaged(e.Channel.ID)
 	case discord.RoleUpdateEvent:
-		relevant = r.managed[e.Role.ID] || e.Role.ID == r.srvID && sp.Everyone != nil
+		relevant = r.isManaged(e.Role.ID) || e.Role.ID == r.srvID && sp.Everyone != nil
 	case discord.RoleDeleteEvent:
-		relevant = r.managed[e.RoleID]
+		relevant = r.isManaged(e.RoleID)
 	case discord.ServerUpdateEvent:
 		relevant = sp.Profile != nil || sp.Community != nil || sp.AFK != nil
+	case discord.AutoModRuleUpdateEvent:
+		relevant = r.isManaged(e.Rule.ID)
+	case discord.AutoModRuleDeleteEvent:
+		relevant = r.isManaged(e.Rule.ID)
+	case discord.SoundUpdateEvent:
+		relevant = r.isManaged(e.Sound.ID)
+	case discord.SoundDeleteEvent:
+		relevant = r.isManaged(e.SoundID)
+	case discord.EmojisUpdateEvent:
+		seen := make(map[string]string, len(e.Emojis))
+		for _, x := range e.Emojis {
+			seen[x.ID] = emojiPrint(x)
+		}
+		relevant = r.exprChanged(state.KindEmoji, seen)
+	case discord.StickersUpdateEvent:
+		seen := make(map[string]string, len(e.Stickers))
+		for _, x := range e.Stickers {
+			seen[x.ID] = stickerPrint(x)
+		}
+		relevant = r.exprChanged(state.KindSticker, seen)
 	}
 	if !relevant {
 		return false
@@ -300,6 +327,63 @@ func (r *Reconciler) HandleEvent(ev discord.Event) bool {
 		r.timer = time.AfterFunc(r.opts.SelfHealDelay, r.selfHeal)
 	}
 	return true
+}
+
+// isManaged reports whether a Discord ID is git-owned. Caller holds emu.
+func (r *Reconciler) isManaged(id string) bool {
+	_, ok := r.managed[id]
+	return ok
+}
+
+func emojiPrint(e discord.Emoji) string {
+	roles := append([]string(nil), e.RoleIDs...)
+	sort.Strings(roles)
+	return e.Name + "\x00" + strings.Join(roles, ",")
+}
+
+func stickerPrint(s discord.Sticker) string {
+	return s.Name + "\x00" + s.Description + "\x00" + s.Tags
+}
+
+// seeExpressions records the state of the managed emojis and stickers of a snapshot.
+// Caller holds emu.
+func (r *Reconciler) seeExpressions(snap Snapshot) {
+	if snap.HasEmojis {
+		for _, e := range snap.Emojis {
+			if r.managed[e.ID] == state.KindEmoji {
+				r.exprSeen[e.ID] = emojiPrint(e)
+			}
+		}
+	}
+	if snap.HasStickers {
+		for _, s := range snap.Stickers {
+			if r.managed[s.ID] == state.KindSticker {
+				r.exprSeen[s.ID] = stickerPrint(s)
+			}
+		}
+	}
+}
+
+// exprChanged compares the new list of a server's emojis or stickers (ID →
+// fingerprint) with the last seen state of the managed ones: a managed expression that
+// disappeared or changed is relevant, unmanaged ones are not. Caller holds emu.
+func (r *Reconciler) exprChanged(kind state.ResourceKind, now map[string]string) bool {
+	changed := false
+	for id, k := range r.managed {
+		if k != kind {
+			continue
+		}
+		fp, ok := now[id]
+		if prev, seen := r.exprSeen[id]; !ok || !seen || prev != fp {
+			changed = true
+		}
+		if ok {
+			r.exprSeen[id] = fp
+		} else {
+			delete(r.exprSeen, id)
+		}
+	}
+	return changed
 }
 
 func (r *Reconciler) selfHeal() {

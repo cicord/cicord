@@ -3,6 +3,7 @@ import { useLogout } from "@codi/react";
 import { Check, ChevronsUpDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import { ServerAvatar, UserAvatar } from "../components/common.tsx";
 import { StatusDot, healthTone, syncTone } from "../components/status.tsx";
+import { Skeleton } from "../components/ui/skeleton.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -153,13 +154,17 @@ function NavEntry({
   );
 }
 
-/** Workspace-style server switcher: server icon + name + sync dot. */
+/** Workspace-style server switcher: server icon + name + sync dot. While the status
+ * loads it shows placeholders (and the server name when the session knows it), never the
+ * raw key; "Pick a server" only when there is no current server. */
 export function ServerSwitcher() {
   const { t } = useTranslation();
   const ws = useWorkspace();
   const servers = ws.status?.servers ?? [];
   const current = ws.server;
-  const name = current?.name ?? ws.serverKey ?? t("switcher.none");
+  const loading = !current && ws.loading && ws.serverKey !== undefined;
+  const name = ws.serverName ?? (loading ? undefined : (ws.serverKey ?? t("switcher.none")));
+  const label = name ?? t("switcher.loading");
   const tone = current
     ? current.health === "Degraded" || current.health === "Missing"
       ? healthTone(current.health)
@@ -170,22 +175,35 @@ export function ServerSwitcher() {
       <DropdownMenuTrigger asChild>
         <SidebarMenuButton
           className="h-11 border border-sidebar-border bg-background/40 px-2 data-[state=open]:bg-sidebar-accent group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent"
-          aria-label={t("switcher.label", { name })}
-          tooltip={name}
+          aria-label={t("switcher.label", { name: label })}
+          aria-busy={loading || undefined}
+          tooltip={label}
         >
-          <span className="relative">
-            <ServerAvatar name={name} url={current?.iconUrl} size={26} />
-            <span className="absolute -right-0.5 -bottom-0.5 rounded-full bg-sidebar p-[2px]">
-              <StatusDot tone={tone} className="block size-2" />
+          {loading ? (
+            <Skeleton className="size-[26px] shrink-0 rounded-md" />
+          ) : (
+            <span className="relative">
+              <ServerAvatar name={label} url={current?.iconUrl} size={26} />
+              <span className="absolute -right-0.5 -bottom-0.5 rounded-full bg-sidebar p-[2px]">
+                <StatusDot tone={tone} className="block size-2" />
+              </span>
             </span>
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
-            <span className="truncate text-xs text-subtle-foreground">
-              {current
-                ? t(`status.sync.${current.sync}.label`, { defaultValue: current.sync })
-                : t("switcher.pick")}
-            </span>
+          )}
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight group-data-[collapsible=icon]:hidden">
+            {name !== undefined ? (
+              <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
+            ) : (
+              <Skeleton className="h-3.5 w-24" />
+            )}
+            {current ? (
+              <span className="truncate text-xs text-subtle-foreground">
+                {t(`status.sync.${current.sync}.label`, { defaultValue: current.sync })}
+              </span>
+            ) : loading ? (
+              <Skeleton className="h-3 w-14" />
+            ) : (
+              <span className="truncate text-xs text-subtle-foreground">{t("switcher.pick")}</span>
+            )}
           </span>
           <ChevronsUpDown
             className="ml-auto size-3.5 group-data-[collapsible=icon]:hidden"
@@ -209,7 +227,9 @@ export function ServerSwitcher() {
           </DropdownMenuItem>
         ))}
         {servers.length === 0 ? (
-          <p className="px-2 py-1.5 text-[13px] text-muted-foreground">{t("switcher.empty")}</p>
+          <p className="px-2 py-1.5 text-[13px] text-muted-foreground">
+            {ws.loading ? t("switcher.loading") : t("switcher.empty")}
+          </p>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>

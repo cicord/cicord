@@ -57,12 +57,7 @@ type Check struct {
 func (c Check) Blocking() bool { return c.Status == StatusFail }
 
 // PortalBotURL is the developer portal page with the token and the privileged intents.
-func PortalBotURL(appID string) string {
-	if appID == "" {
-		return "https://discord.com/developers/applications"
-	}
-	return "https://discord.com/developers/applications/" + appID + "/bot"
-}
+func PortalBotURL(appID string) string { return discord.PortalBotURL(appID) }
 
 // PortalOAuthURL is the developer portal page with the client secret and the redirects.
 func PortalOAuthURL(appID string) string {
@@ -548,17 +543,8 @@ func reconcileHint(err error) string {
 }
 
 // botIntentsOf returns the gateway intents the runtime requests for a bot (same rule as
-// the runtime: the bot's spec.intents plus its plugins' intents).
+// the runtime: config.Repo.GatewayIntents).
 func botIntentsOf(repo *config.Repo, bot string) discord.Intents {
-	names := []string{"Servers"}
-	if b := repo.Bots[bot]; b != nil {
-		names = append(names, b.Spec.Intents...)
-	}
-	for _, in := range repo.Instances {
-		if in.Bot == bot {
-			names = append(names, in.Plugin.Manifest.Spec.Intents...)
-		}
-	}
-	in, _ := discord.ParseIntents(names)
+	in, _ := discord.ParseIntents(repo.GatewayIntents(bot))
 	return in
 }

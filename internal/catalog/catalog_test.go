@@ -11,7 +11,7 @@ func TestOfficialCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"welcome", "onboarding", "tickets", "polls", "levels", "moderation"}
+	want := []string{"welcome", "onboarding", "tickets", "polls", "levels", "moderation", "reaction-roles", "audit-log", "announcements"}
 	if len(es) != len(want) {
 		t.Fatalf("got %d entries", len(es))
 	}

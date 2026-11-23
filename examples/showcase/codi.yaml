@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=../../spec/schemas/project.schema.json
 # CODI showcase: a community server running the official plugin set (tickets, polls, levels,
-# moderation). It is also the end-to-end fixture of internal/runtime/showcase_test.go.
+# moderation, reaction-roles, audit-log, announcements). It is also the end-to-end fixture of
+# internal/runtime/showcase_test.go and showcase_more_test.go.
 apiVersion: codi.dev/v1alpha1
 kind: Project
 metadata:

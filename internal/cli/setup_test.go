@@ -222,7 +222,8 @@ func TestSetupWizardE2ESim(t *testing.T) {
 	if n := len(get(imp, "plan", "changes").([]any)); n != 0 {
 		t.Fatalf("first plan has %d change(s): %v", n, imp["plan"])
 	}
-	for _, f := range []string{"codi.yaml", "servers/pixel-pals.yaml", "bots/codi/bot.yaml"} {
+	for _, f := range []string{"codi.yaml", "servers/pixel-pals.yaml", "bots/codi/bot.yaml",
+		"servers/assets/pixel-pals/icon.png", "servers/assets/pixel-pals/emojis/pixel.png"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Fatalf("%s not written: %v", f, err)
 		}
@@ -270,7 +271,7 @@ func TestSetupWizardE2ESim(t *testing.T) {
 
 	// First plugin: the catalog, the intents gate, then install.
 	cat := c.ok("GET", "/api/v1/catalog", nil)["plugins"].([]any)
-	if len(cat) != 6 {
+	if len(cat) != 9 {
 		t.Fatalf("catalog = %d plugins", len(cat))
 	}
 	c.ok("POST", "/api/v1/setup/step", map[string]any{"step": "plugin"})

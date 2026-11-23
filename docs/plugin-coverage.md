@@ -7,7 +7,8 @@ scheduler, SQLite store). The last column tracks the manual check on real Discor
 
 Tests (Go, run by `go test ./...`):
 
-- `rt/…`: `internal/runtime/showcase_test.go` (`TestShowcase*`). The probe fixture
+- `rt/…`: `internal/runtime/showcase_test.go` and `showcase_more_test.go` (`TestShowcase*`;
+  `rt/ReactionRoles`, `rt/AuditLog`, `rt/Announcements` cover the last three plugins). The probe fixture
   (`internal/runtime/testdata/probe`) covers error paths a real plugin never hits on purpose.
 - `api/…`: `internal/api/showcase_test.go` (`TestShowcaseRouteAccess`): portal routes
   through the HTTP API, which enforces the access levels.
@@ -29,7 +30,9 @@ lists the precise steps.
 | `messageCreate` **with** MessageContent | levels (short messages earn nothing) | rt/Levels | to verify on real Discord |
 | `messageCreate` **without** MessageContent (content blanked per plugin, even when another plugin of the bot declares it; mention exemption) | tickets (activity), moderation (flood), probe | rt/ProbeErrorsAndGating, rt/Tickets, rt/Moderation; `internal/plugin` TestMessageContentGating | to verify on real Discord |
 | `reactionAdd` / `reactionRemove` (partial message: id + channel only) | levels (author XP via `msg:<id>` KV) | rt/Levels | to verify on real Discord |
-| `messageUpdate`, `messageDelete` | — (no showcase use) | `internal/plugin` unit tests only | to verify on real Discord |
+| `messageDelete` (id + channel only) | audit-log (author remembered from `messageCreate`) | rt/AuditLog | to verify on real Discord |
+| `messageUpdate` | audit-log (`events.messageEdits`, off by default) | audit-log unit tests, `internal/plugin` unit tests | to verify on real Discord |
+| `reactionAdd` / `reactionRemove` on a plugin's own message | reaction-roles (reaction panels) | rt/ReactionRoles | to verify on real Discord |
 
 ## Commands
 
@@ -119,6 +122,108 @@ lists the precise steps.
 | Channel isolation (other servers) | — | `internal/plugin` unit tests | n/a |
 | Config defaults incl. array items and `$ref` (and typegen agrees) | moderation `escalation[].durationMinutes`, levels `rewards[].keep`, onboarding `steps[].multiple` | rt/Moderation, rt/Levels; `internal/config` TestApplyDefaultsArraysAndRefs; `internal/typegen` TestDefaultsConformance | n/a |
 
+## Official plugins: reaction-roles, audit-log, announcements
+
+Three more plugins of the official catalog (`examples/catalog.go`), configured in the
+showcase. Their unit tests are in `examples/showcase/plugins/<name>/test`.
+
+### reaction-roles
+
+Self-assignable roles from **panels** defined in the config (`panels[]`: `name`, `channel`,
+`title`, `description`, `color`, `style`, `mode`, `requiredRole`, `options[]` of `role`,
+`label`, `emoji`, `description`).
+
+- **Styles**: `buttons` (one button per role, toggles it), `select` (a select menu: the
+  member's roles of the panel become exactly the selection) or `reactions` (react with the
+  option's emoji; removing the reaction takes the role back).
+- **Modes**: `multiple`, or `single` (taking a role removes the panel's other roles).
+- **Idempotent panels**: a panel's message is remembered in KV (`panel:<name>`). On start
+  (`syncOnStart`, default on) and with `/role-panel [panel] [new_message]` (ManageRoles), an
+  unchanged panel is left alone, a changed one is edited in place, a deleted one is posted
+  again. Moving a panel to another channel posts a new message; the old one must be deleted
+  by hand (deleting needs `discord.messages.manage`, which the plugin does not request).
+- **Safety**: a click is checked against the panel as configured now (a stale button never
+  grants a role that left the config); answers are ephemeral; a role change Discord refuses
+  (403) is explained: "my highest role must be above it… Manage Roles". Additions run before
+  removals, so a failed swap keeps the member's current role.
+- **Capabilities**: `discord.messages.send`, `discord.messages.read` (find the panel message
+  again), `discord.channels.read`, `discord.roles.assign`, `discord.members.read` and
+  `discord.reactions.manage` (reaction panels), `storage.kv`. Intent:
+  `ServerMessageReactions` (not privileged).
+- **Limits**: a reaction panel offers at most 20 options (Discord's limit of distinct
+  reactions per message; the rest are reported by `/role-panel` and logged). A reaction cannot be answered privately, so a member without the required role
+  is silently ignored (the panel footer states the requirement); in `single` mode the member's
+  previous reaction stays on the message (the SDK cannot remove another user's reaction).
+
+| Feature | Test |
+|---|---|
+| Panels posted at start, reactions added by the bot | rt/ReactionRoles |
+| Buttons, single mode swap; select menu with a required role | rt/ReactionRoles |
+| Reaction add/remove → role add/remove | rt/ReactionRoles |
+| `/role-panel` idempotent, a deleted panel posted again, ManageRoles required | rt/ReactionRoles |
+| Role above the bot: explained, current role kept | rt/ReactionRoles (`AdminSetRolePositions`) |
+| Panel edited in place on a config change, moved panel | unit tests |
+
+### audit-log
+
+Server events in a staff channel, in compact embeds (one line per event, `<t:…>`
+timestamps, no pings).
+
+- **Events** (`events.*`): `joins` (with the account age, ⚠️ under 7 days), `leaves`,
+  `roles`, `nicknames`, `messageEdits` (off by default: Discord reports link previews as
+  edits), `messageDeletes` (the author when the message was seen since the last start),
+  `moderation` (subscription `moderation.case`) and `polls` (subscription `polls.closed`,
+  off by default). `ignoredChannels` (message events) and `ignoreBots`.
+- **Channels**: `channel` (required), and `channels.members|messages|plugins` to send a
+  category elsewhere.
+- **Rate limiting**: events are queued in KV and posted together `batchSeconds` (default
+  10) after the first one, by a single task per batch; a batch posts at most `maxPerBatch`
+  (default 60) events and counts the rest ("…and N more events not posted"). A `@every 1m`
+  sweep posts a batch whose task was lost. `batchSeconds: 0` posts each event at once.
+- **Capabilities**: `discord.messages.send`, `discord.channels.read`, `storage.kv`,
+  `scheduler`, `events.subscribe`. Intents: `ServerMembers` (privileged), `ServerMessages`
+  (no `MessageContent`: the log never shows what people wrote).
+- **`moderation.case`**: the payload is the moderation plugin's `Case` (`number`, `action`,
+  `member {id, name}`, `moderator {id, name} | null`, `reason`, `durationMinutes`),
+  published by the moderation plugin for every case (capability `events.publish`).
+
+| Feature | Test |
+|---|---|
+| Joins, role changes, deletion with the author, `polls.closed`, a `/warn` case (`moderation.case`), one batched message | rt/AuditLog |
+| Flush task per batch, `maxPerBatch` cut, sweep, per-category channels, `batchSeconds: 0` | unit tests |
+| Nickname changes, edits, `moderation.case`, categories turned off | unit tests |
+
+### announcements
+
+Scheduled announcements from the config, and `/announce` for moderators.
+
+- **Configured** (`announcements[]`): `name`, `channel`, `enabled`, exactly one of `cron`
+  (5 fields or `@daily`…), `every` (`30m`, `6h`, `1d`, `2w`, at least 5 minutes, from
+  `start`) or `at` (one-off `YYYY-MM-DD HH:MM`), `timeZone`, `content`, `embed`, `mentions`
+  (`roles`, `everyone`, `here`). A `* * * * *` schedule evaluates them in their time zone and
+  posts each due one once: the last run is kept in KV, so restarts, a second tick and the
+  repeated hour of a DST change never post twice; runs missed while the bot was down are
+  posted (once) if they are less than `catchUpMinutes` (default 10) old.
+- **`/announce channel [when] [mention] [everyone]`** (ManageMessages) opens a form (title,
+  message), then posts now or schedules a task (`when`: `in 2h`, `18:30`, `2026-12-24 18:00`
+  in the plugin's time zone; up to 90 days, `maxScheduled` waiting at most).
+  `/announce-list` shows the scheduled and configured ones (next run, invalid schedules);
+  `/announce-cancel id` cancels. `channels` limits where `/announce` posts.
+- **Mention safety**: only the configured mentions ping (`allowedMentions`); `@everyone` and
+  `@here` need `allowEveryone` (admin) and are neutralized in the text otherwise; other role
+  mentions in the text become plain names. `/announce` bodies go in an embed (never ping).
+- **Time zones**: the plugin host has no `Intl`, so the plugin carries the offset and DST
+  rule (EU, US, Australia, New Zealand) of the zones listed in its schema.
+- **Capabilities**: `discord.messages.send`, `discord.channels.read`, `storage.kv`,
+  `scheduler`, `portal.routes` (`GET /scheduled`, moderators). No intents.
+
+| Feature | Test |
+|---|---|
+| Minute tick posts a configured announcement, `@everyone` neutralized | rt/Announcements |
+| `/announce` → modal → task → posted; `/announce-list`; `/announce-cancel`; ManageMessages | rt/Announcements |
+| `GET /scheduled` (moderator) | rt/Announcements, api/RouteAccess |
+| Cron, interval, one-off, DST rules, catch-up, dedupe, invalid schedules, `when` parsing | unit tests |
+
 ## Not testable on the simulator
 
 - User messages with **attachments**: the simulator cannot post them (the `attachment`
@@ -172,3 +277,14 @@ steps.
    moderator, `DELETE …/moderation/warnings/<id>` as an admin (403 for a moderator).
 7. **Hot reload**: change `defaultHours` in `bots/codi/bot.yaml` and push: the bot does not
    reconnect, open polls keep their votes and still close on time.
+8. **Reaction roles**: the three panels appear in #roles at start. As the member pick Red then
+   Blue (Red goes away), pick Events in the select (refused without the Member role), react
+   ⛏️ on the games panel and remove it. Change a panel title and push: the message is edited,
+   not posted again. Without Administrator, put a panel role above the bot's role: the click
+   explains the hierarchy.
+9. **Audit log**: join, change a role, delete a message, close a poll: a single batch lands in
+   #audit-log about 10 s later.
+10. **Announcements**: `/announce channel:#general when:"in 2 min" mention:@Events` → form →
+    posted two minutes later with only @Events pinged; `/announce-list`, `/announce-cancel`.
+    Set the `game-night` cron to a minute or two ahead (Europe/Paris time): it posts once, at
+    that minute.

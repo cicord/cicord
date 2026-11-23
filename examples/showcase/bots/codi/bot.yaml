@@ -87,6 +87,7 @@ spec:
         - storage.kv
         - http.fetch
         - portal.routes
+        - events.publish
       config:
         logChannel: mod-log
         warningDays: 30
@@ -95,3 +96,82 @@ spec:
           - { warnings: 5, action: kick }
         flood:
           exemptRoles: [mod, admin]
+
+    - name: reaction-roles
+      source: ../../plugins/reaction-roles
+      grants:
+        - discord.messages.send
+        - discord.messages.read
+        - discord.channels.read
+        - discord.roles.assign
+        - discord.members.read
+        - discord.reactions.manage
+        - storage.kv
+      config:
+        panels:
+          - name: colors
+            channel: roles
+            title: Name color
+            description: Pick the color of your name.
+            mode: single
+            options:
+              - { role: red, emoji: "🔴" }
+              - { role: blue, emoji: "🔵" }
+              - { role: green, emoji: "🟢" }
+          - name: pings
+            channel: roles
+            title: Notifications
+            description: Choose what you want to be pinged for.
+            style: select
+            requiredRole: member
+            options:
+              - { role: events-ping, description: Game nights and community events }
+              - { role: news-ping, description: Server news and updates }
+          - name: games
+            channel: roles
+            title: What do you play?
+            style: reactions
+            options:
+              - { role: minecraft, emoji: "⛏️" }
+              - { role: chess, emoji: "♟️" }
+
+    - name: audit-log
+      source: ../../plugins/audit-log
+      grants:
+        - discord.messages.send
+        - discord.channels.read
+        - storage.kv
+        - scheduler
+        - events.subscribe
+      config:
+        channel: audit-log
+        ignoredChannels: [staff-chat]
+        events:
+          polls: true
+
+    - name: announcements
+      source: ../../plugins/announcements
+      grants:
+        - discord.messages.send
+        - discord.channels.read
+        - storage.kv
+        - scheduler
+        - portal.routes
+      config:
+        timeZone: Europe/Paris
+        channels: [announcements, general]
+        announcements:
+          - name: game-night
+            channel: announcements
+            cron: "0 20 * * 5"
+            content: Game night starts now in the voice channels, see you there!
+            embed:
+              title: 🎲 Game night
+              color: "#9b59b6"
+            mentions:
+              roles: [events-ping]
+          - name: rules-reminder
+            channel: general
+            every: 2w
+            start: "2026-01-05 10:00"
+            content: A friendly reminder to read the rules and to pick your roles in the roles channel.

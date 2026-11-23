@@ -23,6 +23,9 @@ func init() {
 	extraCommands = append(extraCommands, newImportCmd, newAdoptCmd)
 }
 
+// newDownloader returns the CDN downloader of codi import (tests: the simulator's).
+var newDownloader = func() importer.Downloader { return importer.HTTPDownloader(nil) }
+
 func newImportCmd() *cobra.Command {
 	var lf localFlags
 	var tokenEnv, key string
@@ -32,7 +35,10 @@ func newImportCmd() *cobra.Command {
 		Short: "Generate servers/<key>.yaml from an existing Discord server",
 		Long: `Connect to Discord with a bot token, read the live server (roles with their hierarchy and
 permissions, @everyone, categories, channels with their overwrites, positions, topics and
-slowmode, the profile) and write servers/<key>.yaml.
+slowmode, the profile, AutoMod, onboarding, widget, welcome screen) and write
+servers/<key>.yaml. The server icon, banner and invite splash, role icons, emojis,
+stickers and soundboard sounds are downloaded from the Discord CDN into
+servers/assets/<key>/ and referenced from the YAML.
 
 Keys are derived from the display names (slugified, deduplicated). Roles managed by an
 integration (bot roles) are skipped. The resource map (key → Discord ID) is written to
@@ -101,7 +107,7 @@ func runImport(cmd *cobra.Command, serverID, dir, key, tokenEnv string, force bo
 		}
 		fmt.Fprintf(stderr, "warning: AutoMod rules, onboarding, welcome screen, widget and expressions not read: %v\n", full)
 	}
-	res, err := importer.Generate(importer.Options{ServerKey: key, Snapshot: snap})
+	res, err := importer.Generate(ctx, importer.Options{ServerKey: key, Snapshot: snap, Download: newDownloader()})
 	if err != nil {
 		return err
 	}
@@ -115,12 +121,24 @@ func runImport(cmd *cobra.Command, serverID, dir, key, tokenEnv string, force bo
 	if err := os.WriteFile(file, res.YAML, 0o644); err != nil {
 		return err
 	}
+	for _, f := range res.Files {
+		p := filepath.Join(dir, filepath.FromSlash(f.Path))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, f.Data, 0o644); err != nil {
+			return err
+		}
+	}
 	store, statePath, err := lf.openState(dir, false)
 	if err != nil {
 		return err
 	}
 	defer store.Close()
 	if err := replaceGitMappings(ctx, store, res.Key, res.Resources); err != nil {
+		return err
+	}
+	if err := res.RecordFiles(ctx, store.KV("reconcile:"+res.Key)); err != nil {
 		return err
 	}
 
@@ -131,6 +149,9 @@ func runImport(cmd *cobra.Command, serverID, dir, key, tokenEnv string, force bo
 	}
 	fmt.Fprintf(stdout, "Imported %q as %s: %d role(s), %d categor(ies), %d channel(s)\n",
 		snap.Server.Name, rel, counts[state.KindRole], counts[state.KindCategory], counts[state.KindChannel])
+	if n := len(res.Files); n > 0 {
+		fmt.Fprintf(stdout, "Downloaded %d file(s) (icons, emojis, stickers, sounds) into %s\n", n, filepath.Join("servers", "assets", res.Key))
+	}
 	fmt.Fprintf(stdout, "Resource map written to %s\n", statePath)
 	for _, w := range res.Warnings {
 		fmt.Fprintln(stderr, "warning:", w)

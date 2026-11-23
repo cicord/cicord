@@ -170,7 +170,7 @@ func (w *World) applyServerParams(s *serverState, p discord.ServerParams) error 
 					return badRequest("%s (ANIMATED_ICON feature)", r)
 				}
 			}
-			info.IconURL = cdnURL("icons", s.info.ID, *p.Icon)
+			info.IconURL = w.cdnPut(cdnURL("icons", s.info.ID, *p.Icon), *p.Icon)
 		}
 	}
 	if p.Banner != nil {
@@ -185,7 +185,7 @@ func (w *World) applyServerParams(s *serverState, p discord.ServerParams) error 
 					return badRequest("%s (ANIMATED_BANNER feature)", r)
 				}
 			}
-			info.BannerURL = cdnURL("banners", s.info.ID, *p.Banner)
+			info.BannerURL = w.cdnPut(cdnURL("banners", s.info.ID, *p.Banner), *p.Banner)
 		}
 	}
 	if p.Splash != nil {
@@ -195,7 +195,7 @@ func (w *World) applyServerParams(s *serverState, p discord.ServerParams) error 
 			if r := info.BoostReason("invite splash", discord.FeatureInviteSplash); r != "" {
 				return badRequest("%s (INVITE_SPLASH feature)", r)
 			}
-			info.SplashURL = cdnURL("splashes", s.info.ID, *p.Splash)
+			info.SplashURL = w.cdnPut(cdnURL("splashes", s.info.ID, *p.Splash), *p.Splash)
 		}
 	}
 	if p.VerificationLevel != nil {
@@ -530,7 +530,7 @@ func (w *World) createRole(a actor, serverID string, p discord.RoleParams, reaso
 	}
 	r.ID = w.newID()
 	if r.IconURL != "" {
-		r.IconURL = cdnURL("role-icons", r.ID, *p.Icon)
+		r.IconURL = w.cdnPut(cdnURL("role-icons", r.ID, *p.Icon), *p.Icon)
 	}
 	snap := snapshotRoles(s)
 	s.roles[r.ID] = r
@@ -574,6 +574,9 @@ func (w *World) updateRole(a actor, serverID, roleID string, p discord.RoleParam
 		}
 	}
 	applyRoleParams(r, p)
+	if p.Icon != nil && len(*p.Icon) > 0 {
+		w.cdnPut(r.IconURL, *p.Icon)
+	}
 	w.record(a, "UpdateRole", serverID, roleID, reason, nil)
 	w.emit(discord.RoleUpdateEvent{ServerID: serverID, Role: *r})
 	return *r, nil

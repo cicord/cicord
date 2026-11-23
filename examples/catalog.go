@@ -16,6 +16,9 @@ import "embed"
 //go:embed showcase/plugins/polls/plugin.yaml showcase/plugins/polls/config.schema.json showcase/plugins/polls/tsconfig.json showcase/plugins/polls/src/*.ts
 //go:embed showcase/plugins/levels/plugin.yaml showcase/plugins/levels/config.schema.json showcase/plugins/levels/tsconfig.json showcase/plugins/levels/src/*.ts
 //go:embed showcase/plugins/moderation/plugin.yaml showcase/plugins/moderation/config.schema.json showcase/plugins/moderation/tsconfig.json showcase/plugins/moderation/src/*.ts
+//go:embed showcase/plugins/reaction-roles/plugin.yaml showcase/plugins/reaction-roles/config.schema.json showcase/plugins/reaction-roles/tsconfig.json showcase/plugins/reaction-roles/src/*.ts
+//go:embed showcase/plugins/audit-log/plugin.yaml showcase/plugins/audit-log/config.schema.json showcase/plugins/audit-log/tsconfig.json showcase/plugins/audit-log/src/*.ts
+//go:embed showcase/plugins/announcements/plugin.yaml showcase/plugins/announcements/config.schema.json showcase/plugins/announcements/tsconfig.json showcase/plugins/announcements/src/*.ts
 var Plugins embed.FS
 
 // Official lists the catalog plugins (directory inside Plugins), in display order.
@@ -26,4 +29,7 @@ var Official = []string{
 	"showcase/plugins/polls",
 	"showcase/plugins/levels",
 	"showcase/plugins/moderation",
+	"showcase/plugins/reaction-roles",
+	"showcase/plugins/audit-log",
+	"showcase/plugins/announcements",
 }

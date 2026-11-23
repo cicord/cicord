@@ -78,6 +78,7 @@ type World struct {
 	sessions     map[*Session]struct{} // opened, not closed
 	calls        []Call
 	subs         map[int]chan struct{}
+	cdn          map[string][]byte // CDN URL → file (uploaded images, expression files)
 	subSeq       int
 
 	idleMu   sync.Mutex
@@ -169,6 +170,7 @@ func NewWorld(opts ...Option) *World {
 		openModals:   map[string]*openModal{},
 		sessions:     map[*Session]struct{}{},
 		subs:         map[int]chan struct{}{},
+		cdn:          map[string][]byte{},
 	}
 	w.idleCond = sync.NewCond(&w.idleMu)
 	for _, o := range opts {

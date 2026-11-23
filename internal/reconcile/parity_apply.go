@@ -23,6 +23,17 @@ func imageKVKey(name string) string {
 	return "image:" + name
 }
 
+// RecordFile records that a repository file is what Discord shows now, as the
+// reconciler does after uploading it, so that the next plan does not upload it again
+// (codi import downloads the files of a server). kv is the reconciler KV of the server
+// (scope "reconcile:<key>"); name is the logical file name ("icon", "banner",
+// "splash", "role:<key>", "emoji:<key>", "sticker:<key>" or "sound:<key>"); url is the
+// live CDN URL of a server or role image ("" for expressions).
+func RecordFile(ctx context.Context, kv state.KV, name string, data []byte, url string) error {
+	raw, _ := json.Marshal(map[string]string{"hash": hashOf(data), "url": url})
+	return kv.Set(ctx, imageKVKey(name), raw, 0)
+}
+
 func (r *Reconciler) loadImageState(ctx context.Context, name string) (iconState, error) {
 	if name == "icon" {
 		return r.loadIconState(ctx)
