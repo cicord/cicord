@@ -150,7 +150,8 @@ Self-assignable roles from **panels** defined in the config (`panels[]`: `name`,
   again), `discord.channels.read`, `discord.roles.assign`, `discord.members.read` and
   `discord.reactions.manage` (reaction panels), `storage.kv`. Intent:
   `ServerMessageReactions` (not privileged).
-- **Limits**: a reaction cannot be answered privately, so a member without the required role
+- **Limits**: a reaction panel offers at most 20 options (Discord's limit of distinct
+  reactions per message; the rest are reported by `/role-panel` and logged). A reaction cannot be answered privately, so a member without the required role
   is silently ignored (the panel footer states the requirement); in `single` mode the member's
   previous reaction stays on the message (the SDK cannot remove another user's reaction).
 

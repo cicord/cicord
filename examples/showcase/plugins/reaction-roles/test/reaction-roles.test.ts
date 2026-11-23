@@ -115,7 +115,10 @@ describe("panels", () => {
       { message: games.id, emoji: "♟️" },
       { message: games.id, emoji: "a:go:223456789012345678" },
     ]);
-    expect(t.logs.some((l) => l.message.includes("without an emoji"))).toBe(true);
+    expect(t.logs.find((l) => l.message.includes("left out"))?.fields).toEqual({
+      panel: "games",
+      roles: ["News (no emoji)"],
+    });
 
     await plugin.onStart!(t.ctx);
     expect(t.sent).toHaveLength(3);
@@ -292,6 +295,33 @@ describe("reactions", () => {
     expect(roleKeys(t, "2")).toEqual(["go"]);
     expect(t.roleChanges).toHaveLength(3);
   });
+});
+
+test("a reaction panel offers at most 20 options (Discord's reaction limit)", async () => {
+  const roles = Object.fromEntries(
+    Array.from({ length: 22 }, (_, i) => [`r${i}`, { name: `R${i}` }]),
+  );
+  const t = createTestContext({
+    schema,
+    config: {
+      panels: [
+        {
+          name: "big",
+          channel: "roles",
+          style: "reactions",
+          options: Array.from({ length: 22 }, (_, i) => ({ role: `r${i}`, emoji: `e${i}` })),
+        },
+      ],
+    },
+    grants,
+    roles,
+    channels: { roles: { name: "roles" } },
+  });
+  const r = await runCommand(plugin, t, "role-panel", { user: "1" });
+  expect(t.reactions).toHaveLength(20);
+  expect(r.replies[0]).toBe(
+    "**big**: posted in <#channel-roles>. Left out: R20 (over Discord's 20-reaction limit), R21 (over Discord's 20-reaction limit).",
+  );
 });
 
 test("emoji normalization", () => {

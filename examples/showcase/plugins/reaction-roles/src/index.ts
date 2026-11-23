@@ -29,17 +29,29 @@ type SyncStatus = "posted" | "updated" | "unchanged" | "moved" | "reposted";
 interface SyncResult {
   status: SyncStatus;
   channel: string;
-  /** Options left out (reaction panels need an emoji). */
+  /** Options left out of a reaction panel, with the reason. */
   skipped: string[];
 }
 
-/** The options a panel actually offers: reaction panels only those with an emoji. */
+/** Discord allows at most 20 different reactions on a message. */
+const MAX_REACTIONS = 20;
+
+/**
+ * The options a panel actually offers: a reaction panel only those with an emoji, and at
+ * most 20 of them.
+ */
 function offered(ctx: Context, panel: Panel): { options: ResolvedOption[]; skipped: string[] } {
   const all = resolveOptions(ctx, panel);
   if (panel.style !== "reactions") return { options: all, skipped: [] };
+  const withEmoji = all.filter((o) => o.emoji);
   return {
-    options: all.filter((o) => o.emoji),
-    skipped: all.filter((o) => !o.emoji).map((o) => o.roleName),
+    options: withEmoji.slice(0, MAX_REACTIONS),
+    skipped: [
+      ...all.filter((o) => !o.emoji).map((o) => `${o.roleName} (no emoji)`),
+      ...withEmoji
+        .slice(MAX_REACTIONS)
+        .map((o) => `${o.roleName} (over Discord's ${MAX_REACTIONS}-reaction limit)`),
+    ],
   };
 }
 
@@ -214,7 +226,7 @@ export default definePlugin({
       try {
         const r = await syncPanel(ctx, panel);
         if (r.skipped.length > 0)
-          ctx.log.warn("reaction-roles: options without an emoji left out of a reaction panel", {
+          ctx.log.warn("reaction-roles: options left out of a reaction panel", {
             panel: panel.name,
             roles: r.skipped,
           });
@@ -259,7 +271,7 @@ export default definePlugin({
             const r = await syncPanel(ctx, panel, force);
             let line = `**${panel.name}**: ${STATUS_TEXT[r.status]} ${r.channel}.`;
             if (r.status === "moved") line += " Delete the old message by hand.";
-            if (r.skipped.length > 0) line += ` Left out (no emoji): ${r.skipped.join(", ")}.`;
+            if (r.skipped.length > 0) line += ` Left out: ${r.skipped.join(", ")}.`;
             lines.push(line);
           } catch (error) {
             ctx.log.warn("reaction-roles: could not post a panel", {
