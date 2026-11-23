@@ -731,7 +731,9 @@ func (s *server) pluginOrigin(lp *config.LoadedPlugin) (source, trust string) {
 	if !strings.HasPrefix(lp.Source, ".") {
 		reg, _, _ := strings.Cut(lp.Source, "/")
 		trust = registry.TrustUnofficial
-		if repo := s.rt.Repo(); repo != nil && repo.Project != nil {
+		if _, ok := registry.Official(); ok && reg == config.OfficialRegistryName {
+			trust = registry.TrustOfficial // the implicit official registry (codi.yaml cannot declare "codi")
+		} else if repo := s.rt.Repo(); repo != nil && repo.Project != nil {
 			for _, rg := range repo.Project.Spec.Registries {
 				if rg.Name == reg {
 					trust = registry.Trust(rg.URL)

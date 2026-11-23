@@ -65,7 +65,8 @@ func TestResolveAndLock(t *testing.T) {
 	if res.Entry.Version != "1.2.0" || !strings.HasPrefix(res.Entry.Integrity, "sha256-") || len(res.Entry.Commit) != 40 {
 		t.Fatalf("resolution = %+v", res.Entry)
 	}
-	if res.Entry.Capabilities[0] != "discord.messages.send" || !res.Index.Verified {
+	// "verified" is ignored: this registry is not the signed official one.
+	if res.Entry.Capabilities[0] != "discord.messages.send" || res.Index.Verified {
 		t.Errorf("capabilities/index = %+v %+v", res.Entry, res.Index)
 	}
 

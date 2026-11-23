@@ -18,7 +18,7 @@ The store must exist early for adoption but should not require running a backend
 ## Consequences
 - Publishing = pushing a tag + a PR to the registry index. A web store front can be built
   on top of the index later.
-- Signing and verified publishers are future work (index already reserves fields).
+- Signing and verified publishers: see "Update (2026-11-23)".
 
 ## Update (2026-11-21): apt/Homebrew-style sources
 
@@ -63,3 +63,51 @@ Product decision: the store works like `apt` sources / Homebrew taps.
   credentials, and URLs are redacted from errors.
 - **Project-level rights.** Adding or removing a source changes `codi.yaml`: bearer, or admin
   on every server of the project. Installing needs admin on the target server.
+
+## Update (2026-11-23): signed official index, verified publishers, publishing
+
+- **Signature envelope.** The official registry's `index.yaml` comes with `index.yaml.sig`:
+  `format: codi-registry-signature-v1`, `registry` (normalized URL), `serial`, `expires`
+  (RFC 3339, UTC) and `index-sha256` (of the exact bytes of `index.yaml`), then one
+  `ed25519 <key-id> <base64>` line per signing key. Each signature covers the canonical
+  envelope (`codi-registry-signature-v1\nregistry: …\nserial: …\nexpires: …\nindex-sha256: …\n`).
+  Signing the bare index bytes was rejected in review: an old, validly signed index could
+  be replayed forever (e.g. one still listing a plugin later removed for a vulnerability),
+  and a signature would not be bound to its registry.
+- **Official = official URL + valid, current signature.** `FetchIndex` refuses
+  (`ErrBadSignature`, fail closed) an index from an official URL unless a signature by an
+  embedded official key verifies, the hash matches, `registry` is an official URL, the
+  envelope has not expired, and `serial` is not lower than the highest serial already seen
+  for the official registry. There is one serial for the official registry (key
+  `official`), shared by all its URLs (aliases, mirrors: one logical registry signed by
+  the same keys), so an old envelope signed for one URL cannot be replayed after a higher
+  serial was seen through another. It is stored on first use (trust on first use) in the
+  runtime's state store (KV scope `codi:registry-serials`, survives restarts) or, for the
+  CLI, in a file next to the plugin cache. Such a source is an error source
+  (`signature: "invalid"`), never an unofficial fallback; the Store checks it again
+  (defense in depth) whatever fetcher it uses. The embedded keys are a list (rotation:
+  sign with old and new keys during the transition).
+- **Cadence.** Maintainers re-sign after every index change and on a schedule (weekly CI,
+  30-day validity, `codi registry sign` caps it at 180 days): the expiry bounds how long a
+  runtime that never saw a newer index can be served an old one. The private key never
+  lives in a repository (`codi registry keygen|sign|verify`).
+- **Verified publishers** (`verified: true`) are only honoured from a verified official index.
+- **Implicit official registry.** When the build has an official URL, the official remote
+  registry is part of source `codi`, without a `codi.yaml` entry (the name stays reserved).
+  The Store lists the union of bundled and remote plugins; a plugin in both comes from the
+  registry only if its index `version` is a semver greater than the bundled one (the bundled
+  copy needs no network and is known to work with the binary). Remote installs lock
+  `codi/<name>` in `codi.lock`; the runtime resolves it from the lock like any registry
+  plugin. The official URL is a package variable (set in tests); `CODI_DEV_OFFICIAL_REGISTRY`
+  overrides it only in a development build, i.e. one with a test key embedded at build time
+  (`-ldflags -X …devOfficialKey`); release builds ignore it. None of this is reachable from
+  `codi.yaml` or the API.
+- **Publishing.** `codi plugin publish` validates (build + inspect), requires a clean tree
+  and a new semver, tags `v<version>` (pushed with `--push`) and writes the index entry to a
+  local registry checkout (or prints it). Index entries gain optional `version` (latest
+  release, used by the union rule) and `commit` (its tag's commit: resolving that version
+  fails if the tag was moved). Publishing to the official registry is a pull request to
+  its repository; its maintainers review, set `verified`, and sign.
+- **Not decided here (owner):** the official registry repository, its URL, and the
+  production signing key (`registry.OfficialURLs` and `registry.OfficialKeys` are empty
+  until then, so today `codi` is the bundled plugins only).

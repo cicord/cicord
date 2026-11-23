@@ -65,19 +65,30 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 	if repo == nil {
 		return out
 	}
-	inst := installations(repo, s.Catalog)
-	for key := range inst {
-		src, name, _ := strings.Cut(key, "/")
-		if src != config.OfficialRegistryName {
+	// Copies of official plugins (plugins/<name>/) and registry sources (codi.lock),
+	// including "codi/<name>" locked from the implicit official registry.
+	copies, locked := map[string]bool{}, map[string]bool{}
+	for _, i := range repo.Instances {
+		if i.Plugin == nil || i.Plugin.Manifest == nil {
 			continue
 		}
+		if !strings.HasPrefix(i.Plugin.Source, ".") {
+			locked[i.Plugin.Source] = true
+			continue
+		}
+		name := i.Plugin.Manifest.Metadata.Name
+		if filepath.Clean(i.Plugin.Dir) == filepath.Join(repo.Root, filepath.FromSlash(catalog.PluginDir(name))) {
+			copies[name] = true
+		}
+	}
+	for name := range copies {
 		if u, ok := s.BundledUpdate(repo, name); ok {
-			out[key] = u
+			out[config.OfficialRegistryName+"/"+name] = u
 		}
 	}
 
-	regs := registries(repo)
-	if len(regs) == 0 {
+	regs := registry.WithOfficial(registries(repo))
+	if len(regs) == 0 || len(locked) == 0 {
 		return out
 	}
 	lock, err := registry.ReadLock(repo.Root)
@@ -101,7 +112,7 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 		if c.err != nil || c.idx == nil {
 			continue
 		}
-		for key := range inst {
+		for key := range locked {
 			src, name, _ := strings.Cut(key, "/")
 			if src != r.Name {
 				continue

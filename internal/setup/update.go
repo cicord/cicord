@@ -135,13 +135,38 @@ func (p *UpdatePlan) ConfigValid() bool {
 // ErrNotInstalled: no instance uses the plugin.
 var ErrNotInstalled = errors.New("plugin not installed")
 
-// UsesPlugin reports whether a bot.yaml instance uses the plugin of an update source.
+// UsesPlugin reports whether a bot.yaml instance uses the plugin of an update source:
+// "<registry>/<plugin>" locked in codi.lock (the official registry included), or for
+// "codi/<plugin>" also a copy of the official plugin in plugins/<plugin>/.
 func UsesPlugin(b *config.Bot, p config.PluginInstance, source string) bool {
+	return usesCopy(b, p, source) || UsesLocked(p, source)
+}
+
+// UsesLocked: the instance uses the registry plugin source (a codi.lock entry).
+func UsesLocked(p config.PluginInstance, source string) bool {
+	return !p.IsLocal() && p.Source == source
+}
+
+func usesCopy(b *config.Bot, p config.PluginInstance, source string) bool {
 	reg, name, _ := strings.Cut(source, "/")
-	if reg != config.OfficialRegistryName {
-		return p.Source == source
+	return reg == config.OfficialRegistryName && p.IsLocal() &&
+		path.Clean(path.Join(path.Dir(b.File), p.Source)) == catalog.PluginDir(name)
+}
+
+// LockedSource reports whether an instance of repo uses source through codi.lock (for
+// "codi/<plugin>": the official remote registry rather than a bundled copy).
+func LockedSource(repo *config.Repo, source string) bool {
+	if repo == nil {
+		return false
 	}
-	return p.IsLocal() && path.Clean(path.Join(path.Dir(b.File), p.Source)) == catalog.PluginDir(name)
+	for _, b := range repo.Bots {
+		for _, p := range b.Spec.Plugins {
+			if UsesLocked(p, source) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // PlanUpdate computes the update of every instance using spec.Source in repo (the active
@@ -166,7 +191,7 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 	for _, bk := range sortedKeys(repo.Bots) {
 		b := repo.Bots[bk]
 		for i, p := range b.Spec.Plugins {
-			if UsesPlugin(b, p, spec.Source) {
+			if (spec.Bundled() && usesCopy(b, p, spec.Source)) || (!spec.Bundled() && UsesLocked(p, spec.Source)) {
 				uses = append(uses, use{bot: b, key: bk, idx: i, inst: p})
 			}
 		}

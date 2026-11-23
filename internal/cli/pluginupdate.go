@@ -76,7 +76,7 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 	cat := catalog.Official()
 	es, _ := cat.List()
 	for _, e := range es {
-		if len(setup.PluginServers(repo, config.OfficialRegistryName+"/"+e.Name)) == 0 {
+		if !hasCopy(repo, e.Name) {
 			continue
 		}
 		st, err := cat.CheckCopy(e.Name, filepath.Join(repo.Root, filepath.FromSlash(catalog.PluginDir(e.Name))))
@@ -98,6 +98,8 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 		return err
 	}
 	ctx := registry.WithRegistryTokens(cmd.Context(), repo.Project.Spec.Registries, os.LookupEnv)
+	// codi.yaml registries and the implicit official one ("codi/<plugin>" lock entries).
+	regs := registry.WithOfficial(repo.Project.Spec.Registries)
 	indexes := map[string]*registry.Index{}
 	sources := make([]string, 0, len(lock.Plugins))
 	for s := range lock.Plugins {
@@ -110,12 +112,12 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 		if err != nil {
 			continue
 		}
-		i := slices.IndexFunc(repo.Project.Spec.Registries, func(r config.Registry) bool { return r.Name == regName })
+		i := slices.IndexFunc(regs, func(r config.Registry) bool { return r.Name == regName })
 		if i < 0 {
 			fmt.Fprintf(cmd.ErrOrStderr(), "%s: unknown registry %q\n", src, regName)
 			continue
 		}
-		reg := repo.Project.Spec.Registries[i]
+		reg := regs[i]
 		idx, ok := indexes[regName]
 		if !ok {
 			if idx, err = registry.FetchIndex(ctx, reg.URL); err != nil {
@@ -160,7 +162,9 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 	}
 	var spec setup.UpdateSpec
 	trust := registry.TrustOfficial
-	if regName == config.OfficialRegistryName {
+	// "codi/<plugin>": a copy of a bundled official plugin, unless it is locked from the
+	// official registry (then it updates like any registry plugin).
+	if regName == config.OfficialRegistryName && !setup.LockedSource(repo, source) {
 		if to != "" {
 			return fmt.Errorf("--to only applies to registry plugins: official plugins update to the version bundled in this binary")
 		}
@@ -199,10 +203,12 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 		if rng == "" {
 			rng = "*"
 		}
-		i := slices.IndexFunc(repo.Project.Spec.Registries, func(r config.Registry) bool { return r.Name == regName })
-		if i >= 0 {
-			trust = registry.Trust(repo.Project.Spec.Registries[i].URL)
+		regs := registry.WithOfficial(repo.Project.Spec.Registries)
+		i := slices.IndexFunc(regs, func(r config.Registry) bool { return r.Name == regName })
+		if i < 0 {
+			return fmt.Errorf("unknown registry %q", regName)
 		}
+		trust = registry.Trust(regs[i].URL)
 		ctx := registry.WithRegistryTokens(cmd.Context(), repo.Project.Spec.Registries, os.LookupEnv)
 		res, err := registry.ResolveLatest(ctx, repo.Project.Spec.Registries, registry.DefaultCacheDir(), source, rng)
 		if err != nil {
@@ -288,6 +294,19 @@ func printUpdatePlan(w io.Writer, plan *setup.UpdatePlan, trust string) {
 	if f := plan.Files; f != nil {
 		fmt.Fprintf(w, "  %s/: %d changed, %d added, %d deleted\n", catalog.PluginDir(spec.Name), len(f.Changed), len(f.Added), len(f.Removed))
 	}
+}
+
+// hasCopy: an instance uses the copy of official plugin name in plugins/<name>/.
+func hasCopy(repo *config.Repo, name string) bool {
+	src := config.OfficialRegistryName + "/" + name
+	for _, b := range repo.Bots {
+		for _, p := range b.Spec.Plugins {
+			if p.IsLocal() && setup.UsesPlugin(b, p, src) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func orAny(s string) string {

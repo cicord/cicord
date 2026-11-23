@@ -1549,6 +1549,10 @@
       },
       "private": "Private",
       "privateTip": "This registry needs an access token, kept in the runtime's secret store.",
+      "signed": "Signed",
+      "signedTip": "The index of this official registry is signed by an official CODI key.",
+      "badSignature": "Signature invalid",
+      "badSignatureTip": "The index of this official registry has no valid signature by an official CODI key: its plugins are not listed.",
       "token": {
         "set": "Set token",
         "replace": "Replace token",

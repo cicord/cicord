@@ -38,15 +38,46 @@ type updateReviewDTO struct {
 	Restricted []restrictedServer `json:"restricted"`
 }
 
-// updateSpec resolves the latest version of an installed Store plugin.
-func (s *server) updateSpec(ctx context.Context, repo *config.Repo, source, name string) (store.Detail, setup.UpdateSpec, error) {
-	d, err := s.pluginStore().Detail(ctx, repo, source, name)
+// updateRegistry is the registry an installed plugin updates from: a registry of codi.yaml,
+// the implicit official registry for "codi/<plugin>" locked in codi.lock, or nil for a
+// copy of a bundled official plugin (plugins/<plugin>/, updated from the binary).
+func updateRegistry(repo *config.Repo, source, name string) (*config.Registry, error) {
+	if source == config.OfficialRegistryName {
+		if !setup.LockedSource(repo, source+"/"+name) {
+			return nil, nil
+		}
+		// Official only through the official URL, whose index must carry a valid
+		// signature (registry.FetchIndex refuses it otherwise).
+		off, ok := registry.Official()
+		if !ok {
+			return nil, store.ErrUnknownSource
+		}
+		return &off, nil
+	}
+	for _, rg := range repo.Project.Spec.Registries {
+		if rg.Name == source {
+			return &rg, nil
+		}
+	}
+	return nil, store.ErrUnknownSource
+}
+
+// updateSpec resolves the latest version of an installed Store plugin (reg: see
+// updateRegistry).
+func (s *server) updateSpec(ctx context.Context, repo *config.Repo, reg *config.Registry, source, name string) (store.Detail, setup.UpdateSpec, error) {
+	var d store.Detail
+	var err error
+	if reg == nil {
+		d, err = s.pluginStore().BundledDetail(repo, name)
+	} else {
+		d, err = s.pluginStore().RegistryDetail(ctx, repo, *reg, name)
+	}
 	if err != nil {
 		return store.Detail{}, setup.UpdateSpec{}, err
 	}
 	spec := setup.UpdateSpec{Source: source + "/" + name, Name: d.Name, DisplayName: d.DisplayName, Version: d.Version,
 		Capabilities: d.Capabilities, Intents: d.Intents, PrivilegedIntents: d.PrivilegedIntents, Network: d.Network, Schema: d.Schema}
-	if source == config.OfficialRegistryName {
+	if reg == nil {
 		files, err := s.catalogOf().PluginFiles(name)
 		if err != nil {
 			return store.Detail{}, setup.UpdateSpec{}, store.ErrUnknownPlugin
@@ -98,7 +129,12 @@ func (s *server) handleStoreUpdateReview(w http.ResponseWriter, r *http.Request)
 		s.fail(w, httpErr(http.StatusNotFound, "not_installed", "%s/%s is not installed", source, name))
 		return
 	}
-	d, spec, err := s.updateSpec(r.Context(), repo, source, name)
+	reg, err := updateRegistry(repo, source, name)
+	if err != nil {
+		s.failStore(w, err)
+		return
+	}
+	d, spec, err := s.updateSpec(r.Context(), repo, reg, source, name)
 	if err != nil {
 		s.failStore(w, err)
 		return
@@ -201,18 +237,12 @@ func (s *server) handleStoreUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	trust := registry.TrustOfficial
-	if source != config.OfficialRegistryName {
-		var reg *config.Registry
-		for _, rg := range repo.Project.Spec.Registries {
-			if rg.Name == source {
-				reg = &rg
-				break
-			}
-		}
-		if reg == nil {
-			s.fail(w, httpErr(http.StatusNotFound, "not_found", "unknown plugin source"))
-			return
-		}
+	reg, err := updateRegistry(repo, source, name)
+	if err != nil {
+		s.failStore(w, err)
+		return
+	}
+	if reg != nil {
 		trust = registry.Trust(reg.URL)
 		if trust != registry.TrustOfficial && !req.ConfirmUnofficial {
 			s.failSetup(w, &setup.Error{Status: http.StatusConflict, Code: "confirmation_required",
@@ -229,7 +259,7 @@ func (s *server) handleStoreUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, spec, err := s.updateSpec(r.Context(), repo, source, name)
+	d, spec, err := s.updateSpec(r.Context(), repo, reg, source, name)
 	if err != nil {
 		s.failStore(w, err)
 		return
