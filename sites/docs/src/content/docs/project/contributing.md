@@ -44,6 +44,12 @@ On every push to `main` and every pull request:
 - **JS**: `pnpm install --frozen-lockfile`, `pnpm run check` (builds every package and site,
   then format, lint, types and the example plugins) and `pnpm test`.
 - **Docker**: the container image is built (not pushed) and smoke-tested.
+- **Static analysis**: golangci-lint (`.golangci.yml`: staticcheck, errcheck, gosec, dupl,
+  errorlint, noctx…) and govulncheck for Go; oxlint (correctness, suspicious and perf
+  categories, React hooks, jsx-a11y), [Knip](https://knip.dev) (unused files, exports and
+  dependencies) and jscpd (duplication) for TypeScript; Semgrep (Go, React, TypeScript,
+  JavaScript and security-audit rules) on everything; Gitleaks on the whole git history.
+  `make lint` runs the same tools locally.
 
 Pushes to `main` that touch the sites also deploy https://cicord.dev (`sites.yml`).
 Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitHub Actions.

@@ -3,7 +3,7 @@ GO ?= go
 VERSION ?= 0.1.0
 LDFLAGS := -s -w -X github.com/npjonath/cicord/internal/version.Version=$(VERSION) -X github.com/npjonath/cicord/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
-.PHONY: all build ui test test-go test-js vet check clean hooks
+.PHONY: all build ui test test-go test-js vet lint check clean hooks
 
 all: ui build
 
@@ -27,6 +27,16 @@ test-js:
 
 vet:
 	$(GO) vet ./...
+
+## lint: static analysis run by CI (golangci-lint, govulncheck, oxlint, knip, jscpd, semgrep, gitleaks)
+lint:
+	golangci-lint run ./...
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+	pnpm run check
+	pnpm exec knip
+	npx -y jscpd@5.4.3 --config .jscpd.json
+	semgrep scan --metrics=off --error --config p/golang --config p/react --config p/typescript --config p/javascript --config p/security-audit
+	gitleaks git --redact --no-banner .
 
 check: vet test
 

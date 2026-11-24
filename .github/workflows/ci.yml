@@ -52,6 +52,35 @@ jobs:
       - run: ./bin/cicord validate examples/basic
       - run: ./bin/cicord validate examples/showcase
 
+  lint-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      # Built from source with the Go of go.mod, so it understands the language version.
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          install-mode: goinstall
+      - name: govulncheck (known vulnerabilities reachable from the code)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep (Go, React, TypeScript, JavaScript and security rules; .semgrepignore)
+        run: |
+          pipx run semgrep==1.186.0 scan --metrics=off --error \
+            --config p/golang --config p/react --config p/typescript \
+            --config p/javascript --config p/security-audit
+
   js:
     runs-on: ubuntu-latest
     steps:
@@ -68,6 +97,10 @@ jobs:
       - run: pnpm run check
       # Package tests and the example plugins' unit tests.
       - run: pnpm test
+      # Unused files, exports and dependencies (knip.json).
+      - run: pnpm exec knip
+      # Copy-pasted code above the threshold of .jscpd.json.
+      - run: npx -y jscpd@5.4.3 --config .jscpd.json
 
   docker:
     runs-on: ubuntu-latest

@@ -1,0 +1,8 @@
+# Paths Semgrep never scans (CI job "semgrep"): dependencies, build outputs, generated copies.
+node_modules/
+dist/
+.astro/
+bin/
+internal/webui/
+pnpm-lock.yaml
+*.d.ts

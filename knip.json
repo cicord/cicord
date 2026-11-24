@@ -1,0 +1,68 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      // TypeScript plugins under examples/ are bundled by the Go runtime (esbuild as a library),
+      // not by Node: src/index.ts is each plugin's entry point. Their unit tests are run by the
+      // root vite.config.ts (`vp test`). src/routes.ts (plugin.yaml spec.routes.types) is the
+      // portal contract that `cicord portal typegen` copies into the portals, exports included.
+      // serve.mjs is a manual embedding demo.
+      "entry": [
+        "examples/**/plugins/*/src/index.ts",
+        "examples/**/plugins/*/src/routes.ts",
+        "examples/**/plugins/*/test/**/*.test.ts",
+        "examples/embed/serve.mjs"
+      ],
+      "project": ["examples/**/*.{ts,mjs}", "*.ts"],
+      // `vite` is an alias to @voidzero-dev/vite-plus-core that vite-plus requires as a peer:
+      // it is never imported directly.
+      "ignoreDependencies": ["vite"]
+    },
+    "packages/sdk": {
+      // Published entry points (package.json "exports" point at dist/). The public types of
+      // the SDK live in spec/sdk/cicord-sdk.d.ts (copied into dist by scripts/copy-spec-types.mjs).
+      "entry": [
+        "src/index.ts",
+        "src/testing.ts",
+        "scripts/*.mjs",
+        "../../spec/sdk/cicord-sdk.d.ts"
+      ],
+      "project": ["src/**/*.ts", "test/**/*.ts", "scripts/*.mjs"],
+      "ignoreDependencies": ["vite"]
+    },
+    // Published entry points (package.json "exports" point at dist/).
+    "packages/client": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["vite"]
+    },
+    "packages/react": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.{ts,tsx}", "test/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["vite"]
+    },
+    "packages/ui": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.{ts,tsx}", "test/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["vite"]
+    },
+    // Vite apps (index.html → src/main.tsx is detected by the Vite plugin). The admin's CSS is
+    // analyzed for Tailwind's `@import "tailwindcss"` / `@import "tw-animate-css"`.
+    "packages/admin": {
+      "project": ["src/**/*.{ts,tsx,css}", "test/**/*.{ts,tsx}"]
+    },
+    "packages/create-cicord-portal": {
+      "project": ["src/**/*.{ts,tsx}", "test/**/*.{ts,tsx}", "bin/*.mjs"]
+    },
+    "sites/*": {
+      // `astro check` (the "check" script) loads @astrojs/check on demand; it is run locally,
+      // not in CI, so it is not installed with the site.
+      "ignoreDependencies": ["@astrojs/check"]
+    }
+  },
+  // internal/ is used by Go, not by Node, and stays out of every workspace's "project"
+  // (internal/plugin/sdk.js is the SDK shim embedded in the runtime, internal/runtime/testdata
+  // holds runtime test fixtures). internal/webui is a generated copy of the built UIs and of
+  // the portal kit (scripts/sync-ui.sh), with its own package.json: ignored explicitly.
+  "ignore": ["internal/webui/**"]
+}

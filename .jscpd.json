@@ -1,0 +1,19 @@
+{
+  "path": ["packages", "examples", "sites/docs/src", "sites/landing/src"],
+  "format": ["typescript", "tsx", "javascript"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.astro/**",
+    "internal/webui/**",
+    "**/*.d.ts",
+    "**/test/**",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ],
+  "threshold": 3,
+  "minTokens": 70,
+  "reporters": ["console"],
+  "gitignore": true,
+  "absolute": false
+}

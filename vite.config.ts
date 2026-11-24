@@ -34,9 +34,22 @@ export default defineConfig({
   },
   lint: {
     ignorePatterns: notOurs,
-    plugins: ["typescript"],
+    plugins: ["typescript", "unicorn", "import", "promise"],
+    // Every correctness, suspicious and perf rule is an error (CI fails on any finding).
+    categories: { correctness: "error", suspicious: "error", perf: "error" },
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
-    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    rules: {
+      "vite-plus/prefer-vite-plus-imports": "error",
+      // Deliberately off:
+      // - casts of JSON payloads and test fixtures to their declared types are the norm here;
+      "typescript/no-unsafe-type-assertion": "off",
+      // - small local helpers stay next to the code that uses them;
+      "unicorn/consistent-function-scoping": "off",
+      // - sequential awaits are intentional (rate-limited Discord calls, ordered steps);
+      "eslint/no-await-in-loop": "off",
+      // - side-effect imports of stylesheets and fonts.
+      "import/no-unassigned-import": "off",
+    },
     options: { typeAware: true, typeCheck: true },
     overrides: [
       {
@@ -46,7 +59,11 @@ export default defineConfig({
           "packages/create-cicord-portal/**",
           "packages/admin/**",
         ],
-        plugins: ["typescript", "react"],
+        plugins: ["typescript", "unicorn", "import", "promise", "react", "jsx-a11y"],
+        rules: {
+          "react-hooks/rules-of-hooks": "error",
+          "react-hooks/exhaustive-deps": "error",
+        },
       },
     ],
   },

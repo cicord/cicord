@@ -28,7 +28,26 @@ make test         # go test -race ./... and the JS tests
 pnpm run check    # format, lint, types, example plugins
 gofmt -l .        # must print nothing
 make hooks        # once per clone: gitleaks checks staged changes before each commit
+make lint         # the static analysis CI runs (see below)
 ```
+
+## Static analysis
+
+CI fails on any finding of:
+
+| Tool | Scope | Config |
+|---|---|---|
+| [golangci-lint](https://golangci-lint.run) (staticcheck, errcheck, gosec, dupl, errorlint, noctx, …) | Go | `.golangci.yml` |
+| [govulncheck](https://go.dev/doc/security/vuln/) | Go dependencies reachable from the code | — |
+| oxlint through `vp lint` (correctness, suspicious, perf, React hooks, jsx-a11y) | TypeScript, React | `vite.config.ts` |
+| [Knip](https://knip.dev) | unused files, exports and dependencies | `knip.json` |
+| [jscpd](https://github.com/kucherenko/jscpd) | copy-pasted TypeScript/JavaScript | `.jscpd.json` |
+| [Semgrep](https://semgrep.dev) (Go, React, TypeScript, JavaScript, security-audit rules) | everything | `.semgrepignore` |
+| [Gitleaks](https://github.com/gitleaks/gitleaks) | secrets in the whole git history | `.gitleaks.toml` |
+
+A justified exception is written next to the code: `//nolint:<linter> // <reason>` (Go),
+`// oxlint-disable-next-line <rule> -- <reason>` (TypeScript) or
+`// nosemgrep: <rule-id> -- <reason>`.
 
 Secrets never go into the repository: CI scans the whole git history with
 [Gitleaks](https://github.com/gitleaks/gitleaks) (`.gitleaks.toml`), and the pre-commit hook

@@ -1,0 +1,65 @@
+# golangci-lint v2 configuration (CI job "lint"; locally: make lint).
+# Every enabled linter fails the build. Exclusions below are deliberate and explained; a
+# one-off exception in code needs `//nolint:<linter> // <reason>`.
+version: "2"
+
+run:
+  tests: true
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose # HTTP response bodies are closed
+    - copyloopvar
+    - dupl # copy-pasted blocks (semantic duplication)
+    - durationcheck
+    - errorlint # errors.Is / errors.As / %w
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - noctx # outgoing requests carry a context
+    - nolintlint # //nolint directives are specific and justified
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - usestdlibvars
+  settings:
+    dupl:
+      threshold: 150
+    errcheck:
+      exclude-functions:
+        # Human-readable CLI and log output: a failed write to stdout/stderr is not actionable.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gosec:
+      excludes:
+        - G104 # unhandled errors: errcheck reports them (with the fmt exclusions above)
+        # The CLI and runtime read and write files of the user's repository and data directory
+        # by design: paths come from the repository layout, not from untrusted input.
+        - G304 # file inclusion via variable
+        # Repository files and directories are meant to be readable (git-tracked YAML, plugin
+        # sources); secrets live in the encrypted store, never in these files.
+        - G301 # directory permissions > 0750
+        - G306 # file permissions > 0600
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      # Test helpers ignore errors of best-effort setup and teardown; failures surface as
+      # assertion failures.
+      - path: _test\.go
+        linters: [errcheck, gosec, dupl, noctx, bodyclose, unparam]
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
