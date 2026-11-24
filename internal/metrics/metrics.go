@@ -75,7 +75,10 @@ type desc struct {
 
 func (d *desc) describe() *desc { return d }
 
-func (r *Registry) register(c collector) {
+// register adds c. Registering a counter or histogram again with the same description
+// returns the registered one (an API handler rebuilt on the same registry keeps counting
+// into the same series); any other duplicate name panics.
+func (r *Registry) register(c collector) collector {
 	d := c.describe()
 	if !nameRe.MatchString(d.name) {
 		panic(fmt.Sprintf("metrics: invalid metric name %q", d.name))
@@ -87,10 +90,16 @@ func (r *Registry) register(c collector) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, dup := r.families[d.name]; dup {
-		panic(fmt.Sprintf("metrics: %s registered twice", d.name))
+	if prev, dup := r.families[d.name]; dup {
+		_, isFunc := c.(*funcMetric)
+		if p := prev.describe(); isFunc || p.help != d.help || p.typ != d.typ ||
+			!slices.Equal(p.labels, d.labels) || !slices.Equal(p.buckets, d.buckets) {
+			panic(fmt.Sprintf("metrics: %s registered twice", d.name))
+		}
+		return prev
 	}
 	r.families[d.name] = c
+	return c
 }
 
 // ───────────────────────────────────────────────────────────── vectors
@@ -113,8 +122,7 @@ type CounterVec struct {
 // NewCounter registers a counter (its name should end in _total).
 func (r *Registry) NewCounter(name, help string, labels ...string) *CounterVec {
 	c := &CounterVec{desc: desc{name: name, help: help, typ: Counter, labels: labels}, series: map[string]*sample{}}
-	r.register(c)
-	return c
+	return r.register(c).(*CounterVec)
 }
 
 // Add adds v (>= 0) to the series of the label values.
@@ -174,8 +182,7 @@ func (r *Registry) NewHistogram(name, help string, buckets []float64, labels ...
 	}
 	h := &HistogramVec{desc: desc{name: name, help: help, typ: Histogram, labels: labels, buckets: slices.Clone(buckets)},
 		series: map[string]*histSeries{}}
-	r.register(h)
-	return h
+	return r.register(h).(*HistogramVec)
 }
 
 // Observe records v in the series of the label values.

@@ -56,9 +56,17 @@ test_up 1
 
 func TestRegistrationErrors(t *testing.T) {
 	cases := map[string]func(r *Registry){
-		"duplicate": func(r *Registry) {
-			r.NewCounter("dup_total", "")
-			r.NewCounter("dup_total", "")
+		"duplicate with other labels": func(r *Registry) {
+			r.NewCounter("dup_total", "", "a")
+			r.NewCounter("dup_total", "", "b")
+		},
+		"duplicate of another type": func(r *Registry) {
+			r.NewCounter("dup", "")
+			r.NewHistogram("dup", "", nil)
+		},
+		"duplicate function": func(r *Registry) {
+			r.NewFunc(Gauge, "dup", "", nil, func(Emit) {})
+			r.NewFunc(Gauge, "dup", "", nil, func(Emit) {})
 		},
 		"bad name":       func(r *Registry) { r.NewCounter("bad-name", "") },
 		"bad label":      func(r *Registry) { r.NewCounter("ok_total", "", "bad-label") },
@@ -77,6 +85,24 @@ func TestRegistrationErrors(t *testing.T) {
 			}()
 			fn(NewRegistry())
 		})
+	}
+}
+
+func TestReRegistrationReturnsTheSameVector(t *testing.T) {
+	r := NewRegistry()
+	a := r.NewCounter("re_total", "Help.", "k")
+	a.Inc("x")
+	b := r.NewCounter("re_total", "Help.", "k")
+	b.Inc("x")
+	if a != b {
+		t.Fatal("an identical counter must be the registered one")
+	}
+	h1, h2 := r.NewHistogram("re_seconds", "", nil, "k"), r.NewHistogram("re_seconds", "", nil, "k")
+	if h1 != h2 {
+		t.Fatal("an identical histogram must be the registered one")
+	}
+	if out := scrape(t, r); !strings.Contains(out, `re_total{k="x"} 2`+"\n") {
+		t.Errorf("exposition:\n%s", out)
 	}
 }
 

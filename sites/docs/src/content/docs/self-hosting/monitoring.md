@@ -22,8 +22,9 @@ The runtime then answers `GET http://127.0.0.1:9420/metrics` in the Prometheus t
 `404`, and every method but `GET` and `HEAD` answers `405`. If the address cannot be bound,
 `cicord serve` does not start.
 
-Only `cicord serve` has metrics, once a repository is configured: neither the setup wizard nor
-`cicord dev` serve them.
+Only `cicord serve` has metrics (`cicord dev` does not). While the setup wizard runs, the
+listener already serves the build, Go and process metrics; the runtime and HTTP metrics appear
+once a configuration is active.
 
 ## Security
 

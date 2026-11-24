@@ -92,11 +92,23 @@ func TestServeSetupResumeAndRestart(t *testing.T) {
 	t.Setenv("CICORD_RUNTIME_TOKEN", "")
 
 	dir, data := t.TempDir(), t.TempDir()
-	args := []string{"serve", "--listen", "127.0.0.1:0", "--data-dir", data, "--log-level", "warn", dir}
+	metricsAddr := freeAddr(t)
+	metricsURL := "http://" + metricsAddr + "/metrics"
+	args := []string{"serve", "--listen", "127.0.0.1:0", "--metrics-listen", metricsAddr, "--data-dir", data, "--log-level", "warn", dir}
+	metricsHave := func(want ...string) {
+		t.Helper()
+		_, _, body := httpDo(t, http.MethodGet, metricsURL)
+		for _, w := range want {
+			if !strings.Contains(body, w) {
+				t.Errorf("metrics: missing %q in\n%s", w, body)
+			}
+		}
+	}
 
-	// Run 1: token + server, then stop.
+	// Run 1: token + server, then stop. Setup mode serves the process metrics only.
 	p := startCicord(t, args...)
 	m := p.wait(t, setupURLRe)
+	metricsHave("cicord_build_info{", "go_goroutines ")
 	c := newSetupClient(t, m[1])
 	c.ok("POST", "/api/v1/setup/session", map[string]any{"token": m[2]})
 	c.ok("POST", "/api/v1/setup/intent", map[string]any{"intent": "existing"})
@@ -155,6 +167,8 @@ func TestServeSetupResumeAndRestart(t *testing.T) {
 	if code, _ := c.do("GET", "/readyz", nil); code != 200 {
 		t.Fatalf("readyz after activation = %d", code)
 	}
+	// The runtime activated by the wizard reports its metrics, and the API it now serves.
+	metricsHave("cicord_revision_active 1\n", `cicord_server_last_sync_success{server="pixel-pals"} 1`, `cicord_http_requests_total{route="GET /readyz"`)
 	p.stop(t)
 
 	// Run 3: boots from the embedded repository; the unfinished wizard is resumable.
@@ -173,6 +187,7 @@ func TestServeSetupResumeAndRestart(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	c.ok("POST", "/api/v1/setup/session", map[string]any{"token": m3[2]})
+	metricsHave("cicord_revision_active 1\n", `cicord_revision_info{revision="`)
 	st = c.ok("GET", "/api/v1/status", nil)
 	bots := st["bots"].([]any)
 	if len(bots) != 1 || bots[0].(map[string]any)["health"] != "Healthy" {
