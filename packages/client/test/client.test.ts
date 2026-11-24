@@ -656,3 +656,67 @@ describe("simulator", () => {
     expect(out).toEqual([{ event: "message", data: "one", id: "" }]);
   });
 });
+
+describe("analytics", () => {
+  const status = { enabled: true, presence: false, since: null, retentionDays: 400, missing: [] };
+
+  test("summary, series and catalog URLs and query encoding", async () => {
+    const { fetch, calls } = mockFetch(() => json({ status }));
+    const client = createCicordClient({ fetch });
+    await client.analytics.summary("ma commu", "90d");
+    await client.analytics.summary("s");
+    await client.analytics.series("s", {
+      metrics: ["messages.sent", "members.joined"],
+      from: new Date("2026-11-01T00:00:00.123Z"),
+      to: "2026-11-24T00:00:00Z",
+      step: "day",
+      top: 5,
+    });
+    await client.analytics.series("s", { metrics: ["voice.seconds"], dim: "ch:1" });
+    await client.analytics.catalog("s");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/v1/servers/ma%20commu/analytics/summary?period=90d",
+      "GET /api/v1/servers/s/analytics/summary?period=30d",
+      "GET /api/v1/servers/s/analytics/series?metrics=messages.sent%2Cmembers.joined&from=2026-11-01T00%3A00%3A00Z&to=2026-11-24T00%3A00%3A00Z&step=day&top=5",
+      "GET /api/v1/servers/s/analytics/series?metrics=voice.seconds&dim=ch%3A1",
+      "GET /api/v1/servers/s/analytics/catalog",
+    ]);
+  });
+
+  test("returns the response and forwards the abort signal", async () => {
+    const summary = {
+      server: "s",
+      period: "7d",
+      from: "2026-11-17T00:00:00Z",
+      to: "2026-11-24T00:00:00Z",
+      kpis: [{ metric: "members.total", value: 120, previous: null, spark: [[1, 120]] }],
+      rankings: {},
+      heatmap: [],
+      labels: {},
+      status,
+    };
+    let signal: AbortSignal | null | undefined;
+    const fetch: FetchLike = async (_url, init) => {
+      signal = init.signal;
+      return json(summary);
+    };
+    const controller = new AbortController();
+    const client = createCicordClient({ fetch });
+    await expect(
+      client.analytics.summary("s", "7d", { signal: controller.signal }),
+    ).resolves.toEqual(summary);
+    expect(signal).toBe(controller.signal);
+  });
+
+  test("rejects with CicordApiError", async () => {
+    const { fetch } = mockFetch(() =>
+      json({ error: { code: "invalid", message: "at most 2000 points per series" } }, 400),
+    );
+    const error = await createCicordClient({ fetch })
+      .analytics.series("s", { metrics: ["messages.sent"], step: "hour" })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CicordApiError);
+    expect((error as CicordApiError).code).toBe("invalid");
+    expect((error as CicordApiError).status).toBe(400);
+  });
+});

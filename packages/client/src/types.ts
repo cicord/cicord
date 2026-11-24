@@ -404,6 +404,224 @@ export interface AuditQuery {
   limit?: number;
 }
 
+// ───────────────────────────────────────────────────────────── analytics
+
+/**
+ * Window of `GET /servers/{server}/analytics/summary?period=`. KPIs and rankings are
+ * compared with the previous period of the same length.
+ */
+export type AnalyticsPeriod = "7d" | "30d" | "90d" | "365d";
+
+/** Bucket size of `GET /servers/{server}/analytics/series` (UTC hours, days, ISO weeks). */
+export type AnalyticsStep = "hour" | "day" | "week";
+
+/**
+ * How points of a metric combine inside a bucket: `counter` values are summed, `max`
+ * keeps the highest value, `last` the most recent one (gauges and daily distinct counts).
+ */
+export type AnalyticsKind = "counter" | "max" | "last" | (string & {});
+
+/** Unit of a metric's values. */
+export type AnalyticsUnit = "count" | "members" | "seconds" | "level" | (string & {});
+
+/** Metric names of the analytics catalog. */
+export type AnalyticsMetric =
+  | "members.total"
+  | "members.online"
+  | "members.joined"
+  | "members.left"
+  | "members.joined.age"
+  | "members.joined.bots"
+  | "members.roles.added"
+  | "members.roles.removed"
+  | "members.boosting"
+  | "server.boost.tier"
+  | "members.active"
+  | "members.active.chat"
+  | "members.active.voice"
+  | "invites.uses"
+  | "invites.created"
+  | "onboarding.completed"
+  | "messages.sent"
+  | "messages.sent.bots"
+  | "messages.edited"
+  | "messages.deleted"
+  | "messages.attachments"
+  | "messages.replies"
+  | "messages.stickers"
+  | "reactions.added"
+  | "threads.created"
+  | "polls.created"
+  | "voice.seconds"
+  | "voice.sessions"
+  | "voice.peak"
+  | "voice.streaming"
+  | "stage.seconds"
+  | "events.interested"
+  | "moderation.actions"
+  | "automod.triggers"
+  | "automod.blocked"
+  | "commands.used"
+  | "components.used"
+  | "presence.status"
+  | "presence.platform"
+  | "presence.activity";
+
+/** A metric group that is not collected, with the reason and the fix. */
+export interface AnalyticsMissing {
+  metrics: string[];
+  reason: string;
+  fix: string;
+}
+
+/** Collection status of a server's analytics. */
+export interface AnalyticsStatus {
+  enabled: boolean;
+  /**
+   * Detailed presence is collected (`spec.analytics.presence` and the privileged
+   * ServerPresences intent); false: only Discord's approximate online count.
+   */
+  presence: boolean;
+  /** Oldest bucket recorded; null before the first point. */
+  since: Timestamp | null;
+  /** How long points are kept. */
+  retentionDays: number;
+  /** What cannot be collected now and why (empty when everything is collected). */
+  missing: AnalyticsMissing[];
+}
+
+/** Kind of entity a dimension resolves to. */
+export type AnalyticsLabelKind =
+  | "channel"
+  | "voice"
+  | "thread"
+  | "role"
+  | "emoji"
+  | "event"
+  | "invite"
+  | "label"
+  | (string & {});
+
+/** Display name of a dimension (a channel or role ID, a custom emoji…). */
+export interface AnalyticsLabel {
+  name: string;
+  kind: AnalyticsLabelKind;
+  /** Set for custom emojis. */
+  imageUrl?: string;
+  /** Set for roles (`#rrggbb`). */
+  color?: string;
+  /** The channel, role or emoji no longer exists. */
+  deleted?: boolean;
+}
+
+/** One value of a series: `[unix seconds of the bucket start, value]`. */
+export type AnalyticsPoint = [time: number, value: number];
+
+/** One metric (and dimension) over time. */
+export interface AnalyticsSerie {
+  metric: string;
+  /** `""` for the metric's total, `"other"` for the dimensions beyond `top`. */
+  dim: string;
+  points: AnalyticsPoint[];
+}
+
+/**
+ * `GET /servers/{server}/analytics/series`. `from` / `to` are aligned outward to the step.
+ * Counters are zero-filled (one point per step); gauges and daily distinct metrics only
+ * have the steps with data.
+ */
+export interface AnalyticsSeries {
+  server: string;
+  from: Timestamp;
+  to: Timestamp;
+  step: AnalyticsStep;
+  series: AnalyticsSerie[];
+  labels: Record<string, AnalyticsLabel>;
+  status: AnalyticsStatus;
+}
+
+/** Query of `GET /servers/{server}/analytics/series`. */
+export interface AnalyticsSeriesParams {
+  /** One or more metric names. */
+  metrics: readonly (AnalyticsMetric | (string & {}))[];
+  /** Start (RFC 3339 or a Date). Default: `to` minus 7 days; at most 400 days per request. */
+  from?: Date | Timestamp;
+  /** End (RFC 3339 or a Date). Default: now. */
+  to?: Date | Timestamp;
+  /** Default `day`. At most 2000 points per series. */
+  step?: AnalyticsStep;
+  /**
+   * One dimension only (a channel ID, an emoji…). Without it, a dimensioned metric returns
+   * its total (`dim: ""`) first, then the top dimensions in rank order, then `"other"` when
+   * more dimensions exist than `top`.
+   */
+  dim?: string;
+  /** How many dimensions before `"other"` (default 8, at most 50). */
+  top?: number;
+}
+
+/** A headline number with the same number over the previous period. */
+export interface AnalyticsKpi {
+  metric: AnalyticsMetric | "members.net" | (string & {});
+  value: number;
+  /** Value over the previous period of the same length; null when not covered by the data. */
+  previous: number | null;
+  /** The KPI per day over the period, for a sparkline. */
+  spark: AnalyticsPoint[];
+}
+
+/** One entry of a ranking (top channels, emojis, invites…). */
+export interface AnalyticsRanked {
+  dim: string;
+  value: number;
+  /** The entry's value over the previous period; null when not covered. */
+  previous: number | null;
+}
+
+/**
+ * `GET /servers/{server}/analytics/summary`. The window is calendar days including today
+ * (`to` = tomorrow 00:00 UTC, `from` = `to` − N days); the previous period is the N days before.
+ */
+export interface AnalyticsSummary {
+  server: string;
+  period: AnalyticsPeriod;
+  from: Timestamp;
+  to: Timestamp;
+  /**
+   * In this order: members.total (last value), members.joined, members.left, members.net
+   * (joined − left), members.active (average per day), messages.sent, voice.seconds,
+   * members.online (average of the samples), reactions.added, commands.used,
+   * moderation.actions.
+   */
+  kpis: AnalyticsKpi[];
+  /** Top 10 per metric name over the period. */
+  rankings: Record<string, AnalyticsRanked[]>;
+  /** Human messages per weekday and hour (UTC): `heatmap[weekday][hour]`, weekday 0 = Monday. */
+  heatmap: number[][];
+  labels: Record<string, AnalyticsLabel>;
+  status: AnalyticsStatus;
+}
+
+/** A metric as `GET /servers/{server}/analytics/catalog` reports it. */
+export interface AnalyticsCatalogEntry {
+  name: AnalyticsMetric | (string & {});
+  kind: AnalyticsKind;
+  /** What the dimension holds ("channel", "emoji"…); absent when the metric has none. */
+  dim?: string;
+  unit: AnalyticsUnit;
+  /** Where the data comes from. */
+  source: string;
+  /** Needs `spec.analytics.presence` and the privileged ServerPresences intent. */
+  presence?: boolean;
+  collected: boolean;
+}
+
+/** `GET /servers/{server}/analytics/catalog`. */
+export interface AnalyticsCatalog {
+  metrics: AnalyticsCatalogEntry[];
+  status: AnalyticsStatus;
+}
+
 // ───────────────────────────────────────────────────────────── plugins (§5)
 
 export interface PluginManifestSummary {
