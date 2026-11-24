@@ -135,14 +135,19 @@ What changes with `--admin-url`:
 - **Two redirect URIs.** In the Discord developer portal, add both `https://community.example.org/auth/callback`
   and `https://cicord.example.ts.net/auth/callback` as OAuth2 redirects of the login
   application. The setup wizard checks both and names the missing ones.
-- **Logins stay on their host.** A login started on the admin hostname uses the admin
-  callback, one started anywhere else the public callback. Cookies have no `Domain`, so a
-  portal session is never sent to the admin hostname and the reverse: sign in on each.
+- **Logins stay on their host.** A request whose `Host` is the admin hostname (compared
+  case-insensitively and with its port; no port means the default port of the admin URL's
+  scheme) uses the admin URL for the OAuth redirect URI and the `Secure` cookie flag; every
+  other host uses the public URL. A login started on the admin hostname therefore uses the
+  admin callback, one started anywhere else the public callback, and the OAuth state stays on
+  the host the login started from. Cookies have no `Domain`, so a portal session is never sent
+  to the admin hostname and the reverse: sign in on each.
 - **Admin routes only answer on the admin host.** On any other `Host`, the admin console
   (`/admin`, `/admin/*`) and every API endpoint except `/api/v1/me`, `/api/v1/portal/**`,
   `/api/v1/sync` and `/api/v1/plan` answer `404`, like an unknown route: status, history,
   servers, plugin configuration, catalog, Store, registries and the setup wizard. The
-  portal, `/auth/*`, `/api/v1/me`, `/hooks/*`, `/healthz` and `/readyz` answer on both. In
+  portal, `/auth/*`, `/api/v1/me`, `/hooks/*`, `/healthz` and `/readyz` answer on both (and
+  the simulator endpoints, which only exist with `cicord dev --sim`). In
   setup mode, the setup link is printed with the admin URL and the public hostname only
   answers the health endpoints.
 - **Machine clients.** GitHub webhooks, `cicord sync` (without `--wait`) and

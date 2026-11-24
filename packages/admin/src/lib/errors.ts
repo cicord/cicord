@@ -3,7 +3,7 @@
  *  - the main text is always a sentence for people (never raw JSON or HTTP noise);
  *  - the hint says what to do;
  *  - the raw technical text is kept in `details`, shown collapsed with a copy button.
- * The runtime explains Discord / reconcile errors itself (`error` objects, spec/api.md);
+ * The runtime explains Discord / reconcile errors itself (`error` objects, https://cicord.dev/docs/reference/http-api/);
  * `explainRaw` is the fallback for older runtimes and free-form messages.
  */
 import { CicordApiError, type HumanError } from "@cicord/client";

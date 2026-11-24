@@ -52,7 +52,7 @@
       "additionalProperties": false
     },
     "permission": {
-      "description": "Discord permission, Cicord naming (server instead of guild). See spec/README.md for the mapping.",
+      "description": "Discord permission, Cicord naming (server instead of guild). See https://cicord.dev/docs/configuration/server/ for the mapping.",
       "enum": [
         "CreateInstantInvite", "KickMembers", "BanMembers", "Administrator", "ManageChannels",
         "ManageServer", "AddReactions", "ViewAuditLog", "PrioritySpeaker", "Stream", "ViewChannel",
@@ -73,7 +73,7 @@
       "uniqueItems": true
     },
     "intent": {
-      "description": "Gateway intent, Cicord naming. See spec/README.md for the mapping.",
+      "description": "Gateway intent, Cicord naming. See https://cicord.dev/docs/configuration/server/ for the mapping.",
       "enum": [
         "Servers", "ServerMembers", "ServerModeration", "ServerExpressions", "ServerIntegrations",
         "ServerWebhooks", "ServerInvites", "ServerVoiceStates", "ServerPresences", "ServerMessages",
@@ -84,7 +84,7 @@
       ]
     },
     "capability": {
-      "description": "Plugin capability. See spec/README.md for what each one allows.",
+      "description": "Plugin capability. See https://cicord.dev/docs/configuration/server/ for what each one allows.",
       "enum": [
         "discord.messages.read", "discord.messages.send", "discord.messages.manage",
         "discord.reactions.manage", "discord.members.read", "discord.members.manage",

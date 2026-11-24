@@ -1,5 +1,5 @@
 /**
- * Update review (spec/api.md §11, /servers/:key/store/:source/:plugin?update=1): what the
+ * Update review (https://cicord.dev/docs/reference/http-api/store/, /servers/:key/store/:source/:plugin?update=1): what the
  * latest version of an installed plugin requests compared with the installed one, what it
  * changes for each instance, then the update of every instance in one write-back.
  * Review = update: the request carries the reviewed version, commit and integrity.

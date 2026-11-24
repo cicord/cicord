@@ -237,7 +237,7 @@ func (s *server) member(ctx context.Context, serverKey, userID string) (*discord
 	return mp, nil
 }
 
-// roleIn resolves the caller's role in a server (spec/api.md §1). portal is true for
+// roleIn resolves the caller's role in a server (https://cicord.dev/docs/reference/http-api/authentication/). portal is true for
 // portal endpoints; sessions created from a portal link are limited to that server and,
 // outside the portal, to the member role.
 func (s *server) roleIn(ctx context.Context, id *identity, serverKey string, portal bool) (role, *discord.Member, error) {

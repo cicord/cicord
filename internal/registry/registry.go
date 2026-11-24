@@ -181,7 +181,7 @@ func CheckRepoURL(registryURL, repoURL string) error {
 	return nil
 }
 
-// Lock is cicord.lock (spec/README.md §7).
+// Lock is cicord.lock (https://cicord.dev/docs/plugins/publishing/).
 type Lock struct {
 	LockVersion int                  `yaml:"lockVersion"`
 	Plugins     map[string]LockEntry `yaml:"plugins"`

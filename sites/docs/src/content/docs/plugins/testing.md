@@ -6,7 +6,9 @@ description: The plugin execution model and its limits, unit tests with @cicord/
 ## Execution model and limits
 
 Each plugin instance gets its own VM and one event loop: QuickJS-ng compiled to WebAssembly,
-run inside the Cicord process by wazero (no CGO). Handlers start in arrival order and
+run inside the Cicord process by wazero (no CGO;
+[ADR-0018](../../project/decisions/0018-quickjs-wasm-engine/)).
+Handlers start in arrival order and
 interleave at `await` points, like in Node.
 
 | Limit | Value |
@@ -14,6 +16,7 @@ interleave at `await` points, like in Node.
 | Synchronous JavaScript per event-loop turn | 50 ms (a runaway turn aborts its handler; the instance keeps serving) |
 | Memory per instance | 64 MiB of JavaScript heap; reaching it discards the instance (even if the error is caught), which restarts with backoff (1 s, doubling up to 5 min) |
 | Code that ignores the turn budget (a long native call) | killed 500 ms after the budget (one more budget for budgets above 500 ms); the instance restarts |
+| Microtasks still queued after a turn | run in a second turn charged to the same handler; if that turn overruns too, the instance crashes and restarts |
 | Microtasks still spinning after their handler was aborted | the instance restarts |
 | Pending SDK calls per instance | 256 (beyond, the call rejects) |
 | Handler calls waiting for the instance | 1024 (beyond, the call fails as busy) |
@@ -21,15 +24,16 @@ interleave at `await` points, like in Node.
 | Module evaluation at start | 2 s |
 | Handler duration, awaits included | 10 s (async work it started is cut too) |
 | Auto-defer of interactions | 2 s |
+| Autocomplete handlers | 2.5 s, never deferred; ≤ 25 choices (name 1–100 characters, string values ≤ 100) |
 | `onStop` | 3 s |
 | `http.fetch` | 10 s default timeout (`timeoutMs` up to the handler timeout), response ≤ 5 MiB, request body ≤ 1 MiB, ≤ 5 redirects |
 | KV | key 1–512 bytes, value ≤ 1 MiB, `list` limit 1–1000 and ≤ 4 MiB per page (a larger page is cut short; its `cursor` continues) |
 | Portal route responses | ≤ 4 MiB of JSON |
 | Task and event payloads | ≤ 1 MiB |
 | Event topics | 1–100 characters (`A-Z a-z 0-9 . _ : -`) |
-| `channel.messages()` | limit 1–100 |
+| `channel.messages()` | limit 1–100 (`channel.message(id)` fetches one) |
 | Component and modal ids | handler key ≤ 80 bytes; `c:<instance>:<id>` ≤ 100 bytes |
-| Commands | name 1–32, description 1–100, ≤ 25 options, ≤ 25 choices |
+| Commands | name 1–32, description 1–100, ≤ 25 options, ≤ 25 choices, ≤ 25 subcommands and groups (a group holds ≤ 25 subcommands), string options ≤ 6000 characters (`minLength`/`maxLength`) |
 | Portal links | 15 minutes by default, 24 hours at most |
 | `member.setNickname()` | ≤ 32 characters |
 | `member.timeout()` | ≤ 28 days |
@@ -68,9 +72,40 @@ This is the test `cicord plugin new` writes. Run it from the plugin directory:
 npm install && npm test      # or: pnpm install && pnpm test
 ```
 
-Node 24 runs the TypeScript directly, so keep the sources type-strippable: `.ts` extensions on
-relative imports, `import type` for types, no `enum` or `namespace`. Prefer Vitest?
+It needs no other dependency than the vendored `@cicord/sdk`: `npm test` runs
+`test/**/*.test.ts` with the type stripping of Node 24 (the scaffold's `engines`: `>=24`), so keep the sources type-strippable: `.ts`
+extensions on relative imports, `import type` for types, no `enum` or `namespace`. Use
+`node:assert` where the examples below use `expect`; the rest applies as is. Prefer Vitest?
 `npm i -D vitest` and replace the test script with `vitest run`.
+
+The same harness with Vitest, adapted from the official
+[`onboarding.test.ts`](https://github.com/cicord/cicord/blob/main/examples/basic/plugins/onboarding/test/onboarding.test.ts)
+(the examples of the Cicord repository import `vite-plus/test`, Vitest's API):
+
+```ts
+import { callRoute, createTestContext, runCommand } from "@cicord/sdk/testing";
+import { expect, test } from "vite-plus/test";
+import schema from "../config.schema.json" with { type: "json" };
+import plugin from "../src/index.ts";
+
+const t = createTestContext({
+  config,
+  schema, // the runtime's defaults (steps[].multiple…)
+  grants: ["discord.roles.assign", "storage.kv", "portal.routes", "portal.links"],
+  roles: { pc: { name: "PC" }, member: { name: "Membre" } },
+  members: [{ id: "1", username: "alice", roles: ["pc"] }],
+});
+
+test("GET /steps", async () => {
+  const res = await callRoute(plugin, t, "GET /steps", { viewer: "1" });
+  expect(res.status).toBe(200);
+});
+
+test("/onboarding replies with a link", async () => {
+  const r = await runCommand(plugin, t, "onboarding", { user: "1" });
+  expect(r.replies).toHaveLength(1);
+});
+```
 
 ### What the harness offers
 
@@ -87,7 +122,8 @@ relative imports, `import type` for types, no `enum` or `namespace`. Prefer Vite
 - **Recorded effects**: `sent` (messages with their `id` and their normalized
   `allowedMentions`, lists holding ids; DMs are `to: "dm:<userId>"`),
   `edits`, `deletedMessages`, `reactions`, `threads`, `roleChanges`, `moderation`
-  (timeouts, kicks, bans, nicknames), `createdChannels` / `deletedChannels`, `links`,
+  (timeouts, kicks, bans, nicknames), `createdChannels` / `deletedChannels` (created channels
+  resolve with `{ id }`, and `deleteChannel()` refuses channels the plugin did not create), `links`,
   `published`, `scheduled`, `requests` (`http.fetch`), `logs`, and the raw `kv` (TTLs follow
   `Date.now()`, so fake timers expire keys).
 - **Helpers**: `member(id)`, `addMember(init)`, `removeMember(id)`, `message(id)`,
@@ -100,10 +136,13 @@ components, ids fall back to the part before `:`):
 | Runner | Returns |
 |---|---|
 | `runCommand(plugin, harness, "name", { user, channel, options })` (a subcommand: `"polls close"`, `"polls admin purge"`) | `{ replies, followUps, updates, deferred, modal }` |
-| `runAutocomplete(plugin, harness, "polls close", { user, focused: "poll", value, options })` | the choices of the option's `autocomplete`, checked like the runtime (≤ 25, names 1–100, values of the option's type) |
+| `runAutocomplete(plugin, harness, "polls close", { user, focused: "poll", value, options })` | the choices of the option's `autocomplete`, checked like the runtime (≤ 25, names 1–100, values of the option's type); an invalid result throws |
 | `runComponent(plugin, harness, "vote:42", { user, message, values })` | same |
 | `submitModal(plugin, harness, "open", { user, fields })` | same |
-| `callRoute(plugin, harness, "POST /complete", { viewer, body, query })` | `{ status, body, headers }`; `401` for anonymous callers of non-public routes, `403` for non-members of `member` routes |
+| `callRoute(plugin, harness, "POST /complete", { viewer, body, query })` | `{ status, body, headers }`, matching the route patterns; `401` for anonymous callers of non-public routes, `403` for non-members of `member` routes |
+
+For runners that take them, `message` is a message sent through the fakes (or its id), and
+`channel` sets `interaction.channel`.
 
 Events, tasks, schedules and subscriptions are plain functions: call them with the harness
 context, for example `await plugin.tasks!.close!(t.ctx, { id: "1" })`. `capabilityError(name)`,
@@ -113,6 +152,13 @@ helpers. Messages, replies, follow-ups and updates check `allowedMentions` like 
 
 Importing the JSON schema in tests needs `"resolveJsonModule": true` in the test
 `tsconfig.json`.
+
+### In the Cicord repository
+
+`pnpm test` runs `examples/**/test/**/*.test.ts` (root `vite.config.ts`), and
+`pnpm exec vp test examples/showcase/plugins/polls` runs one plugin's unit tests.
+[SDK coverage](../coverage/) lists the Go end-to-end tests that drive the official plugins
+through the real runtime.
 
 ## `cicord plugin test`: a smoke test on the simulator
 
@@ -148,7 +194,10 @@ a new revision; KV data and scheduled tasks survive the reload.
 
 Before a real deployment, remember what the simulator cannot show: real rate limits, the
 3-second deadline under real latency, privileged intents not enabled in the developer portal,
-and the role hierarchy of a bot that is not Administrator.
+and the role hierarchy of a bot that is not Administrator. It also cannot post user messages
+with attachments (the `attachment` command option works), and it checks the message a
+`message.reply()` refers to but does not keep the reference on the reply. The
+[real-Discord checklist](../coverage/#checklist-on-real-discord) covers these.
 
 ## In CI
 

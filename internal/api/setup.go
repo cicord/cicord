@@ -11,7 +11,7 @@ import (
 	"github.com/cicord/cicord/internal/setup"
 )
 
-// Setup wizard endpoints (spec/api.md §10), the plugin catalog and Diagnostics.
+// Setup wizard endpoints (https://cicord.dev/docs/reference/http-api/setup/), the plugin catalog and Diagnostics.
 //
 // Access: the one-time setup token printed in the logs is exchanged (POST
 // /api/v1/setup/session) for a setup session cookie (HttpOnly, SameSite=Strict). The

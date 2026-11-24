@@ -57,7 +57,7 @@
             "allow": {
               "type": "array",
               "items": {
-                "description": "Public DNS hostname, optional port. A wildcard needs at least two labels after it (*.example.com, not *.com). IP literals, localhost and reserved suffixes are rejected; the runtime re-checks resolved addresses (spec/README.md §6).",
+                "description": "Public DNS hostname, optional port. A wildcard needs at least two labels after it (*.example.com, not *.com). IP literals, localhost and reserved suffixes are rejected; the runtime re-checks resolved addresses (https://cicord.dev/docs/plugins/writing/).",
                 "type": "string",
                 "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})(:[0-9]{1,5})?$",
                 "not": {

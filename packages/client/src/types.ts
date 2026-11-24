@@ -1,5 +1,5 @@
 /**
- * Types of the Cicord runtime HTTP API v1 (spec/api.md). Field names and shapes follow the
+ * Types of the Cicord runtime HTTP API v1 (https://cicord.dev/docs/reference/http-api/). Field names and shapes follow the
  * JSON DTOs of the runtime (`internal/api`, `internal/runtime/status.go`,
  * `internal/reconcile/plan.go`); comments point at the spec section that defines them.
  * Optional (`?`) fields are omitted by the runtime when empty.
@@ -50,7 +50,7 @@ export interface ApiErrorBody {
   };
 }
 
-/** Stable codes of humanized errors (spec/api.md "Error object"); unknown codes may appear. */
+/** Stable codes of humanized errors (https://cicord.dev/docs/reference/http-api/ "Error object"); unknown codes may appear. */
 export type HumanErrorCode =
   | "community_required"
   | "boost_required"
@@ -79,7 +79,7 @@ export type HumanErrorCode =
   | "unknown"
   | (string & {});
 
-/** An error explained for people (spec/api.md "Error object"). */
+/** An error explained for people (https://cicord.dev/docs/reference/http-api/ "Error object"). */
 export interface HumanError {
   code: HumanErrorCode;
   /** One sentence: what went wrong. */
@@ -187,7 +187,7 @@ export interface ServerStatus {
 /** Server images editable from the admin UI (`PUT /servers/{server}/assets/{kind}`). */
 export type ServerAssetKind = "icon" | "banner" | "splash";
 
-/** Result of a server image upload (spec/api.md §4, "Server assets"). */
+/** Result of a server image upload (https://cicord.dev/docs/reference/http-api/servers/, "Server assets"). */
 export interface ServerAssetResult {
   /** `commit` (applied, `revision` set) or `pullRequest` (`pullRequestUrl` set). */
   mode: "commit" | "pullRequest" | (string & {});
@@ -271,7 +271,7 @@ export interface Items<T> {
 export type SortOrder = "asc" | "desc";
 
 /**
- * Query of a *paged* list (spec/api.md "Data tables"): `q` keeps items containing every word
+ * Query of a *paged* list (https://cicord.dev/docs/reference/http-api/ "Data tables"): `q` keeps items containing every word
  * (case-insensitive), `sort` is one of the endpoint's keys, `limit` is capped at 200.
  */
 export interface PageParams<S extends string = string> {

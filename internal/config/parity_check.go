@@ -42,7 +42,7 @@ func AutoModTimeout(s string) (time.Duration, error) {
 	return time.Duration(n) * unit, nil
 }
 
-// checkServerParity validates the Discord parity blocks of a server (docs/discord-parity.md).
+// checkServerParity validates the Discord parity blocks of a server (https://cicord.dev/docs/reference/discord-parity/).
 func (l *loader) checkServerParity(s *Server, doc *document) {
 	sp := &s.Spec
 	errf := func(path, format string, args ...any) {

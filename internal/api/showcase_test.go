@@ -18,7 +18,7 @@ import (
 )
 
 // TestShowcaseRouteAccess drives the plugin routes of examples/showcase through the HTTP
-// API, which enforces each route's access level (spec/api.md §6): public, member,
+// API, which enforces each route's access level (https://cicord.dev/docs/reference/http-api/portal/): public, member,
 // moderator and admin routes, for anonymous, member, moderator and admin viewers.
 // internal/runtime/showcase_test.go covers the plugins themselves.
 func TestShowcaseRouteAccess(t *testing.T) {

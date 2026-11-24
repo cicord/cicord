@@ -226,7 +226,7 @@ func (c *apiClient) do(ctx context.Context, method, p string, body io.Reader, co
 
 // ───────────────────────────────────────────────────────────── repository archive
 
-// Limits mirrored from the runtime (spec/api.md §7) for early, readable errors.
+// Limits mirrored from the runtime (https://cicord.dev/docs/reference/http-api/machine/) for early, readable errors.
 const (
 	archiveMaxFiles    = 5000
 	archiveMaxFile     = 16 << 20

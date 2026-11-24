@@ -3,7 +3,7 @@ package config
 import "fmt"
 
 // Helpers used by the HTTP API (internal/api) to validate plugin configuration edits
-// made in the admin UI exactly like Load validates bot.yaml (spec/README.md §4, §10.5).
+// made in the admin UI exactly like Load validates bot.yaml (https://cicord.dev/docs/configuration/bot/, §10.5).
 
 // NormalizeConfig converts YAML-decoded values (int, map[string]any …) into
 // JSON-compatible ones (float64 numbers), as Load does. A nil map gives an empty map.

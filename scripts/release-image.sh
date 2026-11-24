@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the multi-arch Cicord container image (linux/amd64 and linux/arm64) from the root
 # Dockerfile with buildx, with an SBOM and max-mode provenance attached, and pushes it when
-# PUSH=true. Used by .github/workflows/release.yml (RELEASING.md).
+# PUSH=true. Used by .github/workflows/release.yml (https://cicord.dev/docs/project/releasing/).
 #
 #   VERSION=0.1.0 scripts/release-image.sh             # build only (result stays in the builder)
 #   VERSION=0.1.0 PUSH=true scripts/release-image.sh   # build and push (docker login ghcr.io first)

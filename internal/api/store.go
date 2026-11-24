@@ -18,7 +18,7 @@ import (
 	"github.com/cicord/cicord/internal/writeback"
 )
 
-// Store endpoints (spec/api.md §11).
+// Store endpoints (https://cicord.dev/docs/reference/http-api/store/).
 
 var registryNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 

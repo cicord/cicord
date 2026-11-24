@@ -1,7 +1,22 @@
 ---
 title: Contributing
-description: Build Cicord from source, run the Go and JavaScript tests, and find your way around the repository.
+description: How to report bugs and propose changes, build Cicord from source, run the Go and JavaScript tests, and find your way around the repository.
 ---
+
+Bug reports, ideas, documentation fixes, plugins and code are all welcome.
+
+## Before you start
+
+- **Questions and ideas**: ask on the [community Discord](https://discord.gg/qTt5S2Fe4m), or
+  open a [discussion](https://github.com/cicord/cicord/discussions) or a feature request issue.
+- **Bugs**: open a bug report with the steps to reproduce, the version (`cicord version`) and
+  the relevant logs (remove tokens and secrets first).
+- **Security issues**: never in a public issue: report them privately through
+  [GitHub security advisories](https://github.com/cicord/cicord/security/advisories/new)
+  (see [SECURITY.md](https://github.com/cicord/cicord/blob/main/SECURITY.md)).
+- **Larger changes** (a new capability, a format change, a new dependency): open an issue
+  first so the design can be discussed. Past decisions are recorded in
+  [Design decisions](../decisions/).
 
 ## Prerequisites
 
@@ -22,7 +37,11 @@ Go 1.27, Node 26 and pnpm (the version is pinned by `packageManager` in the root
 | `make check` | `vet` and `test`. |
 | `make clean` | Removes `bin/`. |
 
-`VERSION` (default `0.1.0`) can be overridden: `make build VERSION=0.2.0`.
+`VERSION` (default `0.1.0`) can be overridden: `make build VERSION=0.2.0`. Also:
+
+- `make hooks`, once per clone: a pre-commit hook runs Gitleaks on the staged changes and
+  refuses a commit that adds a secret.
+- `make lint`: the static analysis CI runs (below).
 
 ## JavaScript workspace
 
@@ -51,6 +70,10 @@ On every push to `main` and every pull request:
   JavaScript and security-audit rules) on everything; Gitleaks on the whole git history.
   `make lint` runs the same tools locally.
 
+CI fails on any finding. A justified exception is written next to the code, with its reason:
+`//nolint:<linter> // <reason>` (Go), `// oxlint-disable-next-line <rule> -- <reason>`
+(TypeScript) or `// nosemgrep: <rule-id> -- <reason>`.
+
 `sites.yml` deploys https://cicord.dev to GitHub Pages (run on demand for now).
 Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitHub Actions.
 
@@ -61,8 +84,7 @@ Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitH
 - `examples/showcase` is the end-to-end fixture: its seven plugins are driven through the real
   runtime on the simulator (`internal/runtime/showcase_test.go`), their portal routes through
   the HTTP API, and `cicord plugin build`, `typegen --check` and `cicord plugin test` run on each.
-  [`docs/plugin-coverage.md`](https://github.com/cicord/cicord/blob/main/docs/plugin-coverage.md)
-  maps every SDK feature to the test that exercises it.
+  [Coverage on real Discord](../../plugins/coverage/) maps every SDK feature to the test that exercises it.
 - The real Discord adapter (disgo) is tested against an HTTP fake of the REST API and gateway.
 - Plugin unit tests use `@cicord/sdk/testing`.
 
@@ -73,10 +95,10 @@ Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitH
 | `cmd/cicord/` | The single binary: CLI and `cicord serve`. |
 | `internal/` | The runtime: `api`, `build`, `cli`, `config`, `discord` (and `disgoadapter`), `plugin`, `reconcile`, `registry`, `runtime`, `sim`, `source`, `state`, `writeback`, `webui`… |
 | `packages/` | `sdk`, `client`, `react`, `ui`, `admin` (the admin console), `create-cicord-portal` (the reference portal). |
-| `spec/` | The contracts: JSON Schemas, the SDK types, config semantics, the HTTP API. |
-| `docs/` | The plugin guide, the deployment guide, the setup wizard, Discord parity, ADRs. |
+| `spec/` | The machine-readable contracts: the JSON Schemas of the YAML files and the SDK types. |
+| `deploy/vps/` | The hardened single-server install ([Production on a VPS](../../self-hosting/production-vps/)). |
 | `examples/` | `basic`, `showcase` and `embed`. |
-| `sites/` | The landing page and this documentation (Astro). |
+| `sites/` | The landing page and this documentation (Astro): the project's only documentation. |
 
 `spec/` is normative: when the behavior and a document disagree, the schemas and
 `spec/sdk/cicord-sdk.d.ts` win.
@@ -89,3 +111,18 @@ The site lives in `sites/docs` (Astro Starlight). Every page has an **Edit page*
 pnpm -C sites/docs dev       # live preview
 pnpm -C sites/docs build     # static build into sites/docs/dist
 ```
+
+## Pull requests
+
+- Keep a pull request focused on one change, with tests for new behavior and bug fixes.
+- Run the checks above; CI runs the same ones.
+- Update this documentation (`sites/docs`) when behavior or formats change: it is the only
+  documentation of the project.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+  (`feat(store): …`, `fix(plugin): …`, `docs: …`).
+- Code, comments and documentation are written in English.
+
+Cicord is licensed under the [Apache License 2.0](../license/). By contributing, you agree
+that your contributions are licensed under the same license (section 5 of the license).
+Everyone taking part in the project follows the
+[Code of Conduct](https://github.com/cicord/cicord/blob/main/CODE_OF_CONDUCT.md).

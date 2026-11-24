@@ -1,5 +1,5 @@
 /**
- * Server-side data table (spec/api.md "Data tables"): the server searches, sorts and pages;
+ * Server-side data table (https://cicord.dev/docs/reference/http-api/ "Data tables"): the server searches, sorts and pages;
  * the table state lives in the URL query string (back/forward and shared links restore it).
  *
  *   ?q=<words>&sort=<key>&order=asc|desc&page=<n>&size=<n>&<filter>=<value>

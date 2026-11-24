@@ -5,7 +5,8 @@ description: The public face of a server - sign-in with Discord, onboarding, pro
 
 The community portal is the public face of a server: a home page, sign-in with Discord,
 onboarding, member profiles, leaderboards, tickets for staff… In Cicord it is **an SDK, not a
-fixed app**, so every community can have its own.
+fixed app**, so every community can have its own
+([ADR-0008](../../project/decisions/0008-community-portal-sdk/)).
 
 The runtime serves a complete **reference portal** at `/` out of the box. Declaring
 `spec.portal` in a server's YAML publishes that server on it.
@@ -52,8 +53,33 @@ themed portal opens, signed in → the member picks roles → the `onboarding` p
 Plugins expose **routes** (`definePlugin({ routes })`, served under
 `/api/v1/portal/<server>/plugins/<bot>/<instance>/…` with an access level). Portals (the
 reference one, a fork, an embedding site) call them through the SDK and render them however
-they like. There is no server-driven UI, and plugin JavaScript is never injected into a portal
-at run time: the portal stays code you review.
+they like; the reference portal's Leaderboard and Tickets pages are examples. There is no
+server-driven UI, and plugin JavaScript is never injected into a portal at run time: the portal
+stays code you review.
+
+A portal finds a plugin's instance in `PortalServer.plugins` by **plugin name**, never by
+hard-coded bot or instance keys, then calls its routes, typed from the plugin's route contract
+([Typed plugin routes](../custom-portal/#typed-plugin-routes)). Plugins may also ship optional
+React components: a package that portals import at build time, so it is reviewed and pinned
+like any dependency.
+
+### Considered and not chosen
+
+- **Server-driven UI**, where plugin routes return a Cicord UI description rendered by the
+  default portal: no third-party JavaScript in the portal and installs without a rebuild, but
+  every community would get the same look, the UI vocabulary would become a large versioned
+  contract, and it contradicts "the community designs its own portal".
+- **Plugin JavaScript injected into the default portal at run time**: never. It would run
+  untrusted code on the runtime's origin, next to the admin session.
+- For the route types, **importing the plugin sources into the portal** so that TypeScript
+  infers the handlers' types: every plugin augments the SDK's `PluginConfig`, so two plugins in
+  one program collide; registry plugins live in a cache outside the repository; and the portal
+  would type-check the plugins' code with its own settings.
+- **JSON Schemas on the routes**, converted to types by Go: self-contained, but authors would
+  describe their responses twice (TypeScript and JSON Schema).
+
+The route contract is plain TypeScript that the plugin's handlers are checked against
+(`defineRoutes<Routes>()`), and a type-only file can be copied anywhere.
 
 ## The SDK
 
@@ -64,11 +90,12 @@ at run time: the portal stays code you review.
 | `@cicord/ui` | Optional styled components driven by the server theme. |
 | `create-cicord-portal` | The reference portal, meant to be forked. |
 
-See [SDK packages](../sdk/). The packages are **not on npm yet**: `cicord portal init` vendors
-them from the `cicord` binary.
+See [SDK packages](../sdk/). The packages are published on npm with each Cicord release;
+`cicord portal init` still vendors them from the `cicord` binary by default, and
+`cicord portal init --from-npm` depends on npm instead.
 
 :::note[Inside Discord?]
 Running the portal inside the Discord client as an Activity is a proposed option
-([ADR-0016](https://github.com/cicord/cicord/blob/main/docs/adr/0016-portal-as-discord-activity.md)),
+([ADR-0016](../../project/decisions/0016-portal-as-discord-activity/)),
 not implemented.
 :::

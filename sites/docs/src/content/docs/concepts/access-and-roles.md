@@ -65,7 +65,7 @@ also shows the **Simulator** panel.
 | Method | Used by | Scope |
 |---|---|---|
 | **Discord login** (OAuth2, scope `identify`) | Admin console, portal | The user's roles on every server. Sessions last 7 days. |
-| **Portal link** (`ctx.portal.link()` with a member) | A link sent by a plugin, e.g. in a DM | One server only, and at most `member` outside the portal endpoints, so a forwarded link never opens the admin console. Lasts 15 minutes by default, 24 hours at most. |
+| **Portal link** (`ctx.portal.link()` with a member) | A link sent by a plugin, e.g. in a DM | One server only, and at most `member` outside the portal endpoints, so a forwarded link never opens the admin console. The link is valid 15 minutes by default, 24 hours at most; the session it opens lasts until the link expires, and at least 1 hour. |
 | **Session token** (token mode) | Portals embedded on another origin | Full role on the portal endpoints and plugin routes, at most `member` elsewhere. 24 hours. |
 | **Runtime token** (`CICORD_RUNTIME_TOKEN`) | CLI and CI (`cicord plan --remote`, `cicord status`, `cicord sync`) | Admin on every server. |
 | **Dev login** | `cicord dev` only | Any user; requires `--sim` or the runtime token. |
@@ -77,4 +77,5 @@ URLs. The client ID defaults to the application ID of the first bot (by key);
 
 Sessions are HttpOnly, `SameSite=Lax` cookies (`Secure` behind HTTPS). Every state-changing
 request needs the `X-Cicord-Request` header or an `Authorization` header, and an `Origin` that
-is the public URL or an allowed origin. See the [security checklist](../../self-hosting/security/).
+is the public URL or an allowed origin. See the [security checklist](../../self-hosting/security/)
+and, for every detail, [HTTP API → Authentication](../../reference/http-api/authentication/).

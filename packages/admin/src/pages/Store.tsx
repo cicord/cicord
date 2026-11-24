@@ -1,5 +1,5 @@
 /**
- * Store (spec/api.md §11): browse the plugins of every source, review what a plugin requests,
+ * Store (https://cicord.dev/docs/reference/http-api/store/): browse the plugins of every source, review what a plugin requests,
  * install it on the current server, and manage the registries of cicord.yaml.
  * Trust is shown everywhere a plugin or a source appears: `official` vs `unofficial`.
  */

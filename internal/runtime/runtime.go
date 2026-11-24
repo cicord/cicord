@@ -1,4 +1,4 @@
-// Package runtime is the Cicord controller (ARCHITECTURE.md §4–5): it watches a source,
+// Package runtime is the Cicord controller (https://cicord.dev/docs/project/architecture/–5): it watches a source,
 // turns each new revision into a validated, built snapshot, reconciles servers, runs
 // plugin instances for every (bot, server) pair and swaps them atomically.
 package runtime
@@ -795,7 +795,7 @@ func (r *Runtime) MatchRoute(server, bot, instance, method, path string) (plugin
 
 var ErrNotFound = errors.New("not found")
 
-// Status reports the runtime state (spec/api.md §3).
+// Status reports the runtime state (https://cicord.dev/docs/reference/http-api/servers/).
 func (r *Runtime) Status() Status {
 	r.mu.RLock()
 	a, lastErr := r.active, r.lastErr

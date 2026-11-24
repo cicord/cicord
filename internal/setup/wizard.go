@@ -1,4 +1,4 @@
-// Package setup implements Cicord's setup wizard (docs/onboarding-wizard.md): the guided
+// Package setup implements Cicord's setup wizard (https://cicord.dev/docs/getting-started/setup-wizard/): the guided
 // path from nothing to a synchronized Discord server with a first plugin.
 //
 // The wizard is a small state machine persisted in the state store (KV scope

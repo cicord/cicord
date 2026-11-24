@@ -1,7 +1,7 @@
 /**
  * In-browser fake of the Cicord runtime for `vp dev --mode mock`: portal endpoints, auth
  * (link token, dev login, logout), the onboarding plugin routes and the showcase plugins
- * (levels, tickets), mirroring spec/api.md, examples/basic/plugins/onboarding and
+ * (levels, tickets), mirroring https://cicord.dev/docs/reference/http-api/, examples/basic/plugins/onboarding and
  * examples/showcase. State lives in sessionStorage so it
  * survives the reload that follows a login.
  */

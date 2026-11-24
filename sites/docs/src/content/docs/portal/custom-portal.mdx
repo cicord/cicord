@@ -62,23 +62,50 @@ The reference portal is React 19 with Vite+.
 
 </FileTree>
 
-The `@cicord/*` packages are not on npm yet, so they are vendored as `file:` dependencies (plus
-`pnpm.overrides`, because `@cicord/react` depends on `@cicord/client` by version). Once they are
-published, `cicord portal init --from-npm` (or `CICORD_FROM_NPM=true`) writes
-`"@cicord/client": "^<version of cicord>"` instead, with no `vendor/`. `--force` writes into a
-non-empty directory.
+By default the `@cicord/*` packages are vendored: the tarballs embedded in the `cicord` binary
+are written to `vendor/` and referenced as `file:` dependencies (plus `pnpm.overrides`, because
+`@cicord/react` depends on `@cicord/client` by version). `cicord portal init --from-npm` (or
+`CICORD_FROM_NPM=true`) depends on the packages published on npm instead,
+`"@cicord/client": "^<version of cicord>"` (same for react and ui), with no `vendor/` and no
+`@cicord/*` overrides. `--force` writes into a non-empty directory.
+
+### From the vendored tarballs to npm
+
+An existing portal switches with one line per package in `portal/package.json`: replace
+`"file:vendor/…"` by the version (`"^0.1.0"`), delete the `@cicord/*` entries of the overrides,
+delete `vendor/`, then `pnpm install`. `cicord plugin new --from-npm` does the same for
+`@cicord/sdk` in a plugin.
+
+### The Developers page
 
 The **Developers** page is a live map of the SDK: the session (cookie or token), every portal
-endpoint with the SDK call that uses it, every plugin route of the server, and the raw
-`PortalServer`. Its link is shown to moderators and admins and in development; delete it in
-your fork if you do not want it.
+endpoint with the SDK call that uses it, every plugin route of the server (GET routes can be
+called from the page), and the raw `PortalServer`. Its navigation link is shown to moderators
+and admins and in development (mock mode, `cicord dev --sim`); the URL `/developers` always
+works. Delete the page in your fork if you do not want it.
+
+### Calling plugins
+
+Plugins are consumed through their routes. Find the instance in `PortalServer.plugins` by
+plugin name (never hard-code bot or instance keys), then call its routes with the
+[typed helpers](#typed-plugin-routes), or untyped with
+`client.plugin(server, bot, instance).get("/leaderboard")` or
+`usePluginQuery(ref, "/leaderboard")`.
 
 ## Why the build is committed
 
 The runtime has no Node.js and only sees what is in the git revision it applies, so the build
 output must be in that revision. Committing `dist/` keeps the served portal exactly what was
-reviewed, works with every source provider (GitHub, git, embedded, local) and needs no
-artifact storage. Vite builds are deterministic for the same lockfile.
+reviewed, works with every source provider (GitHub, git, embedded, local), keeps the runtime
+free of Node.js and needs no artifact storage. Vite builds are deterministic for the same
+lockfile.
+
+The alternatives were rejected: CI building without committing would need a side channel
+(an upload to the runtime, object storage) outside GitOps, so a revision would no longer
+describe what is served; the runtime building the portal would put Node.js, package installs
+and their supply chain inside the runtime. If you prefer CI to make the commit, replace the
+check step of `cicord-portal.yml` by a build and a commit on `main` (the bot's commit becomes a
+new revision).
 
 The generated `.github/workflows/cicord-portal.yml` rebuilds the portal on every pull request
 and push, runs its tests, and **fails when the committed `dist/` differs from a fresh build**,
@@ -86,12 +113,14 @@ so reviewers only need to read `src/`. Locally, `cicord portal build --check` do
 
 The runtime serves `<active revision>/<path>` at `/` with an SPA fallback, swaps it with every
 new revision (no restart), and never lets it shadow `/api`, `/auth`, `/hooks`, `/admin`,
-`/healthz` or `/readyz`. Files are read through a root confined to the portal directory: `..`
-and symbolic links leading outside are refused.
+`/healthz` or `/readyz`. Hashed files under `assets/` are cached for a year, everything else is
+revalidated. Files are read through a root confined to the portal directory: `..` and symbolic
+links leading outside are refused.
 
 `cicord validate` checks `spec.portal.path`: outside the repository, through a symbolic link or
-not a directory is an **error**; missing, or without `index.html`, is a **warning** (the
-runtime serves the default portal until the build is committed).
+not a directory is an **error**; missing, or without `index.html`, is a **warning**: the
+runtime serves the default portal until the build is committed, because a missing build must
+not block the reconciliation of servers and bots.
 
 :::caution
 A custom portal is code running on the runtime's origin, like the admin console. Review it
@@ -104,8 +133,9 @@ like code.
 regenerates it on its own. It describes the routes of **every plugin installed in the
 repository** (every instance of every bot, local or from a registry), keyed by plugin name
 then route key, with their access level, path parameters and the query, body and response
-types of each plugin's [route contract](../../plugins/api/#typed-routes). Routes of plugins
-without a contract are typed as untyped JSON. Commit the file.
+types of each plugin's [route contract](../../plugins/api/#typed-routes) (`spec.routes.types`
+in `plugin.yaml`). Routes of plugins without a contract are typed as untyped JSON. The file is
+a module augmentation of `PluginRouteRegistry` (`@cicord/client`); commit it.
 
 ```tsx
 import { useRouteQuery, useRouteMutation } from "@cicord/react";
@@ -114,13 +144,32 @@ import { useRouteQuery, useRouteMutation } from "@cicord/react";
 const board = useRouteQuery("levels", "GET /leaderboard", { query: { limit: 50 } });
 board.data?.items[0]?.displayName; // typed from the levels contract
 const poll = useRouteQuery("polls", "GET /polls/:id", { params: { id } });
+// With a polls contract that declares a POST route (the official polls plugin has none):
+const vote = useRouteMutation("polls", "POST /polls/:id/votes");
+vote.mutate({ params: { id }, body: { choice: 2 } });
+```
+
+Without React, `@cicord/client` has the same typed calls:
+
+```ts
+const levels = server.plugins.find((p) => p.plugin === "levels");
+if (!levels) return;
+const top = await client.routes("levels", server.key, levels).call("GET /leaderboard");
+client.routes("polls", server.key, polls).url("GET /polls/:id", { params: { id } }); // a URL only
 ```
 
 An unknown route, a missing or extra path parameter, a wrong query or body and a wrong use of
-the response are type errors, so a portal build fails when a plugin changes its contract.
+the response are type errors, so a portal build (`tsc --noEmit && vp build`) fails when a plugin
+changes its contract.
 `cicord portal typegen --check` (also a step of `cicord-portal.yml`, which runs when `plugins/`,
 `bots/` or `cicord.lock` change) and `cicord portal build --check` fail when the file is out of
 date.
+
+A plugin the generated file does not list falls back to the contracts of the official plugins
+(`levels`, `polls`, `tickets`, `onboarding`: `OfficialPluginRoutes` in `@cicord/client`), else
+to untyped JSON, so the reference portal type-checks in a repository without them. The
+reference portal's own `cicord-routes.d.ts` is generated from `examples/showcase`, and its
+Leaderboard and Profile pages use `useRouteQuery`.
 
 ## Dev loop
 
@@ -132,17 +181,34 @@ cd portal && pnpm dev:runtime        # Vite dev server on http://localhost:5174,
 ```
 
 `pnpm dev:runtime` proxies `/api` and `/auth` to `CICORD_RUNTIME_URL` (default
-`http://127.0.0.1:7420`), so the page and the API are same-origin and cookie sessions work.
-The proxy keeps a loopback `Host` and rewrites `Origin` to the runtime's, which dev mode
-requires.
+`http://127.0.0.1:7420`, the default of `cicord dev`), so the page and the API are same-origin
+and cookie sessions work. For a runtime on another port:
 
-`cicord dev --sim` has no Discord OAuth: the portal's sign-in block lists the simulated users and
-signs in with the dev login.
+```sh
+cicord dev --sim --listen 127.0.0.1:7433
+CICORD_RUNTIME_URL=http://127.0.0.1:7433 pnpm dev:runtime
+```
+
+`vite.config.ts` handles two protections of dev mode, as the admin console does:
+
+- `cicord dev` only answers loopback `Host` headers (DNS-rebinding protection): the proxy keeps
+  `Host: localhost:5174`, which is loopback;
+- unsafe requests must carry the runtime's own `Origin` (CSRF protection): the proxy rewrites
+  `Origin` to the runtime's origin. It is a trusted proxy on the same machine.
+
+`cicord dev --sim` has no Discord OAuth (`/auth/login` answers `503`). When the runtime runs the
+simulator, the portal's sign-in block lists the simulated users (from `GET /api/v1/sim/state`)
+and signs in with `POST /auth/dev-login`. From a shell:
+
+```sh
+curl -X POST -H 'X-Cicord-Request: 1' -H 'Content-Type: application/json' \
+  -d '{"userId":"<id printed by cicord dev>"}' http://127.0.0.1:7420/auth/dev-login
+```
 
 Other loops:
 
 - `pnpm dev` (mock mode) needs no runtime at all: `src/mock` fakes the API in the browser
   (`?role=moderator` previews the moderator pages, `?mode=light` the light palette);
-- `cicord dev` also serves the committed build: run `cicord portal build` and the next revision
-  serves it at `http://127.0.0.1:7420/`;
+- `cicord dev` also serves the committed build: run `pnpm build` (or `cicord portal build`) and
+  the next revision serves it at `http://127.0.0.1:7420/`;
 - `pnpm test` runs the portal's tests (Vitest and Testing Library, against the mock).

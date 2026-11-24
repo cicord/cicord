@@ -29,8 +29,9 @@ before moving to a newer one.
 5. Check `GET /readyz` and `cicord status`: the revision should be active and every server
    `Synced` and `Healthy`.
 
-On a server installed with [Production on a VPS](../production-vps/#9-updates), the same
-steps are: run the backup service, get the new image, set `CICORD_IMAGE_TAG` in `.env` and run
+On a server installed with [Production on a VPS](../production-vps/#9-updates), patch
+releases are applied automatically (backup, digest-pinned pull, health check, rollback). By
+hand, the steps are: run the backup service, set the new `CICORD_IMAGE` in `.env` and run
 `docker compose up -d` again.
 
 ## What to watch for
@@ -49,9 +50,11 @@ steps are: run the backup service, get the new image, set `CICORD_IMAGE_TAG` in 
   `cicord.lock`) update like any registry plugin, independently of the binary; check their
   `engine` range.
 - **Vendored SDK packages.** Plugins scaffolded by `cicord plugin new` and portals scaffolded by
-  `cicord portal init` vendor the `@cicord/*` tarballs of the binary that created them. Re-run the
-  scaffolding in a scratch directory to pick up the new tarballs, or switch to npm once the
-  packages are published.
+  `cicord portal init` vendor the `@cicord/*` tarballs of the binary that created them, unless
+  they were created with `--from-npm`. Re-run the scaffolding in a scratch directory to pick up
+  the new tarballs, or switch to the npm packages, published with each release (see
+  [Custom portal](../../portal/custom-portal/#from-the-vendored-tarballs-to-npm)); then an
+  upgrade is a version bump in `package.json`.
 - **The state database** is migrated by the runtime itself; keep the backup until the new
   version has run for a while.
 

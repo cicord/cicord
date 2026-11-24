@@ -7,12 +7,15 @@ The portal SDK is a set of layered packages. Use only `@cicord/client` from a pl
 `@cicord/react` in a React app, and `@cicord/ui` if you want the themed components of the reference
 portal. All of them are **Apache-2.0**.
 
-:::caution[Not on npm yet]
-Publication of `@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui` is prepared (package
-metadata, ESM and `.d.ts` builds, a release workflow with npm provenance) but not done. Until
-then, `cicord portal init` and `cicord plugin new` **vendor** the packages embedded in the `cicord`
-binary as `file:` dependencies. Once they are published, `--from-npm` (or
-`CICORD_FROM_NPM=true`) depends on the registry instead.
+:::note[npm or vendored]
+`@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui` are published on npm with each
+Cicord release, at the same version as the binary (ESM and `.d.ts` builds, with
+[npm provenance](../../getting-started/installation/#verify-a-download)):
+`pnpm add @cicord/client`. By default, `cicord portal init` and `cicord plugin new` still
+**vendor** the copies embedded in the `cicord` binary as `file:` dependencies, which needs no
+registry access. `--from-npm` (or `CICORD_FROM_NPM=true`) depends on npm instead
+(`"^<version of cicord>"`); see
+[switching an existing portal](../custom-portal/#from-the-vendored-tarballs-to-npm).
 :::
 
 ## `@cicord/client`

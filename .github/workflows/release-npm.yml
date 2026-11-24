@@ -1,4 +1,4 @@
-# Publishes @cicord/sdk, @cicord/client, @cicord/react and @cicord/ui on npm (RELEASING.md).
+# Publishes @cicord/sdk, @cicord/client, @cicord/react and @cicord/ui on npm (https://cicord.dev/docs/project/releasing/).
 #
 # - Tag push `v<version>` (e.g. v0.1.0, the same tag as release.yml): publishes; the four
 #   package.json versions must equal the tag version. A version with a -suffix

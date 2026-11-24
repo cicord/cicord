@@ -21,7 +21,7 @@ import (
 	"github.com/cicord/cicord/internal/writeback"
 )
 
-// Server images editable from the admin UI (spec/api.md §4, "Server assets"): the file
+// Server images editable from the admin UI (https://cicord.dev/docs/reference/http-api/servers/, "Server assets"): the file
 // is written into the repository next to the server YAML and spec.profile.<kind> is
 // pointed at it, in one write-back (commit or pull request per cicord.yaml policies).
 

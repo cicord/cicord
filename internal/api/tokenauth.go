@@ -1,6 +1,6 @@
 package api
 
-// Embedded (token) authentication, spec/api.md §1 "Token mode": a third-party site that
+// Embedded (token) authentication, https://cicord.dev/docs/reference/http-api/authentication/ "Token mode": a third-party site that
 // embeds the portal SDK on another origin cannot rely on the SameSite=Lax session cookie.
 // It gets a bearer session token instead:
 //

@@ -231,7 +231,7 @@ func (i *Instance) memberPermissions(m discord.Member) discord.Permissions {
 }
 
 // memberAccess is the member's Cicord access level, as the portal and the API compute it
-// (spec/api.md §1): "admin" for the owner and spec.access.admins, "moderator" for
+// (https://cicord.dev/docs/reference/http-api/authentication/): "admin" for the owner and spec.access.admins, "moderator" for
 // spec.access.moderators, else "member".
 func (i *Instance) memberAccess(m discord.Member) string {
 	if owner := i.ownerID(); owner != "" && m.User.ID == owner {

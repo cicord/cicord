@@ -69,6 +69,19 @@ Keys (`admin`, `general`…) match `^[a-z][a-z0-9-]{0,62}$` and never change; di
 | `access` | object | Who can use the admin console for this server. |
 | `portal` | object | The server's community portal. |
 
+## References
+
+Every reference is a **key**, checked by `cicord validate`:
+
+| Field | Refers to |
+|---|---|
+| `channels.<key>.category` | `categories.<key>` of the same server |
+| `profile.systemChannel`, `profile.rulesChannel` (deprecated), `community.*Channel`, `afk.channel`, `widget.channel`, `automod.*.actions.alert`, `automod.*.exemptChannels[]`, `onboarding.defaultChannels[]`, `onboarding.prompts[].options[].channels[]`, `welcomeScreen.channels[].channel` | `channels.<key>` |
+| `hierarchy[]`, `access.*.roles[]`, `automod.*.exemptRoles[]`, `onboarding.prompts[].options[].roles[]`, `emojis.*.roles[]` | `roles.<key>` |
+| [overwrite](#permission-overwrites) targets | `@everyone`, `@bot`, `roles.<key>`, or `member:<discord id>` |
+| a bot's `spec.servers[]`, `plugins[].servers[]`, `plugins[].overrides.<key>` | `servers/<key>.yaml` |
+| plugin config fields with `x-cicord-ref` | a key of the given kind on **every** server the instance runs on |
+
 ## `syncPolicy`
 
 | Field | Default | Effect |
@@ -249,9 +262,15 @@ community:
 | `safetyAlertsChannel` | text channel key | Receives safety alerts (raids, spam). |
 
 Enabling Community also needs `profile.verificationLevel` at least `low` and
-`profile.explicitContentFilter: allMembers`. `cicord validate` reports a missing prerequisite
-and the plan blocks the change with the full list. Channels that need Community are created
-right after it is enabled, in the same sync.
+`profile.explicitContentFilter: allMembers`, and text channels for the rules and updates
+(created by the same plan if needed). `cicord validate` reports a missing prerequisite and
+the plan blocks the change with the full list. The toggle, the channels and the verification
+and filter changes are sent in one request, once the channels exist; channels that need
+Community are created right after it is enabled, in the same sync. Disabling Community sends
+the live mutable features without `COMMUNITY`.
+
+`profile.rulesChannel` is a deprecated alias of `community.rulesChannel`: validation warns,
+and setting both to different keys is an error.
 
 ## `automod`
 
@@ -357,15 +376,15 @@ into `servers/assets/<server>/`.
 The planner reads the live boost level and features. Instead of failing on apply, settings
 Discord would refuse are **blocked in the plan with a reason**:
 
-| Setting | Needs |
-|---|---|
-| `profile.banner` | Boost level 2 (animated: level 3) |
-| `profile.splash` | Boost level 1 |
-| animated `profile.icon` | Boost level 1 |
-| `roles.*.icon`, `roles.*.emoji` | Boost level 2 |
-| `roles.*.colors.secondary` (gradient) | Boost level 2 (the primary color is still applied) |
-| Announcement and stage channels, Community channels, welcome screen, native onboarding | Community |
-| Emojis, stickers, sounds beyond the slots | A higher boost level |
+| Setting | Needs | Discord feature |
+|---|---|---|
+| `profile.banner` | Boost level 2 (animated: level 3) | `BANNER` |
+| `profile.splash` | Boost level 1 | `INVITE_SPLASH` |
+| animated `profile.icon` | Boost level 1 | `ANIMATED_ICON` |
+| `roles.*.icon`, `roles.*.emoji` | Boost level 2 | `ROLE_ICONS` |
+| `roles.*.colors.secondary` (gradient) | Boost level 2 (the primary color is still applied) | `ENHANCED_ROLE_COLORS` |
+| Announcement and stage channels, Community channels, welcome screen, native onboarding | Community (live, or enabled by the same plan) | `COMMUNITY` |
+| Emojis, stickers, sounds beyond the slots | A higher boost level | |
 
 A feature flag is enough (partnered or verified servers get some without boosts). Blocked
 items are applied by the first sync after the condition is met.
@@ -410,3 +429,14 @@ metadata:
   annotations:
     sim.cicord.dev/boosts: "7"
 ```
+
+## Validation
+
+Beyond the [JSON Schema](https://github.com/cicord/cicord/blob/main/spec/schemas/server.schema.json),
+`cicord validate` fails when `metadata.name` does not match the file name or is duplicated,
+when a [reference](#references) does not resolve, or when enabled Community lacks a rules or
+updates channel, has a verification level below `low` or a content filter other than
+`allMembers`. It warns when Community is enabled without setting those two profile fields,
+when a setting needs Community but `community.enabled` is not `true`, when
+`profile.rulesChannel` is used, and when `prune: true` is combined with
+`deletionProtection: false`.

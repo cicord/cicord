@@ -1,6 +1,6 @@
 // Package plugin is Cicord's plugin host: it runs plugin bundles (built by internal/build) in
 // QuickJS-ng VMs compiled to WebAssembly (internal/plugin/qjs, ADR-0018) and implements the
-// @cicord/sdk contract (spec/sdk/cicord-sdk.d.ts, spec/README.md §6 and §8) on top of the
+// @cicord/sdk contract (spec/sdk/cicord-sdk.d.ts, https://cicord.dev/docs/plugins/writing/ and §8) on top of the
 // discord and state contracts.
 //
 // # Lifecycle
@@ -69,7 +69,7 @@
 //
 // # Capabilities and isolation
 //
-// Every host call checks Env.Grants (spec/README.md §6) and throws CapabilityError in JS
+// Every host call checks Env.Grants (https://cicord.dev/docs/plugins/writing/) and throws CapabilityError in JS
 // (returned as *ScriptError wrapping *CapabilityError in Go). Channel IDs used by plugin code
 // are checked to belong to the instance's server (or to a DM channel the instance opened or
 // received), so a plugin cannot reach other servers the bot is in. http.fetch enforces the

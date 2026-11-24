@@ -35,7 +35,9 @@ one-time link to the setup wizard.
    ```
 
    The token is single-use and a restart prints a new link. The wizard state is kept in
-   the data directory, so it **resumes after a restart**.
+   the data directory, so it **resumes after a restart**. Until you finish, the runtime only
+   serves the wizard and the health endpoints. How setup mode is decided and secured:
+   [Setup wizard](../setup-wizard/).
 
 2. **Welcome.** Choose between an existing server and a new community (the wizard explains
    how to create a server first).
@@ -44,7 +46,10 @@ one-time link to the setup wizard.
    [Discord developer portal](https://discord.com/developers/applications): New
    Application, then _Bot_, _Reset Token_, _Copy_. Paste **only the token**. Cicord derives
    the application ID from it and names the exact privileged intents to turn on
-   ("Server Members Intent", "Message Content Intent"), with a **Re-check** button.
+   ("Server Members Intent", "Message Content Intent"), with a **Re-check** button. A missing
+   intent is only a warning here: installing a plugin that needs it is refused later. A
+   wrong value is explained (revoked token, user token, or an application ID or client
+   secret pasted instead).
 
 4. **Server.** Open the invite link (scopes `bot applications.commands`, Administrator
    permission; see [bot permissions](../../self-hosting/bot-permissions/) to run without it)
@@ -58,27 +63,36 @@ one-time link to the setup wizard.
      needed; every change is still a commit.
    - **GitHub**: an HTTPS repository URL, a branch, and a token or a
      [GitHub App](../../self-hosting/deploy/#github-access-token-or-github-app) (its App ID and
-     private key; the installation is discovered).
+     private key; the installation is discovered). The repository can be empty, or have a
+     first commit (a README): the setup commit goes on top.
    - With `cicord dev`, **This folder** writes the files into the current directory.
 
    **Import and activate** reads the server as it is, writes `cicord.yaml`,
-   `servers/<key>.yaml` and `bots/<bot>/bot.yaml`, and computes a preflight plan. The first
-   plan must be empty: everything is **adopted**, nothing changes on Discord. Cicord then
-   writes the first commit and activates it without a restart.
+   `servers/<key>.yaml`, `bots/<bot>/bot.yaml`, a `README.md` and a `.gitignore`, and
+   computes a preflight plan. The first plan should be empty: everything is **adopted**,
+   nothing changes on Discord; if it is not, the changes are shown and you confirm them.
+   Cicord then writes the first commit and activates it without a restart. On GitHub, the
+   generated `cicord.yaml` commits admin console edits of `bots/**` and `plugins/**`
+   directly and opens a pull request for `servers/**`.
 
 6. **Admin login** (optional). Add the redirect URL `<public-url>/auth/callback` in the
    application's OAuth2 settings (and `<admin-url>/auth/callback` when the admin console has
    its own [`--admin-url`](../../self-hosting/security/#admin-on-a-private-network-portal-public))
    and paste the client secret, so that you can sign in to the admin console with Discord.
-   **Test login** checks the round trip.
+   The wizard checks the secret with Discord and refuses to save while a redirect URL is
+   missing (`redirect_missing`), naming it. **Test login** checks the round trip. You can
+   skip this step and come back to it.
 
 7. **Verify.** A checklist runs until everything is green: token, intents, membership,
    permissions, role hierarchy, slash commands, live events (send a message in the server
    when asked), an empty plan and a write-back probe.
 
-8. **First plugin.** Pick one of the [official plugins](../../plugins/official/), review
-   what it may do, configure it and install it. The wizard waits for the new revision and
-   suggests a slash command to try (`/poll`, `/rank`…).
+8. **First plugin.** Pick one of the [official plugins](../../plugins/official/) bundled
+   with the binary (welcome, onboarding, tickets, polls, levels, moderation, reaction-roles,
+   audit-log, announcements), review what it may do (capabilities, intents, websites, slash
+   commands), configure it and install it. The wizard validates the repository with the
+   plugin, commits it to `plugins/<name>/` and `bots/<bot>/bot.yaml`, waits for the new
+   revision and suggests a slash command to try (`/poll`, `/rank`…).
 
 9. **Done.** Click **Finish**. The setup endpoints are closed and the admin console is at
    `<public-url>/admin/` (`<admin-url>/admin/` with `--admin-url`).
@@ -92,7 +106,10 @@ take precedence. Manage them later with [`cicord secret`](../../self-hosting/bac
 :::
 
 The same checks are available at any time on each server's **Diagnostics** page in the admin
-console. The wizard manages one server and one bot; add more by editing the repository.
+console. The wizard manages one server and one bot; add more by editing the repository. It
+sets up no GitHub webhook: the runtime polls every minute until you add one
+([Webhooks](../../self-hosting/deploy/#webhooks)). Every check, and what the wizard writes,
+is detailed in [Setup wizard](../setup-wizard/).
 
 </TabItem>
 <TabItem label="Offline (simulator)">

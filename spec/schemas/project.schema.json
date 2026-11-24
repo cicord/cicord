@@ -108,7 +108,7 @@
           "type": "object",
           "properties": {
             "path": {
-              "description": "Build output (index.html + assets) of a custom portal, committed in the repository and served by the runtime at / instead of the default portal, e.g. ./portal/dist (see docs/portal.md).",
+              "description": "Build output (index.html + assets) of a custom portal, committed in the repository and served by the runtime at / instead of the default portal, e.g. ./portal/dist (see https://cicord.dev/docs/portal/custom-portal/).",
               "$ref": "common.schema.json#/$defs/relativePath"
             },
             "url": {

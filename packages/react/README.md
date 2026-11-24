@@ -41,8 +41,8 @@ function Leaderboard() {
 Hooks: `useMe`, `useSession`, `useLogout`, `useLinkTokenLogin`, `usePortalServers`,
 `usePortalServer`, `useMember`, `useRoles`, `usePortalPlugin`, `useRouteQuery`,
 `useRouteMutation`, `usePluginQuery`, `usePluginMutation`, `useCicordQuery`. Component:
-`<OnboardingFlow>` (headless onboarding of the `onboarding` plugin). See
-[docs/portal.md](https://github.com/cicord/cicord/blob/main/docs/portal.md).
+`<OnboardingFlow>` (headless onboarding of the `onboarding` plugin). See the
+[portal SDK guide](https://cicord.dev/docs/portal/sdk/).
 
 Peer dependency: React 18.3 or 19. ESM only, with TypeScript declarations. License:
 Apache-2.0.

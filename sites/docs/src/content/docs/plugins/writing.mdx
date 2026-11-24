@@ -12,6 +12,33 @@ schedules, background tasks, events from other plugins and HTTP routes for the c
 portal. There are no Node.js APIs: every side effect goes through the `ctx` object, and each
 call is checked against the capabilities `bot.yaml` grants.
 
+## References and examples
+
+- [`spec/sdk/cicord-sdk.d.ts`](https://github.com/cicord/cicord/blob/main/spec/sdk/cicord-sdk.d.ts)
+  is the `@cicord/sdk` API; the published `@cicord/sdk` package ships the same types.
+- Plugin instances are described in [Bot: plugin instances](../../configuration/bot/#plugin-instances),
+  the manifest and capabilities [below](#the-manifest-pluginyaml), and the SDK semantics in the
+  [plugin API](../api/).
+- [`spec/schemas/plugin.schema.json`](https://github.com/cicord/cicord/blob/main/spec/schemas/plugin.schema.json)
+  is the `plugin.yaml` schema.
+- [`examples/basic/plugins`](https://github.com/cicord/cicord/tree/main/examples/basic/plugins)
+  holds two complete plugins, `welcome` and `onboarding`.
+- [`examples/showcase`](https://github.com/cicord/cicord/tree/main/examples/showcase) is a
+  complete repository with seven production-grade plugins that together use the whole SDK:
+
+  | Plugin           | What it shows                                                                                                     |
+  | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+  | `tickets`        | Buttons, modals, plugin-owned private channels                                                                    |
+  | `polls`          | Select menus, buttons with data in their ids, live updates, tasks, subcommands, autocomplete, cross-plugin events |
+  | `levels`         | Message content, reactions, role rewards, cron, a public portal route                                             |
+  | `moderation`     | Permission checks, DMs, timeouts, kicks and bans, expiring KV, `http.fetch`                                       |
+  | `reaction-roles` | Role panels with buttons, a select menu or reactions, edited in place                                             |
+  | `audit-log`      | Member and message events, subscriptions, batched posts                                                           |
+  | `announcements`  | Time-zone schedules evaluated by a minute tick, `/announce` with a modal and tasks                                |
+
+  They are the [official plugins](../official/); [SDK coverage](../coverage/) maps every SDK
+  feature to the plugin and the end-to-end test that exercise it.
+
 ## The loop
 
 <Steps>
@@ -19,7 +46,7 @@ call is checked against the capabilities `bot.yaml` grants.
 1. **Scaffold** the plugin:
 
    ```sh
-   cicord plugin new plugins/hello
+   cicord plugin new plugins/hello          # --force overwrites existing files
    ```
 
    It prints the snippet to add to your bot:
@@ -85,9 +112,14 @@ call is checked against the capabilities `bot.yaml` grants.
 </FileTree>
 
 The runtime ignores `package.json`, `test/` and `vendor/`: it bundles `src/` itself. Commit
-`vendor/` so the tests work without npm publication of `@cicord/sdk`. Once the SDK is on npm,
-`cicord plugin new --from-npm` depends on the registry instead. A `cicord` built without the
-portal kit (`make build` only) scaffolds the plugin without the test setup and says so.
+`vendor/`: with it, the unit tests work in any directory, inside or outside a Cicord
+repository, without npm publication of `@cicord/sdk`. Once the SDK is on npm,
+`cicord plugin new --from-npm` (or `CICORD_FROM_NPM=true`) depends on the registry instead; to
+move an existing plugin over, replace the `"file:vendor/cicord-sdk-….tgz"` dependency of its
+`package.json` with `"^0.1.0"` and delete `vendor/`. A `cicord` built without the portal kit
+(`make build` without `make ui`) scaffolds the plugin without the test setup and says so.
+
+`cicord plugin sdk-types <dir>` (re)writes `.cicord/cicord-sdk.d.ts`, for editors and `tsc`.
 
 The scaffolded plugin is a single command:
 
@@ -106,6 +138,41 @@ export default definePlugin({
 });
 ```
 
+## Enable it on a bot
+
+A plugin runs once it is listed in a bot's `spec.plugins`, with every capability it requests
+granted:
+
+```yaml title="bots/moderator/bot.yaml"
+spec:
+  servers: [ma-commu]
+  plugins:
+    - name: welcome # instance key, unique within the bot
+      source: ../../plugins/welcome # local path relative to bot.yaml (or <registry>/<plugin> + version)
+      grants:
+        [
+          discord.messages.send,
+          discord.channels.read,
+          discord.members.read,
+          discord.roles.assign,
+          discord.dm.send,
+          portal.links,
+          storage.kv,
+        ]
+      config:
+        channel: general
+        autoRole: member
+      overrides:
+        ma-commu:
+          config: # JSON merge patch (RFC 7386) over config
+            message: "Salut {member}, bienvenue sur {server} !"
+```
+
+One **instance** runs per (bot, plugin instance, server). The same plugin can run twice under
+two instance names with different configs, and the instance's `servers:` limits it to some
+of the bot's servers. Every field is described in
+[Bot: plugin instances](../../configuration/bot/#plugin-instances).
+
 ## The manifest (`plugin.yaml`)
 
 The manifest is **static and reviewable**. Everything dynamic (commands, handlers, routes)
@@ -113,6 +180,7 @@ comes from the code, and the builder checks that both agree. Schema:
 [`spec/schemas/plugin.schema.json`](https://github.com/cicord/cicord/blob/main/spec/schemas/plugin.schema.json).
 
 ```yaml title="plugins/welcome/plugin.yaml"
+# yaml-language-server: $schema=../../../../spec/schemas/plugin.schema.json
 apiVersion: cicord.dev/v1alpha1
 kind: Plugin
 metadata:
@@ -196,7 +264,9 @@ matches subdomains, not `example.com` itself. IP literals, `localhost`, single-l
 reserved suffixes (`.local`, `.internal`, `.arpa`…) and wildcards on a bare TLD are
 rejected. On every request the runtime also checks that every resolved address is public,
 connects to the address it checked (no DNS rebinding), re-checks every redirect hop (at
-most 5), and allows only `https`. `cicord dev` relaxes the address checks and allows plain
+most 5), allows only `https` and refuses credentials in URLs. After DNS resolution it refuses
+loopback, private (RFC 1918, `fc00::/7`), link-local (including the `169.254.169.254`
+metadata address), CGNAT, multicast, unspecified and IPv4-mapped addresses. `cicord dev` relaxes the address checks and allows plain
 `http`, so a plugin can call a local service during development; `cicord serve` never does.
 
 ## Intents
@@ -214,21 +284,29 @@ intent is a build error.
 intents, but a plugin that does not declare `MessageContent` itself still gets an empty
 `message.content` (and no `attachments`), in events and in `channel.messages()`, unless the
 message is the bot's own, mentions the bot or is a DM. Declare it only when the plugin
-reads what people write.
+reads what people write (the official `levels` plugin does, to ignore very short messages); a
+plugin that only needs who posted and when (flood protection, ticket activity) does not.
+
+A bot connects with the union of its plugins' intents, plus the bot's own `spec.intents` and
+what the reconciler needs. Privileged intents must also be enabled in the Discord developer
+portal: when one is missing, the runtime does not open the gateway and the bot status names
+the toggle to turn on. See [Bot: gateway intents](../../configuration/bot/#gateway-intents).
 
 ## Configuration schema
 
 `config.schema.json` is JSON Schema 2020-12. The runtime checks each instance's config against
 it, per server, after merging `overrides.<server>.config`. Schema `default`s are applied
 before the plugin sees `ctx.config`: at the top level, in nested objects, in every object
-element of arrays and through local `$ref`s (not inside `additionalProperties` maps nor
-`oneOf`/`anyOf` alternatives). Cicord adds three keywords:
+element of arrays (`steps[].multiple`) and through local `$ref`s (not inside
+`additionalProperties` maps nor `oneOf`/`anyOf` alternatives). An absent optional object is
+created only when its defaults cover all its `required` fields, so an optional
+`webhook: { url, format }` with a required `url` stays absent. Cicord adds three keywords:
 
 | Keyword           | Values                                      | Effect                                                                                                                                                                     |
 | ----------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `x-cicord-ref`    | `channel`, `category`, `role`               | The value is a resource key of the server (a string, or an array of strings). The admin console renders a picker; `cicord validate` checks the key exists on every server. |
 | `x-cicord-widget` | `textarea`, `markdown`, `color`, `duration` | Rendering hint for the admin console form.                                                                                                                                 |
-| `x-cicord-access` | `admin` (default), `moderator`              | Who may edit the top-level field in the admin console.                                                                                                                     |
+| `x-cicord-access` | `admin` (default), `moderator`              | Who may edit the top-level field in the admin console. Edits are written back to `bot.yaml` as a commit or a pull request.                                                 |
 
 ```json title="plugins/welcome/config.schema.json"
 {
@@ -264,7 +342,9 @@ declare module "@cicord/sdk" {
 export {};
 ```
 
-Run `cicord plugin typegen --check` in CI to catch a stale file.
+Array items follow the same rule: with `"multiple": { "type": "boolean", "default": false }`
+in `steps.items`, `ctx.config.steps[0].multiple` is a `boolean`, never `undefined`. Run
+`cicord plugin typegen --check` in CI to catch a stale file.
 
 ## Build model
 
@@ -274,12 +354,13 @@ The runtime bundles plugins itself, with esbuild used as a Go library (no Node.j
 - Every imported module is bundled in. Pure-JS npm libraries work; Node.js built-ins
   (`fs`, `path`, `node:*`…) are refused at build time.
 - `@cicord/sdk` is the only module resolved at run time (the host provides it).
-- Target ES2022 (async generators lowered), with an inline source map, so stack traces point
-  at `src/index.ts:12:5`.
+- Target ES2023 syntax (QuickJS-ng supports all of it, async generators included), with an
+  inline source map, so stack traces point at `src/index.ts:12:5`.
 - At load time the definition is checked against the manifest: a handler without its intent,
   `schedules`/`tasks` without `scheduler`, `routes` without `portal.routes`,
   `subscriptions` without `events.subscribe`, an unknown key in `definePlugin()`, an invalid
-  command or cron expression all reject the revision, and the previous one keeps running.
+  command, cron expression or route `access` all reject the revision, and the previous one
+  keeps running.
 
 `cicord plugin build <dir>` does exactly this and prints the definition (commands, events,
 routes); `--out` also writes the bundle, `-o json` prints JSON.
@@ -287,8 +368,10 @@ routes); `--out` also writes the bundle, `-o json` prints JSON.
 ## Type checking
 
 Type-check with the scaffolded `tsconfig.json`, which maps `@cicord/sdk` to
-`.cicord/cicord-sdk.d.ts` and uses `"lib": ["ES2023"]` (the engine provides the ES2023 built-ins) and `"types": []` so no DOM or Node types
-leak in:
+`.cicord/cicord-sdk.d.ts` (the examples of the Cicord repository map it to
+`spec/sdk/cicord-sdk.d.ts`) and uses `"lib": ["ES2023"]` (the engine provides the ES2023
+built-ins, such as `toSorted` and `findLast`) and `"types": []` so no DOM or Node types leak
+in:
 
 ```sh
 tsc --noEmit -p plugins/hello

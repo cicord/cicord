@@ -5,7 +5,7 @@ description: Using plugins - sources and the Store, trust levels, the permission
 
 Everything a Cicord bot *does* comes from plugins: greeting members, tickets, polls, levels,
 moderation… A plugin is a small TypeScript module with a static manifest. It runs sandboxed
-inside the runtime, one **instance** per (bot, server), and can only do what its grants
+inside the runtime, one **instance** per (bot, plugin instance, server), and can only do what its grants
 allow.
 
 ## Sources and trust
@@ -91,7 +91,9 @@ plugin's page. The update review shows:
 Updating rewrites the lock entry, widens the instances' version range when needed
 (`^1.0.0` → `^2.0.0`) and sets their grants to what the new version requests, for every
 instance at once (the version is shared), so it needs the admin role on every server where the
-plugin runs.
+plugin runs. Unofficial sources ask again for an explicit confirmation restating what is newly
+granted. As for installs, the code updated to is exactly the reviewed code: if the release
+changed in between, the update is refused (`409 changed`) and asks for a new review.
 
 ```sh
 cicord plugin update                       # list available updates
@@ -131,6 +133,10 @@ plugins:
 
 - The runtime refuses a registry plugin that is missing from `cicord.lock`, or whose content
   does not match `integrity`.
+- `integrity` is `sha256-<base64>` over the plugin's files sorted by path. Paths are relative
+  to the plugin directory (`path`, or the repository root), so a plugin hashes the same in its
+  own repository and in a monorepo. Symlinks and submodules are not part of a plugin. `path`
+  is absent for a plugin at the root of its repository.
 - Because the capabilities are recorded, a permission change of a plugin shows up in the diff
   of a pull request.
 - Local plugins are not locked: they are part of your repository.

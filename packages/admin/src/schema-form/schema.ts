@@ -1,6 +1,6 @@
 /**
  * JSON Schema (2020-12) subset used by plugin `config.schema.json` files, plus the Cicord
- * extensions (spec/README.md §6): `x-cicord-ref`, `x-cicord-widget`, `x-cicord-access`.
+ * extensions (https://cicord.dev/docs/plugins/writing/): `x-cicord-ref`, `x-cicord-widget`, `x-cicord-access`.
  */
 import type { Json } from "@cicord/client";
 import { jsonText } from "./values.ts";

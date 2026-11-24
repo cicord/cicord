@@ -32,7 +32,7 @@ import (
 	"github.com/cicord/cicord/internal/writeback"
 )
 
-// Setup mode (docs/onboarding-wizard.md). Boot decision:
+// Setup mode (https://cicord.dev/docs/getting-started/setup-wizard/). Boot decision:
 //
 //	cicord.yaml in the directory                     → normal boot (never setup mode)
 //	no cicord.yaml, setup state "activated"           → boot from the repository the wizard created

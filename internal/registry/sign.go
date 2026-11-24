@@ -62,7 +62,7 @@ const (
 // the registry-signing environment of github.com/cicord/cicord-plugins (main only), plus
 // the owner's offline backup; the same public key is committed to keys/official.pub
 // there. Rotation: append the new key, sign with both, then drop the old one
-// (docs/plugins.md §9).
+// (https://cicord.dev/docs/plugins/publishing/).
 var OfficialKeys = []string{
 	"Bh4S59nb78rYbOfOaaoiVyclxXwhuyx5T7rAx9IrxbU=", // 10d3620231e083f8
 }

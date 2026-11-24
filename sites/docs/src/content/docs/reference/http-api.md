@@ -1,156 +1,217 @@
 ---
 title: HTTP API
-description: Overview of the runtime's HTTP API v1 - authentication, roles, CSRF, errors and the main endpoints for status, servers, plugins, the portal, CI and the Store.
+description: The runtime's HTTP API v1 - conventions, errors and the explained error object, data tables, limits, headers and CORS, and the index of every endpoint.
 ---
 
-The runtime serves a JSON HTTP API used by the admin console, the portal SDK and the CLI. This
-page is an overview. The normative contract, with every shape, is
-[`spec/api.md`](https://github.com/cicord/cicord/blob/main/spec/api.md);
-`@cicord/client` mirrors it in TypeScript.
+The runtime (`cicord serve`, `cicord dev`) serves a JSON HTTP API, UTF-8, used by the admin
+console, the portal SDK and the CLI. These pages are its reference: the contract between the
+runtime (`internal/api`), the admin console (`packages/admin`), the portal SDK
+(`@cicord/client`, `@cicord/react`) and the CLI. `@cicord/client`
+(`packages/client/src/types.ts`) mirrors every shape.
 
 :::caution
 The API is `v1` of a pre-release project: shapes may still change. Prefer `@cicord/client` over
 hand-written calls.
 :::
 
-## Basics
+| Page | Covers |
+|---|---|
+| [Authentication](authentication/) | Discord login, portal links, token mode, the runtime token, CSRF, the admin host, roles. |
+| [Status and servers](servers/) | `/me`, runtime status, sync history, server detail, resources, plans, syncs, audit log, server images. |
+| [Plugin instances](plugin-instances/) | Listing instances, editing their config through write-back, uninstalling. |
+| [Community portal](portal/) | The public portal endpoints, plugin routes, and how the static UIs are served. |
+| [Machine endpoints](machine/) | `POST /api/v1/sync`, `POST /api/v1/plan`, the GitHub webhook, health checks. |
+| [Simulator](simulator/) | `/api/v1/sim/*`, only with `cicord dev --sim`. |
+| [Setup wizard](setup/) | Setup mode, the wizard endpoints, the catalog and diagnostics. |
+| [Store](store/) | Plugin sources, browsing, installing, updating, registries, the registry index. |
+
+## Conventions
 
 - **Base path** `/api/v1`. Static UIs: `/admin/` (admin console) and `/` (portal). Health:
   `/healthz` and `/readyz`.
-- **Errors**: an HTTP status and `{"error": {"code", "message"}}`. Validation errors add
-  `diagnostics` (`severity`, `file`, `line`, `path`, `message`). Reconciler and Discord errors
-  also carry an explained form (`hint`, `details`, `discordCode`, the failed `resource`…).
-  Clients must accept unknown codes.
+- Times are RFC 3339 strings. Discord IDs and keys are strings; the IDs of history and audit
+  records are integers.
+- Optional fields are omitted when empty (marked `?` in the shapes of these pages); lists are
+  always present (`[]`, never `null`).
 
-  | Code | Status |
-  |---|---|
-  | `unauthenticated` | 401 |
-  | `forbidden` | 403 (and 421 for the dev-mode Host check) |
-  | `not_found` | 404 |
-  | `invalid` | 400, 405, 413, 415, 422 |
-  | `conflict` | 409 (and `changed`, `confirmation_required`, `in_use` for the Store) |
-  | `unavailable` | 503: no active revision, no connected bot, write-back failure, timeout |
-  | `setup_required` | 503: setup mode |
-  | `gone` | 410: setup endpoints after setup |
-  | `internal` | 500 |
+## Errors
 
-- Times are RFC 3339 strings; Discord IDs and keys are strings. Optional fields are omitted;
-  lists are always present.
-- **Data tables** (paged lists): `?q=&sort=&order=asc|desc&offset=&limit=` (limit ≤ 200); the
-  response adds `total`, `offset`, `limit`, `sort`, `order`.
-- **Limits**: JSON bodies ≤ 1 MiB, `POST /api/v1/plan` uploads ≤ 32 MiB; handlers time out
-  after 60 seconds.
+An error is an HTTP status and `{"error": {"code": "<snake_case>", "message": "<human text>"}}`.
+Validation errors add `"diagnostics": [Diagnostic]`:
 
-## Authentication
+```json
+{ "severity": "error", "file": "servers/ma-commu.yaml", "line": 12, "path": "/spec/channels/general", "message": "…" }
+```
 
-| Client | How |
+`severity` is `error` or `warning`; `file`, `line` and `path` (a JSON pointer) are optional.
+Clients must accept unknown codes.
+
+| Code | Status |
 |---|---|
-| Browser, same origin | The `cicord_session` cookie (HttpOnly, `SameSite=Lax`), from Discord OAuth2 (`/auth/login`) or a portal link (`/auth/link`). |
-| Portal on another origin | A session token, `Authorization: Bearer cicord_st_…` (token mode). |
-| CLI, CI | `Authorization: Bearer <CICORD_RUNTIME_TOKEN>`: admin on every server. |
+| `unauthenticated` | 401 |
+| `forbidden` | 403, and 421 for the [dev-mode Host check](#dev-mode-host-check) |
+| `not_found` | 404 (unknown routes under `/api/`, `/auth/`, `/hooks/` included) |
+| `invalid` | 400; 405 (non-GET on a static UI); 413 (body too large); 415 (plan upload content type); 422 (validation, with `diagnostics`) |
+| `conflict` | 409 |
+| `unavailable` | 503: no active revision yet, no connected bot, write-back failure, timeout |
+| `internal` | 500 (also a panic in a handler) |
+| `setup_required` | 503: [setup mode](setup/#setup-mode), no configured repository yet |
+| `gone` | 410: setup endpoints after the setup completed |
+| `invalid_token`, `intents` | 422 / 409: [setup wizard](setup/#errors) explanations (`intents` also on Store installs and updates) |
+| `too_large`, `unsupported_media_type` | 413 / 415: [server image uploads](servers/#server-images) |
+| `changed`, `confirmation_required`, `in_use`, `up_to_date`, `modified` | 409: [Store](store/) |
+| `not_installed` | 404: [Store update review](store/#updating-a-plugin) of a plugin that is not installed |
+| `registry_unavailable` | 502: [Store](store/), a registry could not be fetched |
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /auth/login?redirect=<path>[&mode=token]` | Redirect to Discord OAuth2 (scope `identify`). |
-| `GET /auth/callback` | OAuth2 callback. Register `<public-url>/auth/callback` in the Discord application, and `<admin-url>/auth/callback` with `--admin-url`. |
-| `POST /auth/link` | Exchange a `ctx.portal.link()` token (`cicord_token`) for a session scoped to one server. |
-| `POST /auth/token` | Token mode: redeem the one-time `cicord_code` for a 24-hour session token. |
-| `POST /auth/dev-login` | Dev mode only: sign in as any user (needs `--sim` or the runtime token). |
-| `POST /auth/logout` | End the session (or revoke the bearer session token). |
+### The error object
 
-**CSRF**: every unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) needs `X-Cicord-Request: 1`
-unless it has an `Authorization` header, and an `Origin` that is the public URL, the admin URL
-(`--admin-url`) or an allowed CORS origin. `/hooks/*` is exempt (HMAC).
+Reconciler and Discord errors are kept as text by the runtime; the API adds an **explained
+form** next to the raw field, which is unchanged (`internal/reconcile/humanize.go`):
 
-**Admin host**: with `--admin-url`, the admin console and every admin endpoint answer `404` on
-any other `Host`. Only the portal, `/auth/*`, `/api/v1/me`, `/api/v1/portal/**`,
-`/api/v1/plan`, `/api/v1/sync`, `/hooks/*`, `/healthz` and `/readyz` answer on every host (see
-[Admin on a private network](../../self-hosting/security/#admin-on-a-private-network-portal-public)).
+```json
+{ "code": "community_required",
+  "message": "Announcement and stage channels need the Community feature",
+  "hint": "Enable Community in Discord (Server Settings → Enable Community), then sync again. …",
+  "details": "reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: … (HTTP 400 50035: Invalid Form Body {…})",
+  "discordCode": 50035, "httpStatus": 400,
+  "resource": { "action": "create", "kind": "channel", "key": "news" },
+  "fields": [ { "path": "type", "code": "BASE_TYPE_CHOICES", "message": "Value must be one of {0, 2}." } ],
+  "failures": 3 }
+```
 
-**Roles**: per server, `admin` (owner or `spec.access.admins`), `moderator`, `member` or none,
-resolved from the user's live Discord roles. See [Access and roles](../../concepts/access-and-roles/).
+`code` and `message` are always set. `hint`, `details` (the raw text), `discordCode`,
+`httpStatus`, `resource` (the failed plan change), `fields` (Discord's "Invalid Form Body"
+tree, flattened) and `failures` (changes that failed in the same sync, when more than one) are
+optional.
+
+Codes: `community_required`, `boost_required`, `missing_permissions`, `missing_access`,
+`role_hierarchy`, `unknown_resource`, `invalid_form_body`, `limit_reached`, `invalid_token`,
+`intents_disallowed`, `rate_limited`, `discord_unavailable`, `timeout`, `bot_not_connected`,
+`no_bot`, `unresolved_reference`, `revision_rejected`, `fetch_failed`, `bad_request`,
+`unknown`. For [blocked plan operations](../../concepts/reconciliation/#blocked-changes-and-their-explanations)
+also `deletion_protection`, `ownership`, `managed_role`, `type_change`, `recreate_required`,
+`undeletable`, and `role_hierarchy`, `no_bot`, `boost_required`, `community_required`,
+`limit_reached` (for the blocked reasons prefixed `boost: `, `community: `, `limit: `). Clients
+must accept unknown codes.
+
+The error object appears as:
+
+- `error` on a server of `/status` and `/servers/{server}` (Degraded or Missing with a
+  `message`), and on a bot of `/status`; `lastErrorInfo` explains `lastError`;
+- `error` on `/history` records whose status is `failed` or `rejected`;
+- `error` on every `blocked[]` entry of a [plan](servers/#plan) (`/plan`, `/sync`);
+- in the error envelope of `plan` and `sync` failures (`503`): `message` is the explained
+  message, plus `hint`, `details` (raw text) and `reason` (the error object's `code`).
+
+## Data tables
+
+Lists marked *paged* accept `?q=<words>&sort=<key>&order=asc|desc&offset=<n>&limit=<n>`:
+
+- `q` keeps the items containing every word (case-insensitive);
+- `sort` must be one of the keys listed for the endpoint (`400 invalid` otherwise);
+- `limit` is capped at 200.
+
+The response adds `{"total", "offset", "limit", "sort", "order"}` next to `items`; `total`
+counts the filtered items before the window.
+
+## Limits
+
+- JSON bodies ≤ 1 MiB (`413 invalid`).
+- `POST /api/v1/plan` uploads ≤ 32 MiB; GitHub webhook payloads ≤ 25 MiB.
+- Handlers time out after 60 seconds (`503 unavailable`), except the simulator's
+  Server-Sent Events stream.
+
+## Headers and CORS
+
+- Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
+  (portal URLs may carry `cicord_token`); JSON responses are `Cache-Control: no-store`; the
+  admin console is served with `X-Frame-Options: DENY`.
+- CORS is same-origin by default, and every response carries `Vary: Origin`. Two lists of
+  external portal origins are allowed:
+  - **operator origins**, `--cors-origin` (`CICORD_CORS_ORIGINS`): **with** credentials
+    (`Access-Control-Allow-Credentials: true`), for cookie sessions;
+  - **repository origins**, `cicord.yaml` `spec.portal.allowedOrigins` of the active revision:
+    **without** credentials, for [token mode](authentication/#token-mode-embedded-portals)
+    only, so that a merged pull request can never open cookie sessions to a new site.
+- Preflights (`OPTIONS` with `Access-Control-Request-Method`) answer `204`. For an allowed
+  origin they allow the methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`, the headers
+  `Content-Type`, `Authorization`, `X-Cicord-Request` and `Last-Event-ID`, with a max age of
+  600 seconds.
+
+## Dev-mode Host check
+
+With `cicord dev` only, to defeat DNS rebinding, the runtime only answers requests whose `Host`
+is `localhost`, `*.localhost`, `127.0.0.1`, `::1` or the host of `--public-url`; anything else
+answers `421 forbidden` ("unexpected Host header"). `cicord serve` does not restrict `Host`
+(see the [admin host](authentication/#admin-host---admin-url) instead).
 
 ## Endpoints
+
+Roles are per server: see [Roles](authentication/#roles).
 
 ### Viewer and runtime
 
 | Method | Path | Role | Result |
 |---|---|---|---|
-| GET | `/api/v1/me` | signed in | The user and the servers where they have a role. |
-| GET | `/api/v1/status` | moderator | Revision, servers (sync, health, drift, boost level, features) and bots with their plugin instances. |
-| GET | `/api/v1/history` | moderator | Sync history: revision activations and rejections, server syncs. |
+| GET | `/api/v1/me` | signed in | [The user and the servers where they have a role](servers/#me). |
+| GET | `/api/v1/status` | moderator | [Revision, servers and bots](servers/#runtime-status). |
+| GET | `/api/v1/history` | moderator | [Sync history](servers/#sync-history). |
 
 ### Servers
 
 | Method | Path | Role | Result |
 |---|---|---|---|
-| GET | `/api/v1/servers/{server}` | moderator | Status entry with live drift, plus the server's YAML `spec`. |
-| GET | `/api/v1/servers/{server}/resources` | moderator | Roles, categories and channels, for pickers. |
-| GET | `/api/v1/servers/{server}/plan` | admin | The plan of the active revision against live Discord. |
+| GET | `/api/v1/servers/{server}` | moderator | [Status entry with live drift, plus the server's YAML `spec`](servers/#servers). |
+| GET | `/api/v1/servers/{server}/resources` | moderator | [Roles, categories and channels](servers/#resources), for pickers. |
+| GET | `/api/v1/servers/{server}/plan` | admin | [The plan](servers/#plan) of the active revision against live Discord. |
 | POST | `/api/v1/servers/{server}/sync` | admin | Reconcile now: `{plan, applied}`. |
-| GET | `/api/v1/servers/{server}/audit` | moderator | Audit log, newest first. |
-| PUT | `/api/v1/servers/{server}/assets/{icon\|banner\|splash}` | admin | Upload the server icon, banner or splash (committed through write-back). |
-| GET | `/api/v1/servers/{server}/diagnostics` | admin | The setup wizard's verification checklist, on demand. |
+| GET | `/api/v1/servers/{server}/audit` | moderator | [Audit log](servers/#audit-log), newest first. |
+| PUT, GET | `/api/v1/servers/{server}/assets/{icon\|banner\|splash}` | admin (GET: moderator) | [Upload or read the server icon, banner or splash](servers/#server-images). |
+| GET | `/api/v1/servers/{server}/diagnostics` | admin | [The setup wizard's checklist](setup/#catalog-and-diagnostics), on demand. |
 
 ### Plugin instances
 
 | Method | Path | Role | Result |
 |---|---|---|---|
-| GET | `/api/v1/servers/{server}/plugins` | moderator | Instances (paged): plugin, effective config, schema, editable fields, commands, routes, health, trust, available update. |
+| GET | `/api/v1/servers/{server}/plugins` | moderator | [Instances](plugin-instances/) (paged). |
 | GET | `/api/v1/servers/{server}/plugins/{bot}/{instance}` | moderator | One instance. |
-| PUT | `/api/v1/servers/{server}/plugins/{bot}/{instance}/config` | moderator (field-restricted) | Write the config, for this server (override) or the base, through write-back. |
-| DELETE | `/api/v1/servers/{server}/plugins/{bot}/{instance}` | admin | Uninstall from this server. |
+| PUT | `/api/v1/servers/{server}/plugins/{bot}/{instance}/config` | moderator (field-restricted) | [Write the config](plugin-instances/#editing-the-config) through write-back. |
+| DELETE | `/api/v1/servers/{server}/plugins/{bot}/{instance}` | admin | [Uninstall from this server](plugin-instances/#uninstalling). |
 
 ### Community portal
 
 | Method | Path | Role | Result |
 |---|---|---|---|
-| GET | `/api/v1/portal/servers` | none | Servers with a portal (`PortalServer`). |
-| GET | `/api/v1/portal/{server}` | none | One `PortalServer`: theme, texts, links, pages, locale, installed plugins. |
+| GET | `/api/v1/portal/servers` | none | [Servers with a portal](portal/). |
+| GET | `/api/v1/portal/{server}` | none | One `PortalServer`. |
 | GET | `/api/v1/portal/{server}/logo`, `/banner` | none | The theme logo and banner images. |
 | GET | `/api/v1/portal/{server}/me` | member | The viewer's member, roles and role on the server. |
-| ANY | `/api/v1/portal/{server}/plugins/{bot}/{instance}/{path…}` | per route | Plugin routes; the route's `access` is enforced. |
+| ANY | `/api/v1/portal/{server}/plugins/{bot}/{instance}/{path…}` | per route | [Plugin routes](portal/#plugin-routes). |
 
 ### Machine endpoints (CLI and CI)
 
 | Method | Path | Auth | Result |
 |---|---|---|---|
-| POST | `/api/v1/sync` | bearer | Fetch the source now and sync (`202`). Used by `cicord sync`. |
-| POST | `/api/v1/plan` | bearer | Body: a `.tar.gz` of a repository. Validates and plans it against live Discord without applying (`cicord plan --remote`). |
-| POST | `/hooks/github` | HMAC (`CICORD_WEBHOOK_SECRET`) | GitHub push webhook. |
+| POST | `/api/v1/sync` | bearer | [Fetch the source now and sync](machine/) (`202`). |
+| POST | `/api/v1/plan` | bearer | [Validate and plan a `.tar.gz` of a repository](machine/#plan-archive). |
+| POST | `/hooks/github` | HMAC | [GitHub push webhook](machine/#github-webhook). |
+| GET | `/healthz`, `/readyz` | none | Liveness and readiness. |
 
 ### Store and registries
 
 | Method | Path | Role | Result |
 |---|---|---|---|
-| GET | `/api/v1/catalog` | admin | The official plugins bundled in the binary. |
-| GET | `/api/v1/store` | admin | Every source (`cicord` first: the bundled plugins and the signed official registry; then the registries of `cicord.yaml`) with its plugins. |
-| GET | `/api/v1/store/plugins` | admin | Plugins across sources (paged, filterable by source, trust, installed, updates). |
+| GET | `/api/v1/catalog` | admin | [The official plugins bundled in the binary](setup/#catalog-and-diagnostics). |
+| GET | `/api/v1/store` | admin | [Every source with its plugins](store/#endpoints). |
+| GET | `/api/v1/store/plugins` | admin | Plugins across sources (paged). |
 | POST | `/api/v1/store/refresh` | admin | Refetch every registry index. |
-| GET | `/api/v1/store/{source}/{plugin}` | admin | What the latest version requests (capabilities, intents, network, schema, commands). |
-| GET, POST | `/api/v1/store/{source}/{plugin}/update` | admin (POST: on every server running it) | Review, then apply, an update. |
-| POST | `/api/v1/servers/{server}/store/install` | admin | Install exactly the reviewed version (`409 changed` otherwise). |
-| POST, DELETE | `/api/v1/registries`, `/api/v1/registries/{name}` | admin of every server | Add or remove a registry (write-back to `cicord.yaml`). |
+| GET | `/api/v1/store/{source}/{plugin}` | admin | What the latest version requests. |
+| GET, POST | `/api/v1/store/{source}/{plugin}/update` | admin (POST: on every server running it) | [Review, then apply, an update](store/#updating-a-plugin). |
+| POST | `/api/v1/servers/{server}/store/install` | admin | [Install exactly the reviewed version](store/#installing). |
+| POST, DELETE | `/api/v1/registries`, `/api/v1/registries/{name}` | admin of every server | [Add or remove a registry](store/#registries). |
 | PUT, DELETE | `/api/v1/registries/{name}/token` | admin of every server | Set or remove a private registry's token. |
 
-### Setup wizard
+### Setup wizard and simulator
 
-In setup mode (no `cicord.yaml`), only the admin console, `/api/v1/setup/*`, `/api/v1/catalog`
-and the health endpoints are served; everything else answers `503 setup_required`. The wizard
-endpoints are under `/api/v1/setup` and need the setup session obtained from the one-time
-token (`POST /api/v1/setup/session`). After **Finish** they answer `410 gone`.
-
-### Simulator (`cicord dev --sim` only)
-
-`/api/v1/sim/*` exposes the simulated world to the admin console's Simulator panel: state,
-users, joins and leaves, boosts, messages, DMs, slash commands, components, modals, and a
-Server-Sent Events stream of changes. These endpoints answer `404` without `--sim`.
-
-## Headers and CORS
-
-- Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`;
-  JSON responses are `Cache-Control: no-store`; the admin console is served with
-  `X-Frame-Options: DENY`.
-- CORS is same-origin by default. Operator origins (`--cors-origin`) are allowed **with**
-  credentials; repository origins (`cicord.yaml` `spec.portal.allowedOrigins`) **without**
-  credentials, for token mode only.
+`/api/v1/setup/*` serves the [setup wizard](setup/) and `/api/v1/sim/*` the
+[simulator](simulator/) of `cicord dev --sim`.

@@ -54,6 +54,6 @@ test("/hello", async () => {
 
 `createTestContext` records messages, role changes, KV writes, scheduled tasks, HTTP
 requests…; `runCommand`, `runComponent`, `submitModal` and `callRoute` drive the handlers.
-See [docs/plugins.md §8](https://github.com/cicord/cicord/blob/main/docs/plugins.md).
+See [Testing and limits](https://cicord.dev/docs/plugins/testing/) and the [plugin API](https://cicord.dev/docs/plugins/api/).
 
 ESM only, with TypeScript declarations. License: Apache-2.0.

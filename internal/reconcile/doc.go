@@ -41,7 +41,7 @@
 //   - Blocked{reason: "deletionProtection"} when prune && deletionProtection (the
 //     mapping is kept, so disabling the protection later deletes it);
 //   - "unmanage" when !prune: the mapping is dropped and the Discord resource is left
-//     as is. "unmanage" is an addition to the action list of spec/api.md §4, so the
+//     as is. "unmanage" is an addition to the action list of https://cicord.dev/docs/reference/http-api/servers/, so the
 //     user sees that the resource stops being managed. It is also used (whatever the
 //     policy) when the removed resource is already gone from Discord.
 //
@@ -158,7 +158,7 @@
 //
 // # Drift and selfHeal
 //
-// Drift returns one entry per differing field of the current plan (spec/api.md §3).
+// Drift returns one entry per differing field of the current plan (https://cicord.dev/docs/reference/http-api/servers/).
 // HandleEvent marks drift for role, channel, AutoMod rule, emoji, sticker and
 // soundboard sound events on git-owned resources, @everyone and server updates; with
 // syncPolicy.selfHeal it schedules a debounced Sync.

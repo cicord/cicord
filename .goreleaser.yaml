@@ -1,4 +1,4 @@
-# GoReleaser configuration of the `cicord` release binaries (RELEASING.md).
+# GoReleaser configuration of the `cicord` release binaries (https://cicord.dev/docs/project/releasing/).
 #
 # Used by .github/workflows/release.yml, which builds the web UIs first (pnpm build +
 # scripts/sync-ui.sh, so the admin UI, the default portal and the portal kit are embedded),

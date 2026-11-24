@@ -6,7 +6,7 @@ import (
 	"github.com/cicord/cicord/internal/source"
 )
 
-// Sync and health values (ArgoCD style, spec/api.md §3).
+// Sync and health values (ArgoCD style, https://cicord.dev/docs/reference/http-api/servers/).
 const (
 	SyncSynced    = "Synced"
 	SyncOutOfSync = "OutOfSync"

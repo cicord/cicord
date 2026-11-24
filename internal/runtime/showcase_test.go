@@ -2,7 +2,7 @@ package runtime
 
 // End-to-end tests of examples/showcase (tickets, polls, levels, moderation) on the Discord
 // simulator, through the real runtime: reconciler, bot host, plugin host, scheduler, store.
-// Each test maps to rows of docs/plugin-coverage.md.
+// Each test maps to rows of https://cicord.dev/docs/plugins/coverage/.
 
 import (
 	"bytes"

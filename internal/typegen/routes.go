@@ -66,7 +66,7 @@ func GenerateRoutes(plugins []RoutePlugin) (string, error) {
 	b.WriteString(RoutesHeader + "\n")
 	b.WriteString("// Types of the portal routes of the plugins installed in the repository, for\n")
 	b.WriteString("// @cicord/client (`client.routes(plugin, …)`) and @cicord/react (`useRouteQuery`,\n")
-	b.WriteString("// `useRouteMutation`). `cicord portal build` regenerates it; see docs/portal.md.\n")
+	b.WriteString("// `useRouteMutation`). `cicord portal build` regenerates it; see https://cicord.dev/docs/portal/custom-portal/.\n")
 	if len(names) == 0 {
 		b.WriteString("//\n// No plugin of the repository has portal routes.\n\nexport {};\n")
 		return b.String(), nil

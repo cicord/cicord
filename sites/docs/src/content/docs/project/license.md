@@ -19,5 +19,5 @@ under the terms of the license; it comes with an explicit patent grant. Contribu
 accepted under the same license.
 
 The full text is in [`LICENSE`](https://github.com/cicord/cicord/blob/main/LICENSE), and the
-decision in [ADR-0013](https://github.com/cicord/cicord/blob/main/docs/adr/0013-licensing.md).
+decision in [ADR-0013](../decisions/0013-licensing/).
 Cicord is an independent project, not affiliated with Discord.

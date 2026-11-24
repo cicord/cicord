@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Server-side pagination, sorting and search for admin data tables (spec/api.md §1):
+// Server-side pagination, sorting and search for admin data tables (https://cicord.dev/docs/reference/http-api/authentication/):
 // ?q=<words>&sort=<key>&order=asc|desc&offset=<n>&limit=<n>.
 
 type pageMeta struct {

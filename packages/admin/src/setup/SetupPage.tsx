@@ -1,5 +1,5 @@
 /**
- * The setup wizard (docs/onboarding-wizard.md): a full-page route outside the console
+ * The setup wizard (https://cicord.dev/docs/getting-started/setup-wizard/): a full-page route outside the console
  * shell, like Login. It opens with the one-time setup link printed in the runtime logs
  * (/admin/setup?token=…), exchanged for a setup session; the step lives on the runtime,
  * so the wizard resumes where it was after a reload or a restart.

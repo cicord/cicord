@@ -182,7 +182,7 @@ export const serverSpec: { [key: string]: Json } = {
   access: { admins: { roles: ["admin"] }, moderators: { roles: ["modo"] } },
 };
 
-// ───────────────────────────────────────────────────────────── store (spec/api.md §11)
+// ───────────────────────────────────────────────────────────── store (https://cicord.dev/docs/reference/http-api/store/)
 
 /** A plugin of a mock Store source, with what its plugin.yaml requests. */
 export interface MockStorePlugin {

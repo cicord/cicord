@@ -175,7 +175,7 @@ type RouteResponse struct {
 }
 
 // Runtime is the language-agnostic surface of a plugin instance consumed by the bot host
-// (ARCHITECTURE.md §4.6). *Instance is the QuickJS (internal/plugin/qjs) implementation.
+// (https://cicord.dev/docs/project/architecture/). *Instance is the QuickJS (internal/plugin/qjs) implementation.
 type Runtime interface {
 	Definition() *Definition
 	Start(ctx context.Context) error

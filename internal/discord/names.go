@@ -12,7 +12,7 @@ type Permissions uint64
 // Intents is a Discord gateway intents bitset.
 type Intents uint64
 
-// permissionBits maps Cicord permission names (spec/README.md §9) to Discord bits.
+// permissionBits maps Cicord permission names (https://cicord.dev/docs/configuration/bot/#gateway-intents) to Discord bits.
 var permissionBits = map[string]uint{
 	"CreateInstantInvite":              0,
 	"KickMembers":                      1,

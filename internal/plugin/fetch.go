@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// Egress policy for http.fetch (spec/README.md §6 "Network egress"):
+// Egress policy for http.fetch (https://cicord.dev/docs/plugins/writing/ "Network egress"):
 //  1. the hostname must match spec.network.allow ("*.example.com" matches subdomains only;
 //     an entry without a port allows the scheme's default port only);
 //  2. every address the name resolves to must be public;

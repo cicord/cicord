@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// HumanError is an error explained for people (spec/api.md, "Error object"): a stable
+// HumanError is an error explained for people (https://cicord.dev/docs/reference/http-api/, "Error object"): a stable
 // machine code, one sentence saying what went wrong, an optional hint saying how to fix
 // it, and the raw technical text kept for copy/paste. The admin UI shows message + hint
 // and keeps details collapsed.

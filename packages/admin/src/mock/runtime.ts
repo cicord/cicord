@@ -1,6 +1,6 @@
 /**
  * In-browser fake of the Cicord runtime for `vp dev --mode mock` and the tests: auth (dev
- * login), admin endpoints (spec/api.md §2–§5) and the simulator (§8), including the SSE
+ * login), admin endpoints (https://cicord.dev/docs/reference/http-api/servers/–§5) and the simulator (§8), including the SSE
  * change stream and the behaviour of the example plugins (welcome, onboarding). State lives in
  * sessionStorage so it survives reloads.
  */
@@ -361,7 +361,7 @@ function seed(): MockState {
 const registrySecret = (name: string) =>
   `CICORD_REGISTRY_${name.toUpperCase().replaceAll("-", "_")}_TOKEN`;
 
-// ───────────────────────────────────────────── data tables (spec/api.md "Data tables")
+// ───────────────────────────────────────────── data tables (https://cicord.dev/docs/reference/http-api/ "Data tables")
 
 interface PageQuery {
   q: string[];
@@ -889,7 +889,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     );
   }
 
-  /** DELETE /servers/{server}/plugins/{bot}/{instance} (spec/api.md §5). */
+  /** DELETE /servers/{server}/plugins/{bot}/{instance} (https://cicord.dev/docs/reference/http-api/plugin-instances/). */
   function uninstall(viewer: string, inst: Instance): Response {
     const info = pluginInfo(inst);
     // onboarding's portal is what welcome's DM links to: removing it breaks the config.
@@ -1409,7 +1409,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     };
   }
 
-  /** GET /store/{source}/{plugin}/update (spec/api.md §11). */
+  /** GET /store/{source}/{plugin}/update (https://cicord.dev/docs/reference/http-api/store/). */
   function storeUpdateReview(source: string, name: string): Response {
     const detail = storeDetail(source, name);
     if (!detail.ok) return detail;
@@ -1442,7 +1442,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     });
   }
 
-  /** POST /store/{source}/{plugin}/update (spec/api.md §11). */
+  /** POST /store/{source}/{plugin}/update (https://cicord.dev/docs/reference/http-api/store/). */
   function storeUpdate(viewer: string, source: string, name: string, body: Obj): Response {
     const detail = storeDetail(source, name);
     if (!detail.ok) return detail;
@@ -1846,7 +1846,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     return json({ mode: "commit", revision: state.revision.id });
   }
 
-  /** PUT/DELETE /registries/{name}/token (spec/api.md §11). */
+  /** PUT/DELETE /registries/{name}/token (https://cicord.dev/docs/reference/http-api/store/). */
   function registryToken(viewer: string, name: string, method: string, body: Obj): Response {
     const registry = state.registries.find((r) => r.name === name);
     if (!registry) return fail(404, "not_found", `unknown registry "${name}"`);

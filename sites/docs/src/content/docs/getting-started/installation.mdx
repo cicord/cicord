@@ -173,7 +173,7 @@ commit.
   `docker buildx imagetools inspect ghcr.io/cicord/cicord:<version> --format '{{ json .SBOM }}'`
   (or `.Provenance`). The attestation is stored in the registry too, so
   `cosign verify-attestation` works without the GitHub API (see
-  [RELEASING.md](https://github.com/cicord/cicord/blob/main/RELEASING.md#verifying-a-release)).
+  [Releasing](../../project/releasing/#verifying-a-release)).
 - **npm packages**: published by the repository's `release-npm.yml` workflow with
   [provenance](https://docs.npmjs.com/generating-provenance-statements): the npm page of each
   package shows the provenance badge, and `npm audit signatures` checks them in your project.

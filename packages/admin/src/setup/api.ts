@@ -1,4 +1,4 @@
-/** Setup wizard API (spec/api.md §10): typed calls on top of the generic client. */
+/** Setup wizard API (https://cicord.dev/docs/reference/http-api/setup/): typed calls on top of the generic client. */
 import type { CicordClient, Plan } from "@cicord/client";
 
 export type CheckStatus = "ok" | "warn" | "fail" | "pending" | "skip";

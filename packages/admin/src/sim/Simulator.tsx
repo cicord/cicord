@@ -1,5 +1,5 @@
 /**
- * The playground (spec/api.md §8): act as simulated Discord users, watch bots answer live.
+ * The playground (https://cicord.dev/docs/reference/http-api/simulator/): act as simulated Discord users, watch bots answer live.
  */
 import type {
   InteractionResult,

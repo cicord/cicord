@@ -1,5 +1,5 @@
 name: release
-# Releases Cicord from a tag `v<version>` (v0.1.0, v0.2.0-rc.1): RELEASING.md.
+# Releases Cicord from a tag `v<version>` (v0.1.0, v0.2.0-rc.1): https://cicord.dev/docs/project/releasing/.
 #
 #   build    cicord binaries (GoReleaser, .goreleaser.yaml) for linux/darwin amd64+arm64 and
 #            windows/amd64 with the admin UI, the default portal and the portal kit embedded;
@@ -133,7 +133,7 @@ jobs:
           # The default of internal/version is what `go install` builds report and check
           # plugins against (the release binaries set it with -ldflags).
           if ! grep -qF "var Version = \"$VERSION\"" internal/version/version.go; then
-            echo "::error::internal/version/version.go is not $VERSION: bump it (RELEASING.md) before tagging"
+            echo "::error::internal/version/version.go is not $VERSION: bump it (https://cicord.dev/docs/project/releasing/) before tagging"
             exit 1
           fi
 

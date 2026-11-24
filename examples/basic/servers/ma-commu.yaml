@@ -132,7 +132,7 @@ spec:
     moderators:
       roles: [modo]
 
-  # Community portal (docs/portal.md): served at / by the runtime, no code needed.
+  # Community portal (https://cicord.dev/docs/portal/custom-portal/): served at / by the runtime, no code needed.
   portal:
     theme:
       primary: "#5865f2"

@@ -37,8 +37,8 @@ if (levels) {
 **Embedding on another site.** `createCicordClient({ baseUrl, auth: "token" })` keeps a
 portal-scoped bearer session instead of the cookie (cicord.yaml `spec.portal.allowedOrigins`).
 
-Every non-2xx response rejects with `CicordApiError` (`code`, `status`, `message`). See
-[docs/portal.md](https://github.com/cicord/cicord/blob/main/docs/portal.md) and the API
-reference [spec/api.md](https://github.com/cicord/cicord/blob/main/spec/api.md).
+Every non-2xx response rejects with `CicordApiError` (`code`, `status`, `message`). See the
+[portal SDK guide](https://cicord.dev/docs/portal/sdk/) and the
+[HTTP API reference](https://cicord.dev/docs/reference/http-api/).
 
 ESM only, with TypeScript declarations. License: Apache-2.0.

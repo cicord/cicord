@@ -54,14 +54,16 @@ invoker's. To check what a member may do to another one, or which role they may 
 |---|---|
 | `role.position` | Hierarchy position, higher is higher (`@everyone` is 0) |
 | `role.mentionable` | Whether anyone may mention the role |
-| `ctx.server.ownerId` | The owner's user id, read live |
-| `member.permissions` | **Server-level** permissions: `@everyone` and every role; all for the owner and `Administrator`. Channel overwrites are not applied |
+| `ctx.server.ownerId` | The owner's user id, read live (an ownership transfer is seen at once) |
+| `member.permissions` | **Server-level** permissions: `@everyone` and every role; all for the owner and `Administrator`. Channel overwrites and timeouts are not applied: it is not what the member may do in a given channel |
 | `member.access` | `"admin"` (owner, `spec.access.admins`), `"moderator"` (`spec.access.moderators`) or `"member"` |
 
 They are `undefined` when the runtime does not know them (a role not cached yet, an older
-engine): fail closed, never treat an unknown position as 0. The official `moderation`
-plugin refuses a moderator acting on the owner, on staff (unless the moderator is an admin)
-or on a member whose highest role is not strictly below theirs.
+engine): fail closed, never treat an unknown position or access level as one that passes.
+The official `moderation` plugin is the reference: the owner may moderate anyone, nobody may
+moderate the owner, staff (moderator or admin access) can only be moderated by an admin, and
+the moderator's highest role must be strictly above the target's; anything it cannot verify
+is refused.
 
 ## Events
 
@@ -96,10 +98,14 @@ events: {
 | `serverLeave` | `{ id }` | none |
 
 Events are delivered in order for each instance, and only to instances of the servers
-declared for the bot. `serverJoin` fires when the bot is invited (again) while connected, not
-when servers load after a connection or an outage; `serverLeave` when it is kicked, banned,
-removed or the server is deleted. After a re-invite the runtime registers the server's slash
-commands again.
+declared for the bot: joining an undeclared server runs no plugin. `serverJoin` and
+`serverLeave` need no intent (`Servers` is always enabled). `serverJoin` fires when the bot is
+invited (again) while connected, not when servers load after a connection or recover from an
+outage; `serverLeave` when it is kicked, banned, removed or the server is deleted, not during
+a Discord outage. On the gateway, a join is a `GUILD_CREATE` for a server that was neither in
+the last `READY` nor seen since (nothing is a join before the first `READY`), and a leave is a
+`GUILD_DELETE` without `unavailable`. After a re-invite the runtime registers the server's
+slash commands again.
 
 ## Slash commands
 
@@ -126,8 +132,9 @@ commands: {
 - Option `type`: `string`, `integer`, `number`, `boolean`, `user`, `channel`, `role`,
   `mentionable` or `attachment`.
 - `required` options come first in Discord; `min`/`max` apply to `integer` and `number`;
-  `minLength`/`maxLength` (0–6000) to `string`; `choices` (≤ 25) to `string`, `integer` and
-  `number`.
+  `minLength`/`maxLength` (0–6000, `maxLength` ≥ 1) to `string`; `choices` (≤ 25) to
+  `string`, `integer` and `number`; `autocomplete` to `string`, `integer` and `number`, not
+  together with `choices` ([below](#autocomplete)).
 - At most 25 options per command. A command name defined twice on the same bot and server
   fails validation.
 
@@ -154,17 +161,23 @@ polls: command({
 }),
 ```
 
-A command with subcommands has no `run` or `options` of its own; at most 25 subcommands and
-groups per command; a group holds only subcommands (1–25).
+Discord's rules, checked when the plugin is built: a command with subcommands has no `run` or
+`options` of its own (it cannot be invoked alone); at most 25 subcommands and groups per
+command, with distinct names; a group holds only subcommands (1–25), and subcommands do not
+nest further.
 
 ### Autocomplete
 
 `autocomplete(ctx, interaction, focused)` on a `string`, `integer` or `number` option (not
-with `choices`) suggests values while the user types. `focused.value` is the text typed so far
-(always a string), `interaction.options` the raw values of the other options. Return at most
-25 `{ name, value }` within **2.5 s**: an autocomplete cannot be deferred, and a handler that
-throws or is late shows an empty list. The user may still send any text: validate it in
-`run`.
+with `choices`) suggests values while the user types. The `AutocompleteInteraction` carries
+`user`, `member`, `channel`, `command`, `group` and `subcommand`, and `interaction.options`
+the raw values of the other options already filled in (ids for users, roles and channels).
+`focused` is `{ name, value }`, where `value` is the text typed so far (always a string, even
+for `integer` and `number` options). Return at most 25 `{ name, value }` choices (names 1–100
+characters, values of the option's type, strings ≤ 100 characters) within **2.5 s**: an
+autocomplete cannot be deferred (Discord drops answers after 3 s), and a handler that throws,
+is late or returns invalid choices shows an empty list (the error is logged). The user may
+still send any text: validate it in `run`.
 
 ```ts
 poll: {
@@ -182,8 +195,10 @@ poll: {
 Discord expects an answer within 3 seconds. If a handler has not answered after **2 s**, the
 runtime **defers automatically** (ephemerally when the command says `ephemeral: true`;
 components get a silent deferred update), and a later `reply()` edits the deferred response.
-The first response fixes ephemerality. If a handler throws before answering, the user gets an
-ephemeral "Something went wrong while handling this interaction." and the error is logged.
+The first response fixes ephemerality; after `reply()`, use `followUp()`. Autocomplete
+interactions are the exception: they are never deferred, the handler's return value is the
+answer. If a handler throws before answering, the user gets an ephemeral "Something went
+wrong while handling this interaction." and the error is logged.
 
 | State | `reply()` | `defer()` | `update()` (components) | `followUp()` | `showModal()` |
 |---|---|---|---|---|---|
@@ -199,8 +214,10 @@ Follow-ups are accepted for 15 minutes.
 
 Component and modal `id`s are local to the instance; on the wire the runtime namespaces them
 as `c:<instance>:<id>`, which must fit Discord's 100-byte `custom_id` limit (handler keys ≤ 80
-bytes). An id can **carry data after a colon**: `"vote:42"` is routed to `components.vote`,
-and `interaction.componentId` stays `"vote:42"`.
+bytes). An id can **carry data after a colon**: the lookup falls back to the part before the
+first `:`, so `"vote:42"` (or `"vote:42:yes"`) is routed to `components.vote`, and
+`interaction.componentId` stays `"vote:42"`. The official `polls` and `tickets` plugins are
+complete examples.
 
 ```ts
 commands: {
@@ -244,17 +261,31 @@ modals: {
   the picked values arrive in `interaction.values`.
 - Messages: a string, or `{ content?, embeds?, components?, allowedMentions? }`; interaction
   replies can add `ephemeral: true`.
-- `allowedMentions`: who the message may notify. `users` and `roles` take `true` (all),
-  `false` (none) or a list of ids, or of objects with an `id` (at most 100); plus
-  `everyone` and `repliedUser`. Without it every mention notifies, so set it when the
-  content holds a mention a member chose:
 
-  ```ts
-  await channel.send({ content: `${role.mention} new poll`, allowedMentions: { roles: [role.id], users: [] } });
-  ```
+### Mentions: `allowedMentions`
 
-  A non-mentionable role, `@everyone` and `@here` only notify when the bot has
-  MentionEveryone. Invalid lists make the call throw.
+Without `allowedMentions`, every mention in the content notifies, including roles that are not
+mentionable when the bot has MentionEveryone. Set it whenever the content contains text from a
+member, or a mention the member picked:
+
+```ts
+await channel.send({
+  content: `${role.mention} — new poll by ${interaction.user.mention}`,
+  // Notifies exactly this role: not the author, not any other mention in the text.
+  allowedMentions: { roles: [role.id], users: [] },
+});
+```
+
+- `users` and `roles` take `true` (every mention of that type), `false` (none) or a list of
+  **ids** (snowflakes, not resource keys) or of objects with an `id` (a `User`, `Member` or
+  `Role`), at most 100 per list. A type cannot be both allowed and listed.
+- `everyone` allows `@everyone` and `@here`; `repliedUser` notifies the author of the message
+  replied to (`message.reply()`).
+- A non-mentionable role, `@everyone` and `@here` still only notify when the bot has
+  MentionEveryone in the channel. Invalid lists make the call throw.
+
+The official `polls` plugin only lets poll managers ping a role that is not mentionable, and
+notifies only the picked member or role.
 
 ## Portal routes
 
@@ -282,7 +313,11 @@ routes: {
 ```
 
 A handler that returns both envelopes and plain objects should declare its return type
-(`Promise<RouteResponse>`). Plugin routes cannot set cookies, CORS or security headers.
+(`async handler(ctx, request): Promise<RouteResponse>`): TypeScript otherwise infers a union
+that does not match `RouteResponse`. Interfaces are not assignable to `Json` (they have no
+index signature): cast records with `as unknown as Json`, or use a [typed route](#typed-routes).
+Plugin routes cannot set cookies, CORS or security headers. The full path and its access
+rules are in the [HTTP API reference](../../reference/http-api/portal/#plugin-routes).
 
 ### Typed routes
 
@@ -329,16 +364,26 @@ export default definePlugin({
 });
 ```
 
-The runtime does **not** validate queries or bodies against the types: check them like any
-input. `cicord plugin build` reports a contract that cannot be copied. Portals pick contracts up
-with [`cicord portal typegen`](../../portal/custom-portal/#typed-plugin-routes). The official
-`levels` and `polls` plugins have one.
+`request.params` is typed from the key, `request.query` has the declared keys (as the strings
+of the URL), `request.body` is the declared body, and the handler must return the declared
+`response` or an envelope `{ status, body?, headers? }`. Interfaces can be returned directly
+(no `as unknown as Json`). The runtime does **not** validate queries or bodies against the
+types: check them like any input. `cicord plugin build` reports a contract that cannot be
+copied (an import, a value…). Portals pick contracts up with
+[`cicord portal typegen`](../../portal/custom-portal/#typed-plugin-routes). The official
+[`levels`](https://github.com/cicord/cicord/blob/main/examples/showcase/plugins/levels/src/routes.ts)
+and [`polls`](https://github.com/cicord/cicord/blob/main/examples/showcase/plugins/polls/src/routes.ts)
+plugins have one.
+
+In a portal, `@cicord/client`'s `client.routes(plugin, server, instance)` (typed) and
+`client.plugin(server, bot, instance)`, and `@cicord/react`'s `useRouteQuery` and
+`usePluginQuery`, call the routes (see [Portal SDK](../../portal/sdk/)).
 
 ### Portal links
 
 `ctx.portal.link(path, { member, expiresInSeconds })` (`portal.links`) returns a signed portal
 URL. With `member`, opening it signs that member in, restricted to this server. Links last 15
-minutes by default, 24 hours at most.
+minutes by default, 24 hours at most. The `welcome` example above DMs one to each new member.
 
 ## Schedules and tasks
 

@@ -320,7 +320,7 @@
       "additionalProperties": false
     },
     "portal": {
-      "description": "Community portal of this server (spec/api.md §6). Declaring it publishes the server on the portal.",
+      "description": "Community portal of this server (https://cicord.dev/docs/reference/http-api/portal/). Declaring it publishes the server on the portal.",
       "type": "object",
       "properties": {
         "theme": {

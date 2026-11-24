@@ -13,7 +13,7 @@
 # <name>/v<version>, entries in index.yaml) and a commit with the index.
 #
 # Nothing is pushed and nothing is signed: generating the signing key, the secret, the first
-# signature and the push are the owner's steps (docs/plugins.md §9). Push the result as is,
+# signature and the push are the owner's steps (https://cicord.dev/docs/plugins/publishing/). Push the result as is,
 # tags included: index.yaml pins the commits of these tags.
 #
 # Environment: CICORD (an existing cicord binary instead of building one), PNPM (default
@@ -115,5 +115,5 @@ cat <<MSG
 
 Prepared $out (branch main, $(git rev-list --count HEAD) commits, $(git tag | wc -l | tr -d ' ') tags). Not pushed, not signed.
 Check it:   cd $out && PATH="$(dirname "$cicord"):\$PATH" bash scripts/check-all.sh
-Then the owner steps of docs/plugins.md §9 (keygen, keys/official.pub, secrets, push with tags, sign).
+Then the owner steps of https://cicord.dev/docs/plugins/publishing/ (keygen, keys/official.pub, secrets, push with tags, sign).
 MSG

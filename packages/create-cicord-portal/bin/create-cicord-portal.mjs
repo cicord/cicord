@@ -120,7 +120,7 @@ if (out.devDependencies.vite?.startsWith("npm:")) {
 }
 writeFileSync(join(target, "package.json"), `${JSON.stringify(out, null, 2)}\n`);
 // dist/ stays committed: the Cicord runtime serves the committed build (cicord.yaml
-// spec.portal.path, docs/portal.md). Add it here when the portal is hosted elsewhere.
+// spec.portal.path, https://cicord.dev/docs/portal/custom-portal/). Add it here when the portal is hosted elsewhere.
 writeFileSync(join(target, ".gitignore"), "node_modules/\n*.local\n");
 
 const rel = relative(process.cwd(), target) || ".";

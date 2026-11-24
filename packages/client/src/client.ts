@@ -58,7 +58,7 @@ import type {
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 /**
- * How browser clients authenticate (spec/api.md §1):
+ * How browser clients authenticate (https://cicord.dev/docs/reference/http-api/authentication/):
  * - `"cookie"` (default): the `cicord_session` cookie, for a portal served by the runtime or
  *   on a same-site origin listed in `--cors-origin`;
  * - `"token"`: a bearer session token kept in a `TokenStore` and sent as `Authorization`,
@@ -132,7 +132,7 @@ export interface CicordClientOptions {
   baseUrl?: string;
   /** API prefix. Default "/api/v1". */
   apiPath?: string;
-  /** Auth prefix (spec/api.md §1). Default "/auth". */
+  /** Auth prefix (https://cicord.dev/docs/reference/http-api/authentication/). Default "/auth". */
   authPath?: string;
   /** fetch implementation. Default: the global `fetch`, looked up at call time. */
   fetch?: FetchLike;
@@ -172,7 +172,7 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
-/** Calls to the routes of one plugin instance (spec/api.md §6). */
+/** Calls to the routes of one plugin instance (https://cicord.dev/docs/reference/http-api/portal/). */
 export interface PluginRoutes {
   readonly server: string;
   readonly bot: string;
@@ -227,7 +227,7 @@ function trimSlash(value: string): string {
   return value.slice(0, end);
 }
 
-/** Query string of a paged list (spec/api.md "Data tables"); empty values are left out. */
+/** Query string of a paged list (https://cicord.dev/docs/reference/http-api/ "Data tables"); empty values are left out. */
 function pageQuery(params: PageParams = {}): Query {
   return {
     q: params.q?.trim() || undefined,
@@ -249,7 +249,7 @@ function withQuery(url: string, query?: Query): string {
 }
 
 /**
- * Typed client for the Cicord runtime HTTP API v1 (spec/api.md). Framework-agnostic: works in
+ * Typed client for the Cicord runtime HTTP API v1 (https://cicord.dev/docs/reference/http-api/). Framework-agnostic: works in
  * browsers, Node 24, workers. Every non-2xx response rejects with `CicordApiError`.
  */
 export class CicordClient {
@@ -317,7 +317,7 @@ export class CicordClient {
 
   #headers(extra?: Record<string, string>): Headers {
     const headers = new Headers(this.#options.headers);
-    // CSRF protection (spec/api.md §1): the runtime rejects cookie-authenticated
+    // CSRF protection (https://cicord.dev/docs/reference/http-api/authentication/): the runtime rejects cookie-authenticated
     // state-changing requests without this header.
     headers.set("X-Cicord-Request", "1");
     const token =

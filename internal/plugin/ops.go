@@ -18,7 +18,7 @@ import (
 	"github.com/cicord/cicord/internal/state"
 )
 
-// Capabilities (spec/README.md §6).
+// Capabilities (https://cicord.dev/docs/plugins/writing/).
 const (
 	capMessagesRead    = "discord.messages.read"
 	capMessagesSend    = "discord.messages.send"

@@ -986,7 +986,7 @@ export type CommandResult = InteractionResult;
 type Phase = "none" | "deferred" | "replied" | "updated" | "modal";
 
 /**
- * A recording interaction following the runtime's rules (docs/plugins.md, "Interactions"):
+ * A recording interaction following the runtime's rules (https://cicord.dev/docs/plugins/writing/, "Interactions"):
  * `reply()` once (or after a deferral), then `followUp()`; `showModal()` first; `update()`
  * for components only.
  */

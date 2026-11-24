@@ -9,7 +9,7 @@ import (
 	"github.com/cicord/cicord/internal/state"
 )
 
-// Change actions (spec/api.md §4, plus "unmanage").
+// Change actions (https://cicord.dev/docs/reference/http-api/servers/, plus "unmanage").
 const (
 	ActionCreate   = "create"
 	ActionUpdate   = "update"
@@ -26,7 +26,7 @@ const (
 	KindCategory = "category"
 	KindChannel  = "channel"
 	KindEveryone = "everyone"
-	// Discord parity (docs/discord-parity.md).
+	// Discord parity (https://cicord.dev/docs/reference/discord-parity/).
 	KindWidget        = "widget"
 	KindAutoMod       = "automod"
 	KindOnboarding    = "onboarding"
@@ -127,7 +127,7 @@ type Result struct {
 	Failed  []Failure `json:"failed"`
 }
 
-// DriftEntry is one differing field (spec/api.md §3). Field "exists" means the
+// DriftEntry is one differing field (https://cicord.dev/docs/reference/http-api/servers/). Field "exists" means the
 // resource is missing in Discord (or not created yet), "order" a reorder,
 // "managed" a mapping that is about to be dropped.
 type DriftEntry struct {

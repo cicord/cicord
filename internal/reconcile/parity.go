@@ -1,6 +1,6 @@
 package reconcile
 
-// Discord parity (docs/discord-parity.md): boost/community gating, server engagement and
+// Discord parity (https://cicord.dev/docs/reference/discord-parity/): boost/community gating, server engagement and
 // safety settings, role styles, channel extras, the widget, welcome screen, native
 // onboarding, AutoMod rules and expressions (emojis, stickers, soundboard sounds).
 

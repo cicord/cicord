@@ -54,6 +54,11 @@ a fresh server.
   copies from your checkout, not a script piped from the network.
 </Aside>
 
+**On the fresh server**, look at what you start from: typically only `sshd` listens (port 22,
+public; `sudo ss -tlnp`), with key-only authentication and no key for root, no firewall,
+`unattended-upgrades` installed for security updates only, and the clock synchronized (chrony,
+UTC). The steps below change all of that except the clock.
+
 **On your workstation**, check your SSH configuration first: a `Host *` block with
 `ForwardAgent yes` forwards your SSH agent to every server, so root on the server could use
 your keys while you are connected. Add a dedicated block **before** `Host *` (the first value
@@ -292,7 +297,8 @@ ssh -t cicord 'sudoedit /opt/cicord/.env'
 ```
 
 ```sh title="/opt/cicord/.env"
-CICORD_IMAGE_TAG=0.1.0                              # the local image cicord:<tag>, see below
+CICORD_IMAGE=ghcr.io/cicord/cicord:<version>@sha256:<digest>  # the image, see below
+CICORD_AUTO_UPDATE=patch                            # automatic updates, see step 9
 CICORD_PUBLIC_URL=https://community.example.org     # the public portal
 CICORD_PUBLIC_HOST=community.example.org
 CICORD_ADMIN_URL=https://cicord.your-tailnet.ts.net # the admin console, on the tailnet
@@ -312,23 +318,35 @@ wizard on that hostname only: on any other `Host` they answer `404`. See
 
 ### The image
 
-Compose runs the local image `cicord:<CICORD_IMAGE_TAG>`.
+`CICORD_IMAGE` is the image Compose runs: a release **pinned by its digest**, so what runs is
+exactly the image the release workflow built, or an image you build from source.
 
-- **From a release** (once a release is published): pull the image, verify it, and give it
-  the local name:
+**From a release** (the default). Each release's notes give the image digest; read it and
+check the image's build provenance from your workstation:
 
-  ```sh
-  ssh cicord 'sudo docker pull ghcr.io/cicord/cicord:0.1.0 && sudo docker tag ghcr.io/cicord/cicord:0.1.0 cicord:0.1.0'
-  gh attestation verify oci://ghcr.io/cicord/cicord:0.1.0 --repo cicord/cicord   # on the workstation
-  ```
+```sh
+VERSION=0.1.1
+gh release view "v$VERSION" --repo cicord/cicord --json body --jq .body \
+  | grep -oE 'ghcr.io/cicord/cicord@sha256:[0-9a-f]{64}'          # the digest
+gh attestation verify "oci://ghcr.io/cicord/cicord:$VERSION" --repo cicord/cicord
+```
 
-- **From source**: build it on the server from an archive of your checkout (the server's own
-  architecture, no git credentials on the server), and set `CICORD_IMAGE_TAG` to the commit:
+Then set it in `/opt/cicord/.env`, tag and digest together:
+`CICORD_IMAGE=ghcr.io/cicord/cicord:0.1.1@sha256:…`. Docker pulls by the digest, and the
+image is multi-arch (linux/amd64, linux/arm64): the server gets its own architecture. See
+[Installation](../../getting-started/installation/#verify-a-download) for the other checks
+(SBOM, `cosign`).
 
-  ```sh
-  COPYFILE_DISABLE=1 git archive --format=tar HEAD | ssh cicord \
-    "sudo docker build --build-arg VERSION=0.1.0 --build-arg COMMIT=$(git rev-parse --short HEAD) -t cicord:$(git rev-parse --short HEAD) -"
-  ```
+**From source**, if you run unreleased changes: build it on the server from an archive of your
+checkout (the server's own architecture, no git credentials on the server), and set
+`CICORD_IMAGE=cicord:<commit>`:
+
+```sh
+COPYFILE_DISABLE=1 git archive --format=tar HEAD | ssh cicord \
+  "sudo docker build --build-arg COMMIT=$(git rev-parse --short HEAD) -t cicord:$(git rev-parse --short HEAD) -"
+```
+
+Automatic updates (step 9) leave a source build alone: they only follow releases.
 
 ### Start
 
@@ -408,19 +426,24 @@ The wizard stores the bot token, the client secret and the GitHub App ID, key an
 in the runtime's **encrypted secret store**. The browser reaches it over the tailnet only
 (WireGuard, then HTTPS from `tailscale serve`).
 
-Then give the runtime the **webhook secret** of the GitHub App. `cicord secret set` reads it
-from stdin, never from the command line. Copy it from the password manager and pipe the
-clipboard, so that it is never displayed (macOS), then restart the runtime, which reads it at
-startup:
+Then give the runtime the **webhook secret** of the GitHub App (the value you typed in its
+settings in step 5). `cicord secret set` reads it from stdin, never from the command line. Read
+it without echo on your workstation, pipe it to the server, then restart the runtime, which
+reads the webhook secret at startup only:
 
 ```sh
-pbpaste | ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_WEBHOOK_SECRET --data-dir /data'
-pbcopy < /dev/null                     # clear the clipboard
+read -rs S && printf '%s\n' "$S" | ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_WEBHOOK_SECRET --data-dir /data'; unset S
 ssh cicord 'sudo docker restart cicord'
 ```
 
-In the GitHub App settings, **Advanced → Recent Deliveries** then shows the next push delivered
-with `202`. Do the same for `CICORD_RUNTIME_TOKEN` if a CI job should call
+`read -rs` waits for you to paste the value and keeps it off the screen: with a plain
+`ssh cicord '… secret set …'` and no terminal on the other side, what you paste would be
+echoed. On macOS you can pipe the clipboard instead:
+`pbpaste | ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_WEBHOOK_SECRET --data-dir /data'`,
+then `pbcopy < /dev/null` to clear it.
+
+In the GitHub App settings, **Advanced → Recent Deliveries**, redeliver the last push: it must
+come back green (`202`); the next pushes do too. Do the same for `CICORD_RUNTIME_TOKEN` if a CI job should call
 `cicord plan --remote` or `cicord sync` (a long random value, also stored as the CI secret).
 `cicord secret ls --data-dir /data` lists names, never values. An environment variable with the
 same name would take precedence over a stored secret.
@@ -433,6 +456,13 @@ is merged.
 
 The secret store is encrypted with AES-256-GCM inside `cicord.db`, in the `cicord_cicord-data`
 volume. The key is `secret.key` (mode `0600`) in the same volume, generated on the server.
+
+The data directory is mode `0700`: the image creates `/data` that way, so a new volume
+inherits it. For a volume created by an older image, set it once:
+
+```sh
+sudo chmod 0700 "$(sudo docker volume inspect -f '{{.Mountpoint}}' cicord_cicord-data)"
+```
 
 - **What the encryption protects**: a copy of the database alone (a backup, a dump) reveals no
   secret.
@@ -491,10 +521,47 @@ More in [Backups and secrets](../backups-and-secrets/), including
 
 - **The system, Docker and Tailscale** update themselves (step 1). What was installed is
   logged in `/var/log/unattended-upgrades/`.
-- **Cicord**: back up (`sudo systemctl start cicord-backup.service`), get the new image (pull
-  and tag a release, or build from source as in step 6), set the new `CICORD_IMAGE_TAG` in
-  `.env`, and run the same `docker compose … up -d` again. Then check `/readyz` and the admin
-  console's status. Read [Upgrading](../upgrading/) first: `0.x` releases may change formats.
+- **Cicord** updates itself to new **patch** releases (`0.1.x` → `0.1.y`) with
+  [`06-auto-update.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/06-auto-update.sh),
+  once the runtime runs a release image:
+
+  ```sh
+  ssh cicord 'sudo sh scripts/06-auto-update.sh'
+  ```
+
+  It installs `cicord-update`, the GitHub CLI and a daily timer (around 05:30 UTC, after the
+  backup and the reboot window). Each run asks GitHub for the latest release, accepts it only
+  if the release workflow created it and its notes give the image digest, **verifies the
+  image's signed build provenance** (built by `release.yml` from that release's tag), then
+  **backs up**, pulls the image by that digest, switches `CICORD_IMAGE` and restarts the
+  runtime. If the new version does not
+  become healthy within 3 minutes, it puts the previous image back. `CICORD_AUTO_UPDATE` in
+  `.env` chooses the policy: `patch` (the default), `minor` (also `0.x` → `0.y`, which may
+  change formats: read [Upgrading](../upgrading/) first) or `off`. A release it does not apply
+  is only logged.
+
+  The provenance check needs a GitHub token, even for a public repository. Create a
+  [fine-grained token](https://github.com/settings/personal-access-tokens/new) with
+  **Public repositories (read-only)** access and no permissions, then store it on the server
+  without echoing it:
+
+  ```sh
+  read -rs T && printf '%s\n' "$T" | ssh cicord 'sudo sh -c "umask 077; cat > /etc/cicord/github-token"'; unset T
+  ```
+
+  Without the token, available updates are logged and refused.
+  `CICORD_UPDATE_VERIFY=digest` in `.env` skips the signature and trusts the release notes'
+  digest only: weaker, use it only if you cannot keep a token on the server.
+
+  ```sh
+  ssh cicord 'journalctl -t cicord-update --since -7d'          # what it did
+  ssh cicord 'sudo systemctl start cicord-update.service'       # check now
+  ```
+
+  To update by hand (a minor release, or a source build): back up
+  (`sudo systemctl start cicord-backup.service`), set the new `CICORD_IMAGE`, run the same
+  `docker compose … up -d` again, then check `/readyz` and the admin console's status.
+
 - **Caddy** is pinned by digest in `compose.yaml`: update the tag and digest there, then
   `up -d` again.
 - **`tailscale serve`** is kept across reboots (`--bg`); nothing to redo.

@@ -1,5 +1,5 @@
 // Package config loads and validates a Cicord repository (cicord.yaml, servers/, bots/,
-// plugins) into typed structures. See spec/README.md for the semantics.
+// plugins) into typed structures. See https://cicord.dev/docs/configuration/server/ for the semantics.
 package config
 
 import "strings"
@@ -131,7 +131,7 @@ type ServerSpec struct {
 	Access     *Access             `yaml:"access,omitempty" json:"access,omitempty"`
 	Portal     *ServerPortal       `yaml:"portal,omitempty" json:"portal,omitempty"`
 
-	// Discord parity (docs/discord-parity.md). Every block is managed only when present.
+	// Discord parity (https://cicord.dev/docs/reference/discord-parity/). Every block is managed only when present.
 	AFK           *AFKSpec                  `yaml:"afk,omitempty" json:"afk,omitempty"`
 	Widget        *WidgetSpec               `yaml:"widget,omitempty" json:"widget,omitempty"`
 	Community     *CommunitySpec            `yaml:"community,omitempty" json:"community,omitempty"`

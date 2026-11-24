@@ -2,7 +2,7 @@ package runtime
 
 // End-to-end tests of the showcase plugins reaction-roles, audit-log and announcements on the
 // Discord simulator (same harness as showcase_test.go). Each test maps to the sections of
-// docs/plugin-coverage.md about these plugins.
+// https://cicord.dev/docs/plugins/coverage/ about these plugins.
 
 import (
 	"context"

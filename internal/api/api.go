@@ -1,4 +1,4 @@
-// Package api implements the Cicord runtime HTTP API v1 (spec/api.md): authentication,
+// Package api implements the Cicord runtime HTTP API v1 (https://cicord.dev/docs/reference/http-api/): authentication,
 // admin endpoints (status, servers, plugin configuration with git write-back), the
 // community portal (including plugin routes), machine endpoints (CI, webhooks), the
 // Discord simulator endpoints of `cicord dev --sim` and the embedded static UIs.
@@ -56,7 +56,7 @@ type Options struct {
 	Writer writeback.Writer
 	// Mode is "dev" or "serve" (default "serve"); dev enables /auth/dev-login.
 	Mode string
-	// Sim enables the simulator endpoints (spec/api.md §8).
+	// Sim enables the simulator endpoints (https://cicord.dev/docs/reference/http-api/simulator/).
 	Sim *sim.World
 	// RuntimeToken is the bearer token of machine clients ("" disables bearer auth).
 	RuntimeToken string
@@ -322,7 +322,7 @@ func (s *server) middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// CSRF (spec/api.md §1): unsafe methods need X-Cicord-Request unless they carry an
+		// CSRF (https://cicord.dev/docs/reference/http-api/authentication/): unsafe methods need X-Cicord-Request unless they carry an
 		// Authorization header; cross-origin requests must come from an allowed origin.
 		if !isSafeMethod(r.Method) && !strings.HasPrefix(r.URL.Path, "/hooks/") {
 			if origin != "" && !allowed && !s.sameOrigin(r, origin) {

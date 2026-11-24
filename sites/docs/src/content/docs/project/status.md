@@ -7,8 +7,8 @@ Cicord is **v1alpha1, pre-release**: `0.x` releases (binaries, the container ima
 `ghcr.io/cicord/cicord` and the `@cicord/*` npm packages, see
 [Installation](../../getting-started/installation/) and the
 [changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md)) may still change formats
-and APIs. This page summarizes the project's living tracker,
-[`TODO.md`](https://github.com/cicord/cicord/blob/main/TODO.md). No dates are promised.
+and APIs. This page is the project's living tracker: it is updated as work lands. No dates are
+promised.
 
 ## What works today
 
@@ -60,18 +60,31 @@ and APIs. This page summarizes the project's living tracker,
 ## Next
 
 - Verify every SDK feature on real Discord (the simulator already covers them all), including
-  member joins.
+  member joins (this needs a second account).
+- Real Discord, still untested: stickers (multipart uploads), soundboard sounds, role gradient
+  colors and role icons (they need boosts).
 - Route contracts for the tickets, moderation and announcements plugins.
-- SDK gaps found while writing the official plugins: more events (channel, role, ban),
-  message content before edits and deletions, time zones in the plugin host, removing other
-  users' reactions, user/role/channel select menus. (Fetching a message by ID, subcommands,
+- SDK gaps found while writing the official plugins: more events (channel, role, ban, with
+  their actor), message content before edits and deletions, time zones (`Intl`) in the plugin
+  host, removing other users' reactions, user/role/mentionable/channel select menus (Discord
+  types 5 to 8, with default values, channel types and resolved values). (Fetching a message by ID, subcommands,
   autocomplete, server join/leave events, role positions, member permissions and
   allowedMentions id lists are done.)
 - Discord parity: invites and webhooks, a holographic role style preset, live updates of the
   plan page, drift detection for widget, onboarding and welcome screen.
-- Setup wizard: a webhook step, creating the GitHub App from a manifest, several servers and
+- Setup wizard: a webhook step, the GitHub App instead of a personal access token (created from
+  a manifest), several servers and bots, a Store step with registries on top of the catalog.
+- `cicord plugin publish` building from the tagged tree; `cicord mv` against a remote runtime
+  (a mapping move endpoint; the reconciler already detects renames).
+- Fixes: the admin console login loses the deep link (it returns to `/admin/` instead of the
+  page that asked for login); `cicord import --force` leaves stale files in
+  `servers/assets/<key>/`; the simulator does not reseed when a hot reload adds servers or
   bots.
-- `cicord plugin publish` building from the tagged tree; `cicord mv` against a remote runtime.
+- Discord contract: a fatal disconnect event.
+- `@cicord/sdk/testing`: enforce route access levels and `discord.messages.manage` in the
+  fakes.
+- Internal: reuse the runtime's manifest checks and write-back helpers in the CLI instead of
+  duplicating them.
 
 ## Production hardening
 
@@ -82,17 +95,18 @@ and APIs. This page summarizes the project's living tracker,
 
 These steps need decisions or accounts from the project owner:
 
-- **The first release, v0.1.0**: the one-time setup of
-  [`RELEASING.md`](https://github.com/cicord/cicord/blob/main/RELEASING.md#one-time-setup-owner)
-  (a tag ruleset, the public container package, the npm organization with trusted publishing
-  for `@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui`), then the tag.
+- **The first release, v0.1.0**: the [one-time setup](../releasing/#one-time-setup-owner)
+  (a tag ruleset for `v*`, the public container package, the npm organization `cicord` with a
+  first publication of each package, trusted publishing and "disallow tokens" for
+  `@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui`, the `npm` environment),
+  then the tag.
 
 ## Releases
 
 - Done: the release pipeline. A tag `v<version>` builds the binaries for Linux, macOS and
   Windows (GoReleaser, reproducible, with SBOMs and build provenance attestations), the
   multi-arch image `ghcr.io/cicord/cicord` and the npm packages with provenance (trusted
-  publishing). See [`RELEASING.md`](https://github.com/cicord/cicord/blob/main/RELEASING.md)
+  publishing). See [Releasing](../releasing/)
   and [Installation](../../getting-started/installation/).
 - Later: `go install` with the embedded web UIs; the CI workflow written by `cicord init`
   downloading the release binary instead of `go install`.

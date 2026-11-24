@@ -1,6 +1,6 @@
 /**
  * Live Discord state of a server (boost level, Community) and the server image uploads
- * (docs/discord-parity.md). Shared by the Overview and Server settings pages.
+ * (https://cicord.dev/docs/reference/discord-parity/). Shared by the Overview and Server settings pages.
  */
 import type { ServerAssetKind, ServerStatus } from "@cicord/client";
 import { useCicord } from "@cicord/react";
@@ -251,7 +251,7 @@ const DISCORD_ONLY = [
   "boostPerks",
 ] as const;
 
-/** Settings a bot cannot change (docs/discord-parity.md, 🚫 rows). */
+/** Settings a bot cannot change (https://cicord.dev/docs/reference/discord-parity/, 🚫 rows). */
 export function DiscordOnlyCard() {
   const { t } = useTranslation();
   return (

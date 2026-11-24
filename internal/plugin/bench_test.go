@@ -11,7 +11,7 @@ import (
 	"github.com/cicord/cicord/internal/discord"
 )
 
-// Engine benchmarks (numbers in docs/adr/0018-quickjs-wasm-engine.md). They only use the
+// Engine benchmarks (numbers in https://cicord.dev/docs/project/decisions/0018-quickjs-wasm-engine/). They only use the
 // engine-neutral API, so the same file runs against other engines.
 
 const benchPlugin = `

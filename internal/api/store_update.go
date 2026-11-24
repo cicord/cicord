@@ -17,7 +17,7 @@ import (
 	"github.com/cicord/cicord/internal/store"
 )
 
-// Plugin updates (spec/api.md §11): review the latest version against what is installed,
+// Plugin updates (https://cicord.dev/docs/reference/http-api/store/): review the latest version against what is installed,
 // then update every instance of the plugin in one write-back.
 
 // updateReviewDTO is GET /store/{source}/{plugin}/update.

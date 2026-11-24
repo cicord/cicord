@@ -21,7 +21,7 @@ func init() {
 	pluginSubcommands = append(pluginSubcommands, newPluginUpdateCmd)
 }
 
-// newPluginUpdateCmd is `cicord plugin update`: the CLI side of Store updates (spec/api.md
+// newPluginUpdateCmd is `cicord plugin update`: the CLI side of Store updates (https://cicord.dev/docs/reference/http-api/
 // §11). It edits cicord.lock and bot.yaml (or plugins/<name>/ for copies of official
 // plugins) locally; commit the result like any other change.
 func newPluginUpdateCmd() *cobra.Command {

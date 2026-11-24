@@ -70,6 +70,12 @@ spec:
 or the directory name (`bots/<key>/`). `metadata` can also carry `labels` and
 `annotations` (string maps).
 
+The JSON Schemas in
+[`spec/schemas/`](https://github.com/cicord/cicord/tree/main/spec/schemas)
+(`project`, `server`, `bot` and `plugin.schema.json`) are normative, like the plugin SDK
+types in `spec/sdk/cicord-sdk.d.ts`. For completion and checks in your editor, add
+`# yaml-language-server: $schema=<URL or path of the schema>` at the top of a file.
+
 ## Keys and display names
 
 Keys match `^[a-z][a-z0-9-]{0,62}$` and **never change**. They are separate from the display

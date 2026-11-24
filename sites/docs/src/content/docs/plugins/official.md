@@ -193,10 +193,26 @@ unchanged panel is left alone, a changed one is edited, a deleted one is posted 
 | `panels` | `[]` | Each panel: `name` (stable key), `channel`, `title`, `description`, `color`, `style` (`buttons`, `select`, `reactions`), `mode` (`multiple`, `single`), `requiredRole`, `options` (`role`, `label`, `emoji`, `description`). |
 | `syncOnStart` | `true` | Post missing panels and update changed ones on every new revision. |
 
+- **Styles**: `buttons` (one button per role, which toggles it), `select` (a select menu: the
+  member's roles of the panel become exactly the selection) or `reactions` (react with the
+  option's emoji; removing the reaction takes the role back).
+- **Modes**: `multiple`, or `single` (taking a role removes the panel's other roles).
+- **Panels in place**: each panel's message is remembered in KV (`panel:<name>`). Moving a
+  panel to another channel posts a new message; delete the old one by hand (deleting needs
+  `discord.messages.manage`, which the plugin does not request).
+- **Safety**: a click is checked against the panel as configured now, so a stale button never
+  grants a role that left the config; answers are ephemeral; a role change Discord refuses
+  (403) is explained (the bot's highest role must be above it, with Manage Roles). Additions
+  run before removals, so a failed swap keeps the member's current role.
+- **Reaction panels**: a reaction cannot be answered privately, so a member without the
+  required role is silently ignored (the panel footer states the requirement). In `single`
+  mode the member's previous reaction stays on the message (the SDK cannot remove another
+  user's reaction).
+
 :::caution
 Every member who can see a panel can take its roles: never list a role with moderation or
 admin permissions. A reaction panel offers at most 20 options (Discord's limit of distinct
-reactions per message).
+reactions per message); `/role-panel` reports the rest, and they are logged.
 :::
 
 ## audit-log
@@ -219,6 +235,17 @@ closed polls. It never shows what people wrote.
 | `ignoreBots` *(moderator)* | `true` | |
 | `batchSeconds` *(moderator)* | `10` | Events are collected this long, then posted together (`0`: one by one). |
 | `maxPerBatch` *(moderator)* | `60` | The rest are counted, not posted, so a raid cannot flood the log. |
+
+- **What it logs**: one line per event, with `<t:…>` timestamps and no pings. Joins show the
+  account age, with ⚠️ under 7 days. `messageEdits` is off by default because Discord reports
+  link previews as edits. A deleted message shows its author when the plugin saw the message
+  since its last start.
+- **Batches**: events are queued in KV and posted together `batchSeconds` after the first one,
+  by a single task per batch; past `maxPerBatch`, the post ends with "…and N more events not
+  posted". A `@every 1m` sweep posts a batch whose task was lost.
+- **`moderation.case`**: the payload is the moderation plugin's case: `number`, `action`,
+  `member { id, name }`, `moderator { id, name }` or `null`, `reason`, `durationMinutes`. The
+  moderation plugin publishes one for every case.
 
 ## announcements
 
@@ -243,8 +270,21 @@ only who you say.
 | `maxScheduled` | `25` | Most `/announce` messages waiting at once. |
 | `catchUpMinutes` | `10` | After a restart, recent missed runs are still posted (once). |
 
-The plugin host has no `Intl`, so the plugin carries the offset and daylight-saving rules of
-the time zones listed in its schema.
+- **Configured announcements**: `cron` takes 5 fields or a descriptor (`@daily`…); `mentions`
+  takes `roles`, `everyone` and `here`. A `* * * * *` schedule evaluates them in their time
+  zone and posts each due one once: the last run is kept in KV, so restarts, a second tick
+  and the repeated hour of a daylight-saving change never post twice. Runs missed while the
+  bot was down are posted (once) if they are less than `catchUpMinutes` old.
+- **`/announce`** asks for a title and a message in the form; `when` is read in the plugin's
+  time zone. `/announce-list` shows the scheduled and the configured announcements (next run,
+  invalid schedules).
+- **Mention safety**: only the configured mentions ping (`allowedMentions`). `@everyone` and
+  `@here` need `allowEveryone` (an admin setting) and are neutralized in the text otherwise;
+  other role mentions in the text become plain names. `/announce` bodies go in an embed, which
+  never pings.
+
+The plugin host has no `Intl`, so the plugin carries the offset and daylight-saving rules
+(EU, US, Australia, New Zealand) of the time zones listed in its schema.
 
 ## Using them together
 
@@ -255,3 +295,6 @@ and is the end-to-end test fixture of the runtime. Try it offline:
 ```sh
 cicord dev --sim examples/showcase
 ```
+
+[SDK coverage](../coverage/) maps each SDK feature to the plugin and the test that exercise it,
+and ends with a checklist to try the showcase on a real Discord server.

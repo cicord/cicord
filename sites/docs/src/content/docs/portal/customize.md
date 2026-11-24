@@ -20,8 +20,9 @@ spec:
 ```
 
 `@cicord/ui` derives every color from `primary` and `accent`, with a contrast check for the
-chosen mode. The logo is served by `GET /api/v1/portal/<server>/logo`, with a
-`Content-Security-Policy` that sandboxes it, so an SVG can never run script.
+chosen mode. The logo is served by `GET /api/v1/portal/<server>/logo`, versioned by revision
+(a new commit busts the cache), with `Content-Security-Policy: sandbox`, so an SVG can never
+run script.
 
 `cicord validate` reports a logo outside the repository, behind a symbolic link or of an
 unsupported type as an **error**, and a missing file as a **warning**.

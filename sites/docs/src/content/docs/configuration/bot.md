@@ -71,7 +71,11 @@ Intent names follow the same *server* vocabulary as permissions: `Servers`, `Ser
 `ServerMessageReactions`, `ServerMessageTyping`, `DirectMessages`, `DirectMessageReactions`,
 `DirectMessageTyping`, `MessageContent`, `ServerScheduledEvents`,
 `AutoModerationConfiguration`, `AutoModerationExecution`, `ServerMessagePolls`,
-`DirectMessagePolls`.
+`DirectMessagePolls`. Each `Server…` intent is Discord's `GUILD_…` (`Servers` is `GUILDS`,
+`ServerMembers` is `GUILD_MEMBERS`, `ServerMessagePolls` is `GUILD_MESSAGE_POLLS`…); the
+others map 1:1 from PascalCase to SCREAMING_SNAKE_CASE (`MessageContent` is
+`MESSAGE_CONTENT`). The word *guild* is never used outside the Discord adapter
+([ADR-0009](../../project/decisions/0009-server-vocabulary/)).
 
 ## Plugin instances
 
@@ -118,5 +122,7 @@ override; the change is written back as the minimal patch.
 
 `cicord validate` fails when a capability is not granted, a config does not match its schema
 (after overrides, per server), a reference does not resolve, a registry plugin is missing
-from `cicord.lock`, a command name is defined twice on the same bot and server, or a handler
-needs an intent its manifest does not declare.
+from `cicord.lock` or its integrity does not match, a command name is invalid or defined
+twice on the same bot and server, a handler needs an intent its manifest does not declare,
+`http.fetch` is requested without `spec.network.allow`, or a plugin's `engine` range excludes
+the running version. It warns about every privileged intent in use.

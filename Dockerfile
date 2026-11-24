@@ -11,7 +11,7 @@
 # platform: the UIs are platform independent and Go cross-compiles to the target platform,
 # so a multi-arch build (`--platform linux/amd64,linux/arm64`) needs no emulation. The
 # release workflow (.github/workflows/release.yml) publishes ghcr.io/cicord/cicord this way.
-# See docs/deploy.md.
+# See https://cicord.dev/docs/self-hosting/deploy/.
 
 ARG NODE_VERSION=26
 ARG GO_VERSION=1.27

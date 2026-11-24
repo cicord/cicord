@@ -81,7 +81,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 // ───────────────────────────────────────────────────────────── error objects
 //
 // The runtime keeps errors as text (status messages, sync history). The DTOs below add
-// the humanized form (spec/api.md "Error object") next to the unchanged raw fields.
+// the humanized form (https://cicord.dev/docs/reference/http-api/ "Error object") next to the unchanged raw fields.
 
 type serverStatusDTO struct {
 	runtime.ServerStatus
