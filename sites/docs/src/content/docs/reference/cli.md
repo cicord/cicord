@@ -22,6 +22,7 @@ command also accepts `-h, --help`.
 | [`cicord dev`](#cicord-dev) | Run the runtime locally with hot reload, on real Discord or the simulator. |
 | [`cicord status`](#cicord-status) | Revision, sync and health of a runtime; wait for a revision. |
 | [`cicord sync`](#cicord-sync) | Ask the runtime to fetch and sync now. |
+| [`cicord healthcheck`](#cicord-healthcheck) | Exit 0 when a runtime answers `/healthz` (container health checks). |
 | [`cicord version`](#cicord-version) | Print the version. |
 | [`cicord secret`](#secrets) | `ls`, `set`, `rm`, `rotate-key`: the encrypted secret store. |
 | [`cicord plugin`](#plugins) | `new`, `sdk-types`, `build`, `typegen`, `test`, `add`, `update`, `publish`. |
@@ -197,6 +198,7 @@ cicord serve [dir] [flags]
 
 | Flag | Description |
 |---|---|
+| `--admin-url` `string` | URL of the admin console on a separate (private) hostname, e.g. a VPN; the admin UI and admin API then only answer on that host (env CICORD_ADMIN_URL) |
 | `--cors-origin` `strings` | external portal origin allowed with credentials (repeatable) |
 | `--data-dir` `string` | runtime state directory (database, caches, keys) |
 | `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) |
@@ -205,6 +207,8 @@ cicord serve [dir] [flags]
 | `--local` | serve the directory as-is, ignoring spec.source (no git) |
 | `--log-level` `string` | log level: debug \| info \| warn \| error (default "info") |
 | `--public-url` `string` | public URL of the runtime (OAuth redirects, portal links); default http://&lt;listen&gt; |
+
+`--public-url` (env `CICORD_PUBLIC_URL`) is the URL people reach: OAuth redirects, portal links sent by the bots, the CSRF origin check. Without it, `serve` uses `spec.runtime.url` of `cicord.yaml`, then the URL the setup wizard ran on, then `http://localhost:<port>`. `--admin-url` (env `CICORD_ADMIN_URL`, `https://host[:port]` without a path; `http` only on a loopback host) serves the admin console on a second hostname: a request whose `Host` is that hostname logs in with `<admin-url>/auth/callback`, every other host with `<public-url>/auth/callback`, and the admin UI, the admin API and the setup wizard answer 404 on every host but the admin one. The setup link, the startup banner and the GitHub commit status link use the admin URL; portal links keep the public URL. See [Admin on a private network, portal public](../../self-hosting/security/#admin-on-a-private-network-portal-public).
 
 ### `cicord dev`
 
@@ -268,6 +272,23 @@ cicord sync [dir] [flags]
 ```sh
 cicord sync
 cicord sync --wait --revision $(git rev-parse HEAD)
+```
+
+### `cicord healthcheck`
+
+Send `GET` to the health URL of a running runtime and exit 0 on HTTP 200, 1 otherwise (connection error, timeout or any other status, with a one-line message on stderr). Made for container health checks: the distroless image has no `curl`.
+
+```text
+cicord healthcheck [flags]
+```
+
+| Flag | Description |
+|---|---|
+| `--timeout` `duration` | maximum time for the request (default 3s) |
+| `--url` `string` | health URL to check (default "http://127.0.0.1:7420/healthz") |
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=5s CMD ["/usr/local/bin/cicord", "healthcheck"]
 ```
 
 ### `cicord version`

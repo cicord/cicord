@@ -46,6 +46,7 @@ type serverFlags struct {
 	databaseURL string // --database-url (see databaseURL for the environment fallback)
 	listen      string
 	publicURL   string
+	adminURL    string // --admin-url (serve only)
 	corsOrigins []string
 	logLevel    string
 	// githubAppKeyFile is the GitHub App private key file (serve only).
@@ -315,6 +316,8 @@ Environment:
 		},
 	}
 	f.register(cmd, ":7420")
+	cmd.Flags().StringVar(&f.adminURL, "admin-url", os.Getenv("CICORD_ADMIN_URL"),
+		"URL of the admin console on a separate (private) hostname, e.g. a VPN; the admin UI and admin API then only answer on that host (env CICORD_ADMIN_URL)")
 	cmd.Flags().BoolVar(&local, "local", false, "serve the directory as-is, ignoring spec.source (no git)")
 	cmd.Flags().StringVar(&f.githubAppKeyFile, "github-app-key-file", os.Getenv(gitauth.AppPrivateKeyFileEnv),
 		"GitHub App private key file (PEM), instead of the "+gitauth.AppPrivateKeySecret+" secret (env "+gitauth.AppPrivateKeyFileEnv+")")
@@ -325,6 +328,9 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	log := newLogger(stderr, f.logLevel)
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
+		return err
+	}
+	if f.adminURL, err = normalizeAdminURL(f.adminURL); err != nil {
 		return err
 	}
 	if _, err := os.Stat(filepath.Join(absDir, "cicord.yaml")); errors.Is(err, os.ErrNotExist) && !local {
@@ -450,6 +456,11 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 			"http://<listen address>; set it to the URL users reach (e.g. https://cicord.example.org)")
 	}
 	public := publicURLFor(f.publicURL, ln)
+	if err := checkAdminDistinct(f.adminURL, public); err != nil {
+		_ = ln.Close()
+		return err
+	}
+	console := consoleURL(f.adminURL, public)
 	portalURL := public
 	if proj.Spec.Portal != nil && proj.Spec.Portal.URL != "" {
 		portalURL = proj.Spec.Portal.URL
@@ -460,7 +471,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
-		CommitStatus: commitStatusHook(log, ghRepo, tokens, public),
+		CommitStatus: commitStatusHook(log, ghRepo, tokens, console),
 	})
 	stopping := make(chan struct{})
 	runtimeToken := os.Getenv("CICORD_RUNTIME_TOKEN")
@@ -473,10 +484,10 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		WebhookSecret: os.Getenv("CICORD_WEBHOOK_SECRET"), Branch: branch,
 		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
-		PublicURL: public, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
+		PublicURL: public, AdminURL: f.adminURL, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
 		Stopping: stopping, Checker: &setup.Checker{Runtime: rt, Probe: defaultProbe(), Secrets: resolve, Writer: writer},
 		Catalog: cat, SecretStore: sec, Secret: resolve, PluginStore: runtimePluginStore(cat, resolve, stopping, rt.Repo),
 	})
-	fmt.Fprintf(stdout, "Cicord runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, public, dataDir)
+	fmt.Fprintf(stdout, "Cicord runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, console, dataDir)
 	return runHTTP(ctx, log, ln, h, rt, stopping)
 }

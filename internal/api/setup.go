@@ -75,9 +75,11 @@ func (s *server) setupRoutes(h func(string, func(http.ResponseWriter, *http.Requ
 
 // NewSetup returns the handler of setup mode (no configured repository): the admin UI,
 // the setup endpoints and the health endpoints. Every other API path answers 503
-// setup_required, and the portal root redirects to the wizard.
+// setup_required, and the portal root redirects to the wizard. With an admin URL, only
+// the health endpoints answer on other hosts (the setup token flow stays on the admin host).
 func NewSetup(opts Options) http.Handler {
 	s := newServer(opts)
+	s.setupMode = true
 	m := s.mux
 	h := func(pattern string, fn func(http.ResponseWriter, *http.Request)) { m.HandleFunc(pattern, fn) }
 	s.setupRoutes(h)

@@ -140,6 +140,7 @@ type runtimeEnv struct {
 	dataDir    string
 	dir        string // the target directory
 	public     string
+	admin      string // --admin-url ("" when the admin console is on the public URL)
 	cors       []string
 	store      state.Store
 	secrets    *secrets.Store
@@ -207,10 +208,13 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 		Source: src, Connector: e.connector, Store: e.store, Secrets: e.resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, e.resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: e.public, Mode: e.mode, Simulator: e.world != nil,
-		AllowPrivateNetworks: e.world != nil, Logger: e.log, CommitStatus: commitStatusHook(e.log, ghRepo, tokens, e.public),
+		AllowPrivateNetworks: e.world != nil, Logger: e.log, CommitStatus: commitStatusHook(e.log, ghRepo, tokens, e.console()),
 	})
 	return rt, writer, src, branch, nil
 }
+
+// console is the base URL of the admin console (setup link, banner, commit statuses).
+func (e *runtimeEnv) console() string { return consoleURL(e.admin, e.public) }
 
 func (e *runtimeEnv) checker(rt *runtime.Runtime, w writeback.Writer) *setup.Checker {
 	return &setup.Checker{Runtime: rt, Probe: e.probe, Secrets: e.resolve, Writer: w}
@@ -224,7 +228,7 @@ func (e *runtimeEnv) apiOptions(rt *runtime.Runtime, w writeback.Writer, branch 
 		WebhookSecret: os.Getenv("CICORD_WEBHOOK_SECRET"), Branch: branch,
 		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(e.secrets, nil)},
-		PublicURL: e.public, CORSOrigins: e.cors, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: e.log,
+		PublicURL: e.public, AdminURL: e.admin, CORSOrigins: e.cors, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: e.log,
 		Stopping: e.stopping, Setup: wz, Checker: e.checker(rt, w), Catalog: cat,
 		SecretStore: e.secrets, Secret: e.resolve, PluginStore: runtimePluginStore(cat, e.resolve, e.stopping, rt.Repo),
 	}
@@ -278,19 +282,19 @@ func runSetup(ctx context.Context, ss setupStart) error {
 		return &setup.Activation{Runtime: rt, Writer: w, Checker: e.checker(rt, w)}, nil
 	}
 	wz = setup.New(setup.Options{Mode: e.mode, Store: e.store, Secrets: e.secrets, Connector: e.connector, Probe: e.probe,
-		Catalog: catalog.Official(), Providers: ss.providers, DataDir: e.dataDir, Dir: e.dir, PublicURL: e.public,
+		Catalog: catalog.Official(), Providers: ss.providers, DataDir: e.dataDir, Dir: e.dir, PublicURL: e.public, AdminURL: e.admin,
 		Activate: activate, Sim: ss.sim, Logger: e.log, GitHubAppKeyFile: e.appKeyFile})
-	sw.set(api.NewSetup(api.Options{Store: e.store, Mode: e.mode, PublicURL: e.public, CORSOrigins: e.cors,
+	sw.set(api.NewSetup(api.Options{Store: e.store, Mode: e.mode, PublicURL: e.public, AdminURL: e.admin, CORSOrigins: e.cors,
 		AdminUI: webui.Admin(), Logger: e.log, Stopping: e.stopping, Setup: wz, Catalog: catalog.Official()}))
 	token := wz.IssueToken()
-	url := setup.SetupURL(e.public, token)
-	fmt.Fprintf(ss.stdout, "Cicord is not set up yet: setup mode on %s\n", e.public)
+	url := setup.SetupURL(e.console(), token)
+	fmt.Fprintf(ss.stdout, "Cicord is not set up yet: setup mode on %s\n", e.console())
 	fmt.Fprintf(ss.stdout, "  open the setup wizard: %s\n", url)
 	fmt.Fprintf(ss.stdout, "  (this link works once; restart Cicord to get a new one)\n  data: %s\n", e.dataDir)
 	if ss.sim != nil {
 		fmt.Fprintf(ss.stdout, "  Discord simulator: the wizard creates a simulated bot and server for you\n")
 	}
-	e.log.Info("setup mode: waiting for the setup wizard", "url", e.public+"/admin/setup")
+	e.log.Info("setup mode: waiting for the setup wizard", "url", e.console()+"/admin/setup")
 	return runHTTP(ctx, e.log, ss.ln, sw, late, e.stopping)
 }
 
@@ -303,9 +307,10 @@ func resumeWizard(ctx context.Context, e *runtimeEnv, stdout io.Writer) (*setup.
 		return nil, err
 	}
 	wz := setup.New(setup.Options{Mode: e.mode, Store: e.store, Secrets: e.secrets, Connector: e.connector, Probe: e.probe,
-		Catalog: catalog.Official(), DataDir: e.dataDir, Dir: e.dir, PublicURL: e.public, Logger: e.log, GitHubAppKeyFile: e.appKeyFile})
+		Catalog: catalog.Official(), DataDir: e.dataDir, Dir: e.dir, PublicURL: e.public, AdminURL: e.admin, Logger: e.log,
+		GitHubAppKeyFile: e.appKeyFile})
 	tok := wz.IssueToken()
-	fmt.Fprintf(stdout, "  setup wizard not finished: %s\n", setup.SetupURL(e.public, tok))
+	fmt.Fprintf(stdout, "  setup wizard not finished: %s\n", setup.SetupURL(e.console(), tok))
 	return wz, nil
 }
 
@@ -358,8 +363,12 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 		return err
 	}
 	public := publicURLFor(f.publicURL, ln)
+	if err := checkAdminDistinct(f.adminURL, public); err != nil {
+		_ = ln.Close()
+		return err
+	}
 	runtimeTok := os.Getenv("CICORD_RUNTIME_TOKEN")
-	e := &runtimeEnv{log: log, mode: "serve", dataDir: dataDir, dir: absDir, public: public, cors: f.corsOrigins, store: store,
+	e := &runtimeEnv{log: log, mode: "serve", dataDir: dataDir, dir: absDir, public: public, admin: f.adminURL, cors: f.corsOrigins, store: store,
 		secrets: sec, resolve: secrets.Resolver(sec, nil), stopping: make(chan struct{}), runtimeTok: runtimeTok, appKeyFile: f.githubAppKeyFile}
 	e.connector, e.probe = serveDiscord(log)
 
@@ -377,6 +386,10 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 		if f.publicURL == "" && st.PublicURL != "" {
 			public = st.PublicURL // the URL the wizard was set up with (OAuth redirect)
 			e.public = public
+			if err := checkAdminDistinct(e.admin, public); err != nil {
+				_ = ln.Close()
+				return err
+			}
 		}
 		// The wizard created the repository: boot from it.
 		rt, w, src, branch, err := e.build(*st.Repo)
@@ -397,7 +410,7 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 			log.Warn("CICORD_RUNTIME_TOKEN is not set: machine endpoints (cicord plan --remote, /api/v1/sync) are disabled")
 		}
 		fmt.Fprintf(stdout, "Cicord runtime listening on %s\n  admin UI: %s/admin/\n  configuration: %s repository (set up by the wizard)\n  data: %s\n",
-			public, public, st.Repo.Provider, dataDir)
+			public, e.console(), st.Repo.Provider, dataDir)
 		return runHTTP(ctx, log, ln, api.New(e.apiOptions(rt, w, branch, wz)), rt, e.stopping)
 	}
 	if f.publicURL == "" {

@@ -68,6 +68,11 @@ type Options struct {
 	// PublicURL is the public origin of the runtime (OAuth redirect URI, Secure cookies).
 	// Empty: derived from each request.
 	PublicURL string
+	// AdminURL, when set, is the origin of the admin console on a separate (private)
+	// hostname: requests whose Host is the admin URL host use it instead of PublicURL
+	// (OAuth redirect URI, Secure cookies, CSRF origin), and the admin UI and admin API
+	// answer 404 on every other host (hosts.go).
+	AdminURL string
 	// CORSOrigins are external portal origins allowed with credentials.
 	CORSOrigins []string
 	// AdminUI is served under /admin/, Portal under / (both with SPA fallback). Nil: 404.
@@ -117,6 +122,12 @@ type server struct {
 
 	members memberCache
 	writeMu sync.Mutex // serializes config write-backs
+
+	// Admin host (hosts.go): normalized host:port of Options.AdminURL ("" without one),
+	// the default port and the scheme of that URL.
+	adminHost, adminPort, adminScheme string
+	// setupMode: NewSetup (only the health endpoints answer outside the admin host).
+	setupMode bool
 }
 
 // New returns the API handler.
@@ -179,6 +190,7 @@ func newServer(opts Options) *server {
 	}
 	s := &server{opts: opts, rt: opts.Runtime, store: opts.Store, log: opts.Logger, mux: http.NewServeMux()}
 	s.members.entries = map[string]memberEntry{}
+	s.initAdminHost()
 	return s
 }
 
@@ -325,6 +337,12 @@ func (s *server) middleware(next http.Handler) http.Handler {
 			}
 		}
 
+		// Admin host restriction (hosts.go): admin routes look unknown on other hosts.
+		if !s.hostRouteAllowed(r) {
+			notFoundHandler(sw, r)
+			return
+		}
+
 		if r.URL.Path != "/api/v1/sim/events" {
 			ctx, cancel := context.WithTimeout(r.Context(), s.opts.RequestTimeout)
 			defer cancel()
@@ -342,6 +360,9 @@ func (s *server) sameOrigin(r *http.Request, origin string) bool {
 	u, err := url.Parse(origin)
 	if err != nil {
 		return false
+	}
+	if s.isAdminOrigin(u) {
+		return true
 	}
 	if s.opts.PublicURL != "" {
 		// With a configured public URL, the Host header (attacker-influenced through DNS

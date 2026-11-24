@@ -22,16 +22,18 @@ func logRepoAuth(log *slog.Logger, method, remote string) {
 
 // commitStatusHook returns the runtime hook that sets the cicord/sync commit status
 // on the revisions of a GitHub repository (nil without a repository or credentials).
-func commitStatusHook(log *slog.Logger, ghRepo string, tokens gitauth.TokenSource, publicURL string) func(context.Context, string, string, string) {
+// console is the base URL of the admin console (--admin-url, else the public URL): the
+// status links to its admin UI.
+func commitStatusHook(log *slog.Logger, ghRepo string, tokens gitauth.TokenSource, console string) func(context.Context, string, string, string) {
 	if ghRepo == "" || tokens == nil {
 		return nil
 	}
-	cs := &gitauth.CommitStatuses{Repo: ghRepo, Tokens: tokens, TargetURL: adminURL(publicURL), Logger: log}
+	cs := &gitauth.CommitStatuses{Repo: ghRepo, Tokens: tokens, TargetURL: adminURL(console), Logger: log}
 	// Posted from a background queue: activating a revision never waits for GitHub.
 	return cs.Async(64)
 }
 
-// adminURL is the admin UI of a public URL, or "" when the URL is a loopback address
+// adminURL is the admin UI of a base URL, or "" when the URL is a loopback address
 // (a link GitHub users could not open).
 func adminURL(public string) string {
 	u, err := url.Parse(strings.TrimRight(public, "/"))

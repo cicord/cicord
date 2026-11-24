@@ -202,7 +202,9 @@ Each step is validated by the runtime before moving on.
    - The secret is checked with Discord (client-credentials grant) before it is stored.
    - The application's registered redirects are read with the bot token: if the redirect
      URL is missing, saving fails with `redirect_missing` (Discord would otherwise answer
-     "invalid redirect_uri" at the first login).
+     "invalid redirect_uri" at the first login). With `serve --admin-url`, both
+     `<public url>/auth/callback` and `<admin url>/auth/callback` must be registered, and
+     the error names the missing ones.
    - **Test login** opens `/auth/login` in a new tab; the wizard detects the Discord session
      (`GET /setup/oauth/test`) and shows "Signed in as …".
    - The API resolves the client secret on every login, so no restart is needed.

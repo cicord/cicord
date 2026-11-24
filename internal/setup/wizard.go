@@ -203,6 +203,10 @@ type Options struct {
 	// Dir is the directory `cicord dev` watches (local provider).
 	Dir       string
 	PublicURL string
+	// AdminURL is the admin console URL when it differs from PublicURL (serve
+	// --admin-url): the wizard and its login run there, so Discord must know both
+	// callbacks.
+	AdminURL string
 	// Activate starts the runtime on a new repository (no process restart) and swaps the
 	// HTTP handler to the full API.
 	Activate func(ctx context.Context, repo RepoConfig) (*Activation, error)
@@ -435,9 +439,12 @@ type RepoView struct {
 // LoginView describes the admin login step.
 type LoginView struct {
 	LoginState
-	ClientID    string `json:"clientId,omitempty"`
-	RedirectURL string `json:"redirectUrl"`
-	PortalURL   string `json:"portalUrl"`
+	ClientID string `json:"clientId,omitempty"`
+	// RedirectURL is the callback of the host the wizard runs on (the admin URL when
+	// set); RedirectURLs every callback Discord must know (public and admin).
+	RedirectURL  string   `json:"redirectUrl"`
+	RedirectURLs []string `json:"redirectUrls"`
+	PortalURL    string   `json:"portalUrl"`
 	// FromEnv: the client secret comes from the environment (nothing to paste).
 	FromEnv bool `json:"fromEnv"`
 }
@@ -473,7 +480,7 @@ func (w *Wizard) view(ctx context.Context, s State) View {
 	if r := s.Repo; r != nil {
 		v.Repo = w.repoView(ctx, *r)
 	}
-	v.Login = LoginView{LoginState: s.Login, RedirectURL: w.redirectURL()}
+	v.Login = LoginView{LoginState: s.Login, RedirectURL: w.redirectURL(), RedirectURLs: w.redirectURLs()}
 	if s.Bot != nil {
 		v.Login.ClientID = s.Bot.ApplicationID
 		v.Login.PortalURL = PortalOAuthURL(s.Bot.ApplicationID)
@@ -1114,14 +1121,32 @@ func (w *Wizard) SaveOAuth(ctx context.Context, secret string) (View, error) {
 	return w.update(ctx, func(st *State) error { st.Login.Configured, st.Login.Skipped = true, false; return nil })
 }
 
-// redirectURL is where Discord sends members back after "Continue with Discord".
+// redirectURL is where Discord sends people back after "Continue with Discord" on the
+// host the wizard runs on: the admin URL when set, the public URL otherwise.
 func (w *Wizard) redirectURL() string {
-	return strings.TrimRight(w.opts.PublicURL, "/") + "/auth/callback"
+	base := w.opts.AdminURL
+	if base == "" {
+		base = w.opts.PublicURL
+	}
+	return strings.TrimRight(base, "/") + "/auth/callback"
 }
 
-// checkRedirect fails when the application does not list Cicord's callback among its
-// OAuth2 redirects: Discord would answer "invalid redirect_uri" at the first login.
-// It is skipped when the redirects cannot be read (simulator, probe error).
+// redirectURLs are every OAuth2 callback the Discord application must list: the public
+// URL (portal logins) and, when set, the admin URL (admin console logins).
+func (w *Wizard) redirectURLs() []string {
+	out := []string{strings.TrimRight(w.opts.PublicURL, "/") + "/auth/callback"}
+	if w.opts.AdminURL != "" {
+		if a := strings.TrimRight(w.opts.AdminURL, "/") + "/auth/callback"; a != out[0] {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// checkRedirect fails when the application does not list each of Cicord's callbacks
+// among its OAuth2 redirects (redirectURLs): Discord would answer "invalid redirect_uri"
+// at the first login on that host. The error names the missing ones. It is skipped when
+// the redirects cannot be read (simulator, probe error).
 func (w *Wizard) checkRedirect(ctx context.Context, bot *BotState) error {
 	tok, ok := w.secret(bot.SecretRef)
 	if !ok {
@@ -1135,14 +1160,24 @@ func (w *Wizard) checkRedirect(ctx context.Context, bot *BotState) error {
 	if id.RedirectURIs == nil {
 		return nil
 	}
-	want := w.redirectURL()
-	if slices.Contains(id.RedirectURIs, want) {
+	var missing []string
+	for _, want := range w.redirectURLs() {
+		if !slices.Contains(id.RedirectURIs, want) {
+			missing = append(missing, want)
+		}
+	}
+	if len(missing) == 0 {
 		return nil
 	}
-	return &Error{Status: http.StatusUnprocessableEntity, Code: "redirect_missing",
-		Message: "Discord does not know Cicord's login address yet.",
-		Hint:    "In the Developer Portal open OAuth2 → Redirects, add " + want + " exactly as written, save, then try again.",
-		Link:    PortalOAuthURL(bot.ApplicationID)}
+	msg := "Discord does not know Cicord's login address yet."
+	add := "add " + missing[0] + " exactly as written"
+	if len(missing) > 1 {
+		msg = "Discord does not know Cicord's login addresses yet."
+		add = "add " + strings.Join(missing, " and ") + " (both, exactly as written)"
+	}
+	return &Error{Status: http.StatusUnprocessableEntity, Code: "redirect_missing", Message: msg,
+		Hint: "In the Developer Portal open OAuth2 → Redirects, " + add + ", save, then try again.",
+		Link: PortalOAuthURL(bot.ApplicationID), Details: "missing redirect URIs: " + strings.Join(missing, ", ")}
 }
 
 // LoginTested records a successful test login.

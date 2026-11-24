@@ -110,9 +110,12 @@ cookie is present. An unknown or expired cookie is simply anonymous.
 
 - **OAuth2**: `redirect` must be a local path (`/x`, not `//x` nor `/\x`) or an absolute URL
   on an allowed CORS origin; anything else falls back to `/`. The redirect URI sent to
-  Discord is `<public URL>/auth/callback` (the public URL is `--public-url`, otherwise
-  derived from the request's scheme and `Host`) and must be registered in the Discord
-  application. The `state` parameter is random, single-use (10 min, stored in the runtime
+  Discord is `<public URL>/auth/callback`, or `<admin URL>/auth/callback` for a request on
+  the admin host (Admin host, below), and must be registered in the Discord application.
+  `cicord serve` always has a public URL: `--public-url`, otherwise `spec.runtime.url`, the
+  URL the setup wizard ran on, then `http://localhost:<port>`. Only an API handler embedded
+  without a public URL derives it from the request's scheme and `Host`. The login, the
+  callback, the code exchange and the cookies stay on the host the login started from. The `state` parameter is random, single-use (10 min, stored in the runtime
   DB) and bound to the browser by the `cicord_oauth_state` cookie (HttpOnly, Lax, path
   `/auth/`); a missing or mismatching cookie, or an expired state → `400 invalid`. A
   Discord error or a failed code exchange → `401 unauthenticated`. The OAuth2 client ID is
@@ -172,9 +175,37 @@ always sends it. Otherwise:
 In addition, an unsafe request carrying an `Origin` header must come from the runtime's
 own origin or an allowed CORS origin, otherwise `403 forbidden`. The runtime's own origin
 is the origin of `--public-url` when it is set (the `Host` header is then never trusted),
-otherwise `Origin` must match the request's `Host`. A cross-site form cannot set custom
+otherwise `Origin` must match the request's `Host`; the origin of `--admin-url` is accepted
+too. A cross-site form cannot set custom
 headers, and cross-origin scripts need a CORS preflight, which only `--cors-origin` origins
 pass. `/hooks/*` is exempt (HMAC-authenticated).
+
+### Admin host (`--admin-url`)
+`cicord serve --admin-url https://host[:port]` (env `CICORD_ADMIN_URL`; `http` only for a
+loopback host; no path) serves the admin console on a second hostname, typically reachable
+only through a VPN, while the portal stays on `--public-url`. Both reach the same listener.
+
+- **Host matching**: a request is on the admin host when its `Host` header, compared
+  case-insensitively without a trailing dot, has the admin URL's host and port; a `Host`
+  without a port stands for the default port of the admin URL's scheme (443 for https).
+  `X-Forwarded-Host` is never read: the reverse proxies must pass the original `Host`.
+- On the admin host, the admin URL replaces the public URL for the OAuth redirect URI and
+  the `Secure` cookie flag. Cookies have no `Domain`: a session on one host is not sent to
+  the other.
+- **Admin routes answer `404 not_found` on every other host**, exactly like an unknown
+  route: `/admin`, `/admin/*` and every `/api/*` path except `/api/v1/me`,
+  `/api/v1/portal/**`, `/api/v1/sync`, `/api/v1/plan` and `/api/v1/sim/**`. The status,
+  history, servers, catalog, Store, registries and setup endpoints are thus admin-only, and
+  so is any endpoint added later. The portal (`/` and its SPA paths), `/auth/*`,
+  `/api/v1/me`, `/hooks/*`, `/healthz` and `/readyz` answer on every host. The route is
+  classified from both the cleaned request path and the pattern it matches, so encoded or
+  dotted paths cannot reach an admin handler.
+- In setup mode, only `/healthz` and `/readyz` answer outside the admin host.
+- `Host` is chosen by the client: this restriction is defense in depth. The network (the
+  admin hostname only resolving or routing inside the VPN, a listener bound to loopback) is
+  the actual boundary.
+
+Without `--admin-url`, nothing changes: every route answers on every host.
 
 ### Roles
 For each server, a user is `admin` (server owner, or `spec.access.admins`), `moderator`
@@ -630,7 +661,9 @@ repository already created by the wizard) serve only these:
 - `/healthz`, and `/readyz` (`503 setup mode`).
 
 Every other `/api/*` and `/auth/*` path → `503 setup_required` (`message`, `hint`); `/` →
-`302 /admin/setup`. The runtime prints a one-time link `<public url>/admin/setup?token=<token>`.
+`302 /admin/setup`. The runtime prints a one-time link `<public url>/admin/setup?token=<token>`
+(`<admin url>/admin/setup?token=…` with `--admin-url`; the public host then only answers
+`/healthz` and `/readyz`, §1 Admin host).
 
 ### Session
 
@@ -752,7 +785,9 @@ discord.com.
   "server"?: { "id", "name", "iconUrl"?, "key" },
   "repo"?: { "provider", "url"?, "branch", "tokenStored"? },
   "activated": false, "revision"?: "…", "firstPlan"?: Plan,
-  "login": { "configured", "skipped", "testedAs"?, "clientId"?, "redirectUrl", "portalUrl", "fromEnv" },
+  "login": { "configured", "skipped", "testedAs"?, "clientId"?, "redirectUrl", "redirectUrls", "portalUrl", "fromEnv" },
+  // redirectUrl: the callback of the host the wizard runs on (the admin URL with --admin-url);
+  // redirectUrls: every callback the Discord application must list (public, then admin)
   "plugin"?: { "name", "instance", "command"?, "skipped"? } }
 // Check
 { "id": "token|intents|member|permissions|hierarchy|commands|events|plan|writeback",

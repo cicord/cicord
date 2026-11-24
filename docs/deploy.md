@@ -13,7 +13,7 @@ store (§2).
 ## 1. What `cicord serve` needs
 
 ```
-cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local] [--github-app-key-file FILE]
+cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--public-url URL] [--admin-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local] [--github-app-key-file FILE]
 ```
 
 - `dir` (default `.`) must contain `cicord.yaml`. Its `spec.source` says what to follow:
@@ -31,6 +31,10 @@ cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--publ
   `https://` value turns on `Secure` cookies. Without it the runtime assumes
   `http://localhost:<port>`, and browser `POST`/`PUT` requests from any other origin are
   rejected with `403`.
+- `--admin-url` (env `CICORD_ADMIN_URL`): the admin console on a separate, private hostname
+  (e.g. `https://cicord.example.ts.net` on a Tailscale tailnet) while the portal stays public
+  on `--public-url`. `https://host[:port]` without a path (`http` only for a loopback host),
+  different from the public URL. See §4 "Admin on a private network, portal public".
 - `--cors-origin` (repeatable, env `CICORD_CORS_ORIGINS`, comma-separated): origins of
   external portals allowed to call the API with credentials.
 - `--data-dir` defaults to `.cicord-data` (relative to the working directory). With a local
@@ -56,13 +60,15 @@ cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--publ
 | `CICORD_DISCORD_CLIENT_ID` | OAuth2 client ID. Default: the application ID of the first bot (by key). |
 | `CICORD_LINK_SECRET` | Signing key of portal links (`ctx.portal.link()`). Default: generated once in the data dir (`link.key`). |
 | `CICORD_PUBLIC_URL`, `CICORD_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`. |
+| `CICORD_ADMIN_URL` | Default of `--admin-url` (admin console on a separate, private hostname). |
 | `CICORD_DATABASE_URL` | Default of `--database-url` (also read by `cicord dev` and `cicord secret`): PostgreSQL state store. Unset: SQLite in the data dir. |
 | `CICORD_CACHE_DIR` | Plugin download cache (`<dir>/plugins`). Default: the user cache dir. The Docker image sets `/data/cache`. |
 | `CICORD_SECRET_KEY` | Key of the encrypted secret store (bot tokens, OAuth and registry secrets set from the wizard or the admin). Default: generated once in the data dir (`secret.key`). |
 | `CICORD_ALLOW_PRIVATE_REGISTRIES` | `true` lets the Store and plugin downloads reach registries on private networks (default: public addresses only). |
 
 In the Discord developer portal, add `<public-url>/auth/callback` as an OAuth2 redirect
-URL of the application used for login.
+URL of the application used for login, and also `<admin-url>/auth/callback` with
+`--admin-url`.
 
 ### GitHub access: token or GitHub App
 
@@ -137,8 +143,8 @@ status with the context `cicord/sync`:
   connected bot, the bot cannot access the server, or the sync failed); the description
   gives the first reason.
 
-The status links to `<public-url>/admin/` (no link when the public URL is a loopback
-address). It needs the *Commit statuses* permission: when it is missing, the runtime logs a
+The status links to `<admin-url>/admin/` with `--admin-url`, otherwise
+`<public-url>/admin/` (no link when that URL is a loopback address). It needs the *Commit statuses* permission: when it is missing, the runtime logs a
 warning (`GitHub commit status not set`; once, later ones at debug level) and the sync goes on. The status is set on the
 commits of the tracked branch, after the merge; to check a pull request before merging,
 run `cicord plan --remote --comment` in CI (it comments the plan on the pull request).
@@ -315,8 +321,10 @@ Notes:
 - For a local source (no `spec.source`), mount the whole repository at `/repo`, writable
   if you want admin UI edits to be saved (`:ro` makes write-back fail).
 - Health: `GET /healthz` (process up) and `GET /readyz` (a revision is active, `503`
-  before). The image has no shell or curl: use your orchestrator's HTTP probes rather than
-  a Docker `HEALTHCHECK`.
+  before). The image has no shell or curl: `cicord healthcheck [--url
+  http://127.0.0.1:7420/healthz] [--timeout 3s]` exits 0 on `200`, 1 otherwise, e.g.
+  `HEALTHCHECK CMD ["/usr/local/bin/cicord", "healthcheck"]` or a Compose
+  `healthcheck: {test: ["CMD", "/usr/local/bin/cicord", "healthcheck"]}`.
 - Stop with `SIGTERM` (`docker stop`): the HTTP server and the bots shut down gracefully
   (≈ 25 s).
 
@@ -327,7 +335,8 @@ private (bind it to `127.0.0.1` or an internal network).
 
 - `--public-url` must be exactly the scheme + host (+ port) browsers see. The CSRF check
   compares the browser's `Origin` with it, so the proxy must pass `Origin` through
-  unchanged. `Host` is not used in `serve` mode.
+  unchanged. `Host` is not used in `serve` mode, except with `--admin-url`: it then tells
+  the admin hostname from the others, so the proxies must pass the original `Host`.
 - `Secure` cookies are set when `--public-url` starts with `https://`.
 - Request bodies: JSON ≤ 1 MiB, `POST /api/v1/plan` ≤ 32 MiB (set e.g. nginx
   `client_max_body_size 32m`). API handlers time out after 60 s; a config edit may wait up
@@ -364,6 +373,45 @@ server {
 }
 ```
 
+### Admin on a private network, portal public
+
+With `--admin-url`, one listener answers on two hostnames: the public URL for the portal
+(public reverse proxy) and the admin URL for the admin console, e.g. a hostname that only
+exists in a Tailscale tailnet (`tailscale serve --bg 7420`).
+
+```
+internet ── Caddy (https://community.example.org) ──────────┐
+                                                            ├─► 127.0.0.1:7420  cicord serve
+tailnet  ── tailscale serve (https://cicord.example.ts.net) ┘
+
+# binary on the host (in Docker: keep --listen :7420, publish 127.0.0.1:7420:7420)
+cicord serve /srv/cicord --listen 127.0.0.1:7420 \
+  --public-url https://community.example.org --admin-url https://cicord.example.ts.net
+```
+
+- Register **both** `https://community.example.org/auth/callback` and
+  `https://cicord.example.ts.net/auth/callback` as OAuth2 redirects in the Discord
+  application (the setup wizard checks both and names the missing ones).
+- A request whose `Host` is the admin hostname (case-insensitive, port-aware: no port means
+  the default port of the admin URL scheme) uses the admin URL for the OAuth redirect URI and
+  the `Secure` flag; every other host uses the public URL. Logins, the OAuth state and the
+  session cookies (no `Domain`) stay on the host the login started from.
+- On every host but the admin one, `/admin`, `/admin/*` and every `/api/*` endpoint except
+  `/api/v1/me`, `/api/v1/portal/**`, `/api/v1/sync` and `/api/v1/plan` answer `404`, like an
+  unknown route (status, history, servers, catalog, Store, registries, setup…). The portal,
+  `/auth/*`, `/api/v1/me`, `/hooks/*`, `/healthz` and `/readyz` answer on both. In setup
+  mode, the setup link uses the admin URL and the public host only answers the health
+  endpoints.
+- `cicord sync` (without `--wait`) and `cicord plan --remote` work through the public URL;
+  `cicord status` and `--wait` need the admin URL (`/api/v1/status` and `/api/v1/history`
+  are admin-only).
+- The startup banner and the commit status link use the admin URL; bot portal links keep
+  the public URL.
+- The proxies must pass the original `Host` (`X-Forwarded-Host` is never read). Caddy does
+  by default; `header_up Host community.example.org` in the public site pins it. Bind the
+  listener to loopback (`--listen 127.0.0.1:7420`, or publish `127.0.0.1:7420:7420` in
+  Docker). The `Host` check is defense in depth: the VPN is the boundary.
+
 ## 5. Security checklist
 
 - [ ] Never expose `cicord dev` (dev login, simulator, working-tree edits). In dev mode the
@@ -389,7 +437,7 @@ server {
 
 What the runtime enforces (spec/api.md §1): every unsafe request (`POST`, `PUT`,
 `PATCH`, `DELETE`) needs the `X-Cicord-Request` header or an `Authorization` header, and
-an `Origin` that is the public URL or an allowed CORS origin (`/hooks/*` is exempt and
+an `Origin` that is the public URL, the admin URL or an allowed CORS origin (`/hooks/*` is exempt and
 HMAC-authenticated); session cookies are HttpOnly and SameSite=Lax; portal link sessions
 are limited to one server and to the member role outside the portal; plugin routes cannot
 set cookies, CORS or security headers; the admin UI is served with `X-Frame-Options:

@@ -124,8 +124,9 @@ func (s *server) requireAuth(r *http.Request) (*identity, error) {
 	return id, nil
 }
 
+// secureCookies: the request or the URL of its host (publicURL) is HTTPS.
 func (s *server) secureCookies(r *http.Request) bool {
-	return r.TLS != nil || strings.HasPrefix(s.opts.PublicURL, "https://")
+	return r.TLS != nil || strings.HasPrefix(s.publicURL(r), "https://")
 }
 
 func (s *server) createSession(w http.ResponseWriter, r *http.Request, u discord.User, d sessionData, ttl time.Duration) (*identity, error) {
@@ -596,7 +597,13 @@ func (s *server) clientID() string {
 	return repo.Bots[keys[0]].Spec.ApplicationID
 }
 
+// publicURL is the origin the request was sent to: the admin URL on the admin host
+// (hosts.go), otherwise the public URL (derived from the request when unset). The OAuth
+// redirect URI uses it, so a login stays on the host it started from.
 func (s *server) publicURL(r *http.Request) string {
+	if s.onAdminHost(r) {
+		return s.opts.AdminURL
+	}
 	if s.opts.PublicURL != "" {
 		return s.opts.PublicURL
 	}
