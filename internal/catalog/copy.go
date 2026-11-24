@@ -47,6 +47,7 @@ var released = map[string]map[string][]string{
 		"sha256-innGAtvVzpodj1AtwyVMX5tTMbc4AM0WSw8g/khOXoA=", // route contract (src/routes.ts)
 		"sha256-5F37/61i51+mE/n9ViqJwZdGiBpxquwWt/xEIYp1nes=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-dxKi3tKzTsaGZpeLiiC9fex04g9EZ7qcrgg3gXNvl/Y=", // lint fixes (oxlint, knip), lib ES2023
+		"sha256-aZzFGaEkov/ESA89DumEb0g8mPk7ojxp9ZPtJ5/usVA=", // channel.message(), /polls close|results (subcommands, autocomplete)
 	}},
 	"levels": {"0.1.0": {
 		"sha256-FrdXmmfH7j5m0hN6XwwyttgOVU1cBvNlLmXW4vZrBO0=",
@@ -64,6 +65,7 @@ var released = map[string]map[string][]string{
 		"sha256-QdfT6KQQqvWVZqz8jX1DVgDkm37ZCkG5BVzECErUDCw=",
 		"sha256-LYyxabLe8FGcnQMgyAmsAnMbyPYicoJDvZSG7KHeiNY=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-Gs1W7MLFa0O9He5W6DMMOBInDtQQ01Ihel0V8qxXj/Q=", // lint fixes (oxlint, knip), lib ES2023
+		"sha256-8X7CpCN3vtquk22aCr4v8kMeLS2fRAGguYFsiBSrySo=", // channel.message()
 	}},
 	"audit-log": {"0.1.0": {
 		"sha256-CqUKC4C6sA9vNJBI0tClq77TpE8X7PgJGsq0Jyz1YjQ=",

@@ -242,6 +242,14 @@ type eventDTO struct {
 	ID       string      `json:"id,omitempty"`
 	Channel  *channelDTO `json:"channel,omitempty"`
 	Emoji    string      `json:"emoji,omitempty"`
+	Server   *serverDTO  `json:"server,omitempty"`
+}
+
+// serverDTO is the server of serverJoin / serverLeave (only id for a leave).
+type serverDTO struct {
+	ID      string `json:"id"`
+	Name    string `json:"name,omitempty"`
+	IconURL string `json:"iconUrl,omitempty"`
 }
 
 func (i *Instance) noteMessageChannel(m discord.Message) {
@@ -285,12 +293,17 @@ func (i *Instance) eventDTO(ev discord.Event) eventDTO {
 		i.reactionDTO(&d, e.ReactionEvent)
 	case discord.ReactionRemoveEvent:
 		i.reactionDTO(&d, e.ReactionEvent)
+	case discord.ServerJoinEvent:
+		d.Server = &serverDTO{ID: e.Server.ID, Name: e.Server.Name, IconURL: e.Server.IconURL}
+	case discord.ServerLeaveEvent:
+		d.Server = &serverDTO{ID: e.ServerID}
 	}
 	return d
 }
 
-// reactionDTO builds a partial message (the gateway only sends IDs; discord.Client has no
-// GetMessage): id + channel, no author/content.
+// reactionDTO builds a partial message (the gateway only sends IDs): id + channel, no
+// author/content. Plugins fetch the full message with channel.message(id) when needed
+// (one REST call per reaction is not made for them).
 func (i *Instance) reactionDTO(d *eventDTO, e discord.ReactionEvent) {
 	i.noteMessageChannel(discord.Message{ChannelID: e.ChannelID, ServerID: e.ServerID})
 	d.Message = &messageDTO{ID: e.MessageID, Channel: i.channelDTO(e.ChannelID), Attachments: []attachmentDTO{}}
@@ -321,6 +334,8 @@ type interactionDTO struct {
 	Member      *memberDTO        `json:"member,omitempty"`
 	Channel     *channelDTO       `json:"channel,omitempty"`
 	Command     string            `json:"command,omitempty"`
+	Group       string            `json:"group,omitempty"`
+	Subcommand  string            `json:"subcommand,omitempty"`
 	Options     []optionDTO       `json:"options,omitempty"`
 	ComponentID string            `json:"componentId,omitempty"`
 	Values      []string          `json:"values,omitempty"`
@@ -364,8 +379,10 @@ func (i *Instance) interactionDTO(x *interaction, localID string) interactionDTO
 	}
 	switch x.kind {
 	case "command":
-		d.Command = localID
-		d.Options = i.optionDTOs(it)
+		path, opts := it.CommandPath()
+		d.Command = path[0]
+		d.Group, d.Subcommand = pathParts(path)
+		d.Options = i.optionDTOs(opts, it.Resolved)
 	case "component":
 		d.ComponentID = localID
 		d.Values = it.Values
@@ -384,10 +401,20 @@ func (i *Instance) interactionDTO(x *interaction, localID string) interactionDTO
 	return d
 }
 
-func (i *Instance) optionDTOs(it discord.Interaction) []optionDTO {
-	out := make([]optionDTO, 0, len(it.Options))
-	res := it.Resolved
-	for _, o := range it.Options {
+// pathParts returns the group and the subcommand of a command path.
+func pathParts(path []string) (group, sub string) {
+	switch len(path) {
+	case 2:
+		return "", path[1]
+	case 3:
+		return path[1], path[2]
+	}
+	return "", ""
+}
+
+func (i *Instance) optionDTOs(opts []discord.InteractionOption, res discord.Resolved) []optionDTO {
+	out := make([]optionDTO, 0, len(opts))
+	for _, o := range opts {
 		dto := optionDTO{Name: o.Name, Type: optionTypeNames[o.Type]}
 		id, _ := o.Value.(string)
 		switch o.Type {
@@ -445,6 +472,59 @@ func (i *Instance) optionDTOs(it discord.Interaction) []optionDTO {
 		out = append(out, dto)
 	}
 	return out
+}
+
+// autocompleteDTO is the AutocompleteInteraction of an option's autocomplete handler. The
+// other options are the raw values typed so far (IDs for users, roles, channels): Discord
+// sends no resolved data with an autocomplete.
+type autocompleteDTO struct {
+	ID         string         `json:"id"`
+	User       userDTO        `json:"user"`
+	Member     *memberDTO     `json:"member,omitempty"`
+	Channel    *channelDTO    `json:"channel,omitempty"`
+	Command    string         `json:"command"`
+	Group      string         `json:"group,omitempty"`
+	Subcommand string         `json:"subcommand,omitempty"`
+	Options    map[string]any `json:"options"`
+	Focused    struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"focused"`
+}
+
+func (i *Instance) autocompleteDTO(it discord.Interaction, path []string, opts []discord.InteractionOption, focused discord.InteractionOption) autocompleteDTO {
+	user := it.User
+	if user.ID == "" && it.Member != nil {
+		user = it.Member.User
+	}
+	d := autocompleteDTO{ID: it.ID, User: i.userDTO(user), Command: path[0], Options: map[string]any{}}
+	d.Group, d.Subcommand = pathParts(path)
+	if it.Member != nil {
+		m := *it.Member
+		if m.User.ID == "" {
+			m.User = user
+		}
+		md := i.memberDTO(m)
+		d.Member = &md
+	}
+	if it.ChannelID != "" {
+		ch := i.channelDTO(it.ChannelID)
+		d.Channel = &ch
+	}
+	for _, o := range opts {
+		if !o.Focused && o.Value != nil {
+			d.Options[o.Name] = o.Value
+		}
+	}
+	d.Focused.Name = focused.Name
+	switch v := focused.Value.(type) {
+	case string:
+		d.Focused.Value = v
+	case nil:
+	default:
+		d.Focused.Value = fmt.Sprint(v)
+	}
+	return d
 }
 
 type routeDTO struct {

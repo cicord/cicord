@@ -79,6 +79,7 @@ func init() {
 	asyncOps = map[string]asyncOp{
 		"channel.send":         opChannelSend,
 		"channel.messages":     opChannelMessages,
+		"channel.message":      opChannelMessage,
 		"channel.createThread": opChannelCreateThread,
 		"message.reply":        opMessageReply,
 		"message.edit":         opMessageEdit,
@@ -515,6 +516,37 @@ func opChannelMessages(i *Instance, _ *invocation, args json.RawMessage) (func(c
 			out[k] = i.messageDTO(m)
 		}
 		return out, nil
+	}, nil
+}
+
+// opChannelMessage fetches one message; a message that does not exist (or was deleted) is
+// undefined in JS, not an error.
+func opChannelMessage(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capMessagesRead); err != nil {
+		return nil, err
+	}
+	a, err := decode[struct {
+		ChannelID string `json:"channelId"`
+		MessageID string `json:"messageId"`
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkSnowflake("message", a.MessageID); err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context) (any, error) {
+		if _, err := i.channelScope(ctx, a.ChannelID); err != nil {
+			return nil, err
+		}
+		m, err := i.env.Discord.GetMessage(ctx, a.ChannelID, a.MessageID)
+		if errors.Is(err, discord.ErrNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return i.messageDTO(m), nil
 	}, nil
 }
 

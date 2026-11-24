@@ -159,6 +159,9 @@
       const list = await acall("channel.messages", { channelId: this.id, limit: o.limit, before: o.before, after: o.after });
       return list.map(mkMessage);
     },
+    async message(id) {
+      return mkMessage(await acall("channel.message", { channelId: this.id, messageId: String(id) }));
+    },
     async createThread(name, options) {
       const o = options || {};
       return mkChannel(await acall("channel.createThread", { channelId: this.id, name, private: !!o.private, fromMessage: o.fromMessage }));
@@ -308,8 +311,24 @@
   function mkCommandInteraction(d) {
     const o = baseInteraction(InteractionProto, d);
     o.command = d.command;
+    o.group = d.group || undefined;
+    o.subcommand = d.subcommand || undefined;
     o.options = mkOptions(d.options);
     return freeze(o);
+  }
+
+  // Autocomplete interactions cannot reply: the handler returns the choices.
+  function mkAutocompleteInteraction(d) {
+    return freeze({
+      id: d.id,
+      user: mkUser(d.user),
+      member: d.member ? mkMember(d.member) : undefined,
+      channel: d.channel ? mkChannel(d.channel) : undefined,
+      command: d.command,
+      group: d.group || undefined,
+      subcommand: d.subcommand || undefined,
+      options: freeze(Object.assign({}, d.options || {})),
+    });
   }
 
   function mkComponentInteraction(d) {
@@ -444,12 +463,27 @@
 
   function command(definition) { return definition; }
 
+  function subcommand(definition) { return definition; }
+
   function defineRoutes(routes) { return routes; }
 
-  const sdk = freeze({ definePlugin, command, defineRoutes, CapabilityError });
+  const sdk = freeze({ definePlugin, command, subcommand, defineRoutes, CapabilityError });
 
   const entries = (o) => (o && typeof o === "object" ? Object.keys(o).map((k) => [k, o[k]]) : []);
   const fns = (o) => entries(o).map(([name, f]) => ({ name, type: typeof f }));
+
+  // A command or subcommand: description, run and options. Option functions (autocomplete)
+  // do not survive JSON: their typeof is reported instead.
+  function describeLeaf(name, c) {
+    return {
+      name,
+      description: c && c.description,
+      run: typeof (c && c.run),
+      optionsType: typeof (c && c.options),
+      options: entries(c && c.options).map(([oname, o]) =>
+        Object.assign({}, o, { name: oname, autocomplete: typeof (o && o.autocomplete) })),
+    };
+  }
 
   function describe() {
     const def = plugin;
@@ -463,14 +497,18 @@
       onStart: typeof def.onStart,
       onStop: typeof def.onStop,
       events: fns(def.events),
-      commands: entries(def.commands).map(([name, c]) => ({
-        name,
-        description: c && c.description,
+      commands: entries(def.commands).map(([name, c]) => Object.assign(describeLeaf(name, c), {
         ephemeral: c && c.ephemeral,
         permissions: c && c.permissions,
-        run: typeof (c && c.run),
-        optionsType: typeof (c && c.options),
-        options: entries(c && c.options).map(([oname, o]) => Object.assign({}, o, { name: oname })),
+        subcommandsType: typeof (c && c.subcommands),
+        subcommands: entries(c && c.subcommands).map(([sname, sc]) => describeLeaf(sname, sc)),
+        groupsType: typeof (c && c.groups),
+        groups: entries(c && c.groups).map(([gname, g]) => ({
+          name: gname,
+          description: g && g.description,
+          subcommandsType: typeof (g && g.subcommands),
+          subcommands: entries(g && g.subcommands).map(([sname, sc]) => describeLeaf(sname, sc)),
+        })),
       })),
       components: fns(def.components),
       modals: fns(def.modals),
@@ -503,12 +541,29 @@
 
   function own(o, k) { return hasOwn(o, k) ? o[k] : undefined; }
 
+  // commandTarget resolves a command path ("poll", "polls close", "polls admin purge") to
+  // the command or subcommand definition.
+  function commandTarget(path) {
+    const parts = path.split(" ");
+    const c = own(plugin.commands, parts[0]);
+    if (!c || parts.length === 1) return c;
+    const table = parts.length === 2 ? c.subcommands : ((g) => g && g.subcommands)(own(c.groups, parts[1]));
+    return parts.length <= 3 ? own(table, parts[parts.length - 1]) : undefined;
+  }
+
   function findHandler(kind, name) {
     switch (kind) {
       case "start": return plugin.onStart ? [plugin, plugin.onStart] : null;
       case "stop": return plugin.onStop ? [plugin, plugin.onStop] : null;
       case "event": { const f = own(plugin.events, name); return f ? [plugin.events, f] : null; }
-      case "command": { const c = own(plugin.commands, name); return c && c.run ? [c, c.run] : null; }
+      case "command": { const c = commandTarget(name); return c && c.run ? [c, c.run] : null; }
+      case "autocomplete": {
+        // "<command path>/<option>"
+        const i = name.lastIndexOf("/");
+        const c = commandTarget(name.slice(0, i));
+        const o = c && own(c.options, name.slice(i + 1));
+        return o && typeof o.autocomplete === "function" ? [o, o.autocomplete] : null;
+      }
       case "component":
       case "modal": {
         const table = kind === "component" ? plugin.components : plugin.modals;
@@ -537,6 +592,8 @@
       case "messageDelete": return [freeze({ id: d.id, channel: mkChannel(d.channel) })];
       case "reactionAdd":
       case "reactionRemove": return [freeze({ message: mkMessage(d.message), user: mkUser(d.user), emoji: d.emoji })];
+      case "serverJoin": return [freeze({ id: d.server.id, name: d.server.name || "", iconUrl: d.server.iconUrl || undefined })];
+      case "serverLeave": return [freeze({ id: d.server.id })];
     }
     return [];
   }
@@ -545,6 +602,7 @@
     switch (kind) {
       case "event": return eventArgs(name, d);
       case "command": return [mkCommandInteraction(d)];
+      case "autocomplete": return [mkAutocompleteInteraction(d), freeze({ name: d.focused.name, value: d.focused.value })];
       case "component": return [mkComponentInteraction(d)];
       case "modal": return [mkModalInteraction(d)];
       case "task":
@@ -584,6 +642,7 @@
           let s;
           try {
             if (kind === "route") s = JSON.stringify(routeOut(v));
+            else if (kind === "autocomplete") s = JSON.stringify(v === undefined || v === null ? [] : v);
             ok(s);
           } catch (e) {
             fail(e);

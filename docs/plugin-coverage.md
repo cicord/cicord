@@ -33,6 +33,8 @@ lists the precise steps.
 | `messageDelete` (id + channel only) | audit-log (author remembered from `messageCreate`) | rt/AuditLog | to verify on real Discord |
 | `messageUpdate` | audit-log (`events.messageEdits`, off by default) | audit-log unit tests, `internal/plugin` unit tests | to verify on real Discord |
 | `reactionAdd` / `reactionRemove` on a plugin's own message | reaction-roles (reaction panels) | rt/ReactionRoles | to verify on real Discord |
+| `serverJoin` / `serverLeave` (real join vs lazy GUILD_CREATE after READY or after an outage; leave = GUILD_DELETE without `unavailable`) | — | `internal/plugin` TestServerEvents, `disgoadapter` TestTranslateServerJoinLeave, `internal/sim` TestServerJoinLeaveEvents | to verify on real Discord |
+| Slash commands registered again after a re-invite (`serverJoin`) | all | `internal/runtime` TestCommandsReRegisteredOnServerJoin | to verify on real Discord |
 
 ## Commands
 
@@ -50,6 +52,10 @@ lists the precise steps.
 | `attachment` option | moderation `/warn evidence` (image in the case embed) | rt/Moderation | to verify on real Discord |
 | `permissions` (default member permissions) | tickets `/ticket-panel` (ManageChannels), moderation (ModerateMembers, KickMembers, BanMembers) | rt/Tickets, rt/Moderation (a member is refused) | to verify on real Discord |
 | `ephemeral: true` default (reply without flag is ephemeral) | levels `/rank`, tickets, polls, moderation | rt/Levels, rt/AutoDefer, rt/Tickets | to verify on real Discord |
+| Subcommands (`subcommand()`, `interaction.subcommand`, ephemeral on the command) | polls `/polls close`, `/polls results` | rt/Polls; polls unit tests; `internal/plugin` TestSubcommandDispatch | to verify on real Discord |
+| Subcommand groups (`interaction.group`) | — | `internal/plugin` TestSubcommandDispatch, `internal/sim` TestInvokeSubcommand, sdk tests | to verify on real Discord |
+| `autocomplete` (string option, filtered by the typed text and the member) | polls `/polls close poll`, `/polls results poll` | rt/Polls; polls unit tests; `internal/plugin` TestAutocompleteDispatch (invalid, failing and slow handlers → empty list) | to verify on real Discord |
+| `minLength` / `maxLength` (string option) | polls `poll` (`maxLength: 100`) | `internal/sim` TestInvokeSubcommand, `internal/plugin` TestInspectSubcommands | to verify on real Discord |
 
 ## Components, modals, interaction API
 
@@ -99,7 +105,8 @@ lists the precise steps.
 | Plugin-owned channel never pruned (`prune: true`) and overwrites kept by `SyncServer` | tickets | rt/Tickets | to verify on real Discord |
 | `server.deleteChannel` (ownership record removed) | tickets close | rt/Tickets | to verify on real Discord |
 | `channel.send` | all | rt/* | to verify on real Discord |
-| `channel.messages()` (history; `before` to fetch a message by id) | tickets summary, polls task | rt/Tickets, rt/Polls | to verify on real Discord |
+| `channel.messages()` (history) | tickets summary | rt/Tickets | to verify on real Discord |
+| `channel.message(id)` (one message; `undefined` when deleted) | polls task and `/polls close`, reaction-roles panels | rt/Polls, rt/ReactionRoles; `internal/plugin` TestChannelMessageOp | to verify on real Discord |
 | `channel.createThread({ fromMessage })` | polls `thread` | rt/Polls | to verify on real Discord |
 | `message.reply` | probe (bot mentioned), levels (no announce channel) | rt/ProbeErrorsAndGating | to verify on real Discord |
 | `message.edit` (own message, from a task) | polls auto-close | rt/Polls | to verify on real Discord |
@@ -275,16 +282,24 @@ steps.
 6. **Portal routes**: with the portal, `GET …/levels/leaderboard` anonymously,
    `…/levels/me` as a member, `…/tickets/tickets` and `…/moderation/warnings/<id>` as a
    moderator, `DELETE …/moderation/warnings/<id>` as an admin (403 for a moderator).
-7. **Hot reload**: change `defaultHours` in `bots/cicord/bot.yaml` and push: the bot does not
+7. **Subcommands and autocomplete**: type `/polls close poll:` as the author of an open poll:
+   the suggestions list your open polls (`#<n> <question>`) and narrow while you type; a
+   member who opened no poll sees none, a Moderator sees them all. Pick one: the poll message
+   closes (🏆) and the ephemeral reply says "Poll #n is closed.". `/polls results poll:` lists
+   every poll and answers with the current tally. Check the suggestions appear within the
+   3 s deadline over real latency.
+8. **Re-invite**: kick the bot from the server and invite it again: the runtime logs "bot
+   joined a server" and the slash commands are available again without a push.
+9. **Hot reload**: change `defaultHours` in `bots/cicord/bot.yaml` and push: the bot does not
    reconnect, open polls keep their votes and still close on time.
-8. **Reaction roles**: the three panels appear in #roles at start. As the member pick Red then
+10. **Reaction roles**: the three panels appear in #roles at start. As the member pick Red then
    Blue (Red goes away), pick Events in the select (refused without the Member role), react
    ⛏️ on the games panel and remove it. Change a panel title and push: the message is edited,
    not posted again. Without Administrator, put a panel role above the bot's role: the click
    explains the hierarchy.
-9. **Audit log**: join, change a role, delete a message, close a poll: a single batch lands in
+11. **Audit log**: join, change a role, delete a message, close a poll: a single batch lands in
    #audit-log about 10 s later.
-10. **Announcements**: `/announce channel:#general when:"in 2 min" mention:@Events` → form →
+12. **Announcements**: `/announce channel:#general when:"in 2 min" mention:@Events` → form →
     posted two minutes later with only @Events pinged; `/announce-list`, `/announce-cancel`.
     Set the `game-night` cron to a minute or two ahead (Europe/Paris time): it posts once, at
     that minute.

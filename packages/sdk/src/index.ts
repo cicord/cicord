@@ -35,7 +35,21 @@ export function definePlugin(definition: Spec.PluginDefinition): Spec.PluginDefi
 /** Helper that infers option types for `interaction.options`. Identity at run time. */
 export function command<const O extends Record<string, Spec.CommandOption> = {}>(
   definition: Spec.CommandDefinition<O>,
-): Spec.CommandDefinition<O> {
+): Spec.CommandDefinition<O>;
+/** A command made of subcommands (and groups). Identity at run time. */
+export function command(
+  definition: Spec.CommandWithSubcommandsDefinition,
+): Spec.CommandWithSubcommandsDefinition;
+export function command(
+  definition: Spec.CommandDefinition<any> | Spec.CommandWithSubcommandsDefinition,
+): Spec.CommandDefinition<any> | Spec.CommandWithSubcommandsDefinition {
+  return definition;
+}
+
+/** Helper that infers option types for a subcommand. Identity at run time. */
+export function subcommand<const O extends Record<string, Spec.CommandOption> = {}>(
+  definition: Spec.SubcommandDefinition<O>,
+): Spec.SubcommandDefinition<O> {
   return definition;
 }
 
@@ -57,6 +71,7 @@ type SameConstructor = typeof CapabilityError extends typeof Spec.CapabilityErro
 export type __SpecConformance = [
   Assert<typeof definePlugin extends typeof Spec.definePlugin ? true : false>,
   Assert<typeof command extends typeof Spec.command ? true : false>,
+  Assert<typeof subcommand extends typeof Spec.subcommand ? true : false>,
   Assert<typeof defineRoutes extends typeof Spec.defineRoutes ? true : false>,
   Assert<SameConstructor>,
 ];

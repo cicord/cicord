@@ -73,9 +73,15 @@ events: {
 | `messageCreate` | `message` | `ServerMessages` (+ `MessageContent` for the text) |
 | `messageUpdate` | `message` | `ServerMessages` |
 | `messageDelete` | `{ id, channel }` | `ServerMessages` |
-| `reactionAdd`, `reactionRemove` | `{ message, user, emoji }` (the message is partial) | `ServerMessageReactions` |
+| `reactionAdd`, `reactionRemove` | `{ message, user, emoji }` (the message is partial: `message.channel.message(message.id)` fetches it) | `ServerMessageReactions` |
+| `serverJoin` | `{ id, name, iconUrl }` | none |
+| `serverLeave` | `{ id }` | none |
 
-Events are delivered in order for each instance.
+Events are delivered in order for each instance, and only to instances of the servers
+declared for the bot. `serverJoin` fires when the bot is invited (again) while connected, not
+when servers load after a connection or an outage; `serverLeave` when it is kicked, banned,
+removed or the server is deleted. After a re-invite the runtime registers the server's slash
+commands again.
 
 ## Slash commands
 
@@ -102,9 +108,56 @@ commands: {
 - Option `type`: `string`, `integer`, `number`, `boolean`, `user`, `channel`, `role`,
   `mentionable` or `attachment`.
 - `required` options come first in Discord; `min`/`max` apply to `integer` and `number`;
-  `choices` (≤ 25) to `string`, `integer` and `number`.
+  `minLength`/`maxLength` (0–6000) to `string`; `choices` (≤ 25) to `string`, `integer` and
+  `number`.
 - At most 25 options per command. A command name defined twice on the same bot and server
   fails validation.
+
+### Subcommands
+
+`subcommands` (and `groups` of subcommands) turn a command into `/polls close`,
+`/polls results`, `/polls admin purge`. Each `subcommand()` has its own typed `options` and
+`run`; `interaction.subcommand` and `interaction.group` say which one runs. `ephemeral` and
+`permissions` stay on the command.
+
+```ts
+import { command, subcommand } from "@cicord/sdk";
+
+polls: command({
+  description: "Manage polls",
+  subcommands: {
+    close: subcommand({
+      description: "Close a poll",
+      options: { poll: { type: "string", description: "Poll", required: true } },
+      async run(ctx, interaction) { /* interaction.options.poll: string */ },
+    }),
+  },
+  groups: { admin: { description: "Admin", subcommands: { purge: subcommand({ description: "Purge", run() {} }) } } },
+}),
+```
+
+A command with subcommands has no `run` or `options` of its own; at most 25 subcommands and
+groups per command; a group holds only subcommands (1–25).
+
+### Autocomplete
+
+`autocomplete(ctx, interaction, focused)` on a `string`, `integer` or `number` option (not
+with `choices`) suggests values while the user types. `focused.value` is the text typed so far
+(always a string), `interaction.options` the raw values of the other options. Return at most
+25 `{ name, value }` within **2.5 s**: an autocomplete cannot be deferred, and a handler that
+throws or is late shows an empty list. The user may still send any text: validate it in
+`run`.
+
+```ts
+poll: {
+  type: "string", description: "Poll", required: true,
+  async autocomplete(ctx, interaction, focused) {
+    const polls = await listPolls(ctx);
+    return polls.filter((p) => p.question.includes(focused.value)).slice(0, 25)
+      .map((p) => ({ name: `#${p.id} ${p.question}`, value: p.id }));
+  },
+},
+```
 
 ## Interactions: reply, defer, follow up
 
@@ -282,10 +335,10 @@ tasks: {
 ```
 
 :::tip[Editing a message later]
-The SDK has no "get message by id" yet. Keep `{ channelId, messageId }` from the `Message`
-that `channel.send()` returns, and in the task fetch it back with
-`channel.messages({ before: <messageId + 1>, limit: 1 })`. The official `polls` plugin does
-this to close a poll.
+Keep `{ channelId, messageId }` from the `Message` that `channel.send()` returns, and in the
+task fetch it back with `ctx.server.channel({ id: channelId }).message(messageId)`
+(`discord.messages.read`; `undefined` once the message is deleted). The official `polls`
+plugin does this to close a poll.
 :::
 
 ## Plugin-owned channels

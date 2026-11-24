@@ -62,6 +62,11 @@
 // DeferredUpdate). When a handler fails before replying, the user gets GenericErrorMessage
 // (ephemeral), or the deferred response is edited.
 //
+// Commands with subcommands are dispatched to the invoked leaf ("polls close", from
+// discord.Interaction.CommandPath). Autocomplete interactions (kind "autocomplete") bypass
+// that state machine: the option's handler runs within Limits.AutocompleteTimeout and its
+// return value, validated, is the ResponseAutocomplete (an empty list on any failure).
+//
 // # Capabilities and isolation
 //
 // Every host call checks Env.Grants (spec/README.md §6) and throws CapabilityError in JS

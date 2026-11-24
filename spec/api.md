@@ -546,7 +546,7 @@ and the users `alice`, `bob` and `charlie`, who are not members.
 | GET | `/api/v1/sim/channels/{id}/messages?limit=50` | `{"items": [Message]}` the last `limit` (≤ 500) messages, oldest first. |
 | GET | `/api/v1/sim/users/{id}/dms?limit=50` | `{"items": [Message]}` DMs received by the user from bots, oldest first. |
 | POST | `/api/v1/sim/messages` | `{"userId","channelId","content"}` → `201 Message` |
-| POST | `/api/v1/sim/commands` | `{"userId","serverId","channelId","bot","name","options":{}}` → `InteractionResult` |
+| POST | `/api/v1/sim/commands` | `{"userId","serverId","channelId","bot","name","options":{},"autocomplete"?:{"option","value"}}` → `InteractionResult`. `name` is the command path: `"poll"`, `"polls close"`, `"polls admin purge"` (subcommand of a group). With `autocomplete`, the user types `value` in the autocomplete option `option` instead of running the command (`options` are the other options already filled in); the result carries the bot's `choices`. |
 | POST | `/api/v1/sim/components` | `{"userId","channelId"?,"messageId","customId","values":[]}` → `InteractionResult` (a select when `customId` is a select menu of the message, a button click otherwise). |
 | POST | `/api/v1/sim/modals` | `{"userId","serverId","channelId","bot","customId","fields":{"<input id>":"value"}}` → `InteractionResult` (submits a modal shown by a previous interaction). |
 | GET | `/api/v1/sim/commands?serverId=` | `{"items": [{"bot","name","description","options":[...]}]}` registered commands, of every simulated server by default. |
@@ -558,8 +558,11 @@ and the users `alice`, `bob` and `charlie`, who are not members.
 - `SimServer = {"id","key"?,"name","ownerId","channels":[{"id","name","type","parentId"?,"position"}],"roles":[{"id","name","color","position","managed"}],"members":[{"user","nick","roles":["<role id>"]}]}`.
   Only repository servers present in the world are listed; `key` is the repository key;
   `roles` include `@everyone` (its ID is the server ID); `managed` marks integration roles.
-- Command options: `{"name","description","type","required","choices"?:[{"name","value"}],"minValue"?,"maxValue"?}`.
-  `type` is one of `string | integer | boolean | user | channel | role | mentionable | number | attachment`.
+- Command options: `{"name","description","type","required","choices"?:[{"name","value"}],"minValue"?,"maxValue"?,"minLength"?,"maxLength"?,"autocomplete"?,"options"?:[...]}`.
+  `type` is one of `subcommand | subcommandGroup | string | integer | boolean | user | channel | role | mentionable | number | attachment`.
+  A command holds either plain options or subcommands and groups; `options` lists the
+  options of a subcommand (plain options) or of a group (subcommands). `autocomplete: true`
+  marks an option whose values the bot suggests while the user types.
 - Simulated Discord errors map to `404 not_found`, `403 forbidden` and `400 invalid`
   (unknown user or server, missing permission…); an unknown channel / user in the message
   and DM listings → `404`; an unknown `messageId` (or one not in `channelId`) → `404`.
@@ -588,7 +591,9 @@ and the users `alice`, `bob` and `charlie`, who are not members.
 //           "author"?:{"name","url","iconUrl"},"footer"?:{"text","iconUrl"},"imageUrl"?,"thumbnailUrl"?}]
 // InteractionResult — waits up to 5 s for the bot's answer
 { "status": "replied",            // replied | deferred | failed | modal
-  "response": Message | null, "followups": [Message], "modal"?: {...}, "error": "" }
+  "response": Message | null, "followups": [Message], "modal"?: {...},
+  "choices"?: [{ "name", "value" }],  // autocomplete results (status "replied")
+  "error": "" }
 ```
 
 ## 9. Static UIs

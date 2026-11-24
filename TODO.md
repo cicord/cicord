@@ -83,7 +83,8 @@ No public release until the product is complete.
 - [x] `cicord plugin publish` (checks, tag, index entry); verified publishers honoured only from the verified official index
 - [ ] `cicord plugin publish`: build from the tagged tree (today: the working tree)
 - [x] Official plugins: reaction-roles, audit-log, announcements (9 in the catalog); moderation publishes `moderation.case`
-- [ ] SDK gaps found while writing them: subcommands, channel/role/ban events and actor, message content before edit/delete, allowedMentions id lists, Intl/time zones in the plugin host, removing others' reactions, role hierarchy info
+- [x] SDK gaps: subcommands and groups, autocomplete, `channel.message(id)`, `serverJoin`/`serverLeave`, string `minLength`/`maxLength`
+- [ ] SDK gaps found while writing them: channel/role/ban events and actor, message content before edit/delete, allowedMentions id lists, Intl/time zones in the plugin host, removing others' reactions, role hierarchy info
 
 - [ ] Admin login loses the deep link (redirects to /admin/ instead of the page that asked for login)
 
@@ -91,8 +92,12 @@ No public release until the product is complete.
 - [ ] GitHub App authentication (instead of a token) + commit statuses on synced SHAs
 - [ ] Observability: `/metrics` (Prometheus), plugin error history, alerting hooks
 - [ ] Postgres state backend; backup/restore guide
-- [ ] Discord contract gaps: subcommands, autocomplete, `GetMessage`, server join/leave events,
-      fatal disconnect event, `CommandOption.MinLength/MaxLength`, select menu types 5–8
+- [x] Discord contract gaps: subcommands, autocomplete, `GetMessage`, server join/leave events,
+      `CommandOption.MinLength/MaxLength`
+- [ ] Discord contract gaps: fatal disconnect event; select menu types 5–8 (user / role /
+      mentionable / channel selects with `defaultValues` / `channelTypes` and resolved values
+      in the component interaction: contract `Component`, adapter mapping, sim validation and
+      `Select`, `convertRow` + d.ts `SelectMenu`, testing fakes)
 - [ ] Simulator: reseed when hot reload adds servers/bots
 - [ ] Security review: plugin sandbox escapes, Sobek memory limits, YAML fuzzing, link token reuse
 - [ ] `cicord mv` against a remote runtime (mapping move endpoint) — rename detection already in the reconciler

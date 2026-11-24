@@ -334,3 +334,50 @@ func TestMapGatewayError(t *testing.T) {
 		t.Errorf("4013 = %v", err)
 	}
 }
+
+func TestTranslateServerJoinLeave(t *testing.T) {
+	s := testSession()
+	// Before READY nothing is a join (the server set is unknown).
+	if evs := mustTranslate(t, s, "GUILD_CREATE", `{"id":"7","name":"Early"}`); len(evs) != 0 {
+		t.Errorf("guild create before READY emitted %v", evs)
+	}
+	mustTranslate(t, s, "READY", `{"user":{"id":"600"},"guilds":[{"id":"1","unavailable":true},{"id":"2","unavailable":true}]}`)
+	// Lazy loading of the READY servers: no join.
+	for _, id := range []string{"1", "2"} {
+		if evs := mustTranslate(t, s, "GUILD_CREATE", `{"id":"`+id+`","name":"S"}`); len(evs) != 0 {
+			t.Errorf("lazy guild create %s emitted %v", id, evs)
+		}
+	}
+	// Outage: unavailable GUILD_DELETE then GUILD_CREATE is neither a leave nor a join.
+	if evs := mustTranslate(t, s, "GUILD_DELETE", `{"id":"1","unavailable":true}`); len(evs) != 0 {
+		t.Errorf("unavailable guild delete emitted %v", evs)
+	}
+	if evs := mustTranslate(t, s, "GUILD_CREATE", `{"id":"1","name":"S"}`); len(evs) != 0 {
+		t.Errorf("outage recovery emitted %v", evs)
+	}
+	// Unavailable GUILD_CREATE never joins.
+	if evs := mustTranslate(t, s, "GUILD_CREATE", `{"id":"3","unavailable":true}`); len(evs) != 0 {
+		t.Errorf("unavailable guild create emitted %v", evs)
+	}
+	// A new server: join, once.
+	ev := one(t, mustTranslate(t, s, "GUILD_CREATE", `{"id":"3","name":"New","owner_id":"9"}`))
+	if j, ok := ev.(discord.ServerJoinEvent); !ok || j.Server.ID != "3" || j.Server.Name != "New" || j.Server.OwnerID != "9" || discord.ServerIDOf(ev) != "3" {
+		t.Errorf("join = %#v", ev)
+	}
+	if evs := mustTranslate(t, s, "GUILD_CREATE", `{"id":"3","name":"New"}`); len(evs) != 0 {
+		t.Errorf("second guild create emitted %v", evs)
+	}
+	// Leave, then a re-invite is a join again.
+	ev = one(t, mustTranslate(t, s, "GUILD_DELETE", `{"id":"3"}`))
+	if l, ok := ev.(discord.ServerLeaveEvent); !ok || l.ServerID != "3" {
+		t.Errorf("leave = %#v", ev)
+	}
+	if _, ok := one(t, mustTranslate(t, s, "GUILD_CREATE", `{"id":"3","name":"New"}`)).(discord.ServerJoinEvent); !ok {
+		t.Error("re-invite is not a join")
+	}
+	// A new READY (reconnect without resume) replaces the set.
+	mustTranslate(t, s, "READY", `{"user":{"id":"600"},"guilds":[{"id":"4","unavailable":true}]}`)
+	if evs := mustTranslate(t, s, "GUILD_CREATE", `{"id":"4"}`); len(evs) != 0 {
+		t.Errorf("guild of the new READY emitted %v", evs)
+	}
+}

@@ -17,7 +17,8 @@ release until the product is complete. This page summarizes the project's living
   soundboard sounds, with boost and Community gating explained in the plan. See
   [Discord parity](../../reference/discord-parity/).
 - **Bots and plugins**: one runtime for N bots across M servers; a sandboxed TypeScript plugin
-  host with capabilities, KV storage, slash commands, components, modals, schedules, tasks,
+  host with capabilities, KV storage, slash commands (subcommands, autocomplete), components,
+  modals, schedules, tasks,
   cross-plugin events, plugin-owned channels and typed portal routes.
 - **Nine official plugins** bundled in the binary, all exercised end to end on the simulator.
 - **Git write-back**: commits and GitHub pull requests, with per-path policies.
@@ -46,9 +47,10 @@ release until the product is complete. This page summarizes the project's living
 - Verify every SDK feature on real Discord (the simulator already covers them all), including
   member joins.
 - Route contracts for the tickets, moderation and announcements plugins.
-- SDK gaps found while writing the official plugins: fetching a message by ID, subcommands,
-  autocomplete, more events (channel, role, ban), message content before edits and deletions,
-  time zones in the plugin host, removing other users' reactions, role hierarchy information.
+- SDK gaps found while writing the official plugins: more events (channel, role, ban),
+  message content before edits and deletions, time zones in the plugin host, removing other
+  users' reactions, role hierarchy information, user/role/channel select menus. (Fetching a
+  message by ID, subcommands, autocomplete and server join/leave events are done.)
 - Discord parity: invites and webhooks, a holographic role style preset, live updates of the
   plan page, drift detection for widget, onboarding and welcome screen.
 - Setup wizard: a webhook step, creating the GitHub App from a manifest, several servers and

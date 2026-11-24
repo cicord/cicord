@@ -46,6 +46,7 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		for _, g := range r.Guilds {
 			ids = append(ids, g.ID)
 		}
+		s.servers.ready(ids)
 		return []discord.Event{discord.ReadyEvent{User: userFromWire(r.User), ServerIDs: ids}}, nil
 
 	case "GUILD_CREATE":
@@ -53,25 +54,35 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		if err := json.Unmarshal(d, &g); err != nil {
 			return nil, err
 		}
-		if !g.Unavailable {
-			for _, m := range g.Members {
-				s.members.put(memberFromWire(g.ID, m, nil))
-			}
-			if s.chunkingEnabled() {
-				s.requestMembers(g.ID)
-			}
+		if g.Unavailable {
+			return nil, nil
 		}
-		return nil, nil
+		for _, m := range g.Members {
+			s.members.put(memberFromWire(g.ID, m, nil))
+		}
+		if s.chunkingEnabled() {
+			s.requestMembers(g.ID)
+		}
+		if !s.servers.created(g.ID) {
+			return nil, nil
+		}
+		var full wireGuild
+		if err := json.Unmarshal(d, &full); err != nil {
+			return nil, err
+		}
+		return []discord.Event{discord.ServerJoinEvent{Server: serverFromWire(full)}}, nil
 
 	case "GUILD_DELETE":
 		var g wireGuildDelete
 		if err := json.Unmarshal(d, &g); err != nil {
 			return nil, err
 		}
-		if !g.Unavailable {
-			s.members.dropServer(g.ID)
+		if g.Unavailable {
+			return nil, nil // outage: the server comes back with a GUILD_CREATE
 		}
-		return nil, nil
+		s.members.dropServer(g.ID)
+		s.servers.deleted(g.ID)
+		return []discord.Event{discord.ServerLeaveEvent{ServerID: g.ID}}, nil
 
 	case "GUILD_MEMBERS_CHUNK":
 		var c wireMembersChunk
@@ -454,4 +465,46 @@ func (q *eventQueue) run(handler func(discord.Event), logger *slog.Logger) {
 			handler(e)
 		}()
 	}
+}
+
+// ───────────────────────────────────────────────────────────── server join detection
+
+// serverTracker tells a real server join from the other GUILD_CREATE dispatches. After
+// READY (which lists every server of the bot as unavailable) Discord sends a GUILD_CREATE
+// for each of them as they load (lazy loading), and again for a server recovering from an
+// outage (after a GUILD_DELETE with unavailable: true). Only a GUILD_CREATE for a server
+// that is neither in the last READY nor already seen is a join. Before the first READY
+// nothing is a join (the set is unknown). The zero value is ready to use.
+type serverTracker struct {
+	mu    sync.Mutex
+	known map[string]bool // nil until the first READY
+}
+
+// ready resets the known servers (every READY lists them all, also after a reconnect
+// that could not resume).
+func (t *serverTracker) ready(ids []string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.known = make(map[string]bool, len(ids))
+	for _, id := range ids {
+		t.known[id] = true
+	}
+}
+
+// created records an available GUILD_CREATE and reports whether it is a join.
+func (t *serverTracker) created(id string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.known == nil || t.known[id] {
+		return false
+	}
+	t.known[id] = true
+	return true
+}
+
+// deleted forgets a server the bot left (a later GUILD_CREATE is a new join).
+func (t *serverTracker) deleted(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.known, id)
 }

@@ -402,13 +402,18 @@ type wireCommandChoice struct {
 }
 
 type wireCommandOption struct {
-	Type        int                 `json:"type"`
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	Required    bool                `json:"required,omitempty"`
-	Choices     []wireCommandChoice `json:"choices,omitempty"`
-	MinValue    *float64            `json:"min_value,omitempty"`
-	MaxValue    *float64            `json:"max_value,omitempty"`
+	Type         int                 `json:"type"`
+	Name         string              `json:"name"`
+	Description  string              `json:"description"`
+	Required     bool                `json:"required,omitempty"`
+	Choices      []wireCommandChoice `json:"choices,omitempty"`
+	MinValue     *float64            `json:"min_value,omitempty"`
+	MaxValue     *float64            `json:"max_value,omitempty"`
+	MinLength    *int                `json:"min_length,omitempty"`
+	MaxLength    *int                `json:"max_length,omitempty"`
+	Autocomplete bool                `json:"autocomplete,omitempty"`
+	// Options of a subcommand (1) or a subcommand group (2).
+	Options []wireCommandOption `json:"options,omitempty"`
 }
 
 type wireCommand struct {
@@ -436,6 +441,7 @@ type wireInteractionOption struct {
 	Name    string                  `json:"name"`
 	Type    int                     `json:"type"`
 	Value   json.RawMessage         `json:"value,omitempty"`
+	Focused bool                    `json:"focused,omitempty"`
 	Options []wireInteractionOption `json:"options,omitempty"`
 }
 

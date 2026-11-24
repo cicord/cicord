@@ -63,6 +63,12 @@ type optionJSON struct {
 	Choices     []any    `json:"choices,omitempty"`
 	MinValue    *float64 `json:"minValue,omitempty"`
 	MaxValue    *float64 `json:"maxValue,omitempty"`
+	MinLength   *int     `json:"minLength,omitempty"`
+	MaxLength   *int     `json:"maxLength,omitempty"`
+	// Autocomplete: the option has an autocomplete handler.
+	Autocomplete bool `json:"autocomplete,omitempty"`
+	// Options of a subcommand or a subcommand group (type subcommand / subcommandGroup).
+	Options []optionJSON `json:"options,omitempty"`
 }
 
 type commandJSON struct {
@@ -110,6 +116,7 @@ type pluginReport struct {
 }
 
 var optionTypeNames = map[discord.CommandOptionType]string{
+	discord.OptionSubcommand: "subcommand", discord.OptionSubcommandGroup: "subcommandGroup",
 	discord.OptionString: "string", discord.OptionInteger: "integer", discord.OptionBoolean: "boolean",
 	discord.OptionUser: "user", discord.OptionChannel: "channel", discord.OptionRole: "role",
 	discord.OptionMentionable: "mentionable", discord.OptionNumber: "number", discord.OptionAttachment: "attachment",
@@ -151,14 +158,7 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 	}
 	r.def = def
 	for _, c := range def.Commands {
-		cj := commandJSON{Name: c.Name, Description: c.Description, Ephemeral: c.Ephemeral, Permissions: c.Permissions, Options: []optionJSON{}}
-		for _, o := range c.Options {
-			oj := optionJSON{Name: o.Name, Type: optionTypeNames[o.Type], Description: o.Description, Required: o.Required, MinValue: o.MinValue, MaxValue: o.MaxValue}
-			for _, ch := range o.Choices {
-				oj.Choices = append(oj.Choices, map[string]any{"name": ch.Name, "value": ch.Value})
-			}
-			cj.Options = append(cj.Options, oj)
-		}
+		cj := commandJSON{Name: c.Name, Description: c.Description, Ephemeral: c.Ephemeral, Permissions: c.Permissions, Options: optionsJSON(c.Options)}
 		r.Commands = append(r.Commands, cj)
 	}
 	r.Events = append(r.Events, def.Events...)
@@ -210,6 +210,45 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 	return r, nil
 }
 
+func optionsJSON(opts []discord.CommandOption) []optionJSON {
+	out := []optionJSON{}
+	for _, o := range opts {
+		oj := optionJSON{Name: o.Name, Type: optionTypeNames[o.Type], Description: o.Description, Required: o.Required,
+			MinValue: o.MinValue, MaxValue: o.MaxValue, MinLength: o.MinLength, MaxLength: o.MaxLength, Autocomplete: o.Autocomplete}
+		for _, ch := range o.Choices {
+			oj.Choices = append(oj.Choices, map[string]any{"name": ch.Name, "value": ch.Value})
+		}
+		if o.IsSubcommand() {
+			oj.Options = optionsJSON(o.Options)
+		}
+		out = append(out, oj)
+	}
+	return out
+}
+
+// commandLines prints a command, one line per invocable leaf: "/polls close poll:string".
+func commandLines(prefix string, opts []optionJSON) []string {
+	if len(opts) > 0 && (opts[0].Type == "subcommand" || opts[0].Type == "subcommandGroup") {
+		var out []string
+		for _, o := range opts {
+			out = append(out, commandLines(prefix+" "+o.Name, o.Options)...)
+		}
+		return out
+	}
+	line := prefix
+	for _, o := range opts {
+		opt := o.Name + ":" + o.Type
+		if o.Autocomplete {
+			opt += "…"
+		}
+		if !o.Required {
+			opt = "[" + opt + "]"
+		}
+		line += " " + opt
+	}
+	return []string{line}
+}
+
 func printPluginReport(w io.Writer, r *pluginReport) {
 	fmt.Fprintf(w, "Plugin %s %s (%s", r.Name, r.Version, r.Entry)
 	if r.BundleBytes > 0 {
@@ -227,14 +266,7 @@ func printPluginReport(w io.Writer, r *pluginReport) {
 	}
 	var cmds []string
 	for _, c := range r.Commands {
-		line := "/" + c.Name
-		for _, o := range c.Options {
-			opt := o.Name + ":" + o.Type
-			if !o.Required {
-				opt = "[" + opt + "]"
-			}
-			line += " " + opt
-		}
+		line := strings.Join(commandLines("/"+c.Name, c.Options), ", ")
 		if c.Description != "" {
 			line += "  " + c.Description
 		}
@@ -675,19 +707,25 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 		return err
 	}
 	if rep.def != nil {
+		var leaves []string
 		for _, c := range rep.def.Commands {
+			leaves = append(leaves, c.Leaves()...)
+		}
+		for _, name := range leaves {
+			c, _ := rep.def.Command(strings.Fields(name)[0])
+			opts, _ := c.Leaf(strings.Fields(name))
 			required := false
-			for _, o := range c.Options {
+			for _, o := range opts {
 				required = required || o.Required
 			}
 			if required {
-				fmt.Fprintf(stdout, "skip /%s (required options)\n", c.Name)
+				fmt.Fprintf(stdout, "skip /%s (required options)\n", name)
 				continue
 			}
 			// the server owner may use every command (default member permissions)
-			h := world.InvokeCommand(seed.Owner.ID, testServerID, general.ID, testAppID, c.Name, nil)
+			h := world.InvokeCommand(seed.Owner.ID, testServerID, general.ID, testAppID, name, nil)
 			if h.Err() != nil {
-				fmt.Fprintf(stdout, "FAIL /%s: %v\n", c.Name, h.Err())
+				fmt.Fprintf(stdout, "FAIL /%s: %v\n", name, h.Err())
 				failed = true
 				continue
 			}
@@ -697,17 +735,17 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 			}
 			switch {
 			case s.Failed:
-				fmt.Fprintf(stdout, "FAIL /%s: the interaction failed (no answer)\n", c.Name)
+				fmt.Fprintf(stdout, "FAIL /%s: the interaction failed (no answer)\n", name)
 				failed = true
 			case s.Modal != nil:
-				fmt.Fprintf(stdout, "ok   /%s: modal %q\n", c.Name, s.Modal.Title)
+				fmt.Fprintf(stdout, "ok   /%s: modal %q\n", name, s.Modal.Title)
 			case s.Message != nil:
-				fmt.Fprintf(stdout, "ok   /%s: %s\n", c.Name, describeMessage(*s.Message))
+				fmt.Fprintf(stdout, "ok   /%s: %s\n", name, describeMessage(*s.Message))
 				if s.Message.Content == plugin.GenericErrorMessage {
 					failed = true
 				}
 			default:
-				fmt.Fprintf(stdout, "ok   /%s: acknowledged\n", c.Name)
+				fmt.Fprintf(stdout, "ok   /%s: acknowledged\n", name)
 			}
 			seen[messageID(s.Message)] = true
 			settle()

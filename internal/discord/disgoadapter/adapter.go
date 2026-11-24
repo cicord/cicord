@@ -130,6 +130,8 @@ type session struct {
 	presence *gateway.MessageDataPresenceUpdate
 	chunk    bool
 	closed   bool
+
+	servers serverTracker
 }
 
 var (

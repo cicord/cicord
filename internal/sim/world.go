@@ -604,18 +604,37 @@ func cloneMessagePtr(m *discord.Message) *discord.Message {
 	return &c
 }
 
-func cloneCommand(c discord.Command) discord.Command {
-	if c.Options != nil {
-		opts := make([]discord.CommandOption, len(c.Options))
-		for i, o := range c.Options {
-			if o.Choices != nil {
-				o.Choices = append([]discord.CommandChoice{}, o.Choices...)
-			}
-			o.MinValue, o.MaxValue = cloneFloat(o.MinValue), cloneFloat(o.MaxValue)
-			opts[i] = o
-		}
-		c.Options = opts
+func cloneCommandOptions(in []discord.CommandOption) []discord.CommandOption {
+	if in == nil {
+		return nil
 	}
+	opts := make([]discord.CommandOption, len(in))
+	for i, o := range in {
+		if o.Choices != nil {
+			o.Choices = append([]discord.CommandChoice{}, o.Choices...)
+		}
+		o.MinValue, o.MaxValue = cloneFloat(o.MinValue), cloneFloat(o.MaxValue)
+		o.MinLength, o.MaxLength = cloneInt(o.MinLength), cloneInt(o.MaxLength)
+		o.Options = cloneCommandOptions(o.Options)
+		opts[i] = o
+	}
+	return opts
+}
+
+func cloneInteractionOptions(in []discord.InteractionOption) []discord.InteractionOption {
+	if in == nil {
+		return nil
+	}
+	out := make([]discord.InteractionOption, len(in))
+	for i, o := range in {
+		o.Options = cloneInteractionOptions(o.Options)
+		out[i] = o
+	}
+	return out
+}
+
+func cloneCommand(c discord.Command) discord.Command {
+	c.Options = cloneCommandOptions(c.Options)
 	if c.DefaultMemberPermissions != nil {
 		p := *c.DefaultMemberPermissions
 		c.DefaultMemberPermissions = &p
@@ -634,9 +653,7 @@ func cloneModal(m *discord.Modal) *discord.Modal {
 
 func cloneInteraction(ix discord.Interaction) discord.Interaction {
 	ix.Member = cloneMemberPtr(ix.Member)
-	if ix.Options != nil {
-		ix.Options = append([]discord.InteractionOption{}, ix.Options...)
-	}
+	ix.Options = cloneInteractionOptions(ix.Options)
 	r := ix.Resolved
 	ix.Resolved = discord.Resolved{}
 	if r.Users != nil {

@@ -35,7 +35,7 @@ import {
   Spinner,
   useToast,
 } from "./kit.tsx";
-import { CommandRunner } from "./CommandRunner.tsx";
+import { CommandRunner, type AutocompleteChoice } from "./CommandRunner.tsx";
 import { useSimLive } from "./live.ts";
 import { MessageItem, MessageList, type MentionResolver } from "./MessageView.tsx";
 import { i18n } from "../i18n/index.ts";
@@ -276,6 +276,19 @@ function Playground({
     }
   };
 
+  const autocomplete = async (command: SimCommand, option: string, value: string) => {
+    if (!actor) return [];
+    const result = await client.sim.command({
+      userId: actor.id,
+      serverId: server.id,
+      channelId: channelForCommand,
+      bot: command.bot,
+      name: command.name,
+      autocomplete: { option, value },
+    });
+    return result.choices ?? [];
+  };
+
   const submitModal = async (
     entry: LastInteraction,
     modalDef: SimModal,
@@ -467,6 +480,7 @@ function Playground({
               disabled={!actorIsMember}
               reason={!actorIsMember ? i18n.t("sim.composer.joinToRun") : undefined}
               onRun={runCommand}
+              onAutocomplete={autocomplete}
               initial={commandHint}
               channelName={server.channels.find((c) => c.id === channelForCommand)?.name}
             />
@@ -904,6 +918,7 @@ function CommandPanel({
   disabled,
   reason,
   onRun,
+  onAutocomplete,
   initial,
   channelName,
 }: {
@@ -911,6 +926,7 @@ function CommandPanel({
   disabled: boolean;
   reason: string | undefined;
   onRun: (c: SimCommand, o: { [key: string]: Json }) => Promise<void>;
+  onAutocomplete: (c: SimCommand, option: string, value: string) => Promise<AutocompleteChoice[]>;
   initial: string | undefined;
   channelName: string | undefined;
 }) {
@@ -929,6 +945,7 @@ function CommandPanel({
         (channelName ? i18n.t("sim.composer.runsIn", { channel: channelName }) : undefined)
       }
       onRun={onRun}
+      onAutocomplete={onAutocomplete}
       {...(initial ? { initial } : {})}
     />
   );

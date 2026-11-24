@@ -168,6 +168,11 @@ export interface TextChannel extends Channel {
   send(message: MessageInput): Promise<Message>;
   /** @capability discord.messages.read */
   messages(options?: { limit?: number; before?: Snowflake; after?: Snowflake }): Promise<Message[]>;
+  /**
+   * One message by id, `undefined` when it does not exist (or was deleted). Same content
+   * gating as `messages()`. @capability discord.messages.read
+   */
+  message(id: Snowflake): Promise<Message | undefined>;
   /** @capability discord.threads.manage */
   createThread(name: string, options?: { private?: boolean; fromMessage?: Snowflake }): Promise<TextChannel>;
 }
@@ -254,13 +259,57 @@ export interface Interaction {
 export type CommandOptionType =
   | "string" | "integer" | "number" | "boolean" | "user" | "channel" | "role" | "mentionable" | "attachment";
 
+/** A suggestion returned by an autocomplete handler (value: string for string options). */
+export interface AutocompleteChoice {
+  /** 1–100 characters, shown to the user. */
+  name: string;
+  /** What the option receives when picked (strings: at most 100 characters). */
+  value: string | number;
+}
+
+/** The option being typed: `value` is the raw text so far (a string for every option type). */
+export interface FocusedOption {
+  readonly name: string;
+  readonly value: string;
+}
+
+/**
+ * Sent while the user types an option that has `autocomplete`. It cannot reply: the handler
+ * returns the choices.
+ */
+export interface AutocompleteInteraction {
+  readonly id: Snowflake;
+  readonly user: User;
+  readonly member?: Member;
+  readonly channel?: TextChannel;
+  readonly command: string;
+  readonly group?: string;
+  readonly subcommand?: string;
+  /** Other options already filled in: raw values (ids for users, roles and channels). */
+  readonly options: Readonly<Record<string, string | number | boolean>>;
+}
+
 export interface CommandOption {
   type: CommandOptionType;
   description: string;
   required?: boolean;
   choices?: readonly { name: string; value: string | number }[];
+  /** integer / number options. */
   min?: number;
   max?: number;
+  /** string options: length bounds (0–6000, maxLength ≥ 1). */
+  minLength?: number;
+  maxLength?: number;
+  /**
+   * Suggestions while the user types (string, integer and number options; not with
+   * `choices`). Answer within ~2.5 s with at most 25 choices: an autocomplete cannot be
+   * deferred, and a handler that fails or is late shows an empty list.
+   */
+  autocomplete?(
+    ctx: Context,
+    interaction: AutocompleteInteraction,
+    focused: FocusedOption,
+  ): Awaitable<readonly AutocompleteChoice[]>;
 }
 
 interface OptionTypeMap {
@@ -283,7 +332,12 @@ export type OptionValues<O extends Record<string, CommandOption>> = {
 
 export interface CommandInteraction<O extends Record<string, CommandOption> = Record<string, CommandOption>>
   extends Interaction {
+  /** Top-level command name. */
   readonly command: string;
+  /** Group of the invoked subcommand (`/polls admin purge` → `"admin"`). */
+  readonly group?: string;
+  /** Invoked subcommand (`/polls close` → `"close"`). */
+  readonly subcommand?: string;
   readonly options: OptionValues<O>;
 }
 
@@ -319,7 +373,8 @@ export interface ModalInteraction extends Interaction {
 
 export interface CommandDefinition<O extends Record<string, CommandOption> = Record<string, CommandOption>> {
   description: string;
-  options?: O;
+  /** Mapped so that `autocomplete` handlers get typed parameters. */
+  options?: { [K in keyof O]: O[K] & CommandOption };
   /** Ephemeral replies and auto-defer by default. */
   ephemeral?: boolean;
   /** Default member permissions required to see/use the command. */
@@ -327,10 +382,61 @@ export interface CommandDefinition<O extends Record<string, CommandOption> = Rec
   run(ctx: Context, interaction: CommandInteraction<O>): Awaitable<void>;
 }
 
-/** Helper that infers option types for `interaction.options`. */
+/** A subcommand: `/polls close poll:…`. Its options are typed like a command's. */
+export interface SubcommandDefinition<O extends Record<string, CommandOption> = Record<string, CommandOption>> {
+  description: string;
+  /** Mapped so that `autocomplete` handlers get typed parameters. */
+  options?: { [K in keyof O]: O[K] & CommandOption };
+  run(ctx: Context, interaction: CommandInteraction<O>): Awaitable<void>;
+}
+
+/** A group of subcommands: `/polls admin purge`. A group holds only subcommands. */
+export interface SubcommandGroupDefinition {
+  description: string;
+  subcommands: Record<string, SubcommandDefinition<any>>;
+}
+
+/**
+ * A command made of subcommands (and groups of subcommands): at most 25 of them in all. The
+ * command itself cannot be invoked: it has no `run` and no `options`. `ephemeral` and
+ * `permissions` apply to every subcommand.
+ */
+export interface CommandWithSubcommandsDefinition {
+  description: string;
+  ephemeral?: boolean;
+  permissions?: Permission[];
+  subcommands?: Record<string, SubcommandDefinition<any>>;
+  groups?: Record<string, SubcommandGroupDefinition>;
+  options?: never;
+  run?: never;
+}
+
+/**
+ * Helper that infers option types for `interaction.options`.
+ *
+ * ```ts
+ * command({ description: "Ping", run: (ctx, i) => i.reply("pong") });
+ * command({
+ *   description: "Manage polls",
+ *   subcommands: {
+ *     close: subcommand({
+ *       description: "Close a poll",
+ *       options: { poll: { type: "string", description: "Poll", required: true, autocomplete: suggestPolls } },
+ *       async run(ctx, interaction) { … interaction.options.poll … },
+ *     }),
+ *   },
+ * });
+ * ```
+ */
 export declare function command<const O extends Record<string, CommandOption> = {}>(
   definition: CommandDefinition<O>,
 ): CommandDefinition<O>;
+export declare function command(definition: CommandWithSubcommandsDefinition): CommandWithSubcommandsDefinition;
+
+/** Helper that infers option types for a subcommand (`command({ subcommands: { … } })`). */
+export declare function subcommand<const O extends Record<string, CommandOption> = {}>(
+  definition: SubcommandDefinition<O>,
+): SubcommandDefinition<O>;
 
 // ───────────────────────────────────────────────────────────── runtime services
 
@@ -513,11 +619,23 @@ export interface EventHandlers {
   /**
    * @intent ServerMessageReactions
    * `message` is partial: only `id`, `channel` and the methods are guaranteed (author/content
-   * may be missing); fetch it with `channel.messages()` if you need more.
+   * may be missing); fetch it with `message.channel.message(message.id)` if you need more.
    */
   reactionAdd?(ctx: Context, reaction: { message: Message; user: User; emoji: string }): Awaitable<void>;
   /** @intent ServerMessageReactions — same partial `message` as reactionAdd. */
   reactionRemove?(ctx: Context, reaction: { message: Message; user: User; emoji: string }): Awaitable<void>;
+  /**
+   * The bot joined the server (invited again after a removal, for instance) while
+   * connected; not sent for servers loading after a connection or an outage. Like every
+   * event, it only reaches instances of servers declared for the bot. No intent to declare.
+   */
+  serverJoin?(ctx: Context, server: { id: Snowflake; name: string; iconUrl?: string }): Awaitable<void>;
+  /**
+   * The bot left the server: kicked, banned, removed or the server was deleted (not when
+   * Discord has an outage). Discord API calls for the server fail from now on. No intent to
+   * declare.
+   */
+  serverLeave?(ctx: Context, server: { id: Snowflake }): Awaitable<void>;
 }
 
 export interface PluginDefinition {
@@ -528,7 +646,7 @@ export interface PluginDefinition {
   /** Gateway event handlers. */
   events?: EventHandlers;
   /** Slash commands, keyed by command name (lowercase, 1–32 chars). Synced per server. */
-  commands?: Record<string, CommandDefinition<any>>;
+  commands?: Record<string, CommandDefinition<any> | CommandWithSubcommandsDefinition>;
   /**
    * Component handlers keyed by local component id. A component id may carry data after a
    * colon: `"vote:42"` is routed to `components.vote` (`componentId` stays `"vote:42"`).

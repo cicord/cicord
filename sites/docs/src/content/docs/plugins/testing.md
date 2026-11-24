@@ -94,7 +94,8 @@ components, ids fall back to the part before `:`):
 
 | Runner | Returns |
 |---|---|
-| `runCommand(plugin, harness, "name", { user, channel, options })` | `{ replies, followUps, updates, deferred, modal }` |
+| `runCommand(plugin, harness, "name", { user, channel, options })` (a subcommand: `"polls close"`, `"polls admin purge"`) | `{ replies, followUps, updates, deferred, modal }` |
+| `runAutocomplete(plugin, harness, "polls close", { user, focused: "poll", value, options })` | the choices of the option's `autocomplete`, checked like the runtime (≤ 25, names 1–100, values of the option's type) |
 | `runComponent(plugin, harness, "vote:42", { user, message, values })` | same |
 | `submitModal(plugin, harness, "open", { user, fields })` | same |
 | `callRoute(plugin, harness, "POST /complete", { viewer, body, query })` | `{ status, body, headers }`; `401` for anonymous callers of non-public routes, `403` for non-members of `member` routes |

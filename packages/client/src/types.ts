@@ -759,6 +759,8 @@ export interface InteractionResult {
   followups: Message[];
   /** Set when `status` is `"modal"`. */
   modal?: SimModal;
+  /** Autocomplete results, set for a `SimCommandRequest` with `autocomplete`. */
+  choices?: { name: string; value: string | number }[];
   error: string;
 }
 
@@ -774,8 +776,14 @@ export interface SimCommandRequest {
   channelId: string;
   /** Bot key (an application id is accepted too). */
   bot: string;
+  /** Command path: `"poll"`, `"polls close"`, `"polls admin purge"`. */
   name: string;
   options?: { [key: string]: Json };
+  /**
+   * Type `value` in the autocomplete option `option` instead of running the command
+   * (`options` are the other options already filled in); the result carries `choices`.
+   */
+  autocomplete?: { option: string; value: string };
 }
 
 export interface SimComponentRequest {
@@ -801,6 +809,8 @@ export interface SimModalRequest {
 }
 
 export type SimCommandOptionType =
+  | "subcommand"
+  | "subcommandGroup"
   | "string"
   | "integer"
   | "boolean"
@@ -819,6 +829,12 @@ export interface SimCommandOption {
   choices?: { name: string; value: string | number }[];
   minValue?: number;
   maxValue?: number;
+  minLength?: number;
+  maxLength?: number;
+  /** The bot suggests values while the user types (see `SimCommandRequest.autocomplete`). */
+  autocomplete?: boolean;
+  /** Options of a subcommand (plain options) or of a subcommand group (subcommands). */
+  options?: SimCommandOption[];
 }
 
 export interface SimCommand {

@@ -324,6 +324,8 @@ func TestMessagesAndInteractionsRequests(t *testing.T) {
 	msg := `{"id":"100","channel_id":"10","author":{"id":"600","username":"cicord","bot":true},"content":"x","timestamp":"2024-01-01T00:00:00Z"}`
 	f.json("PATCH /channels/10/messages/100", 200, msg)
 	f.json("GET /channels/10/messages", 200, "["+msg+"]")
+	f.json("GET /channels/10/messages/100", 200, msg)
+	f.json("GET /channels/10/messages/101", 404, `{"message":"Unknown Message","code":10008}`)
 	f.json("PATCH /webhooks/601/tok/messages/@original", 200, msg)
 	f.json("POST /webhooks/601/tok", 200, msg)
 	f.json("PUT /applications/601/guilds/1/commands", 200, `[]`)
@@ -344,6 +346,15 @@ func TestMessagesAndInteractionsRequests(t *testing.T) {
 	}
 	if u := f.last().URI; !strings.Contains(u, "limit=100") || !strings.Contains(u, "before=99") {
 		t.Errorf("list uri = %s", u)
+	}
+	if m, err := s.GetMessage(ctx, "10", "100"); err != nil || m.ID != "100" || m.Content != "x" || m.Author.ID != "600" {
+		t.Errorf("get message = %+v, %v", m, err)
+	}
+	if _, err := s.GetMessage(ctx, "10", "101"); !errors.Is(err, discord.ErrNotFound) {
+		t.Errorf("unknown message err = %v", err)
+	}
+	if _, err := s.GetMessage(ctx, "10", "x"); !errors.Is(err, discord.ErrBadRequest) {
+		t.Errorf("invalid id err = %v", err)
 	}
 	if _, err := s.EditOriginalResponse(ctx, "601", "tok", discord.MessageCreate{Content: "done"}); err != nil {
 		t.Fatal(err)

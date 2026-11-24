@@ -62,6 +62,15 @@ type RoleDeleteEvent struct {
 
 type ServerUpdateEvent struct{ Server Server }
 
+// ServerJoinEvent is delivered when the bot joins a server (invite accepted) while
+// connected. Servers that become available after READY (lazy loading) or after an
+// outage are not joins.
+type ServerJoinEvent struct{ Server Server }
+
+// ServerLeaveEvent is delivered when the bot leaves a server: it was kicked or banned, it
+// left, or the server was deleted (not when the server becomes unavailable).
+type ServerLeaveEvent struct{ ServerID string }
+
 // AutoMod rule events need the AutoModerationConfiguration intent.
 type AutoModRuleCreateEvent struct {
 	ServerID string
@@ -116,6 +125,8 @@ func (RoleCreateEvent) isEvent()        {}
 func (RoleUpdateEvent) isEvent()        {}
 func (RoleDeleteEvent) isEvent()        {}
 func (ServerUpdateEvent) isEvent()      {}
+func (ServerJoinEvent) isEvent()        {}
+func (ServerLeaveEvent) isEvent()       {}
 func (AutoModRuleCreateEvent) isEvent() {}
 func (AutoModRuleUpdateEvent) isEvent() {}
 func (AutoModRuleDeleteEvent) isEvent() {}
@@ -160,6 +171,10 @@ func ServerIDOf(e Event) string {
 		return ev.ServerID
 	case ServerUpdateEvent:
 		return ev.Server.ID
+	case ServerJoinEvent:
+		return ev.Server.ID
+	case ServerLeaveEvent:
+		return ev.ServerID
 	case AutoModRuleCreateEvent:
 		return ev.ServerID
 	case AutoModRuleUpdateEvent:

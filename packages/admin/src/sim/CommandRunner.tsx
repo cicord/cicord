@@ -14,10 +14,18 @@ export interface CommandOption {
   choices?: { name: string; value: Json }[];
   minValue?: number;
   maxValue?: number;
+  minLength?: number;
+  maxLength?: number;
+  /** The bot suggests values while the user types. */
+  autocomplete?: boolean;
 }
+
+export type AutocompleteChoice = { name: string; value: string | number };
 
 /** Discord's numeric option types, in case a runtime sends those. */
 const NUMERIC_TYPES: Record<number, string> = {
+  1: "subcommand",
+  2: "subcommandgroup",
   3: "string",
   4: "integer",
   5: "boolean",
@@ -53,24 +61,60 @@ export function normalizeOption(raw: SimCommandOption | Json): CommandOption | n
     ...(choices && choices.length ? { choices } : {}),
     ...(typeof o["minValue"] === "number" ? { minValue: o["minValue"] } : {}),
     ...(typeof o["maxValue"] === "number" ? { maxValue: o["maxValue"] } : {}),
+    ...(typeof o["minLength"] === "number" ? { minLength: o["minLength"] } : {}),
+    ...(typeof o["maxLength"] === "number" ? { maxLength: o["maxLength"] } : {}),
+    ...(o["autocomplete"] === true ? { autocomplete: true } : {}),
   };
 }
 
+const isSubcommand = (o: SimCommandOption): boolean => {
+  const t = (o as { type: unknown }).type;
+  return t === 1 || t === 2 || (typeof t === "string" && /^subcommand(group)?$/i.test(t));
+};
+
+/**
+ * One entry per invocable command, like Discord's command picker: a command with
+ * subcommands becomes "polls close", "polls results", "polls admin purge" (`name` is the path
+ * the simulator API takes, `options` those of the subcommand).
+ */
+export function expandCommands(commands: SimCommand[]): SimCommand[] {
+  const out: SimCommand[] = [];
+  const walk = (c: SimCommand, path: string, description: string, options: SimCommandOption[]) => {
+    if (options.length > 0 && options.every(isSubcommand)) {
+      for (const sub of options) walk(c, `${path} ${sub.name}`, sub.description, sub.options ?? []);
+      return;
+    }
+    out.push({ ...c, name: path, description, options });
+  };
+  for (const c of commands) walk(c, c.name, c.description, c.options ?? []);
+  return out;
+}
+
 export function CommandRunner({
-  commands,
+  commands: registered,
   server,
   disabled,
   disabledReason,
   onRun,
+  onAutocomplete,
   initial,
 }: {
   commands: SimCommand[];
   server: SimServer;
   disabled?: boolean;
   disabledReason?: string;
+  /** `command.name` is the command path ("poll", "polls close"). */
   onRun: (command: SimCommand, options: { [key: string]: Json }) => Promise<void>;
+  /** Asks the bot for suggestions while an autocomplete option is typed. */
+  onAutocomplete?: (
+    command: SimCommand,
+    option: string,
+    value: string,
+  ) => Promise<AutocompleteChoice[]>;
   initial?: string;
 }) {
+  const commands = useMemo(() => expandCommands(registered), [registered]);
+  const [suggestions, setSuggestions] = useState<Record<string, AutocompleteChoice[]>>({});
   const [selected, setSelected] = useState<string>(() => {
     const found = commands.find((c) => c.name === initial);
     return found
@@ -135,6 +179,7 @@ export function CommandRunner({
           onChange={(e) => {
             setSelected(e.target.value);
             setValues({});
+            setSuggestions({});
           }}
         >
           {commands.map((c) => (
@@ -251,7 +296,7 @@ export function CommandRunner({
                   ))}
                 </select>
               );
-            } else if (o.type === "integer" || o.type === "number") {
+            } else if ((o.type === "integer" || o.type === "number") && !o.autocomplete) {
               input = (
                 <input
                   id={id}
@@ -265,17 +310,47 @@ export function CommandRunner({
                 />
               );
             } else {
+              const suggest = o.autocomplete && onAutocomplete && command;
+              const ask = (v: string) => {
+                if (!suggest) return;
+                onAutocomplete(command, o.name, v).then(
+                  (choices) => setSuggestions((s) => ({ ...s, [o.name]: choices })),
+                  () => setSuggestions((s) => ({ ...s, [o.name]: [] })),
+                );
+              };
               input = (
-                <input
-                  id={id}
-                  className="input"
-                  value={value}
-                  disabled={o.type === "attachment"}
-                  placeholder={
-                    o.type === "attachment" ? i18n.t("sim.commands.noAttachments") : undefined
-                  }
-                  onChange={(e) => set(e.target.value)}
-                />
+                <>
+                  <input
+                    id={id}
+                    className="input"
+                    value={value}
+                    disabled={o.type === "attachment"}
+                    minLength={o.minLength}
+                    maxLength={o.maxLength}
+                    list={suggest ? `${id}-suggestions` : undefined}
+                    placeholder={
+                      o.type === "attachment"
+                        ? i18n.t("sim.commands.noAttachments")
+                        : suggest
+                          ? i18n.t("sim.commands.autocomplete")
+                          : undefined
+                    }
+                    onFocus={() => ask(value)}
+                    onChange={(e) => {
+                      set(e.target.value);
+                      ask(e.target.value);
+                    }}
+                  />
+                  {suggest ? (
+                    <datalist id={`${id}-suggestions`} data-testid={`${id}-suggestions`}>
+                      {(suggestions[o.name] ?? []).map((c) => (
+                        <option key={String(c.value)} value={String(c.value)}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </datalist>
+                  ) : null}
+                </>
               );
             }
             return (

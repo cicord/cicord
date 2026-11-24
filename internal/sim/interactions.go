@@ -3,6 +3,7 @@ package sim
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -22,6 +23,7 @@ type interactionState struct {
 	loading     bool   // deferred message not edited yet
 	edited      bool
 	modal       *discord.Modal
+	choices     []discord.CommandChoice
 	followupIDs []string
 
 	done    chan struct{} // closed on acknowledgement or failure
@@ -63,6 +65,8 @@ type InteractionState struct {
 	// Failed is true when the interaction was not acknowledged within the deadline
 	// ("This interaction failed" in the Discord client).
 	Failed bool
+	// Choices are the autocomplete results (ResponseAutocomplete).
+	Choices []discord.CommandChoice
 }
 
 // InteractionHandle tracks an interaction started by InvokeCommand, ClickButton,
@@ -156,6 +160,9 @@ func (h *InteractionHandle) Message() *discord.Message { return h.State().Messag
 // Followups returns the followup messages.
 func (h *InteractionHandle) Followups() []discord.Message { return h.State().Followups }
 
+// Choices returns the autocomplete results, if any.
+func (h *InteractionHandle) Choices() []discord.CommandChoice { return h.State().Choices }
+
 // Modal returns the modal shown in response, if any.
 func (h *InteractionHandle) Modal() *discord.Modal { return h.State().Modal }
 
@@ -184,6 +191,9 @@ func (w *World) snapshot(st *interactionState) InteractionState {
 		Edited:       st.edited,
 		Modal:        cloneModal(st.modal),
 		Failed:       st.failed,
+	}
+	if st.choices != nil {
+		s.Choices = append([]discord.CommandChoice{}, st.choices...)
 	}
 	if ms := w.messages[st.originalID]; ms != nil {
 		m := cloneMessage(ms.msg)
@@ -254,6 +264,23 @@ func (w *World) respondInteraction(a actor, interactionID, token string, r disco
 		return fail(badRequest("interaction has already been acknowledged"))
 	}
 	ix := st.ix
+	if (ix.Type == discord.InteractionAutocomplete) != (r.Type == discord.ResponseAutocomplete) {
+		if ix.Type == discord.InteractionAutocomplete {
+			return fail(badRequest("an autocomplete interaction only accepts an autocomplete result (type 8), got %d", r.Type))
+		}
+		return fail(badRequest("autocomplete results (type 8) only answer autocomplete interactions"))
+	}
+	if r.Type == discord.ResponseAutocomplete {
+		if err := w.validateAutocomplete(st, r.Choices); err != nil {
+			return fail(err)
+		}
+		st.choices = append([]discord.CommandChoice{}, r.Choices...)
+		st.acked, st.respType = true, r.Type
+		st.timer.Stop()
+		close(st.done)
+		w.notify(st)
+		return fail(nil)
+	}
 	componentLike := ix.Type == discord.InteractionComponent || (ix.Type == discord.InteractionModalSubmit && ix.Message != nil)
 	c := w.channels[ix.ChannelID]
 	if c == nil && r.Type != discord.ResponseModal {
@@ -322,6 +349,22 @@ func (w *World) respondInteraction(a actor, interactionID, token string, r disco
 	close(st.done)
 	w.notify(st)
 	return fail(nil)
+}
+
+// validateAutocomplete checks autocomplete results against the focused option. Caller
+// holds w.mu.
+func (w *World) validateAutocomplete(st *interactionState, choices []discord.CommandChoice) error {
+	if len(choices) > discord.MaxAutocompleteChoices {
+		return badRequest("at most %d autocomplete choices", discord.MaxAutocompleteChoices)
+	}
+	focused, _ := st.ix.FocusedOption()
+	def := discord.CommandOption{Type: focused.Type}
+	for _, ch := range choices {
+		if err := validateChoice(def, ch); err != nil {
+			return badRequest("autocomplete: %v", err)
+		}
+	}
+	return nil
 }
 
 func (w *World) interactionByToken(a actor, applicationID, token string) (*interactionState, error) {
@@ -442,82 +485,179 @@ func (w *World) interactionContext(userID, serverID, channelID string) (discord.
 }
 
 // InvokeCommand runs a slash command as userID, like typing it in the Discord client.
-// options maps option names to values: string, bool, any Go integer or float, or IDs
-// (string) / discord.User / discord.Role / discord.Channel / discord.Attachment for the
-// corresponding option types. The command must be registered for the application in
-// the server, the user must be allowed to use it (DefaultMemberPermissions), and
-// options are validated against its definition.
+// name is the command path: "poll", or "polls close" / "polls admin purge" for a
+// subcommand (of a group). options maps the invoked leaf's option names to values:
+// string, bool, any Go integer or float, or IDs (string) / discord.User / discord.Role /
+// discord.Channel / discord.Attachment for the corresponding option types. The command
+// must be registered for the application in the server, the user must be allowed to use
+// it (DefaultMemberPermissions), and options are validated against its definition.
 func (w *World) InvokeCommand(userID, serverID, channelID, applicationID, name string, options map[string]any) *InteractionHandle {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	ix, s, bot, leaf, err := w.commandInteraction(userID, serverID, channelID, applicationID, name)
+	if err != nil {
+		return failedHandle(w, err)
+	}
+	ix.Type = discord.InteractionCommand
+	var opts []discord.InteractionOption
+	if opts, err = w.buildOptions(s, name, leaf, options, &ix.Resolved); err != nil {
+		return failedHandle(w, err)
+	}
+	ix.Options = nestOptions(ix.Options, opts)
+	return &InteractionHandle{w: w, st: w.startInteraction(ix, bot)}
+}
+
+// Autocomplete types in an autocomplete option of a command, like the Discord client does
+// while the user writes it: focused is the option name and partial the text typed so far
+// (sent as a string, whatever the option type). options are the other options already
+// filled in (raw values, not validated). The bot answers with ResponseAutocomplete (see
+// InteractionHandle.Choices).
+func (w *World) Autocomplete(userID, serverID, channelID, applicationID, name, focused, partial string, options map[string]any) *InteractionHandle {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ix, _, bot, leaf, err := w.commandInteraction(userID, serverID, channelID, applicationID, name)
+	if err != nil {
+		return failedHandle(w, err)
+	}
+	ix.Type = discord.InteractionAutocomplete
+	byName := map[string]discord.CommandOption{}
+	for _, o := range leaf {
+		byName[o.Name] = o
+	}
+	def, ok := byName[focused]
+	if !ok || !def.Autocomplete {
+		return failedHandle(w, badRequest("command %q has no autocomplete option %q", name, focused))
+	}
+	var opts []discord.InteractionOption
+	for _, o := range leaf { // Discord order
+		if o.Name == focused {
+			opts = append(opts, discord.InteractionOption{Name: o.Name, Type: o.Type, Value: partial, Focused: true})
+			continue
+		}
+		v, ok := options[o.Name]
+		if !ok || v == nil {
+			continue
+		}
+		if f, isNum := toFloat(v); isNum {
+			v = f
+		} else if id, isID := idOf(v); isID {
+			v = id
+		}
+		opts = append(opts, discord.InteractionOption{Name: o.Name, Type: o.Type, Value: v})
+	}
+	for k := range options {
+		if _, ok := byName[k]; !ok {
+			return failedHandle(w, badRequest("command %q has no option %q", name, k))
+		}
+	}
+	ix.Options = nestOptions(ix.Options, opts)
+	return &InteractionHandle{w: w, st: w.startInteraction(ix, bot)}
+}
+
+// commandInteraction resolves a command path and checks the user may run it. The
+// returned interaction carries the subcommand/group skeleton in Options (see
+// nestOptions). Caller holds w.mu.
+func (w *World) commandInteraction(userID, serverID, channelID, applicationID, name string) (discord.Interaction, *serverState, *botState, []discord.CommandOption, error) {
+	var ix discord.Interaction
 	bot := w.botsByApp[applicationID]
 	if bot == nil {
-		return failedHandle(w, notFound("unknown application %s", applicationID))
+		return ix, nil, nil, nil, notFound("unknown application %s", applicationID)
 	}
 	if serverID == "" {
-		return failedHandle(w, badRequest("only server commands are simulated"))
+		return ix, nil, nil, nil, badRequest("only server commands are simulated")
 	}
 	s, err := w.server(serverID)
 	if err != nil {
-		return failedHandle(w, err)
+		return ix, nil, nil, nil, err
 	}
 	user, member, c, err := w.interactionContext(userID, serverID, channelID)
 	if err != nil {
-		return failedHandle(w, err)
+		return ix, nil, nil, nil, err
 	}
 	if !w.channelPerms(c, userID).Has(permUseAppCommands) {
-		return failedHandle(w, forbidden("user %s lacks UseApplicationCommands in channel %s", userID, channelID))
+		return ix, nil, nil, nil, forbidden("user %s lacks UseApplicationCommands in channel %s", userID, channelID)
+	}
+	path := strings.Fields(name)
+	if len(path) == 0 || len(path) > 3 {
+		return ix, nil, nil, nil, badRequest("invalid command path %q", name)
 	}
 	var cmd *discord.Command
 	for i := range w.commands[applicationID][serverID] {
-		if w.commands[applicationID][serverID][i].Name == name {
+		if w.commands[applicationID][serverID][i].Name == path[0] {
 			cmd = &w.commands[applicationID][serverID][i]
 		}
 	}
 	if cmd == nil {
-		return failedHandle(w, notFound("unknown command %q", name))
+		return ix, nil, nil, nil, notFound("unknown command %q", path[0])
 	}
 	if dmp := cmd.DefaultMemberPermissions; dmp != nil {
 		have := w.basePerms(s, userID)
 		if (*dmp == 0 && have != allPermissions) || !have.Has(*dmp) {
-			return failedHandle(w, forbidden("user %s may not use command %q", userID, name))
+			return ix, nil, nil, nil, forbidden("user %s may not use command %q", userID, path[0])
 		}
 	}
-	ix := discord.Interaction{
-		Type: discord.InteractionCommand, ServerID: serverID, ChannelID: channelID,
-		User: user, Member: member, CommandName: name,
+	ix = discord.Interaction{ServerID: serverID, ChannelID: channelID, User: user, Member: member, CommandName: path[0]}
+	leaf := cmd.Options
+	var skeleton []discord.InteractionOption // group / subcommand chain, outermost first
+	for _, part := range path[1:] {
+		var next *discord.CommandOption
+		for i := range leaf {
+			if leaf[i].IsSubcommand() && leaf[i].Name == part {
+				next = &leaf[i]
+			}
+		}
+		if next == nil {
+			return ix, nil, nil, nil, notFound("command %q has no subcommand %q", name, part)
+		}
+		skeleton = append(skeleton, discord.InteractionOption{Name: next.Name, Type: next.Type})
+		leaf = next.Options
 	}
-	if err := w.buildOptions(s, cmd, options, &ix); err != nil {
-		return failedHandle(w, err)
+	if len(leaf) > 0 && leaf[0].IsSubcommand() {
+		return ix, nil, nil, nil, badRequest("command %q needs a subcommand", name)
 	}
-	return &InteractionHandle{w: w, st: w.startInteraction(ix, bot)}
+	ix.Options = skeleton
+	return ix, s, bot, leaf, nil
 }
 
-func (w *World) buildOptions(s *serverState, cmd *discord.Command, options map[string]any, ix *discord.Interaction) error {
+// nestOptions puts the leaf options inside the subcommand/group skeleton.
+func nestOptions(skeleton, leaf []discord.InteractionOption) []discord.InteractionOption {
+	if len(skeleton) == 0 {
+		return leaf
+	}
+	head := skeleton[0]
+	head.Options = nestOptions(skeleton[1:], leaf)
+	if head.Options == nil {
+		head.Options = []discord.InteractionOption{}
+	}
+	return []discord.InteractionOption{head}
+}
+
+func (w *World) buildOptions(s *serverState, cmdName string, defs []discord.CommandOption, options map[string]any, res *discord.Resolved) ([]discord.InteractionOption, error) {
 	known := map[string]bool{}
-	for _, def := range cmd.Options {
+	for _, def := range defs {
 		known[def.Name] = true
 	}
 	for k := range options {
 		if !known[k] {
-			return badRequest("command %q has no option %q", cmd.Name, k)
+			return nil, badRequest("command %q has no option %q", cmdName, k)
 		}
 	}
-	for _, def := range cmd.Options {
+	var out []discord.InteractionOption
+	for _, def := range defs {
 		v, ok := options[def.Name]
 		if !ok || v == nil {
 			if def.Required {
-				return badRequest("missing required option %q", def.Name)
+				return nil, badRequest("missing required option %q", def.Name)
 			}
 			continue
 		}
-		val, err := w.convertOption(s, def, v, &ix.Resolved)
+		val, err := w.convertOption(s, def, v, res)
 		if err != nil {
-			return badRequest("option %q: %v", def.Name, err)
+			return nil, badRequest("option %q: %v", def.Name, err)
 		}
-		ix.Options = append(ix.Options, discord.InteractionOption{Name: def.Name, Type: def.Type, Value: val})
+		out = append(out, discord.InteractionOption{Name: def.Name, Type: def.Type, Value: val})
 	}
-	return nil
+	return out, nil
 }
 
 func toFloat(v any) (float64, bool) {
@@ -622,8 +762,12 @@ func (w *World) convertOption(s *serverState, def discord.CommandOption, v any, 
 		if !ok {
 			return nil, fmt.Errorf("want a string, got %T", v)
 		}
-		if utf8.RuneCountInString(str) > 6000 {
+		n := utf8.RuneCountInString(str)
+		if n > 6000 {
 			return nil, fmt.Errorf("value too long")
+		}
+		if (def.MinLength != nil && n < *def.MinLength) || (def.MaxLength != nil && n > *def.MaxLength) {
+			return nil, fmt.Errorf("%q has an invalid length (%d characters)", str, n)
 		}
 		if !choiceMatches(def, str) {
 			return nil, fmt.Errorf("%q is not one of the choices", str)

@@ -224,6 +224,13 @@ func (c *Client) ListMessages(ctx context.Context, channelID string, p discord.L
 	return c.w.listMessages(c.a, channelID, p)
 }
 
+func (c *Client) GetMessage(ctx context.Context, channelID, messageID string) (discord.Message, error) {
+	if err := ctx.Err(); err != nil {
+		return discord.Message{}, err
+	}
+	return c.w.getMessage(c.a, channelID, messageID)
+}
+
 func (c *Client) AddReaction(ctx context.Context, channelID, messageID, emoji string) error {
 	if err := ctx.Err(); err != nil {
 		return err

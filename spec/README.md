@@ -348,6 +348,7 @@ Implemented by `internal/plugin` (the package documentation is the detailed refe
   | queue | 1024 | Handler calls waiting for the instance's loop; beyond, calls fail (busy). |
   | pending host calls | 256 | Async SDK calls of one instance not settled yet; beyond, calls reject. |
   | handler timeout | 10 s | Each handler, wall clock, awaits included. Afterwards its pending host calls are cancelled and new ones fail. |
+  | autocomplete timeout | 2.5 s | Autocomplete handlers (Discord drops answers after 3 s; no deferral exists). |
   | `onStop` | 3 s | Bound of `onStop`. |
   | `http.fetch` | 10 s / 5 MiB | Default timeout and response cap. |
   | host data | 2 MiB / 16 KiB / 4 MiB / 4 MiB | SDK call arguments (checked before decoding), `ctx.log` fields (dropped beyond), `kv.list` page (cut short, the cursor continues), route response. |
@@ -361,6 +362,24 @@ Implemented by `internal/plugin` (the package documentation is the detailed refe
   - `showModal()` must be the first response;
   - ephemerality is fixed by the first response (a reply after a deferral keeps its flags);
   - follow-ups are accepted for 15 minutes.
+- **Subcommands**: a command declares either `options` + `run`, or `subcommands` and
+  `groups` (at most 25 in all, distinct names; a group holds 1–25 subcommands and nothing
+  else). The runtime registers them nested (Discord option types 1 and 2) and dispatches to
+  the invoked leaf; `interaction.command` is the top-level name, `interaction.group` /
+  `interaction.subcommand` the rest of the path. `ephemeral` and `permissions` are the
+  command's.
+- **Autocomplete**: an option's `autocomplete(ctx, interaction, focused)` (string, integer
+  and number options, not with `choices`) answers Discord's autocomplete interaction (type 4)
+  with its return value (response type 8). It is never deferred (no auto-defer, no generic
+  error reply); `focused.value` is the raw text typed so far (a string for every type). The
+  result is validated (≤ 25 choices, names 1–100 characters, values of the option's type,
+  strings ≤ 100): an invalid result, an error or the 2.5 s timeout answers an empty list and
+  logs the error.
+- **Server events**: `serverJoin` is a GUILD_CREATE for a server that was neither in the last
+  READY nor seen since (lazy loading after READY and outage recovery are not joins; nothing
+  is a join before the first READY); `serverLeave` is a GUILD_DELETE without `unavailable`.
+  Like every event they reach only the instances of the servers declared for the bot; on a
+  join the bot host also registers the server's slash commands again.
 - **Component and modal ids**: the SDK namespaces local ids as `c:<instance>:<id>` (at most
   100 bytes in total, as Discord requires; a longer id is an error, never truncated). The
   handler is looked up by the full local id, then by the part before the first `:`
@@ -389,8 +408,8 @@ Implemented by `internal/plugin` (the package documentation is the detailed refe
   `cicord portal typegen` copies it into the portals' `src/cicord-routes.d.ts`. The runtime
   does not validate requests against it.
 - **Message content**: gated per plugin. Without the `MessageContent` intent in its own
-  manifest, a plugin sees empty `content` and `attachments` (events and
-  `channel.messages()`), except for the bot's own messages, messages mentioning the bot and
+  manifest, a plugin sees empty `content` and `attachments` (events,
+  `channel.messages()` and `channel.message()`), except for the bot's own messages, messages mentioning the bot and
   DMs, even when another plugin of the same bot declares the intent.
 - **Globals beyond the SDK**: `setTimeout` / `setInterval` / `clearTimeout` /
   `clearInterval`, `queueMicrotask` and `console.*` (mapped to the instance logger). Timers

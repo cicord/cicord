@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -43,14 +44,30 @@ func validateCommands(cmds []discord.Command) error {
 	return nil
 }
 
+// validateOptions checks the options of a command (depth 0), of a group (1) or of a
+// subcommand (2): a command holds plain options or subcommands and groups, a group holds
+// only subcommands and a subcommand only plain options.
 func validateOptions(cmd string, opts []discord.CommandOption) error {
+	return validateOptionsAt(cmd, opts, 0)
+}
+
+func validateOptionsAt(where string, opts []discord.CommandOption, depth int) error {
 	if len(opts) > 25 {
-		return badRequest("command %q: at most 25 options", cmd)
+		return badRequest("command %s: at most 25 options", where)
+	}
+	subs := 0
+	for _, o := range opts {
+		if o.IsSubcommand() {
+			subs++
+		}
+	}
+	if subs > 0 && subs != len(opts) {
+		return badRequest("command %s: subcommands cannot be mixed with other options", where)
 	}
 	names := map[string]bool{}
 	optional := false
 	for _, o := range opts {
-		where := "command " + cmd + " option " + o.Name
+		where := "command " + where + " option " + o.Name
 		if !validCommandName(o.Name) {
 			return badRequest("%s: invalid option name", where)
 		}
@@ -60,6 +77,39 @@ func validateOptions(cmd string, opts []discord.CommandOption) error {
 		names[o.Name] = true
 		if !validDescription(o.Description) {
 			return badRequest("%s: description must be 1-100 characters", where)
+		}
+		switch o.Type {
+		case discord.OptionSubcommandGroup:
+			if depth != 0 {
+				return badRequest("%s: a group can only be a top-level option", where)
+			}
+		case discord.OptionSubcommand:
+			if depth > 1 {
+				return badRequest("%s: subcommands cannot be nested in subcommands", where)
+			}
+		default:
+			if depth == 1 {
+				return badRequest("%s: a group holds only subcommands", where)
+			}
+		}
+		if o.IsSubcommand() {
+			if o.Required || len(o.Choices) > 0 || o.MinValue != nil || o.MaxValue != nil || o.MinLength != nil || o.MaxLength != nil || o.Autocomplete {
+				return badRequest("%s: subcommands and groups have no value settings", where)
+			}
+			if o.Type == discord.OptionSubcommandGroup && len(o.Options) == 0 {
+				return badRequest("%s: a group needs subcommands", where)
+			}
+			next := 2
+			if o.Type == discord.OptionSubcommandGroup {
+				next = 1
+			}
+			if err := validateOptionsAt(strings.TrimPrefix(where, "command "), o.Options, next); err != nil {
+				return err
+			}
+			continue
+		}
+		if len(o.Options) > 0 {
+			return badRequest("%s: only subcommands and groups have options", where)
 		}
 		if o.Type < discord.OptionString || o.Type > discord.OptionAttachment {
 			return badRequest("%s: unsupported option type %d", where, o.Type)
@@ -77,6 +127,25 @@ func validateOptions(cmd string, opts []discord.CommandOption) error {
 		if o.MinValue != nil && o.MaxValue != nil && *o.MinValue > *o.MaxValue {
 			return badRequest("%s: min value above max value", where)
 		}
+		if o.MinLength != nil || o.MaxLength != nil {
+			if o.Type != discord.OptionString {
+				return badRequest("%s: min/max length only apply to string options", where)
+			}
+			if (o.MinLength != nil && (*o.MinLength < 0 || *o.MinLength > 6000)) || (o.MaxLength != nil && (*o.MaxLength < 1 || *o.MaxLength > 6000)) {
+				return badRequest("%s: min length must be 0-6000 and max length 1-6000", where)
+			}
+			if o.MinLength != nil && o.MaxLength != nil && *o.MinLength > *o.MaxLength {
+				return badRequest("%s: min length above max length", where)
+			}
+		}
+		if o.Autocomplete {
+			if o.Type != discord.OptionString && !numeric {
+				return badRequest("%s: autocomplete only applies to string, integer and number options", where)
+			}
+			if len(o.Choices) > 0 {
+				return badRequest("%s: autocomplete and choices are mutually exclusive", where)
+			}
+		}
 		if len(o.Choices) > 0 && o.Type != discord.OptionString && !numeric {
 			return badRequest("%s: choices only apply to string, integer and number options", where)
 		}
@@ -84,26 +153,36 @@ func validateOptions(cmd string, opts []discord.CommandOption) error {
 			return badRequest("%s: at most 25 choices", where)
 		}
 		for _, ch := range o.Choices {
-			if n := utf8.RuneCountInString(ch.Name); n < 1 || n > 100 {
-				return badRequest("%s: choice name must be 1-100 characters", where)
-			}
-			switch v := ch.Value.(type) {
-			case string:
-				if o.Type != discord.OptionString || utf8.RuneCountInString(v) > 100 {
-					return badRequest("%s: choice %q has a value of the wrong type", where, ch.Name)
-				}
-			case float64:
-				if !numeric || (o.Type == discord.OptionInteger && v != math.Trunc(v)) {
-					return badRequest("%s: choice %q has a value of the wrong type", where, ch.Name)
-				}
-			case int, int64:
-				if !numeric {
-					return badRequest("%s: choice %q has a value of the wrong type", where, ch.Name)
-				}
-			default:
-				return badRequest("%s: choice %q has a value of the wrong type", where, ch.Name)
+			if err := validateChoice(o, ch); err != nil {
+				return badRequest("%s: %v", where, err)
 			}
 		}
+	}
+	return nil
+}
+
+// validateChoice checks a choice (declared or returned by an autocomplete) against its
+// option.
+func validateChoice(o discord.CommandOption, ch discord.CommandChoice) error {
+	numeric := o.Type == discord.OptionInteger || o.Type == discord.OptionNumber
+	if n := utf8.RuneCountInString(ch.Name); n < 1 || n > 100 {
+		return fmt.Errorf("choice name must be 1-100 characters")
+	}
+	switch v := ch.Value.(type) {
+	case string:
+		if o.Type != discord.OptionString || utf8.RuneCountInString(v) > 100 {
+			return fmt.Errorf("choice %q has a value of the wrong type", ch.Name)
+		}
+	case float64:
+		if !numeric || (o.Type == discord.OptionInteger && v != math.Trunc(v)) {
+			return fmt.Errorf("choice %q has a value of the wrong type", ch.Name)
+		}
+	case int, int64:
+		if !numeric {
+			return fmt.Errorf("choice %q has a value of the wrong type", ch.Name)
+		}
+	default:
+		return fmt.Errorf("choice %q has a value of the wrong type", ch.Name)
 	}
 	return nil
 }

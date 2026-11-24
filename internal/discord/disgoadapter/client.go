@@ -481,6 +481,17 @@ func (s *session) ListMessages(ctx context.Context, channelID string, p discord.
 	return out, nil
 }
 
+func (s *session) GetMessage(ctx context.Context, channelID, messageID string) (discord.Message, error) {
+	if err := checkIDs("GetMessage", channelID, messageID); err != nil {
+		return discord.Message{}, err
+	}
+	var m wireMessage
+	if err := s.do(ctx, "GetMessage", rest.GetMessage.Compile(nil, channelID, messageID), nil, &m); err != nil {
+		return discord.Message{}, err
+	}
+	return messageFromWire(m), nil
+}
+
 func (s *session) AddReaction(ctx context.Context, channelID, messageID, emoji string) error {
 	if err := checkIDs("AddReaction", channelID, messageID); err != nil {
 		return err

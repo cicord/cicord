@@ -904,21 +904,31 @@ func attachmentFromWire(a wireAttachment) discord.Attachment {
 
 // ───────────────────────────────────────────────────────────── commands
 
+func commandOptionToWire(o discord.CommandOption) wireCommandOption {
+	wo := wireCommandOption{
+		Type:         int(o.Type),
+		Name:         o.Name,
+		Description:  o.Description,
+		Required:     o.Required && !o.IsSubcommand(),
+		MinValue:     o.MinValue,
+		MaxValue:     o.MaxValue,
+		MinLength:    o.MinLength,
+		MaxLength:    o.MaxLength,
+		Autocomplete: o.Autocomplete,
+	}
+	for _, ch := range o.Choices {
+		wo.Choices = append(wo.Choices, wireCommandChoice{Name: ch.Name, Value: ch.Value})
+	}
+	for _, sub := range o.Options {
+		wo.Options = append(wo.Options, commandOptionToWire(sub))
+	}
+	return wo
+}
+
 func commandToWire(c discord.Command) wireCommand {
 	w := wireCommand{Type: 1, Name: c.Name, Description: c.Description}
 	for _, o := range c.Options {
-		wo := wireCommandOption{
-			Type:        int(o.Type),
-			Name:        o.Name,
-			Description: o.Description,
-			Required:    o.Required,
-			MinValue:    o.MinValue,
-			MaxValue:    o.MaxValue,
-		}
-		for _, ch := range o.Choices {
-			wo.Choices = append(wo.Choices, wireCommandChoice{Name: ch.Name, Value: ch.Value})
-		}
-		w.Options = append(w.Options, wo)
+		w.Options = append(w.Options, commandOptionToWire(o))
 	}
 	if c.DefaultMemberPermissions != nil {
 		s := permString(*c.DefaultMemberPermissions)
@@ -957,6 +967,15 @@ func interactionResponseToWire(r discord.InteractionResponse) (wireInteractionRe
 			w.Data = map[string]any{"flags": int(r.Data.Flags)}
 		}
 	case discord.ResponseDeferredUpdate:
+	case discord.ResponseAutocomplete:
+		if len(r.Choices) > discord.MaxAutocompleteChoices {
+			return w, fmt.Errorf("%w: %d autocomplete choices (at most %d)", discord.ErrBadRequest, len(r.Choices), discord.MaxAutocompleteChoices)
+		}
+		choices := make([]wireCommandChoice, 0, len(r.Choices))
+		for _, ch := range r.Choices {
+			choices = append(choices, wireCommandChoice{Name: ch.Name, Value: ch.Value})
+		}
+		w.Data = map[string]any{"choices": choices}
 	case discord.ResponseModal:
 		if r.Modal == nil {
 			return w, fmt.Errorf("%w: modal response without modal", discord.ErrBadRequest)
@@ -1006,20 +1025,30 @@ func optionValue(t int, raw json.RawMessage) any {
 	}
 }
 
-// flattenOptions keeps the order Discord sent. Subcommands and groups (types 1/2),
-// which the contract cannot express, appear as an option with a nil value followed
-// by their own options.
-func flattenOptions(in []wireInteractionOption) []discord.InteractionOption {
+// interactionOptionsFromWire keeps the order Discord sent. Subcommands and groups (types
+// 1/2) have no value and nest their options. The focused option of an autocomplete keeps
+// the raw text typed so far (a string, even for integer/number options: "1." or "-" are
+// not numbers yet).
+func interactionOptionsFromWire(in []wireInteractionOption) []discord.InteractionOption {
 	var out []discord.InteractionOption
 	for _, o := range in {
-		out = append(out, discord.InteractionOption{
-			Name:  o.Name,
-			Type:  discord.CommandOptionType(o.Type),
-			Value: optionValue(o.Type, o.Value),
-		})
-		if len(o.Options) > 0 {
-			out = append(out, flattenOptions(o.Options)...)
+		io := discord.InteractionOption{
+			Name:    o.Name,
+			Type:    discord.CommandOptionType(o.Type),
+			Focused: o.Focused,
+			Options: interactionOptionsFromWire(o.Options),
 		}
+		switch {
+		case o.Type == int(discord.OptionSubcommand) || o.Type == int(discord.OptionSubcommandGroup):
+		case o.Focused:
+			io.Value = optionValue(int(discord.OptionString), o.Value)
+			if io.Value == nil {
+				io.Value = ""
+			}
+		default:
+			io.Value = optionValue(o.Type, o.Value)
+		}
+		out = append(out, io)
 	}
 	return out
 }
@@ -1114,7 +1143,7 @@ func interactionFromWire(w wireInteraction) discord.Interaction {
 		switch in.Type {
 		case discord.InteractionCommand, discord.InteractionAutocomplete:
 			in.CommandName = d.Name
-			in.Options = flattenOptions(d.Options)
+			in.Options = interactionOptionsFromWire(d.Options)
 			in.Resolved = resolvedFromWire(w.GuildID, d.Resolved)
 		case discord.InteractionComponent:
 			in.CustomID = d.CustomID

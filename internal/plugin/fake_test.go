@@ -129,6 +129,22 @@ func (f *fakeDiscord) ListMessages(ctx context.Context, channelID string, p disc
 	}, nil
 }
 
+// GetMessage knows the messages of ListMessages (901, 902); others are not found.
+func (f *fakeDiscord) GetMessage(ctx context.Context, channelID, messageID string) (discord.Message, error) {
+	if err := f.record(ctx, "GetMessage", channelID, messageID); err != nil {
+		return discord.Message{}, err
+	}
+	for _, m := range []discord.Message{
+		{ID: "901", ChannelID: channelID, ServerID: "10", Content: "hello", Author: discord.User{ID: "42", Username: "alice"}},
+		{ID: "902", ChannelID: channelID, ServerID: "10", Content: "world", Author: discord.User{ID: "43", Username: "bob"}},
+	} {
+		if m.ID == messageID {
+			return m, nil
+		}
+	}
+	return discord.Message{}, fmt.Errorf("discord GetMessage: %w", discord.ErrNotFound)
+}
+
 func (f *fakeDiscord) AddReaction(ctx context.Context, channelID, messageID, emoji string) error {
 	return f.record(ctx, "AddReaction", channelID, messageID, emoji)
 }

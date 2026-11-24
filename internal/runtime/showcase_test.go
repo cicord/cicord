@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -663,6 +664,34 @@ func TestShowcasePolls(t *testing.T) {
 	resp, def := s.route("polls", "GET", "/polls/2", nil, nil)
 	if def.Access != "public" || !strings.Contains(string(resp.Body), `"status":"closed"`) {
 		t.Errorf("GET /polls/2 = %s (%s)", resp.Body, def.Access)
+	}
+
+	// /polls close: a subcommand whose poll option autocompletes the author's open polls
+	// (an autocomplete interaction answered by the plugin, never deferred).
+	wait(t, w.InvokeCommand(alice.ID, s.serverID, pollsCh.ID, s.appID, "poll", map[string]any{
+		"question": "Board games?", "choices": "Yes | No",
+	}))
+	poll3 := pollMessage(s, pollsCh.ID, "3")
+	st = wait(t, w.Autocomplete(alice.ID, s.serverID, pollsCh.ID, s.appID, "polls close", "poll", "board", nil))
+	if st.ResponseType != discord.ResponseAutocomplete || !reflect.DeepEqual(st.Choices, []discord.CommandChoice{{Name: "#3 Board games?", Value: "3"}}) {
+		t.Fatalf("autocomplete = %+v", st)
+	}
+	if st = wait(t, w.Autocomplete(bob.ID, s.serverID, pollsCh.ID, s.appID, "polls close", "poll", "", nil)); len(st.Choices) != 0 {
+		t.Errorf("bob's suggestions = %+v", st.Choices)
+	}
+	st = settled(t, w.InvokeCommand(alice.ID, s.serverID, pollsCh.ID, s.appID, "polls close", map[string]any{"poll": "3"}),
+		func(st sim.InteractionState) bool { return replyText(st) != "" })
+	if !st.Ephemeral || replyText(st) != "Poll #3 is closed." {
+		t.Fatalf("/polls close = %+v (%s)", st, replyText(st))
+	}
+	s.waitFor("poll #3 message closed", func() bool {
+		m, _ := w.Message(poll3.ID)
+		return len(m.Components) == 0 && strings.Contains(textOf(m), "Closed")
+	})
+	st = settled(t, w.InvokeCommand(bob.ID, s.serverID, pollsCh.ID, s.appID, "polls results", map[string]any{"poll": "1"}),
+		func(st sim.InteractionState) bool { return replyText(st) != "" })
+	if !st.Ephemeral || !strings.Contains(replyText(st), "Friday** 🏆") {
+		t.Errorf("/polls results = %+v", st.Message)
 	}
 }
 

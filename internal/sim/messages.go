@@ -362,11 +362,7 @@ func (w *World) listMessages(a actor, channelID string, p discord.ListMessagesPa
 	if err != nil {
 		return nil, err
 	}
-	if c.ch.Type != discord.ChannelDM {
-		if err := w.requireChannel(a, c, permReadHistory); err != nil {
-			return nil, err
-		}
-	} else if err := w.requireChannel(a, c, 0); err != nil {
+	if err := w.readAccess(a, c); err != nil {
 		return nil, err
 	}
 	// Like the disgo adapter: 0 means the default 50, other values are clamped to 1..100.
@@ -409,6 +405,39 @@ func (w *World) listMessages(a actor, channelID string, p discord.ListMessagesPa
 		out = append(out, m)
 	}
 	return out, nil
+}
+
+// getMessage is GET /channels/{id}/messages/{id}: the permissions and the content
+// redaction of listMessages.
+func (w *World) getMessage(a actor, channelID, messageID string) (discord.Message, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	c, ms, err := w.channelMessage(channelID, messageID)
+	if err != nil {
+		if c, cerr := w.channel(channelID); cerr == nil {
+			// An unknown message of a channel the caller cannot read is a 403, like Discord.
+			if perr := w.readAccess(a, c); perr != nil {
+				return discord.Message{}, perr
+			}
+		}
+		return discord.Message{}, err
+	}
+	if err := w.readAccess(a, c); err != nil {
+		return discord.Message{}, err
+	}
+	if bot := w.botsByUser[a.userID]; bot != nil {
+		return w.redact(ms.msg, a.userID, bot.privileged.Has(intentMessageContent)), nil
+	}
+	return cloneMessage(ms.msg), nil
+}
+
+// readAccess checks the caller may read the history of c (ReadMessageHistory in server
+// channels, membership in DMs). Caller holds w.mu.
+func (w *World) readAccess(a actor, c *channelState) error {
+	if c.ch.Type != discord.ChannelDM {
+		return w.requireChannel(a, c, permReadHistory)
+	}
+	return w.requireChannel(a, c, 0)
 }
 
 // ───────────────────────────────────────────────────────────── reactions

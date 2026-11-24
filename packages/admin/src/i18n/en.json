@@ -878,6 +878,7 @@
       "chooseChannel": "Choose a channel…",
       "chooseRole": "Choose a role…",
       "noAttachments": "Attachments are not simulated",
+      "autocomplete": "Type for suggestions",
       "required": "required",
       "command": "Command",
       "run": "Run /{{name}}"

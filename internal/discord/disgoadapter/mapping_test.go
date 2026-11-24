@@ -398,6 +398,25 @@ func TestCommandsToWire(t *testing.T) {
 	}
 }
 
+func TestSubcommandsToWire(t *testing.T) {
+	cmd := discord.Command{Name: "polls", Description: "Polls", Options: []discord.CommandOption{
+		{Type: discord.OptionSubcommand, Name: "close", Description: "Close", Options: []discord.CommandOption{
+			{Type: discord.OptionString, Name: "poll", Description: "p", Required: true, Autocomplete: true, MinLength: ptr(1), MaxLength: ptr(20)},
+		}},
+		{Type: discord.OptionSubcommandGroup, Name: "admin", Description: "Admin", Options: []discord.CommandOption{
+			{Type: discord.OptionSubcommand, Name: "purge", Description: "Purge"},
+		}},
+	}}
+	b, _ := json.Marshal(commandToWire(cmd))
+	want := `{"type":1,"name":"polls","description":"Polls","options":[` +
+		`{"type":1,"name":"close","description":"Close","options":[` +
+		`{"type":3,"name":"poll","description":"p","required":true,"min_length":1,"max_length":20,"autocomplete":true}]},` +
+		`{"type":2,"name":"admin","description":"Admin","options":[{"type":1,"name":"purge","description":"Purge"}]}]}`
+	if string(b) != want {
+		t.Errorf("command:\n got %s\nwant %s", b, want)
+	}
+}
+
 func TestInteractionResponseToWire(t *testing.T) {
 	cases := []struct {
 		name string
@@ -412,6 +431,9 @@ func TestInteractionResponseToWire(t *testing.T) {
 		{"modal", discord.InteractionResponse{Type: discord.ResponseModal, Modal: &discord.Modal{CustomID: "m", Title: "Report", Components: []discord.Component{
 			{Type: discord.ComponentActionRow, Components: []discord.Component{{Type: discord.ComponentTextInput, CustomID: "why", Label: "Why", TextStyle: 2, Required: true}}},
 		}}}, `{"type":9,"data":{"custom_id":"m","title":"Report","components":[{"type":1,"components":[{"type":4,"custom_id":"why","label":"Why","style":2,"required":true}]}]}}`},
+		{"autocomplete", discord.InteractionResponse{Type: discord.ResponseAutocomplete, Choices: []discord.CommandChoice{{Name: "Poll #1", Value: "1"}, {Name: "two", Value: 2.0}}},
+			`{"type":8,"data":{"choices":[{"name":"Poll #1","value":"1"},{"name":"two","value":2}]}}`},
+		{"autocomplete empty", discord.InteractionResponse{Type: discord.ResponseAutocomplete}, `{"type":8,"data":{"choices":[]}}`},
 	}
 	for _, c := range cases {
 		w, err := interactionResponseToWire(c.in)
@@ -423,7 +445,9 @@ func TestInteractionResponseToWire(t *testing.T) {
 			t.Errorf("%s:\n got %s\nwant %s", c.name, b, c.want)
 		}
 	}
-	for _, bad := range []discord.InteractionResponse{{Type: discord.ResponseMessage}, {Type: discord.ResponseModal}, {Type: 8}} {
+	tooMany := make([]discord.CommandChoice, 26)
+	for _, bad := range []discord.InteractionResponse{{Type: discord.ResponseMessage}, {Type: discord.ResponseModal}, {Type: 3},
+		{Type: discord.ResponseAutocomplete, Choices: tooMany}} {
 		if _, err := interactionResponseToWire(bad); !errors.Is(err, discord.ErrBadRequest) {
 			t.Errorf("bad response %+v err = %v", bad, err)
 		}
@@ -495,15 +519,41 @@ func TestInteractionCommandFromWire(t *testing.T) {
 	}
 }
 
-func TestInteractionSubcommandFlattened(t *testing.T) {
+func TestInteractionSubcommandNested(t *testing.T) {
 	in := decodeInteraction(t, `{"id":"1","type":2,"token":"t","user":{"id":"2","username":"dm"},
 	  "data":{"name":"cfg","options":[{"name":"set","type":1,"options":[{"name":"key","type":3,"value":"k"}]}]}}`)
-	want := []discord.InteractionOption{{Name: "set", Type: 1}, {Name: "key", Type: discord.OptionString, Value: "k"}}
+	want := []discord.InteractionOption{{Name: "set", Type: discord.OptionSubcommand, Options: []discord.InteractionOption{{Name: "key", Type: discord.OptionString, Value: "k"}}}}
 	if !reflect.DeepEqual(in.Options, want) {
 		t.Errorf("options = %#v", in.Options)
 	}
+	if path, leaf := in.CommandPath(); !reflect.DeepEqual(path, []string{"cfg", "set"}) || len(leaf) != 1 || leaf[0].Name != "key" {
+		t.Errorf("path = %v %v", path, leaf)
+	}
 	if in.Member != nil || in.User.ID != "2" || in.ServerID != "" {
 		t.Errorf("DM interaction = %+v", in)
+	}
+
+	group := decodeInteraction(t, `{"id":"1","type":2,"token":"t","user":{"id":"2"},
+	  "data":{"name":"polls","options":[{"name":"admin","type":2,"options":[{"name":"purge","type":1,"options":[]}]}]}}`)
+	if path, leaf := group.CommandPath(); !reflect.DeepEqual(path, []string{"polls", "admin", "purge"}) || len(leaf) != 0 {
+		t.Errorf("group path = %v %v", path, leaf)
+	}
+}
+
+func TestAutocompleteFromWire(t *testing.T) {
+	in := decodeInteraction(t, `{"id":"1","type":4,"token":"t","guild_id":"9","member":{"user":{"id":"2"},"roles":[]},
+	  "data":{"name":"polls","options":[{"name":"close","type":1,"options":[
+	    {"name":"count","type":4,"value":"1","focused":true},{"name":"note","type":3,"value":"x"}]}]}}`)
+	if in.Type != discord.InteractionAutocomplete || in.CommandName != "polls" {
+		t.Fatalf("interaction = %+v", in)
+	}
+	f, ok := in.FocusedOption()
+	if !ok || f.Name != "count" || f.Value != "1" || !f.Focused {
+		t.Errorf("focused = %+v %v", f, ok)
+	}
+	empty := decodeInteraction(t, `{"id":"1","type":4,"token":"t","data":{"name":"p","options":[{"name":"n","type":10,"value":"","focused":true}]}}`)
+	if f, _ := empty.FocusedOption(); f.Value != "" {
+		t.Errorf("empty focused = %#v", f.Value)
 	}
 }
 

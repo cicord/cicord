@@ -36,6 +36,7 @@ type botHost struct {
 
 	cmdMu       sync.Mutex
 	cmdHashes   map[string]string // serverID → hash of the last command set
+	cmdSync     sync.Mutex        // serializes SetServerCommands calls
 	profileHash string
 	presence    string
 }
@@ -46,6 +47,69 @@ type routing struct {
 	commands    map[string]map[string]*instanceRT // serverID → command → instance
 	reconcilers map[string]*serverRT              // serverID → server (when this bot reconciles it)
 	caches      map[string]*serverCache           // serverID → cache
+	serverKeys  map[string]string                 // serverID → server key, for the servers of the bot's spec
+}
+
+// syncCommands registers the slash commands of the instances of a server, unless the same
+// set was registered last time (cmdHashes).
+func (h *botHost) syncCommands(ctx context.Context, rt *routing, sid string) {
+	h.cmdSync.Lock() // one registration at a time (activation, server joins)
+	defer h.cmdSync.Unlock()
+	var cmds []discord.Command
+	for _, i := range rt.byServer[sid] {
+		cmds = append(cmds, i.plugin.def.DiscordCommands()...)
+	}
+	sort.Slice(cmds, func(x, y int) bool { return cmds[x].Name < cmds[y].Name })
+	data, _ := json.Marshal(cmds)
+	sum := sha256.Sum256(data)
+	hash := hex.EncodeToString(sum[:])
+	h.cmdMu.Lock()
+	same := h.cmdHashes[sid] == hash
+	h.cmdMu.Unlock()
+	if same {
+		return
+	}
+	if cmds == nil {
+		cmds = []discord.Command{}
+	}
+	if err := h.session.SetServerCommands(ctx, h.session.ApplicationID(), sid, cmds); err != nil {
+		h.rt.diag.recordCommands(h.key, sid, len(cmds), err)
+		h.rt.log.Error("sync slash commands", "bot", h.key, "server", rt.serverKeys[sid], "err", err)
+		return
+	}
+	h.rt.diag.recordCommands(h.key, sid, len(cmds), nil)
+	h.cmdMu.Lock()
+	h.cmdHashes[sid] = hash
+	h.cmdMu.Unlock()
+}
+
+// serverMembership reacts to the bot joining or leaving a server. Discord drops the
+// server commands of an application removed from a server, so after a re-invite they are
+// registered again; a leave forgets the last registered set.
+func (h *botHost) serverMembership(rt *routing, ev discord.Event) {
+	switch e := ev.(type) {
+	case discord.ServerJoinEvent:
+		sid := e.Server.ID
+		if _, ok := rt.serverKeys[sid]; !ok {
+			return // not a server of this bot's spec: nothing to register
+		}
+		h.cmdMu.Lock()
+		delete(h.cmdHashes, sid)
+		h.cmdMu.Unlock()
+		h.rt.log.Info("bot joined a server", "bot", h.key, "server", rt.serverKeys[sid])
+		go func() { // the gateway handler must not block on REST
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			h.syncCommands(ctx, h.routing.Load(), sid)
+		}()
+	case discord.ServerLeaveEvent:
+		h.cmdMu.Lock()
+		delete(h.cmdHashes, e.ServerID)
+		h.cmdMu.Unlock()
+		if sk, ok := rt.serverKeys[e.ServerID]; ok {
+			h.rt.log.Warn("bot left a server of its spec", "bot", h.key, "server", sk)
+		}
+	}
 }
 
 func (r *Runtime) botError(key string) string {
@@ -256,6 +320,7 @@ func (h *botHost) install(ctx context.Context, a *active) {
 	rt := &routing{
 		byServer: map[string][]*instanceRT{}, byName: map[string]map[string]*instanceRT{},
 		commands: map[string]map[string]*instanceRT{}, reconcilers: map[string]*serverRT{}, caches: map[string]*serverCache{},
+		serverKeys: map[string]string{},
 	}
 	b := a.repo.Bots[h.key]
 	if b == nil {
@@ -287,41 +352,16 @@ func (h *botHost) install(ctx context.Context, a *active) {
 			rt.commands[sid][c.Name] = i
 		}
 	}
+	for _, sk := range b.Spec.Servers {
+		if s := a.servers[sk]; s != nil {
+			rt.serverKeys[s.cfg.Spec.DiscordID] = sk
+		}
+	}
 	h.routing.Store(rt)
 
 	// slash commands per server
-	for _, sk := range b.Spec.Servers {
-		s := a.servers[sk]
-		if s == nil {
-			continue
-		}
-		sid := s.cfg.Spec.DiscordID
-		var cmds []discord.Command
-		for _, i := range rt.byServer[sid] {
-			cmds = append(cmds, i.plugin.def.DiscordCommands()...)
-		}
-		sort.Slice(cmds, func(x, y int) bool { return cmds[x].Name < cmds[y].Name })
-		data, _ := json.Marshal(cmds)
-		sum := sha256.Sum256(data)
-		hash := hex.EncodeToString(sum[:])
-		h.cmdMu.Lock()
-		same := h.cmdHashes[sid] == hash
-		h.cmdMu.Unlock()
-		if same {
-			continue
-		}
-		if cmds == nil {
-			cmds = []discord.Command{}
-		}
-		if err := h.session.SetServerCommands(ctx, h.session.ApplicationID(), sid, cmds); err != nil {
-			h.rt.diag.recordCommands(h.key, sid, len(cmds), err)
-			h.rt.log.Error("sync slash commands", "bot", h.key, "server", sk, "err", err)
-			continue
-		}
-		h.rt.diag.recordCommands(h.key, sid, len(cmds), nil)
-		h.cmdMu.Lock()
-		h.cmdHashes[sid] = hash
-		h.cmdMu.Unlock()
+	for sid := range rt.serverKeys {
+		h.syncCommands(ctx, rt, sid)
 	}
 
 	// profile
@@ -376,6 +416,8 @@ func (h *botHost) handle(ev discord.Event) {
 	case discord.InteractionCreateEvent:
 		h.routeInteraction(rt, e.Interaction)
 		return
+	case discord.ServerJoinEvent, discord.ServerLeaveEvent:
+		h.serverMembership(rt, ev)
 	case discord.MessageCreateEvent:
 		if e.Message.Author.ID == h.session.Self().ID {
 			return // never feed a bot its own messages (loops)
@@ -413,6 +455,8 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 	switch it.Type {
 	case discord.InteractionCommand:
 		target, kind, localID = rt.commands[it.ServerID][it.CommandName], "command", it.CommandName
+	case discord.InteractionAutocomplete:
+		target, kind, localID = rt.commands[it.ServerID][it.CommandName], "autocomplete", it.CommandName
 	case discord.InteractionComponent, discord.InteractionModalSubmit:
 		name, local, ok := plugin.ParseCustomID(it.CustomID)
 		if !ok {
@@ -434,13 +478,17 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 		return
 	}
 	if target == nil {
+		resp := discord.InteractionResponse{
+			Type: discord.ResponseMessage,
+			Data: &discord.MessageCreate{Content: "This action is no longer available.", Flags: discord.MessageFlagEphemeral},
+		}
+		if kind == "autocomplete" {
+			resp = discord.InteractionResponse{Type: discord.ResponseAutocomplete, Choices: []discord.CommandChoice{}}
+		}
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			_ = h.session.RespondInteraction(ctx, it.ID, it.Token, discord.InteractionResponse{
-				Type: discord.ResponseMessage,
-				Data: &discord.MessageCreate{Content: "This action is no longer available.", Flags: discord.MessageFlagEphemeral},
-			})
+			_ = h.session.RespondInteraction(ctx, it.ID, it.Token, resp)
 		}()
 		return
 	}

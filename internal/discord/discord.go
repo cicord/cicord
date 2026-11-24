@@ -608,15 +608,20 @@ type ListMessagesParams struct {
 type CommandOptionType int
 
 const (
-	OptionString      CommandOptionType = 3
-	OptionInteger     CommandOptionType = 4
-	OptionBoolean     CommandOptionType = 5
-	OptionUser        CommandOptionType = 6
-	OptionChannel     CommandOptionType = 7
-	OptionRole        CommandOptionType = 8
-	OptionMentionable CommandOptionType = 9
-	OptionNumber      CommandOptionType = 10
-	OptionAttachment  CommandOptionType = 11
+	// OptionSubcommand and OptionSubcommandGroup structure a command: a command holds either
+	// plain options or subcommands/groups (at most 25), a group holds only subcommands, and a
+	// subcommand holds only plain options.
+	OptionSubcommand      CommandOptionType = 1
+	OptionSubcommandGroup CommandOptionType = 2
+	OptionString          CommandOptionType = 3
+	OptionInteger         CommandOptionType = 4
+	OptionBoolean         CommandOptionType = 5
+	OptionUser            CommandOptionType = 6
+	OptionChannel         CommandOptionType = 7
+	OptionRole            CommandOptionType = 8
+	OptionMentionable     CommandOptionType = 9
+	OptionNumber          CommandOptionType = 10
+	OptionAttachment      CommandOptionType = 11
 )
 
 type CommandChoice struct {
@@ -632,6 +637,19 @@ type CommandOption struct {
 	Choices     []CommandChoice
 	MinValue    *float64
 	MaxValue    *float64
+	// MinLength / MaxLength bound string options (0..6000; MaxLength >= 1).
+	MinLength *int
+	MaxLength *int
+	// Autocomplete: Discord sends InteractionAutocomplete while the user types this option
+	// (string, integer and number options without Choices).
+	Autocomplete bool
+	// Options of a subcommand (plain options) or of a group (subcommands).
+	Options []CommandOption
+}
+
+// IsSubcommand reports whether the option is a subcommand or a subcommand group.
+func (o CommandOption) IsSubcommand() bool {
+	return o.Type == OptionSubcommand || o.Type == OptionSubcommandGroup
 }
 
 // Command is a chat-input (slash) command.
@@ -655,11 +673,40 @@ const (
 )
 
 // InteractionOption is a received command option. Value is string for string/user/
-// channel/role/mentionable/attachment options (IDs), float64 for integer/number, bool for boolean.
+// channel/role/mentionable/attachment options (IDs), float64 for integer/number, bool for
+// boolean. Subcommands and groups have no value: their options are in Options. In an
+// autocomplete interaction, the option being typed has Focused set and its Value is the raw
+// text typed so far (a string, whatever the option type).
 type InteractionOption struct {
-	Name  string
-	Type  CommandOptionType
-	Value any
+	Name    string
+	Type    CommandOptionType
+	Value   any
+	Focused bool
+	Options []InteractionOption
+}
+
+// CommandPath returns the invoked command path ("ticket", "ticket close", "ticket admin
+// purge": the command, then the group and the subcommand when present) and the options of
+// the invoked leaf.
+func (it Interaction) CommandPath() (path []string, options []InteractionOption) {
+	path = []string{it.CommandName}
+	options = it.Options
+	for len(options) == 1 && (options[0].Type == OptionSubcommandGroup || options[0].Type == OptionSubcommand) {
+		path = append(path, options[0].Name)
+		options = options[0].Options
+	}
+	return path, options
+}
+
+// FocusedOption returns the option being typed in an autocomplete interaction.
+func (it Interaction) FocusedOption() (InteractionOption, bool) {
+	_, opts := it.CommandPath()
+	for _, o := range opts {
+		if o.Focused {
+			return o, true
+		}
+	}
+	return InteractionOption{}, false
 }
 
 type Resolved struct {
@@ -699,8 +746,14 @@ const (
 	ResponseDeferredMessage InteractionResponseType = 5
 	ResponseDeferredUpdate  InteractionResponseType = 6
 	ResponseUpdateMessage   InteractionResponseType = 7
-	ResponseModal           InteractionResponseType = 9
+	// ResponseAutocomplete answers an InteractionAutocomplete with Choices (at most 25). It
+	// is the only valid response to an autocomplete interaction, which cannot be deferred.
+	ResponseAutocomplete InteractionResponseType = 8
+	ResponseModal        InteractionResponseType = 9
 )
+
+// MaxAutocompleteChoices is the most choices an autocomplete response may hold.
+const MaxAutocompleteChoices = 25
 
 type Modal struct {
 	CustomID   string
@@ -713,6 +766,8 @@ type InteractionResponse struct {
 	// Data for Message / UpdateMessage; for DeferredMessage only Flags is used.
 	Data  *MessageCreate
 	Modal *Modal
+	// Choices for Autocomplete (an empty list shows "no options").
+	Choices []CommandChoice
 }
 
 // ───────────────────────────────────────────────────────────── client
@@ -782,6 +837,8 @@ type Client interface {
 	EditMessage(ctx context.Context, channelID, messageID string, m MessageCreate) (Message, error)
 	DeleteMessage(ctx context.Context, channelID, messageID, reason string) error
 	ListMessages(ctx context.Context, channelID string, p ListMessagesParams) ([]Message, error)
+	// GetMessage returns one message of a channel (ErrNotFound when it does not exist).
+	GetMessage(ctx context.Context, channelID, messageID string) (Message, error)
 	AddReaction(ctx context.Context, channelID, messageID, emoji string) error
 	RemoveOwnReaction(ctx context.Context, channelID, messageID, emoji string) error
 

@@ -35,12 +35,65 @@ type Definition struct {
 type CommandDef struct {
 	Name        string
 	Description string
-	// Ephemeral: replies are ephemeral by default and auto-defer is ephemeral.
+	// Ephemeral: replies are ephemeral by default and auto-defer is ephemeral (subcommands
+	// included).
 	Ephemeral bool
 	// Permissions are Cicord permission names (default member permissions).
 	Permissions []string
-	// Options in Discord order: required options first, then declaration order.
+	// Options in Discord order: required options first, then declaration order. A command
+	// with subcommands holds only discord.OptionSubcommand / OptionSubcommandGroup options
+	// (subcommands first, then groups, in declaration order), whose Options are theirs.
 	Options []discord.CommandOption
+}
+
+// HasSubcommands reports whether the command is made of subcommands (and groups).
+func (c CommandDef) HasSubcommands() bool {
+	return len(c.Options) > 0 && c.Options[0].IsSubcommand()
+}
+
+// Leaf returns the options of the invoked leaf for a command path (["poll"], ["polls",
+// "close"], ["polls", "admin", "purge"], as from discord.Interaction.CommandPath), or false
+// when the path does not name an invocable command or subcommand of c.
+func (c CommandDef) Leaf(path []string) ([]discord.CommandOption, bool) {
+	if len(path) == 0 || path[0] != c.Name {
+		return nil, false
+	}
+	opts := c.Options
+	for _, name := range path[1:] {
+		found := false
+		for _, o := range opts {
+			if o.IsSubcommand() && o.Name == name {
+				opts, found = o.Options, true
+				break
+			}
+		}
+		if !found {
+			return nil, false
+		}
+	}
+	if len(opts) > 0 && opts[0].IsSubcommand() {
+		return nil, false // a command or group with subcommands is not invocable itself
+	}
+	return opts, true
+}
+
+// Leaves lists the invocable command paths ("poll", "polls close", "polls admin purge").
+func (c CommandDef) Leaves() []string {
+	if !c.HasSubcommands() {
+		return []string{c.Name}
+	}
+	var out []string
+	for _, o := range c.Options {
+		switch o.Type {
+		case discord.OptionSubcommand:
+			out = append(out, c.Name+" "+o.Name)
+		case discord.OptionSubcommandGroup:
+			for _, sub := range o.Options {
+				out = append(out, c.Name+" "+o.Name+" "+sub.Name)
+			}
+		}
+	}
+	return out
 }
 
 // ScheduleDef is a recurring job declared under `schedules` (cron, UTC).
@@ -107,6 +160,9 @@ var eventIntents = map[string][]string{
 	"messageDelete":  {"ServerMessages"},
 	"reactionAdd":    {"ServerMessageReactions"},
 	"reactionRemove": {"ServerMessageReactions"},
+	// Servers is always enabled (config.Repo.GatewayIntents): nothing to declare.
+	"serverJoin":  {},
+	"serverLeave": {},
 }
 
 // EventNames lists the SDK event handler names (EventHandlers in cicord-sdk.d.ts).
@@ -158,6 +214,10 @@ func EventName(ev discord.Event) string {
 		return "reactionAdd"
 	case discord.ReactionRemoveEvent:
 		return "reactionRemove"
+	case discord.ServerJoinEvent:
+		return "serverJoin"
+	case discord.ServerLeaveEvent:
+		return "serverLeave"
 	}
 	return ""
 }
@@ -290,24 +350,43 @@ type describedCron struct {
 	Type string `json:"type"`
 }
 
-type describedCmd struct {
+// describedLeaf is a command or a subcommand: what can be invoked.
+type describedLeaf struct {
 	Name        string         `json:"name"`
 	Description any            `json:"description"`
-	Ephemeral   any            `json:"ephemeral"`
-	Permissions any            `json:"permissions"`
 	Run         string         `json:"run"`
 	Options     []describedOpt `json:"options"`
 	OptionsType string         `json:"optionsType"`
 }
 
+type describedCmd struct {
+	describedLeaf
+	Ephemeral       any              `json:"ephemeral"`
+	Permissions     any              `json:"permissions"`
+	Subcommands     []describedLeaf  `json:"subcommands"`
+	SubcommandsType string           `json:"subcommandsType"`
+	Groups          []describedGroup `json:"groups"`
+	GroupsType      string           `json:"groupsType"`
+}
+
+type describedGroup struct {
+	Name            string          `json:"name"`
+	Description     any             `json:"description"`
+	Subcommands     []describedLeaf `json:"subcommands"`
+	SubcommandsType string          `json:"subcommandsType"`
+}
+
 type describedOpt struct {
-	Name        string          `json:"name"`
-	Type        any             `json:"type"`
-	Description any             `json:"description"`
-	Required    any             `json:"required"`
-	Choices     json.RawMessage `json:"choices"`
-	Min         any             `json:"min"`
-	Max         any             `json:"max"`
+	Name         string          `json:"name"`
+	Type         any             `json:"type"`
+	Description  any             `json:"description"`
+	Required     any             `json:"required"`
+	Choices      json.RawMessage `json:"choices"`
+	Min          any             `json:"min"`
+	Max          any             `json:"max"`
+	MinLength    any             `json:"minLength"`
+	MaxLength    any             `json:"maxLength"`
+	Autocomplete string          `json:"autocomplete"` // typeof
 }
 
 var knownSections = map[string]bool{
@@ -536,17 +615,27 @@ func normalizePattern(p string) string {
 	return "/" + strings.Join(segs, "/")
 }
 
+// maxStringOption is the longest value of a string option (min/maxLength bound).
+const maxStringOption = 6000
+
+func validName(n string) bool { return commandNameRe.MatchString(n) && strings.ToLower(n) == n }
+
+func validDesc(d any) (string, bool) {
+	s, ok := d.(string)
+	return s, ok && s != "" && utf8.RuneCountInString(s) <= 100
+}
+
 func buildCommand(c describedCmd) (CommandDef, []error) {
 	var errs []error
 	fail := func(format string, args ...any) {
 		errs = append(errs, fmt.Errorf("command %q: "+format, append([]any{c.Name}, args...)...))
 	}
 	cmd := CommandDef{Name: c.Name}
-	if !commandNameRe.MatchString(c.Name) || strings.ToLower(c.Name) != c.Name {
+	if !validName(c.Name) {
 		fail("invalid name (lowercase letters, digits, - and _, 1-32 characters)")
 	}
-	desc, ok := c.Description.(string)
-	if !ok || desc == "" || utf8.RuneCountInString(desc) > 100 {
+	desc, ok := validDesc(c.Description)
+	if !ok {
 		fail("description is required (1-100 characters)")
 	}
 	cmd.Description = desc
@@ -574,17 +663,97 @@ func buildCommand(c describedCmd) (CommandDef, []error) {
 			fail("%v", err)
 		}
 	}
-	if c.Run != "function" {
-		fail("run must be a function, got %s", c.Run)
+	for _, t := range []struct{ name, typ string }{{"subcommands", c.SubcommandsType}, {"groups", c.GroupsType}} {
+		if t.typ != "" && t.typ != "undefined" && t.typ != "object" {
+			fail("%s must be an object, got %s", t.name, t.typ)
+		}
 	}
-	if c.OptionsType != "undefined" && c.OptionsType != "object" {
-		fail("options must be an object, got %s", c.OptionsType)
+	if len(c.Subcommands) == 0 && len(c.Groups) == 0 {
+		if c.SubcommandsType == "object" || c.GroupsType == "object" {
+			fail("subcommands/groups declared but empty")
+		}
+		cmd.Options = buildLeafOptions(c.describedLeaf, fail)
+		return cmd, errs
 	}
-	if len(c.Options) > 25 {
+
+	// A command with subcommands: Discord does not let the command itself be invoked.
+	if c.Run != "undefined" {
+		fail("a command with subcommands has no run (each subcommand has its own)")
+	}
+	if c.OptionsType != "undefined" {
+		fail("a command with subcommands has no options (declare them on its subcommands)")
+	}
+	if n := len(c.Subcommands) + len(c.Groups); n > 25 {
+		fail("at most 25 subcommands and groups (got %d)", n)
+	}
+	names := map[string]bool{}
+	for _, sc := range c.Subcommands {
+		names[sc.Name] = true
+		cmd.Options = append(cmd.Options, buildSubcommand(sc, func(format string, args ...any) {
+			fail("subcommand %q: "+format, append([]any{sc.Name}, args...)...)
+		}))
+	}
+	for _, g := range c.Groups {
+		gfail := func(format string, args ...any) {
+			fail("group %q: "+format, append([]any{g.Name}, args...)...)
+		}
+		if names[g.Name] {
+			gfail("a subcommand has the same name")
+		}
+		names[g.Name] = true
+		group := discord.CommandOption{Type: discord.OptionSubcommandGroup, Name: g.Name}
+		if !validName(g.Name) {
+			gfail("invalid name (lowercase letters, digits, - and _, 1-32 characters)")
+		}
+		gdesc, ok := validDesc(g.Description)
+		if !ok {
+			gfail("description is required (1-100 characters)")
+		}
+		group.Description = gdesc
+		if g.SubcommandsType != "object" || len(g.Subcommands) == 0 {
+			gfail("a group needs subcommands (an object of subcommand())")
+		}
+		if len(g.Subcommands) > 25 {
+			gfail("at most 25 subcommands (got %d)", len(g.Subcommands))
+		}
+		for _, sc := range g.Subcommands {
+			group.Options = append(group.Options, buildSubcommand(sc, func(format string, args ...any) {
+				gfail("subcommand %q: "+format, append([]any{sc.Name}, args...)...)
+			}))
+		}
+		cmd.Options = append(cmd.Options, group)
+	}
+	return cmd, errs
+}
+
+func buildSubcommand(sc describedLeaf, fail func(string, ...any)) discord.CommandOption {
+	opt := discord.CommandOption{Type: discord.OptionSubcommand, Name: sc.Name}
+	if !validName(sc.Name) {
+		fail("invalid name (lowercase letters, digits, - and _, 1-32 characters)")
+	}
+	desc, ok := validDesc(sc.Description)
+	if !ok {
+		fail("description is required (1-100 characters)")
+	}
+	opt.Description = desc
+	opt.Options = buildLeafOptions(sc, fail)
+	return opt
+}
+
+// buildLeafOptions checks run and the options of a command or subcommand and returns the
+// options in Discord order (required first).
+func buildLeafOptions(l describedLeaf, fail func(string, ...any)) []discord.CommandOption {
+	if l.Run != "function" {
+		fail("run must be a function, got %s", l.Run)
+	}
+	if l.OptionsType != "undefined" && l.OptionsType != "object" {
+		fail("options must be an object, got %s", l.OptionsType)
+	}
+	if len(l.Options) > 25 {
 		fail("at most 25 options")
 	}
 	var required, optional []discord.CommandOption
-	for _, o := range c.Options {
+	for _, o := range l.Options {
 		opt, oerrs := buildOption(o)
 		for _, e := range oerrs {
 			fail("option %q: %v", o.Name, e)
@@ -598,15 +767,14 @@ func buildCommand(c describedCmd) (CommandDef, []error) {
 			optional = append(optional, opt)
 		}
 	}
-	cmd.Options = slices.Concat(required, optional)
-	return cmd, errs
+	return slices.Concat(required, optional)
 }
 
 func buildOption(o describedOpt) (discord.CommandOption, []error) {
 	var errs []error
 	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
 	opt := discord.CommandOption{Name: o.Name}
-	if !commandNameRe.MatchString(o.Name) || strings.ToLower(o.Name) != o.Name {
+	if !validName(o.Name) {
 		fail("invalid name (lowercase letters, digits, - and _, 1-32 characters)")
 	}
 	typName, _ := o.Type.(string)
@@ -648,6 +816,45 @@ func buildOption(o describedOpt) (discord.CommandOption, []error) {
 	}
 	if opt.MinValue != nil && opt.MaxValue != nil && *opt.MinValue > *opt.MaxValue {
 		fail("min is greater than max")
+	}
+	for _, ml := range []struct {
+		name  string
+		v     any
+		least int
+		dst   **int
+	}{{"minLength", o.MinLength, 0, &opt.MinLength}, {"maxLength", o.MaxLength, 1, &opt.MaxLength}} {
+		if ml.v == nil {
+			continue
+		}
+		f, isNum := ml.v.(float64)
+		switch {
+		case !isNum || f != float64(int(f)):
+			fail("%s must be an integer", ml.name)
+		case typ != discord.OptionString:
+			fail("%s is only supported on string options", ml.name)
+		case f < float64(ml.least) || f > maxStringOption:
+			fail("%s must be between %d and %d", ml.name, ml.least, maxStringOption)
+		default:
+			n := int(f)
+			*ml.dst = &n
+		}
+	}
+	if opt.MinLength != nil && opt.MaxLength != nil && *opt.MinLength > *opt.MaxLength {
+		fail("minLength is greater than maxLength")
+	}
+	switch o.Autocomplete {
+	case "", "undefined":
+	case "function":
+		switch {
+		case typ != discord.OptionString && !numeric:
+			fail("autocomplete is only supported on string, integer and number options")
+		case len(o.Choices) > 0 && string(o.Choices) != "null":
+			fail("autocomplete and choices are mutually exclusive")
+		default:
+			opt.Autocomplete = true
+		}
+	default:
+		fail("autocomplete must be a function, got %s", o.Autocomplete)
 	}
 	if len(o.Choices) > 0 && string(o.Choices) != "null" {
 		var choices []struct {

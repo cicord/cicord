@@ -405,7 +405,14 @@ type interactionResultDTO struct {
 	Response  *messageDTO  `json:"response"`
 	Followups []messageDTO `json:"followups"`
 	Modal     *modalDTO    `json:"modal,omitempty"`
-	Error     string       `json:"error"`
+	// Choices are the autocomplete results (POST /sim/commands with "autocomplete").
+	Choices []choiceDTO `json:"choices,omitempty"`
+	Error   string      `json:"error"`
+}
+
+type choiceDTO struct {
+	Name  string `json:"name"`
+	Value any    `json:"value"`
 }
 
 const interactionWait = 5 * time.Second
@@ -449,17 +456,30 @@ func interactionResult(h *sim.InteractionHandle) interactionResultDTO {
 	for _, f := range st.Followups {
 		out.Followups = append(out.Followups, toMessage(f))
 	}
+	if st.ResponseType == discord.ResponseAutocomplete {
+		out.Choices = []choiceDTO{}
+		for _, c := range st.Choices {
+			out.Choices = append(out.Choices, choiceDTO(c))
+		}
+	}
 	return out
 }
 
 func (s *server) handleSimCommand(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		UserID    string         `json:"userId"`
-		ServerID  string         `json:"serverId"`
-		ChannelID string         `json:"channelId"`
-		Bot       string         `json:"bot"`
-		Name      string         `json:"name"`
-		Options   map[string]any `json:"options"`
+		UserID    string `json:"userId"`
+		ServerID  string `json:"serverId"`
+		ChannelID string `json:"channelId"`
+		Bot       string `json:"bot"`
+		// Name is the command path: "poll", "polls close", "polls admin purge".
+		Name    string         `json:"name"`
+		Options map[string]any `json:"options"`
+		// Autocomplete, when set, types in an autocomplete option instead of running the
+		// command: the result carries the bot's choices.
+		Autocomplete *struct {
+			Option string `json:"option"`
+			Value  string `json:"value"`
+		} `json:"autocomplete"`
 	}
 	if err := s.decodeJSON(w, r, &body); err != nil {
 		s.fail(w, err)
@@ -470,7 +490,12 @@ func (s *server) handleSimCommand(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusNotFound, "not_found", "unknown bot %q", body.Bot))
 		return
 	}
-	h := s.opts.Sim.InvokeCommand(body.UserID, body.ServerID, body.ChannelID, app, body.Name, body.Options)
+	var h *sim.InteractionHandle
+	if ac := body.Autocomplete; ac != nil {
+		h = s.opts.Sim.Autocomplete(body.UserID, body.ServerID, body.ChannelID, app, body.Name, ac.Option, ac.Value, body.Options)
+	} else {
+		h = s.opts.Sim.InvokeCommand(body.UserID, body.ServerID, body.ChannelID, app, body.Name, body.Options)
+	}
 	writeJSON(w, http.StatusOK, interactionResult(h))
 }
 
@@ -538,30 +563,50 @@ func (s *server) handleSimModal(w http.ResponseWriter, r *http.Request) {
 }
 
 var optionTypeNames = map[discord.CommandOptionType]string{
+	discord.OptionSubcommand: "subcommand", discord.OptionSubcommandGroup: "subcommandGroup",
 	discord.OptionString: "string", discord.OptionInteger: "integer", discord.OptionBoolean: "boolean",
 	discord.OptionUser: "user", discord.OptionChannel: "channel", discord.OptionRole: "role",
 	discord.OptionMentionable: "mentionable", discord.OptionNumber: "number", discord.OptionAttachment: "attachment",
 }
 
+// simOptionOut is a command option of GET /sim/commands. Subcommands and groups nest their
+// options.
+type simOptionOut struct {
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	Type         string         `json:"type"`
+	Required     bool           `json:"required"`
+	Choices      []choiceDTO    `json:"choices,omitempty"`
+	MinValue     *float64       `json:"minValue,omitempty"`
+	MaxValue     *float64       `json:"maxValue,omitempty"`
+	MinLength    *int           `json:"minLength,omitempty"`
+	MaxLength    *int           `json:"maxLength,omitempty"`
+	Autocomplete bool           `json:"autocomplete,omitempty"`
+	Options      []simOptionOut `json:"options,omitempty"`
+}
+
+func simOptions(opts []discord.CommandOption) []simOptionOut {
+	out := []simOptionOut{}
+	for _, o := range opts {
+		oo := simOptionOut{Name: o.Name, Description: o.Description, Type: optionTypeNames[o.Type], Required: o.Required,
+			MinValue: o.MinValue, MaxValue: o.MaxValue, MinLength: o.MinLength, MaxLength: o.MaxLength, Autocomplete: o.Autocomplete}
+		for _, ch := range o.Choices {
+			oo.Choices = append(oo.Choices, choiceDTO(ch))
+		}
+		if o.IsSubcommand() {
+			oo.Options = simOptions(o.Options)
+		}
+		out = append(out, oo)
+	}
+	return out
+}
+
 func (s *server) handleSimCommands(w http.ResponseWriter, r *http.Request) {
-	type choiceOut struct {
-		Name  string `json:"name"`
-		Value any    `json:"value"`
-	}
-	type optionOut struct {
-		Name        string      `json:"name"`
-		Description string      `json:"description"`
-		Type        string      `json:"type"`
-		Required    bool        `json:"required"`
-		Choices     []choiceOut `json:"choices,omitempty"`
-		MinValue    *float64    `json:"minValue,omitempty"`
-		MaxValue    *float64    `json:"maxValue,omitempty"`
-	}
 	type cmdOut struct {
-		Bot         string      `json:"bot"`
-		Name        string      `json:"name"`
-		Description string      `json:"description"`
-		Options     []optionOut `json:"options"`
+		Bot         string         `json:"bot"`
+		Name        string         `json:"name"`
+		Description string         `json:"description"`
+		Options     []simOptionOut `json:"options"`
 	}
 	servers := s.simServerIDs()
 	if sid := r.URL.Query().Get("serverId"); sid != "" {
@@ -575,15 +620,7 @@ func (s *server) handleSimCommands(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			for _, c := range s.opts.Sim.Commands(app, sid) {
-				co := cmdOut{Bot: s.botKeyOf(app), Name: c.Name, Description: c.Description, Options: []optionOut{}}
-				for _, o := range c.Options {
-					oo := optionOut{Name: o.Name, Description: o.Description, Type: optionTypeNames[o.Type], Required: o.Required, MinValue: o.MinValue, MaxValue: o.MaxValue}
-					for _, ch := range o.Choices {
-						oo.Choices = append(oo.Choices, choiceOut(ch))
-					}
-					co.Options = append(co.Options, oo)
-				}
-				items = append(items, co)
+				items = append(items, cmdOut{Bot: s.botKeyOf(app), Name: c.Name, Description: c.Description, Options: simOptions(c.Options)})
 			}
 		}
 	}

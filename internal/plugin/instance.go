@@ -11,9 +11,11 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin/qjs"
@@ -93,6 +95,9 @@ type Limits struct {
 	HandlerTimeout time.Duration
 	// AutoDeferAfter: interactions not answered after this delay are deferred. Default 2s.
 	AutoDeferAfter time.Duration
+	// AutocompleteTimeout bounds autocomplete handlers: Discord drops the response after 3
+	// seconds and an autocomplete cannot be deferred. Default 2.5s.
+	AutocompleteTimeout time.Duration
 	// StopTimeout bounds onStop. Default 3s.
 	StopTimeout time.Duration
 	// FetchTimeout is the default http.fetch timeout (init.timeoutMs can raise it up to
@@ -119,6 +124,7 @@ func (l Limits) withDefaults() Limits {
 	def(&l.StartupBudget, 2*time.Second)
 	def(&l.HandlerTimeout, 10*time.Second)
 	def(&l.AutoDeferAfter, 2*time.Second)
+	def(&l.AutocompleteTimeout, 2500*time.Millisecond)
 	def(&l.StopTimeout, 3*time.Second)
 	def(&l.FetchTimeout, 10*time.Second)
 	if l.MaxResponseBytes <= 0 {
@@ -817,8 +823,11 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		dataJSON = string(b)
 	}
 	timeout := i.limits.HandlerTimeout
-	if kind == "stop" {
+	switch kind {
+	case "stop":
 		timeout = i.limits.StopTimeout
+	case "autocomplete":
+		timeout = i.limits.AutocompleteTimeout
 	}
 	if i.queued.Load() >= int64(i.limits.QueueLength) {
 		finish(invResult{err: fmt.Errorf("%w (%d waiting)", ErrBusy, i.limits.QueueLength)})
@@ -909,29 +918,147 @@ func (i *Instance) HandleEvent(ctx context.Context, ev discord.Event) error {
 
 // DispatchInteraction queues an interaction (see HandleInteraction) and returns immediately.
 func (i *Instance) DispatchInteraction(ctx context.Context, it discord.Interaction, kind, localID string) <-chan error {
+	if it.ServerID != "" && it.ServerID != i.env.ServerID {
+		return errChan(fmt.Errorf("plugin: interaction for server %s routed to the instance of server %s", it.ServerID, i.env.ServerID))
+	}
 	var ephemeral bool
 	switch kind {
 	case "command":
+		// The handler is the invoked leaf: "poll", "polls close", "polls admin purge".
+		path, _ := it.CommandPath()
+		path[0] = localID
+		localID = strings.Join(path, " ")
 		if def := i.Definition(); def != nil {
-			if c, ok := def.Command(localID); ok {
+			if c, ok := def.Command(path[0]); ok {
 				ephemeral = c.Ephemeral
 			}
 		}
+	case "autocomplete":
+		return i.dispatchAutocomplete(ctx, it, localID)
 	case "component", "modal":
 	default:
 		return errChan(fmt.Errorf("plugin: unknown interaction kind %q", kind))
-	}
-	if it.ServerID != "" && it.ServerID != i.env.ServerID {
-		return errChan(fmt.Errorf("plugin: interaction for server %s routed to the instance of server %s", it.ServerID, i.env.ServerID))
 	}
 	x := i.newInteraction(it, kind, ephemeral)
 	return resultErr(i.dispatch(ctx, kind, localID, i.interactionDTO(x, localID), x))
 }
 
-// HandleInteraction runs the handler of a command (localID = command name), component or
-// modal (localID = local id from ParseCustomID) and waits for it. Interaction responses
-// follow cicord-sdk.d.ts: auto-defer after Limits.AutoDeferAfter, generic ephemeral error
-// reply when the handler fails before answering.
+// dispatchAutocomplete runs the autocomplete handler of the focused option and answers
+// with its choices (ResponseAutocomplete). There is no deferral: when the handler fails,
+// times out (Limits.AutocompleteTimeout) or returns invalid choices, the user gets an
+// empty list and the error is returned.
+func (i *Instance) dispatchAutocomplete(ctx context.Context, it discord.Interaction, command string) <-chan error {
+	path, opts := it.CommandPath()
+	path[0] = command
+	focused, ok := it.FocusedOption()
+	if !ok {
+		return i.answerAutocomplete(ctx, it, nil, errors.New("plugin: autocomplete interaction without a focused option"))
+	}
+	var optDef discord.CommandOption
+	if def := i.Definition(); def != nil {
+		if c, ok := def.Command(command); ok {
+			if leaf, ok := c.Leaf(path); ok {
+				for _, o := range leaf {
+					if o.Name == focused.Name {
+						optDef = o
+					}
+				}
+			}
+		}
+	}
+	if !optDef.Autocomplete {
+		// A stale command set on Discord's side: answer anyway ("no options", not "failed").
+		return i.answerAutocomplete(ctx, it, nil, fmt.Errorf("%w for autocomplete of /%s option %q", ErrNoHandler, strings.Join(path, " "), focused.Name))
+	}
+	dto := i.autocompleteDTO(it, path, opts, focused)
+	res := i.dispatch(ctx, "autocomplete", strings.Join(path, " ")+"/"+focused.Name, dto, nil)
+	out := make(chan error, 1)
+	go func() {
+		r := <-res
+		err := r.err
+		var choices []discord.CommandChoice
+		if err == nil {
+			choices, err = parseChoices(r.data, optDef)
+		}
+		out <- <-i.answerAutocomplete(ctx, it, choices, err)
+	}()
+	return out
+}
+
+// answerAutocomplete sends the choices (an empty list when nil) and returns err, or the
+// response error.
+func (i *Instance) answerAutocomplete(ctx context.Context, it discord.Interaction, choices []discord.CommandChoice, err error) <-chan error {
+	if choices == nil || err != nil {
+		choices = []discord.CommandChoice{}
+	}
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	rerr := i.env.Discord.RespondInteraction(rctx, it.ID, it.Token, discord.InteractionResponse{Type: discord.ResponseAutocomplete, Choices: choices})
+	if rerr != nil {
+		i.logger.Warn("autocomplete response failed", "interaction", it.ID, "error", rerr)
+		if err == nil {
+			err = rerr
+		}
+	}
+	return errChan(err)
+}
+
+// parseChoices validates what an autocomplete handler returned: at most 25 {name, value}
+// with names of 1-100 characters and values of the option's type (strings of at most 100
+// characters, integers for integer options).
+func parseChoices(data string, opt discord.CommandOption) ([]discord.CommandChoice, error) {
+	if data == "" || data == "null" {
+		return nil, nil
+	}
+	var raw []struct {
+		Name  any `json:"name"`
+		Value any `json:"value"`
+	}
+	if err := json.Unmarshal([]byte(data), &raw); err != nil {
+		return nil, fmt.Errorf("autocomplete must return an array of {name, value} choices")
+	}
+	if len(raw) > discord.MaxAutocompleteChoices {
+		return nil, fmt.Errorf("autocomplete returned %d choices (at most %d)", len(raw), discord.MaxAutocompleteChoices)
+	}
+	out := make([]discord.CommandChoice, 0, len(raw))
+	for k, c := range raw {
+		name, ok := c.Name.(string)
+		if !ok || name == "" || utf8.RuneCountInString(name) > 100 {
+			return nil, fmt.Errorf("autocomplete choice %d: name must be 1-100 characters", k)
+		}
+		switch v := c.Value.(type) {
+		case string:
+			if opt.Type != discord.OptionString || utf8.RuneCountInString(v) > 100 {
+				return nil, fmt.Errorf("autocomplete choice %q: value must be a %s", name, choiceKind(opt.Type))
+			}
+		case float64:
+			if opt.Type == discord.OptionString || (opt.Type == discord.OptionInteger && v != float64(int64(v))) {
+				return nil, fmt.Errorf("autocomplete choice %q: value must be a %s", name, choiceKind(opt.Type))
+			}
+		default:
+			return nil, fmt.Errorf("autocomplete choice %q: value must be a %s", name, choiceKind(opt.Type))
+		}
+		out = append(out, discord.CommandChoice{Name: name, Value: c.Value})
+	}
+	return out, nil
+}
+
+func choiceKind(t discord.CommandOptionType) string {
+	switch t {
+	case discord.OptionInteger:
+		return "integer"
+	case discord.OptionNumber:
+		return "number"
+	}
+	return "string of at most 100 characters"
+}
+
+// HandleInteraction runs the handler of a command (localID = command name; the invoked
+// subcommand is read from the interaction), an autocomplete (localID = command name),
+// a component or a modal (localID = local id from ParseCustomID) and waits for it.
+// Interaction responses follow cicord-sdk.d.ts: auto-defer after Limits.AutoDeferAfter,
+// generic ephemeral error reply when the handler fails before answering; autocompletes
+// are answered with the handler's choices (never deferred).
 func (i *Instance) HandleInteraction(ctx context.Context, it discord.Interaction, kind, localID string) error {
 	return <-i.DispatchInteraction(ctx, it, kind, localID)
 }

@@ -260,6 +260,20 @@ func (w *World) emit(ev discord.Event) {
 	}
 }
 
+// emitToBot delivers ev to the open sessions of one bot only (server join/leave, which
+// Discord sends to the session concerned). Caller holds w.mu.
+func (w *World) emitToBot(botUserID string, ev discord.Event) {
+	w.changed()
+	for s := range w.sessions {
+		if s.bot.userID != botUserID {
+			continue
+		}
+		if out, ok := w.filterFor(s, ev); ok {
+			s.enqueue(out)
+		}
+	}
+}
+
 // filterFor decides whether session s receives ev and returns the (possibly redacted)
 // copy it receives. Caller holds w.mu.
 func (w *World) filterFor(s *Session, ev discord.Event) (discord.Event, bool) {
@@ -270,6 +284,14 @@ func (w *World) filterFor(s *Session, ev discord.Event) (discord.Event, bool) {
 			return nil, false
 		}
 		return discord.InteractionCreateEvent{Interaction: cloneInteraction(ix.Interaction)}, true
+	}
+	switch e := ev.(type) {
+	case discord.ServerJoinEvent:
+		// Emitted with emitToBot only; the bot is a member by now.
+		return discord.ServerJoinEvent{Server: cloneServer(e.Server)}, s.intents.Has(intentServers)
+	case discord.ServerLeaveEvent:
+		// The bot is no longer a member: no membership check.
+		return e, s.intents.Has(intentServers)
 	}
 	serverID := discord.ServerIDOf(ev)
 	if serverID != "" {

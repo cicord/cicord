@@ -321,8 +321,18 @@ events: {
 
 The handlers are `memberJoin(member)`, `memberLeave(user)`, `memberUpdate(member, previous)`,
 `messageCreate(message)`, `messageUpdate(message)`, `messageDelete({ id, channel })`,
-`reactionAdd({ message, user, emoji })` and `reactionRemove(...)`. The `message` of a
-reaction is partial. Events are delivered in order for each instance.
+`reactionAdd({ message, user, emoji })`, `reactionRemove(...)`, `serverJoin({ id, name,
+iconUrl })` and `serverLeave({ id })`. The `message` of a reaction is partial (fetch it with
+`message.channel.message(message.id)` when you need its content). Events are delivered in
+order for each instance.
+
+`serverJoin` / `serverLeave` need no intent (Servers is always enabled). `serverJoin` fires
+when the bot joins a server while connected (an invite accepted, for instance after it was
+removed), not for servers that load after a connection or recover from an outage;
+`serverLeave` fires when the bot is kicked, banned, removed or the server is deleted, not
+during a Discord outage. Like every event, they only reach the instances of servers declared
+for the bot in `bot.yaml`: joining an undeclared server runs no plugin. After a re-invite the
+runtime also registers the slash commands of the server again.
 
 ### Commands
 
@@ -353,8 +363,78 @@ The rules for options:
   `mentionable` or `attachment`.
 - `required` options come first in Discord.
 - `min`/`max` only apply to `integer`/`number`.
+- `minLength`/`maxLength` only apply to `string` (0–6000; `maxLength` ≥ 1).
 - `choices` (≤ 25) only apply to `string`/`integer`/`number`.
+- `autocomplete` (a function) only applies to `string`/`integer`/`number`, and not together
+  with `choices` (see below).
 - A command takes at most 25 options.
+
+#### Subcommands and groups
+
+A command can be made of **subcommands** (`/polls close`, `/polls results`), optionally
+organised in **groups** (`/polls admin purge`). `subcommand()` types the options of each one
+like `command()` does; `interaction.subcommand` and `interaction.group` tell which one runs.
+From [`polls`](../examples/showcase/plugins/polls/src/index.ts):
+
+```ts
+import { command, subcommand } from "@cicord/sdk";
+
+commands: {
+  polls: command({
+    description: "Manage polls",
+    ephemeral: true,                    // applies to every subcommand, like permissions
+    subcommands: {
+      close: subcommand({
+        description: "Close a poll now",
+        options: { poll: { type: "string", description: "Poll", required: true, autocomplete: suggestPolls } },
+        async run(ctx, interaction) {    // interaction.subcommand === "close"
+          const poll = await getPoll(ctx, interaction.options.poll);
+          …
+        },
+      }),
+    },
+    groups: {
+      admin: { description: "Administration", subcommands: { purge: subcommand({ description: "…", run() {} }) } },
+    },
+  }),
+},
+```
+
+Discord's rules, checked when the plugin is built:
+
+- a command with `subcommands`/`groups` has no `run` and no `options` of its own (it cannot be
+  invoked alone);
+- at most 25 subcommands and groups per command, with distinct names;
+- a group holds 1–25 subcommands and nothing else; subcommands do not nest further.
+
+#### Autocomplete
+
+An option with `autocomplete` gets suggestions while the user types it. The handler receives
+`ctx`, the `AutocompleteInteraction` (user, member, channel, `command`/`group`/`subcommand`
+and the raw values of the other options already filled in) and the focused option
+`{ name, value }`, where `value` is the text typed so far (a string, even for `integer` and
+`number` options). It returns at most 25 `{ name, value }` choices (names 1–100 characters,
+values of the option's type, strings ≤ 100 characters):
+
+```ts
+options: {
+  poll: {
+    type: "string", description: "Poll", required: true,
+    async autocomplete(ctx, interaction, focused) {
+      const polls = await listPolls(ctx);
+      return polls
+        .filter((p) => p.question.toLowerCase().includes(focused.value.toLowerCase()))
+        .slice(0, 25)
+        .map((p) => ({ name: `#${p.id} ${p.question}`, value: p.id }));
+    },
+  },
+},
+```
+
+Suggestions are only suggestions: the user may still send any text, so `run` validates the
+value. An autocomplete cannot be deferred: Discord drops answers after 3 s, so the runtime
+gives the handler **2.5 s**. A handler that throws, is late or returns invalid choices shows
+an empty list (the error is logged).
 
 ### Interactions: reply, defer, follow up
 
@@ -365,7 +445,8 @@ runtime defers the interaction automatically:
 - components get a silent "deferred update".
 
 A later `reply()` then edits the deferred response. The first response fixes ephemerality.
-After `reply()`, use `followUp()`. If a handler throws before answering, the user gets an
+After `reply()`, use `followUp()`. Autocomplete interactions are the exception: they are
+never deferred, the handler's return value is the answer. If a handler throws before answering, the user gets an
 ephemeral *"Something went wrong while handling this interaction."*, and the error is logged.
 
 | State | `reply()` | `defer()` | `update()` (components) | `followUp()` | `showModal()` |
@@ -550,11 +631,11 @@ tasks: {
 //            await ctx.schedule.cancel(id);
 ```
 
-A task often has to edit a message posted earlier (e.g. close a poll). The SDK has no
-"get message by id": post with `channel.send()` (which returns the `Message`), store
-`{ channelId, messageId }`, and in the task fetch it back with
-`channel.messages({ before: <messageId + 1>, limit: 1 })` (the newest message strictly
-before `id + 1` is the message itself). `examples/showcase/plugins/polls` does this.
+A task often has to edit a message posted earlier (e.g. close a poll): post with
+`channel.send()` (which returns the `Message`), store `{ channelId, messageId }`, and in the
+task fetch it back with `ctx.server.channel({ id: channelId }).message(messageId)`
+(capability `discord.messages.read`; `undefined` when the message was deleted).
+`examples/showcase/plugins/polls` does this.
 
 ### Plugin-owned channels
 
@@ -622,15 +703,16 @@ points, like in Node.
 | Module evaluation at start | 2 s |
 | Handler duration, awaits included | 10 s (async work it started is cut too) |
 | Auto-defer of interactions | 2 s |
+| Autocomplete handlers | 2.5 s, never deferred; ≤ 25 choices (name 1–100, string values ≤ 100) |
 | `onStop` | 3 s |
 | `http.fetch` | 10 s default timeout (`timeoutMs` up to the handler timeout), response ≤ 5 MiB, request body ≤ 1 MiB, ≤ 5 redirects |
 | KV | key 1–512 bytes, value ≤ 1 MiB, `list` limit 1–1000 and ≤ 4 MiB per page (a larger page is cut short; its `cursor` continues) |
 | Portal route response | ≤ 4 MiB of JSON |
 | Task / event payload | ≤ 1 MiB |
 | Event topic | 1–100 characters (`A-Z a-z 0-9 . _ : -`) |
-| `channel.messages()` | limit 1–100 |
+| `channel.messages()` | limit 1–100 (`channel.message(id)` fetches one) |
 | Component / modal ids | handler key ≤ 80 bytes; `c:<instance>:<id>` ≤ 100 bytes |
-| Commands | name 1–32, description 1–100, ≤ 25 options, ≤ 25 choices |
+| Commands | name 1–32, description 1–100, ≤ 25 options, ≤ 25 choices, ≤ 25 subcommands and groups (a group holds ≤ 25 subcommands), string options ≤ 6000 characters (`minLength`/`maxLength`) |
 | Portal links | default 15 min, max 24 h |
 | `member.setNickname()` | ≤ 32 characters |
 | `member.timeout()` | ≤ 28 days |
@@ -683,7 +765,11 @@ Vitest or `node:test` without Discord:
   needs a response, `showModal()` must come first, `update()` is for components; component
   and modal ids fall back to the part before `:`). They return
   `{ replies, followUps, updates, deferred, modal }`. `message` is a message sent through
-  the fakes (or its id); `channel` sets `interaction.channel`.
+  the fakes (or its id); `channel` sets `interaction.channel`. For a command with
+  subcommands, `runCommand` takes the path: `"polls close"`, `"polls admin purge"`.
+- `runAutocomplete(plugin, harness, "polls close", { user, focused: "poll", value: "piz",
+  options })` runs the option's `autocomplete` handler and returns its choices, checked like
+  the runtime checks them (an invalid result throws).
 - Events, tasks, schedules and subscriptions are plain functions: call them with the
   harness context, e.g. `await plugin.tasks!.close!(t.ctx, { id: "1" })`.
 - `capabilityError(name)` and `normalizeRouteResponse(response)` are helpers.

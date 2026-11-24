@@ -63,11 +63,14 @@ func (w *World) RemoveMember(serverID, userID string) error {
 
 func (w *World) dropMember(s *serverState, userID string) {
 	m := s.members[userID]
-	// Removed first: a bot that leaves gets no event about itself (Discord would send
-	// GUILD_DELETE, which the contract does not model).
+	// Removed first: a bot that leaves gets no member event about itself, only
+	// ServerLeaveEvent (GUILD_DELETE), like Discord.
 	delete(s.members, userID)
 	s.memberOrder = removeString(s.memberOrder, userID)
 	w.emit(discord.MemberLeaveEvent{ServerID: s.info.ID, User: m.User})
+	if m.User.Bot {
+		w.emitToBot(userID, discord.ServerLeaveEvent{ServerID: s.info.ID})
+	}
 	for roleID, botID := range s.managedBy {
 		if botID == userID {
 			w.removeRole(s, roleID)
@@ -77,7 +80,8 @@ func (w *World) dropMember(s *serverState, userID string) {
 
 // AddBotToServer simulates an OAuth bot invite: the bot joins the server and, when
 // perms is non-zero, gets a managed role named after it with those permissions,
-// placed at the top of the hierarchy. It returns the managed role (zero Role if none).
+// placed at the top of the hierarchy. Its open sessions receive ServerJoinEvent (the
+// GUILD_CREATE of a new server). It returns the managed role (zero Role if none).
 func (w *World) AddBotToServer(serverID, botUserID string, perms discord.Permissions) (discord.Role, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -112,6 +116,7 @@ func (w *World) AddBotToServer(serverID, botUserID string, perms discord.Permiss
 	}
 	s.members[botUserID] = m
 	s.memberOrder = append(s.memberOrder, botUserID)
+	w.emitToBot(botUserID, discord.ServerJoinEvent{Server: cloneServer(s.info)})
 	w.emit(discord.MemberJoinEvent{Member: cloneMember(*m)})
 	return role, nil
 }

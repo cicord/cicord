@@ -1,9 +1,15 @@
 import type { Message, MessagePayload } from "@cicord/sdk";
-import { callRoute, createTestContext, runCommand, runComponent } from "@cicord/sdk/testing";
+import {
+  callRoute,
+  createTestContext,
+  runAutocomplete,
+  runCommand,
+  runComponent,
+} from "@cicord/sdk/testing";
 import { describe, expect, test } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
-import { nextSnowflake, parseChoices } from "../src/polls.ts";
+import { parseChoices, suggestPolls, type Poll } from "../src/polls.ts";
 
 const grants = [
   "discord.messages.send",
@@ -205,8 +211,90 @@ test("GET /polls/:id is public", async () => {
   expect((await callRoute(plugin, t, "GET /polls/2")).status).toBe(404);
 });
 
+describe("/polls (subcommands with autocomplete)", () => {
+  test("close: suggests the open polls of the member, then closes the picked one", async () => {
+    const t = setup();
+    const { message } = await start(t); // #1 by alice
+    await start(t, { question: "Movie night?" }); // #2 by alice
+    await runCommand(plugin, t, "poll", {
+      user: "2",
+      channel: "polls",
+      options: { question: "Bob's poll", choices: "x | y" },
+    }); // #3 by bob
+
+    // alice only sees her polls; the typed text filters by number or question
+    expect(await runAutocomplete(plugin, t, "polls close", { user: "1", focused: "poll" })).toEqual(
+      [
+        { name: "#2 Movie night?", value: "2" },
+        { name: "#1 Pizza night?", value: "1" },
+      ],
+    );
+    expect(
+      await runAutocomplete(plugin, t, "polls close", {
+        user: "1",
+        focused: "poll",
+        value: "pizza",
+      }),
+    ).toEqual([{ name: "#1 Pizza night?", value: "1" }]);
+    // a manager sees every open poll
+    expect(
+      await runAutocomplete(plugin, t, "polls close", { user: "3", focused: "poll" }),
+    ).toHaveLength(3);
+
+    const denied = await runCommand(plugin, t, "polls close", {
+      user: "2",
+      options: { poll: "1" },
+    });
+    expect(denied.replies).toEqual(["Only the author of the poll can close it."]);
+
+    const r = await runCommand(plugin, t, "polls close", {
+      user: "1",
+      options: { poll: "#1 Pizza night?" },
+    });
+    expect(r.replies).toEqual(["Poll #1 is closed."]);
+    expect(t.edits.at(-1)?.id).toBe(message.id); // the poll message shows the final results
+    expect(t.published[0]?.payload).toMatchObject({ pollId: "1", closedBy: "1" });
+    // closed polls are no longer suggested for closing, but still for results
+    expect(await runAutocomplete(plugin, t, "polls close", { user: "1", focused: "poll" })).toEqual(
+      [{ name: "#2 Movie night?", value: "2" }],
+    );
+    expect(
+      await runAutocomplete(plugin, t, "polls results", {
+        user: "2",
+        focused: "poll",
+        value: "#1",
+      }),
+    ).toEqual([{ name: "#1 Pizza night?", value: "1" }]);
+    expect(
+      (await runCommand(plugin, t, "polls close", { user: "1", options: { poll: "1" } })).replies,
+    ).toEqual(["Poll #1 is already closed."]);
+  });
+
+  test("results: an ephemeral embed with the current tally", async () => {
+    const t = setup();
+    const { message } = await start(t);
+    await runComponent(plugin, t, "vote:1:2", { user: "2", message });
+    const r = await runCommand(plugin, t, "polls results", { user: "2", options: { poll: "1" } });
+    expect(description(r.replies[0])).toContain("**3. Sunday**\n`████████████` 1 vote (100%)");
+    expect((r.replies[0] as MessagePayload).components).toBeUndefined();
+    expect(
+      (await runCommand(plugin, t, "polls results", { user: "2", options: { poll: "9" } })).replies,
+    ).toEqual(["No such poll."]);
+  });
+});
+
 test("helpers", () => {
   expect(parseChoices(" a | b ;a\nc ||")).toEqual(["a", "b", "c"]);
-  expect(nextSnowflake("1299")).toBe("1300");
-  expect(nextSnowflake("999")).toBe("1000");
+  const polls = Array.from(
+    { length: 30 },
+    (_, i) => ({ id: String(i + 1), question: "Topic" }) as Poll,
+  );
+  expect(suggestPolls(polls, "")).toHaveLength(25);
+  expect(suggestPolls(polls, "#3")).toEqual([
+    { name: "#3 Topic", value: "3" },
+    { name: "#30 Topic", value: "30" },
+  ]);
+  expect(suggestPolls([{ id: "1", question: "x".repeat(200) } as Poll], "")[0]?.name).toHaveLength(
+    100,
+  );
 });

@@ -13,14 +13,18 @@
  * given; then a call without its grant throws `CapabilityError`, like the real host. Pass the
  * plugin's `schema` (config.schema.json) to get the config defaults the runtime applies.
  *
- * Interactions: `runCommand`, `runComponent` and `submitModal` call the handler with a
- * recording fake interaction that follows the reply/defer/update/followUp/showModal rules of
- * the runtime. Other handlers (events, tasks, schedules, subscriptions) are plain functions:
+ * Interactions: `runCommand` (a command or a subcommand path such as `"polls close"`),
+ * `runComponent` and `submitModal` call the handler with a recording fake interaction that
+ * follows the reply/defer/update/followUp/showModal rules of the runtime; `runAutocomplete`
+ * returns the choices of an option's autocomplete handler. Other handlers (events, tasks, schedules, subscriptions) are plain functions:
  * call them with `harness.ctx`, e.g. `await plugin.tasks!.close!(t.ctx, { id: "1" })`.
  */
 import type {
+  AutocompleteChoice,
+  AutocompleteInteraction,
   Channel,
   CommandInteraction,
+  CommandWithSubcommandsDefinition,
   ComponentInteraction,
   Context,
   CreateChannelOptions,
@@ -38,6 +42,7 @@ import type {
   RoleRef,
   RouteResponse,
   Server,
+  SubcommandDefinition,
   TextChannel,
   User,
 } from "@cicord/sdk";
@@ -368,6 +373,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         if (before) list = list.filter((m) => BigInt(m.id) < BigInt(before));
         if (after) list = list.filter((m) => BigInt(m.id) > BigInt(after)).toReversed();
         return list.slice(0, opts.limit ?? 50);
+      },
+      async message(messageId) {
+        need("discord.messages.read");
+        return (history.get(id) ?? []).find((m) => m.id === messageId);
       },
       async createThread(name, opts = {}) {
         need("discord.threads.manage");
@@ -846,6 +855,7 @@ function fakeInteraction(
           throw new Error("not supported in tests: pass `channel` in the call");
         },
         messages: async () => [],
+        message: async () => undefined,
         createThread: async () => {
           throw new Error("not supported in tests: pass `channel` in the call");
         },
@@ -923,27 +933,140 @@ function lookup<F>(table: Record<string, F> | undefined, id: string): F | undefi
   return i > 0 && Object.hasOwn(table, id.slice(0, i)) ? table[id.slice(0, i)] : undefined;
 }
 
-/** Runs a slash command handler with a recording fake interaction. */
+type Leaf = {
+  command: string;
+  group?: string;
+  subcommand?: string;
+  definition: SubcommandDefinition;
+};
+
+/**
+ * Like the runtime: resolves a command path ("poll", "polls close", "polls admin purge") to
+ * the command or subcommand that runs.
+ */
+function resolveCommand(plugin: PluginDefinition, path: string, caller: string): Leaf {
+  const parts = path.trim().split(/\s+/);
+  const [command = "", ...rest] = parts;
+  const c =
+    plugin.commands && Object.hasOwn(plugin.commands, command)
+      ? plugin.commands[command]
+      : undefined;
+  if (!c) throw new Error(`${caller}: no command "${command}"`);
+  const withSubs = c as CommandWithSubcommandsDefinition;
+  const hasSubs = withSubs.subcommands !== undefined || withSubs.groups !== undefined;
+  if (rest.length === 0) {
+    if (hasSubs)
+      throw new Error(
+        `${caller}: command "${command}" needs a subcommand ("${command} <subcommand>")`,
+      );
+    return { command, definition: c as SubcommandDefinition };
+  }
+  const own = <T>(table: Record<string, T> | undefined, key: string): T | undefined =>
+    table && Object.hasOwn(table, key) ? table[key] : undefined;
+  if (rest.length === 1) {
+    const sub = own(withSubs.subcommands, rest[0]);
+    if (!sub) throw new Error(`${caller}: command "${command}" has no subcommand "${rest[0]}"`);
+    return { command, subcommand: rest[0], definition: sub };
+  }
+  const group = own(withSubs.groups, rest[0]);
+  const sub = rest.length === 2 ? own(group?.subcommands, rest[1]) : undefined;
+  if (!sub) throw new Error(`${caller}: no subcommand "${path}"`);
+  return { command, group: rest[0], subcommand: rest[1], definition: sub };
+}
+
+/**
+ * Runs a slash command handler with a recording fake interaction. `path` is the command
+ * name, or the subcommand path for commands with subcommands: `"polls close"`,
+ * `"polls admin purge"` (`interaction.subcommand` / `interaction.group` are set).
+ */
 export async function runCommand(
   plugin: PluginDefinition,
   harness: TestHarness,
-  name: string,
+  path: string,
   call: CommandCall,
 ): Promise<CommandResult> {
-  const definition = plugin.commands?.[name];
-  if (!definition) throw new Error(`runCommand: no command "${name}"`);
+  const leaf = resolveCommand(plugin, path, "runCommand");
   const result = emptyResult();
-  const base = fakeInteraction(harness, "command", name, call, result);
+  const base = fakeInteraction(harness, "command", path, call, result);
   const { update: _update, ...rest } = base;
   const interaction = Object.defineProperties(
-    { ...rest, command: name, options: (call.options ?? {}) as CommandInteraction["options"] },
+    {
+      ...rest,
+      command: leaf.command,
+      ...(leaf.group ? { group: leaf.group } : {}),
+      ...(leaf.subcommand ? { subcommand: leaf.subcommand } : {}),
+      options: (call.options ?? {}) as CommandInteraction["options"],
+    },
     {
       replied: { get: () => base.replied },
       deferred: { get: () => base.deferred },
     },
   ) as CommandInteraction;
-  await definition.run(harness.ctx, interaction);
+  await leaf.definition.run(harness.ctx, interaction);
   return result;
+}
+
+/** Length in Unicode code points, like Discord (and the runtime) count characters. */
+function codePoints(s: string): number {
+  let n = 0;
+  for (const _ of s) n++;
+  return n;
+}
+
+export interface AutocompleteCall extends InteractionCall {
+  /** Name of the option being typed (it must have `autocomplete`). */
+  focused: string;
+  /** Text typed so far (default ""). */
+  value?: string;
+  /** Other options already filled in (raw values: ids for users, roles, channels). */
+  options?: Record<string, string | number | boolean>;
+}
+
+/**
+ * Runs the `autocomplete` handler of an option like the runtime does and returns the
+ * choices. The result is checked like the runtime checks it (at most 25 choices, names of
+ * 1–100 characters, values of the option's type): an invalid result throws.
+ */
+export async function runAutocomplete(
+  plugin: PluginDefinition,
+  harness: TestHarness,
+  path: string,
+  call: AutocompleteCall,
+): Promise<AutocompleteChoice[]> {
+  const leaf = resolveCommand(plugin, path, "runAutocomplete");
+  const option = leaf.definition.options?.[call.focused];
+  if (!option?.autocomplete)
+    throw new Error(`runAutocomplete: option "${call.focused}" of /${path} has no autocomplete`);
+  const member = harness.member(call.user);
+  const channel = call.channel !== undefined ? harness.channel(call.channel) : undefined;
+  if (call.channel !== undefined && !channel)
+    throw new Error(`unknown channel ${JSON.stringify(call.channel)} for the interaction`);
+  const interaction: AutocompleteInteraction = {
+    id: `interaction-autocomplete-${path}`,
+    user: member?.user ?? makeUser({ id: call.user }),
+    ...(member ? { member } : {}),
+    ...(channel ? { channel } : {}),
+    command: leaf.command,
+    ...(leaf.group ? { group: leaf.group } : {}),
+    ...(leaf.subcommand ? { subcommand: leaf.subcommand } : {}),
+    options: { ...call.options },
+  };
+  const choices = await option.autocomplete(harness.ctx, interaction, {
+    name: call.focused,
+    value: call.value ?? "",
+  });
+  const out = [...(choices ?? [])];
+  if (out.length > 25) throw new Error(`autocomplete returned ${out.length} choices (at most 25)`);
+  for (const c of out) {
+    if (typeof c?.name !== "string" || c.name.length < 1 || codePoints(c.name) > 100)
+      throw new Error("autocomplete choice: name must be 1-100 characters");
+    const ok =
+      option.type === "string"
+        ? typeof c.value === "string" && codePoints(c.value) <= 100
+        : typeof c.value === "number" && (option.type !== "integer" || Number.isInteger(c.value));
+    if (!ok) throw new Error(`autocomplete choice "${c.name}": value must be a ${option.type}`);
+  }
+  return out;
 }
 
 /**
