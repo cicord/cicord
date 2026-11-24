@@ -5,18 +5,26 @@ description: The plugin execution model and its limits, unit tests with @cicord/
 
 ## Execution model and limits
 
-Each plugin instance gets its own VM (Sobek, a pure-Go JavaScript engine) and one event loop.
-Handlers start in arrival order and interleave at `await` points, like in Node.
+Each plugin instance gets its own VM and one event loop: QuickJS-ng compiled to WebAssembly,
+run inside the Cicord process by wazero (no CGO). Handlers start in arrival order and
+interleave at `await` points, like in Node.
 
 | Limit | Value |
 |---|---|
 | Synchronous JavaScript per event-loop turn | 50 ms (a runaway turn aborts its handler; the instance keeps serving) |
+| Memory per instance | 64 MiB of JavaScript heap; reaching it discards the instance (even if the error is caught), which restarts with backoff (1 s, doubling up to 5 min) |
+| Code that ignores the turn budget (a long native call) | killed 500 ms after the budget (one more budget for budgets above 500 ms); the instance restarts |
+| Microtasks still spinning after their handler was aborted | the instance restarts |
+| Pending SDK calls per instance | 256 (beyond, the call rejects) |
+| Handler calls waiting for the instance | 1024 (beyond, the call fails as busy) |
+| SDK call arguments | ≤ 2 MiB of JSON; `ctx.log` fields ≤ 16 KiB (larger ones are dropped) |
 | Module evaluation at start | 2 s |
 | Handler duration, awaits included | 10 s (async work it started is cut too) |
 | Auto-defer of interactions | 2 s |
 | `onStop` | 3 s |
 | `http.fetch` | 10 s default timeout (`timeoutMs` up to the handler timeout), response ≤ 5 MiB, request body ≤ 1 MiB, ≤ 5 redirects |
-| KV | key 1–512 bytes, value ≤ 1 MiB, `list` limit 1–1000 |
+| KV | key 1–512 bytes, value ≤ 1 MiB, `list` limit 1–1000 and ≤ 4 MiB per page (a larger page is cut short; its `cursor` continues) |
+| Portal route responses | ≤ 4 MiB of JSON |
 | Task and event payloads | ≤ 1 MiB |
 | Event topics | 1–100 characters (`A-Z a-z 0-9 . _ : -`) |
 | `channel.messages()` | limit 1–100 |
@@ -27,7 +35,9 @@ Handlers start in arrival order and interleave at `await` points, like in Node.
 | `member.timeout()` | ≤ 28 days |
 
 An uncaught error is logged with the instance and the revision. After **three failures in a
-row**, the instance shows as `Degraded` in the status.
+row**, the instance shows as `Degraded` in the status. A **crashed** instance (memory limit,
+killed code) shows as `Degraded` at once with the reason and restarts automatically; while it
+restarts, its calls fail and interactions get the generic error reply.
 
 ## Unit tests with `@cicord/sdk/testing`
 

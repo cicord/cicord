@@ -10,10 +10,9 @@ import (
 	"log/slog"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
-
-	"github.com/grafana/sobek"
 
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/state"
@@ -113,32 +112,59 @@ func init() {
 	}
 }
 
-func (i *Instance) call(op, args string) (sobek.Value, error) {
-	f, ok := syncOps[op]
-	if !ok {
-		return nil, fmt.Errorf("unknown host call %q", op)
+// maxInFlight bounds the async host calls of one instance that are not settled yet.
+const maxInFlight = 256
+
+func checkArgs(op, args string) error {
+	if len(args) > maxHostArgs {
+		return argErr("%s: arguments larger than %d bytes", op, maxHostArgs)
 	}
-	res, err := f(i, i.currentInv(), json.RawMessage(args))
-	if err != nil {
-		return nil, err
-	}
-	return i.jsonValue(res)
+	return nil
 }
 
-func (i *Instance) callAsync(op, args string) (sobek.Value, error) {
+func (i *Instance) call(op, args string) (string, bool, error) {
+	f, ok := syncOps[op]
+	if !ok {
+		return "", false, fmt.Errorf("unknown host call %q", op)
+	}
+	if err := checkArgs(op, args); err != nil {
+		return "", false, err
+	}
+	res, err := f(i, i.currentInv(), json.RawMessage(args))
+	if err != nil || res == nil {
+		return "", false, err
+	}
+	b, err := json.Marshal(res)
+	if err != nil {
+		return "", false, err
+	}
+	return string(b), true, nil
+}
+
+// callAsync starts an async host call and returns its id; the prelude's promise is settled
+// in a later turn charged to the calling invocation.
+func (i *Instance) callAsync(op, args string) (int64, error) {
 	f, ok := asyncOps[op]
 	if !ok {
-		return nil, fmt.Errorf("unknown host call %q", op)
+		return 0, fmt.Errorf("unknown host call %q", op)
+	}
+	if err := checkArgs(op, args); err != nil {
+		return 0, err
 	}
 	inv := i.currentInv()
 	if err := inv.alive(); err != nil {
-		return nil, err
+		return 0, err
+	}
+	if i.inflight >= maxInFlight {
+		return 0, fmt.Errorf("%s: too many pending host calls (max %d per instance)", op, maxInFlight)
 	}
 	work, err := f(i, inv, json.RawMessage(args))
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	p, resolve, reject := i.vm.rt.NewPromise()
+	i.nextCall++
+	id := i.nextCall
+	i.inflight++
 	go func() {
 		res, err := work(inv.ctx)
 		var data []byte
@@ -148,33 +174,26 @@ func (i *Instance) callAsync(op, args string) (sobek.Value, error) {
 		if err != nil && inv.ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
 			err = inv.alive()
 		}
+		status, payload := "ok", string(data)
+		switch {
+		case err != nil:
+			status, payload = "err", errorJSON(err)
+		case data == nil:
+			status = "undef"
+		}
+		sid := strconv.FormatInt(id, 10)
 		i.post(func() {
-			rerr := i.enter(inv, i.limits.SyncBudget, func() error {
-				if err != nil {
-					return reject(i.vm.jsError(err))
-				}
-				if data == nil {
-					return resolve(sobek.Undefined())
-				}
-				return resolve(string(data))
+			i.inflight--
+			rerr := i.enter(inv, i.limits.SyncBudget, func(ctx context.Context) error {
+				_, err := i.vm.runAPI(ctx, "settle", sid, status, payload)
+				return err
 			})
-			if rerr != nil && !isInterrupt(rerr) {
+			if rerr != nil && !isInterrupt(rerr) && !errors.Is(rerr, ErrCrashed) {
 				i.logger.Error("plugin host: settle host call", "op", op, "error", rerr)
 			}
 		})
 	}()
-	return i.vm.rt.ToValue(p), nil
-}
-
-func (i *Instance) jsonValue(res any) (sobek.Value, error) {
-	if res == nil {
-		return sobek.Undefined(), nil
-	}
-	b, err := json.Marshal(res)
-	if err != nil {
-		return nil, err
-	}
-	return i.vm.rt.ToValue(string(b)), nil
+	return id, nil
 }
 
 func (i *Instance) log(level, msg, fields string) {
@@ -192,6 +211,10 @@ func (i *Instance) log(level, msg, fields string) {
 	attrs := make([]slog.Attr, 0, 8)
 	if inv := i.currentInv(); inv != i.bg {
 		attrs = append(attrs, slog.String("handler", inv.kind), slog.String("name", inv.name))
+	}
+	if len(fields) > maxLogFields {
+		attrs = append(attrs, slog.String("fields", fmt.Sprintf("[%d bytes, larger than %d: dropped]", len(fields), maxLogFields)))
+		fields = ""
 	}
 	if fields != "" {
 		var m map[string]any
@@ -932,6 +955,9 @@ func opServerDeleteChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 const (
 	maxKVKey   = 512
 	maxKVValue = 1 << 20
+	// maxKVListBytes caps the keys and values of one kv.list page (the page is cut short and
+	// its cursor continues after the last item).
+	maxKVListBytes = 4 << 20
 )
 
 type kvArgs struct {
@@ -1050,9 +1076,16 @@ func opKVList(i *Instance, _ *invocation, args json.RawMessage) (func(context.Co
 		out := struct {
 			Items  []kvItemDTO `json:"items"`
 			Cursor string      `json:"cursor,omitempty"`
-		}{Items: make([]kvItemDTO, len(items)), Cursor: next}
-		for k, it := range items {
-			out.Items[k] = kvItemDTO{Key: it.Key, Value: it.Value}
+		}{Items: make([]kvItemDTO, 0, len(items)), Cursor: next}
+		size := 0
+		for _, it := range items {
+			size += len(it.Key) + len(it.Value)
+			if size > maxKVListBytes && len(out.Items) > 0 {
+				// Cut the page; the next one starts after the last item returned.
+				out.Cursor = out.Items[len(out.Items)-1].Key
+				break
+			}
+			out.Items = append(out.Items, kvItemDTO{Key: it.Key, Value: it.Value})
 		}
 		return out, nil
 	}, nil

@@ -606,18 +606,26 @@ and `console`. Timers belong to the handler that created them and stop with it. 
 
 ## 6. Execution model and limits
 
-Each plugin instance gets its own VM (Sobek) and one event loop. Handlers interleave at
-`await` points, like in Node.
+Each plugin instance gets its own VM and one event loop: QuickJS-ng compiled to
+WebAssembly, run in the Cicord process by wazero (ADR-0018). Handlers interleave at `await`
+points, like in Node.
 
 | Limit | Value |
 |---|---|
 | Synchronous JS per event-loop turn | 50 ms (a runaway turn aborts the handler; the instance keeps running) |
+| Memory per instance | 64 MiB of JavaScript heap; reaching it discards the instance (even if the error is caught), which restarts with backoff (1 s, doubling up to 5 min) |
+| Code that ignores the turn budget (a long native call) | killed 500 ms after the budget (one more budget for budgets above 500 ms); the instance restarts |
+| Microtasks still spinning after their handler was aborted | the instance restarts |
+| Pending SDK calls per instance | 256 (beyond, the call rejects) |
+| Handler calls waiting for the instance | 1024 (beyond, the call fails as busy) |
+| SDK call arguments | ≤ 2 MiB of JSON; `ctx.log` fields ≤ 16 KiB (larger ones are dropped) |
 | Module evaluation at start | 2 s |
 | Handler duration, awaits included | 10 s (async work it started is cut too) |
 | Auto-defer of interactions | 2 s |
 | `onStop` | 3 s |
 | `http.fetch` | 10 s default timeout (`timeoutMs` up to the handler timeout), response ≤ 5 MiB, request body ≤ 1 MiB, ≤ 5 redirects |
-| KV | key 1–512 bytes, value ≤ 1 MiB, `list` limit 1–1000 |
+| KV | key 1–512 bytes, value ≤ 1 MiB, `list` limit 1–1000 and ≤ 4 MiB per page (a larger page is cut short; its `cursor` continues) |
+| Portal route response | ≤ 4 MiB of JSON |
 | Task / event payload | ≤ 1 MiB |
 | Event topic | 1–100 characters (`A-Z a-z 0-9 . _ : -`) |
 | `channel.messages()` | limit 1–100 |
@@ -628,7 +636,9 @@ Each plugin instance gets its own VM (Sobek) and one event loop. Handlers interl
 | `member.timeout()` | ≤ 28 days |
 
 An uncaught error is logged with the instance and the revision. After three failures in a
-row, the instance shows as `Degraded` in the status.
+row, the instance shows as `Degraded` in the status. A crashed instance (memory limit, killed
+code) shows as `Degraded` at once with the reason, and is restarted automatically: while it
+restarts, its calls fail and interactions get the generic error reply.
 
 ## 7. Type checking
 
@@ -637,7 +647,7 @@ Plugins are type-checked with a `tsconfig.json` that maps `@cicord/sdk` to the S
 - a scaffolded plugin uses `.cicord/cicord-sdk.d.ts` (`cicord plugin sdk-types`);
 - the examples use `spec/sdk/cicord-sdk.d.ts`.
 
-Use `"lib": ["ES2023"]` (Sobek provides the ES2023 built-ins, such as `toSorted` and `findLast`) and `"types": []`, so that no DOM or Node types leak in. Run
+Use `"lib": ["ES2023"]` (the engine provides the ES2023 built-ins, such as `toSorted` and `findLast`) and `"types": []`, so that no DOM or Node types leak in. Run
 `tsc --noEmit -p plugins/hello`.
 
 ## 8. Testing with `@cicord/sdk/testing`

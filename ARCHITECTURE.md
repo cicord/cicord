@@ -55,7 +55,7 @@ processing, a visual plugin builder.
 │                                                    │                │  ┌─────────┐ │  │
 │  ┌──────────────┐   ┌────────────────────────┐     │                │  │ Plugin  │ │  │
 │  │ Write-back   │◀──│        HTTP API        │     │                │  │ host    │ │  │
-│  │ yaml patch + │   │ admin · portal · CLI   │     │                │  │ (Sobek) │ │  │
+│  │ yaml patch + │   │ admin · portal · CLI   │     │                │  │ (QJS)   │ │  │
 │  │ commit       │   └───────▲────────▲───────┘     │                │  └─────────┘ │  │
 │  └──────────────┘           │        │             │                └──────┬───────┘  │
 │         ┌─────────────────────────────────────────────────────────────────▼───────┐  │
@@ -158,14 +158,19 @@ See [ADR-0003](docs/adr/0003-state-in-runtime-db.md).
   Storage persists across revisions.
 
 ### 4.6 Plugin host
-- JavaScript engine: **Sobek** (pure Go, async/await) running the esbuild bundle
-  (`internal/plugin`). The package boundary is the seam for another backend
-  (QuickJS-on-wasm, WASM) for stronger multi-tenant isolation; an interface will be
-  extracted when a second backend exists. See [ADR-0005](docs/adr/0005-typescript-plugins.md).
-- One isolated VM per plugin instance, a serialized event queue per VM.
+- JavaScript engine: **QuickJS-ng compiled to WebAssembly** (`internal/plugin/qjs`, a
+  reproducible build of QuickJS-ng plus a small shim), run by **wazero** in the Go process
+  (no CGO). The bot host consumes the engine-neutral `plugin.Runtime` interface. See
+  [ADR-0018](docs/adr/0018-quickjs-wasm-engine.md) (superseding the engine part of
+  [ADR-0005](docs/adr/0005-typescript-plugins.md)).
+- One isolated VM per plugin instance (its own linear memory, hard memory cap), a serialized
+  event queue per VM. A crash (memory limit, hard stop, trap) discards that instance only;
+  the bot host restarts it with exponential backoff.
 - Capability enforcement on every host call ([ADR-0006](docs/adr/0006-capability-based-permissions.md)).
-- CPU budget per handler (interrupt), wall-clock timeouts, no filesystem/network except
-  through capabilities (`http.fetch` with an allow-list). Budgets and limits:
+- CPU budget per event-loop turn (interrupt, then a hard stop for code that ignores it),
+  wall-clock timeouts, host-side quotas (pending host calls, queue, payload sizes), no
+  filesystem/network except through capabilities (`http.fetch` with an allow-list). Budgets
+  and limits:
   [spec/README.md §8](spec/README.md), [docs/plugins.md](docs/plugins.md).
 - **Interaction deadline**: Discord requires an answer within 3 s. If a handler has not
   replied after ~2 s, the host defers automatically; a later `reply()` transparently edits
@@ -354,7 +359,7 @@ internal/
   config/                  loading, JSON Schema + semantic validation, plugin config
   discord/                 Discord interfaces and vocabulary (only place saying "guild")
   discord/disgoadapter/    implementation over disgo rest + gateway (ADR-0014)
-  plugin/                  Sobek plugin host: definitions, capabilities, budgets, scheduler
+  plugin/                  plugin host: definitions, capabilities, budgets (qjs/: QuickJS-ng on wazero)
   reconcile/               server plan / apply / drift
   registry/                git registries, cicord.lock resolution
   runtime/                 controller: revisions, hot swap, bot host, status

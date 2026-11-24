@@ -286,7 +286,7 @@ routes); `--out` also writes the bundle, `-o json` prints JSON.
 ## Type checking
 
 Type-check with the scaffolded `tsconfig.json`, which maps `@cicord/sdk` to
-`.cicord/cicord-sdk.d.ts` and uses `"lib": ["ES2023"]` (Sobek provides the ES2023 built-ins) and `"types": []` so no DOM or Node types
+`.cicord/cicord-sdk.d.ts` and uses `"lib": ["ES2023"]` (the engine provides the ES2023 built-ins) and `"types": []` so no DOM or Node types
 leak in:
 
 ```sh

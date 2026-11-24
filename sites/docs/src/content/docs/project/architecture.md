@@ -11,7 +11,7 @@ source (github · git · embedded · local) ─▶ loader & validator ─▶ bui
        ─▶ revision (immutable: config + plugin bundles)
              ├─▶ server reconciler   plan · apply · drift          ─┐
              └─▶ bot host            one gateway session per bot    ├─▶ Discord REST + gateway
-                   └─ plugin host    one Sobek VM per instance     ─┘
+                   └─ plugin host    one QuickJS VM per instance   ─┘
 HTTP API ─ admin console · portal SDK · CLI ─▶ write-back (YAML patch + commit / pull request)
 state store (SQLite): resource map · plugin KV · audit · sessions · history
 ```
@@ -23,7 +23,7 @@ state store (SQLite): resource map · plugin KV · audit · sessions · history
 | **Builder** | Resolves plugins (repository or `cicord.lock`), bundles TypeScript with esbuild used as a Go library, checks each bundle against its manifest. |
 | **Server reconciler** | Plans and applies, in a rate-limit-aware order, adopts by name, detects drift from gateway events. |
 | **Bot host** | One gateway session per bot with the union of its intents; syncs slash commands; routes events and interactions; hot-swaps plugin VMs on a new revision without reconnecting. |
-| **Plugin host** | Sobek (pure-Go JavaScript with async/await): one VM and event loop per instance, capability checks on every host call, CPU and wall-clock budgets, auto-defer of interactions. |
+| **Plugin host** | QuickJS-ng compiled to WebAssembly and run by wazero (no CGO): one VM and event loop per instance with a hard memory limit, capability checks on every host call, CPU budgets with a hard stop, wall-clock budgets, automatic restart of crashed instances, auto-defer of interactions. |
 | **State store** | SQLite (pure Go) in the data directory by default, or PostgreSQL (`--database-url`); in memory for `cicord dev --sim`. |
 | **HTTP API** | Serves the admin console, the portal SDK and the CLI; OAuth, portal links, bearer tokens; CSRF protection. |
 | **Write-back** | Patches YAML at the node level (comments kept), commits as `cicord[bot]`, pushes or opens a pull request. |
@@ -42,7 +42,7 @@ The [ADRs](https://github.com/cicord/cicord/tree/main/docs/adr) record each deci
 | 0002 | **Self-hosted first, SaaS-ready**: one binary or Docker image with SQLite; everything scoped by project → server/bot → plugin instance so a hosted offering stays possible. | Accepted |
 | 0003 | **Reconciliation state in the runtime database**: stable keys, a resource map (no state file in git), drift from gateway events, per-server `syncPolicy`, ownership rules; `cicord adopt` and `cicord import` for recovery. | Accepted |
 | 0004 | **Admin console changes become git commits** (or pull requests by path policy), YAML patched with comments kept; configuration in git, data in the database. | Accepted |
-| 0005 | **Plugins in TypeScript**, bundled by esbuild in Go and run by Sobek: no Node.js anywhere, Node built-ins refused, inline source maps. | Accepted |
+| 0005 | **Plugins in TypeScript**, bundled by esbuild in Go: no Node.js anywhere, Node built-ins refused, inline source maps. (Its Sobek engine is superseded by ADR-0018.) | Accepted |
 | 0006 | **Capability-based plugin permissions**, granted explicitly in `bot.yaml`, recorded in `cicord.lock`, checked on every host call. | Accepted |
 | 0007 | **Generic admin console generated from JSON Schemas**, with `x-cicord-ref`, `x-cicord-widget` and `x-cicord-access`; no per-deployment build. | Accepted |
 | 0008 | **Community portal as layered SDKs plus a forkable reference portal**; custom builds committed and served from the revision; token mode for other origins; plugin UI through routes, never injected JavaScript. | Accepted |
@@ -55,5 +55,6 @@ The [ADRs](https://github.com/cicord/cicord/tree/main/docs/adr) record each deci
 | 0015 | **Kubernetes-style YAML resources** (`apiVersion`, `kind`, `metadata`, `spec`), maps keyed by stable keys, JSON Schemas for editors. | Accepted |
 | 0016 | **Portal runnable as a Discord Activity**, keeping signed links as the default. | Proposed |
 | 0017 | **`cicord dev --sim`**: the full runtime on the simulator, seeded from YAML, loopback-only, with a Simulator panel and dev login. | Accepted |
+| 0018 | **Plugins run on QuickJS-ng compiled to WebAssembly** (wazero, no CGO): a hard memory limit per instance, a soft then hard CPU stop that reaches native builtins, crashed instances restarted with backoff. | Accepted |
 
 Non-goals for v1: sharding, voice and audio processing, a visual plugin builder.

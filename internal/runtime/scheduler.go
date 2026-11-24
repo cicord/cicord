@@ -30,7 +30,7 @@ func (s *scheduler) reset(a *active) {
 	now := time.Now().UTC()
 	var jobs []*cronJob
 	for _, i := range a.instances {
-		if i.inst == nil {
+		if i.inst() == nil {
 			continue
 		}
 		for _, sd := range i.plugin.def.Schedules {
@@ -82,7 +82,7 @@ func (s *scheduler) runCron(ctx context.Context, now time.Time) {
 		go func() {
 			c, cancel := context.WithTimeout(ctx, time.Minute)
 			defer cancel()
-			err := j.inst.inst.RunSchedule(c, j.name)
+			err := j.inst.inst().RunSchedule(c, j.name)
 			j.inst.setHealth(err)
 			if err != nil {
 				s.r.log.Warn("schedule failed", "instance", j.inst.id(), "schedule", j.name, "err", err)
@@ -102,7 +102,7 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 	}
 	byScope := map[string]*instanceRT{}
 	for _, i := range a.instances {
-		if i.inst != nil {
+		if i.inst() != nil {
 			byScope[instanceScope(i.cfg)] = i
 		}
 	}
@@ -120,7 +120,7 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 		go func() {
 			c, cancel := context.WithTimeout(ctx, time.Minute)
 			defer cancel()
-			err := inst.inst.RunTask(c, t.Name, t.Payload)
+			err := inst.inst().RunTask(c, t.Name, t.Payload)
 			inst.setHealth(err)
 			if err != nil {
 				s.r.log.Warn("task failed", "instance", inst.id(), "task", t.Name, "err", err)

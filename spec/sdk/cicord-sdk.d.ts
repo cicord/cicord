@@ -2,7 +2,7 @@
  * @cicord/sdk — plugin authoring contract (v1alpha1).
  *
  * This file is the normative API of Cicord plugins. The runtime implements it on top of the
- * plugin host (Sobek); the published `@cicord/sdk` package re-exports these types.
+ * plugin host (QuickJS-ng on WebAssembly); the published `@cicord/sdk` package re-exports these types.
  *
  * Conventions:
  * - Server resources (channels, roles, categories) are referenced by their stable **key**

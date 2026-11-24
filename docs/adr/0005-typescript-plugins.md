@@ -1,6 +1,8 @@
 # ADR-0005 — Plugins in TypeScript
 
-**Status:** Accepted (supersedes the initial Lua idea)
+**Status:** Accepted (supersedes the initial Lua idea). The engine (Sobek) and the bundle
+target are superseded by [ADR-0018](0018-quickjs-wasm-engine.md): plugins now run on
+QuickJS-ng compiled to WebAssembly, the bundle targets ES2023.
 
 ## Context
 Plugins must be easy to write for the community. Candidates: Lua (gopher-lua), JavaScript /

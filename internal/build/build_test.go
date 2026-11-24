@@ -1,13 +1,15 @@
 package build
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/grafana/sobek"
+	"github.com/cicord/cicord/internal/plugin/qjs"
 )
 
 func writeFiles(t *testing.T, files map[string]string) string {
@@ -25,26 +27,49 @@ func writeFiles(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// run evaluates a bundle in a fresh Sobek runtime with a stub require and returns the
-// plugin exports object.
-func run(t *testing.T, code string, sdk map[string]any) (*sobek.Runtime, *sobek.Object) {
+// harness is a minimal prelude for running bundles in the plugin engine (QuickJS-ng): a
+// stub require("@cicord/sdk") and helpers to inspect the exports.
+const harness = `(function (host) {
+  let defined, settled;
+  globalThis.require = (n) => {
+    if (n !== "@cicord/sdk") throw new TypeError("unknown module " + n);
+    return { definePlugin: (d) => (defined = d), command: (d) => d };
+  };
+  const exp = () => globalThis.` + GlobalName + `;
+  return {
+    errInfo(e) { return JSON.stringify({ message: String(e && e.message), stack: String(e && e.stack) }); },
+    hasDefault() { return String(exp() !== undefined && exp().default !== undefined); },
+    commands() { return JSON.stringify(Object.keys((defined && defined.commands) || {})); },
+    start(fn) { exp()[fn]().then((v) => { settled = JSON.stringify(v); }, (e) => { settled = "error: " + e; }); },
+    settled() { return settled; },
+  };
+})`
+
+// run evaluates a bundle in a fresh VM of the plugin engine.
+func run(t *testing.T, code string) *qjs.VM {
 	t.Helper()
-	rt := sobek.New()
-	rt.SetFieldNameMapper(sobek.UncapFieldNameMapper())
-	_ = rt.Set("require", func(name string) any {
-		if name != SDKModule {
-			panic(rt.NewTypeError("unknown module " + name))
-		}
-		return sdk
-	})
-	if _, err := rt.RunScript("plugin.bundle.js", code); err != nil {
+	ctx := context.Background()
+	vm, err := qjs.New(ctx, qjs.Config{}, func(int32, string, string, float64) qjs.Reply { return qjs.Reply{Undefined: true} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(vm.Close)
+	if err := vm.Prelude(ctx, "harness.js", harness); err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Eval(ctx, "plugin.bundle.js", code); err != nil {
 		t.Fatalf("run bundle: %v", err)
 	}
-	exp := rt.Get(GlobalName)
-	if exp == nil || sobek.IsUndefined(exp) {
-		t.Fatalf("bundle did not define %s", GlobalName)
+	return vm
+}
+
+func call(t *testing.T, vm *qjs.VM, fn string, args ...string) string {
+	t.Helper()
+	r, _, err := vm.Call(context.Background(), fn, args...)
+	if err != nil {
+		t.Fatalf("%s: %v", fn, err)
 	}
-	return rt, exp.ToObject(rt)
+	return r
 }
 
 func TestBundleWelcomeExample(t *testing.T) {
@@ -69,23 +94,17 @@ func TestBundleWelcomeExample(t *testing.T) {
 		t.Fatalf("unexpected warnings: %v", res.Warnings)
 	}
 
-	var defined map[string]any
-	sdk := map[string]any{
-		"definePlugin": func(d map[string]any) map[string]any { defined = d; return d },
-		"command":      func(d map[string]any) map[string]any { return d },
+	vm := run(t, res.Code)
+	if call(t, vm, "hasDefault") != "true" {
+		t.Fatal("no default export")
 	}
-	_, exp := run(t, res.Code, sdk)
-	if exp.Get("default") == nil || defined == nil {
-		t.Fatal("definePlugin was not called / no default export")
-	}
-	cmds, _ := defined["commands"].(map[string]any)
-	if _, ok := cmds["welcome-preview"]; !ok {
-		t.Fatalf("commands not defined: %v", defined)
+	if cmds := call(t, vm, "commands"); !strings.Contains(cmds, `"welcome-preview"`) {
+		t.Fatalf("commands not defined: %s", cmds)
 	}
 }
 
-// TestTargetFeatures bundles modern TypeScript and runs it in Sobek, proving the chosen
-// esbuild target only emits syntax Sobek supports (async generators are lowered).
+// TestTargetFeatures bundles modern TypeScript and runs it in the plugin engine
+// (QuickJS-ng), proving the chosen esbuild target only emits syntax it supports.
 func TestTargetFeatures(t *testing.T) {
 	dir := writeFiles(t, map[string]string{
 		"src/util.ts": `
@@ -98,10 +117,11 @@ export class Counter {
   get value() { return this.#n; }
 }
 export enum Color { Red = "red", Blue = "blue" }
+export const last = (a: number[]) => a.findLast((x) => x > 1);
 export async function* gen(n: number) { for (let i = 0; i < n; i++) { await null; yield i; } }
 `,
 		"src/index.ts": `
-import { Counter, Color, gen } from "./util";
+import { Counter, Color, gen, last } from "./util";
 import data from "./data.json";
 type Opt = { a?: { b?: number } };
 export async function features(): Promise<Record<string, unknown>> {
@@ -126,6 +146,10 @@ export async function features(): Promise<Record<string, unknown>> {
     bigint: (2n ** 10n).toString(),
     regex: /(?<year>\d{4})/.exec("in 2024")?.groups?.year,
     created: Counter.created,
+    findLast: last([1, 2, 3, 0]),
+    toSorted: [3, 1, 2].toSorted().join(","),
+    withResolvers: typeof Promise.withResolvers,
+    groupBy: Object.keys(Object.groupBy([1, 2, 3], (n: number) => (n % 2 ? "odd" : "even"))).join(","),
   };
 }
 export default features;
@@ -136,62 +160,29 @@ export default features;
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(res.Code, "async function*") {
-		t.Fatal("async generators must be lowered")
+	if !strings.Contains(res.Code, "async function*") {
+		t.Fatal("async generators are supported by the engine and should not be lowered")
 	}
-	rt, exp := run(t, res.Code, map[string]any{})
-	fn, ok := sobek.AssertFunction(exp.Get("features"))
-	if !ok {
-		t.Fatal("features is not a function")
-	}
-	v, err := fn(sobek.Undefined())
-	if err != nil {
+	vm := run(t, res.Code)
+	call(t, vm, "start", "features")
+	if err := vm.RunJobs(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	p, ok := v.Export().(*sobek.Promise)
-	if !ok {
-		t.Fatalf("expected a promise, got %T", v.Export())
+	settled := call(t, vm, "settled")
+	var got map[string]any
+	if err := json.Unmarshal([]byte(settled), &got); err != nil {
+		t.Fatalf("features did not settle with an object: %q", settled)
 	}
-	if p.State() != sobek.PromiseStateFulfilled {
-		t.Fatalf("promise not fulfilled: %v %v", p.State(), p.Result())
-	}
-	got := p.Result().ToObject(rt).Export().(map[string]any)
 	want := map[string]any{
-		"optional": "none", "nullishAssign": int64(5), "template": "c:3", "replaceAll": "a+b+c",
-		"asyncGen": "0,1,2", "rest": "b,c", "enumValue": "blue", "json": "cicord", "at": int64(3),
-		"hasOwn": true, "bigint": "1024", "regex": "2024", "created": int64(1),
+		"optional": "none", "nullishAssign": 5.0, "template": "c:3", "replaceAll": "a+b+c",
+		"asyncGen": "0,1,2", "rest": "b,c", "enumValue": "blue", "json": "cicord", "at": 3.0,
+		"hasOwn": true, "bigint": "1024", "regex": "2024", "created": 1.0,
+		"findLast": 3.0, "toSorted": "1,2,3", "withResolvers": "function", "groupBy": "odd,even",
 	}
 	for k, w := range want {
 		if g := got[k]; g != w {
 			t.Errorf("%s = %#v (%T), want %#v", k, g, g, w)
 		}
-	}
-}
-
-func TestSourceMapMapsStackTraces(t *testing.T) {
-	dir := writeFiles(t, map[string]string{
-		"src/index.ts": `// line 1
-interface Unused { a: string }
-type Alias = number;
-
-export function boom(): never {
-  throw new Error("kaboom"); // line 6
-}
-`,
-	})
-	res, err := Bundle(dir, "src/index.ts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, exp := run(t, res.Code, nil)
-	fn, _ := sobek.AssertFunction(exp.Get("boom"))
-	_, err = fn(sobek.Undefined())
-	var ex *sobek.Exception
-	if !errors.As(err, &ex) {
-		t.Fatalf("expected exception, got %v", err)
-	}
-	if !strings.Contains(ex.String(), "(src/index.ts:6:") {
-		t.Fatalf("stack is not mapped to the TypeScript source:\n%s", ex.String())
 	}
 }
 

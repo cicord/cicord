@@ -48,13 +48,20 @@ description: What to check before exposing a Cicord runtime, and what the runtim
 
 **Plugins**
 
-- Each plugin instance runs in its own VM with no file system, network or Node.js API; every
-  host call is checked against the capabilities granted in `bot.yaml`.
+- Each plugin instance runs in its own VM (QuickJS-ng compiled to WebAssembly) with no file
+  system, network or Node.js API; every host call is checked against the capabilities
+  granted in `bot.yaml`.
 - An instance only reaches its own server's channels, and storage is scoped to the instance.
 - `http.fetch` only reaches the manifest's allow-listed public hosts over `https`; resolved
   addresses are checked (no loopback, private, link-local or metadata addresses), the
   connection goes to the checked address and every redirect is re-checked.
-- CPU and wall-clock budgets stop runaway handlers.
+- CPU and wall-clock budgets stop runaway handlers; code that ignores the CPU budget (a long
+  native call) is killed shortly after it.
+- Each instance has a hard memory limit (64 MiB of JavaScript heap, in its own WebAssembly
+  memory). Reaching it, or being killed, discards that instance only: it is reported
+  `Degraded` and restarted with backoff, the process and the other plugins keep running.
+- Host-side quotas bound what an instance can push into the runtime: pending SDK calls,
+  queued handler calls, SDK call arguments, log fields, KV pages and route responses.
 - A plugin update that asks for a new capability fails validation until it is granted, and
   `cicord.lock` pins registry plugins by commit and content hash.
 - Before installation, the Store only reads an unofficial plugin's `plugin.yaml`; its code
@@ -72,6 +79,6 @@ description: What to check before exposing a Cicord runtime, and what the runtim
   blocked by `deletionProtection` unless it is turned off.
 
 :::note
-A security review of the plugin sandbox (escapes, memory limits), YAML fuzzing and link token
-reuse is on the roadmap. The plugin sandbox has CPU budgets but no memory limit yet.
+A security review of the plugin sandbox (escapes), YAML fuzzing and link token reuse is on the
+roadmap. KV storage has per-value limits but no total quota per instance yet.
 :::

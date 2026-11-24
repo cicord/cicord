@@ -1,5 +1,5 @@
 // Package build bundles Cicord plugins (TypeScript or JavaScript) into a single script that the
-// plugin host (internal/plugin, Sobek) can run. It uses esbuild as a Go library: no Node.js
+// plugin host (internal/plugin, QuickJS-ng) can run. It uses esbuild as a Go library: no Node.js
 // is involved anywhere.
 //
 // Output contract (consumed by internal/plugin):
@@ -8,10 +8,10 @@
 //     default export is GlobalName.default;
 //   - "@cicord/sdk" is external: the bundle calls the global `require("@cicord/sdk")`, which the
 //     plugin host provides. No other module can be required at run time;
-//   - target: ES2022 minus async generators (not supported by Sobek; esbuild lowers them);
-//   - an inline source map is appended as the last line, so Sobek maps stack traces back to
-//     the original TypeScript files (paths relative to the plugin directory, e.g.
-//     "src/index.ts:12:5"). The same map is returned separately in Result.SourceMap.
+//   - target: ES2023 syntax (QuickJS-ng supports all of it, async generators included);
+//   - an inline source map is appended as the last line, so the plugin host maps stack
+//     traces back to the original TypeScript files (paths relative to the plugin directory,
+//     e.g. "src/index.ts:12:5"). The same map is returned separately in Result.SourceMap.
 //
 // Node.js built-in modules (fs, path, node:*…) cannot be imported; the build fails with a
 // readable error pointing at the import.
@@ -139,8 +139,7 @@ func Bundle(pluginDir, entry string) (Result, error) {
 		Platform:       api.PlatformNeutral,
 		MainFields:     []string{"module", "main"},
 		Conditions:     []string{"import", "default"},
-		Target:         api.ES2022,
-		Supported:      map[string]bool{"async-generator": false},
+		Target:         api.ES2023,
 		Sourcemap:      api.SourceMapInlineAndExternal,
 		SourcesContent: api.SourcesContentExclude,
 		Charset:        api.CharsetUTF8,

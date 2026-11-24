@@ -244,7 +244,7 @@ Done:
   revisions and hot swap.
 - Server reconciler with Discord settings parity (plan / apply / drift / self-heal, adoption,
   deletion protection, live drift for roles, channels, AutoMod, emojis, stickers, sounds).
-- Bot host over disgo; Sobek plugin host with capabilities, KV storage, commands, components,
+- Bot host over disgo; plugin host (QuickJS-ng on WebAssembly, hard memory and CPU limits) with capabilities, KV storage, commands, components,
   modals, schedules, tasks, cross-plugin events and typed portal routes.
 - SQLite or PostgreSQL state (one conformance suite for both), git write-back (commits and
   GitHub pull requests), HTTP API v1.
