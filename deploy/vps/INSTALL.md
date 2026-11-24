@@ -157,3 +157,64 @@ Caddy obtains the TLS certificate on its first start (ports 80 and 443 must reac
 
 Check: `gh api orgs/<org>/installations --jq '.installations[] | {app_slug, permissions, events}'`
 shows the four permissions and `events: ["push"]`.
+
+## 6. Deploy the runtime and Caddy — `compose.yaml`, `Caddyfile`
+
+On the workstation, from the repository (macOS: `COPYFILE_DISABLE=1` keeps `._*` metadata
+files out of the archives):
+
+```sh
+ssh cicord 'sudo install -d -m 0750 /opt/cicord'
+COPYFILE_DISABLE=1 tar -C deploy/vps -cf - compose.yaml Caddyfile .env.example scripts | ssh cicord 'sudo tar -C /opt/cicord -xf -'
+ssh cicord 'sudo cp /opt/cicord/.env.example /opt/cicord/.env && sudo chmod 600 /opt/cicord/.env && sudoedit /opt/cicord/.env'
+```
+
+`.env`: the image tag, `CICORD_PUBLIC_URL`/`CICORD_PUBLIC_HOST` (public portal),
+`CICORD_ADMIN_URL` (`https://cicord.<tailnet>.ts.net`), `PUBLIC_IPV4`/`PUBLIC_IPV6` (the
+server's public addresses, see below). No secrets.
+
+Image: until release images are published, build it on the server from a source archive
+(native architecture, no git credentials on the server):
+
+```sh
+COPYFILE_DISABLE=1 git archive --format=tar HEAD | ssh cicord "sudo docker build --build-arg VERSION=0.1.0 --build-arg COMMIT=$(git rev-parse --short HEAD) -t cicord:$(git rev-parse --short HEAD) -"
+```
+
+Start (the `/opt/cicord` directory is root-only, so pass its paths to compose):
+
+```sh
+ssh cicord 'sudo docker compose --project-directory /opt/cicord -f /opt/cicord/compose.yaml --env-file /opt/cicord/.env up -d'
+```
+
+- Caddy is bound to the **public** addresses only (`PUBLIC_IPV4`, `PUBLIC_IPV6`): published on
+  every interface, Docker's NAT rules would also capture port 443 of `tailscale0` and hide the
+  admin console;
+- the compose network has IPv6 enabled: with the userland proxy off, Docker can only forward
+  published IPv6 ports to containers with an IPv6 address;
+- Caddy obtains the certificate of the public host on its first start (logs:
+  `certificate obtained successfully`).
+
+Admin console on the tailnet (TLS certificate from Tailscale):
+
+```sh
+ssh cicord 'sudo tailscale serve --bg --https=443 http://127.0.0.1:7420'
+```
+
+Checks from the workstation (on the tailnet):
+
+| URL | Expected |
+|---|---|
+| `https://community.cicord.dev/healthz` | 200, with HSTS / nosniff / referrer-policy headers |
+| `https://community.cicord.dev/admin/` | 404 (never served publicly) |
+| `https://cicord.<tailnet>.ts.net/admin/` | 200 |
+
+## 7. First start: the setup wizard
+
+With no configuration yet, the runtime starts in setup mode and prints a one-time link:
+
+```sh
+ssh cicord 'sudo docker logs cicord 2>&1 | grep "setup wizard"'
+```
+
+Open it from a device of the tailnet. On the public host, setup mode answers 404 except the
+health endpoints.

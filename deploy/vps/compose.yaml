@@ -66,7 +66,10 @@ services:
     networks: [web]
 
 networks:
-  web: {}
+  web:
+    # IPv6 inside the network: with the userland proxy off (daemon.json), Docker can only
+    # forward the published IPv6 ports to containers that have an IPv6 address.
+    enable_ipv6: true
 
 volumes:
   cicord-data: {}
