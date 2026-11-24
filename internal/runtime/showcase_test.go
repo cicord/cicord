@@ -922,3 +922,42 @@ func TestShowcaseModeration(t *testing.T) {
 		return false
 	})
 }
+
+// A plugin that exhausts its memory limit crashes its instance only: the instance is
+// reported Degraded, restarted with backoff, and serves again; the process and the other
+// plugins are unaffected.
+func TestShowcaseProbeCrashRestarts(t *testing.T) {
+	oldMin := restartMin
+	restartMin = 50 * time.Millisecond
+	t.Cleanup(func() { restartMin = oldMin })
+	s := startShowcase(t, showcaseOpts{probe: true, limits: plugin.Limits{Memory: 16 << 20}})
+	w := s.world
+	alice := s.member("alice", "Member")
+	general := s.channel("general")
+
+	probe := func() InstanceInfo {
+		for _, in := range s.rt.Instances("") {
+			if in.Config.Name == "probe" {
+				return in
+			}
+		}
+		t.Fatal("no probe instance")
+		return InstanceInfo{}
+	}
+	st := wait(t, w.InvokeCommand(alice.ID, s.serverID, general.ID, s.appID, "probe-oom", nil))
+	if replyText(st) != plugin.GenericErrorMessage {
+		t.Errorf("probe-oom = %+v", st)
+	}
+	s.waitFor("probe degraded", func() bool {
+		in := probe()
+		return in.Health == HealthDegraded && strings.Contains(in.Message, "memory limit")
+	})
+	s.waitFor("probe restarted", func() bool { return probe().Health == HealthHealthy })
+	st = wait(t, w.InvokeCommand(alice.ID, s.serverID, general.ID, s.appID, "probe-ping", nil))
+	if replyText(st) != "pong" {
+		t.Errorf("probe-ping after the restart = %+v", st)
+	}
+	if !strings.Contains(s.logs.String(), "plugin instance restarted") {
+		t.Error("the restart is not logged")
+	}
+}

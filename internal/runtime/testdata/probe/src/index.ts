@@ -38,6 +38,13 @@ export default definePlugin({
         }
       },
     }),
+    "probe-oom": command({
+      description: "exhausts the memory limit",
+      run() {
+        const hog: ArrayBuffer[] = [];
+        for (;;) hog.push(new ArrayBuffer(4 * 1024 * 1024));
+      },
+    }),
     "probe-ping": command({
       description: "pong",
       async run(_ctx, it) {

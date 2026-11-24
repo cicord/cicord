@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cicord/cicord/internal/auth"
@@ -76,6 +77,8 @@ type Runtime struct {
 	wake  chan struct{}
 	sched *scheduler
 	diag  diagnostics
+
+	restart restartPolicy
 }
 
 // active is an activated revision.
@@ -110,7 +113,12 @@ type instanceRT struct {
 	cfg      config.Instance
 	serverID string
 	plugin   *builtPlugin
-	inst     *plugin.Instance
+	// current is the running instance; the supervisor replaces it after a crash.
+	current atomic.Pointer[plugin.Instance]
+
+	swapMu  sync.Mutex
+	retired bool          // the revision was replaced: no more restarts
+	quit    chan struct{} // closed when retired
 
 	mu       sync.Mutex
 	health   string
@@ -120,7 +128,13 @@ type instanceRT struct {
 
 func (i *instanceRT) id() string { return i.cfg.ID() }
 
+// inst is the running plugin instance (nil when it never started).
+func (i *instanceRT) inst() *plugin.Instance { return i.current.Load() }
+
 func (i *instanceRT) setHealth(err error) {
+	if errors.Is(err, plugin.ErrCrashed) {
+		return // the supervisor reports crashes and restarts
+	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	if err == nil {
@@ -151,7 +165,8 @@ func New(opts Options) *Runtime {
 	if opts.Signer == nil {
 		opts.Signer = auth.NewSigner(auth.RandomKey())
 	}
-	r := &Runtime{opts: opts, log: opts.Logger, bots: map[string]*botHost{}, wake: make(chan struct{}, 1)}
+	r := &Runtime{opts: opts, log: opts.Logger, bots: map[string]*botHost{}, wake: make(chan struct{}, 1),
+		restart: restartPolicy{min: restartMin, max: restartMax, stable: restartStable}}
 	r.sched = newScheduler(r)
 	return r
 }
@@ -371,7 +386,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 
 	// 3. plugin instances
 	for _, in := range repo.Instances {
-		irt := &instanceRT{cfg: in, plugin: builds[in.Plugin.Key], health: HealthProgressing}
+		irt := &instanceRT{cfg: in, plugin: builds[in.Plugin.Key], health: HealthProgressing, quit: make(chan struct{})}
 		next.instances = append(next.instances, irt)
 		host := r.bot(in.Bot)
 		srt := next.servers[in.Server]
@@ -384,12 +399,15 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 			continue
 		}
 		irt.serverID = srt.cfg.Spec.DiscordID
-		if err := r.startInstance(ctx, host, srt, irt); err != nil {
+		inst, err := r.startInstance(ctx, host, srt, irt)
+		if err != nil {
 			irt.health, irt.message = HealthDegraded, err.Error()
 			log.Error("plugin instance failed to start", "instance", irt.id(), "err", err)
 			continue
 		}
+		irt.current.Store(inst)
 		irt.health = HealthHealthy
+		go r.supervise(host, srt, irt)
 	}
 
 	// 4. swap routing, sync commands, profiles
@@ -423,8 +441,8 @@ func stopActive(ctx context.Context, a *active, log *slog.Logger) {
 		}
 	}
 	for _, i := range a.instances {
-		if i.inst != nil {
-			if err := i.inst.Stop(ctx); err != nil {
+		if inst := i.retire(); inst != nil {
+			if err := inst.Stop(ctx); err != nil {
 				log.Warn("stop instance", "instance", i.id(), "err", err)
 			}
 		}
@@ -698,12 +716,12 @@ func (r *Runtime) HandleRoute(ctx context.Context, server, bot, instance, method
 		return plugin.RouteResponse{}, plugin.RouteDef{}, ErrNotFound
 	}
 	for _, i := range a.instances {
-		if i.cfg.Server == server && i.cfg.Bot == bot && i.cfg.Name == instance && i.inst != nil {
+		if i.cfg.Server == server && i.cfg.Bot == bot && i.cfg.Name == instance && i.inst() != nil {
 			route, _, ok := i.plugin.def.MatchRoute(method, path)
 			if !ok {
 				return plugin.RouteResponse{}, plugin.RouteDef{}, ErrNotFound
 			}
-			resp, err := i.inst.HandleRoute(ctx, method, path, req)
+			resp, err := i.inst().HandleRoute(ctx, method, path, req)
 			i.setHealth(err)
 			return resp, route, err
 		}
@@ -804,4 +822,96 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// ───────────────────────────────────────────────────────────── instance restarts
+
+// Restart backoff for crashed plugin instances (memory limit, hard stop, engine trap): the
+// delay doubles after each crash or failed start, and goes back to the minimum once an
+// instance stayed up for restartStable.
+var (
+	restartMin    = time.Second
+	restartMax    = 5 * time.Minute
+	restartStable = 5 * time.Minute
+)
+
+type restartPolicy struct{ min, max, stable time.Duration }
+
+// retire stops restarts for irt (its revision is replaced) and returns the instance to
+// stop.
+func (i *instanceRT) retire() *plugin.Instance {
+	i.swapMu.Lock()
+	defer i.swapMu.Unlock()
+	if !i.retired {
+		i.retired = true
+		close(i.quit)
+	}
+	return i.inst()
+}
+
+// install makes inst the running instance unless irt was retired meanwhile.
+func (i *instanceRT) install(inst *plugin.Instance) bool {
+	i.swapMu.Lock()
+	defer i.swapMu.Unlock()
+	if i.retired {
+		return false
+	}
+	i.current.Store(inst)
+	return true
+}
+
+func (i *instanceRT) degraded(msg string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.health, i.message = HealthDegraded, msg
+}
+
+// supervise restarts irt's instance whenever it crashes, until the revision is retired.
+// While it waits, the crashed instance stays installed: its calls fail at once with
+// plugin.ErrCrashed (interactions get the generic error reply).
+func (r *Runtime) supervise(host *botHost, srt *serverRT, irt *instanceRT) {
+	p := r.restart
+	delay := p.min
+	upSince := time.Now()
+	for {
+		inst := irt.inst()
+		select {
+		case <-irt.quit:
+			return
+		case <-inst.Done():
+		}
+		cause := inst.Err()
+		if !errors.Is(cause, plugin.ErrCrashed) {
+			return // stopped
+		}
+		_ = inst.Stop(context.Background())
+		if time.Since(upSince) >= p.stable {
+			delay = p.min
+		}
+		for {
+			irt.degraded(fmt.Sprintf("%v (restarting in %s)", cause, delay))
+			r.log.Error("plugin instance crashed, restarting", "instance", irt.id(), "err", cause, "in", delay)
+			select {
+			case <-irt.quit:
+				return
+			case <-time.After(delay):
+			}
+			delay = min(delay*2, p.max)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			next, err := r.startInstance(ctx, host, srt, irt)
+			cancel()
+			if err != nil {
+				cause = fmt.Errorf("restart failed: %w", err)
+				continue
+			}
+			if !irt.install(next) {
+				_ = next.Stop(context.Background())
+				return
+			}
+			break
+		}
+		upSince = time.Now()
+		irt.setHealth(nil)
+		r.log.Info("plugin instance restarted", "instance", irt.id())
+	}
 }

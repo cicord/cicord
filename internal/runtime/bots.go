@@ -196,9 +196,10 @@ func toPresence(p *config.Presence) discord.Presence {
 
 func instanceScope(in config.Instance) string { return "plugin:" + in.ID() }
 
-func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverRT, irt *instanceRT) error {
+// startInstance creates and starts a plugin instance for irt (the caller installs it).
+func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverRT, irt *instanceRT) (*plugin.Instance, error) {
 	if irt.plugin == nil {
-		return errors.New("plugin failed to build")
+		return nil, errors.New("plugin failed to build")
 	}
 	in := irt.cfg
 	m := in.Plugin.Manifest
@@ -226,14 +227,13 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 	}
 	inst, err := plugin.NewInstance(irt.plugin.code, irt.plugin.def, env)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := inst.Start(ctx); err != nil {
 		_ = inst.Stop(ctx)
-		return err
+		return nil, err
 	}
-	irt.inst = inst
-	return nil
+	return inst, nil
 }
 
 // ownedResources records plugin-owned resources in both the store and the cache.
@@ -271,7 +271,7 @@ func (h *botHost) install(ctx context.Context, a *active) {
 		}
 	}
 	for _, i := range a.instances {
-		if i.cfg.Bot != h.key || i.inst == nil {
+		if i.cfg.Bot != h.key || i.inst() == nil {
 			continue
 		}
 		sid := i.serverID
@@ -393,7 +393,7 @@ func (h *botHost) handle(ev discord.Event) {
 		if !i.plugin.def.HasEvent(name) {
 			continue
 		}
-		done := i.inst.DispatchEvent(context.Background(), ev)
+		done := i.inst().DispatchEvent(context.Background(), ev)
 		go func() {
 			err := <-done
 			i.setHealth(err)
@@ -444,7 +444,7 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 		}()
 		return
 	}
-	done := target.inst.DispatchInteraction(context.Background(), it, kind, localID)
+	done := target.inst().DispatchInteraction(context.Background(), it, kind, localID)
 	go func() {
 		err := <-done
 		target.setHealth(err)
@@ -467,7 +467,7 @@ func (r *Runtime) publish(bot, serverID, topic string, payload json.RawMessage) 
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					defer cancel()
-					err := i.inst.Deliver(ctx, topic, payload)
+					err := i.inst().Deliver(ctx, topic, payload)
 					i.setHealth(err)
 				}()
 			}
