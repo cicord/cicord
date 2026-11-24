@@ -53,6 +53,7 @@ type wirePresence struct {
 // wireGuildAvailable is the part of GUILD_CREATE the analytics read.
 type wireGuildAvailable struct {
 	ID          string           `json:"id"`
+	Members     []wireMember     `json:"members"`
 	VoiceStates []wireVoiceState `json:"voice_states"`
 	Presences   []wirePresence   `json:"presences"`
 }
@@ -225,11 +226,21 @@ func serverAvailable(d []byte) (discord.ServerAvailableEvent, error) {
 		return discord.ServerAvailableEvent{}, err
 	}
 	ev := discord.ServerAvailableEvent{ServerID: g.ID}
+	// The voice states of GUILD_CREATE are partial (no member): the members array,
+	// which includes every member in voice, tells the bots.
+	bots := map[string]bool{}
+	for _, m := range g.Members {
+		if m.User != nil && m.User.Bot {
+			bots[m.User.ID] = true
+		}
+	}
 	for _, v := range g.VoiceStates {
 		if v.ChannelID == nil || *v.ChannelID == "" {
 			continue
 		}
-		ev.VoiceStates = append(ev.VoiceStates, voiceStateFromWire(g.ID, v))
+		st := voiceStateFromWire(g.ID, v)
+		st.Bot = st.Bot || bots[st.UserID]
+		ev.VoiceStates = append(ev.VoiceStates, st)
 	}
 	for _, p := range g.Presences {
 		ev.Presences = append(ev.Presences, presenceFromWire(p))

@@ -32,6 +32,13 @@ func TestTranslateServerAvailable(t *testing.T) {
 	if !reflect.DeepEqual(a, want) || discord.ServerIDOf(a) != "1" {
 		t.Errorf("available = %#v", a)
 	}
+	// Partial voice states (no member): the bot flag comes from the members array.
+	a = one(t, mustTranslate(t, s, "GUILD_CREATE", `{"id":"1","name":"S",
+	  "members":[{"user":{"id":"3","username":"music","bot":true},"roles":[]},{"user":{"id":"2","username":"a"},"roles":[]}],
+	  "voice_states":[{"channel_id":"30","user_id":"2"},{"channel_id":"30","user_id":"3"}]}`)).(discord.ServerAvailableEvent)
+	if len(a.VoiceStates) != 2 || a.VoiceStates[0].Bot || !a.VoiceStates[1].Bot {
+		t.Errorf("partial voice states = %#v", a.VoiceStates)
+	}
 	// A join emits the join first, then the availability.
 	mustTranslate(t, s, "READY", `{"user":{"id":"600"},"guilds":[]}`)
 	evs = mustTranslate(t, s, "GUILD_CREATE", `{"id":"9","name":"New"}`)

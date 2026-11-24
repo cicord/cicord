@@ -537,3 +537,17 @@ func TestDimensionedMetricsNeverGetAnEmptyDim(t *testing.T) {
 		}
 	}
 }
+
+func TestAttachmentsAndPollsNeedMessageContent(t *testing.T) {
+	f := newCollectorFixture(t, func(s *CollectorServer) { s.Intents &^= discord.MustIntents("MessageContent") })
+	// A message mentioning the bot keeps its attachments and poll even without the intent.
+	f.c.Handle("alpha", discord.MessageCreateEvent{Message: discord.Message{ServerID: "1", ChannelID: "10", Author: discord.User{ID: "5"},
+		Content: "<@600> look", Attachments: []discord.Attachment{{ID: "a"}}, Poll: true, StickerIDs: []string{"s"}, ReplyToID: "4"}})
+	f.c.Flush(ctx)
+	if a, p := f.store.sum("main", MessagesAttachments), f.store.sum("main", PollsCreated); a != 0 || p != 0 {
+		t.Errorf("attachments=%v polls=%v counted without MessageContent", a, p)
+	}
+	if f.store.sum("main", MessagesSent) != 1 || f.store.sum("main", MessagesReplies) != 1 || f.store.sum("main", MessagesStickers) != 1 {
+		t.Errorf("messages, replies and stickers need no MessageContent: %s", f.store.dump())
+	}
+}

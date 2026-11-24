@@ -61,13 +61,17 @@ func (c *Collector) event(s *collected, ev discord.Event, now time.Time) {
 			return
 		}
 		c.count(s, MessagesSent, m.ChannelID, now, 1)
-		c.count(s, MessagesAttachments, m.ChannelID, now, float64(len(m.Attachments)))
 		if m.ReplyToID != "" {
 			c.count(s, MessagesReplies, m.ChannelID, now, 1)
 		}
 		c.count(s, MessagesStickers, "", now, float64(len(m.StickerIDs)))
-		if m.Poll {
-			c.count(s, PollsCreated, m.ChannelID, now, 1)
+		// Without MessageContent Discord empties attachments and polls, except in the
+		// messages that mention the bot: counting those would be biased.
+		if s.cfg.Intents.Has(intentMessageContent) {
+			c.count(s, MessagesAttachments, m.ChannelID, now, float64(len(m.Attachments)))
+			if m.Poll {
+				c.count(s, PollsCreated, m.ChannelID, now, 1)
+			}
 		}
 		c.markActive(s, m.Author.ID, now, ActiveSetChat, ActiveSetAll)
 
