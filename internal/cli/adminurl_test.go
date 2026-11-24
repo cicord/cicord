@@ -17,13 +17,13 @@ import (
 
 func TestNormalizeAdminURL(t *testing.T) {
 	for in, want := range map[string]string{
-		"":                                 "",
+		"":                                      "",
 		"https://cicord.example-tailnet.ts.net": "https://cicord.example-tailnet.ts.net",
-		"https://Cicord.Example.org/":      "https://cicord.example.org",
-		"https://cicord.example.org:8443":  "https://cicord.example.org:8443",
-		"http://127.0.0.1:7421":            "http://127.0.0.1:7421",
-		"http://localhost:7421/":           "http://localhost:7421",
-		"http://[::1]:7421":                "http://[::1]:7421",
+		"https://Cicord.Example.org/":           "https://cicord.example.org",
+		"https://cicord.example.org:8443":       "https://cicord.example.org:8443",
+		"http://127.0.0.1:7421":                 "http://127.0.0.1:7421",
+		"http://localhost:7421/":                "http://localhost:7421",
+		"http://[::1]:7421":                     "http://[::1]:7421",
 	} {
 		got, err := normalizeAdminURL(in)
 		if err != nil || got != want {
