@@ -137,7 +137,17 @@ type session struct {
 var (
 	_ discord.Session                = (*session)(nil)
 	_ discord.ApplicationFlagsReader = (*session)(nil)
+	_ discord.GatewayStatusReader    = (*session)(nil)
 )
+
+// GatewayConnected reports whether the gateway is open and READY (false while it
+// reconnects or resumes, and after a permanent close).
+func (s *session) GatewayConnected() bool {
+	s.mu.Lock()
+	gw := s.gw
+	s.mu.Unlock()
+	return gw != nil && gw.Status() == gateway.StatusReady
+}
 
 func newSession(cfg config, token string) *session {
 	logger := cfg.logger.With(slog.String("component", "discord"))

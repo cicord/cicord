@@ -51,6 +51,8 @@ type serverFlags struct {
 	logLevel    string
 	// githubAppKeyFile is the GitHub App private key file (serve only).
 	githubAppKeyFile string
+	// metricsListen is the address of the Prometheus metrics listener ("" disables it; serve only).
+	metricsListen string
 }
 
 func (f *serverFlags) register(cmd *cobra.Command, defListen string) {
@@ -302,6 +304,7 @@ Environment:
   CICORD_DISCORD_CLIENT_SECRET  Discord OAuth2 client secret (admin UI / portal login)
   CICORD_DISCORD_CLIENT_ID      OAuth2 client ID (default: the first bot's application ID)
   CICORD_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store and plugin downloads reach private networks
+  CICORD_METRICS_LISTEN         address of the Prometheus metrics listener (--metrics-listen)
 
 Bot tokens, CICORD_GIT_TOKEN, the GitHub App secrets, CICORD_RUNTIME_TOKEN,
 CICORD_WEBHOOK_SECRET and CICORD_DISCORD_CLIENT_SECRET can instead be kept in the encrypted
@@ -326,6 +329,8 @@ The runtime token and the webhook secret are read at startup: restart after chan
 	cmd.Flags().BoolVar(&local, "local", false, "serve the directory as-is, ignoring spec.source (no git)")
 	cmd.Flags().StringVar(&f.githubAppKeyFile, "github-app-key-file", os.Getenv(gitauth.AppPrivateKeyFileEnv),
 		"GitHub App private key file (PEM), instead of the "+gitauth.AppPrivateKeySecret+" secret (env "+gitauth.AppPrivateKeyFileEnv+")")
+	cmd.Flags().StringVar(&f.metricsListen, "metrics-listen", os.Getenv("CICORD_METRICS_LISTEN"),
+		"serve Prometheus metrics on GET /metrics of this address, without authentication, e.g. 127.0.0.1:9420 (default: disabled; env CICORD_METRICS_LISTEN)")
 	return cmd
 }
 
@@ -472,11 +477,12 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	}
 
 	cacheDir := registry.DefaultCacheDir()
+	reg := newMetricsRegistry()
 	rt := runtime.New(runtime.Options{
 		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
-		CommitStatus: commitStatusHook(log, ghRepo, tokens, console),
+		CommitStatus: commitStatusHook(log, ghRepo, tokens, console), Metrics: reg,
 	})
 	stopping := make(chan struct{})
 	// Machine secrets: the environment first, then the encrypted secret store (cicord secret set).
@@ -494,7 +500,14 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		PublicURL: public, AdminURL: f.adminURL, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
 		Stopping: stopping, Checker: &setup.Checker{Runtime: rt, Probe: defaultProbe(), Secrets: resolve, Writer: writer},
 		Catalog: cat, SecretStore: sec, Secret: resolve, PluginStore: runtimePluginStore(cat, resolve, stopping, rt.Repo),
+		Metrics: reg,
 	})
+	stopMetrics, err := startMetrics(ctx, log, f.metricsListen, reg)
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
+	defer stopMetrics()
 	fmt.Fprintf(stdout, "Cicord runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, console, dataDir)
 	return runHTTP(ctx, log, ln, h, rt, stopping)
 }

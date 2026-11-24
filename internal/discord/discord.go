@@ -913,6 +913,13 @@ type Session interface {
 	Close(ctx context.Context) error
 }
 
+// GatewayStatusReader is implemented by sessions that know whether their gateway
+// connection is up (READY, as opposed to connecting, resuming or closed). The runtime
+// reports it as a metric; sessions without it count as connected while they are open.
+type GatewayStatusReader interface {
+	GatewayConnected() bool
+}
+
 // Connector creates sessions from bot tokens.
 type Connector interface {
 	// Connect validates the token and returns a session (gateway not opened yet).

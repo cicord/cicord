@@ -1029,4 +1029,26 @@ func TestShowcaseProbeCrashRestarts(t *testing.T) {
 	if !strings.Contains(s.logs.String(), "plugin instance restarted") {
 		t.Error("the restart is not logged")
 	}
+	m := scrapeMetrics(t, s.rt.opts.Metrics)
+	var probeLabels string
+	for series := range m {
+		if rest, ok := strings.CutPrefix(series, "cicord_plugin_instance_running{"); ok && strings.Contains(rest, `plugin_instance="probe"`) {
+			probeLabels = strings.TrimSuffix(rest, "}")
+		}
+	}
+	if probeLabels == "" {
+		t.Fatal("no cicord_plugin_instance_running series for the probe")
+	}
+	for series, want := range map[string]float64{
+		"cicord_plugin_instance_crashes_total{" + probeLabels + "}":                     2,
+		"cicord_plugin_instance_restarts_total{" + probeLabels + `,result="succeeded"}`: 2,
+		"cicord_plugin_instance_running{" + probeLabels + "}":                           1,
+	} {
+		if m[series] != want {
+			t.Errorf("%s = %v, want %v", series, m[series], want)
+		}
+	}
+	if m["cicord_plugin_handler_errors_total{"+probeLabels+`,kind="command"}`] < 2 {
+		t.Error("the crashing commands are not counted as handler errors")
+	}
 }

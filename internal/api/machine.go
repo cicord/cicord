@@ -215,11 +215,13 @@ func (s *server) trackedBranch() string {
 
 func (s *server) handleGitHubHook(w http.ResponseWriter, r *http.Request) {
 	if s.opts.WebhookSecret == "" {
+		s.metrics.webhooks.Inc(webhookDisabled)
 		s.fail(w, httpErr(http.StatusUnauthorized, "unauthenticated", "webhooks are disabled (no webhook secret configured)"))
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 25<<20))
 	if err != nil {
+		s.metrics.webhooks.Inc(webhookRejected)
 		s.fail(w, httpErr(http.StatusRequestEntityTooLarge, "invalid", "payload too large"))
 		return
 	}
@@ -228,29 +230,35 @@ func (s *server) handleGitHubHook(w http.ResponseWriter, r *http.Request) {
 	mac := hmac.New(sha256.New, []byte(s.opts.WebhookSecret))
 	mac.Write(body)
 	if !ok || derr != nil || !hmac.Equal(got, mac.Sum(nil)) {
+		s.metrics.webhooks.Inc(webhookRejected)
 		s.fail(w, httpErr(http.StatusUnauthorized, "unauthenticated", "invalid webhook signature"))
 		return
 	}
 	switch ev := r.Header.Get("X-GitHub-Event"); ev {
 	case "ping":
+		s.metrics.webhooks.Inc(webhookIgnored)
 		writeJSON(w, http.StatusOK, map[string]any{"status": "pong"})
 	case "push":
 		var p struct {
 			Ref string `json:"ref"`
 		}
 		if err := json.Unmarshal(body, &p); err != nil {
+			s.metrics.webhooks.Inc(webhookRejected)
 			s.fail(w, httpErr(http.StatusBadRequest, "invalid", "invalid push payload"))
 			return
 		}
 		if p.Ref != "refs/heads/"+s.trackedBranch() {
+			s.metrics.webhooks.Inc(webhookIgnored)
 			writeJSON(w, http.StatusOK, map[string]any{"status": "ignored", "reason": "not the tracked branch"})
 			return
 		}
 		if s.rt != nil {
 			s.rt.Trigger()
 		}
+		s.metrics.webhooks.Inc(webhookAccepted)
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "accepted"})
 	default:
+		s.metrics.webhooks.Inc(webhookIgnored)
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ignored", "reason": "event " + ev + " is not handled"})
 	}
 }

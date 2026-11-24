@@ -23,6 +23,7 @@ import (
 
 	"github.com/cicord/cicord/internal/catalog"
 	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/metrics"
 	"github.com/cicord/cicord/internal/registry"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/secrets"
@@ -111,6 +112,9 @@ type Options struct {
 	// PluginStore lists and describes Store plugins (default: Catalog + the registries of
 	// the active cicord.yaml, cached in registry.DefaultCacheDir()).
 	PluginStore *store.Service
+	// Metrics receives the HTTP and webhook metrics (nil: a private registry). The API
+	// never serves it: /metrics answers 404 here (cicord serve --metrics-listen).
+	Metrics *metrics.Registry
 }
 
 type server struct {
@@ -122,6 +126,7 @@ type server struct {
 
 	members memberCache
 	writeMu sync.Mutex // serializes config write-backs
+	metrics *apiMetrics
 
 	// Admin host (hosts.go): normalized host:port of Options.AdminURL ("" without one),
 	// the default port and the scheme of that URL.
@@ -188,7 +193,8 @@ func newServer(opts Options) *server {
 		opts.PluginStore = &store.Service{Catalog: opts.Catalog, CacheDir: registry.DefaultCacheDir(),
 			PublicOnly: !registry.AllowPrivateRegistries(), Secret: opts.Secret}
 	}
-	s := &server{opts: opts, rt: opts.Runtime, store: opts.Store, log: opts.Logger, mux: http.NewServeMux()}
+	s := &server{opts: opts, rt: opts.Runtime, store: opts.Store, log: opts.Logger, mux: http.NewServeMux(),
+		metrics: newAPIMetrics(opts.Metrics)}
 	s.members.entries = map[string]memberEntry{}
 	s.initAdminHost()
 	return s
@@ -237,6 +243,10 @@ func (s *server) routes() {
 	h("/hooks/", notFoundHandler)
 	h("GET /healthz", s.handleHealthz)
 	h("GET /readyz", s.handleReadyz)
+	// Metrics are only served by the dedicated listener (cicord serve --metrics-listen):
+	// without this route the portal would answer /metrics.
+	h("/metrics", notFoundHandler)
+	h("/metrics/", notFoundHandler)
 
 	// §8 simulator
 	h("GET /api/v1/sim/state", s.simOnly(s.handleSimState))
@@ -282,6 +292,7 @@ func (s *server) middleware(next http.Handler) http.Handler {
 					writeError(sw, http.StatusInternalServerError, "internal", "internal error")
 				}
 			}
+			s.metrics.requests.Inc(routeLabel(r.Pattern), statusClass(sw.status))
 			if sw.status >= 500 {
 				s.log.Warn("api request", "method", r.Method, "path", r.URL.Path, "status", sw.status, "duration", time.Since(start))
 			} else {
