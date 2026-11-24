@@ -103,11 +103,19 @@ git add internal/version/version.go Makefile Dockerfile CHANGELOG.md packages/*/
 git commit -q -m "chore(release): v$new"
 echo "Committed chore(release): v$new ($old → $new)."
 
-leftovers="$(git grep -l -F "$old" -- ':!CHANGELOG.md' ':!internal/catalog/**' ':!**/testdata/**' ':!**/*_test.go' ':!pnpm-lock.yaml' ':!examples/**' || true)"
-if [[ -n "$leftovers" ]]; then
-  echo
-  echo "These files still mention $old (install examples, docs): check whether they should say $new:"
-  while IFS= read -r f; do echo "  $f"; done <<<"$leftovers"
+# Install examples and docs name the latest release ($prev): a release replaces it (and a
+# pre-release $old it followed), a pre-release does not.
+if [[ "$pre" == false ]]; then
+  olds=("$prev")
+  if [[ "$old" != "$prev" ]]; then olds+=("$old"); fi
+  pats=()
+  for o in "${olds[@]}"; do pats+=(-e "$o"); done
+  leftovers="$(git grep -l -F "${pats[@]}" -- ':!CHANGELOG.md' ':!internal/catalog/**' ':!**/testdata/**' ':!**/*_test.go' ':!pnpm-lock.yaml' ':!examples/**' || true)"
+  if [[ -n "$leftovers" ]]; then
+    echo
+    echo "These files still mention ${olds[*]} (install examples, docs): check whether they should say $new:"
+    while IFS= read -r f; do echo "  $f"; done <<<"$leftovers"
+  fi
 fi
 cat <<EOF
 
@@ -121,6 +129,6 @@ if [[ "$pre" == true ]]; then
 
 v$new is a pre-release: a GitHub prerelease (not "Latest"), the npm dist-tag next, and
 only the image tags :$new and :sha-<commit>. CHANGELOG.md is unchanged: its [Unreleased]
-entries go into the release of ${new%%-*}.
+entries go into the release of ${new%%-*}. Install examples and docs stay on $prev.
 EOF
 fi
