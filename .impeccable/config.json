@@ -9,6 +9,13 @@
         "files": ["packages/admin/src/styles/legacy/simulator.css"],
         "createdAt": "2026-11-24T16:54:40.718Z",
         "reason": "Claude: the simulator reproduces Discord's message embeds, whose color is a left bar (MessageView.tsx sets borderLeftColor from the embed color)"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": ["internal/webui/**/assets/*.css"],
+        "createdAt": "2026-11-24T19:02:16.989Z",
+        "reason": "Claude: generated admin bundle (make ui, gitignored); the only side bar is the simulator's Discord embed, already a scoped exception in packages/admin/src/styles/legacy/simulator.css"
       }
     ]
   }
