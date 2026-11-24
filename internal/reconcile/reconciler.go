@@ -128,7 +128,7 @@ func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	in := planInput{Desired: r.desired, Live: snap, Mapped: mapped, BotTop: snap.BotTopPosition(),
+	in := planInput{Desired: r.desired, Live: snap, Mapped: mapped, BotTop: snap.BotTopPosition(), BotUserID: r.opts.BotUserID,
 		Files: map[string][]byte{}, FileState: map[string]iconState{}}
 	dir := filepath.Join(r.opts.RepoRoot, filepath.Dir(filepath.FromSlash(r.desired.File)))
 	for name, rel := range parityFiles(sp) {
@@ -157,6 +157,10 @@ func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
 	r.drifted = !p.Empty() || len(p.Blocked) > 0
 	r.seeExpressions(snap)
 	r.emu.Unlock()
+	if p.preflight != nil {
+		// Nothing is applied: Sync stops here, and Plan callers show the error.
+		return p, p.preflight
+	}
 	return p, nil
 }
 

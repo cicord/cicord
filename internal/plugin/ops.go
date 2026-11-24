@@ -41,6 +41,29 @@ const (
 	capEventsSubscribe = "events.subscribe"
 )
 
+// capabilityPermissions are the Discord permissions the bot needs for the calls each
+// capability allows (when it is not Administrator). Capabilities missing here need none
+// (members.read and dm.send use the gateway member list and DMs).
+var capabilityPermissions = map[string]discord.Permissions{
+	capMessagesRead:    discord.MustPermissions("ViewChannel", "ReadMessageHistory"),
+	capMessagesSend:    discord.MustPermissions("ViewChannel", "SendMessages", "EmbedLinks"),
+	capMessagesManage:  discord.MustPermissions("ViewChannel", "ManageMessages"),
+	capReactions:       discord.MustPermissions("ViewChannel", "AddReactions", "ReadMessageHistory"),
+	capMembersManage:   discord.MustPermissions("ManageNicknames"),
+	capMembersModerate: discord.MustPermissions("ModerateMembers", "KickMembers", "BanMembers"),
+	capRolesAssign:     discord.MustPermissions("ManageRoles"),
+	capChannelsRead:    discord.MustPermissions("ViewChannel"),
+	capChannelsManage:  discord.MustPermissions("ViewChannel", "ManageChannels", "ManageRoles"),
+	capThreadsManage: discord.MustPermissions("ViewChannel", "CreatePublicThreads", "CreatePrivateThreads",
+		"ManageThreads", "SendMessagesInThreads"),
+}
+
+// CapabilityPermissions returns the Discord permissions the bot needs for a granted
+// capability (0 when it needs none).
+func CapabilityPermissions(capability string) discord.Permissions {
+	return capabilityPermissions[capability]
+}
+
 func (i *Instance) require(capability string) error {
 	if !i.grants[capability] {
 		return &CapabilityError{Capability: capability}

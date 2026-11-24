@@ -747,7 +747,7 @@ func (w *Wizard) serverChecks(ctx context.Context, s State) ([]Check, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ServerChecks(ctx, sess, s.Server.ID, s.Bot.UserID, s.Bot.Username), nil
+	return ServerChecks(ctx, sess, s.Server.ID, s.Bot.UserID, s.Bot.Username, BaselineRequirements()), nil
 }
 
 // SelectServer picks the server to manage and checks it.
@@ -981,6 +981,10 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 			Resources: readOnlyResources{w.opts.Store.Resources()}, KV: w.opts.Store.KV("reconcile:" + gen.Key), BotUserID: s.Bot.UserID})
 		plan, err := rec.Plan(ctx)
 		rec.Close()
+		if pe := (*reconcile.PermissionsError)(nil); errors.As(err, &pe) {
+			h := reconcile.HumanizeErr(err)
+			return ImportResult{}, &Error{Status: http.StatusConflict, Code: "conflict", Message: h.Message + ".", Hint: h.Hint, Details: err.Error()}
+		}
 		if err != nil {
 			return ImportResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not plan the imported configuration.",
 				Hint: reconcileHint(err), Details: err.Error()}

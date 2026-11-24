@@ -82,6 +82,7 @@ export default defineConfig({
             { label: "Deploy", slug: "self-hosting/deploy" },
             { label: "Production on a VPS", slug: "self-hosting/production-vps" },
             { label: "Security checklist", slug: "self-hosting/security" },
+            { label: "Bot permissions", slug: "self-hosting/bot-permissions" },
             { label: "Backups and secrets", slug: "self-hosting/backups-and-secrets" },
             { label: "Upgrading", slug: "self-hosting/upgrading" },
           ],

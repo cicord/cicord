@@ -14,6 +14,7 @@ import (
 
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/reconcile"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/writeback"
@@ -129,30 +130,75 @@ func nonNilNames(s []string) []string {
 	return s
 }
 
-// RequiredPermissions are what Cicord needs when the bot is not Administrator.
+// RequiredPermissions are what Cicord asks for when the bot is not Administrator and the
+// configuration is not known yet (the wizard's server step): server management plus
+// what the official plugins use. Once the configuration exists, the checks use
+// Requirements instead (the exact needs of the server and its plugins).
 var RequiredPermissions = discord.MustPermissions("ViewChannel", "ManageRoles", "ManageChannels", "ManageServer",
 	"SendMessages", "EmbedLinks", "ReadMessageHistory", "AddReactions", "ManageMessages", "ModerateMembers")
 
-// basePermissions computes a member's server-level permissions.
-func basePermissions(serverID string, roles []discord.Role, m discord.Member, ownerID string) discord.Permissions {
-	if m.User.ID != "" && m.User.ID == ownerID {
-		return discord.Permissions(^uint64(0))
-	}
-	var p discord.Permissions
-	for _, r := range roles {
-		if r.IsEveryone(serverID) || m.HasRole(r.ID) {
-			p |= r.Permissions
-		}
-	}
-	if p.Has(discord.MustPermissions("Administrator")) {
-		return discord.Permissions(^uint64(0))
-	}
-	return p
+const baselineSource = "Cicord defaults"
+
+// BaselineRequirements is RequiredPermissions as Requirements.
+func BaselineRequirements() reconcile.Requirements {
+	var r reconcile.Requirements
+	r.Add(RequiredPermissions, baselineSource)
+	return r
 }
 
-// ServerChecks verifies that the bot is in the server, has the permissions Cicord needs
-// and that its role is above every role Cicord will manage.
-func ServerChecks(ctx context.Context, c discord.Client, serverID, botUserID, botName string) []Check {
+// corePermissions are needed whatever the configuration: see the channels (gateway
+// events, the plan) and answer slash commands.
+var corePermissions = discord.MustPermissions("ViewChannel")
+
+// Requirements returns the permissions a bot that is not Administrator needs for one
+// server: View Channel, what the server's configuration manages
+// (reconcile.ServerRequirements) and what the capabilities granted to the bot's plugin
+// instances on that server use (plugin.CapabilityPermissions).
+func Requirements(repo *config.Repo, serverKey, botKey string) (reconcile.Requirements, error) {
+	var r reconcile.Requirements
+	r.Add(corePermissions, "Cicord")
+	if repo == nil {
+		return r, nil
+	}
+	if srv := repo.Servers[serverKey]; srv != nil {
+		sr, err := reconcile.ServerRequirements(&srv.Spec)
+		if err != nil {
+			return r, err
+		}
+		r.Merge(sr)
+	}
+	for _, in := range repo.Instances {
+		if in.Server != serverKey || in.Bot != botKey {
+			continue
+		}
+		for _, g := range in.Grants {
+			r.Add(plugin.CapabilityPermissions(g), "plugin "+in.Name+": "+g)
+		}
+	}
+	return r, nil
+}
+
+// onlyBaseline reports whether every source is the default list (nothing to explain).
+func onlyBaseline(r reconcile.Requirements) bool {
+	for _, srcs := range r.Sources {
+		for _, s := range srcs {
+			if s != baselineSource {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// basePermissions computes a member's server-level permissions.
+func basePermissions(serverID string, roles []discord.Role, m discord.Member, ownerID string) discord.Permissions {
+	return reconcile.BasePermissions(serverID, roles, m.RoleIDs, m.User.ID != "" && m.User.ID == ownerID)
+}
+
+// ServerChecks verifies that the bot is in the server, has the permissions req lists
+// (BaselineRequirements when the configuration is not known) and that its role is above
+// every role Cicord will manage.
+func ServerChecks(ctx context.Context, c discord.Client, serverID, botUserID, botName string, req reconcile.Requirements) []Check {
 	member := Check{ID: CheckMember}
 	srv, err := c.GetServer(ctx, serverID)
 	if err == nil {
@@ -180,11 +226,11 @@ func ServerChecks(ctx context.Context, c discord.Client, serverID, botUserID, bo
 		p.ID, h.ID = CheckPermissions, CheckHierarchy
 		return []Check{member, p, h}
 	}
-	return []Check{member, PermissionsCheck(serverID, roles, m, srv.OwnerID), HierarchyCheck(serverID, roles, m, botName)}
+	return []Check{member, PermissionsCheck(serverID, roles, m, srv.OwnerID, req), HierarchyCheck(serverID, roles, m, botName)}
 }
 
-// PermissionsCheck verifies the bot's server permissions.
-func PermissionsCheck(serverID string, roles []discord.Role, bot discord.Member, ownerID string) Check {
+// PermissionsCheck verifies the bot's server permissions against req.
+func PermissionsCheck(serverID string, roles []discord.Role, bot discord.Member, ownerID string, req reconcile.Requirements) Check {
 	c := Check{ID: CheckPermissions}
 	perms := basePermissions(serverID, roles, bot, ownerID)
 	admin := false
@@ -193,17 +239,35 @@ func PermissionsCheck(serverID string, roles []discord.Role, bot discord.Member,
 			admin = true
 		}
 	}
-	missing := RequiredPermissions &^ perms
+	missing := req.Missing(perms)
 	switch {
 	case admin:
 		c.Status, c.Message = StatusOK, "The bot has the Administrator permission."
-	case missing == 0:
+		// what a least-privilege bot role would need instead (docs: self-hosting/bot-permissions)
+		switch adminSrc := req.Sources["Administrator"]; {
+		case len(adminSrc) > 0:
+			c.Message += " It stays required: " + strings.Join(adminSrc, ", ") + " puts ManageRoles in a channel overwrite."
+		case !onlyBaseline(req):
+			if need := req.Permissions; need != 0 {
+				c.Message += " Without it, it would need: " + strings.Join(need.Names(), ", ") + "."
+			}
+		}
+		c.Data = map[string]any{"required": nonNilNames(req.Names()), "sources": req.Sources}
+	case len(missing.Sources) == 0:
 		c.Status, c.Message = StatusOK, "The bot has every permission Cicord needs."
+		c.Data = map[string]any{"required": nonNilNames(req.Names()), "sources": req.Sources}
 	default:
 		c.Status = StatusFail
-		c.Data = map[string]any{"missing": missing.Names()}
+		c.Data = map[string]any{"missing": missing.Names(), "sources": missing.Sources}
 		c.Message = "The bot is missing permissions: " + strings.Join(missing.Names(), ", ") + "."
-		c.Hint = "Invite the bot again with the link above (it asks for Administrator), or in Server Settings → Roles give the bot's role these permissions, then re-check."
+		if !onlyBaseline(missing) {
+			c.Message += " Needed by: " + strings.Join(missing.Describe(), "; ") + "."
+		}
+		c.Hint = "In Server Settings → Roles, give the bot's role these permissions (or invite the bot again with the link above, which asks for Administrator), then re-check."
+		if missing.Permissions.Has(discord.MustPermissions("Administrator")) {
+			c.Hint = "A channel overwrite allows or denies Manage Roles, which only an Administrator bot can set: remove ManageRoles from the overwrites, or give the bot Administrator. " +
+				"Then, in Server Settings → Roles, give the bot's role the other permissions, and re-check."
+		}
 	}
 	return c
 }
@@ -434,7 +498,11 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 			add(Check{ID: id, Status: StatusSkip, Message: "Checked once the bot is connected."})
 		}
 	} else {
-		for _, ch := range ServerChecks(ctx, sess, serverID, sess.Self().ID, sess.Self().Username) {
+		req, err := Requirements(repo, serverKey, botKey)
+		if err != nil {
+			req = BaselineRequirements()
+		}
+		for _, ch := range ServerChecks(ctx, sess, serverID, sess.Self().ID, sess.Self().Username, req) {
 			add(ch)
 		}
 		// commands
@@ -466,7 +534,14 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 		add(ev)
 		// plan
 		pl := Check{ID: CheckPlan}
-		if p, err := slow.plan, slow.planErr; err != nil {
+		var pe *reconcile.PermissionsError
+		if p, err := slow.plan, slow.planErr; errors.As(err, &pe) {
+			// the preflight: the plan is fine, the bot cannot apply it
+			h := reconcile.HumanizeErr(err)
+			pl.Status, pl.Message, pl.Hint = StatusFail, h.Message+". Nothing will be applied until this is fixed.", h.Hint
+			pl.Data = map[string]any{"changes": len(p.Changes), "blocked": len(p.Blocked), "missing": nonNilNames(pe.Missing.Names()), "lockouts": pe.Lockouts}
+			rep.Plan = &p
+		} else if err != nil {
 			pl.Status, pl.Message = StatusFail, "Could not compute the plan: "+err.Error()
 			pl.Hint = reconcileHint(err)
 		} else {

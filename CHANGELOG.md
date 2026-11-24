@@ -6,6 +6,18 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- `"@bot"` overwrite target: the managing bot's own managed role, so a bot without
+  Administrator keeps access to private channels. `cicord import` writes it for the bot
+  role's overwrites instead of dropping them.
+- Permission preflight: with a bot that is not Administrator, plan and sync check the
+  permissions the changes need, and that the bot keeps access to the channels it manages.
+  If a check fails, they apply nothing and name the missing permissions with the YAML
+  paths that need them.
+- The Verify / Diagnostics permission check uses what the server configuration and the
+  plugin grants need, instead of a fixed list.
+
 ## [0.1.0] - 2026-11-24
 
 First public release (pre-release, API `cicord.dev/v1alpha1`).

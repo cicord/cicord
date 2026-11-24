@@ -38,7 +38,7 @@ All references use keys and are checked by `cicord validate`:
 | `profile.systemChannel`, `profile.rulesChannel` (deprecated alias), `community.*Channel`, `afk.channel`, `widget.channel`, `automod.*.actions.alert`, `automod.*.exemptChannels[]`, `onboarding.defaultChannels[]`, `onboarding.prompts[].options[].channels[]`, `welcomeScreen.channels[].channel` | `channels.<key>` |
 | `automod.*.exemptRoles[]`, `onboarding.prompts[].options[].roles[]`, `emojis.*.roles[]` | `roles.<key>` |
 | `hierarchy[]`, `access.*.roles[]` | `roles.<key>` |
-| overwrite targets | `@everyone`, `roles.<key>`, or `member:<discord id>` |
+| overwrite targets | `@everyone`, `@bot` (the managing bot's managed role), `roles.<key>`, or `member:<discord id>` |
 | `bot.spec.servers[]`, `plugins[].servers[]`, `plugins[].overrides.<k>` | `servers/<key>.yaml` |
 | plugin config fields with `x-cicord-ref` | a key of the given kind in **every** server the instance runs on |
 
@@ -166,9 +166,15 @@ ignored.
 
 ### Permissions
 - `everyone.permissions` sets the @everyone role.
-- `overwrites` on a category or channel are keyed by target (`@everyone`, a role key or
-  `member:<id>`); each target has `allow` and `deny`. A permission present in neither is
+- `overwrites` on a category or channel are keyed by target (`@everyone`, `@bot`, a role key
+  or `member:<id>`); each target has `allow` and `deny`. A permission present in neither is
   *inherited*. Entries with empty `allow` and `deny` are ignored; order does not matter.
+  `@bot` is the managing bot's own managed role (from its member; a member overwrite for the
+  bot user when it has none).
+- When the bot is not Administrator, Plan fails before anything is applied if the planned
+  changes need a permission the bot lacks (Discord only lets a bot grant what it holds, and
+  only administrators put `ManageRoles` in an overwrite), or if a managed channel would be
+  hidden from the bot.
 - Overwrites of a managed category/channel are owned **as a whole**: overwrites for targets
   not in the YAML are removed.
 - `syncWithCategory` defaults to `true` when the channel has no `overwrites`, `false`

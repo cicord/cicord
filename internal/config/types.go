@@ -337,7 +337,8 @@ type RoleColors struct {
 	Tertiary  string `yaml:"tertiary,omitempty" json:"tertiary,omitempty"`
 }
 
-// OverwriteSpec is keyed by target: "@everyone", a role key, or "member:<id>".
+// OverwriteSpec is keyed by target: "@everyone", "@bot" (the managing bot's own
+// managed role), a role key, or "member:<id>".
 type OverwriteSpec struct {
 	Allow []string `yaml:"allow,omitempty" json:"allow,omitempty"`
 	Deny  []string `yaml:"deny,omitempty" json:"deny,omitempty"`

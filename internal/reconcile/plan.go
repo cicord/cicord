@@ -83,6 +83,9 @@ type Plan struct {
 	Server  string    `json:"server"`
 	Changes []Change  `json:"changes"`
 	Blocked []Blocked `json:"blocked"`
+
+	// preflight is set when the bot lacks what the changes need (Plan returns it).
+	preflight *PermissionsError
 }
 
 // Empty reports whether the plan has no change to apply (blocked operations are not
@@ -164,8 +167,9 @@ const (
 // target is a symbolic overwrite target, resolved at apply time.
 type target struct {
 	roleKey string // role key (resolved via the working map)
-	id      string // literal ID (@everyone → server ID, member:<id>)
+	id      string // literal ID (@everyone → server ID, member:<id>, @bot → its role)
 	typ     discord.OverwriteType
+	bot     bool // written "@bot"
 }
 
 type owSpec struct {

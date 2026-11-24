@@ -31,6 +31,9 @@ Tailscale tailnet, Caddy for the public portal, backups), follow
 - [ ] Keep a copy of the secret store's key (`secret.key` or `CICORD_SECRET_KEY`) in a
       password manager, **apart from the backups** of the database
       ([Backups and secrets](../backups-and-secrets/#what-to-back-up)).
+- [ ] Decide on the **bot's permissions**. Administrator is simplest, but a leaked token then
+      controls the whole server. A [least-privilege bot role](../bot-permissions/) holds only
+      what the configuration and plugins use. Private channels then need a `"@bot"` overwrite.
 - [ ] Only list trusted origins in **`--cors-origin`**: they can make credentialed calls.
 - [ ] **Protect the data directory** (`0700`, owned by the runtime user; the container image
       creates `/data` that way) and back it up: it holds sessions, plugin data, the secret
@@ -94,6 +97,9 @@ Tailscale tailnet, Caddy for the public portal, backups), follow
 
 - Only resources declared in YAML are ever modified; deletions need `prune: true` and are
   blocked by `deletionProtection` unless it is turned off.
+- With a bot that is not Administrator, every plan and sync first checks the permissions the
+  changes need and that the bot keeps access to the channels it manages. If a check fails,
+  nothing is applied ([bot permissions](../bot-permissions/#how-cicord-checks)).
 
 ## Admin on a private network, portal public
 
@@ -176,12 +182,10 @@ it manages. What it implies:
 - its role must stay **above every role Cicord manages** (the wizard and the Diagnostics page
   check it). Members whose highest role is below the bot's cannot edit the bot's role.
 
-The wizard's permission check also accepts a role without Administrator that has View
-Channels, Manage Roles, Manage Channels, Manage Server, Send Messages, Embed Links, Read Message
-History, Add Reactions, Manage Messages and Moderate Members. Some plugins need more (the
-moderation plugin's `/kick` and `/ban` need Kick Members and Ban Members), and channels the bot
-cannot see cannot be managed. Running without Administrator is possible, but it is not the
-tested default.
+Without Administrator, the bot needs exactly the permissions your configuration and plugins
+use, and a `"@bot"` overwrite on the private channels it manages: `cicord plan` and every sync
+check this first and stop, before changing anything, naming what is missing. See
+[Bot permissions](../bot-permissions/) for the least-privilege setup.
 
 **A private bot.** In the [Developer Portal](https://discord.com/developers/applications), so
 that nobody else can add your bot to a server: **Installation → Install Link: None** first,

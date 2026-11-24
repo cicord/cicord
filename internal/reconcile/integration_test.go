@@ -43,11 +43,17 @@ func loadExample(t *testing.T) (*config.Server, string) {
 
 func newEnv(t *testing.T, desired *config.Server, root string) *env {
 	t.Helper()
+	return newEnvWith(t, desired, root, discord.MustPermissions("Administrator"))
+}
+
+// newEnvWith is newEnv with the bot invited with perms (its managed role; none when 0).
+func newEnvWith(t *testing.T, desired *config.Server, root string, perms discord.Permissions) *env {
+	t.Helper()
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
 	token, bot, _ := w.CreateBot("cicord")
 	srv := w.CreateServer("Fresh", owner.ID, sim.WithGeneralChannel())
-	if _, err := w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator")); err != nil {
+	if _, err := w.AddBotToServer(srv.ID, bot.ID, perms); err != nil {
 		t.Fatal(err)
 	}
 	sess, err := w.Connect(context.Background(), token)

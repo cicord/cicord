@@ -98,11 +98,12 @@ func runImport(cmd *cobra.Command, serverID, dir, key, tokenEnv string, force bo
 		return err
 	}
 	defer sess.Close(context.WithoutCancel(ctx))
-	snap, err := reconcile.FetchWith(ctx, sess, serverID, "", reconcile.FetchAll)
+	// With the bot member, overwrites of the bot's own managed role import as "@bot".
+	snap, err := reconcile.FetchWith(ctx, sess, serverID, sess.Self().ID, reconcile.FetchAll)
 	if err != nil {
 		// AutoMod, onboarding, widget… need Manage Server: import the rest
 		full := err
-		if snap, err = reconcile.Fetch(ctx, sess, serverID, ""); err != nil {
+		if snap, err = reconcile.Fetch(ctx, sess, serverID, sess.Self().ID); err != nil {
 			return fmt.Errorf("read server %s (is the bot a member?): %w", serverID, err)
 		}
 		fmt.Fprintf(stderr, "warning: AutoMod rules, onboarding, welcome screen, widget and expressions not read: %v\n", full)
@@ -365,7 +366,7 @@ func planAdopt(ctx context.Context, repo *config.Repo, b *bots, store state.Stor
 	if err != nil {
 		return ap, err
 	}
-	snap, err := reconcile.FetchWith(ctx, sess, srv.Spec.DiscordID, "", reconcile.FetchOptionsFor(&srv.Spec, cur))
+	snap, err := reconcile.FetchWith(ctx, sess, srv.Spec.DiscordID, sess.Self().ID, reconcile.FetchOptionsFor(&srv.Spec, cur))
 	if err != nil {
 		return ap, err
 	}
@@ -409,10 +410,12 @@ func planAdopt(ctx context.Context, repo *config.Repo, b *bots, store state.Stor
 		}
 	}
 	rec := reconcile.New(reconcile.Options{Server: srv, RepoRoot: repo.Root, Client: sess,
-		Resources: readOnlyResources{scratch.Resources()}, KV: scratch.KV("reconcile:" + key)})
+		Resources: readOnlyResources{scratch.Resources()}, KV: scratch.KV("reconcile:" + key), BotUserID: sess.Self().ID})
 	defer rec.Close()
 	p, err := rec.Plan(ctx)
-	if err != nil {
+	// Adoption only records mappings: a permission problem of the other changes is
+	// reported by plan / apply, not here.
+	if pe := (*reconcile.PermissionsError)(nil); err != nil && !errors.As(err, &pe) {
 		return ap, err
 	}
 	fp, err := planfmt.FromReconcile(p)

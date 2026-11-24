@@ -107,3 +107,40 @@ func TestGenerate(t *testing.T) {
 		}
 	}
 }
+
+// With the bot member in the snapshot, overwrites of the bot's own managed role import
+// as "@bot" instead of being dropped.
+func TestGenerateBotOverwrite(t *testing.T) {
+	sid := "100000000000000000"
+	snap := reconcile.Snapshot{
+		Server: discord.Server{ID: sid, Name: "Ma Commu"},
+		Roles: []discord.Role{
+			{ID: sid, Name: "@everyone", Permissions: discord.MustPermissions("ViewChannel")},
+			{ID: "12", Name: "Cicord", Position: 2, Managed: true},
+			{ID: "14", Name: "OtherBot", Position: 1, Managed: true},
+		},
+		Channels: []discord.Channel{
+			{ID: "30", Name: "staff", Type: discord.ChannelText, Overwrites: []discord.Overwrite{
+				{ID: sid, Deny: discord.MustPermissions("ViewChannel")},
+				{ID: "12", Allow: discord.MustPermissions("ViewChannel")},
+				{ID: "14", Allow: discord.MustPermissions("ViewChannel")},
+			}},
+		},
+		BotRoleIDs: []string{"12"}, HasBot: true,
+	}
+	res, err := Generate(context.Background(), Options{Snapshot: snap})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ows := res.Server.Channels["staff"].Overwrites
+	if len(ows) != 2 || len(ows["@bot"].Allow) != 1 || ows["@bot"].Allow[0] != "ViewChannel" {
+		t.Fatalf("overwrites = %+v", ows)
+	}
+	joined := strings.Join(res.Warnings, "\n")
+	if strings.Contains(joined, `overwrite for role "Cicord"`) || !strings.Contains(joined, `overwrite for role "OtherBot"`) {
+		t.Fatalf("warnings = %v", res.Warnings)
+	}
+	if !strings.Contains(string(res.YAML), `"@bot":`) {
+		t.Fatalf("YAML:\n%s", res.YAML)
+	}
+}

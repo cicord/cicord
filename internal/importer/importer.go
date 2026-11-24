@@ -337,6 +337,9 @@ func (g *gen) overwrites(ows []discord.Overwrite, where string) map[string]confi
 			target = "member:" + o.ID
 		case o.ID == g.serverID:
 			target = "@everyone"
+		case o.ID == g.botRoleID():
+			// the bot's own managed role: keeps a bot that is not Administrator in the channel
+			target = reconcile.BotTarget
 		default:
 			k, ok := g.roleKeys[o.ID]
 			if !ok {
@@ -495,15 +498,17 @@ func overwritesNode(ows map[string]config.OverwriteSpec) *node {
 		targets = append(targets, t)
 	}
 	sort.Slice(targets, func(i, j int) bool {
-		// @everyone first, then roles, then members
+		// @everyone first, then @bot, roles, then members
 		rank := func(s string) int {
 			switch {
 			case s == "@everyone":
 				return 0
+			case s == reconcile.BotTarget:
+				return 1
 			case strings.HasPrefix(s, "member:"):
-				return 2
+				return 3
 			}
-			return 1
+			return 2
 		}
 		if rank(targets[i]) != rank(targets[j]) {
 			return rank(targets[i]) < rank(targets[j])
@@ -521,7 +526,7 @@ func overwritesNode(ows map[string]config.OverwriteSpec) *node {
 			e.add("deny", flowList(o.Deny))
 		}
 		kn := str(t)
-		if t == "@everyone" {
+		if t == "@everyone" || t == reconcile.BotTarget {
 			kn.Style = yaml.DoubleQuotedStyle
 		}
 		m.n.Content = append(m.n.Content, kn, e.n)
@@ -848,4 +853,13 @@ func idLess(a, b string) bool {
 		return len(a) < len(b)
 	}
 	return a < b
+}
+
+// botRoleID is the bot's managed role in the snapshot ("" when the bot member was not
+// fetched or has none).
+func (g *gen) botRoleID() string {
+	if r, ok := g.snap.BotRole(); ok {
+		return r.ID
+	}
+	return ""
 }
