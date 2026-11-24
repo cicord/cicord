@@ -54,6 +54,7 @@ import {
   formatNumber,
   formatPercent,
   hourLabel,
+  inProgressFrom,
   isCustomEmoji,
   labelOf,
   mainSeriesParams,
@@ -310,6 +311,7 @@ function KpiGrid({ summary }: { summary: AnalyticsSummary }) {
               value={kpi.value}
               previous={kpi.previous}
               spark={kpi.spark.map((p) => p[1])}
+              sparkPartial={(kpi.spark.at(-1)?.[0] ?? 0) + 86400 > Date.now() / 1000}
               period={summary.period}
               missing={missingFor(summary.status, kpi.metric) !== undefined}
             />
@@ -331,6 +333,7 @@ function KpiTile({
   value,
   previous,
   spark,
+  sparkPartial,
   period,
   missing,
 }: {
@@ -338,6 +341,7 @@ function KpiTile({
   value: number;
   previous: number | null;
   spark: number[];
+  sparkPartial: boolean;
   period: AnalyticsPeriod;
   missing: boolean;
 }) {
@@ -368,7 +372,7 @@ function KpiTile({
               vs={vs}
               previous={previous === null ? null : formatKpi(metric, previous, lng)}
             />
-            <Sparkline values={spark} className="mt-1" />
+            <Sparkline values={spark} partial={sparkPartial} className="mt-1" />
           </>
         )}
       </dd>
@@ -440,16 +444,16 @@ function timeTable(
   step: AnalyticsStep,
   series: TimeSeries[],
   format: (v: number) => string,
-  lng: string,
-  dateLabel: string,
+  text: { lng: string; date: string; inProgress: string },
 ): TableView {
+  const partial = inProgressFrom(buckets, step);
   return {
     caption,
-    columns: [dateLabel, ...series.map((s) => s.label)],
+    columns: [text.date, ...series.map((s) => s.label)],
     rows: buckets.map((b, i) => ({
       key: b,
       cells: [
-        formatBucket(b, step, lng),
+        `${formatBucket(b, step, text.lng)}${partial >= 0 && i >= partial ? ` (${text.inProgress})` : ""}`,
         ...series.map((s) => (s.values[i] === null ? "—" : format(s.values[i]!))),
       ],
     })),
@@ -469,15 +473,11 @@ function useTimeCard(
   return {
     buckets,
     step: series.step,
-    table: timeTable(
-      title,
-      buckets,
-      series.step,
-      lines,
-      format,
-      i18n.language,
-      t("analytics.chart.date"),
-    ),
+    table: timeTable(title, buckets, series.step, lines, format, {
+      lng: i18n.language,
+      date: t("analytics.chart.date"),
+      inProgress: t("analytics.chart.inProgress"),
+    }),
     legend: lines.map((s) => ({ label: s.label, color: s.color, mark })),
   };
 }
@@ -665,6 +665,7 @@ function MessagesSection({ data }: { data: Data }) {
   const hours = Array.from({ length: 24 }, (_, h) => hourLabel(h, lng));
   const heat = summary.heatmap.length === 7 ? summary.heatmap : days.map(() => hours.map(() => 0));
 
+  const detailsPartial = inProgressFrom(b, main.step) === b.length - 1;
   const details = (
     [
       ["messages.replies", "replies"],
@@ -724,7 +725,7 @@ function MessagesSection({ data }: { data: Data }) {
                 </dt>
                 <dd className="flex flex-col gap-1">
                   <span className="text-lg font-semibold">{num(d.total)}</span>
-                  <Sparkline values={d.values} />
+                  <Sparkline values={d.values} partial={detailsPartial} />
                 </dd>
               </div>
             ))}
@@ -1057,7 +1058,6 @@ function PresenceSection({ data }: { data: Data }) {
       label: <span>{label(dim)}</span>,
       value: avg,
       display: formatPercent(avg / total, lng),
-      extra: t("analytics.presence.avg", { value: num(avg) }),
     }));
   };
   const statuses = shares("presence.status", (d) =>

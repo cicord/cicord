@@ -16,7 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "../i18n/index.ts";
-import { formatBucket, formatTick } from "../lib/analytics.ts";
+import { formatBucket, formatTick, inProgressFrom } from "../lib/analytics.ts";
 import { cn } from "../lib/utils.ts";
 import { Button } from "./ui/button.tsx";
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "./ui/card.tsx";
@@ -390,11 +390,14 @@ export function TimeChart({
     return Math.max(0, Math.min(n - 1, i));
   };
 
+  // The current day / week / hour is still being counted: drawn faded, labelled in progress.
+  const partial = inProgressFrom(buckets, step);
+  const inProgress = (i: number) => partial >= 0 && i >= partial;
   const active = cursor.active;
   const readout: { title: string; rows: ReadoutRow[] } | null =
     active !== null
       ? {
-          title: formatBucket(buckets[active]!, step, i18n.language),
+          title: `${formatBucket(buckets[active]!, step, i18n.language)}${inProgress(active) ? ` (${t("analytics.chart.inProgress")})` : ""}`,
           rows: all.map((s) => ({
             color: s.color,
             label: s.label,
@@ -459,7 +462,7 @@ export function TimeChart({
             />
           ) : null}
           {kind === "bars" ? (
-            <Bars series={series} n={n} band={band} cx={cx} y={y} />
+            <Bars series={series} n={n} band={band} cx={cx} y={y} faded={inProgress} />
           ) : (
             series.map((s) => (
               <Line
@@ -469,11 +472,12 @@ export function TimeChart({
                 y={y}
                 wash={series.length === 1}
                 base={y(Math.max(y0, 0))}
+                partial={partial}
               />
             ))
           )}
           {overlay.map((s) => (
-            <Line key={s.key} s={s} cx={cx} y={y} />
+            <Line key={s.key} s={s} cx={cx} y={y} partial={partial} />
           ))}
           {active !== null ? (
             <g>
@@ -532,17 +536,20 @@ function Bars({
   band,
   cx,
   y,
+  faded,
 }: {
   series: TimeSeries[];
   n: number;
   band: number;
   cx: (i: number) => number;
   y: (v: number) => number;
+  faded: (i: number) => boolean;
 }) {
   const w = Math.max(1, Math.min(24, band > 6 ? band * 0.7 : band - 1));
-  const marks: ReactNode[] = [];
+  const buckets: ReactNode[] = [];
   for (let i = 0; i < n; i++) {
     const x = cx(i) - w / 2;
+    const marks: ReactNode[] = [];
     for (const dir of [1, -1] as const) {
       const stack = series.filter((s) => (dir === 1 ? !s.negative : s.negative));
       const present = stack.filter((s) => (s.values[i] ?? 0) > 0);
@@ -558,10 +565,10 @@ function Bars({
         const last = k === present.length - 1;
         marks.push(
           last ? (
-            <path key={`${s.key}-${i}`} d={barPath(x, w, base, to)} fill={s.color} />
+            <path key={s.key} d={barPath(x, w, base, to)} fill={s.color} />
           ) : (
             <rect
-              key={`${s.key}-${i}`}
+              key={s.key}
               x={x}
               width={w}
               y={Math.min(base, to)}
@@ -572,9 +579,35 @@ function Bars({
         );
       });
     }
+    buckets.push(
+      <g key={i} opacity={faded(i) ? 0.45 : undefined}>
+        {marks}
+      </g>,
+    );
   }
-  return <g>{marks}</g>;
+  return <g>{buckets}</g>;
 }
+
+/** Runs of consecutive non-null points (a gap breaks the line). */
+function runsOf(
+  values: (number | null)[],
+  cx: (i: number) => number,
+  y: (v: number) => number,
+): [number, number][][] {
+  const runs: [number, number][][] = [];
+  let run: [number, number][] = [];
+  values.forEach((v, i) => {
+    if (v === null) {
+      if (run.length) runs.push(run);
+      run = [];
+    } else run.push([cx(i), y(v)]);
+  });
+  if (run.length) runs.push(run);
+  return runs;
+}
+
+const pathOf = (pts: [number, number][]) =>
+  pts.map(([px, py], i) => `${i ? "L" : "M"}${px},${py}`).join("");
 
 function Line({
   s,
@@ -582,56 +615,70 @@ function Line({
   y,
   wash,
   base,
+  partial = -1,
 }: {
   s: TimeSeries;
   cx: (i: number) => number;
   y: (v: number) => number;
   wash?: boolean;
   base?: number;
+  /** First in-progress bucket: the line into it is faded. */
+  partial?: number;
 }) {
-  // One path per run of non-null values.
-  const runs: [number, number][][] = [];
-  let run: [number, number][] = [];
-  s.values.forEach((v, i) => {
-    if (v === null) {
-      if (run.length) runs.push(run);
-      run = [];
-    } else run.push([cx(i), y(v)]);
-  });
-  if (run.length) runs.push(run);
-  const d = (pts: [number, number][]) =>
-    pts.map(([px, py], i) => `${i ? "L" : "M"}${px},${py}`).join("");
-  const lastRun = runs[runs.length - 1];
-  const end = lastRun?.[lastRun.length - 1];
+  const solid = runsOf(
+    s.values.map((v, i) => (partial >= 0 && i >= partial ? null : v)),
+    cx,
+    y,
+  );
+  const tail =
+    partial > 0
+      ? runsOf(
+          s.values.map((v, i) => (i < partial - 1 ? null : v)),
+          cx,
+          y,
+        )
+      : [];
+  const lastIndex = s.values.findLastIndex((v) => v !== null);
+  const end = lastIndex >= 0 ? ([cx(lastIndex), y(s.values[lastIndex]!)] as const) : undefined;
+  const stroke = (pts: [number, number][], key: string, opacity?: number) =>
+    pts.length === 1 ? (
+      <circle key={key} cx={pts[0]![0]} cy={pts[0]![1]} r={2} fill={s.color} opacity={opacity} />
+    ) : (
+      <path
+        key={key}
+        d={pathOf(pts)}
+        fill="none"
+        stroke={s.color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        opacity={opacity}
+      />
+    );
   return (
     <g>
       {wash && base !== undefined
-        ? runs.map((pts, i) => (
+        ? solid.map((pts, i) => (
             <path
               key={`w${i}`}
-              d={`${d(pts)}L${pts[pts.length - 1]![0]},${base}L${pts[0]![0]},${base}Z`}
+              d={`${pathOf(pts)}L${pts[pts.length - 1]![0]},${base}L${pts[0]![0]},${base}Z`}
               fill={s.color}
               opacity={0.1}
             />
           ))
         : null}
-      {runs.map((pts, i) =>
-        pts.length === 1 ? (
-          <circle key={i} cx={pts[0]![0]} cy={pts[0]![1]} r={2} fill={s.color} />
-        ) : (
-          <path
-            key={i}
-            d={d(pts)}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={2}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        ),
-      )}
+      {solid.map((pts, i) => stroke(pts, `s${i}`))}
+      {tail.map((pts, i) => (pts.length > 1 ? stroke(pts, `t${i}`, 0.45) : null))}
       {end ? (
-        <circle cx={end[0]} cy={end[1]} r={4} fill={s.color} stroke="var(--card)" strokeWidth={2} />
+        <circle
+          cx={end[0]}
+          cy={end[1]}
+          r={4}
+          fill={s.color}
+          stroke="var(--card)"
+          strokeWidth={2}
+          opacity={partial >= 0 && lastIndex >= partial ? 0.45 : undefined}
+        />
       ) : null}
     </g>
   );
@@ -640,7 +687,16 @@ function Line({
 // ───────────────────────────────────────────────────────────── sparkline
 
 /** A KPI's trend: the period in the de-emphasis grey, the latest point in the accent. */
-export function Sparkline({ values, className }: { values: number[]; className?: string }) {
+export function Sparkline({
+  values,
+  partial = false,
+  className,
+}: {
+  values: number[];
+  /** The last value is still being counted (today): faded, the accent on the day before. */
+  partial?: boolean;
+  className?: string;
+}) {
   const [ref, width] = useWidth<HTMLDivElement>(120);
   const h = 28;
   if (values.length < 2) return <div ref={ref} className={cn("h-7", className)} />;
@@ -649,8 +705,12 @@ export function Sparkline({ values, className }: { values: number[]; className?:
   const span = max - min || 1;
   const px = (i: number) => 2 + (i / (values.length - 1)) * (width - 4);
   const py = (v: number) => 3 + (1 - (v - min) / span) * (h - 6);
-  const d = values.map((v, i) => `${i ? "L" : "M"}${px(i)},${py(v)}`).join("");
-  const last = values.length - 1;
+  const fade = partial && values.length > 2;
+  const last = values.length - 1 - (fade ? 1 : 0);
+  const d = values
+    .slice(0, last + 1)
+    .map((v, i) => `${i ? "L" : "M"}${px(i)},${py(v)}`)
+    .join("");
   return (
     <div ref={ref} className={cn("h-7", className)} aria-hidden="true">
       <svg width={width} height={h} className="block overflow-visible">
@@ -663,6 +723,16 @@ export function Sparkline({ values, className }: { values: number[]; className?:
           strokeLinecap="round"
           opacity={0.7}
         />
+        {fade ? (
+          <path
+            d={`M${px(last)},${py(values[last]!)}L${px(last + 1)},${py(values[last + 1]!)}`}
+            fill="none"
+            stroke="var(--subtle-foreground)"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            opacity={0.3}
+          />
+        ) : null}
         <circle
           cx={px(last)}
           cy={py(values[last]!)}

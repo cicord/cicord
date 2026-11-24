@@ -71,6 +71,12 @@ export function bucketsOf(series: Pick<AnalyticsSeries, "from" | "to" | "step">)
   return out;
 }
 
+/** Index of the first bucket still in progress (it ends after now), -1 when none. */
+export function inProgressFrom(buckets: number[], step: AnalyticsStep, now = Date.now()): number {
+  const size = STEP_SECONDS[step] ?? 86400;
+  return buckets.findIndex((t) => (t + size) * 1000 > now);
+}
+
 /** Values of one serie on the buckets (null: no point, e.g. a sparse gauge). */
 export function valuesOf(
   series: AnalyticsSeries,

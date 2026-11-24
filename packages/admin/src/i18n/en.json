@@ -1839,7 +1839,8 @@
       "roledescription": "chart",
       "keys": "Use the left and right arrow keys to read the values",
       "gridKeys": "Use the arrow keys to read the values",
-      "date": "Date"
+      "date": "Date",
+      "inProgress": "in progress"
     },
     "sections": {
       "members": "Members",
@@ -1938,9 +1939,8 @@
       "status": "Statuses",
       "platform": "Platforms",
       "activities": "Top activities",
-      "shareDescription": "Share of the members online, on average over the period.",
-      "activitiesDescription": "Average members doing it at the same time.",
-      "avg": "~{{value}} members",
+      "shareDescription": "Share of the online members sampled over the period.",
+      "activitiesDescription": "Peak members doing it at the same time over the period.",
       "statuses": {
         "online": "Online",
         "idle": "Idle",

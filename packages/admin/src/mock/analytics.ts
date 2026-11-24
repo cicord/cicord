@@ -922,7 +922,7 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     dimId: string,
     w: Window,
     now: number,
-    mode: "bucket" | "avg",
+    mode: "bucket" | "avg" | "peak",
   ): number | undefined {
     const kind = BY_NAME.get(metric)!.kind;
     let total = 0;
@@ -952,7 +952,7 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     }
     if (count === 0) return undefined;
     if (mode === "avg" || kind === "daily") return total / count;
-    return kind === "max" ? max : last;
+    return kind === "max" || mode === "peak" ? max : last;
   }
 
   const dimsOf = (metric: string) => DIMS[metric] ?? [];
@@ -1036,7 +1036,8 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     const labels: Record<string, AnalyticsLabel> = {};
     const rankings: Record<string, AnalyticsRanked[]> = {};
     for (const metric of RANKINGS) {
-      const mode = metric === "presence.activity" ? "avg" : "bucket";
+      // Gauge rankings (activities) hold the period's peak, like the store's dimension totals.
+      const mode = metric === "presence.activity" ? "peak" : "bucket";
       const entries = collected(metric)
         ? dimsOf(metric)
             .map((dim) => ({
