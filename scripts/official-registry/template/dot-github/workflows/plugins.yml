@@ -1,0 +1,75 @@
+# Checks every plugin on pull requests and on main: SDK types, generated config types,
+# build, simulator smoke test (`cicord plugin test`), type checks, unit tests; and that
+# index.yaml can be signed and points at real plugin directories.
+#
+# Pull requests (community submissions included) run without any secret: never switch this
+# workflow to pull_request_target.
+name: plugins
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: plugins-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.list.outputs.plugins }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - id: list
+        run: |
+          echo "plugins=$(find plugins -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+
+  plugin:
+    needs: list
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.list.outputs.plugins) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-cicord
+        with:
+          version: ${{ vars.CICORD_VERSION || 'main' }}
+          token: ${{ secrets.CICORD_SOURCE_TOKEN || github.token }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check plugins/${{ matrix.plugin }}
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+        run: bash scripts/check-plugin.sh "plugins/$PLUGIN"
+
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-cicord
+        with:
+          version: ${{ vars.CICORD_VERSION || 'main' }}
+          token: ${{ secrets.CICORD_SOURCE_TOKEN || github.token }}
+      - name: Check index.yaml
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" == "pull_request" ]]; then
+            bash scripts/check-index.sh --allow-unlisted
+          else
+            bash scripts/check-index.sh
+          fi
