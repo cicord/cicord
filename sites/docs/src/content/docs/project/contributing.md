@@ -51,7 +51,7 @@ On every push to `main` and every pull request:
   JavaScript and security-audit rules) on everything; Gitleaks on the whole git history.
   `make lint` runs the same tools locally.
 
-Pushes to `main` that touch the sites also deploy https://cicord.dev (`sites.yml`).
+`sites.yml` deploys https://cicord.dev to GitHub Pages (run on demand for now).
 Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitHub Actions.
 
 ## How things are tested

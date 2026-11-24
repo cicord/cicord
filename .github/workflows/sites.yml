@@ -1,19 +1,19 @@
 name: sites
 # Builds the landing page (sites/landing, served at /) and the documentation
 # (sites/docs, served at /docs/) into one static site and deploys it to GitHub Pages.
-# Publishes https://cicord.dev on every push to main that touches the sites or the
-# packages they document, and on demand (Actions → sites → Run workflow, e.g. to deploy under
-# another origin). Needs GitHub Pages enabled with Source: GitHub Actions and the custom domain
-# cicord.dev (Settings → Pages). The CI workflow already builds both sites on every push.
+# Publishes https://cicord.dev on demand (Actions → sites → Run workflow). Needs GitHub Pages
+# enabled with Source: GitHub Actions and the custom domain cicord.dev (Settings → Pages),
+# which requires the repository to be public (or a paid plan). Once Pages is on, uncomment
+# the push trigger to deploy on every push to main. The CI workflow already builds both sites.
 # Actions are pinned to commit SHAs (tag in the comment); only the deploy job can write.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "sites/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/sites.yml"
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "sites/**"
+  #     - "packages/**"
+  #     - "pnpm-lock.yaml"
+  #     - ".github/workflows/sites.yml"
   workflow_dispatch:
     inputs:
       site_url:
