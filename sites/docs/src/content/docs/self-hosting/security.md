@@ -16,6 +16,9 @@ Tailscale tailnet, Caddy for the public portal, backups), follow
 - [ ] **Serve over HTTPS** with an `https://` `--public-url`: `Secure` cookies, a correct OAuth
       redirect and a working CSRF origin check depend on it.
 - [ ] **Keep port 7420 private**; only the reverse proxy reaches it.
+- [ ] If you enable the [metrics](../monitoring/) (`--metrics-listen`), bind them to a
+      loopback address (in a container, publish the port on `127.0.0.1` only): the metrics
+      listener has no authentication.
 - [ ] To keep the admin console off the internet, serve it on a
       [private hostname](#admin-on-a-private-network-portal-public) with `--admin-url`.
 - [ ] Use a long random **`CICORD_RUNTIME_TOKEN`** (for example `openssl rand -hex 32`). It is

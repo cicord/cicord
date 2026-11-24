@@ -86,6 +86,7 @@ export default defineConfig({
             { label: "Security checklist", slug: "self-hosting/security" },
             { label: "Bot permissions", slug: "self-hosting/bot-permissions" },
             { label: "Backups and secrets", slug: "self-hosting/backups-and-secrets" },
+            { label: "Monitoring", slug: "self-hosting/monitoring" },
             { label: "Upgrading", slug: "self-hosting/upgrading" },
           ],
         },

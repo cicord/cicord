@@ -92,6 +92,7 @@ pass another `--data-dir`.
 | `CICORD_SECRET_KEY`                        | Key of the encrypted secret store: base64 or hex of exactly 32 bytes (`openssl rand -base64 32`). Default: `secret.key`, generated in the data directory.                               |
 | `CICORD_PUBLIC_URL`, `CICORD_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`.                                                                                                                                         |
 | `CICORD_ADMIN_URL`                         | Default of `--admin-url`: the admin console on a separate, private hostname.                                                                                                            |
+| `CICORD_METRICS_LISTEN`                    | Default of `--metrics-listen`: address of the Prometheus metrics listener (see [Monitoring](../monitoring/)). Unset: no metrics.                                                        |
 | `CICORD_DATABASE_URL`                      | Default of `--database-url` (also read by `cicord dev` and `cicord secret`): use PostgreSQL for the state store. Unset: SQLite in the data directory.                                   |
 | `CICORD_CACHE_DIR`                         | Plugin download cache (`<dir>/plugins`). Default: the user cache directory; the Docker image sets `/data/cache`.                                                                        |
 | `CICORD_ALLOW_PRIVATE_REGISTRIES`          | `true` lets the Store and plugin downloads reach registries on private networks. Default: public addresses only.                                                                        |
@@ -444,4 +445,5 @@ webhook, `cicord sync` (with `CICORD_RUNTIME_TOKEN`) asks the runtime to fetch n
 - Follow the complete install of [Production on a VPS](../production-vps/).
 - Go through the [security checklist](../security/).
 - Set up [backups](../backups-and-secrets/).
+- Scrape the [metrics](../monitoring/) with Prometheus.
 - Wire your repository's CI: [Your first change](../../getting-started/first-change/#run-it-in-ci).

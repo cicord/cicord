@@ -6,6 +6,17 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- Prometheus metrics: `cicord serve --metrics-listen 127.0.0.1:9420` (or
+  `CICORD_METRICS_LISTEN`) serves `GET /metrics` on a dedicated listener, off by default and
+  without authentication (bind it to a loopback address). They cover the build, the active
+  revision, the last sync of each server, the changes applied to Discord, the gateway
+  connection of each bot, plugin instances (running, crashes, restarts, handler errors and
+  durations), HTTP requests by route, webhook deliveries, and the Go runtime and process. The
+  API listener answers `404` on `/metrics`. See
+  [Monitoring](https://cicord.dev/docs/self-hosting/monitoring/).
+
 ## [0.1.1] - 2026-11-24
 
 ### Added
