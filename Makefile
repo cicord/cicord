@@ -1,6 +1,6 @@
 # Cicord developer tasks.
 GO ?= go
-VERSION ?= 0.1.0
+VERSION ?= 0.1.1
 LDFLAGS := -s -w -X github.com/cicord/cicord/internal/version.Version=$(VERSION) -X github.com/cicord/cicord/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
 .PHONY: all build ui test test-go test-js vet lint check clean hooks release
