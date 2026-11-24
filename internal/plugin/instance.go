@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/grafana/sobek"
-
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/plugin/qjs"
 	"github.com/cicord/cicord/internal/state"
 )
 
@@ -100,6 +100,13 @@ type Limits struct {
 	FetchTimeout time.Duration
 	// MaxResponseBytes caps http.fetch response bodies. Default 5 MiB.
 	MaxResponseBytes int64
+	// Memory caps the instance's JS heap in bytes (the VM's linear memory is capped a fixed
+	// margin above it). Reaching it discards the instance (ErrOutOfMemory, ErrCrashed); the
+	// bot host restarts it. Default 64 MiB, at most 1 GiB.
+	Memory int64
+	// QueueLength bounds the handler calls waiting for the instance's event loop; beyond
+	// it calls fail with ErrBusy. Default 1024.
+	QueueLength int
 }
 
 func (l Limits) withDefaults() Limits {
@@ -116,6 +123,12 @@ func (l Limits) withDefaults() Limits {
 	def(&l.FetchTimeout, 10*time.Second)
 	if l.MaxResponseBytes <= 0 {
 		l.MaxResponseBytes = 5 << 20
+	}
+	if l.Memory <= 0 {
+		l.Memory = qjs.DefaultMemoryLimit
+	}
+	if l.QueueLength <= 0 {
+		l.QueueLength = 1024
 	}
 	return l
 }
@@ -142,11 +155,15 @@ type RouteResponse struct {
 }
 
 // Runtime is the language-agnostic surface of a plugin instance consumed by the bot host
-// (ARCHITECTURE.md §4.6). *Instance is the Sobek implementation.
+// (ARCHITECTURE.md §4.6). *Instance is the QuickJS (internal/plugin/qjs) implementation.
 type Runtime interface {
 	Definition() *Definition
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
+	// Done is closed when the instance stops serving: after Stop, or when it crashed
+	// (Err wraps ErrCrashed); the bot host then replaces it.
+	Done() <-chan struct{}
+	Err() error
 	HandleEvent(ctx context.Context, ev discord.Event) error
 	HandleInteraction(ctx context.Context, it discord.Interaction, kind, localID string) error
 	HandleRoute(ctx context.Context, method, path string, req RouteRequest) (RouteResponse, error)
@@ -165,7 +182,7 @@ const (
 	stateStopped
 )
 
-// Instance is one plugin running for one (bot, server): a Sobek VM driven by a single
+// Instance is one plugin running for one (bot, server): a QuickJS VM driven by a single
 // event-loop goroutine. All methods are safe for concurrent use.
 type Instance struct {
 	env    Env
@@ -176,7 +193,7 @@ type Instance struct {
 	grants map[string]bool
 	egress *egress
 
-	ctx    context.Context // instance lifetime
+	ctx    context.Context // instance lifetime; its cause tells Stop from a crash
 	cancel context.CancelCauseFunc
 
 	stateMu sync.Mutex
@@ -188,17 +205,22 @@ type Instance struct {
 	closed   bool
 	wake     chan struct{}
 	loopDone chan struct{}
+	queued   atomic.Int64 // handler calls posted and not started yet
 
 	// loop-only state
-	vm         *vm
-	current    *invocation
-	bg         *invocation
-	timers     map[int64]*jsTimer
-	nextTimer  int64
-	rejections map[*sobek.Promise]struct{}
-	budget     budgetTimer
+	vm        *vm
+	current   *invocation
+	bg        *invocation
+	timers    map[int64]*jsTimer
+	nextTimer int64
+	nextCall  int64
+	inflight  int // async host calls not settled yet
+	budget    budgetTimer
+	paused    pausedBudget
 
 	nextInv atomic.Uint64
+	invMu   sync.Mutex
+	invs    map[uint64]*invocation // running handlers, by id (settled through host done)
 
 	imu          sync.Mutex
 	interactions map[string]*interaction
@@ -235,7 +257,7 @@ func NewInstance(code string, def *Definition, env Env) (*Instance, error) {
 		wake:           make(chan struct{}, 1),
 		loopDone:       make(chan struct{}),
 		timers:         map[int64]*jsTimer{},
-		rejections:     map[*sobek.Promise]struct{}{},
+		invs:           map[uint64]*invocation{},
 		interactions:   map[string]*interaction{},
 		serverChannels: map[string]bool{},
 		dmChannels:     map[string]bool{},
@@ -248,21 +270,13 @@ func NewInstance(code string, def *Definition, env Env) (*Instance, error) {
 	i.ctx, i.cancel = context.WithCancelCause(context.Background())
 	i.bg = &invocation{kind: "background", ctx: i.ctx, cancel: func(error) {}, done: make(chan invResult, 1)}
 
-	v, err := newVM(i)
+	v, err := newVM(context.Background(), i, limits.Memory)
 	if err != nil {
 		i.cancel(ErrStopped)
 		return nil, err
 	}
 	i.vm = v
-	i.budget.rt = v.rt
-	v.rt.SetAsyncContextTracker(tracker{i})
-	v.rt.SetPromiseRejectionTracker(func(p *sobek.Promise, op sobek.PromiseRejectionOperation) {
-		if op == sobek.PromiseRejectionReject {
-			i.rejections[p] = struct{}{}
-		} else {
-			delete(i.rejections, p)
-		}
-	})
+	i.budget.interrupt = v.q.Interrupt
 	go i.loop()
 	return i, nil
 }
@@ -272,6 +286,27 @@ func (i *Instance) Definition() *Definition {
 	i.stateMu.Lock()
 	defer i.stateMu.Unlock()
 	return i.def
+}
+
+// Done is closed when the instance stops serving: Stop was called, or the instance crashed
+// (Err wraps ErrCrashed: memory limit, hard stop, engine trap).
+func (i *Instance) Done() <-chan struct{} { return i.ctx.Done() }
+
+// Err is nil while the instance serves, ErrStopped after Stop, and wraps ErrCrashed after a
+// crash.
+func (i *Instance) Err() error {
+	if i.ctx.Err() == nil {
+		return nil
+	}
+	return context.Cause(i.ctx)
+}
+
+// endedErr is the error for calls that cannot run anymore.
+func (i *Instance) endedErr() error {
+	if err := i.Err(); err != nil && errors.Is(err, ErrCrashed) {
+		return err
+	}
+	return ErrStopped
 }
 
 // Start evaluates the module (bounded by Limits.StartupBudget), then runs onStart (bounded by
@@ -287,7 +322,7 @@ func (i *Instance) Start(ctx context.Context) error {
 
 	errc := make(chan error, 1)
 	if !i.post(func() { errc <- i.loadModule() }) {
-		return ErrStopped
+		return i.endedErr()
 	}
 	var err error
 	select {
@@ -303,7 +338,7 @@ func (i *Instance) Start(ctx context.Context) error {
 	i.stateMu.Lock()
 	if i.state != stateStarting {
 		i.stateMu.Unlock()
-		return ErrStopped
+		return i.endedErr()
 	}
 	i.state = stateStarted
 	hasStart := i.def.HasOnStart
@@ -316,37 +351,35 @@ func (i *Instance) Start(ctx context.Context) error {
 	return nil
 }
 
-// loadModule runs on the loop.
+// loadModule runs on the loop: evaluate the bundle, extract the definition if needed and
+// build ctx, in one turn bounded by StartupBudget.
 func (i *Instance) loadModule() error {
-	var defObj *sobek.Object
-	err := i.enter(i.bg, i.limits.StartupBudget, func() error {
-		d, err := i.vm.loadPlugin(i.code)
-		defObj = d
-		return err
-	})
-	if err != nil {
-		if isInterrupt(err) {
-			return fmt.Errorf("plugin: module evaluation exceeded %s: %w", i.limits.StartupBudget, ErrBudgetExceeded)
-		}
-		return err
-	}
-	if i.def == nil {
-		d, err := i.vm.definition(defObj)
-		if err != nil {
-			return err
-		}
-		i.stateMu.Lock()
-		i.def = d
-		i.stateMu.Unlock()
-	}
 	ctxJSON, err := json.Marshal(i.contextDTO())
 	if err != nil {
 		return fmt.Errorf("plugin: config is not JSON-serializable: %w", err)
 	}
-	if _, err := i.vm.setup(sobek.Undefined(), defObj, i.vm.rt.ToValue(string(ctxJSON))); err != nil {
-		return fmt.Errorf("plugin: setup: %w", i.vm.asScriptError(err))
+	err = i.enter(i.bg, i.limits.StartupBudget, func(ctx context.Context) error {
+		if err := i.vm.loadPlugin(ctx, i.code); err != nil {
+			return err
+		}
+		if i.def == nil {
+			d, err := i.vm.definition(ctx)
+			if err != nil {
+				return err
+			}
+			i.stateMu.Lock()
+			i.def = d
+			i.stateMu.Unlock()
+		}
+		if _, err := i.vm.callAPI(ctx, "setup", string(ctxJSON)); err != nil {
+			return fmt.Errorf("plugin: setup: %w", err)
+		}
+		return nil
+	})
+	if isInterrupt(err) {
+		return fmt.Errorf("plugin: module evaluation exceeded %s: %w", i.limits.StartupBudget, ErrBudgetExceeded)
 	}
-	return nil
+	return err
 }
 
 // Stop runs onStop (bounded by Limits.StopTimeout and ctx), then releases the VM. Pending and
@@ -390,14 +423,20 @@ func (i *Instance) shutdown() {
 	select {
 	case <-i.loopDone:
 	case <-time.After(i.limits.SyncBudget + 250*time.Millisecond):
-		i.vm.rt.Interrupt(ErrStopped)
-		<-i.loopDone
+		i.vm.q.Interrupt()
+		select {
+		case <-i.loopDone:
+		case <-time.After(250 * time.Millisecond):
+			i.budget.killNow(ErrStopped)
+			<-i.loopDone
+		}
 	}
 	// The loop has exited: loop-only state is ours now.
 	for _, t := range i.timers {
 		t.timer.Stop()
 	}
 	i.timers = nil
+	i.vm.close()
 	i.imu.Lock()
 	for _, x := range i.interactions {
 		x.stopAutoDefer()
@@ -454,16 +493,10 @@ func (i *Instance) runTask(f func()) {
 	f()
 }
 
-type tracker struct{ i *Instance }
-
-func (t tracker) Grab() any { return t.i.current }
-func (t tracker) Resumed(o any) {
-	inv, _ := o.(*invocation)
-	t.i.current = inv
-}
-func (t tracker) Exited() { t.i.current = nil }
-
-// currentInv is the invocation whose code is running (loop only).
+// currentInv is the invocation whose code is running (loop only): the one the current turn
+// was entered for. Turns are always started by Go for a known invocation (handler call,
+// host call settlement, timer), so continuations after an await are attributed to the
+// invocation that owns the host call being settled.
 func (i *Instance) currentInv() *invocation {
 	if i.current != nil {
 		return i.current
@@ -471,95 +504,196 @@ func (i *Instance) currentInv() *invocation {
 	return i.bg
 }
 
-// budgetTimer interrupts the VM when a turn runs longer than its budget.
+func isInterrupt(err error) bool { return errors.Is(err, qjs.ErrInterrupted) }
+
+// budgetTimer bounds one turn: at the budget the VM is interrupted (soft stop, the VM keeps
+// serving); if the code is still running hardStopGrace later (a native builtin that does
+// not check for interrupts) the turn's context is cancelled, which kills the VM.
 type budgetTimer struct {
-	mu     sync.Mutex
-	gen    uint64
-	active bool
-	d      time.Duration
-	timer  *time.Timer
-	rt     *sobek.Runtime
+	mu        sync.Mutex
+	gen       uint64
+	active    bool
+	d         time.Duration
+	soft      *time.Timer
+	hard      *time.Timer
+	kill      context.CancelCauseFunc
+	interrupt func()
 }
 
-func (b *budgetTimer) arm(d time.Duration) {
+func (b *budgetTimer) arm(d time.Duration, kill context.CancelCauseFunc) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.gen++
 	gen := b.gen
-	b.active, b.d = true, d
-	b.timer = time.AfterFunc(d, func() {
+	b.active, b.d, b.kill = true, d, kill
+	b.soft = time.AfterFunc(d, func() {
 		b.mu.Lock()
 		if b.active && b.gen == gen {
-			b.rt.Interrupt(ErrBudgetExceeded)
+			b.interrupt()
 		}
 		b.mu.Unlock()
 	})
-	b.mu.Unlock()
+	b.hard = time.AfterFunc(d+hardStopGrace(d), func() {
+		b.mu.Lock()
+		if b.active && b.gen == gen {
+			kill(ErrBudgetExceeded)
+		}
+		b.mu.Unlock()
+	})
 }
 
 func (b *budgetTimer) disarm() {
 	b.mu.Lock()
 	b.active = false
-	t := b.timer
+	soft, hard := b.soft, b.hard
 	b.mu.Unlock()
-	if t != nil {
-		t.Stop()
+	if soft != nil {
+		soft.Stop()
+		hard.Stop()
 	}
 }
 
-// unbudgeted runs f (host-side work inside a turn, e.g. parsing a large host result) with
-// the budget suspended; the turn gets a fresh budget afterwards. f must not run plugin code.
-func (i *Instance) unbudgeted(f func()) {
-	b := &i.budget
+// pause suspends the budget (bounded host-side work inside a turn, e.g. parsing a large
+// host result); resume gives the turn a fresh budget.
+func (b *budgetTimer) pause() (time.Duration, context.CancelCauseFunc, bool) {
 	b.mu.Lock()
-	wasActive, d := b.active, b.d
+	active, d, kill := b.active, b.d, b.kill
 	b.mu.Unlock()
-	if !wasActive {
-		f()
-		return
+	if active {
+		b.disarm()
 	}
-	b.disarm()
-	defer b.arm(d)
-	f()
+	return d, kill, active
 }
 
-// enter runs one turn of JS (fn plus the microtasks it queues) for inv under a sync budget.
-// When the budget is exceeded, the invocation whose code was running is aborted. The
-// returned error is fn's error (interrupts included); budget aborts are already handled.
-func (i *Instance) enter(inv *invocation, budget time.Duration, fn func() error) error {
-	rt := i.vm.rt
-	rt.ClearInterrupt()
-	i.current = inv
-	i.budget.arm(budget)
-	err := fn()
-	i.budget.disarm()
-	culprit := i.current
-	i.current = nil
-	rt.ClearInterrupt() // no Interrupt can happen after disarm
-	if err != nil && isInterrupt(err) {
-		if culprit == nil {
-			culprit = inv
-		}
-		if culprit != i.bg {
-			e := fmt.Errorf("%s %q: %w (%s); pending microtasks of this turn were dropped", culprit.kind, culprit.name, ErrBudgetExceeded, budget)
-			culprit.cancel(e)
-			culprit.settle(invResult{err: e})
+// killNow kills the running turn, if any (Stop of a VM stuck in a native builtin).
+func (b *budgetTimer) killNow(cause error) {
+	b.mu.Lock()
+	kill := b.kill
+	b.mu.Unlock()
+	if kill != nil {
+		kill(cause)
+	}
+}
+
+func (i *Instance) pauseBudget() {
+	d, kill, active := i.budget.pause()
+	i.paused = pausedBudget{d: d, kill: kill, active: active}
+}
+
+func (i *Instance) resumeBudget() {
+	p := i.paused
+	i.paused = pausedBudget{}
+	if p.active {
+		i.budget.arm(p.d, p.kill)
+	}
+}
+
+type pausedBudget struct {
+	d      time.Duration
+	kill   context.CancelCauseFunc
+	active bool
+}
+
+// enter runs one turn of JS for inv: fn plus every microtask it queues, under a sync
+// budget. When the budget is exceeded the invocation is aborted with ErrBudgetExceeded and
+// the VM keeps serving; the microtasks still queued then run in a second turn charged to
+// the same invocation, and if that one exceeds its budget too, the instance is crashed
+// (code that keeps running after its handler was aborted). When the VM dies (memory
+// limit, hard stop, trap) the instance is crashed. enter returns fn's error (interrupts
+// included; budget aborts are already handled), or the crash error.
+func (i *Instance) enter(inv *invocation, budget time.Duration, fn func(ctx context.Context) error) error {
+	err := i.turn(inv, budget, fn)
+	if err != nil && isInterrupt(err) && i.vm.q.Dead() == nil {
+		if inv != i.bg {
+			e := fmt.Errorf("%s %q: %w (%s)", inv.kind, inv.name, ErrBudgetExceeded, budget)
+			inv.cancel(e)
+			inv.settle(invResult{err: e})
+			i.forget(inv)
 		}
 		i.logger.Error("plugin code exceeded its synchronous execution budget and was interrupted",
-			"handler", culprit.kind, "name", culprit.name, "budget", budget)
+			"handler", inv.kind, "name", inv.name, "budget", budget)
+		if i.vm.q.JobsPending() {
+			jerr := i.turn(inv, budget, func(context.Context) error { return nil })
+			if isInterrupt(jerr) && i.vm.q.Dead() == nil {
+				i.crash(fmt.Errorf("%w: code of %s %q kept running after it was aborted", ErrBudgetExceeded, inv.kind, inv.name))
+			}
+		}
 	}
-	i.flushRejections()
+	if dead := i.vm.q.Dead(); dead != nil {
+		i.crash(i.deathCause(dead, budget))
+		return i.endedErr()
+	}
 	return err
 }
 
-func (i *Instance) flushRejections() {
-	if len(i.rejections) == 0 {
+// turn runs fn then drains microtasks under one budget, and flushes unhandled rejections.
+func (i *Instance) turn(inv *invocation, budget time.Duration, fn func(ctx context.Context) error) error {
+	q := i.vm.q
+	if q.Dead() != nil {
+		return q.Dead()
+	}
+	ctx, kill := context.WithCancelCause(context.Background())
+	defer kill(nil)
+	q.ClearInterrupt()
+	i.current = inv
+	i.budget.arm(budget, kill)
+	err := fn(ctx)
+	if q.Dead() == nil && !isInterrupt(err) {
+		if jerr := q.RunJobs(ctx); jerr != nil {
+			if isInterrupt(jerr) || q.Dead() != nil {
+				err = jerr
+			} else {
+				i.logger.Error("uncaught error in plugin code", "error", i.vm.asScriptError(jerr).Error())
+			}
+		}
+	}
+	if q.Dead() == nil && !isInterrupt(err) && q.Rejections() {
+		i.flushRejections(ctx)
+	}
+	i.budget.disarm()
+	i.current = nil
+	q.ClearInterrupt()
+	return err
+}
+
+func (i *Instance) deathCause(dead error, budget time.Duration) error {
+	switch {
+	case errors.Is(dead, qjs.ErrOutOfMemory):
+		return fmt.Errorf("%w (%d MiB)", ErrOutOfMemory, i.limits.Memory>>20)
+	case errors.Is(dead, qjs.ErrKilled):
+		return fmt.Errorf("%w: plugin code ignored the interrupt for %s and was killed", ErrBudgetExceeded, budget+hardStopGrace(budget))
+	}
+	return dead
+}
+
+// crash discards the VM (loop only): every pending and later call fails with the crash
+// error and Done is closed, so the bot host can replace the instance.
+func (i *Instance) crash(cause error) {
+	if i.ctx.Err() != nil {
+		return // stopping (or already crashed)
+	}
+	e := fmt.Errorf("%w: %w", ErrCrashed, cause)
+	i.logger.Error("plugin instance crashed", "error", cause.Error())
+	i.cancel(e)
+	i.qmu.Lock()
+	i.closed = true
+	i.queue = nil
+	i.qmu.Unlock()
+	i.vm.close()
+}
+
+func (i *Instance) flushRejections(ctx context.Context) {
+	s, err := i.vm.callAPI(ctx, "takeRejections")
+	if err != nil {
 		return
 	}
-	for p := range i.rejections {
-		se := i.vm.scriptErrorFromValue(p.Result())
-		i.logger.Warn("unhandled promise rejection in plugin code", "error", se.Error())
+	var infos []string
+	if json.Unmarshal([]byte(s), &infos) != nil {
+		return
 	}
-	clear(i.rejections)
+	for _, info := range infos {
+		i.logger.Warn("unhandled promise rejection in plugin code", "error", i.vm.scriptError(info).Error())
+	}
 }
 
 // ───────────────────────────────────────────────────────────── invocations
@@ -570,7 +704,7 @@ type invResult struct {
 }
 
 // invocation is one handler run. Its context bounds every host call made by its code
-// (tracked across awaits with Sobek's AsyncContextTracker).
+// (attributed per turn, see currentInv).
 type invocation struct {
 	id      uint64
 	kind    string
@@ -604,7 +738,36 @@ func (i *Instance) newInvocation(caller context.Context, kind, name string, time
 	return inv, stop
 }
 
+// forget drops a settled invocation from the registry.
+func (i *Instance) forget(inv *invocation) {
+	i.invMu.Lock()
+	delete(i.invs, inv.id)
+	i.invMu.Unlock()
+}
+
+// done is the prelude reporting a handler's outcome (loop only).
+func (i *Instance) done(id uint64, ok bool, data string) {
+	i.invMu.Lock()
+	inv := i.invs[id]
+	delete(i.invs, id)
+	i.invMu.Unlock()
+	if inv == nil {
+		return // already settled (timeout, budget)
+	}
+	switch {
+	case !ok:
+		inv.settle(invResult{err: i.vm.scriptError(data)})
+	case len(data) > maxHandlerResult:
+		inv.settle(invResult{err: fmt.Errorf("%s %q returned more than %d bytes", inv.kind, inv.name, maxHandlerResult)})
+	default:
+		inv.settle(invResult{data: data})
+	}
+}
+
 func (i *Instance) checkState(kind string) error {
+	if err := i.Err(); err != nil && errors.Is(err, ErrCrashed) {
+		return err
+	}
 	i.stateMu.Lock()
 	defer i.stateMu.Unlock()
 	switch i.state {
@@ -654,39 +817,38 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 	if kind == "stop" {
 		timeout = i.limits.StopTimeout
 	}
+	if i.queued.Load() >= int64(i.limits.QueueLength) {
+		finish(invResult{err: fmt.Errorf("%w (%d waiting)", ErrBusy, i.limits.QueueLength)})
+		return out
+	}
 	inv, stopCaller := i.newInvocation(caller, kind, name, timeout)
 
+	i.queued.Add(1)
 	posted := i.post(func() {
+		i.queued.Add(-1)
 		if err := inv.alive(); err != nil {
 			inv.settle(invResult{err: err})
 			return
 		}
-		rt := i.vm.rt
-		ok := rt.ToValue(func(c sobek.FunctionCall) sobek.Value {
-			r := invResult{}
-			if a := c.Argument(0); !sobek.IsUndefined(a) {
-				r.data = a.String()
-			}
-			inv.settle(r)
-			return sobek.Undefined()
-		})
-		fail := rt.ToValue(func(c sobek.FunctionCall) sobek.Value {
-			inv.settle(invResult{err: parseScriptError(c.Argument(0).String())})
-			return sobek.Undefined()
-		})
-		err := i.enter(inv, i.limits.SyncBudget, func() error {
-			handled, err := i.vm.dispatchF(sobek.Undefined(), rt.ToValue(kind), rt.ToValue(name), rt.ToValue(dataJSON), ok, fail)
-			if err == nil && !handled.ToBoolean() {
+		i.invMu.Lock()
+		i.invs[inv.id] = inv
+		i.invMu.Unlock()
+		err := i.enter(inv, i.limits.SyncBudget, func(ctx context.Context) error {
+			handled, err := i.vm.callAPI(ctx, "dispatch", strconv.FormatUint(inv.id, 10), kind, name, dataJSON)
+			if err == nil && handled != "1" {
+				i.forget(inv)
 				inv.settle(invResult{err: fmt.Errorf("%w for %s %q", ErrNoHandler, kind, name)})
 			}
 			return err
 		})
 		if err != nil && !isInterrupt(err) {
-			inv.settle(invResult{err: i.vm.asScriptError(err)})
+			i.forget(inv)
+			inv.settle(invResult{err: err})
 		}
 	})
 	if !posted {
-		inv.settle(invResult{err: ErrStopped})
+		i.queued.Add(-1)
+		inv.settle(invResult{err: i.endedErr()})
 	}
 
 	go func() {
@@ -705,7 +867,8 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 			}
 		}
 		stopCaller()
-		if r.err != nil && !errors.Is(r.err, ErrNoHandler) && !errors.Is(r.err, ErrStopped) && !errors.Is(r.err, ErrBudgetExceeded) {
+		i.forget(inv)
+		if r.err != nil && !errors.Is(r.err, ErrNoHandler) && !errors.Is(r.err, ErrStopped) && !errors.Is(r.err, ErrBudgetExceeded) && !errors.Is(r.err, ErrCrashed) {
 			i.logger.Error("plugin handler failed", "handler", kind, "name", name, "error", r.err.Error())
 		}
 		finish(r)
@@ -803,6 +966,9 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 	if r.err != nil {
 		return RouteResponse{}, r.err
 	}
+	if len(r.data) > maxRouteResponse {
+		return RouteResponse{}, fmt.Errorf("plugin: route %s returned more than %d bytes", route.Key(), maxRouteResponse)
+	}
 	var out struct {
 		Status  int               `json:"status"`
 		Headers map[string]string `json:"headers"`
@@ -870,14 +1036,13 @@ func resultErr(in <-chan invResult) <-chan error {
 const maxTimers = 10000
 
 type jsTimer struct {
-	fn     sobek.Callable
 	inv    *invocation
 	repeat bool
 	d      time.Duration
 	timer  *time.Timer
 }
 
-func (i *Instance) setTimer(fn sobek.Callable, ms float64, repeat bool) (int64, error) {
+func (i *Instance) setTimer(ms float64, repeat bool) (int64, error) {
 	inv := i.currentInv()
 	if err := inv.alive(); err != nil {
 		return 0, err
@@ -898,7 +1063,7 @@ func (i *Instance) setTimer(fn sobek.Callable, ms float64, repeat bool) (int64, 
 	}
 	i.nextTimer++
 	id := i.nextTimer
-	t := &jsTimer{fn: fn, inv: inv, repeat: repeat, d: d}
+	t := &jsTimer{inv: inv, repeat: repeat, d: d}
 	i.timers[id] = t
 	t.timer = time.AfterFunc(d, func() { i.post(func() { i.fireTimer(id) }) })
 	return id, nil
@@ -909,19 +1074,28 @@ func (i *Instance) fireTimer(id int64) {
 	if !ok {
 		return
 	}
+	sid := strconv.FormatInt(id, 10)
 	if t.inv.alive() != nil {
 		delete(i.timers, id)
+		_ = i.enter(t.inv, i.limits.SyncBudget, func(ctx context.Context) error {
+			_, err := i.vm.callAPI(ctx, "dropTimer", sid)
+			return err
+		})
 		return
 	}
 	if !t.repeat {
 		delete(i.timers, id)
 	}
-	err := i.enter(t.inv, i.limits.SyncBudget, func() error {
-		_, err := t.fn(sobek.Undefined())
+	keep := "0"
+	if t.repeat {
+		keep = "1"
+	}
+	err := i.enter(t.inv, i.limits.SyncBudget, func(ctx context.Context) error {
+		_, err := i.vm.callAPI(ctx, "fireTimer", sid, keep)
 		return err
 	})
-	if err != nil && !isInterrupt(err) {
-		i.logger.Error("uncaught error in timer callback", "error", i.vm.asScriptError(err).Error())
+	if err != nil && !isInterrupt(err) && !errors.Is(err, ErrCrashed) {
+		i.logger.Error("uncaught error in timer callback", "error", err.Error())
 	}
 	if t.repeat {
 		if _, still := i.timers[id]; still {

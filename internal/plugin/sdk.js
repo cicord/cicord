@@ -1,13 +1,13 @@
 // Cicord SDK prelude: implements @cicord/sdk (spec/sdk/cicord-sdk.d.ts) inside the plugin VM.
 //
-// Evaluated once per VM as `(function (host) { ... })`. `host` is the Go side; it never
-// leaks into plugin code. Data crosses the boundary as JSON strings:
-//   host.call(op, argsJSON)       -> resultJSON | undefined          (sync, may throw)
-//   host.callAsync(op, argsJSON)  -> Promise<resultJSON | undefined>
-//   host.log(level, message, fieldsJSON)
-//   host.setTimer(fn, ms, repeat) -> id ; host.clearTimer(id)
-//   host.parseJSON(json)          -> value  (host-produced JSON, parsed outside the sync budget)
-// Every capability check happens in Go.
+// Evaluated once per VM (QuickJS-ng, internal/plugin/qjs) as `(function (host) { ... })`.
+// `host` is the Go side; it never leaks into plugin code. Data crosses the boundary as
+// strings (JSON for structured data):
+//   host.raw(kind, a, b, n)  -> string | undefined | { e: errorJSON }   (see hraw below)
+//   host.parseJSON(json)     -> value  (host-produced JSON, parsed outside the sync budget)
+//   host.onRejection(fn)     -> registers the unhandled-rejection tracker
+// Go calls the functions of the returned object (string arguments) and settles async host
+// calls with settle(). Every capability check happens in Go.
 (function (host) {
   "use strict";
 
@@ -61,13 +61,56 @@
 
   // ─────────────────────────────────────────────────────────── host calls
 
+  // Host call kinds (internal/plugin/vm.go).
+  const K_CALL = 1, K_ASYNC = 2, K_LOG = 3, K_SET_TIMER = 4, K_CLEAR_TIMER = 5, K_DONE = 6;
+
+  function mkErrorJSON(json) {
+    let d;
+    try { d = JSON.parse(json); } catch (_) { d = { message: String(json) }; }
+    return mkError(d.name, d.message, d.capability);
+  }
+
+  const raw = host.raw;
+  function hraw(kind, a, b, n) {
+    const r = raw(kind, a, b, n === undefined ? 0 : n);
+    if (r !== undefined && typeof r !== "string") throw mkErrorJSON(r.e);
+    return r;
+  }
+
   // Host-produced JSON is parsed by the host, outside the sync budget.
   const jparse = (s) => host.parseJSON(s);
-  const parse = (r) => (r === undefined || r === null ? undefined : jparse(r));
+  const parse = (r) => (r === undefined || r === null || r === "" ? undefined : jparse(r));
   const enc = (args) => JSON.stringify(args === undefined ? null : args);
-  const hcall = (op, args) => parse(host.call(op, enc(args)));
+  const hcall = (op, args) => parse(hraw(K_CALL, op, enc(args)));
+
+  // Async host calls: Go returns an id and later calls settle(id, status, data).
+  const pendingCalls = new Map();
   async function acall(op, args) {
-    return parse(await host.callAsync(op, enc(args)));
+    const id = Number(hraw(K_ASYNC, op, enc(args)));
+    const r = await new Promise((resolve, reject) => { pendingCalls.set(id, [resolve, reject]); });
+    return parse(r);
+  }
+  function settle(id, status, data) {
+    const n = Number(id);
+    const p = pendingCalls.get(n);
+    if (!p) return;
+    pendingCalls.delete(n);
+    if (status === "err") p[1](mkErrorJSON(data));
+    else p[0](status === "ok" ? data : undefined);
+  }
+
+  // Unhandled rejections: recorded here, collected by Go at the end of each turn.
+  const rejections = new Map();
+  host.onRejection((p, reason, handled) => {
+    if (handled) rejections.delete(p);
+    else rejections.set(p, reason);
+    return rejections.size > 0;
+  });
+  function takeRejections() {
+    const out = [];
+    for (const r of rejections.values()) out.push(errInfo(r));
+    rejections.clear();
+    return JSON.stringify(out);
   }
 
   function msgIn(m) {
@@ -286,13 +329,16 @@
     return v;
   }
 
+  const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+  const hlog = (level, message, fields) => hraw(K_LOG, message, fields, LEVELS[level]);
+
   function logFn(level) {
     return (message, fields) => {
       let f = "";
       if (fields !== undefined) {
         try { f = JSON.stringify(fields); } catch (_) { f = JSON.stringify({ fields: "[unserializable]" }); }
       }
-      host.log(level, String(message), f || "");
+      hlog(level, String(message), f || "");
     };
   }
 
@@ -394,7 +440,8 @@
   const entries = (o) => (o && typeof o === "object" ? Object.keys(o).map((k) => [k, o[k]]) : []);
   const fns = (o) => entries(o).map(([name, f]) => ({ name, type: typeof f }));
 
-  function describe(def) {
+  function describe() {
+    const def = plugin;
     const sections = {};
     for (const k of ["events", "commands", "components", "modals", "schedules", "tasks", "subscriptions", "routes"]) {
       sections[k] = typeof def[k];
@@ -423,20 +470,23 @@
     });
   }
 
-  function loadPlugin(exportsObj) {
-    const def = exportsObj && typeof exportsObj === "object" && "default" in exportsObj ? exportsObj.default : undefined;
-    if (!def || typeof def !== "object") return undefined;
+  let plugin = null;
+  let ctx = null;
+
+  // loadPlugin reads the bundle's exports (global `name`): "ok", "missing" or "nodefault".
+  function loadPlugin(name) {
+    const exportsObj = globalThis[name];
+    if (exportsObj === undefined || exportsObj === null) return "missing";
+    const def = typeof exportsObj === "object" && "default" in exportsObj ? exportsObj.default : undefined;
+    if (!def || typeof def !== "object") return "nodefault";
     if (!def[BRAND]) throw new TypeError("the default export must be the result of definePlugin({...})");
-    return def;
+    plugin = def;
+    return "ok";
   }
 
   // ─────────────────────────────────────────────────────────── dispatch
 
-  let plugin = null;
-  let ctx = null;
-
-  function setup(def, contextJSON) {
-    plugin = def;
+  function setup(contextJSON) {
     ctx = mkContext(jparse(contextJSON));
   }
 
@@ -507,10 +557,14 @@
     return { status: 200, body: v };
   }
 
-  // Returns false when there is no handler. Settles through ok(resultJSON?) / fail(errorJSON).
-  function dispatch(kind, name, dataJSON, ok, fail) {
+  // Returns "0" when there is no handler. The handler's outcome is reported with
+  // host.raw(K_DONE, "ok" | "fail", resultJSON | errorJSON, invocation id).
+  function dispatch(inv, kind, name, dataJSON) {
     const h = findHandler(kind, name);
-    if (!h) return false;
+    if (!h) return "0";
+    const id = Number(inv);
+    const ok = (s) => hraw(K_DONE, "ok", s, id);
+    const fail = (e) => hraw(K_DONE, "fail", errInfo(e), id);
     try {
       const d = dataJSON ? jparse(dataJSON) : {};
       const r = h[1].call(h[0], ctx, ...args(kind, name, d));
@@ -518,36 +572,54 @@
         (v) => {
           if (kind !== "route") return ok();
           let s;
-          try { s = JSON.stringify(routeOut(v)); } catch (e) { return fail(errInfo(e)); }
+          try { s = JSON.stringify(routeOut(v)); } catch (e) { return fail(e); }
           ok(s);
         },
-        (e) => fail(errInfo(e)),
+        fail,
       );
     } catch (e) {
-      fail(errInfo(e));
+      fail(e);
     }
-    return true;
+    return "1";
   }
 
   // ─────────────────────────────────────────────────────────── globals
 
   const g = globalThis;
+  // Timer ids come from Go, which fires them with fireTimer(id, keep).
+  const timers = new Map();
+  function addTimer(fn, ms, repeat, a) {
+    const id = Number(hraw(K_SET_TIMER, repeat ? "1" : "0", undefined, Number(ms) || 0));
+    timers.set(id, () => fn(...a));
+    return id;
+  }
   g.setTimeout = function (fn, ms, ...a) {
     if (typeof fn !== "function") throw new TypeError("setTimeout: callback must be a function");
-    return host.setTimer(() => fn(...a), Number(ms) || 0, false);
+    return addTimer(fn, ms, false, a);
   };
   g.setInterval = function (fn, ms, ...a) {
     if (typeof fn !== "function") throw new TypeError("setInterval: callback must be a function");
-    return host.setTimer(() => fn(...a), Number(ms) || 0, true);
+    return addTimer(fn, ms, true, a);
   };
   g.clearTimeout = g.clearInterval = function (id) {
-    if (id !== undefined && id !== null) host.clearTimer(Number(id));
+    if (id === undefined || id === null) return;
+    const n = Number(id);
+    timers.delete(n);
+    hraw(K_CLEAR_TIMER, undefined, undefined, n);
   };
+  function fireTimer(id, keep) {
+    const n = Number(id);
+    const f = timers.get(n);
+    if (!f) return;
+    if (keep !== "1") timers.delete(n);
+    f();
+  }
+  function dropTimer(id) { timers.delete(Number(id)); }
   g.queueMicrotask = function (fn) {
     if (typeof fn !== "function") throw new TypeError("queueMicrotask: callback must be a function");
     Promise.resolve().then(() => fn());
   };
-  const consoleFn = (level) => (...a) => host.log(level, a.map(safeString).join(" "), "");
+  const consoleFn = (level) => (...a) => hlog(level, a.map(safeString).join(" "), "");
   g.console = freeze({
     log: consoleFn("info"), info: consoleFn("info"), warn: consoleFn("warn"),
     error: consoleFn("error"), debug: consoleFn("debug"),
@@ -557,5 +629,5 @@
     throw new Error(`cannot require "${name}": only @cicord/sdk is available at run time (bundle other dependencies)`);
   };
 
-  return { sdk, mkError, errInfo, describe, loadPlugin, setup, dispatch };
+  return { errInfo, describe, loadPlugin, setup, dispatch, settle, fireTimer, dropTimer, takeRejections };
 })

@@ -1,182 +1,141 @@
 package plugin
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/grafana/sobek"
-
 	"github.com/cicord/cicord/internal/build"
+	"github.com/cicord/cicord/internal/plugin/qjs"
 )
 
 //go:embed sdk.js
 var preludeSource string
 
-var (
-	preludeOnce sync.Once
-	preludeProg *sobek.Program
-	preludeErr  error
-)
-
-func preludeProgram() (*sobek.Program, error) {
-	preludeOnce.Do(func() {
-		preludeProg, preludeErr = sobek.Compile("cicord:sdk.js", preludeSource, true)
-	})
-	return preludeProg, preludeErr
-}
-
 // bundleName is the script name used for plugin code; positions are mapped back to the
 // TypeScript sources through the bundle's inline source map.
 const bundleName = "plugin.bundle.js"
 
+// Host call kinds (sdk.js hraw; 7 and 8 are qjs.KindPauseBudget/KindResumeBudget).
+const (
+	kindCall       = 1
+	kindCallAsync  = 2
+	kindLog        = 3
+	kindSetTimer   = 4
+	kindClearTimer = 5
+	kindDone       = 6
+)
+
+// Host-side caps on data crossing the VM boundary.
+const (
+	// maxHostArgs caps the JSON arguments of one host call (checked before decoding).
+	maxHostArgs = 2 << 20
+	// maxLogFields caps the JSON fields of one log call.
+	maxLogFields = 16 << 10
+	// maxRouteResponse caps the JSON a route handler returns.
+	maxRouteResponse = 4 << 20
+	// maxHandlerResult caps what a handler settles with (routes are the only users).
+	maxHandlerResult = maxRouteResponse + 1024
+)
+
 // host is what the prelude calls into. Inspect uses a host that refuses everything.
 type host interface {
-	call(op, args string) (sobek.Value, error)
-	callAsync(op, args string) (sobek.Value, error)
+	call(op, args string) (string, bool, error)
+	callAsync(op, args string) (int64, error)
 	log(level, msg, fields string)
-	setTimer(fn sobek.Callable, ms float64, repeat bool) (int64, error)
+	setTimer(ms float64, repeat bool) (int64, error)
 	clearTimer(id int64)
-	// unbudgeted runs bounded host-side work outside the sync budget.
-	unbudgeted(f func())
+	// done receives a handler's result (dispatch).
+	done(inv uint64, ok bool, data string)
+	// pauseBudget/resumeBudget bracket bounded host-side work done inside a turn (parsing
+	// host-produced JSON) so it does not count as runaway plugin code.
+	pauseBudget()
+	resumeBudget()
 }
 
-// vm is a Sobek runtime with the SDK prelude loaded.
+// vm is a QuickJS VM with the SDK prelude loaded.
 type vm struct {
-	rt *sobek.Runtime
-
-	mkError   sobek.Callable
-	errInfo   sobek.Callable
-	describe  sobek.Callable
-	load      sobek.Callable
-	setup     sobek.Callable
-	dispatchF sobek.Callable
+	q    *qjs.VM
+	code string // the bundle (for source maps), set by loadPlugin
+	smap *sourceMap
 }
 
-func newVM(h host) (*vm, error) {
-	prg, err := preludeProgram()
-	if err != nil {
-		return nil, fmt.Errorf("plugin: compile SDK prelude: %w", err)
-	}
-	rt := sobek.New()
-	rt.SetMaxCallStackSize(4096)
-	v := &vm{rt: rt}
+var logLevels = [...]string{"debug", "info", "warn", "error"}
 
-	fnV, err := rt.RunProgram(prg)
+func newVM(ctx context.Context, h host, memory int64) (*vm, error) {
+	v := &vm{}
+	hostFn := func(kind int32, a, b string, n float64) qjs.Reply {
+		switch kind {
+		case kindCall:
+			res, ok, err := h.call(a, b)
+			if err != nil {
+				return qjs.Reply{Error: errorJSON(err)}
+			}
+			return qjs.Reply{Value: res, Undefined: !ok}
+		case kindCallAsync:
+			id, err := h.callAsync(a, b)
+			if err != nil {
+				return qjs.Reply{Error: errorJSON(err)}
+			}
+			return qjs.Reply{Value: strconv.FormatInt(id, 10)}
+		case kindLog:
+			lvl := "info"
+			if n >= 0 && int(n) < len(logLevels) {
+				lvl = logLevels[int(n)]
+			}
+			h.log(lvl, a, b)
+		case kindSetTimer:
+			id, err := h.setTimer(n, a == "1")
+			if err != nil {
+				return qjs.Reply{Error: errorJSON(err)}
+			}
+			return qjs.Reply{Value: strconv.FormatInt(id, 10)}
+		case kindClearTimer:
+			h.clearTimer(int64(n))
+		case kindDone:
+			h.done(uint64(n), a == "ok", b)
+		case qjs.KindPauseBudget:
+			h.pauseBudget()
+		case qjs.KindResumeBudget:
+			h.resumeBudget()
+		}
+		return qjs.Reply{Undefined: true}
+	}
+	q, err := qjs.New(ctx, qjs.Config{MemoryLimit: memory}, hostFn)
 	if err != nil {
-		return nil, fmt.Errorf("plugin: run SDK prelude: %w", err)
+		return nil, fmt.Errorf("plugin: create VM: %w", err)
 	}
-	fn, ok := sobek.AssertFunction(fnV)
-	if !ok {
-		return nil, errors.New("plugin: SDK prelude is not a function")
+	v.q = q
+	if err := q.Prelude(ctx, "cicord:sdk.js", preludeSource); err != nil {
+		q.Close()
+		return nil, fmt.Errorf("plugin: load SDK prelude: %w", err)
 	}
-
-	jsonParse, ok := sobek.AssertFunction(rt.Get("JSON").ToObject(rt).Get("parse"))
-	if !ok {
-		return nil, errors.New("plugin: JSON.parse missing")
-	}
-	hostObj := rt.NewObject()
-	throw := func(err error) { panic(v.jsError(err)) }
-	// parseJSON parses host-produced JSON (no reviver: no plugin code runs) outside the sync
-	// budget, so large but bounded payloads (fetch bodies up to MaxResponseBytes, KV values)
-	// do not count as runaway code.
-	_ = hostObj.Set("parseJSON", func(c sobek.FunctionCall) sobek.Value {
-		var (
-			res sobek.Value
-			err error
-		)
-		h.unbudgeted(func() { res, err = jsonParse(sobek.Undefined(), c.Argument(0)) })
-		if err != nil {
-			panic(err)
-		}
-		return res
-	})
-	_ = hostObj.Set("call", func(c sobek.FunctionCall) sobek.Value {
-		res, err := h.call(c.Argument(0).String(), c.Argument(1).String())
-		if err != nil {
-			throw(err)
-		}
-		return res
-	})
-	_ = hostObj.Set("callAsync", func(c sobek.FunctionCall) sobek.Value {
-		res, err := h.callAsync(c.Argument(0).String(), c.Argument(1).String())
-		if err != nil {
-			throw(err)
-		}
-		return res
-	})
-	_ = hostObj.Set("log", func(c sobek.FunctionCall) sobek.Value {
-		h.log(c.Argument(0).String(), c.Argument(1).String(), c.Argument(2).String())
-		return sobek.Undefined()
-	})
-	_ = hostObj.Set("setTimer", func(c sobek.FunctionCall) sobek.Value {
-		cb, ok := sobek.AssertFunction(c.Argument(0))
-		if !ok {
-			panic(rt.NewTypeError("timer callback must be a function"))
-		}
-		id, err := h.setTimer(cb, c.Argument(1).ToFloat(), c.Argument(2).ToBoolean())
-		if err != nil {
-			throw(err)
-		}
-		return rt.ToValue(id)
-	})
-	_ = hostObj.Set("clearTimer", func(c sobek.FunctionCall) sobek.Value {
-		h.clearTimer(c.Argument(0).ToInteger())
-		return sobek.Undefined()
-	})
-
-	apiV, err := fn(sobek.Undefined(), hostObj)
-	if err != nil {
-		return nil, fmt.Errorf("plugin: init SDK prelude: %w", err)
-	}
-	api := apiV.ToObject(rt)
-	get := func(name string) sobek.Callable {
-		f, ok := sobek.AssertFunction(api.Get(name))
-		if !ok {
-			panic("plugin: SDK prelude does not export " + name)
-		}
-		return f
-	}
-	v.mkError = get("mkError")
-	v.errInfo = get("errInfo")
-	v.describe = get("describe")
-	v.load = get("loadPlugin")
-	v.setup = get("setup")
-	v.dispatchF = get("dispatch")
 	return v, nil
 }
 
-// jsError converts a Go error into a JS error value (CapabilityError when applicable).
-func (v *vm) jsError(err error) sobek.Value {
-	var ce *CapabilityError
-	name, capability := "Error", ""
-	if errors.As(err, &ce) {
-		capability = ce.Capability
-	} else if errors.Is(err, errInvalidArgument) {
-		name = "TypeError"
-	}
-	msg := err.Error()
-	if ce != nil {
-		msg = ce.Error()
-	}
-	val, cerr := v.mkError(sobek.Undefined(), v.rt.ToValue(name), v.rt.ToValue(msg), v.rt.ToValue(capability))
-	if cerr != nil {
-		return v.rt.NewGoError(err)
-	}
-	return val
-}
+func (v *vm) close() { v.q.Close() }
 
-// scriptError converts a JS error (errInfo JSON or an exception) to a *ScriptError.
-func (v *vm) scriptErrorFromValue(val sobek.Value) *ScriptError {
-	s, err := v.errInfo(sobek.Undefined(), val)
-	if err != nil {
-		return &ScriptError{Name: "Error", Message: val.String()}
+// errorJSON describes a Go error for the prelude's mkErrorJSON (CapabilityError and
+// TypeError when applicable).
+func errorJSON(err error) string {
+	var ce *CapabilityError
+	info := struct {
+		Name       string `json:"name"`
+		Message    string `json:"message"`
+		Capability string `json:"capability,omitempty"`
+	}{Name: "Error", Message: err.Error()}
+	if errors.As(err, &ce) {
+		info.Capability, info.Message = ce.Capability, ce.Error()
+	} else if errors.Is(err, errInvalidArgument) {
+		info.Name = "TypeError"
 	}
-	return parseScriptError(s.String())
+	b, _ := json.Marshal(info)
+	return string(b)
 }
 
 func parseScriptError(js string) *ScriptError {
@@ -189,49 +148,69 @@ func parseScriptError(js string) *ScriptError {
 	return &ScriptError{Name: info.Name, Message: info.Message, Stack: info.Stack, Capability: info.Capability}
 }
 
-// asScriptError converts an error returned by a Sobek call.
+// scriptError converts an errInfo JSON into a *ScriptError with TypeScript positions.
+func (v *vm) scriptError(info string) *ScriptError {
+	se := parseScriptError(info)
+	se.Stack = v.mapStack(se.Stack)
+	return se
+}
+
+// mapStack rewrites bundle positions in a stack trace to source positions.
+func (v *vm) mapStack(stack string) string {
+	if stack == "" || v.code == "" || !strings.Contains(stack, bundleName) {
+		return stack
+	}
+	if v.smap == nil {
+		v.smap = parseInlineSourceMap(v.code)
+	}
+	return v.smap.rewrite(stack, bundleName)
+}
+
+// asScriptError converts an exception returned by a VM call; other errors pass through.
 func (v *vm) asScriptError(err error) error {
-	var ex *sobek.Exception
+	var ex *qjs.Exception
 	if errors.As(err, &ex) {
-		se := v.scriptErrorFromValue(ex.Value())
-		if se.Stack == "" {
-			se.Stack = ex.String()
-		}
-		return se
+		return v.scriptError(ex.Info)
 	}
 	return err
 }
 
-// loadPlugin evaluates the bundle and returns the definePlugin() object.
-func (v *vm) loadPlugin(code string) (*sobek.Object, error) {
-	prg, err := sobek.Compile(bundleName, code, false)
+// callAPI calls a prelude API function; exceptions become *ScriptError.
+func (v *vm) callAPI(ctx context.Context, fn string, args ...string) (string, error) {
+	r, _, err := v.q.Call(ctx, fn, args...)
 	if err != nil {
-		return nil, fmt.Errorf("plugin: compile bundle: %w", err)
+		return "", v.asScriptError(err)
 	}
-	if _, err := v.rt.RunProgram(prg); err != nil {
-		return nil, fmt.Errorf("plugin: evaluate module: %w", v.asScriptError(err))
-	}
-	exp := v.rt.Get(build.GlobalName)
-	if exp == nil || sobek.IsUndefined(exp) || sobek.IsNull(exp) {
-		return nil, fmt.Errorf("plugin: the bundle does not define %s (was it built with internal/build?)", build.GlobalName)
-	}
-	defV, err := v.load(sobek.Undefined(), exp)
-	if err != nil {
-		return nil, fmt.Errorf("plugin: %w", v.asScriptError(err))
-	}
-	if sobek.IsUndefined(defV) {
-		return nil, fmt.Errorf("plugin: %w", errNoDefault)
-	}
-	return defV.ToObject(v.rt), nil
+	return r, nil
 }
 
-func (v *vm) definition(def *sobek.Object) (*Definition, error) {
-	s, err := v.describe(sobek.Undefined(), def)
+// loadPlugin evaluates the bundle and checks its default export (kept by the prelude).
+func (v *vm) loadPlugin(ctx context.Context, code string) error {
+	v.code, v.smap = code, nil
+	if err := v.q.Eval(ctx, bundleName, code); err != nil {
+		return fmt.Errorf("plugin: evaluate module: %w", v.asScriptError(err))
+	}
+	st, err := v.callAPI(ctx, "loadPlugin", build.GlobalName)
 	if err != nil {
-		return nil, fmt.Errorf("plugin: describe definition: %w", v.asScriptError(err))
+		return fmt.Errorf("plugin: %w", err)
+	}
+	switch st {
+	case "ok":
+		return nil
+	case "missing":
+		return fmt.Errorf("plugin: the bundle does not define %s (was it built with internal/build?)", build.GlobalName)
+	default:
+		return fmt.Errorf("plugin: %w", errNoDefault)
+	}
+}
+
+func (v *vm) definition(ctx context.Context) (*Definition, error) {
+	s, err := v.callAPI(ctx, "describe")
+	if err != nil {
+		return nil, fmt.Errorf("plugin: describe definition: %w", err)
 	}
 	var dp describedPlugin
-	if err := json.Unmarshal([]byte(s.String()), &dp); err != nil {
+	if err := json.Unmarshal([]byte(s), &dp); err != nil {
 		return nil, fmt.Errorf("plugin: describe definition: %w", err)
 	}
 	return buildDefinition(dp)
@@ -246,14 +225,14 @@ type inspectHost struct{}
 
 var errInspecting = errors.New("SDK calls are not available while the module is evaluated (use them inside handlers)")
 
-func (inspectHost) call(string, string) (sobek.Value, error)      { return nil, errInspecting }
-func (inspectHost) callAsync(string, string) (sobek.Value, error) { return nil, errInspecting }
-func (inspectHost) log(string, string, string)                    {}
-func (inspectHost) setTimer(sobek.Callable, float64, bool) (int64, error) {
-	return 0, errInspecting
-}
-func (inspectHost) clearTimer(int64)    {}
-func (inspectHost) unbudgeted(f func()) { f() }
+func (inspectHost) call(string, string) (string, bool, error)       { return "", false, errInspecting }
+func (inspectHost) callAsync(string, string) (int64, error)         { return 0, errInspecting }
+func (inspectHost) log(string, string, string)                      {}
+func (inspectHost) setTimer(float64, bool) (int64, error)           { return 0, errInspecting }
+func (inspectHost) clearTimer(int64)                                {}
+func (inspectHost) done(uint64, bool, string)                       {}
+func (inspectHost) pauseBudget()                                    {}
+func (inspectHost) resumeBudget()                                   {}
 
 // Inspect loads the bundle (see internal/build) in a throwaway VM, evaluates
 // `definePlugin(...)` and extracts the static definition. It validates command names,
@@ -261,25 +240,34 @@ func (inspectHost) unbudgeted(f func()) { f() }
 // expressions, route keys and access levels, and reports every problem at once
 // (*DefinitionError).
 func Inspect(code string) (*Definition, error) {
-	v, err := newVM(inspectHost{})
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	v, err := newVM(ctx, inspectHost{}, 0)
 	if err != nil {
 		return nil, err
 	}
-	t := time.AfterFunc(InspectBudget, func() { v.rt.Interrupt(ErrBudgetExceeded) })
-	defer t.Stop()
-	def, err := v.loadPlugin(code)
-	if err != nil {
-		if isInterrupt(err) {
+	defer v.close()
+	// Soft stop at the budget, hard stop (the VM is discarded anyway) a bit later.
+	soft := time.AfterFunc(InspectBudget, v.q.Interrupt)
+	defer soft.Stop()
+	hard := time.AfterFunc(InspectBudget+hardStopGrace(InspectBudget), func() { cancel(ErrBudgetExceeded) })
+	defer hard.Stop()
+	if err := v.loadPlugin(ctx, code); err != nil {
+		if errors.Is(err, qjs.ErrInterrupted) || errors.Is(err, qjs.ErrKilled) {
 			return nil, fmt.Errorf("plugin: module evaluation exceeded %s: %w", InspectBudget, ErrBudgetExceeded)
+		}
+		if errors.Is(err, qjs.ErrOutOfMemory) {
+			return nil, fmt.Errorf("plugin: module evaluation: %w", ErrOutOfMemory)
 		}
 		return nil, err
 	}
-	return v.definition(def)
+	return v.definition(ctx)
 }
 
-func isInterrupt(err error) bool {
-	var ie *sobek.InterruptedError
-	return errors.As(err, &ie)
+// hardStopGrace is how long code may keep running past its budget (in a native builtin
+// that does not check for interrupts) before the VM is killed.
+func hardStopGrace(budget time.Duration) time.Duration {
+	return max(budget, 500*time.Millisecond)
 }
 
 // ───────────────────────────────────────────────────────────── errors
@@ -322,10 +310,18 @@ func (e *CapabilityError) Error() string {
 
 // Sentinel errors.
 var (
-	ErrHandlerTimeout  = errors.New("plugin: handler timed out")
-	ErrBudgetExceeded  = errors.New("plugin: synchronous execution budget exceeded")
+	ErrHandlerTimeout = errors.New("plugin: handler timed out")
+	ErrBudgetExceeded = errors.New("plugin: synchronous execution budget exceeded")
+	// ErrOutOfMemory: the instance reached Limits.Memory. The instance is discarded
+	// (ErrCrashed).
+	ErrOutOfMemory = errors.New("plugin: memory limit exceeded")
+	// ErrCrashed: the instance's VM was discarded (memory limit, hard stop of code that
+	// ignored its budget, engine trap). Every pending and later call fails; the bot host
+	// restarts the instance (see Instance.Done).
+	ErrCrashed         = errors.New("plugin: instance crashed")
 	ErrStopped         = errors.New("plugin: instance stopped")
 	ErrNotStarted      = errors.New("plugin: instance not started")
 	ErrNoHandler       = errors.New("plugin: no handler")
+	ErrBusy            = errors.New("plugin: too many queued calls")
 	errInvalidArgument = errors.New("invalid argument")
 )
