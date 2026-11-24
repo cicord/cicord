@@ -6,13 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state/internal/storeutil"
 )
-
-const defaultKVListLimit = 100
 
 // kvSpace is the KV space of one scope.
 //
@@ -20,7 +18,7 @@ const defaultKVListLimit = 100
 //   - keys must be non-empty (so the "" cursor/next is unambiguous);
 //   - values must be valid JSON; ttl < 0 is rejected, ttl 0 means no expiry;
 //   - expired keys are invisible to Get, List and Increment, are deleted lazily
-//     by Get, and are reclaimed in bulk by (*Store).Sweep;
+//     by Get, and are reclaimed in bulk by Sweep;
 //   - Increment on a live key keeps its TTL; on a missing or expired key it
 //     starts from 0 with no TTL. The stored value must be a JSON number.
 type kvSpace struct {
@@ -50,14 +48,8 @@ func (k kvSpace) Get(ctx context.Context, key string) (json.RawMessage, error) {
 }
 
 func (k kvSpace) Set(ctx context.Context, key string, value json.RawMessage, ttl time.Duration) error {
-	if key == "" {
-		return errors.New("state/sqlite: kv set: empty key")
-	}
-	if !json.Valid(value) {
-		return fmt.Errorf("state/sqlite: kv set %s/%s: value is not valid JSON", k.scope, key)
-	}
-	if ttl < 0 {
-		return fmt.Errorf("state/sqlite: kv set %s/%s: negative ttl %v", k.scope, key, ttl)
+	if err := storeutil.CheckKVSet(key, value, ttl); err != nil {
+		return fmt.Errorf("state/sqlite: kv set %s/%s: %w", k.scope, key, err)
 	}
 	var expires any
 	if ttl > 0 {
@@ -86,11 +78,8 @@ func (k kvSpace) Delete(ctx context.Context, key string) error {
 }
 
 func (k kvSpace) Increment(ctx context.Context, key string, by float64) (_ float64, err error) {
-	if key == "" {
-		return 0, errors.New("state/sqlite: kv increment: empty key")
-	}
-	if math.IsNaN(by) || math.IsInf(by, 0) {
-		return 0, fmt.Errorf("state/sqlite: kv increment %s/%s: invalid delta %v", k.scope, key, by)
+	if err := storeutil.CheckIncrement(key, by); err != nil {
+		return 0, fmt.Errorf("state/sqlite: kv increment %s/%s: %w", k.scope, key, err)
 	}
 
 	// The writer pool has a single connection and transactions are BEGIN
@@ -102,31 +91,20 @@ func (k kvSpace) Increment(ctx context.Context, key string, by float64) (_ float
 	defer rollback(tx, &err)
 
 	now := k.s.now().UnixNano()
-	var raw string
+	var raw []byte
 	var expires sql.NullInt64
-	current := 0.0
 	err = tx.QueryRowContext(ctx,
 		`SELECT value, expires_at FROM kv WHERE scope = ? AND key = ?`, k.scope, key).Scan(&raw, &expires)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
+		raw = nil
 	case err != nil:
 		return 0, fmt.Errorf("state/sqlite: kv increment: %w", err)
 	case expires.Valid && expires.Int64 <= now:
-		expires = sql.NullInt64{} // expired: start over without TTL
-	default:
-		var v any
-		if err := json.Unmarshal([]byte(raw), &v); err != nil {
-			return 0, fmt.Errorf("state/sqlite: kv increment %s/%s: stored value: %w", k.scope, key, err)
-		}
-		f, ok := v.(float64)
-		if !ok {
-			return 0, fmt.Errorf("state/sqlite: kv increment %s/%s: stored value %s is not a number", k.scope, key, raw)
-		}
-		current = f
+		raw, expires = nil, sql.NullInt64{} // expired: start over without TTL
 	}
 
-	result := current + by
-	encoded, err := json.Marshal(result)
+	result, encoded, err := storeutil.AddNumber(raw, by)
 	if err != nil {
 		return 0, fmt.Errorf("state/sqlite: kv increment %s/%s: %w", k.scope, key, err)
 	}
@@ -150,14 +128,14 @@ func (k kvSpace) Increment(ctx context.Context, key string, by float64) (_ float
 // order), strictly after cursor. limit <= 0 means 100; it is capped at 1000.
 // The returned cursor is the last returned key, or "" when nothing remains.
 func (k kvSpace) List(ctx context.Context, prefix string, limit int, cursor string) ([]state.KVItem, string, error) {
-	limit = clampLimit(limit, defaultKVListLimit)
+	limit = clampLimit(limit, state.DefaultKVListLimit)
 
 	// Prefix match as a byte range [prefix, prefixEnd) rather than LIKE, which
 	// treats % and _ as wildcards and folds ASCII case.
 	q := `SELECT key, value FROM kv
 	      WHERE scope = ? AND key >= ? AND key > ? AND (expires_at IS NULL OR expires_at > ?)`
 	args := []any{k.scope, prefix, cursor, k.s.now().UnixNano()}
-	if end, ok := prefixEnd(prefix); ok {
+	if end, ok := storeutil.PrefixEnd(prefix); ok {
 		q += ` AND key < ?`
 		args = append(args, end)
 	}
@@ -186,18 +164,4 @@ func (k kvSpace) List(ctx context.Context, prefix string, limit int, cursor stri
 		next = items[limit-1].Key
 	}
 	return items, next, nil
-}
-
-// prefixEnd returns the smallest string greater than every string starting
-// with prefix, or false when there is none (empty or all-0xFF prefix, where
-// key >= prefix alone is exact).
-func prefixEnd(prefix string) (string, bool) {
-	b := []byte(prefix)
-	for i := len(b) - 1; i >= 0; i-- {
-		if b[i] < 0xff {
-			b[i]++
-			return string(b[:i+1]), true
-		}
-	}
-	return "", false
 }

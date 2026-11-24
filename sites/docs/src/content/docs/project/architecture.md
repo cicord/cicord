@@ -24,7 +24,7 @@ state store (SQLite): resource map · plugin KV · audit · sessions · history
 | **Server reconciler** | Plans and applies, in a rate-limit-aware order, adopts by name, detects drift from gateway events. |
 | **Bot host** | One gateway session per bot with the union of its intents; syncs slash commands; routes events and interactions; hot-swaps plugin VMs on a new revision without reconnecting. |
 | **Plugin host** | Sobek (pure-Go JavaScript with async/await): one VM and event loop per instance, capability checks on every host call, CPU and wall-clock budgets, auto-defer of interactions. |
-| **State store** | SQLite (pure Go) in the data directory; in memory for `cicord dev --sim`. |
+| **State store** | SQLite (pure Go) in the data directory by default, or PostgreSQL (`--database-url`); in memory for `cicord dev --sim`. |
 | **HTTP API** | Serves the admin console, the portal SDK and the CLI; OAuth, portal links, bearer tokens; CSRF protection. |
 | **Write-back** | Patches YAML at the node level (comments kept), commits as `cicord[bot]`, pushes or opens a pull request. |
 

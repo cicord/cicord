@@ -17,7 +17,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cicord/cicord/internal/secrets"
-	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
 func init() {
@@ -28,13 +27,23 @@ func init() {
 // secret, git token): the setup wizard writes it, this command rotates or removes them
 // afterwards. Values are read from stdin, never from arguments (shell history).
 func newSecretCmd() *cobra.Command {
-	var dataDir string
+	var dataDir, dbFlag string
 	open := func(ctx context.Context) (*secrets.Store, func(), error) {
-		db := filepath.Join(dataDir, "cicord.db")
-		if _, err := os.Stat(db); err != nil {
-			return nil, nil, fmt.Errorf("no runtime state in %s (use --data-dir): %w", dataDir, err)
+		dbURL := databaseURL(dbFlag)
+		if dbURL == "" {
+			// SQLite: the database must already exist (never create one in a mistyped dir).
+			if _, err := os.Stat(filepath.Join(dataDir, stateDBFile)); err != nil {
+				return nil, nil, fmt.Errorf("no runtime state in %s (use --data-dir, or --database-url / %s for PostgreSQL): %w", dataDir, databaseURLEnv, err)
+			}
+		} else if os.Getenv(secrets.KeyEnv) == "" {
+			// PostgreSQL: the encryption key still lives in the data dir (or in
+			// CICORD_SECRET_KEY); never generate a new one here, it would not
+			// decrypt the stored secrets.
+			if _, err := os.Stat(filepath.Join(dataDir, secrets.KeyFile)); err != nil {
+				return nil, nil, fmt.Errorf("no %s in %s (use the runtime's --data-dir, or set %s): %w", secrets.KeyFile, dataDir, secrets.KeyEnv, err)
+			}
 		}
-		st, err := sqlite.Open(db)
+		st, err := openStateStore(ctx, nil, dataDir, dbURL)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -48,12 +57,16 @@ func newSecretCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secret",
 		Short: "Manage the runtime secret store (bot tokens, OAuth and git secrets)",
-		Long: `Manage the encrypted secrets the runtime keeps in its data dir (written by the setup
+		Long: `Manage the encrypted secrets the runtime keeps in its state store (written by the setup
 wizard): bot tokens (token.secretRef), CICORD_DISCORD_CLIENT_SECRET, CICORD_GIT_TOKEN.
-Environment variables always take precedence over stored secrets. Values are read from
-stdin and never printed. The runtime picks a changed bot token up on its next restart.`,
+The store is the data dir's SQLite database, or the PostgreSQL database of --database-url
+(default $CICORD_DATABASE_URL); the encryption key is CICORD_SECRET_KEY or the data dir's
+secret.key either way. Environment variables always take precedence over stored secrets.
+Values are read from stdin and never printed. The runtime picks a changed bot token up on
+its next restart.`,
 	}
-	cmd.PersistentFlags().StringVar(&dataDir, "data-dir", ".cicord-data", "runtime state directory")
+	cmd.PersistentFlags().StringVar(&dataDir, "data-dir", ".cicord-data", "runtime state directory (secret.key; cicord.db unless PostgreSQL is used)")
+	cmd.PersistentFlags().StringVar(&dbFlag, "database-url", "", databaseURLFlagHelp)
 
 	cmd.AddCommand(&cobra.Command{
 		Use: "ls", Short: "List stored secrets (names only)", Args: cobra.NoArgs,

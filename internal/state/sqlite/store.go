@@ -21,20 +21,17 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
-	"math"
 	"net/url"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state/internal/storeutil"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 )
@@ -192,10 +189,8 @@ func (s *Store) Close() error {
 	return errors.Join(errs...)
 }
 
-// Sweep deletes expired KV entries and sessions. Expired rows are already
-// invisible to readers and are also removed lazily when read; Sweep reclaims
-// the rest. Callers typically run it periodically (e.g. every few minutes).
-// It returns the number of rows removed.
+// Sweep deletes expired KV entries and sessions (see state.Store). It returns
+// the number of rows removed.
 func (s *Store) Sweep(ctx context.Context) (int64, error) {
 	now := s.now().UnixNano()
 	var total int64
@@ -231,44 +226,8 @@ func (s *Store) Sessions() state.SessionStore { return sessionStore{s} }
 
 // ───────────────────────────────────────────────────────────── migrations
 
-type migration struct {
-	version int
-	name    string
-	sql     string
-}
-
-func loadMigrations() ([]migration, error) {
-	entries, err := fs.ReadDir(migrationFS, "migrations")
-	if err != nil {
-		return nil, err
-	}
-	var ms []migration
-	seen := map[int]string{}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".sql") {
-			continue
-		}
-		prefix, _, ok := strings.Cut(name, "_")
-		if !ok {
-			return nil, fmt.Errorf("migration %q: name must be NNNN_description.sql", name)
-		}
-		v, err := strconv.Atoi(prefix)
-		if err != nil || v <= 0 {
-			return nil, fmt.Errorf("migration %q: invalid version prefix", name)
-		}
-		if other, dup := seen[v]; dup {
-			return nil, fmt.Errorf("migrations %q and %q share version %d", other, name, v)
-		}
-		seen[v] = name
-		body, err := migrationFS.ReadFile("migrations/" + name)
-		if err != nil {
-			return nil, err
-		}
-		ms = append(ms, migration{version: v, name: name, sql: string(body)})
-	}
-	sort.Slice(ms, func(i, j int) bool { return ms[i].version < ms[j].version })
-	return ms, nil
+func loadMigrations() ([]storeutil.Migration, error) {
+	return storeutil.LoadMigrations(migrationFS, "migrations")
 }
 
 func (s *Store) migrate(ctx context.Context) error {
@@ -284,10 +243,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		return fmt.Errorf("state/sqlite: create schema_migrations: %w", err)
 	}
 
-	var latest int
-	if len(ms) > 0 {
-		latest = ms[len(ms)-1].version
-	}
+	latest := storeutil.Latest(ms)
 	var current sql.NullInt64
 	if err := s.w.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&current); err != nil {
 		return fmt.Errorf("state/sqlite: read schema version: %w", err)
@@ -307,68 +263,60 @@ func (s *Store) migrate(ctx context.Context) error {
 // applyMigration applies m in its own transaction unless it is already
 // recorded. The check runs inside the (IMMEDIATE) transaction so two processes
 // opening the same file concurrently cannot both apply it.
-func (s *Store) applyMigration(ctx context.Context, m migration) (err error) {
+func (s *Store) applyMigration(ctx context.Context, m storeutil.Migration) (err error) {
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("state/sqlite: migration %s: %w", m.name, err)
+		return fmt.Errorf("state/sqlite: migration %s: %w", m.Name, err)
 	}
 	defer rollback(tx, &err)
 
 	var n int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&n); err != nil {
-		return fmt.Errorf("state/sqlite: migration %s: %w", m.name, err)
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.Version).Scan(&n); err != nil {
+		return fmt.Errorf("state/sqlite: migration %s: %w", m.Name, err)
 	}
 	if n > 0 {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, m.sql); err != nil {
-		return fmt.Errorf("state/sqlite: migration %s: %w", m.name, err)
+	if _, err := tx.ExecContext(ctx, m.SQL); err != nil {
+		return fmt.Errorf("state/sqlite: migration %s: %w", m.Name, err)
 	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)`,
-		m.version, m.name, s.now().UTC().UnixNano()); err != nil {
-		return fmt.Errorf("state/sqlite: migration %s: %w", m.name, err)
+		m.Version, m.Name, s.now().UTC().UnixNano()); err != nil {
+		return fmt.Errorf("state/sqlite: migration %s: %w", m.Name, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("state/sqlite: migration %s: %w", m.name, err)
+		return fmt.Errorf("state/sqlite: migration %s: %w", m.Name, err)
 	}
 	return nil
 }
 
 // ───────────────────────────────────────────────────────────── helpers
 
-var (
-	minTime = time.Unix(0, math.MinInt64)
-	maxTime = time.Unix(0, math.MaxInt64)
-)
-
 // toNanos converts t to unix nanoseconds, rejecting times that do not fit
 // (roughly before 1678 or after 2262), including the zero time.
 func toNanos(field string, t time.Time) (int64, error) {
-	if t.Before(minTime) || t.After(maxTime) {
-		return 0, fmt.Errorf("state/sqlite: %s %v out of range", field, t)
+	n, err := storeutil.ToNanos(field, t)
+	if err != nil {
+		return 0, fmt.Errorf("state/sqlite: %w", err)
 	}
-	return t.UnixNano(), nil
+	return n, nil
 }
 
-// orNow returns t, or now when t is the zero time.
-func orNow(t time.Time, now func() time.Time) time.Time {
-	if t.IsZero() {
-		return now()
-	}
-	return t
-}
-
-func fromNanos(n int64) time.Time { return time.Unix(0, n).UTC() }
+var (
+	orNow     = storeutil.OrNow
+	fromNanos = storeutil.FromNanos
+	notFound  = storeutil.NotFound
+)
 
 // jsonArg validates an optional JSON payload and converts it to a SQL argument
 // (NULL when empty).
 func jsonArg(field string, v []byte) (any, error) {
+	if err := storeutil.CheckJSON(field, v); err != nil {
+		return nil, fmt.Errorf("state/sqlite: %w", err)
+	}
 	if len(v) == 0 {
 		return nil, nil
-	}
-	if !json.Valid(v) {
-		return nil, fmt.Errorf("state/sqlite: %s is not valid JSON", field)
 	}
 	return string(v), nil
 }
@@ -381,20 +329,8 @@ func jsonOut(v sql.NullString) []byte {
 	return []byte(v.String)
 }
 
-func notFound(format string, args ...any) error {
-	return fmt.Errorf("%w: "+format, append([]any{state.ErrNotFound}, args...)...)
-}
-
-// maxListLimit caps the page size of every list query.
-const maxListLimit = 1000
-
-// clampLimit returns def for n <= 0 and caps n at maxListLimit.
-func clampLimit(n, def int) int {
-	if n <= 0 {
-		return def
-	}
-	return min(n, maxListLimit)
-}
+// clampLimit returns def for n <= 0 and caps n at state.MaxListLimit.
+func clampLimit(n, def int) int { return storeutil.ClampLimit(n, def) }
 
 // rollback rolls tx back when it was not committed, joining a rollback failure
 // into *err. Use it as `defer rollback(tx, &err)` with a named error result.

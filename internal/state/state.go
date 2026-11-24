@@ -1,4 +1,7 @@
-// Package state is the runtime's persistent store (SQLite by default).
+// Package state is the runtime's persistent store. Two backends implement it:
+// SQLite in the data dir (package state/sqlite, the default) and PostgreSQL
+// (package state/postgres). Both pass the conformance suite in state/statetest,
+// which is the executable form of the contract documented here.
 //
 // Configuration lives in git; everything here is runtime state or community data:
 // the resource map (YAML key ↔ Discord ID), plugin KV storage, scheduled tasks,
@@ -14,7 +17,26 @@ import (
 
 var ErrNotFound = errors.New("state: not found")
 
+// ErrTaskIDConflict is returned by TaskQueue.Schedule when the task ID is already
+// used by a task of another scope. Task IDs are global (Complete takes only an
+// ID), so one scope must not be able to replace another scope's task.
+var ErrTaskIDConflict = errors.New("state: task id already used by another scope")
+
+// Page sizes shared by every backend: a limit <= 0 means the default, and every
+// limit is capped at MaxListLimit.
+const (
+	DefaultKVListLimit = 100
+	DefaultDueLimit    = 100
+	DefaultAuditLimit  = 50
+	DefaultSyncLimit   = 50
+	MaxListLimit       = 1000
+)
+
 // Store groups all state. Implementations are safe for concurrent use.
+//
+// Times are stored with nanosecond precision and returned in UTC; times outside
+// the int64 unix-nanosecond range (roughly before 1678 or after 2262) are
+// rejected. JSON payloads are returned byte for byte as stored.
 type Store interface {
 	Resources() ResourceMap
 	// KV returns the key-value space of a scope, e.g. "plugin:<bot>/<instance>/<server>".
@@ -23,6 +45,10 @@ type Store interface {
 	Audit() AuditLog
 	Syncs() SyncLog
 	Sessions() SessionStore
+	// Sweep deletes expired KV entries and sessions and returns how many rows it
+	// removed. Expired rows are already invisible to readers (and removed lazily
+	// when read); the runtime calls Sweep periodically to reclaim the rest.
+	Sweep(ctx context.Context) (int64, error)
 	Close() error
 }
 
@@ -71,6 +97,14 @@ type KVItem struct {
 	Value json.RawMessage
 }
 
+// KV is one scope's key-value space.
+//
+// Keys are arbitrary non-empty byte strings (they may contain NUL or invalid
+// UTF-8) and are compared and listed in byte order. Values must be valid JSON;
+// ttl < 0 is rejected. Expired keys are invisible to Get, List and Increment.
+// Increment on a live key keeps its TTL; on a missing or expired key it starts
+// from 0 with no TTL. The stored value must be a JSON number and the result
+// must be finite.
 type KV interface {
 	Get(ctx context.Context, key string) (json.RawMessage, error) // ErrNotFound (also when expired)
 	// Set stores a JSON value; ttl 0 means no expiry.
@@ -95,9 +129,11 @@ type Task struct {
 }
 
 type TaskQueue interface {
+	// Schedule inserts the task, or replaces the task with the same ID and scope
+	// (ErrTaskIDConflict when the ID belongs to another scope).
 	Schedule(ctx context.Context, t Task) error
 	Cancel(ctx context.Context, scope, id string) error
-	// Due returns tasks with RunAt <= now, oldest first.
+	// Due returns tasks with RunAt <= now, oldest first (ties by ID, byte order).
 	Due(ctx context.Context, now time.Time, limit int) ([]Task, error)
 	// Complete removes a task after it ran.
 	Complete(ctx context.Context, id string) error
@@ -121,6 +157,9 @@ type AuditFilter struct {
 	Limit  int
 }
 
+// AuditLog is append-only. IDs increase strictly and are never reused; "newest
+// first" means by descending ID (on PostgreSQL, IDs come from a sequence, so
+// under concurrent appends ID order is allocation order, not commit order).
 type AuditLog interface {
 	Append(ctx context.Context, e AuditEntry) (int64, error)
 	List(ctx context.Context, f AuditFilter) ([]AuditEntry, error) // newest first
@@ -138,6 +177,7 @@ type SyncRecord struct {
 	Details  json.RawMessage
 }
 
+// SyncLog is append-only, ordered by ID like AuditLog.
 type SyncLog interface {
 	Record(ctx context.Context, r SyncRecord) (int64, error)
 	List(ctx context.Context, target string, limit int) ([]SyncRecord, error) // newest first; target "" = all

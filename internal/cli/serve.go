@@ -31,7 +31,6 @@ import (
 	"github.com/cicord/cicord/internal/secrets"
 	"github.com/cicord/cicord/internal/setup"
 	"github.com/cicord/cicord/internal/source"
-	"github.com/cicord/cicord/internal/state/sqlite"
 	"github.com/cicord/cicord/internal/webui"
 	"github.com/cicord/cicord/internal/writeback"
 )
@@ -43,6 +42,7 @@ func init() {
 // serverFlags are shared by `cicord serve` and `cicord dev`.
 type serverFlags struct {
 	dataDir     string
+	databaseURL string // --database-url (see databaseURL for the environment fallback)
 	listen      string
 	publicURL   string
 	corsOrigins []string
@@ -51,6 +51,7 @@ type serverFlags struct {
 
 func (f *serverFlags) register(cmd *cobra.Command, defListen string) {
 	cmd.Flags().StringVar(&f.dataDir, "data-dir", "", "runtime state directory (database, caches, keys)")
+	cmd.Flags().StringVar(&f.databaseURL, "database-url", "", databaseURLFlagHelp)
 	cmd.Flags().StringVar(&f.listen, "listen", defListen, "HTTP listen address")
 	cmd.Flags().StringVar(&f.publicURL, "public-url", os.Getenv("CICORD_PUBLIC_URL"), "public URL of the runtime (OAuth redirects, portal links); default http://<listen>")
 	cmd.Flags().StringSliceVar(&f.corsOrigins, "cors-origin", splitEnv("CICORD_CORS_ORIGINS"), "external portal origin allowed with credentials (repeatable)")
@@ -353,7 +354,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		branch string
 	)
 	// Secrets: environment first, then the encrypted secret store of the data dir.
-	store, err := sqlite.Open(filepath.Join(dataDir, "cicord.db"))
+	store, err := openStateStore(ctx, log, dataDir, databaseURL(f.databaseURL))
 	if err != nil {
 		return err
 	}

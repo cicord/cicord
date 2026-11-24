@@ -21,6 +21,8 @@ release until the product is complete. This page summarizes the project's living
   cross-plugin events, plugin-owned channels and typed portal routes.
 - **Nine official plugins** bundled in the binary, all exercised end to end on the simulator.
 - **Git write-back**: commits and GitHub pull requests, with per-path policies.
+- **State store**: SQLite in the data directory or PostgreSQL, held to one conformance suite,
+  with a [backup and restore guide](../../self-hosting/backups-and-secrets/) for both.
 - **Admin console**: status, plans, history, audit log, generated plugin settings, the Store,
   diagnostics, the simulator panel; light and dark themes.
 - **Setup wizard**: from nothing to a synced server, with live checks, an encrypted secret
@@ -57,7 +59,6 @@ release until the product is complete. This page summarizes the project's living
 
 - GitHub App authentication and commit statuses on synced commits.
 - Observability: a Prometheus `/metrics` endpoint, plugin error history, alerting hooks.
-- A Postgres state backend, and a backup and restore guide.
 - A security review: plugin sandbox escapes, memory limits, YAML fuzzing, link token reuse.
 
 ## Waiting on the owner

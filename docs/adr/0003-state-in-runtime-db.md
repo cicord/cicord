@@ -24,5 +24,8 @@ Options: state file in git, remote state file, name matching, markers hidden in 
 
 ## Consequences
 - The DB must be backed up; losing it is recoverable (`adopt`) but needs a human check.
+- "The runtime DB" is SQLite in the data dir by default or PostgreSQL (`--database-url`);
+  the resource map has the same schema and semantics on both (see docs/deploy.md §2 for
+  backup and restore).
 - `cicord plan` in CI needs the runtime (`--remote`) for an exact diff; an offline plan is
   only a schema/semantic check.

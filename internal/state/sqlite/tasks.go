@@ -8,14 +8,8 @@ import (
 	"time"
 
 	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state/internal/storeutil"
 )
-
-const defaultDueLimit = 100
-
-// ErrTaskIDConflict is returned by Schedule when the task ID is already used by
-// a task of another scope. Task IDs are global (Complete takes only an ID), so
-// one scope must not be able to replace another scope's task.
-var ErrTaskIDConflict = errors.New("state/sqlite: task id already used by another scope")
 
 type taskQueue struct{ s *Store }
 
@@ -47,7 +41,7 @@ func (q taskQueue) Schedule(ctx context.Context, t state.Task) error {
 		return fmt.Errorf("state/sqlite: schedule task: %w", err)
 	}
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return fmt.Errorf("%w: %s", ErrTaskIDConflict, t.ID)
+		return fmt.Errorf("%w: %s", state.ErrTaskIDConflict, t.ID)
 	}
 	return nil
 }
@@ -63,15 +57,10 @@ func (q taskQueue) Cancel(ctx context.Context, scope, id string) error {
 // Due returns tasks with RunAt <= now, oldest first (ties by ID). limit <= 0
 // means 100; it is capped at 1000.
 func (q taskQueue) Due(ctx context.Context, now time.Time, limit int) ([]state.Task, error) {
-	limit = clampLimit(limit, defaultDueLimit)
-	var cutoff int64
-	switch {
-	case now.Before(minTime):
+	limit = clampLimit(limit, state.DefaultDueLimit)
+	cutoff, ok := storeutil.DueCutoff(now)
+	if !ok {
 		return nil, nil
-	case now.After(maxTime):
-		cutoff = maxTime.UnixNano()
-	default:
-		cutoff = now.UnixNano()
 	}
 	rows, err := q.s.r.QueryContext(ctx,
 		`SELECT id, scope, name, payload, run_at FROM tasks WHERE run_at <= ? ORDER BY run_at, id LIMIT ?`,

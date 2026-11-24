@@ -9,11 +9,6 @@ import (
 	"github.com/cicord/cicord/internal/state"
 )
 
-const (
-	defaultAuditLimit = 50
-	defaultSyncLimit  = 50
-)
-
 // ───────────────────────────────────────────────────────────── audit
 
 type auditLog struct{ s *Store }
@@ -57,7 +52,7 @@ func (a auditLog) List(ctx context.Context, f state.AuditFilter) ([]state.AuditE
 		args = append(args, f.Before)
 	}
 	q += ` ORDER BY id DESC LIMIT ?`
-	args = append(args, clampLimit(f.Limit, defaultAuditLimit))
+	args = append(args, clampLimit(f.Limit, state.DefaultAuditLimit))
 
 	rows, err := a.s.r.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -120,7 +115,7 @@ func (l syncLog) List(ctx context.Context, target string, limit int) ([]state.Sy
 		args = append(args, target)
 	}
 	q += ` ORDER BY id DESC LIMIT ?`
-	args = append(args, clampLimit(limit, defaultSyncLimit))
+	args = append(args, clampLimit(limit, state.DefaultSyncLimit))
 
 	rows, err := l.s.r.QueryContext(ctx, q, args...)
 	if err != nil {

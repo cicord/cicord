@@ -59,10 +59,8 @@ func (s *scheduler) run(ctx context.Context) {
 			s.runCron(ctx, now.UTC())
 			s.runTasks(ctx, now.UTC())
 		case <-sweep.C:
-			if sw, ok := s.r.opts.Store.(interface {
-				Sweep(context.Context) (int64, error)
-			}); ok {
-				_, _ = sw.Sweep(ctx)
+			if _, err := s.r.opts.Store.Sweep(ctx); err != nil && ctx.Err() == nil {
+				s.r.log.Warn("state sweep failed", "err", err)
 			}
 		}
 	}

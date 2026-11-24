@@ -73,7 +73,7 @@ func TestMigrationsIdempotentAndPersistent(t *testing.T) {
 	if len(ms) == 0 {
 		t.Fatal("no embedded migrations")
 	}
-	latest := ms[len(ms)-1].version
+	latest := ms[len(ms)-1].Version
 
 	when := time.Date(2025, 12, 31, 23, 59, 59, 123456789, time.UTC)
 	s1, err := Open(path)
@@ -132,105 +132,6 @@ func TestOpenRejectsNewerSchema(t *testing.T) {
 	if !strings.Contains(err.Error(), "newer") {
 		t.Errorf("unexpected error: %v", err)
 	}
-}
-
-func TestCanceledContext(t *testing.T) {
-	eachBackend(t, func(t *testing.T, s *Store, _ *fakeClock) {
-		cctx, cancel := context.WithCancel(t.Context())
-		cancel()
-		if err := s.KV("s").Set(cctx, "k", json.RawMessage(`1`), 0); err == nil {
-			t.Error("Set with canceled context succeeded")
-		}
-		if _, err := s.KV("s").Increment(cctx, "k", 1); err == nil {
-			t.Error("Increment with canceled context succeeded")
-		}
-		if _, err := s.Resources().List(cctx, "main"); err == nil {
-			t.Error("List with canceled context succeeded")
-		}
-	})
-}
-
-func TestTimeRoundTripExact(t *testing.T) {
-	eachBackend(t, func(t *testing.T, s *Store, _ *fakeClock) {
-		paris, err := time.LoadLocation("Europe/Paris")
-		if err != nil {
-			paris = time.FixedZone("CET", 3600)
-		}
-		// Sub-second precision, a non-UTC location and a monotonic reading.
-		times := []time.Time{
-			time.Date(2026, 7, 1, 12, 0, 0, 1, paris),
-			time.Date(1999, 12, 31, 23, 59, 59, 999999999, time.UTC),
-			time.Now(),
-		}
-		for i, when := range times {
-			key := string(rune('a' + i))
-			must(t, s.Resources().Put(ctx(t), state.Resource{Server: "srv", Kind: state.KindChannel, Key: key, ID: key, UpdatedAt: when}))
-			r, err := s.Resources().Get(ctx(t), "srv", state.KindChannel, key)
-			must(t, err)
-			assertTime(t, "Resource.UpdatedAt", r.UpdatedAt, when)
-
-			id, err := s.Audit().Append(ctx(t), state.AuditEntry{Time: when, Action: key})
-			must(t, err)
-			es, err := s.Audit().List(ctx(t), state.AuditFilter{Limit: 1})
-			must(t, err)
-			if es[0].ID != id {
-				t.Fatalf("audit newest id %d, want %d", es[0].ID, id)
-			}
-			assertTime(t, "AuditEntry.Time", es[0].Time, when)
-
-			_, err = s.Syncs().Record(ctx(t), state.SyncRecord{Time: when, Target: "revision", Status: "succeeded"})
-			must(t, err)
-			rs, err := s.Syncs().List(ctx(t), "", 1)
-			must(t, err)
-			assertTime(t, "SyncRecord.Time", rs[0].Time, when)
-
-			must(t, s.Tasks().Schedule(ctx(t), state.Task{ID: "t" + key, Scope: "sc", RunAt: when}))
-			ts, err := s.Tasks().Due(ctx(t), when, 1000)
-			must(t, err)
-			var found bool
-			for _, tk := range ts {
-				if tk.ID == "t"+key {
-					found = true
-					assertTime(t, "Task.RunAt", tk.RunAt, when)
-				}
-			}
-			if !found {
-				t.Errorf("task %q not due at its own RunAt", "t"+key)
-			}
-		}
-	})
-}
-
-func TestOutOfRangeTimesRejected(t *testing.T) {
-	s := mustOpen(t, ":memory:")
-	far := time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)
-	if err := s.Resources().Put(ctx(t), state.Resource{Server: "s", Kind: state.KindRole, Key: "k", ID: "1", UpdatedAt: far}); err == nil {
-		t.Error("Put with year-3000 UpdatedAt succeeded")
-	}
-	if err := s.Tasks().Schedule(ctx(t), state.Task{ID: "x", Scope: "s", RunAt: far}); err == nil {
-		t.Error("Schedule with year-3000 RunAt succeeded")
-	}
-}
-
-func TestDefaultTimestampsUseClock(t *testing.T) {
-	eachBackend(t, func(t *testing.T, s *Store, clk *fakeClock) {
-		must(t, s.Resources().Put(ctx(t), state.Resource{Server: "s", Kind: state.KindRole, Key: "k", ID: "1"}))
-		r, err := s.Resources().Get(ctx(t), "s", state.KindRole, "k")
-		must(t, err)
-		assertTime(t, "default UpdatedAt", r.UpdatedAt, clk.Now())
-
-		_, err = s.Audit().Append(ctx(t), state.AuditEntry{Action: "x"})
-		must(t, err)
-		es, err := s.Audit().List(ctx(t), state.AuditFilter{})
-		must(t, err)
-		assertTime(t, "default audit Time", es[0].Time, clk.Now())
-
-		_, err = s.Syncs().Record(ctx(t), state.SyncRecord{Target: "revision"})
-		must(t, err)
-		rs, err := s.Syncs().List(ctx(t), "", 0)
-		must(t, err)
-		assertTime(t, "default sync Time", rs[0].Time, clk.Now())
-	})
 }
 
 // An in-memory database lives in its single connection; a context canceled in

@@ -173,7 +173,9 @@ See [ADR-0003](docs/adr/0003-state-in-runtime-db.md).
 
 ### 4.7 State store
 SQLite (`internal/state/sqlite`, pure Go driver; a single file in the data dir, in memory
-for `cicord dev --sim`) behind the `internal/state` interfaces; Postgres *(planned)*. Holds:
+for `cicord dev --sim`) by default, or PostgreSQL (`internal/state/postgres`, pgx;
+`--database-url` / `CICORD_DATABASE_URL`), behind the `internal/state` interfaces. Both
+backends pass the same conformance suite (`internal/state/statetest`). Holds:
 - resource map: `(server key, kind, resource key) → Discord ID`, plus owner (git / plugin instance);
 - plugin KV storage, scoped per plugin instance;
 - audit log (moderation actions, UI actions), sessions, sync history.
@@ -356,7 +358,7 @@ internal/
   runtime/                 controller: revisions, hot swap, bot host, status
   sim/                     in-process Discord simulator
   source/                  local and git sources, revisions
-  state/                   store interfaces; state/sqlite/ the SQLite store
+  state/                   store interfaces; sqlite/ and postgres/ backends, statetest/ conformance suite
   version/                 build version
   webui/                   embedded admin UI and default portal (copied by scripts/sync-ui.sh)
   writeback/               YAML node patching, commits, pull requests

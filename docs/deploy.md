@@ -4,7 +4,8 @@
 host), the HTTP API, the admin UI (`/admin/`) and the default community portal (`/`).
 It needs a data directory and outbound access to Discord (and to your git host). It has no
 other runtime dependencies: no database server, no Node.js, no `git` binary (git is
-go-git, SQLite is pure Go).
+go-git, SQLite is pure Go). A PostgreSQL database can replace the built-in SQLite state
+store (§2).
 
 > `cicord dev` is for local development only. It lets anyone who can reach it sign in as any
 > user (`/auth/dev-login`) and edits the working tree. Never expose it on a network.
@@ -12,7 +13,7 @@ go-git, SQLite is pure Go).
 ## 1. What `cicord serve` needs
 
 ```
-cicord serve [dir] [--data-dir DIR] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local]
+cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local]
 ```
 
 - `dir` (default `.`) must contain `cicord.yaml`. Its `spec.source` says what to follow:
@@ -34,6 +35,10 @@ cicord serve [dir] [--data-dir DIR] [--listen ADDR] [--public-url URL] [--cors-o
   external portals allowed to call the API with credentials.
 - `--data-dir` defaults to `.cicord-data` (relative to the working directory). With a local
   source inside the repository it must be under `<repo>/.cicord/`.
+- `--database-url` (env `CICORD_DATABASE_URL`): PostgreSQL connection URL of the state
+  store, e.g. `postgres://cicord@db:5432/cicord?sslmode=verify-full`. Unset: SQLite in the
+  data dir. The data dir is still required (§2). The URL is never logged; the startup log
+  shows `postgres://user@host:port/database` only.
 
 ### Environment
 
@@ -47,6 +52,7 @@ cicord serve [dir] [--data-dir DIR] [--listen ADDR] [--public-url URL] [--cors-o
 | `CICORD_DISCORD_CLIENT_ID` | OAuth2 client ID. Default: the application ID of the first bot (by key). |
 | `CICORD_LINK_SECRET` | Signing key of portal links (`ctx.portal.link()`). Default: generated once in the data dir (`link.key`). |
 | `CICORD_PUBLIC_URL`, `CICORD_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`. |
+| `CICORD_DATABASE_URL` | Default of `--database-url` (also read by `cicord dev` and `cicord secret`): PostgreSQL state store. Unset: SQLite in the data dir. |
 | `CICORD_CACHE_DIR` | Plugin download cache (`<dir>/plugins`). Default: the user cache dir. The Docker image sets `/data/cache`. |
 | `CICORD_SECRET_KEY` | Key of the encrypted secret store (bot tokens, OAuth and registry secrets set from the wizard or the admin). Default: generated once in the data dir (`secret.key`). |
 | `CICORD_ALLOW_PRIVATE_REGISTRIES` | `true` lets the Store and plugin downloads reach registries on private networks (default: public addresses only). |
@@ -58,7 +64,7 @@ URL of the application used for login.
 
 | Path | Content | Back up? |
 |---|---|---|
-| `cicord.db` (+ `cicord.db-wal`, `cicord.db-shm`) | SQLite (WAL mode): resource ID map, plugin KV/state, sessions, audit log, sync history. | **Yes** |
+| `cicord.db` (+ `cicord.db-wal`, `cicord.db-shm`) | SQLite (WAL mode): resource ID map, plugin KV/state, sessions, audit log, sync history, encrypted secrets. Absent with PostgreSQL. | **Yes** |
 | `link.key` | Portal link signing key (when `CICORD_LINK_SECRET` is not set). Losing it invalidates outstanding links. | Yes |
 | `secret.key` | Key of the encrypted secret store (when `CICORD_SECRET_KEY` is not set). Losing it makes the stored secrets unreadable. | **Yes**, separately from `cicord.db` |
 | `repo.git` | Bare repository of the `embedded` provider: this *is* your configuration. | **Yes** |
@@ -67,13 +73,80 @@ URL of the application used for login.
 | `snapshots/` | Snapshots of a local source. | No |
 | `cache/` (Docker image) | Downloaded plugins. | No |
 
-The resource map in `cicord.db` links YAML keys to Discord IDs. Without it, the next sync
-re-adopts resources by name (see spec/README.md §3), so losing it is recoverable but noisy.
+The resource map in the state store links YAML keys to Discord IDs. Without it, the next
+sync re-adopts resources by name (see spec/README.md §3), so losing it is recoverable but
+noisy.
 
-Backups: stop the runtime and copy the directory, or take a consistent online copy of the
-database with `sqlite3 cicord.db ".backup cicord-backup.db"`; never copy `cicord.db` alone while
-the runtime is running (the WAL file holds recent writes). Run a single runtime per data
-dir and per set of bot tokens.
+Run a single runtime per data dir, per state database and per set of bot tokens: scheduled
+tasks are not claimed across processes, so two runtimes on one database would run them
+twice.
+
+### State store: SQLite or PostgreSQL
+
+The state store holds the resource map, plugin KV storage, scheduled tasks, sessions, the
+audit log, the sync history and the encrypted secret store.
+
+- **SQLite** (default): `cicord.db` in the data dir. Nothing to install or operate.
+- **PostgreSQL**: set `--database-url` or `CICORD_DATABASE_URL`. Useful when the database
+  is managed separately (backups, replication, monitoring) or the data dir is ephemeral.
+
+With PostgreSQL:
+
+- The **data dir is still needed and must persist**: `secret.key` (unless
+  `CICORD_SECRET_KEY` is set), `link.key` (unless `CICORD_LINK_SECRET`), `repo.git` for the
+  `embedded` provider, and the caches live there. The secrets stored in the database are
+  encrypted with `secret.key`: a runtime started with a fresh data dir against an existing
+  database refuses to start ("the encryption key does not match"). Set `CICORD_SECRET_KEY`
+  to make the data dir disposable apart from `repo.git` and `link.key`.
+- Create an empty database owned by the runtime's user; the schema is created and migrated
+  at startup (in a transaction, under an advisory lock), and a database whose schema is
+  newer than the binary is refused:
+
+  ```sql
+  CREATE ROLE cicord LOGIN PASSWORD '…';
+  CREATE DATABASE cicord OWNER cicord;
+  ```
+
+- The URL takes libpq/pgx options: `sslmode` (use `verify-full` across a network),
+  `pool_max_conns` (default: max(4, CPUs)), `search_path=<schema>` to use a dedicated schema
+  (create it first), `default_query_exec_mode=exec` behind PgBouncer in transaction mode.
+  The password can also come from `PGPASSWORD` or a `.pgpass` file instead of the URL.
+- PostgreSQL 14 or later (CI runs the state conformance suite on 19). Both backends pass the same suite
+  (`internal/state/statetest`) and behave the same, with two representation details:
+  text fields other than KV keys and JSON values (server keys, resource keys, IDs, scopes)
+  must be valid UTF-8 without NUL bytes (always true for keys from YAML), and audit/sync
+  IDs come from sequences, so under concurrent writes ID order is allocation order rather
+  than commit order. Times are stored as BIGINT unix nanoseconds, JSON payloads as BYTEA
+  (`convert_from(value, 'UTF8')::jsonb` to inspect them).
+- There is no migration tool between the two backends yet: switching starts from an empty
+  state (resources are adopted again by name; plugin data, history and stored secrets are
+  not carried over).
+
+### Backups and restore
+
+Back up the state store **and** the data dir's `secret.key` (or keep `CICORD_SECRET_KEY`
+safe), `link.key` and `repo.git`; stored secrets are useless without their key, and the key
+should not sit in the same backup as the database it protects.
+
+SQLite:
+
+- Offline: stop the runtime and copy the data dir.
+- Online: `sqlite3 cicord.db ".backup cicord-backup.db"`, then copy the key files and
+  `repo.git`. Never copy `cicord.db` alone while the runtime is running (the WAL file holds
+  recent writes).
+- Restore: stop the runtime, put the copy in place as `cicord.db`, delete any leftover
+  `cicord.db-wal` / `cicord.db-shm`, restore the key files, start.
+
+PostgreSQL:
+
+- Online, consistent: `pg_dump --format=custom --file=cicord.dump --dbname="$CICORD_DATABASE_URL"`
+  (add `--schema=<schema>` with a dedicated schema; `pg_dump` must be at least the server's
+  version). Managed databases' snapshots and point-in-time recovery work as well.
+- Restore: stop the runtime, create an empty database owned by the runtime's user,
+  `pg_restore --no-owner --role=cicord --dbname="$CICORD_DATABASE_URL" cicord.dump`, restore
+  `secret.key` / `link.key` / `repo.git` in the data dir, start. A dump of an older version
+  is migrated forward at startup; a dump made by a newer Cicord is refused by an older
+  binary.
 
 ## 3. Docker
 
@@ -124,6 +197,33 @@ services:
       - ./cicord.yaml:/repo/cicord.yaml:ro
 volumes:
   cicord-data:
+```
+
+With PostgreSQL, add the database and point the runtime at it (keep the data volume: it
+still holds `secret.key`, `link.key` and `repo.git`):
+
+```yaml
+services:
+  cicord:
+    # ... as above, plus:
+    environment:
+      CICORD_DATABASE_URL: postgres://cicord@postgres:5432/cicord?sslmode=disable
+      PGPASSWORD: ${CICORD_DB_PASSWORD}   # from .env; keeps the password out of the URL
+    depends_on:
+      postgres: { condition: service_healthy }
+  postgres:
+    image: postgres:19
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cicord
+      POSTGRES_PASSWORD: ${CICORD_DB_PASSWORD}
+    volumes: [cicord-pg:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "cicord"]
+      interval: 5s
+volumes:
+  cicord-data:
+  cicord-pg:
 ```
 
 Notes:

@@ -189,7 +189,7 @@ cicord adopt --server ma-commu --reset --yes
 
 ### `cicord serve`
 
-Run the runtime: follow the configured source (`cicord.yaml` `spec.source`), reconcile servers, run the bots and their plugins, and serve the HTTP API, the admin console (`/admin/`) and the portal (`/`). In a directory without `cicord.yaml`, it starts the setup wizard. `--data-dir` defaults to `.cicord-data`. Environment variables: see [Deploy](../../self-hosting/deploy/#environment-variables).
+Run the runtime: follow the configured source (`cicord.yaml` `spec.source`), reconcile servers, run the bots and their plugins, and serve the HTTP API, the admin console (`/admin/`) and the portal (`/`). In a directory without `cicord.yaml`, it starts the setup wizard. `--data-dir` defaults to `.cicord-data`. The state store is SQLite in the data directory, or PostgreSQL with `--database-url` / `CICORD_DATABASE_URL` (the data directory is still needed for its keys; see [Deploy](../../self-hosting/deploy/#state-store-sqlite-or-postgresql)). Environment variables: see [Deploy](../../self-hosting/deploy/#environment-variables).
 
 ```text
 cicord serve [dir] [flags]
@@ -199,6 +199,7 @@ cicord serve [dir] [flags]
 |---|---|
 | `--cors-origin` `strings` | external portal origin allowed with credentials (repeatable) |
 | `--data-dir` `string` | runtime state directory (database, caches, keys) |
+| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) |
 | `--listen` `string` | HTTP listen address (default ":7420") |
 | `--local` | serve the directory as-is, ignoring spec.source (no git) |
 | `--log-level` `string` | log level: debug \| info \| warn \| error (default "info") |
@@ -206,7 +207,7 @@ cicord serve [dir] [flags]
 
 ### `cicord dev`
 
-Run the runtime on a local working directory: every saved change becomes a new revision, admin console edits are written back to the files, and `POST /auth/dev-login` signs in as any user. With `--sim`, Discord is replaced by the in-memory simulator, seeded from the repository (servers, bots invited with Administrator, an `owner` and a few users). Without `--sim`, bot tokens come from the environment, then the secret store. In a directory without `cicord.yaml`, it starts the setup wizard; `--setup` makes that explicit. The data directory defaults to `<dir>/.cicord/dev`. **Never expose it on a network.**
+Run the runtime on a local working directory: every saved change becomes a new revision, admin console edits are written back to the files, and `POST /auth/dev-login` signs in as any user. With `--sim`, Discord is replaced by the in-memory simulator, seeded from the repository (servers, bots invited with Administrator, an `owner` and a few users). Without `--sim`, bot tokens come from the environment, then the secret store. In a directory without `cicord.yaml`, it starts the setup wizard; `--setup` makes that explicit. The data directory defaults to `<dir>/.cicord/dev`; `--database-url` / `CICORD_DATABASE_URL` use PostgreSQL for the state, except with `--sim`, whose state always stays in memory. **Never expose it on a network.**
 
 ```text
 cicord dev [dir] [flags]
@@ -216,6 +217,7 @@ cicord dev [dir] [flags]
 |---|---|
 | `--cors-origin` `strings` | external portal origin allowed with credentials (repeatable) |
 | `--data-dir` `string` | runtime state directory (database, caches, keys) |
+| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) |
 | `--listen` `string` | HTTP listen address (default "127.0.0.1:7420") |
 | `--log-level` `string` | log level: debug \| info \| warn \| error (default "info") |
 | `--public-url` `string` | public URL of the runtime (OAuth redirects, portal links); default http://&lt;listen&gt; |
@@ -277,7 +279,7 @@ cicord version [flags]
 
 ## Secrets
 
-Manage the encrypted secret store of a data directory (bot tokens, `CICORD_DISCORD_CLIENT_SECRET`, `CICORD_GIT_TOKEN`, registry tokens). Environment variables always take precedence over stored secrets. Values are read from stdin and never printed; the runtime picks a changed bot token up on its next restart. Every `cicord secret` command takes `--data-dir` (default `.cicord-data`). See [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
+Manage the encrypted secret store of a data directory (bot tokens, `CICORD_DISCORD_CLIENT_SECRET`, `CICORD_GIT_TOKEN`, registry tokens). Environment variables always take precedence over stored secrets. Values are read from stdin and never printed; the runtime picks a changed bot token up on its next restart. Every `cicord secret` command takes `--data-dir` (default `.cicord-data`, where `secret.key` lives) and, for a runtime on PostgreSQL, `--database-url` (default `CICORD_DATABASE_URL`). See [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
 
 ### `cicord secret ls`
 
@@ -289,7 +291,8 @@ cicord secret ls [flags]
 
 | Flag | Description |
 |---|---|
-| `--data-dir` `string` | runtime state directory (default ".cicord-data") (inherited) |
+| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") (inherited) |
+| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) (inherited) |
 
 ### `cicord secret set`
 
@@ -301,7 +304,8 @@ cicord secret set NAME [flags]
 
 | Flag | Description |
 |---|---|
-| `--data-dir` `string` | runtime state directory (default ".cicord-data") (inherited) |
+| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") (inherited) |
+| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) (inherited) |
 
 ```sh
 cicord secret set DISCORD_TOKEN_CICORD --data-dir /data   # paste the token, then Enter
@@ -317,7 +321,8 @@ cicord secret rm NAME [flags]
 
 | Flag | Description |
 |---|---|
-| `--data-dir` `string` | runtime state directory (default ".cicord-data") (inherited) |
+| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") (inherited) |
+| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) (inherited) |
 
 ### `cicord secret rotate-key`
 
@@ -329,7 +334,8 @@ cicord secret rotate-key [flags]
 
 | Flag | Description |
 |---|---|
-| `--data-dir` `string` | runtime state directory (default ".cicord-data") (inherited) |
+| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") (inherited) |
+| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) (inherited) |
 
 ## Plugins
 

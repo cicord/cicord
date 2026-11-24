@@ -9,7 +9,8 @@ import { Tabs, TabItem } from "@astrojs/starlight/components";
 the HTTP API, the admin console (`/admin/`) and the default community portal (`/`). It needs a
 data directory and outbound access to Discord (and to your git host). There is no database
 server, no Node.js and no `git` binary to install: git is implemented in Go and SQLite is a
-pure Go driver.
+pure Go driver. If you prefer, a [PostgreSQL database](#state-store-sqlite-or-postgresql)
+can hold the runtime state instead of SQLite.
 
 :::danger[Never deploy `cicord dev`]
 `cicord dev` is for local development only: it lets anyone who can reach it sign in as any user
@@ -19,7 +20,7 @@ pure Go driver.
 ## `cicord serve`
 
 ```text
-cicord serve [dir] [--data-dir DIR] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local]
+cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local]
 ```
 
 - **`dir`** (default `.`) must contain `cicord.yaml`. Its `spec.source` says what to follow:
@@ -40,6 +41,9 @@ cicord serve [dir] [--data-dir DIR] [--listen ADDR] [--public-url URL] [--cors-o
   external portals allowed to call the API **with credentials** (cookie sessions).
 - **`--data-dir`** defaults to `.cicord-data`, relative to the working directory. With a local
   source inside the repository, it must be under `<repo>/.cicord/`.
+- **`--database-url`** (env `CICORD_DATABASE_URL`): PostgreSQL connection URL of the
+  [state store](#state-store-sqlite-or-postgresql). Unset: SQLite in the data directory, which
+  is needed either way. The URL is never logged.
 - **`--log-level`**: `debug`, `info` (default), `warn` or `error`.
 
 Started in a directory without `cicord.yaml`, `cicord serve` enters [setup mode](../../getting-started/quick-start/)
@@ -58,6 +62,7 @@ and prints a one-time link to the setup wizard.
 | `CICORD_LINK_SECRET`                       | Signing key of portal links. Default: generated once in the data directory (`link.key`).                                                                           |
 | `CICORD_SECRET_KEY`                        | Key of the encrypted secret store: base64 or hex of exactly 32 bytes (`openssl rand -base64 32`). Default: `secret.key`, generated in the data directory.          |
 | `CICORD_PUBLIC_URL`, `CICORD_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`.                                                                                                                    |
+| `CICORD_DATABASE_URL`                      | Default of `--database-url` (also read by `cicord dev` and `cicord secret`): use PostgreSQL for the state store. Unset: SQLite in the data directory.              |
 | `CICORD_CACHE_DIR`                         | Plugin download cache. Default: the user cache directory; the Docker image sets `/data/cache`.                                                                     |
 | `CICORD_ALLOW_PRIVATE_REGISTRIES`          | `true` lets the Store and plugin downloads reach private networks.                                                                                                 |
 | `CICORD_REGISTRY_<NAME>_TOKEN`             | Access token of a private registry (see [Publishing](../../plugins/publishing/#private-registries)).                                                               |
@@ -71,19 +76,85 @@ the application used for login.
 
 ## Data directory
 
-| Path                                             | Content                                                                                                  | Back up?           |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------ |
-| `cicord.db` (+ `cicord.db-wal`, `cicord.db-shm`) | SQLite (WAL mode): resource map, plugin storage, sessions, audit log, sync history, encrypted secrets.   | **Yes**            |
-| `secret.key`                                     | Key of the secret store (when `CICORD_SECRET_KEY` is not set).                                           | **Yes**            |
-| `link.key`                                       | Portal link signing key (when `CICORD_LINK_SECRET` is not set). Losing it invalidates outstanding links. | Yes                |
-| `repo.git`                                       | Bare repository of the `embedded` provider: this **is** your configuration.                              | **Yes**            |
-| `source/`                                        | Clone of the git source.                                                                                 | No (fetched again) |
-| `writeback/`                                     | Work tree used to commit and push admin console edits.                                                   | No                 |
-| `snapshots/`                                     | Snapshots of a local source.                                                                             | No                 |
-| `cache/` (Docker image)                          | Downloaded plugins.                                                                                      | No                 |
+| Path                                             | Content                                                                                                                        | Back up?           |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
+| `cicord.db` (+ `cicord.db-wal`, `cicord.db-shm`) | SQLite (WAL mode): resource map, plugin storage, sessions, audit log, sync history, encrypted secrets. Absent with PostgreSQL. | **Yes**            |
+| `secret.key`                                     | Key of the secret store (when `CICORD_SECRET_KEY` is not set).                                                                 | **Yes**            |
+| `link.key`                                       | Portal link signing key (when `CICORD_LINK_SECRET` is not set). Losing it invalidates outstanding links.                       | Yes                |
+| `repo.git`                                       | Bare repository of the `embedded` provider: this **is** your configuration.                                                    | **Yes**            |
+| `source/`                                        | Clone of the git source.                                                                                                       | No (fetched again) |
+| `writeback/`                                     | Work tree used to commit and push admin console edits.                                                                         | No                 |
+| `snapshots/`                                     | Snapshots of a local source.                                                                                                   | No                 |
+| `cache/` (Docker image)                          | Downloaded plugins.                                                                                                            | No                 |
 
-Run **a single runtime per data directory and per set of bot tokens**. Backups are covered in
+Run **a single runtime per data directory, per state database and per set of bot tokens**
+(scheduled tasks are not claimed across processes). Backups are covered in
 [Backups and secrets](../backups-and-secrets/).
+
+## State store: SQLite or PostgreSQL
+
+The state store holds the resource map, plugin storage, scheduled tasks, sessions, the audit
+log, the sync history and the encrypted secrets.
+
+- **SQLite** (default): `cicord.db` in the data directory. Nothing to install or operate.
+- **PostgreSQL** (14 or later): set `--database-url` or `CICORD_DATABASE_URL`, for example
+  `postgres://cicord@db.internal:5432/cicord?sslmode=verify-full`. Useful when the database is
+  managed separately (backups, replication, monitoring).
+
+With PostgreSQL:
+
+- **Keep the data directory.** It still holds `secret.key` (unless `CICORD_SECRET_KEY` is set),
+  `link.key` (unless `CICORD_LINK_SECRET` is set), `repo.git` for the embedded provider and the
+  caches. The secrets in the database are encrypted with that key: a runtime started with a new
+  data directory against an existing database refuses to start. Setting `CICORD_SECRET_KEY`
+  removes that dependency.
+- **Create an empty database owned by the runtime's user.** Cicord creates and migrates its
+  tables at startup (in one transaction, under an advisory lock) and refuses a database whose
+  schema is newer than the binary.
+
+  ```sql
+  CREATE ROLE cicord LOGIN PASSWORD '…';
+  CREATE DATABASE cicord OWNER cicord;
+  ```
+
+- **Connection options** go in the URL: `sslmode` (use `verify-full` across a network),
+  `pool_max_conns`, `search_path=<schema>` for a dedicated schema (create it first),
+  `default_query_exec_mode=exec` behind PgBouncer in transaction mode. The password can come
+  from `PGPASSWORD` or `~/.pgpass` instead of the URL. The startup log shows
+  `postgres://user@host:port/database`, never the password.
+- **Same behavior as SQLite**: both backends pass the same conformance suite (CI runs it on
+  PostgreSQL 19). Text fields other than plugin storage keys and values (server keys, resource
+  keys, IDs) must be valid UTF-8 without NUL bytes, which keys from YAML always are; audit and
+  sync entries are ordered by ID, allocated from a sequence.
+- **No conversion tool** between the backends yet: switching starts from an empty state
+  (Discord resources are adopted again by name; plugin data, history and stored secrets are
+  not carried over).
+
+With Compose, add a `postgres` service and point the runtime at it:
+
+```yaml title="compose.yaml (excerpt)"
+services:
+  cicord:
+    # ... as above, plus:
+    environment:
+      CICORD_DATABASE_URL: postgres://cicord@postgres:5432/cicord?sslmode=disable
+      PGPASSWORD: ${CICORD_DB_PASSWORD} # from .env, keeps the password out of the URL
+    depends_on:
+      postgres: { condition: service_healthy }
+  postgres:
+    image: postgres:19
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cicord
+      POSTGRES_PASSWORD: ${CICORD_DB_PASSWORD}
+    volumes: [cicord-pg:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "cicord"]
+      interval: 5s
+volumes:
+  cicord-data:
+  cicord-pg:
+```
 
 ## Docker
 

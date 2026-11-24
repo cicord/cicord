@@ -27,7 +27,6 @@ import (
 	"github.com/cicord/cicord/internal/sim"
 	"github.com/cicord/cicord/internal/source"
 	"github.com/cicord/cicord/internal/state"
-	"github.com/cicord/cicord/internal/state/sqlite"
 	"github.com/cicord/cicord/internal/webui"
 	"github.com/cicord/cicord/internal/writeback"
 )
@@ -335,7 +334,7 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
 	}
-	store, err := sqlite.Open(filepath.Join(dataDir, "cicord.db"))
+	store, err := openStateStore(ctx, log, dataDir, databaseURL(f.databaseURL))
 	if err != nil {
 		return err
 	}
@@ -408,9 +407,9 @@ func runDevSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absDir
 		err   error
 	)
 	if useSim {
-		store, err = sqlite.Open(":memory:") // the simulator lives as long as the process
+		store, err = openSimStore(log, f) // the simulator lives as long as the process
 	} else {
-		store, err = sqlite.Open(filepath.Join(f.dataDir, "cicord.db"))
+		store, err = openStateStore(ctx, log, f.dataDir, databaseURL(f.databaseURL))
 	}
 	if err != nil {
 		return err

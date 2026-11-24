@@ -24,7 +24,6 @@ import (
 	"github.com/cicord/cicord/internal/sim"
 	"github.com/cicord/cicord/internal/source"
 	"github.com/cicord/cicord/internal/state"
-	"github.com/cicord/cicord/internal/state/sqlite"
 	"github.com/cicord/cicord/internal/version"
 	"github.com/cicord/cicord/internal/webui"
 	"github.com/cicord/cicord/internal/writeback"
@@ -107,9 +106,9 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	// The simulator's IDs are new on every run: its state must not outlive the process.
 	var store state.Store
 	if useSim {
-		store, err = sqlite.Open(":memory:")
+		store, err = openSimStore(log, f)
 	} else {
-		store, err = sqlite.Open(filepath.Join(f.dataDir, "cicord.db"))
+		store, err = openStateStore(ctx, log, f.dataDir, databaseURL(f.databaseURL))
 	}
 	if err != nil {
 		return err
