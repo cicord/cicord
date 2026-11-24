@@ -152,3 +152,19 @@ func TestStackOverflowIsRangeError(t *testing.T) {
 		t.Fatalf("r = %q, err = %v", r, err)
 	}
 }
+
+// TestKillStopsNativeBuiltins: a loop of heavy native calls is too short to reach
+// QuickJS's interrupt check; Kill stops it through the function-entry kill checks.
+func TestKillStopsNativeBuiltins(t *testing.T) {
+	v := newTestVM(t, Config{}, nil)
+	time.AfterFunc(50*time.Millisecond, v.Interrupt)
+	time.AfterFunc(100*time.Millisecond, v.Kill)
+	start := time.Now()
+	_, _, err := v.Call(context.Background(), "run", `const s = "ab".repeat(1e6); for (let i = 0; i < 1e6; i++) s.indexOf("zz")`)
+	if !errors.Is(err, ErrKilled) {
+		t.Fatalf("err = %v", err)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("kill took %s", d)
+	}
+}

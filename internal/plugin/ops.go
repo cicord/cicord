@@ -185,7 +185,7 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 		i.post(func() {
 			i.inflight--
 			rerr := i.enter(inv, i.limits.SyncBudget, func(ctx context.Context) error {
-				_, err := i.vm.callAPI(ctx, "settle", sid, status, payload)
+				_, err := i.vm.runAPI(ctx, "settle", sid, status, payload)
 				return err
 			})
 			if rerr != nil && !isInterrupt(rerr) && !errors.Is(rerr, ErrCrashed) {

@@ -39,6 +39,7 @@ docker run --rm --platform "$PLATFORM" --network none \
   -v "$work/src:/src:ro" -v "$work:/out" -w /src "$WASI_SDK_IMAGE" \
   /opt/wasi-sdk/bin/clang --target=wasm32-wasip1 -mexec-model=reactor \
   -O2 -std=gnu11 -ffile-prefix-map=/src=quickjs -fno-ident \
+  -finstrument-function-entry-bare \
   -D_GNU_SOURCE -DCONFIG_VERSION="\"${QJS_VERSION}\"" \
   -Wno-unused-parameter -Wno-sign-compare -Wno-implicit-fallthrough \
   -Wl,--stack-first -Wl,-z,stack-size=${STACK_SIZE} \

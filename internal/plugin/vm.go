@@ -2,12 +2,14 @@ package plugin
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cicord/cicord/internal/build"
@@ -106,16 +108,74 @@ func newVM(ctx context.Context, h host, memory int64) (*vm, error) {
 		}
 		return qjs.Reply{Undefined: true}
 	}
+	bc, err := preludeBytecode()
+	if err != nil {
+		return nil, err
+	}
 	q, err := qjs.New(ctx, qjs.Config{MemoryLimit: memory}, hostFn)
 	if err != nil {
 		return nil, fmt.Errorf("plugin: create VM: %w", err)
 	}
 	v.q = q
-	if err := q.Prelude(ctx, "cicord:sdk.js", preludeSource); err != nil {
+	if err := q.PreludeBytecode(ctx, bc); err != nil {
 		q.Close()
 		return nil, fmt.Errorf("plugin: load SDK prelude: %w", err)
 	}
 	return v, nil
+}
+
+var (
+	preludeOnce sync.Once
+	preludeBC   *qjs.Bytecode
+	preludeErr  error
+)
+
+// preludeBytecode compiles the SDK prelude once per process.
+func preludeBytecode() (*qjs.Bytecode, error) {
+	preludeOnce.Do(func() {
+		ctx := context.Background()
+		q, err := qjs.New(ctx, qjs.Config{}, func(int32, string, string, float64) qjs.Reply { return qjs.Reply{Undefined: true} })
+		if err != nil {
+			preludeErr = fmt.Errorf("plugin: create VM: %w", err)
+			return
+		}
+		defer q.Close()
+		preludeBC, preludeErr = q.Compile(ctx, "cicord:sdk.js", preludeSource, true)
+		if preludeErr != nil {
+			preludeErr = fmt.Errorf("plugin: compile SDK prelude: %w", preludeErr)
+		}
+	})
+	return preludeBC, preludeErr
+}
+
+// bundleCache keeps the bytecode of recently loaded bundles (Inspect then every instance
+// of the plugin compile a bundle once). Bounded: `cicord dev` rebuilds on every change.
+var bundleCache = struct {
+	sync.Mutex
+	m     map[[32]byte]*qjs.Bytecode
+	order [][32]byte
+}{m: map[[32]byte]*qjs.Bytecode{}}
+
+const bundleCacheSize = 64
+
+func cachedBundle(key [32]byte) *qjs.Bytecode {
+	bundleCache.Lock()
+	defer bundleCache.Unlock()
+	return bundleCache.m[key]
+}
+
+func cacheBundle(key [32]byte, bc *qjs.Bytecode) {
+	bundleCache.Lock()
+	defer bundleCache.Unlock()
+	if _, ok := bundleCache.m[key]; ok {
+		return
+	}
+	if len(bundleCache.order) >= bundleCacheSize {
+		delete(bundleCache.m, bundleCache.order[0])
+		bundleCache.order = bundleCache.order[1:]
+	}
+	bundleCache.m[key] = bc
+	bundleCache.order = append(bundleCache.order, key)
 }
 
 func (v *vm) close() { v.q.Close() }
@@ -184,10 +244,28 @@ func (v *vm) callAPI(ctx context.Context, fn string, args ...string) (string, er
 	return r, nil
 }
 
+// runAPI is callAPI, and the microtasks it queues run before it returns (one wasm call).
+func (v *vm) runAPI(ctx context.Context, fn string, args ...string) (string, error) {
+	r, _, err := v.q.Run(ctx, fn, args...)
+	if err != nil {
+		return "", v.asScriptError(err)
+	}
+	return r, nil
+}
+
 // loadPlugin evaluates the bundle and checks its default export (kept by the prelude).
 func (v *vm) loadPlugin(ctx context.Context, code string) error {
 	v.code, v.smap = code, nil
-	if err := v.q.Eval(ctx, bundleName, code); err != nil {
+	key := sha256.Sum256([]byte(code))
+	bc := cachedBundle(key)
+	if bc == nil {
+		var err error
+		if bc, err = v.q.Compile(ctx, bundleName, code, false); err != nil {
+			return fmt.Errorf("plugin: evaluate module: %w", v.asScriptError(err))
+		}
+		cacheBundle(key, bc)
+	}
+	if err := v.q.EvalBytecode(ctx, bc); err != nil {
 		return fmt.Errorf("plugin: evaluate module: %w", v.asScriptError(err))
 	}
 	st, err := v.callAPI(ctx, "loadPlugin", build.GlobalName)

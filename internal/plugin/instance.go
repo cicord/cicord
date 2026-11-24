@@ -647,6 +647,9 @@ func (i *Instance) turn(inv *invocation, budget time.Duration, fn func(ctx conte
 			}
 		}
 	}
+	if jerr := q.TakeJobError(); jerr != nil {
+		i.logger.Error("uncaught error in plugin code", "error", i.vm.asScriptError(jerr).Error())
+	}
 	if q.Dead() == nil && !isInterrupt(err) && q.Rejections() {
 		i.flushRejections(ctx)
 	}
@@ -834,7 +837,7 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		i.invs[inv.id] = inv
 		i.invMu.Unlock()
 		err := i.enter(inv, i.limits.SyncBudget, func(ctx context.Context) error {
-			handled, err := i.vm.callAPI(ctx, "dispatch", strconv.FormatUint(inv.id, 10), kind, name, dataJSON)
+			handled, err := i.vm.runAPI(ctx, "dispatch", strconv.FormatUint(inv.id, 10), kind, name, dataJSON)
 			if err == nil && handled != "1" {
 				i.forget(inv)
 				inv.settle(invResult{err: fmt.Errorf("%w for %s %q", ErrNoHandler, kind, name)})
@@ -1078,7 +1081,7 @@ func (i *Instance) fireTimer(id int64) {
 	if t.inv.alive() != nil {
 		delete(i.timers, id)
 		_ = i.enter(t.inv, i.limits.SyncBudget, func(ctx context.Context) error {
-			_, err := i.vm.callAPI(ctx, "dropTimer", sid)
+			_, err := i.vm.runAPI(ctx, "dropTimer", sid)
 			return err
 		})
 		return
@@ -1091,7 +1094,7 @@ func (i *Instance) fireTimer(id int64) {
 		keep = "1"
 	}
 	err := i.enter(t.inv, i.limits.SyncBudget, func(ctx context.Context) error {
-		_, err := i.vm.callAPI(ctx, "fireTimer", sid, keep)
+		_, err := i.vm.runAPI(ctx, "fireTimer", sid, keep)
 		return err
 	})
 	if err != nil && !isInterrupt(err) && !errors.Is(err, ErrCrashed) {

@@ -8,8 +8,17 @@
 // copied with cicord.host_take into a buffer the guest allocated.
 //
 // Go -> guest calls (cq_*) all return a status word: the low byte is the result code
-// (CQ_*), the upper bits are flags (CQ_F_*). Output strings are described by the `out`
-// struct, whose address Go reads once (cq_state).
+// (CQ_*), the upper bits are flags (CQ_F_*). Their string arguments are pulled with
+// cicord.args_take (one wasm call per turn: wazero starts a watcher goroutine per call).
+// Output strings are described by the `out` struct, whose address Go reads once
+// (cq_state).
+//
+// CPU: QuickJS's interrupt handler asks Go (cicord.interrupt) whether to stop: 1 stops the
+// JS code with an uncatchable error (soft stop, the VM stays usable), 2 kills the VM (the
+// guest traps). Native builtins do not all reach the interrupt handler, so the whole
+// engine is also built with -finstrument-function-entry-bare: every C function entry
+// counts down to a kill check, and a builtin stuck in a long loop traps within a few
+// thousand calls of the kill (see scripts/build-quickjs-wasm.sh).
 //
 // Memory: JS allocations go through malloc functions that enforce the limit given to
 // cq_init and set a sticky out-of-memory flag when it is hit (plugin code can catch the
@@ -32,6 +41,8 @@
 IMPORT("host_call") int32_t host_call(int32_t kind, const char *a, int32_t alen, const char *b, int32_t blen, double n);
 IMPORT("host_take") void host_take(char *dst);
 IMPORT("interrupt") int32_t host_interrupt(void);
+// args_take copies the pending call arguments (as many bytes as the call announced).
+IMPORT("args_take") void args_take(char *dst);
 
 enum {
 	CQ_OK = 0,          // success, result is undefined
@@ -44,6 +55,7 @@ enum {
 	CQ_F_OOM = 1 << 8,         // the memory limit was hit (sticky)
 	CQ_F_JOBS = 1 << 9,        // jobs (microtasks) are pending
 	CQ_F_REJECTIONS = 1 << 10, // unhandled rejections are waiting in the prelude
+	CQ_F_JOBERR = 1 << 11,     // an exception escaped a job (out.jptr holds its errInfo)
 };
 
 // Host call kinds (keep in sync with internal/plugin/qjs).
@@ -55,7 +67,25 @@ enum {
 static struct {
 	char *ptr;
 	int32_t len;
+	char *jptr; // last exception that escaped a job
+	int32_t jlen;
 } out;
+
+// Answers of cicord.interrupt.
+enum { I_RUN = 0, I_STOP = 1, I_KILL = 2 };
+
+// Function entries between two kill checks.
+#define KILL_CHECK_EVERY 4096
+
+static int32_t kill_countdown = KILL_CHECK_EVERY;
+
+__attribute__((no_instrument_function)) void __cyg_profile_func_enter_bare(void) {
+	if (--kill_countdown > 0)
+		return;
+	kill_countdown = KILL_CHECK_EVERY;
+	if (host_interrupt() == I_KILL)
+		__builtin_trap();
+}
 
 static JSRuntime *rt;
 static JSContext *ctx;
@@ -133,20 +163,20 @@ static const JSMallocFunctions mfuncs = {m_calloc, m_malloc, m_free, m_realloc, 
 static char *buf;
 static size_t buf_cap;
 
-EXPORT("cq_buf") char *cq_buf(int32_t n) {
-	if (n < 0)
-		return NULL;
-	if ((size_t)n + 1 > buf_cap) {
-		size_t cap = (size_t)n + 1;
-		char *b = realloc(buf, cap);
+// take_args pulls n bytes of call arguments into buf (plus room for a terminator).
+static bool take_args(size_t n) {
+	if (n + 1 > buf_cap) {
+		char *b = realloc(buf, n + 1);
 		if (!b) {
 			oom = 1;
-			return NULL;
+			return false;
 		}
 		buf = b;
-		buf_cap = cap;
+		buf_cap = n + 1;
 	}
-	return buf;
+	args_take(buf);
+	buf[n] = 0;
+	return true;
 }
 
 EXPORT("cq_state") void *cq_state(void) { return &out; }
@@ -260,7 +290,10 @@ static int32_t result(JSValue v) {
 static int interrupt_handler(JSContext *c, void *opaque) {
 	(void)c;
 	(void)opaque;
-	if (oom || host_interrupt()) {
+	int32_t r = host_interrupt();
+	if (r == I_KILL)
+		__builtin_trap();
+	if (oom || r) {
 		fired = 1;
 		return 1;
 	}
@@ -309,6 +342,8 @@ static const char *arg_string(JSContext *c, JSValueConst v, size_t *len) {
 // host.raw(kind, a, b, n): string | undefined | {e: errorJSON}
 static JSValue js_host_raw(JSContext *c, JSValueConst this_val, int argc, JSValueConst *argv) {
 	(void)this_val;
+	if (oom)
+		return JS_ThrowOutOfMemory(c); // the VM is doomed: nothing reaches the host anymore
 	int32_t kind;
 	double n = 0;
 	if (argc < 4 || JS_ToInt32(c, &kind, argv[0]) || JS_ToFloat64(c, &n, argv[3]))
@@ -398,7 +433,7 @@ EXPORT("cq_init") int32_t cq_init(int32_t mem, int32_t stack) {
 // script_name copies the script name stored after the source (buf[len+1:len+1+name_len])
 // and NUL-terminates the source. It returns false when the layout does not fit buf.
 static bool script_name(int32_t len, int32_t name_len, char *name, size_t size) {
-	if (!ctx || len < 0 || name_len < 0 || (size_t)len + 1 + (size_t)name_len > buf_cap)
+	if (!ctx || len < 0 || name_len < 0 || !take_args((size_t)len + 1 + (size_t)name_len))
 		return false;
 	size_t nl = (size_t)name_len < size - 1 ? (size_t)name_len : size - 1;
 	memcpy(name, buf + len + 1, nl);
@@ -407,16 +442,9 @@ static bool script_name(int32_t len, int32_t name_len, char *name, size_t size) 
 	return true;
 }
 
-// cq_prelude evaluates the prelude (an expression evaluating to a function; layout as for
-// cq_eval), calls it with the host object and keeps the returned API object.
-EXPORT("cq_prelude") int32_t cq_prelude(int32_t len, int32_t name_len) {
-	fired = 0;
-	char name[128];
-	if (!script_name(len, name_len, name, sizeof(name)))
-		return CQ_FAILED;
-	JSValue fn = JS_Eval(ctx, buf, (size_t)len, name, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_STRICT);
-	if (JS_IsException(fn))
-		return flags(exception());
+// install_prelude calls the prelude function fn (consumed) with the host object and keeps
+// the returned API object.
+static int32_t install_prelude(JSValue fn) {
 	JSValue host = JS_NewObject(ctx);
 	JS_SetPropertyStr(ctx, host, "raw", JS_NewCFunction(ctx, js_host_raw, "raw", 4));
 	JS_SetPropertyStr(ctx, host, "parseJSON", JS_NewCFunction(ctx, js_host_parse, "parseJSON", 1));
@@ -436,6 +464,81 @@ EXPORT("cq_prelude") int32_t cq_prelude(int32_t len, int32_t name_len) {
 	return flags(CQ_OK);
 }
 
+// cq_prelude evaluates the prelude (an expression evaluating to a function; layout as for
+// cq_eval), calls it with the host object and keeps the returned API object.
+EXPORT("cq_prelude") int32_t cq_prelude(int32_t len, int32_t name_len) {
+	fired = 0;
+	char name[128];
+	if (!script_name(len, name_len, name, sizeof(name)))
+		return CQ_FAILED;
+	JSValue fn = JS_Eval(ctx, buf, (size_t)len, name, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_STRICT);
+	if (JS_IsException(fn))
+		return flags(exception());
+	return install_prelude(fn);
+}
+
+// run_bytecode evaluates bytecode produced by cq_compile (buf[0:len]). The bytecode
+// always comes from cq_compile in a VM of the same quickjs.wasm (never from plugins).
+static JSValue run_bytecode(int32_t len) {
+	if (len <= 0 || !take_args((size_t)len))
+		return JS_ThrowTypeError(ctx, "bad bytecode buffer");
+	JSValue fn = JS_ReadObject(ctx, (const uint8_t *)buf, (size_t)len, JS_READ_OBJ_BYTECODE);
+	if (JS_IsException(fn))
+		return fn;
+	return JS_EvalFunction(ctx, fn);
+}
+
+// cq_prelude_bc is cq_prelude for bytecode.
+EXPORT("cq_prelude_bc") int32_t cq_prelude_bc(int32_t len) {
+	fired = 0;
+	if (!ctx)
+		return CQ_FAILED;
+	JSValue fn = run_bytecode(len);
+	if (JS_IsException(fn))
+		return flags(exception());
+	return install_prelude(fn);
+}
+
+// cq_eval_bc evaluates a script compiled by cq_compile.
+EXPORT("cq_eval_bc") int32_t cq_eval_bc(int32_t len) {
+	fired = 0;
+	if (!ctx)
+		return CQ_FAILED;
+	JSValue v = run_bytecode(len);
+	if (JS_IsException(v))
+		return flags(exception());
+	JS_FreeValue(ctx, v);
+	return flags(CQ_OK);
+}
+
+// cq_compile compiles a global script (layout as for cq_eval; strict mode when strict is
+// set) without running it; out holds the bytecode.
+EXPORT("cq_compile") int32_t cq_compile(int32_t len, int32_t name_len, int32_t strict) {
+	fired = 0;
+	char name[128];
+	if (!script_name(len, name_len, name, sizeof(name)))
+		return CQ_FAILED;
+	int fl = JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY | (strict ? JS_EVAL_FLAG_STRICT : 0);
+	JSValue fn = JS_Eval(ctx, buf, (size_t)len, name, fl);
+	if (JS_IsException(fn))
+		return flags(exception());
+	size_t size;
+	uint8_t *bc = JS_WriteObject(ctx, &size, fn, JS_WRITE_OBJ_BYTECODE);
+	JS_FreeValue(ctx, fn);
+	if (!bc)
+		return flags(exception());
+	char *p = malloc(size + 1);
+	if (!p) {
+		js_free(ctx, bc);
+		oom = 1;
+		return flags(CQ_FAILED);
+	}
+	memcpy(p, bc, size);
+	js_free(ctx, bc);
+	set_out(p, (int32_t)size);
+	return flags(CQ_STRING);
+}
+
 // cq_eval evaluates a global script: buf[0:len] is the source, buf[len+1:len+1+name_len]
 // the script name.
 EXPORT("cq_eval") int32_t cq_eval(int32_t len, int32_t name_len) {
@@ -450,21 +553,55 @@ EXPORT("cq_eval") int32_t cq_eval(int32_t len, int32_t name_len) {
 	return flags(CQ_OK);
 }
 
-// cq_call calls api[name](...args) where buf holds name then the argc string arguments
-// back to back; lens are their byte lengths (name first). Up to 5 arguments.
-EXPORT("cq_call") int32_t cq_call(int32_t argc, int32_t l0, int32_t l1, int32_t l2, int32_t l3, int32_t l4, int32_t l5) {
+// drain_jobs runs pending jobs (microtasks) until none is left, an interrupt or the
+// memory limit. An exception escaping a job (an uncatchable error, which QuickJS-ng does
+// not turn into a rejection) does not stop the drain; the last one is kept in out.jptr
+// (CQ_EXCEPTION is returned).
+static int32_t drain_jobs(void) {
+	int32_t status = CQ_OK;
+	for (;;) {
+		JSContext *c;
+		int r = JS_ExecutePendingJob(rt, &c);
+		if (r == 0)
+			break;
+		if (r < 0) {
+			char *sp = out.ptr;
+			int32_t sl = out.len;
+			out.ptr = NULL;
+			out.len = 0;
+			int32_t code = exception();
+			free(out.jptr);
+			out.jptr = out.ptr;
+			out.jlen = out.len;
+			out.ptr = sp;
+			out.len = sl;
+			if (code == CQ_INTERRUPTED || oom)
+				return CQ_INTERRUPTED;
+			status = CQ_EXCEPTION;
+		}
+		if (oom)
+			return CQ_INTERRUPTED;
+	}
+	return status;
+}
+
+// cq_call calls api[name](...args): the arguments (name first, then argc strings) are
+// pulled back to back, lens are their byte lengths. Up to 5 arguments. With drain set,
+// the jobs queued by the call run in the same wasm call (CQ_F_JOBERR reports an exception
+// that escaped one).
+EXPORT("cq_call") int32_t cq_call(int32_t argc, int32_t l0, int32_t l1, int32_t l2, int32_t l3, int32_t l4, int32_t l5, int32_t drain) {
 	fired = 0;
 	int32_t lens[6] = {l0, l1, l2, l3, l4, l5};
 	if (!ctx || JS_IsUndefined(api) || argc < 0 || argc > 5)
 		return CQ_FAILED;
-	size_t off = 0;
+	size_t total = 0;
 	for (int i = 0; i <= argc; i++) {
 		if (lens[i] < 0)
 			return CQ_FAILED;
-		off += (size_t)lens[i];
+		total += (size_t)lens[i];
 	}
-	if (off > buf_cap)
-		return CQ_FAILED;
+	if (!take_args(total))
+		return flags(CQ_FAILED);
 	JSAtom fname = JS_NewAtomLen(ctx, buf, (size_t)l0);
 	if (fname == JS_ATOM_NULL)
 		return flags(exception());
@@ -476,7 +613,7 @@ EXPORT("cq_call") int32_t cq_call(int32_t argc, int32_t l0, int32_t l1, int32_t 
 		return flags(CQ_FAILED);
 	}
 	JSValue args[5];
-	off = (size_t)l0;
+	size_t off = (size_t)l0;
 	int built = 0;
 	for (int i = 0; i < argc; i++) {
 		args[i] = JS_NewStringLen(ctx, buf + off, (size_t)lens[i + 1]);
@@ -493,32 +630,22 @@ EXPORT("cq_call") int32_t cq_call(int32_t argc, int32_t l0, int32_t l1, int32_t 
 	for (int i = 0; i < built; i++)
 		JS_FreeValue(ctx, args[i]);
 	JS_FreeValue(ctx, fn);
-	return flags(result(v));
+	int32_t code = result(v);
+	if (!drain || (code != CQ_OK && code != CQ_STRING) || oom)
+		return flags(code);
+	int32_t jc = drain_jobs();
+	if (jc == CQ_INTERRUPTED)
+		return flags(CQ_INTERRUPTED);
+	return flags(code) | (jc == CQ_EXCEPTION ? CQ_F_JOBERR : 0);
 }
 
-// cq_jobs runs pending jobs (microtasks) until none is left, an interrupt or the memory
-// limit. An exception escaping a job (an uncatchable error, which QuickJS-ng does not turn
-// into a rejection) does not stop the drain; the last one is reported (CQ_EXCEPTION).
+// cq_jobs runs pending jobs (see drain_jobs); an escaped exception is reported as
+// CQ_EXCEPTION with its errInfo in out.jptr.
 EXPORT("cq_jobs") int32_t cq_jobs(void) {
 	fired = 0;
 	if (!ctx)
 		return CQ_FAILED;
-	int32_t status = CQ_OK;
-	for (;;) {
-		JSContext *c;
-		int r = JS_ExecutePendingJob(rt, &c);
-		if (r == 0)
-			break;
-		if (r < 0) {
-			int32_t code = exception();
-			if (code == CQ_INTERRUPTED || oom)
-				return flags(code);
-			status = code;
-		}
-		if (oom)
-			return flags(CQ_INTERRUPTED);
-	}
-	return flags(status);
+	return flags(drain_jobs());
 }
 
 // cq_take_rejections clears the rejection flag (the prelude keeps the list).

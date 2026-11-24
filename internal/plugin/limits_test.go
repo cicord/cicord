@@ -137,7 +137,8 @@ export default definePlugin({
     } }),
   },
 });`, func(e *Env) { e.Limits.SyncBudget = 30 * time.Millisecond })
-	if err := h.command("spin", nil, discord.Resolved{}); !errors.Is(err, ErrBudgetExceeded) {
+	// The handler itself returns (its result may arrive before the microtasks run away).
+	if err := h.command("spin", nil, discord.Resolved{}); err != nil && !errors.Is(err, ErrBudgetExceeded) {
 		t.Fatalf("spin: %v", err)
 	}
 	select {

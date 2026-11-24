@@ -13,9 +13,12 @@
 //   - Interrupt stops running JS at the next interrupt check (loops, calls and the long
 //     native builtins of QuickJS-ng poll it); the call returns ErrInterrupted and the VM
 //     stays usable;
-//   - cancelling the context of a call stops it unconditionally (wazero
-//     WithCloseOnContextDone): the VM is dead afterwards (ErrKilled). This is the hard stop
-//     for code that does not reach an interrupt check;
+//   - Kill, or cancelling the context of a call, stops it unconditionally: the guest traps
+//     at its next kill check and the VM is dead afterwards (ErrKilled). This is the hard
+//     stop for code that does not reach an interrupt check (a long native builtin): the
+//     engine is built so that every C function entry counts down to a kill check (see
+//     csrc/cicord.c). wazero's WithCloseOnContextDone would do the same at every wasm loop
+//     iteration, at about 4 times the CPU cost;
 //   - any wasm trap (stack exhaustion, assertion) kills the VM (ErrTrap). The Go process
 //     is never affected.
 //
@@ -57,6 +60,7 @@ const (
 	fOOM        = 1 << 8
 	fJobs       = 1 << 9
 	fRejections = 1 << 10
+	fJobErr     = 1 << 11
 )
 
 // Defaults and fixed sizes.
@@ -114,6 +118,13 @@ type Config struct {
 	StackLimit int
 }
 
+// Answers of the interrupt import (csrc/cicord.c).
+const (
+	stateRun  = 0
+	stateStop = 1
+	stateKill = 2
+)
+
 // shared is one wazero runtime per linear memory limit (the page cap is a runtime
 // setting); the compilation cache makes every runtime after the first cheap.
 type shared struct {
@@ -137,7 +148,7 @@ func sharedFor(ctx context.Context, pages uint32) (*shared, error) {
 	}
 	cfg := wazero.NewRuntimeConfig().
 		WithCompilationCache(cache).
-		WithCloseOnContextDone(true).
+
 		WithMemoryLimitPages(pages).
 		WithCoreFeatures(api.CoreFeaturesV2)
 	rt := wazero.NewRuntimeWithConfig(ctx, cfg)
@@ -150,6 +161,7 @@ func sharedFor(ctx context.Context, pages uint32) (*shared, error) {
 		NewFunctionBuilder().WithGoModuleFunction(api.GoModuleFunc(hostCall), []api.ValueType{i32, i32, i32, i32, i32, f64}, []api.ValueType{i32}).Export("host_call").
 		NewFunctionBuilder().WithGoModuleFunction(api.GoModuleFunc(hostTake), []api.ValueType{i32}, nil).Export("host_take").
 		NewFunctionBuilder().WithGoFunction(api.GoFunc(hostInterrupt), nil, []api.ValueType{i32}).Export("interrupt").
+		NewFunctionBuilder().WithGoModuleFunction(api.GoModuleFunc(argsTake), []api.ValueType{i32}, nil).Export("args_take").
 		Instantiate(ctx)
 	if err != nil {
 		_ = rt.Close(ctx)
@@ -181,12 +193,15 @@ type VM struct {
 	mod  api.Module
 	host HostFunc
 
-	fnBuf, fnInit, fnPrelude, fnEval, fnCall, fnJobs, fnTakeRej, fnMem, fnGC api.Function
-	outAddr                                                                 uint32
+	fnInit, fnPrelude, fnEval, fnCall, fnJobs, fnTakeRej, fnMem, fnGC api.Function
+	fnCompile, fnPreludeBC, fnEvalBC                                 api.Function
+	outAddr                                                          uint32
 
-	interrupted atomic.Bool
-	pending     []byte
+	state       atomic.Int32 // stateRun, stateStop (Interrupt) or stateKill
+	pending     []byte // host result waiting for host_take
+	args        []byte // call arguments waiting for args_take
 	flags       uint32
+	jobErr      error
 	dead        error
 }
 
@@ -227,8 +242,9 @@ func New(ctx context.Context, cfg Config, host HostFunc) (*VM, error) {
 		}
 		return f
 	}
-	v.fnBuf, v.fnInit, v.fnPrelude, v.fnEval = get("cq_buf"), get("cq_init"), get("cq_prelude"), get("cq_eval")
+	v.fnInit, v.fnPrelude, v.fnEval = get("cq_init"), get("cq_prelude"), get("cq_eval")
 	v.fnCall, v.fnJobs, v.fnTakeRej, v.fnMem, v.fnGC = get("cq_call"), get("cq_jobs"), get("cq_take_rejections"), get("cq_mem"), get("cq_gc")
+	v.fnCompile, v.fnPreludeBC, v.fnEvalBC = get("cq_compile"), get("cq_prelude_bc"), get("cq_eval_bc")
 	state := get("cq_state")
 	if err != nil {
 		v.Close()
@@ -269,10 +285,14 @@ func (v *VM) Dead() error { return v.dead }
 
 // Interrupt asks the running (or next) call to stop at its next interrupt check. Safe
 // for concurrent use.
-func (v *VM) Interrupt() { v.interrupted.Store(true) }
+func (v *VM) Interrupt() { v.state.CompareAndSwap(stateRun, stateStop) }
 
-// ClearInterrupt cancels a pending Interrupt.
-func (v *VM) ClearInterrupt() { v.interrupted.Store(false) }
+// ClearInterrupt cancels a pending Interrupt (not a Kill).
+func (v *VM) ClearInterrupt() { v.state.CompareAndSwap(stateStop, stateRun) }
+
+// Kill stops the running (or next) call unconditionally; the VM is dead afterwards. Safe
+// for concurrent use.
+func (v *VM) Kill() { v.state.Store(stateKill) }
 
 // JobsPending reports that microtasks were pending after the last call.
 func (v *VM) JobsPending() bool { return v.flags&fJobs != 0 }
@@ -312,10 +332,18 @@ func (v *VM) call(ctx context.Context, fn api.Function, params ...uint64) (int, 
 	if v.dead != nil {
 		return 0, v.dead
 	}
+	if ctx.Done() != nil {
+		stop := context.AfterFunc(ctx, v.Kill)
+		defer stop()
+	}
 	r, err := fn.Call(v.ctx(ctx), params...)
 	if err != nil {
-		if ctx.Err() != nil {
-			v.dead = fmt.Errorf("%w: %w", ErrKilled, context.Cause(ctx))
+		if v.state.Load() == stateKill {
+			cause := context.Cause(ctx)
+			if cause == nil {
+				cause = errors.New("killed")
+			}
+			v.dead = fmt.Errorf("%w: %w", ErrKilled, cause)
 		} else {
 			v.dead = fmt.Errorf("%w: %w", ErrTrap, err)
 		}
@@ -357,6 +385,29 @@ func (v *VM) out() string {
 	return string(b)
 }
 
+// jobOut reads the errInfo of the last exception that escaped a job.
+func (v *VM) jobOut() string {
+	mem := v.mod.Memory()
+	ptr, ok1 := mem.ReadUint32Le(v.outAddr + 8)
+	n, ok2 := mem.ReadUint32Le(v.outAddr + 12)
+	if !ok1 || !ok2 || ptr == 0 {
+		return ""
+	}
+	b, ok := mem.Read(ptr, n)
+	if !ok {
+		return ""
+	}
+	return string(b)
+}
+
+// TakeJobError returns (and clears) the last exception that escaped a microtask during
+// Run or RunJobs; the drain went on after it.
+func (v *VM) TakeJobError() error {
+	err := v.jobErr
+	v.jobErr = nil
+	return err
+}
+
 // status converts a result code into (string result, defined, error).
 func (v *VM) status(code int) (string, bool, error) {
 	switch code {
@@ -377,10 +428,10 @@ func (v *VM) status(code int) (string, bool, error) {
 	}
 }
 
-// writeBuf copies parts back to back into the shim's argument buffer (plus one byte for
-// a terminator) and returns the parts' lengths.
-func (v *VM) writeBuf(ctx context.Context, parts ...string) ([]uint64, error) {
-	total := 1
+// setArgs stages parts back to back for the next call (pulled by args_take) and returns
+// their lengths.
+func (v *VM) setArgs(parts ...string) ([]uint64, error) {
+	total := 0
 	for _, p := range parts {
 		total += len(p)
 	}
@@ -390,28 +441,13 @@ func (v *VM) writeBuf(ctx context.Context, parts ...string) ([]uint64, error) {
 	if v.dead != nil {
 		return nil, v.dead
 	}
-	r, err := v.fnBuf.Call(v.ctx(ctx), uint64(total))
-	if err != nil {
-		v.dead = fmt.Errorf("%w: %w", ErrTrap, err)
-		v.closeModule()
-		return nil, v.dead
-	}
-	ptr := uint32(r[0])
-	if ptr == 0 {
-		v.dead = ErrOutOfMemory
-		v.closeModule()
-		return nil, v.dead
-	}
-	mem := v.mod.Memory()
+	buf := make([]byte, 0, total)
 	lens := make([]uint64, len(parts))
-	off := ptr
 	for i, p := range parts {
-		if !mem.WriteString(off, p) {
-			return nil, errors.New("qjs: argument buffer out of range")
-		}
-		off += uint32(len(p))
+		buf = append(buf, p...)
 		lens[i] = uint64(len(p))
 	}
+	v.args = buf
 	return lens, nil
 }
 
@@ -426,8 +462,59 @@ func (v *VM) Eval(ctx context.Context, name, src string) error {
 	return v.script(ctx, v.fnEval, name, src)
 }
 
+// Bytecode is a script compiled by Compile. It can only be run by VMs of the same build
+// (the embedded quickjs.wasm) and must never come from anywhere else: QuickJS does not
+// validate bytecode.
+type Bytecode struct{ b string }
+
+// Compile compiles a global script without running it (strict: as with Prelude, else as
+// with Eval). Compiling once and running the bytecode in many VMs is much cheaper than
+// evaluating the source in each.
+func (v *VM) Compile(ctx context.Context, name, src string, strict bool) (*Bytecode, error) {
+	lens, err := v.setArgs(src, "\x00", name)
+	if err != nil {
+		return nil, err
+	}
+	s := uint64(0)
+	if strict {
+		s = 1
+	}
+	code, err := v.call(ctx, v.fnCompile, lens[0], lens[2], s)
+	if err != nil {
+		return nil, err
+	}
+	out, _, err := v.status(code)
+	if err != nil {
+		return nil, err
+	}
+	return &Bytecode{b: out}, nil
+}
+
+// PreludeBytecode is Prelude for a compiled prelude (Compile with strict set).
+func (v *VM) PreludeBytecode(ctx context.Context, bc *Bytecode) error {
+	return v.bytecode(ctx, v.fnPreludeBC, bc)
+}
+
+// EvalBytecode is Eval for a compiled script.
+func (v *VM) EvalBytecode(ctx context.Context, bc *Bytecode) error {
+	return v.bytecode(ctx, v.fnEvalBC, bc)
+}
+
+func (v *VM) bytecode(ctx context.Context, fn api.Function, bc *Bytecode) error {
+	lens, err := v.setArgs(bc.b)
+	if err != nil {
+		return err
+	}
+	code, err := v.call(ctx, fn, lens[0])
+	if err != nil {
+		return err
+	}
+	_, _, err = v.status(code)
+	return err
+}
+
 func (v *VM) script(ctx context.Context, fn api.Function, name, src string) error {
-	lens, err := v.writeBuf(ctx, src, "\x00", name)
+	lens, err := v.setArgs(src, "\x00", name)
 	if err != nil {
 		return err
 	}
@@ -443,19 +530,36 @@ func (v *VM) script(ctx context.Context, fn api.Function, name, src string) erro
 // and returns its result converted to a string (defined is false for undefined/null).
 // Microtasks queued by the call are not run: see RunJobs.
 func (v *VM) Call(ctx context.Context, fn string, args ...string) (result string, defined bool, err error) {
+	return v.invoke(ctx, false, fn, args)
+}
+
+// Run is Call followed by RunJobs, in a single wasm call (cheaper): the microtasks queued
+// by the call run before it returns. ErrInterrupted can come from either part; an
+// exception escaping a microtask is kept for TakeJobError.
+func (v *VM) Run(ctx context.Context, fn string, args ...string) (result string, defined bool, err error) {
+	return v.invoke(ctx, true, fn, args)
+}
+
+func (v *VM) invoke(ctx context.Context, drain bool, fn string, args []string) (string, bool, error) {
 	if len(args) > maxCallArgs {
 		return "", false, fmt.Errorf("qjs: at most %d arguments", maxCallArgs)
 	}
-	lens, err := v.writeBuf(ctx, append([]string{fn}, args...)...)
+	lens, err := v.setArgs(append([]string{fn}, args...)...)
 	if err != nil {
 		return "", false, err
 	}
-	params := make([]uint64, 7)
+	params := make([]uint64, 8)
 	params[0] = uint64(len(args))
 	copy(params[1:], lens)
+	if drain {
+		params[7] = 1
+	}
 	code, err := v.call(ctx, v.fnCall, params...)
 	if err != nil {
 		return "", false, err
+	}
+	if v.flags&fJobErr != 0 {
+		v.jobErr = &Exception{Info: v.jobOut()}
 	}
 	return v.status(code)
 }
@@ -464,9 +568,15 @@ func (v *VM) Call(ctx context.Context, fn string, args ...string) (result string
 // drain was interrupted (jobs may remain), or an *Exception when an error escaped a job
 // (QuickJS-ng does not turn uncatchable errors into rejections); the drain went on.
 func (v *VM) RunJobs(ctx context.Context) error {
+	if v.dead == nil && v.flags&fJobs == 0 {
+		return nil // the last call reported no pending job
+	}
 	code, err := v.call(ctx, v.fnJobs)
 	if err != nil {
 		return err
+	}
+	if code == cqException {
+		return &Exception{Info: v.jobOut()}
 	}
 	_, _, err = v.status(code)
 	return err
@@ -523,11 +633,20 @@ func hostTake(ctx context.Context, m api.Module, stack []uint64) {
 	v.pending = nil
 }
 
-func hostInterrupt(ctx context.Context, stack []uint64) {
+func argsTake(ctx context.Context, m api.Module, stack []uint64) {
 	v := vmOf(ctx)
-	if v != nil && v.interrupted.Load() {
-		stack[0] = 1
+	if v == nil {
 		return
 	}
-	stack[0] = 0
+	m.Memory().Write(api.DecodeU32(stack[0]), v.args)
+	v.args = nil
+}
+
+func hostInterrupt(ctx context.Context, stack []uint64) {
+	v := vmOf(ctx)
+	if v == nil {
+		stack[0] = 0
+		return
+	}
+	stack[0] = api.EncodeI32(v.state.Load())
 }
