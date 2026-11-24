@@ -1,0 +1,75 @@
+# Cicord on a single server: the runtime and Caddy (public community portal).
+# The admin console is NOT published here: `tailscale serve` exposes 127.0.0.1:7420 to the
+# tailnet only (see INSTALL.md). Values come from .env (copy .env.example; no secrets in it:
+# secrets live in the runtime's encrypted store, set through the setup wizard or
+# `sudo docker compose exec -T cicord cicord secret set NAME --data-dir /data`).
+name: cicord
+
+services:
+  cicord:
+    image: cicord:${CICORD_IMAGE_TAG:?set CICORD_IMAGE_TAG in .env}
+    container_name: cicord
+    restart: unless-stopped
+    environment:
+      CICORD_PUBLIC_URL: ${CICORD_PUBLIC_URL:?}
+      CICORD_ADMIN_URL: ${CICORD_ADMIN_URL:?}
+    # Host side: loopback only (tailscale serve → admin). Caddy reaches it on the
+    # compose network.
+    ports:
+      - "127.0.0.1:7420:7420"
+    volumes:
+      - cicord-data:/data
+      - cicord-repo:/repo
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
+    pids_limit: 1024
+    healthcheck:
+      test: ["CMD", "cicord", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks: [web]
+
+  caddy:
+    image: caddy:2.11.9@sha256:4851e54a46b206517c574821bb5cc67f170d2156041e9fbc4c9193b45e84a75b
+    container_name: caddy
+    restart: unless-stopped
+    depends_on: [cicord]
+    environment:
+      CICORD_PUBLIC_HOST: ${CICORD_PUBLIC_HOST:?}
+    # Bound to the PUBLIC addresses only: published on every interface, Docker's NAT
+    # rules would also capture port 443 of tailscale0 and hide the admin console served
+    # there by `tailscale serve`.
+    ports:
+      - "${PUBLIC_IPV4:?}:80:80"
+      - "${PUBLIC_IPV4}:443:443"
+      - "[${PUBLIC_IPV6:?}]:80:80"
+      - "[${PUBLIC_IPV6}]:443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    pids_limit: 256
+    networks: [web]
+
+networks:
+  web: {}
+
+volumes:
+  cicord-data: {}
+  cicord-repo: {}
+  caddy-data: {}
+  caddy-config: {}

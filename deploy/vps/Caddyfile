@@ -1,0 +1,47 @@
+# Public community portal. Only the portal, member login, portal API, the CI endpoints
+# (bearer token) and the GitHub webhook (HMAC) are proxied; the admin console and the
+# admin API answer 404 here (the runtime also refuses them on this host when
+# CICORD_ADMIN_URL is set). The admin is served on the tailnet by `tailscale serve`.
+{
+	# HTTP/3 would need UDP 443 published too: keep HTTP/1.1 and HTTP/2.
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$CICORD_PUBLIC_HOST} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+
+	request_body {
+		max_size 32MB
+	}
+
+	# Admin console, admin and setup API: never public.
+	@private {
+		path /admin /admin/* /api/*
+		not path /api/v1/portal/* /api/v1/me /api/v1/plan /api/v1/sync
+	}
+	respond @private 404
+
+	reverse_proxy cicord:7420 {
+		# Server-sent events and long plans.
+		transport http {
+			read_timeout 5m
+			write_timeout 5m
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
