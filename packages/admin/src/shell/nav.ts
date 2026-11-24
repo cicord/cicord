@@ -1,5 +1,6 @@
 /** Routes and the navigation model shared by the sidebar, breadcrumb and ⌘K palette. */
 import {
+  ChartColumn,
   FlaskConical,
   GitCompareArrows,
   History,
@@ -18,6 +19,7 @@ import { match } from "../router.tsx";
 
 export type PageId =
   | "overview"
+  | "analytics"
   | "resources"
   | "serverSettings"
   | "plugins"
@@ -48,6 +50,7 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { id: "overview", icon: LayoutDashboard, segment: "" },
+  { id: "analytics", icon: ChartColumn, segment: "analytics" },
   { id: "resources", icon: Shapes, segment: "resources", section: "configuration" },
   { id: "serverSettings", icon: SlidersHorizontal, segment: "settings", section: "configuration" },
   { id: "plugins", icon: Puzzle, segment: "plugins", section: "configuration" },

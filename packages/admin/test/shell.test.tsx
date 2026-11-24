@@ -57,6 +57,7 @@ describe("layout", () => {
       .filter((x) => x && x !== "cicordadmin");
     expect(order).toEqual([
       "Overview",
+      "Analytics",
       "Roles & channels",
       "Server settings",
       "Plugins",

@@ -39,8 +39,8 @@ export function AppSidebar({ page }: { page: PageId }) {
   const ws = useWorkspace();
   const drift = ws.server?.drift.length ?? 0;
   const visible = NAV.filter((n) => (!n.devOnly || ws.simulator) && (!n.adminOnly || ws.isAdmin));
-  // Overview · Configuration · Sync · Audit log … Simulator, Settings (bottom).
-  const top = visible.filter((n) => n.id === "overview");
+  // Overview, Analytics · Configuration · Sync · Audit log … Simulator, Settings (bottom).
+  const top = visible.filter((n) => n.id === "overview" || n.id === "analytics");
   const audit = visible.filter((n) => n.id === "audit" || n.id === "diagnostics");
   const section = (id: SectionId) => visible.filter((n) => n.section === id);
   const tail = visible.filter((n) => n.id === "simulator" || n.id === "settings");

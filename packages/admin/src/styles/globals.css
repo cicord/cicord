@@ -66,6 +66,24 @@
   --sidebar-border: #e7e7ea;
   --sidebar-ring: #5865f2;
 
+  /* Charts (analytics): categorical slots in a fixed, CVD-validated order (dataviz validator,
+   * adjacent pairs, against --card); a one-hue sequential ramp (heatmap) and its ordinal steps
+   * (ordered buckets); recessive grid and axis hairlines. Text never wears a series colour. */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-7: #6250d6;
+  --chart-8: #e34948;
+  --chart-grid: #efeff1;
+  --chart-axis: #d4d4d8;
+  --chart-seq-lo: #e8f1fc;
+  --chart-seq-hi: #104281;
+  --chart-ord-lo: #86b6ef;
+  --chart-ord-hi: #104281;
+
   --shadow-pop: 0 1px 2px rgb(10 10 12 / 0.06), 0 12px 32px -12px rgb(10 10 12 / 0.22);
   --radius: 0.5rem;
   --r-sm: 4px;
@@ -131,6 +149,21 @@
   --sidebar-border: #18181b;
   --sidebar-ring: #6e79f4;
 
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #0ca30c;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+  --chart-grid: #18181b;
+  --chart-axis: #2a2a2e;
+  --chart-seq-lo: #0e1b2e;
+  --chart-seq-hi: #9ec5f4;
+  --chart-ord-lo: #184f95;
+  --chart-ord-hi: #9ec5f4;
+
   --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.04), 0 16px 40px -12px rgb(0 0 0 / 0.9);
 }
 
@@ -181,6 +214,16 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
 
   --font-sans: var(--font);
   --font-mono: var(--mono);

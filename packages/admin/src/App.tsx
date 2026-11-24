@@ -32,6 +32,7 @@ import {
   type Workspace,
 } from "./context.tsx";
 import { useTranslation } from "./i18n/index.ts";
+import { AnalyticsPage } from "./pages/Analytics.tsx";
 import { AuditPage } from "./pages/Audit.tsx";
 import { LoginPage } from "./pages/Login.tsx";
 import { OverviewPage } from "./pages/Overview.tsx";
@@ -211,6 +212,9 @@ function Shell() {
     case "home":
     case "overview":
       page = key ? <OverviewPage serverKey={key} key={key} /> : null;
+      break;
+    case "analytics":
+      page = <AnalyticsPage serverKey={key} key={key} />;
       break;
     case "resources":
       page = <ResourcesPage serverKey={key} key={key} />;
