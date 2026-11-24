@@ -44,10 +44,11 @@ func (a analytics) Record(ctx context.Context, kind state.AnalyticsKind, points 
 		return fmt.Errorf("state/sqlite: record analytics: %w", err)
 	}
 	defer rollback(tx, &err)
-	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO analytics_points (server, metric, dim, bucket, kind, value) VALUES (?, ?, ?, ?, ?, ?)
+	//nolint:gosec // G202: upsertSQL holds constant SQL fragments only
+	q := `INSERT INTO analytics_points (server, metric, dim, bucket, kind, value) VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (server, metric, dim, bucket) DO UPDATE SET
-		   value = `+upsertSQL[kind]+`, kind = excluded.kind`)
+		   value = ` + upsertSQL[kind] + `, kind = excluded.kind`
+	stmt, err := tx.PrepareContext(ctx, q)
 	if err != nil {
 		return fmt.Errorf("state/sqlite: record analytics: %w", err)
 	}
@@ -63,7 +64,7 @@ func (a analytics) Record(ctx context.Context, kind state.AnalyticsKind, points 
 	return nil
 }
 
-// where builds the filter of a query: server, metrics, optional dim and the
+// analyticsWhere builds the filter of a query: server, metrics, optional dim and the
 // bucket range.
 func analyticsWhere(q state.AnalyticsQuery, withDim bool) (string, []any) {
 	lo, hi := storeutil.AnalyticsRange(q.From, q.To)
@@ -86,8 +87,8 @@ func analyticsWhere(q state.AnalyticsQuery, withDim bool) (string, []any) {
 // Query returns the points ordered by metric, dim, then bucket.
 func (a analytics) Query(ctx context.Context, q state.AnalyticsQuery) ([]state.AnalyticsPoint, error) {
 	where, args := analyticsWhere(q, true)
-	rows, err := a.s.r.QueryContext(ctx,
-		`SELECT metric, dim, bucket, value FROM analytics_points WHERE `+where+` ORDER BY metric, dim, bucket`, args...)
+	query := `SELECT metric, dim, bucket, value FROM analytics_points WHERE ` + where + ` ORDER BY metric, dim, bucket` //nolint:gosec // G202: where holds placeholders only
+	rows, err := a.s.r.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("state/sqlite: query analytics: %w", err)
 	}
@@ -111,8 +112,8 @@ func (a analytics) Query(ctx context.Context, q state.AnalyticsQuery) ([]state.A
 // Totals sums every dimension per metric and bucket (state.AnalyticsTotals).
 func (a analytics) Totals(ctx context.Context, q state.AnalyticsQuery) ([]state.AnalyticsPoint, error) {
 	where, args := analyticsWhere(q, false)
-	rows, err := a.s.r.QueryContext(ctx,
-		`SELECT metric, bucket, SUM(value) FROM analytics_points WHERE `+where+` GROUP BY metric, bucket ORDER BY metric, bucket`, args...)
+	query := `SELECT metric, bucket, SUM(value) FROM analytics_points WHERE ` + where + ` GROUP BY metric, bucket ORDER BY metric, bucket` //nolint:gosec // G202: where holds placeholders only
+	rows, err := a.s.r.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("state/sqlite: analytics totals: %w", err)
 	}
