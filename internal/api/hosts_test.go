@@ -410,3 +410,17 @@ func TestIsLocalRedirect(t *testing.T) {
 		}
 	}
 }
+
+// safeRedirect keeps local paths and allowed origins, and sends everything else home.
+func TestSafeRedirect(t *testing.T) {
+	s := &server{opts: Options{CORSOrigins: []string{"https://fans.example"}}}
+	for target, want := range map[string]string{
+		"": "/", "/admin/": "/admin/", "//evil.example/x": "/", "/\\evil.example": "/",
+		"https://fans.example/p?x=1": "https://fans.example/p?x=1", "https://evil.example/": "/",
+		"javascript:alert(1)": "/", "evil.example": "/",
+	} {
+		if got := s.safeRedirect(target); got != want {
+			t.Errorf("safeRedirect(%q) = %q, want %q", target, got, want)
+		}
+	}
+}

@@ -547,15 +547,11 @@ func checkMode(mode string) error {
 // safeRedirect accepts a local path ("/x", not "//x" nor "/\x") or an absolute URL on an
 // allowed CORS origin (external portal).
 func (s *server) safeRedirect(target string) string {
-	if target == "" {
-		return "/"
+	if isLocalRedirect(target) {
+		return target
 	}
-	if strings.HasPrefix(target, "/") {
-		if isLocalRedirect(target) {
-			return target
-		}
-		return "/"
-	}
+	// Anything else must be an absolute URL on an allowed origin ("//x" and "/\\x" have no
+	// scheme, so they end here as "/").
 	if u, err := url.Parse(target); err == nil && u.Scheme != "" && u.Host != "" {
 		if slices.Contains(s.opts.CORSOrigins, u.Scheme+"://"+u.Host) {
 			return target
