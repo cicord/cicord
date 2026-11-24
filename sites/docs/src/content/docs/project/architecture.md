@@ -50,7 +50,7 @@ The [ADRs](https://github.com/npjonath/cicord/tree/main/docs/adr) record each de
 | 0010 | **One plugin instance per (bot, server)**, with base config and per-server overrides; storage and schedules scoped to the instance. | Accepted |
 | 0011 | **Git-based plugin registries and `cicord.lock`**, apt/Homebrew-style sources with computed trust, and a signed official index with anti-rollback serials. | Accepted |
 | 0012 | **In-process Discord simulator** behind Cicord's Discord interfaces, following Discord's observable behavior (permissions, hierarchy, intents, interaction deadlines). | Accepted |
-| 0013 | **Licensing**: Apache-2.0 for the SDKs; the runtime license is not decided. | Partially accepted |
+| 0013 | **Licensing**: Apache-2.0 for everything (runtime, CLI, admin console, SDKs, official plugins, sites). | Accepted |
 | 0014 | **disgo** (its `rest` and `gateway` packages only) as the Discord library, wrapped by an adapter; static `CGO_ENABLED=0` build, no sharding. | Accepted |
 | 0015 | **Kubernetes-style YAML resources** (`apiVersion`, `kind`, `metadata`, `spec`), maps keyed by stable keys, JSON Schemas for editors. | Accepted |
 | 0016 | **Portal runnable as a Discord Activity**, keeping signed links as the default. | Proposed |

@@ -1,27 +1,37 @@
 # ADR-0013 — Licensing
 
-**Status:** Partially accepted (2026-11-21) — SDKs are Apache-2.0; the runtime license is undecided (it may not be open source).
+**Status:** Accepted (2026-11-24) — everything is Apache-2.0.
 
 ## Context
 The project is open source and monetized through hosting (SaaS). The SDKs must be easy to
-adopt; the runtime should not be re-hosted by a competitor without contributing back.
+adopt, and the runtime should be as easy to self-host, audit and contribute to.
 
-## Proposal
-- **Apache-2.0** for SDKs and authoring tools: `@cicord/sdk`, `@cicord/client`, `@cicord/react`,
-  `@cicord/ui`, `create-cicord-portal`, JSON Schemas.
-- **AGPL-3.0** for the runtime and CLI (`cicord`).
-- Plugins choose their own license (declared in `plugin.yaml`).
+## Options considered
+- **AGPL-3.0** for the runtime and CLI, Apache-2.0 for the SDKs (the 2026-11-21 proposal):
+  protects the hosted offering against re-hosting without contributing back, but deters
+  companies from adopting or contributing to the runtime.
+- **FSL / BSL** (source-available, converts to open source after N years): protection, but
+  not OSI-approved, which may hurt community trust.
+- **Apache-2.0 everywhere**: maximum adoption, an explicit patent grant, one license for the
+  whole repository.
 
-## Alternatives
-- Everything Apache-2.0/MIT: maximum adoption, no protection of the SaaS.
-- FSL / BSL (source-available, converts to open source after N years): protection, but not
-  OSI-approved, which may hurt community trust.
+## Decision
+**Apache-2.0 for every part of Cicord** (owner decision, 2026-11-24), superseding the AGPL
+proposal and the interim "runtime not licensed" state of 2026-11-21:
 
-## To decide
-Before the first public release.
+- the runtime, the CLI and the admin console (`cicord`, `packages/admin`);
+- the SDKs and authoring tools: `@cicord/sdk`, `@cicord/client`, `@cicord/react`,
+  `@cicord/ui`, `create-cicord-portal`, the JSON Schemas and the specification;
+- the official plugins, the examples, the landing page and the documentation sites.
 
-## Decision so far (2026-11-21)
-- **Apache-2.0** for `@cicord/sdk`, `@cicord/client`, `@cicord/react`, `@cicord/ui` and
-  `create-cicord-portal` (`LICENSE` file in each package).
-- The **runtime, CLI and admin UI are not licensed yet** (all rights reserved by default);
-  whether they become open source is decided later, before any public release.
+The `LICENSE` file at the root covers the repository; each published npm package carries its
+own copy. `NOTICE` names the copyright holder ("The Cicord Authors").
+
+Third-party plugins choose their own license (`metadata.license` in `plugin.yaml`, an SPDX
+identifier).
+
+## Consequences
+- Anyone may host Cicord, including commercially; the hosted offering competes on service,
+  not on license terms.
+- Contributions are accepted under Apache-2.0 (inbound = outbound, section 5 of the license).
+  Whether to add a DCO sign-off or a CLA is left for later.

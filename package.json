@@ -2,6 +2,7 @@
   "name": "cicord-js",
   "private": true,
   "description": "JavaScript side of Cicord: plugin SDK, runtime API client, React bindings, UI kit and the reference community portal.",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "build": "vp run -r build",

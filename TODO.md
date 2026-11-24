@@ -106,10 +106,10 @@ No public release until the product is complete.
 - [ ] Admin UI i18n
 
 ## Release (later)
-- [ ] Runtime license decision (ADR-0013) — SDKs are Apache-2.0
 - [ ] GoReleaser binaries, Docker image (ghcr.io), npm publication of `@cicord/*`
 - [ ] `go install` with embedded UIs (commit built assets or release-only builds)
 
 ## Done (recent)
+- [x] License: Apache-2.0 for everything (ADR-0013, 2026-11-24)
 - [x] Runtime, reconciler, plugin host, simulator, API, admin UI, portal SDK, CLI (see git log)
 - [x] Real Discord validation: reconcile, slash commands, onboarding roles, drift + sync, OAuth (78aea4a)
