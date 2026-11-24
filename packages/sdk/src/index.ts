@@ -1,13 +1,13 @@
 /**
- * @codi/sdk runtime for authoring and unit tests.
+ * @cicord/sdk runtime for authoring and unit tests.
  *
- * Inside CODI the Go plugin host provides the "@codi/sdk" module; this implementation only
+ * Inside Cicord the Go plugin host provides the "@cicord/sdk" module; this implementation only
  * exists so that plugins can be imported and tested in Node. The public *types* of this
- * package are spec/sdk/codi-sdk.d.ts, copied verbatim into dist/index.d.ts at build time.
+ * package are spec/sdk/cicord-sdk.d.ts, copied verbatim into dist/index.d.ts at build time.
  * The conformance block at the bottom of this file fails type-checking if this runtime ever
  * drifts from the spec.
  */
-import type * as Spec from "@codi/sdk";
+import type * as Spec from "@cicord/sdk";
 
 const CAPABILITY_IN_MESSAGE = /capability "?([a-z]+(?:\.[a-z]+)+)"?/;
 
@@ -18,7 +18,7 @@ export class CapabilityError extends Error {
   /**
    * The spec declares no constructor (it inherits `Error`'s), so the capability is taken from
    * `options.capability` or parsed from a message like `missing capability "storage.kv"`.
-   * Use `capabilityError()` from "@codi/sdk/testing" to build one in tests.
+   * Use `capabilityError()` from "@cicord/sdk/testing" to build one in tests.
    */
   constructor(message?: string, options?: ErrorOptions & { capability?: string }) {
     super(message, options);

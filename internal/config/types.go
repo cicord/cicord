@@ -1,10 +1,10 @@
-// Package config loads and validates a CODI repository (codi.yaml, servers/, bots/,
+// Package config loads and validates a Cicord repository (cicord.yaml, servers/, bots/,
 // plugins) into typed structures. See spec/README.md for the semantics.
 package config
 
 import "strings"
 
-const APIVersion = "codi.dev/v1alpha1"
+const APIVersion = "cicord.dev/v1alpha1"
 
 type Metadata struct {
 	Name        string            `yaml:"name" json:"name"`
@@ -50,12 +50,12 @@ type Registry struct {
 	SecretRef string `yaml:"secretRef,omitempty" json:"secretRef,omitempty"`
 }
 
-// RegistryTokenRef is the only secretRef a registry may have: CODI_REGISTRY_<NAME>_TOKEN,
-// derived from its own name (names have no "_", so the mapping is one-to-one). A codi.yaml
+// RegistryTokenRef is the only secretRef a registry may have: CICORD_REGISTRY_<NAME>_TOKEN,
+// derived from its own name (names have no "_", so the mapping is one-to-one). A cicord.yaml
 // edit can thus never make the runtime send another secret — a bot token, or another
 // registry's token — to a registry host.
 func RegistryTokenRef(name string) string {
-	return "CODI_REGISTRY_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_TOKEN"
+	return "CICORD_REGISTRY_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_TOKEN"
 }
 
 // TokenRef is the secret of a private registry ("" when it has none or an invalid one).
@@ -66,9 +66,9 @@ func (r Registry) TokenRef() string {
 	return ""
 }
 
-// OfficialRegistryName is the source name of the official CODI plugins. It is reserved:
-// no registry of codi.yaml may use it.
-const OfficialRegistryName = "codi"
+// OfficialRegistryName is the source name of the official Cicord plugins. It is reserved:
+// no registry of cicord.yaml may use it.
+const OfficialRegistryName = "cicord"
 
 // NormalizeRegistryURL returns a comparable form of a git URL: lower-case scheme and
 // host, no trailing slash or ".git".
@@ -99,7 +99,7 @@ type WriteBackPolicy struct {
 }
 
 type ProjectPortal struct {
-	// Path is the committed build output of a custom portal (relative to codi.yaml),
+	// Path is the committed build output of a custom portal (relative to cicord.yaml),
 	// served at / instead of the default portal.
 	Path string `yaml:"path,omitempty" json:"path,omitempty"`
 	URL  string `yaml:"url,omitempty" json:"url,omitempty"`
@@ -535,7 +535,7 @@ type PluginSpec struct {
 // PluginRoutesSpec describes the portal routes of a plugin for the portals.
 type PluginRoutesSpec struct {
 	// Types is the route contract: a type-only TypeScript file exporting `interface Routes`,
-	// copied into the portals by `codi portal typegen`.
+	// copied into the portals by `cicord portal typegen`.
 	Types string `yaml:"types,omitempty" json:"types,omitempty"`
 }
 

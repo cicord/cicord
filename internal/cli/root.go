@@ -1,4 +1,4 @@
-// Package cli implements the `codi` command line.
+// Package cli implements the `cicord` command line.
 package cli
 
 import (
@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/version"
+	"github.com/npjonath/cicord/internal/version"
 )
 
 // exitError carries a process exit code without printing an extra message.
@@ -47,9 +47,9 @@ func ExecuteContext(ctx context.Context, args []string, stdout, stderr io.Writer
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "codi",
-		Short:         "CODI — GitOps for Discord",
-		Long:          "CODI declares Discord servers and bots in git, reconciles them continuously and runs TypeScript plugins.",
+		Use:           "cicord",
+		Short:         "Cicord — GitOps for Discord",
+		Long:          "Cicord declares Discord servers and bots in git, reconciles them continuously and runs TypeScript plugins.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -71,10 +71,10 @@ var extraCommands []func() *cobra.Command
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the CODI version",
+		Short: "Print the Cicord version",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "codi %s (%s)\n", version.Version, version.Commit)
+			fmt.Fprintf(cmd.OutOrStdout(), "cicord %s (%s)\n", version.Version, version.Commit)
 		},
 	}
 }

@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // allKinds are the resource map kinds the reconciler manages.
@@ -175,7 +175,7 @@ func systemFlagsDisplay(f discord.SystemChannelFlags) map[string]bool {
 	return m
 }
 
-// SystemFlagsFromLive converts live bits to the YAML toggles (codi import).
+// SystemFlagsFromLive converts live bits to the YAML toggles (cicord import).
 func SystemFlagsFromLive(f discord.SystemChannelFlags) config.SystemChannelFlags {
 	shown := func(bit discord.SystemChannelFlags) *bool { v := f&bit == 0; return &v }
 	return config.SystemChannelFlags{

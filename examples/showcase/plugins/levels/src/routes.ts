@@ -1,6 +1,6 @@
 /**
  * Portal contract of the levels routes (plugin.yaml spec.routes.types). Type-only and
- * self-contained (no imports): `codi portal typegen` copies it into the portals, which get a
+ * self-contained (no imports): `cicord portal typegen` copies it into the portals, which get a
  * typed client for these routes. The handlers are checked against it (`defineRoutes`).
  */
 

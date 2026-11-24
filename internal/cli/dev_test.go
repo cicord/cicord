@@ -43,7 +43,7 @@ func copyDir(t *testing.T, src, dst string) {
 func TestDevSimSmoke(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, "../../examples/basic", dir)
-	t.Setenv("CODI_RUNTIME_TOKEN", "smoke-token")
+	t.Setenv("CICORD_RUNTIME_TOKEN", "smoke-token")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var stdout, stderr syncBuffer
@@ -59,7 +59,7 @@ func TestDevSimSmoke(t *testing.T) {
 				t.Errorf("exit code %d; stderr:\n%s", code, stderr.String())
 			}
 		case <-time.After(30 * time.Second):
-			t.Error("codi dev did not stop")
+			t.Error("cicord dev did not stop")
 		}
 	}()
 
@@ -73,7 +73,7 @@ func TestDevSimSmoke(t *testing.T) {
 		}
 		select {
 		case code := <-done:
-			t.Fatalf("codi dev exited with %d:\n%s\n%s", code, stdout.String(), stderr.String())
+			t.Fatalf("cicord dev exited with %d:\n%s\n%s", code, stdout.String(), stderr.String())
 		default:
 		}
 		if time.Now().After(deadline) {
@@ -124,7 +124,7 @@ func TestDevSimSmoke(t *testing.T) {
 	if code, body := get("/admin/"); code != 200 || !strings.Contains(string(body), "<html") {
 		t.Fatalf("admin = %d %s", code, body)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "codi.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "cicord.yaml")); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -139,8 +139,8 @@ func TestCheckLocalDataDir(t *testing.T) {
 		err      bool
 	}{
 		{outside, true, outside, false},
-		{filepath.Join(repo, ".codi", "x"), true, filepath.Join(repo, ".codi", "x"), false},
-		{filepath.Join(repo, ".codi-data"), false, filepath.Join(repo, ".codi", "data"), false},
+		{filepath.Join(repo, ".cicord", "x"), true, filepath.Join(repo, ".cicord", "x"), false},
+		{filepath.Join(repo, ".cicord-data"), false, filepath.Join(repo, ".cicord", "data"), false},
 		{filepath.Join(repo, "state"), true, "", true},
 	}
 	for _, c := range cases {

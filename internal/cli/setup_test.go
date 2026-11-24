@@ -31,7 +31,7 @@ func (c *setupClient) do(method, path string, body any) (int, map[string]any) {
 		rd = bytes.NewReader(data)
 	}
 	req, _ := http.NewRequest(method, c.base+path, rd)
-	req.Header.Set("X-Codi-Request", "1")
+	req.Header.Set("X-Cicord-Request", "1")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -88,7 +88,7 @@ func str(v any) string {
 	return s
 }
 
-// TestSetupWizardE2ESim runs the whole wizard over HTTP against `codi dev --sim --setup`:
+// TestSetupWizardE2ESim runs the whole wizard over HTTP against `cicord dev --sim --setup`:
 // setup token → simulated bot → intents → invite + hierarchy fix → local repository →
 // import (empty plan) → activation without restart → verify → first plugin → finish.
 func TestSetupWizardE2ESim(t *testing.T) {
@@ -107,7 +107,7 @@ func TestSetupWizardE2ESim(t *testing.T) {
 				t.Errorf("exit code %d; stderr:\n%s", code, stderr.String())
 			}
 		case <-time.After(30 * time.Second):
-			t.Error("codi dev did not stop")
+			t.Error("cicord dev did not stop")
 		}
 	}()
 	re := regexp.MustCompile(`open the setup wizard: (http://127\.0\.0\.1:\d+)/admin/setup\?token=(\S+)`)
@@ -120,7 +120,7 @@ func TestSetupWizardE2ESim(t *testing.T) {
 		}
 		select {
 		case code := <-done:
-			t.Fatalf("codi dev exited with %d:\n%s\n%s", code, stdout.String(), stderr.String())
+			t.Fatalf("cicord dev exited with %d:\n%s\n%s", code, stdout.String(), stderr.String())
 		default:
 		}
 		if time.Now().After(deadline) {
@@ -161,13 +161,13 @@ func TestSetupWizardE2ESim(t *testing.T) {
 	if v["step"] != "discord" || v["simulator"] != true {
 		t.Fatalf("after intent: %v", v)
 	}
-	botTok := str(c.ok("POST", "/api/v1/setup/sim/bot", map[string]any{"name": "CODI"})["token"])
+	botTok := str(c.ok("POST", "/api/v1/setup/sim/bot", map[string]any{"name": "Cicord"})["token"])
 	if code, out := c.do("POST", "/api/v1/setup/discord/token", map[string]any{"token": "sim.not-a-real-token-at-all"}); code != 422 || get(out, "error", "code") != "invalid_token" || str(get(out, "error", "hint")) == "" {
 		t.Fatalf("bad token = %d %v", code, out)
 	}
 	leakFrom := len(c.bodies)
 	v = c.ok("POST", "/api/v1/setup/discord/token", map[string]any{"token": "  Bot " + botTok + "\n"})
-	if get(v, "bot", "key") != "codi" || get(v, "bot", "secretRef") != "DISCORD_TOKEN_CODI" || get(v, "bot", "tokenStored") != true {
+	if get(v, "bot", "key") != "cicord" || get(v, "bot", "secretRef") != "DISCORD_TOKEN_CICORD" || get(v, "bot", "tokenStored") != true {
 		t.Fatalf("bot = %v", v["bot"])
 	}
 	if get(v, "bot", "intents", "status") != "warn" || !strings.Contains(str(get(v, "bot", "intents", "hint")), "Server Members Intent") {
@@ -193,7 +193,7 @@ func TestSetupWizardE2ESim(t *testing.T) {
 	}
 	sid := ss[0].(map[string]any)["id"].(string)
 	res := c.ok("POST", "/api/v1/setup/server", map[string]any{"serverId": sid})
-	if st, msg := checkStatus(t, res["checks"], "hierarchy"); st != "fail" || !strings.Contains(msg, "drag the role “CODI” above “Admin”") {
+	if st, msg := checkStatus(t, res["checks"], "hierarchy"); st != "fail" || !strings.Contains(msg, "drag the role “Cicord” above “Admin”") {
 		t.Fatalf("hierarchy = %s %s", st, msg)
 	}
 	if code, _ := c.do("POST", "/api/v1/setup/step", map[string]any{"step": "repository"}); code != 409 {
@@ -222,7 +222,7 @@ func TestSetupWizardE2ESim(t *testing.T) {
 	if n := len(get(imp, "plan", "changes").([]any)); n != 0 {
 		t.Fatalf("first plan has %d change(s): %v", n, imp["plan"])
 	}
-	for _, f := range []string{"codi.yaml", "servers/pixel-pals.yaml", "bots/codi/bot.yaml",
+	for _, f := range []string{"cicord.yaml", "servers/pixel-pals.yaml", "bots/cicord/bot.yaml",
 		"servers/assets/pixel-pals/icon.png", "servers/assets/pixel-pals/emojis/pixel.png"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Fatalf("%s not written: %v", f, err)
@@ -287,7 +287,7 @@ func TestSetupWizardE2ESim(t *testing.T) {
 	if get(inst, "result", "health") != "Healthy" || get(inst, "result", "command") == "" || get(inst, "view", "plugin", "instance") != "polls" {
 		t.Fatalf("install = %v", inst)
 	}
-	botYAML, _ := os.ReadFile(filepath.Join(dir, "bots/codi/bot.yaml"))
+	botYAML, _ := os.ReadFile(filepath.Join(dir, "bots/cicord/bot.yaml"))
 	if !strings.Contains(string(botYAML), "source: ../../plugins/polls") || !strings.Contains(string(botYAML), "- scheduler") {
 		t.Fatalf("bot.yaml = %s", botYAML)
 	}
@@ -322,7 +322,7 @@ func TestSetupWizardE2ESim(t *testing.T) {
 	if strings.Contains(stderr.String(), botTok) || strings.Contains(stderr.String(), setupToken) {
 		t.Fatal("secret in logs")
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, "bots/codi/bot.yaml"))
+	data, _ := os.ReadFile(filepath.Join(dir, "bots/cicord/bot.yaml"))
 	if strings.Contains(string(data), botTok) {
 		t.Fatal("token written to the repository")
 	}

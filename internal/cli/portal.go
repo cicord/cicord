@@ -21,9 +21,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/typegen"
-	"github.com/npjonath/codi/internal/webui"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/typegen"
+	"github.com/npjonath/cicord/internal/webui"
 )
 
 func init() {
@@ -39,13 +39,13 @@ func newPortalCmd() *cobra.Command {
 		Short: "Create, build and serve a custom community portal",
 		Long: `A custom portal is a React app (a fork of the reference portal) committed in the
 repository. Its build output is committed too and served by the runtime at / instead of
-the default portal (codi.yaml spec.portal.path). See docs/portal.md.`,
+the default portal (cicord.yaml spec.portal.path). See docs/portal.md.`,
 	}
 	cmd.AddCommand(newPortalInitCmd(), newPortalBuildCmd(), newPortalTypegenCmd())
 	return cmd
 }
 
-// ───────────────────────────────────────────────────────────── codi portal init
+// ───────────────────────────────────────────────────────────── cicord portal init
 
 type kitPackage struct {
 	Name, Version, File string
@@ -98,7 +98,7 @@ func tgzPackageJSON(data []byte) ([]byte, error) {
 	}
 }
 
-// portalPackageJSON is the package.json written by `codi portal init`.
+// portalPackageJSON is the package.json written by `cicord portal init`.
 type portalPackageJSON struct {
 	Name            string            `json:"name"`
 	Private         bool              `json:"private"`
@@ -121,17 +121,17 @@ func newPortalInitCmd() *cobra.Command {
 		Use:   "init [dir]",
 		Short: "Scaffold a custom portal from the reference portal (default dir: portal)",
 		Long: `Copies the reference community portal into [dir] (default "portal"), with the
-@codi/client, @codi/react and @codi/ui packages vendored in <dir>/vendor (file:
-dependencies: no npm publication needed). When [dir] is inside a CODI repository, also
-writes .github/workflows/codi-portal.yml, which checks that the committed build matches
-the sources, and src/codi-routes.d.ts, the types of the repository's plugin routes.
+@cicord/client, @cicord/react and @cicord/ui packages vendored in <dir>/vendor (file:
+dependencies: no npm publication needed). When [dir] is inside a Cicord repository, also
+writes .github/workflows/cicord-portal.yml, which checks that the committed build matches
+the sources, and src/cicord-routes.d.ts, the types of the repository's plugin routes.
 
---from-npm (or CODI_FROM_NPM=true) depends on the npm registry instead
-("@codi/client": "^<version of this codi>", no vendor/): use it once the packages are
+--from-npm (or CICORD_FROM_NPM=true) depends on the npm registry instead
+("@cicord/client": "^<version of this cicord>", no vendor/): use it once the packages are
 published (docs/portal.md).
 
 Then: cd <dir> && pnpm install && pnpm build, set spec.portal.path: ./<dir>/dist in
-codi.yaml, and commit <dir> (dist/ included).`,
+cicord.yaml, and commit <dir> (dist/ included).`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "portal"
@@ -142,13 +142,13 @@ codi.yaml, and commit <dir> (dist/ included).`,
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "write into a non-empty directory / overwrite files")
-	cmd.Flags().BoolVar(&fromNPM, "from-npm", fromNPMDefault(), "depend on the @codi/* packages of the npm registry instead of vendoring the embedded tarballs")
+	cmd.Flags().BoolVar(&fromNPM, "from-npm", fromNPMDefault(), "depend on the @cicord/* packages of the npm registry instead of vendoring the embedded tarballs")
 	return cmd
 }
 
-// fromNPMDefault is the default of --from-npm: CODI_FROM_NPM=true (or 1).
+// fromNPMDefault is the default of --from-npm: CICORD_FROM_NPM=true (or 1).
 func fromNPMDefault() bool {
-	v := strings.ToLower(os.Getenv("CODI_FROM_NPM"))
+	v := strings.ToLower(os.Getenv("CICORD_FROM_NPM"))
 	return v == "1" || v == "true"
 }
 
@@ -227,7 +227,7 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 		_, dep := pj.Dependencies[p.Name]
 		_, devDep := pj.DevDependencies[p.Name]
 		if !dep && !devDep {
-			continue // e.g. @codi/sdk, embedded for `codi plugin new`
+			continue // e.g. @cicord/sdk, embedded for `cicord plugin new`
 		}
 		spec := "^" + p.Version // the npm registry: same version as the embedded kit
 		if !fromNPM {
@@ -235,7 +235,7 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 				return err
 			}
 			spec = "file:vendor/" + p.File
-			// @codi/react depends on @codi/client by version: resolve it to the vendored
+			// @cicord/react depends on @cicord/client by version: resolve it to the vendored
 			// tarball too.
 			pj.Pnpm.Overrides[p.Name] = spec
 		}
@@ -268,7 +268,7 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 	types := ""
 	if repoRoot != "" {
 		if types, err = routeTypes(io.Discard, repoRoot); err != nil {
-			fmt.Fprintf(w, "  warning: plugin route types not generated (%v): run `codi portal typegen` once fixed\n", err)
+			fmt.Fprintf(w, "  warning: plugin route types not generated (%v): run `cicord portal typegen` once fixed\n", err)
 			types = ""
 		}
 	}
@@ -294,9 +294,9 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 	}
 	fmt.Fprintf(w, "  created %s/src, %s/test, %s/public (%d files in total)\n", dir, dir, dir, len(written))
 	if repoRoot != "" {
-		wf := filepath.Join(repoRoot, ".github", "workflows", "codi-portal.yml")
+		wf := filepath.Join(repoRoot, ".github", "workflows", "cicord-portal.yml")
 		if _, err := os.Stat(wf); err == nil && !force {
-			fmt.Fprintln(w, "  kept   .github/workflows/codi-portal.yml (exists)")
+			fmt.Fprintln(w, "  kept   .github/workflows/cicord-portal.yml (exists)")
 		} else {
 			var buf bytes.Buffer
 			if err := portalWorkflow.Execute(&buf, map[string]string{"Dir": rel}); err != nil {
@@ -308,18 +308,18 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 			if err := os.WriteFile(wf, buf.Bytes(), 0o644); err != nil {
 				return err
 			}
-			fmt.Fprintln(w, "  created .github/workflows/codi-portal.yml")
+			fmt.Fprintln(w, "  created .github/workflows/cicord-portal.yml")
 		}
 	}
 	fmt.Fprintf(w, `
 Next steps:
-  cd %[1]s && pnpm install && pnpm build    (or: codi portal build)
-  add to codi.yaml:
+  cd %[1]s && pnpm install && pnpm build    (or: cicord portal build)
+  add to cicord.yaml:
     spec:
       portal:
         path: ./%[2]s/dist
-  codi dev --sim                            the runtime serves %[2]s/dist at /
-  pnpm dev:runtime                          (in %[1]s) hot-reloading dev server against codi dev
+  cicord dev --sim                            the runtime serves %[2]s/dist at /
+  pnpm dev:runtime                          (in %[1]s) hot-reloading dev server against cicord dev
 Commit %[2]s, dist/ and pnpm-lock.yaml included: the runtime serves the committed build.
 `, dir, rel)
 	return nil
@@ -327,21 +327,21 @@ Commit %[2]s, dist/ and pnpm-lock.yaml included: the runtime serves the committe
 
 const portalGitignore = `node_modules/
 *.local
-# dist/ is NOT ignored: the CODI runtime serves the committed build (codi.yaml
+# dist/ is NOT ignored: the Cicord runtime serves the committed build (cicord.yaml
 # spec.portal.path); CI checks that it matches the sources (docs/portal.md).
 `
 
-var portalWorkflow = template.Must(template.New("wf").Delims("[[", "]]").Parse(`# Generated by ` + "`codi portal init`" + `.
-# The runtime serves the committed portal build (codi.yaml spec.portal.path). This job
+var portalWorkflow = template.Must(template.New("wf").Delims("[[", "]]").Parse(`# Generated by ` + "`cicord portal init`" + `.
+# The runtime serves the committed portal build (cicord.yaml spec.portal.path). This job
 # rebuilds it from the sources and fails when the committed build differs, so reviewing
 # [[.Dir]]/src is enough to know what the runtime will serve.
-name: codi-portal
+name: cicord-portal
 on:
   pull_request:
-    paths: ["[[.Dir]]/**", "plugins/**", "bots/**", "codi.lock"]
+    paths: ["[[.Dir]]/**", "plugins/**", "bots/**", "cicord.lock"]
   push:
     branches: [main]
-    paths: ["[[.Dir]]/**", "plugins/**", "bots/**", "codi.lock"]
+    paths: ["[[.Dir]]/**", "plugins/**", "bots/**", "cicord.lock"]
 
 permissions:
   contents: read
@@ -358,10 +358,10 @@ jobs:
         with:
           go-version: stable
       # Until binary releases exist.
-      - run: go install github.com/npjonath/codi/cmd/codi@latest
-      - name: The plugin route types match the plugins (src/codi-routes.d.ts)
+      - run: go install github.com/npjonath/cicord/cmd/cicord@latest
+      - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
         working-directory: .
-        run: codi portal typegen --check --out [[.Dir]]/src/codi-routes.d.ts
+        run: cicord portal typegen --check --out [[.Dir]]/src/cicord-routes.d.ts
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -377,15 +377,15 @@ jobs:
         run: |
           if [ -n "$(git status --porcelain -- dist)" ]; then
             git status --short -- dist
-            echo "::error::[[.Dir]]/dist is out of date: run 'codi portal build' and commit it"
+            echo "::error::[[.Dir]]/dist is out of date: run 'cicord portal build' and commit it"
             exit 1
           fi
 `))
 
-// findRepoRoot returns the nearest directory from dir upwards containing codi.yaml.
+// findRepoRoot returns the nearest directory from dir upwards containing cicord.yaml.
 func findRepoRoot(dir string) string {
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "codi.yaml")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "cicord.yaml")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)
@@ -396,13 +396,13 @@ func findRepoRoot(dir string) string {
 	}
 }
 
-// ───────────────────────────────────────────────────────────── codi portal build
+// ───────────────────────────────────────────────────────────── cicord portal build
 
 func newPortalBuildCmd() *cobra.Command {
 	var check bool
 	cmd := &cobra.Command{
 		Use:   "build [repo-dir]",
-		Short: "Build the custom portal into codi.yaml spec.portal.path (needs Node and pnpm or npm)",
+		Short: "Build the custom portal into cicord.yaml spec.portal.path (needs Node and pnpm or npm)",
 		Long: `Runs the package manager of the portal (pnpm when it has pnpm-lock.yaml or pnpm is
 installed, else npm): install when node_modules is missing, then the build script. The
 portal sources are the nearest directory above spec.portal.path with a package.json.
@@ -432,9 +432,9 @@ func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
 		return err
 	}
 	if proj.Spec.Portal == nil || proj.Spec.Portal.Path == "" {
-		return errors.New("codi.yaml has no spec.portal.path (e.g. ./portal/dist): nothing to build")
+		return errors.New("cicord.yaml has no spec.portal.path (e.g. ./portal/dist): nothing to build")
 	}
-	rel, ok := config.ResolveRepoPath("codi.yaml", proj.Spec.Portal.Path)
+	rel, ok := config.ResolveRepoPath("cicord.yaml", proj.Spec.Portal.Path)
 	if !ok {
 		return fmt.Errorf("spec.portal.path %q must be inside the repository", proj.Spec.Portal.Path)
 	}
@@ -450,13 +450,13 @@ func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
 		}
 	}
 	if src == "" {
-		return fmt.Errorf("no package.json above %s: create the portal with `codi portal init`", rel)
+		return fmt.Errorf("no package.json above %s: create the portal with `cicord portal init`", rel)
 	}
 	pm := packageManager(src)
 	if pm == "" {
 		return errors.New("neither pnpm nor npm is installed: install Node.js 24 and pnpm (corepack enable)")
 	}
-	if usesCodiClient(src) {
+	if usesCicordClient(src) {
 		// The types of the plugin routes follow the plugins of the revision.
 		changed, err := writeRouteTypes(stderr, root, filepath.Join(src, filepath.FromSlash(routeTypesFile)), check)
 		if err != nil {
@@ -464,7 +464,7 @@ func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
 		}
 		typesRel := filepath.ToSlash(relOr(root, filepath.Join(src, filepath.FromSlash(routeTypesFile))))
 		if check && changed {
-			fmt.Fprintf(stderr, "%s is out of date: run `codi portal typegen` and commit it\n", typesRel)
+			fmt.Fprintf(stderr, "%s is out of date: run `cicord portal typegen` and commit it\n", typesRel)
 			return exitError{1}
 		}
 		if changed {
@@ -506,9 +506,9 @@ func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
 	return nil
 }
 
-// usesCodiClient reports whether the portal package depends on @codi/client or @codi/react
-// (the consumers of src/codi-routes.d.ts).
-func usesCodiClient(dir string) bool {
+// usesCicordClient reports whether the portal package depends on @cicord/client or @cicord/react
+// (the consumers of src/cicord-routes.d.ts).
+func usesCicordClient(dir string) bool {
 	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
 	if err != nil {
 		return false
@@ -517,7 +517,7 @@ func usesCodiClient(dir string) bool {
 	if json.Unmarshal(data, &pj) != nil {
 		return false
 	}
-	for _, name := range []string{"@codi/client", "@codi/react"} {
+	for _, name := range []string{"@cicord/client", "@cicord/react"} {
 		if _, ok := pj.Dependencies[name]; ok {
 			return true
 		}

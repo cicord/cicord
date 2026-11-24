@@ -8,14 +8,14 @@ machines, and versioned over time.
 
 ## Decision
 - Every file is a resource with `apiVersion`, `kind`, `metadata`, `spec`. Current version:
-  `codi.dev/v1alpha1`. Kinds: `Project`, `Server`, `Bot`, `Plugin`.
+  `cicord.dev/v1alpha1`. Kinds: `Project`, `Server`, `Bot`, `Plugin`.
 - Each kind has a JSON Schema in `spec/schemas/` (draft 2020-12), usable by editors
   (yaml-language-server) for autocompletion.
-- Conventional layout: `codi.yaml`, `servers/<key>.yaml`, `bots/<key>/bot.yaml`; the
+- Conventional layout: `cicord.yaml`, `servers/<key>.yaml`, `bots/<key>/bot.yaml`; the
   resource key is `metadata.name` and must match the file/directory name.
 - Collections of named resources (roles, categories, channels) are **maps keyed by stable
   key**, not lists (ADR-0003).
-- Breaking changes bump `apiVersion`; a `codi migrate` command (planned, not implemented yet) will convert files.
+- Breaking changes bump `apiVersion`; a `cicord migrate` command (planned, not implemented yet) will convert files.
 
 ## Consequences
 - Familiar to the DevOps audience; for the general public the admin UI hides YAML.

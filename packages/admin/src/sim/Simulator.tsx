@@ -9,8 +9,8 @@ import type {
   SimModal,
   SimServer,
   User,
-} from "@codi/client";
-import { useCodi } from "@codi/react";
+} from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { keys, useSimCommands, useSimDms, useSimMessages, useSimState, useStatus } from "../api.ts";
 import { useAdminConfig } from "../context.tsx";
@@ -50,8 +50,8 @@ interface LastInteraction {
   at: number;
 }
 
-const ACTOR_KEY = "codi-admin:sim-actor";
-const QUICKSTART_KEY = "codi-admin:sim-quickstart";
+const ACTOR_KEY = "cicord-admin:sim-actor";
+const QUICKSTART_KEY = "cicord-admin:sim-quickstart";
 
 function stored(key: string): string | null {
   try {
@@ -123,7 +123,7 @@ function Playground({
   servers: SimServer[];
   live: string;
 }) {
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const toast = useToast();
   const status = useStatus();
   const config = useAdminConfig();

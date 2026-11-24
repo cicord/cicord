@@ -15,8 +15,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/version"
-	"github.com/npjonath/codi/spec"
+	"github.com/npjonath/cicord/internal/version"
+	"github.com/npjonath/cicord/spec"
 )
 
 //go:embed all:templates
@@ -82,9 +82,9 @@ func newInitCmd() *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "init [dir]",
-		Short: "Scaffold a new CODI repository",
-		Example: `  codi init my-community --server-id 112233445566778899 --application-id 998877665544332211
-  codi init . --server my-server --bot helper`,
+		Short: "Scaffold a new Cicord repository",
+		Example: `  cicord init my-community --server-id 112233445566778899 --application-id 998877665544332211
+  cicord init . --server my-server --bot helper`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -142,9 +142,9 @@ func newInitCmd() *cobra.Command {
 				rel, _ := filepath.Rel(abs, f)
 				fmt.Fprintln(w, "  created", rel)
 			}
-			fmt.Fprintf(w, "\nNext steps:\n  cd %s\n  codi validate\n  codi dev --sim\n", dir)
+			fmt.Fprintf(w, "\nNext steps:\n  cd %s\n  cicord validate\n  cicord dev --sim\n", dir)
 			if o.serverID == placeholderServerID || o.appID == placeholderAppID {
-				fmt.Fprintln(w, "\nReplace the placeholder discordId / applicationId with your real IDs before `codi plan`.")
+				fmt.Fprintln(w, "\nReplace the placeholder discordId / applicationId with your real IDs before `cicord plan`.")
 			}
 			return nil
 		},
@@ -152,9 +152,9 @@ func newInitCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&o.project, "project", "", "project key (default: directory name)")
 	f.StringVar(&o.server, "server", "", "server key (default: project key)")
-	f.StringVar(&o.serverID, "server-id", placeholderServerID, "Discord server ID (default: a placeholder that works with codi dev --sim)")
+	f.StringVar(&o.serverID, "server-id", placeholderServerID, "Discord server ID (default: a placeholder that works with cicord dev --sim)")
 	f.StringVar(&o.bot, "bot", "bot", "bot key")
-	f.StringVar(&o.appID, "application-id", placeholderAppID, "Discord application ID of the bot (default: a placeholder that works with codi dev --sim)")
+	f.StringVar(&o.appID, "application-id", placeholderAppID, "Discord application ID of the bot (default: a placeholder that works with cicord dev --sim)")
 	f.StringVar(&o.provider, "provider", "", "source provider: github | git | embedded (default: inferred from --repo, none for local-only repos)")
 	f.StringVar(&o.repo, "repo", "", "repository URL (github / git providers)")
 	f.BoolVar(&o.force, "force", false, "overwrite existing files")
@@ -174,7 +174,7 @@ func sanitizeKey(s string) string {
 	}
 	out := strings.Trim(b.String(), "-")
 	if out == "" || out[0] < 'a' || out[0] > 'z' {
-		out = "codi-" + out
+		out = "cicord-" + out
 	}
 	if len(out) > 63 {
 		out = out[:63]
@@ -182,9 +182,9 @@ func sanitizeKey(s string) string {
 	return out
 }
 
-// Placeholder IDs written by `codi init` without --server-id / --application-id. They are
-// valid snowflakes, so `codi dev --sim` (which creates the server and the application with
-// the IDs of the repository) works right away; they must be replaced before `codi plan`.
+// Placeholder IDs written by `cicord init` without --server-id / --application-id. They are
+// valid snowflakes, so `cicord dev --sim` (which creates the server and the application with
+// the IDs of the repository) works right away; they must be replaced before `cicord plan`.
 const (
 	placeholderServerID = "100000000000000001"
 	placeholderAppID    = "100000000000000002"
@@ -221,11 +221,11 @@ func newPluginCmd() *cobra.Command {
 				rel, _ := filepath.Rel(abs, f)
 				fmt.Fprintln(cmd.OutOrStdout(), "  created", rel)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "  created .codi/codi-sdk.d.ts")
+			fmt.Fprintln(cmd.OutOrStdout(), "  created .cicord/cicord-sdk.d.ts")
 			if testErr != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "\nNo unit test setup: %v.\n", testErr)
 			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "\nUnit tests (Node 24, @codi/sdk/testing):\n    cd %s && npm install && npm test\n", args[0])
+				fmt.Fprintf(cmd.OutOrStdout(), "\nUnit tests (Node 24, @cicord/sdk/testing):\n    cd %s && npm install && npm test\n", args[0])
 			}
 			where, source := "a bot", "<relative path from bot.yaml to "+args[0]+">"
 			if botFile := findBotFile(abs); botFile != "" {
@@ -242,15 +242,15 @@ func newPluginCmd() *cobra.Command {
 					}
 				}
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "\nAdd it to %s (spec.plugins), then run `codi dev --sim`:\n    - name: %s\n      source: %s\n      grants: [discord.messages.send]\n", where, name, source)
+			fmt.Fprintf(cmd.OutOrStdout(), "\nAdd it to %s (spec.plugins), then run `cicord dev --sim`:\n    - name: %s\n      source: %s\n      grants: [discord.messages.send]\n", where, name, source)
 			return nil
 		},
 	}
 	newCmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
-	newCmd.Flags().BoolVar(&fromNPM, "from-npm", fromNPMDefault(), "depend on @codi/sdk from the npm registry instead of vendoring the embedded tarball")
+	newCmd.Flags().BoolVar(&fromNPM, "from-npm", fromNPMDefault(), "depend on @cicord/sdk from the npm registry instead of vendoring the embedded tarball")
 	sdkCmd := &cobra.Command{
 		Use:   "sdk-types <plugin-dir>",
-		Short: "Write the @codi/sdk type definitions into <plugin-dir>/.codi for editors and tsc",
+		Short: "Write the @cicord/sdk type definitions into <plugin-dir>/.cicord for editors and tsc",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return writeSDKTypes(args[0])
@@ -263,22 +263,22 @@ func newPluginCmd() *cobra.Command {
 	return cmd
 }
 
-// pluginSubcommands lets other files add `codi plugin …` commands (build, test, typegen…).
+// pluginSubcommands lets other files add `cicord plugin …` commands (build, test, typegen…).
 var pluginSubcommands []func() *cobra.Command
 
 func writeSDKTypes(pluginDir string) error {
-	dir := filepath.Join(pluginDir, ".codi")
+	dir := filepath.Join(pluginDir, ".cicord")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "codi-sdk.d.ts"), []byte(spec.SDKTypes), 0o644)
+	return os.WriteFile(filepath.Join(dir, "cicord-sdk.d.ts"), []byte(spec.SDKTypes), 0o644)
 }
 
-// findBotFile returns the first bots/<key>/bot.yaml of the CODI repository containing dir
-// (the nearest parent with a codi.yaml), or "".
+// findBotFile returns the first bots/<key>/bot.yaml of the Cicord repository containing dir
+// (the nearest parent with a cicord.yaml), or "".
 func findBotFile(dir string) string {
 	for d := dir; ; d = filepath.Dir(d) {
-		if _, err := os.Stat(filepath.Join(d, "codi.yaml")); err == nil {
+		if _, err := os.Stat(filepath.Join(d, "cicord.yaml")); err == nil {
 			matches, _ := filepath.Glob(filepath.Join(d, "bots", "*", "bot.yaml"))
 			sort.Strings(matches)
 			if len(matches) > 0 {

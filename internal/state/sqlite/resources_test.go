@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 func TestResources(t *testing.T) {

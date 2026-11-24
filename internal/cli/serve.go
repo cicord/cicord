@@ -21,26 +21,26 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/api"
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord/disgoadapter"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/secrets"
-	"github.com/npjonath/codi/internal/setup"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state/sqlite"
-	"github.com/npjonath/codi/internal/webui"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/api"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord/disgoadapter"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/secrets"
+	"github.com/npjonath/cicord/internal/setup"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/webui"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 func init() {
 	extraCommands = append(extraCommands, newServeCmd, newDevCmd)
 }
 
-// serverFlags are shared by `codi serve` and `codi dev`.
+// serverFlags are shared by `cicord serve` and `cicord dev`.
 type serverFlags struct {
 	dataDir     string
 	listen      string
@@ -52,8 +52,8 @@ type serverFlags struct {
 func (f *serverFlags) register(cmd *cobra.Command, defListen string) {
 	cmd.Flags().StringVar(&f.dataDir, "data-dir", "", "runtime state directory (database, caches, keys)")
 	cmd.Flags().StringVar(&f.listen, "listen", defListen, "HTTP listen address")
-	cmd.Flags().StringVar(&f.publicURL, "public-url", os.Getenv("CODI_PUBLIC_URL"), "public URL of the runtime (OAuth redirects, portal links); default http://<listen>")
-	cmd.Flags().StringSliceVar(&f.corsOrigins, "cors-origin", splitEnv("CODI_CORS_ORIGINS"), "external portal origin allowed with credentials (repeatable)")
+	cmd.Flags().StringVar(&f.publicURL, "public-url", os.Getenv("CICORD_PUBLIC_URL"), "public URL of the runtime (OAuth redirects, portal links); default http://<listen>")
+	cmd.Flags().StringSliceVar(&f.corsOrigins, "cors-origin", splitEnv("CICORD_CORS_ORIGINS"), "external portal origin allowed with credentials (repeatable)")
 	cmd.Flags().StringVar(&f.logLevel, "log-level", "info", "log level: debug | info | warn | error")
 }
 
@@ -75,15 +75,15 @@ func newLogger(w io.Writer, level string) *slog.Logger {
 	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: l}))
 }
 
-// readProject decodes codi.yaml (without full validation: the runtime validates revisions).
+// readProject decodes cicord.yaml (without full validation: the runtime validates revisions).
 func readProject(dir string) (*config.Project, error) {
-	data, err := os.ReadFile(filepath.Join(dir, "codi.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, "cicord.yaml"))
 	if err != nil {
-		return nil, fmt.Errorf("%s is not a CODI repository: %w", dir, err)
+		return nil, fmt.Errorf("%s is not a Cicord repository: %w", dir, err)
 	}
 	var p config.Project
 	if err := config.DecodeYAML(data, &p); err != nil {
-		return nil, fmt.Errorf("codi.yaml: %w", err)
+		return nil, fmt.Errorf("cicord.yaml: %w", err)
 	}
 	return &p, nil
 }
@@ -101,9 +101,9 @@ func publicURLFor(flag string, ln net.Listener) string {
 	return fmt.Sprintf("http://%s", net.JoinHostPort(host, fmt.Sprint(addr.Port)))
 }
 
-// linkKey returns CODI_LINK_SECRET or a key persisted in the data dir.
+// linkKey returns CICORD_LINK_SECRET or a key persisted in the data dir.
 func linkKey(dataDir string) ([]byte, error) {
-	if v := os.Getenv("CODI_LINK_SECRET"); v != "" {
+	if v := os.Getenv("CICORD_LINK_SECRET"); v != "" {
 		return []byte(v), nil
 	}
 	p := filepath.Join(dataDir, "link.key")
@@ -140,7 +140,7 @@ func ensureEmbeddedRepo(bare, dir, branch string) error {
 	if _, err := git.PlainOpen(bare); err == nil {
 		return nil
 	}
-	work, err := os.MkdirTemp("", "codi-embedded-*")
+	work, err := os.MkdirTemp("", "cicord-embedded-*")
 	if err != nil {
 		return err
 	}
@@ -159,8 +159,8 @@ func ensureEmbeddedRepo(bare, dir, branch string) error {
 	if err := wt.AddGlob("."); err != nil {
 		return err
 	}
-	sig := &object.Signature{Name: "codi[bot]", Email: "codi[bot]@users.noreply.github.com", When: time.Now()}
-	if _, err := wt.Commit("Initial import\n\nCodi-Source: cli\n", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+	sig := &object.Signature{Name: "cicord[bot]", Email: "cicord[bot]@users.noreply.github.com", When: time.Now()}
+	if _, err := wt.Commit("Initial import\n\nCicord-Source: cli\n", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
 		return err
 	}
 	_, err = git.PlainClone(bare, true, &git.CloneOptions{URL: work})
@@ -175,7 +175,7 @@ func copyRepoTree(src, dst string) error {
 		rel, _ := filepath.Rel(src, p)
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", "node_modules", ".codi", ".codi-data", "dist":
+			case ".git", "node_modules", ".cicord", ".cicord-data", "dist":
 				if rel != "." {
 					return filepath.SkipDir
 				}
@@ -194,9 +194,9 @@ func copyRepoTree(src, dst string) error {
 }
 
 // checkLocalDataDir keeps the data dir out of a locally watched repository: the local
-// source snapshots every file of the tree except a few ignored names (.codi, .git…), so a
+// source snapshots every file of the tree except a few ignored names (.cicord, .git…), so a
 // database written inside it would trigger a new revision on every write. A data dir in
-// the repo must live under .codi/. When the user did not choose one, <repo>/.codi/data is
+// the repo must live under .cicord/. When the user did not choose one, <repo>/.cicord/data is
 // used instead.
 func checkLocalDataDir(repoDir, dataDir string, explicit bool) (string, error) {
 	abs, err := filepath.Abs(dataDir)
@@ -207,14 +207,14 @@ func checkLocalDataDir(repoDir, dataDir string, explicit bool) (string, error) {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 		return abs, nil // outside the repository
 	}
-	if first := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]; first == ".codi" {
+	if first := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]; first == ".cicord" {
 		return abs, nil
 	}
 	if !explicit {
-		return filepath.Join(repoDir, ".codi", "data"), nil
+		return filepath.Join(repoDir, ".cicord", "data"), nil
 	}
 	return "", fmt.Errorf("--data-dir %s is inside the watched repository %s: use a path under %s or outside the repository",
-		dataDir, repoDir, filepath.Join(repoDir, ".codi"))
+		dataDir, repoDir, filepath.Join(repoDir, ".cicord"))
 }
 
 // runHTTP serves h on ln and runs the runtime until ctx ends, then shuts both down.
@@ -264,20 +264,20 @@ func newServeCmd() *cobra.Command {
 	var local bool
 	cmd := &cobra.Command{
 		Use:   "serve [dir]",
-		Short: "Run the CODI runtime (production)",
-		Long: `Run the CODI runtime: follow the configured source (codi.yaml spec.source), reconcile
+		Short: "Run the Cicord runtime (production)",
+		Long: `Run the Cicord runtime: follow the configured source (cicord.yaml spec.source), reconcile
 servers, run the bots and their plugins, and serve the HTTP API, the admin UI (/admin/) and
 the community portal (/).
 
 Environment:
   DISCORD_TOKEN_*             bot tokens (as named by token.secretRef)
-  CODI_GIT_TOKEN              HTTPS token for git fetch, write-back and GitHub pull requests
-  CODI_RUNTIME_TOKEN          bearer token of the CLI / CI (machine endpoints)
-  CODI_WEBHOOK_SECRET         GitHub webhook secret
-  CODI_LINK_SECRET            portal link signing key (default: generated in the data dir)
-  CODI_DISCORD_CLIENT_SECRET  Discord OAuth2 client secret (admin UI / portal login)
-  CODI_DISCORD_CLIENT_ID      OAuth2 client ID (default: the first bot's application ID)
-  CODI_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store and plugin downloads reach private networks`,
+  CICORD_GIT_TOKEN              HTTPS token for git fetch, write-back and GitHub pull requests
+  CICORD_RUNTIME_TOKEN          bearer token of the CLI / CI (machine endpoints)
+  CICORD_WEBHOOK_SECRET         GitHub webhook secret
+  CICORD_LINK_SECRET            portal link signing key (default: generated in the data dir)
+  CICORD_DISCORD_CLIENT_SECRET  Discord OAuth2 client secret (admin UI / portal login)
+  CICORD_DISCORD_CLIENT_ID      OAuth2 client ID (default: the first bot's application ID)
+  CICORD_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store and plugin downloads reach private networks`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -286,7 +286,7 @@ Environment:
 			}
 			explicit := cmd.Flags().Changed("data-dir")
 			if f.dataDir == "" {
-				f.dataDir = ".codi-data"
+				f.dataDir = ".cicord-data"
 			}
 			return runServe(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), dir, f, local, explicit)
 		},
@@ -302,7 +302,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(absDir, "codi.yaml")); errors.Is(err, os.ErrNotExist) && !local {
+	if _, err := os.Stat(filepath.Join(absDir, "cicord.yaml")); errors.Is(err, os.ErrNotExist) && !local {
 		// No configured repository: setup wizard (or the repository it created).
 		return runServeSetup(ctx, stdout, log, absDir, f)
 	}
@@ -337,7 +337,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		branch string
 	)
 	// Secrets: environment first, then the encrypted secret store of the data dir.
-	store, err := sqlite.Open(filepath.Join(dataDir, "codi.db"))
+	store, err := sqlite.Open(filepath.Join(dataDir, "cicord.db"))
 	if err != nil {
 		return err
 	}
@@ -364,7 +364,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 			}
 		}
 		if remote == "" {
-			return fmt.Errorf("codi.yaml: spec.source.repo is required for provider %s", provider)
+			return fmt.Errorf("cicord.yaml: spec.source.repo is required for provider %s", provider)
 		}
 		poll := time.Minute
 		if sp.PollInterval != "" {
@@ -406,11 +406,11 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		return err
 	}
 	if f.publicURL == "" && proj.Spec.Runtime != nil && proj.Spec.Runtime.URL != "" {
-		f.publicURL = proj.Spec.Runtime.URL // the operator's own codi.yaml
+		f.publicURL = proj.Spec.Runtime.URL // the operator's own cicord.yaml
 	}
 	if f.publicURL == "" {
-		log.Warn("no --public-url (or codi.yaml spec.runtime.url): OAuth redirects, portal links and the CSRF origin check use " +
-			"http://<listen address>; set it to the URL users reach (e.g. https://codi.example.org)")
+		log.Warn("no --public-url (or cicord.yaml spec.runtime.url): OAuth redirects, portal links and the CSRF origin check use " +
+			"http://<listen address>; set it to the URL users reach (e.g. https://cicord.example.org)")
 	}
 	public := publicURLFor(f.publicURL, ln)
 	portalURL := public
@@ -425,20 +425,20 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
 	})
 	stopping := make(chan struct{})
-	runtimeToken := os.Getenv("CODI_RUNTIME_TOKEN")
+	runtimeToken := os.Getenv("CICORD_RUNTIME_TOKEN")
 	if runtimeToken == "" {
-		log.Warn("CODI_RUNTIME_TOKEN is not set: machine endpoints (codi plan --remote, /api/v1/sync) are disabled")
+		log.Warn("CICORD_RUNTIME_TOKEN is not set: machine endpoints (cicord plan --remote, /api/v1/sync) are disabled")
 	}
 	cat := catalog.Official()
 	h := api.New(api.Options{
 		Runtime: rt, Writer: writer, Mode: "serve", RuntimeToken: runtimeToken,
-		WebhookSecret: os.Getenv("CODI_WEBHOOK_SECRET"), Branch: branch,
-		OAuth: api.OAuth{ClientID: os.Getenv("CODI_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CODI_DISCORD_CLIENT_SECRET"),
+		WebhookSecret: os.Getenv("CICORD_WEBHOOK_SECRET"), Branch: branch,
+		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
 		PublicURL: public, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
 		Stopping: stopping, Checker: &setup.Checker{Runtime: rt, Probe: defaultProbe(), Secrets: resolve, Writer: writer},
 		Catalog: cat, SecretStore: sec, Secret: resolve, PluginStore: runtimePluginStore(cat, resolve, stopping, rt.Repo),
 	})
-	fmt.Fprintf(stdout, "CODI runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, public, dataDir)
+	fmt.Fprintf(stdout, "Cicord runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, public, dataDir)
 	return runHTTP(ctx, log, ln, h, rt, stopping)
 }

@@ -10,8 +10,8 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 // release commits files to a plugin repository and tags the commit.
@@ -98,7 +98,7 @@ func TestStoreUpdateRegistryPlugin(t *testing.T) {
 	c.expect(200, "GET", "/api/v1/store/acme/hello", nil).json(t, &d)
 	c.expect(200, "POST", "/api/v1/servers/"+serverKey+"/store/install", map[string]any{"source": "acme", "plugin": "hello",
 		"version": d.Version, "commit": d.Commit, "integrity": d.Integrity, "confirmUnofficial": true})
-	c.expect(404, "GET", "/api/v1/store/codi/tickets/update", nil) // not installed
+	c.expect(404, "GET", "/api/v1/store/cicord/tickets/update", nil) // not installed
 
 	// No update yet.
 	var rv updateReviewTestDTO
@@ -176,7 +176,7 @@ func TestStoreUpdateRegistryPlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if le := lock.Plugins["acme/hello"]; le.Version != "1.1.0" || le.Commit != rv.Detail.Commit || le.Integrity != rv.Detail.Integrity {
-		t.Errorf("codi.lock = %+v", lock.Plugins)
+		t.Errorf("cicord.lock = %+v", lock.Plugins)
 	}
 	bot := helloEntry(t, e)
 	if !strings.Contains(bot, "storage.kv") || !strings.Contains(bot, "version: ^1.0.0") {
@@ -240,7 +240,7 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := startFull(t, func(dir string) {
-		p := filepath.Join(dir, "codi.yaml")
+		p := filepath.Join(dir, "cicord.yaml")
 		data, _ := os.ReadFile(p)
 		_ = os.WriteFile(p, []byte(strings.Replace(string(data), "defaultMode: pullRequest", "defaultMode: commit", 1)), 0o644)
 		pd := filepath.Join(dir, "plugins", "welcome")
@@ -266,12 +266,12 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 	}
 	// The extra file makes the copy differ from any released version: modified.
 	var rv updateReviewTestDTO
-	c.expect(200, "GET", "/api/v1/store/codi/welcome/update", nil).json(t, &rv)
+	c.expect(200, "GET", "/api/v1/store/cicord/welcome/update", nil).json(t, &rv)
 	if !rv.Available || !rv.Modified || rv.Files == nil || len(rv.Files.Removed) != 1 || rv.Files.Removed[0] != "src/old.ts" ||
 		len(rv.Files.Changed) != 1 || rv.Files.Changed[0] != "plugin.yaml" {
 		t.Fatalf("review = %+v", rv)
 	}
-	update := "/api/v1/store/codi/welcome/update"
+	update := "/api/v1/store/cicord/welcome/update"
 	if r := c.do("POST", update, map[string]any{"version": "0.0.1"}); r.status != 409 || !strings.Contains(string(r.body), `"changed"`) {
 		t.Fatalf("update of another version: %d %s", r.status, r.body)
 	}

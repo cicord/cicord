@@ -14,8 +14,8 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test -race ./...
-      - run: CGO_ENABLED=0 go build -o bin/codi ./cmd/codi
-      - run: ./bin/codi validate examples/basic
+      - run: CGO_ENABLED=0 go build -o bin/cicord ./cmd/cicord
+      - run: ./bin/cicord validate examples/basic
 
   js:
     runs-on: ubuntu-latest

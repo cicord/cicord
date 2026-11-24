@@ -2,7 +2,7 @@
  * XP math and storage. `GET /leaderboard` items (`LeaderboardEntry`) are consumed by the
  * community portal: keep the shape stable.
  */
-import type { Context, Json, User } from "@codi/sdk";
+import type { Context, Json, User } from "@cicord/sdk";
 import type { LeaderboardEntry } from "./routes.ts";
 
 export type { LeaderboardEntry };

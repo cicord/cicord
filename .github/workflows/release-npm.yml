@@ -1,4 +1,4 @@
-# Publishes @codi/sdk, @codi/client, @codi/react and @codi/ui on npm (RELEASING.md).
+# Publishes @cicord/sdk, @cicord/client, @cicord/react and @cicord/ui on npm (RELEASING.md).
 #
 # - Manual run (Actions → release-npm → Run workflow): a dry run by default (packs and
 #   runs `npm publish --dry-run`); untick "dry-run" to publish.
@@ -9,7 +9,7 @@
 # specifiers to real versions, then the tarballs are published with npm provenance
 # (signed build attestation, needs `id-token: write`). Versions already on npm are
 # skipped, so a failed run can be re-run. Needs the repository secret NPM_TOKEN (an npm
-# automation or granular token with publish rights on the @codi scope).
+# automation or granular token with publish rights on the @cicord scope).
 name: release-npm
 on:
   workflow_dispatch:
@@ -88,10 +88,10 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          # Dependencies first: @codi/react depends on @codi/client.
+          # Dependencies first: @cicord/react depends on @cicord/client.
           for p in sdk client react ui; do
-            name="@codi/$p"
-            tgz="out/codi-$p-$VERSION.tgz"
+            name="@cicord/$p"
+            tgz="out/cicord-$p-$VERSION.tgz"
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then
               echo "$name@$VERSION is already published: skipped"
               continue

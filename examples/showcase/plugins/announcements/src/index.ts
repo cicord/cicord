@@ -5,7 +5,7 @@ import {
   type Json,
   type RouteResponse,
   type TextChannel,
-} from "@codi/sdk";
+} from "@cicord/sdk";
 import {
   adKey,
   draftKey,

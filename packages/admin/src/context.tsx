@@ -1,5 +1,5 @@
 /** App-wide contexts and small brand pieces shared by the shell and the pages. */
-import type { AccessRole, Me, RuntimeStatus, ServerStatus } from "@codi/client";
+import type { AccessRole, Me, RuntimeStatus, ServerStatus } from "@cicord/client";
 import { createContext, useContext } from "react";
 import { Badge } from "./components/ui/badge.tsx";
 import type { AdminConfig } from "./config.ts";

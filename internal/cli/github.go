@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// prComment posts or updates the CODI comment of a GitHub pull request.
+// prComment posts or updates the Cicord comment of a GitHub pull request.
 type prComment struct {
 	api    string // GitHub API base (GITHUB_API_URL, default https://api.github.com)
 	token  string

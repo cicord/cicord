@@ -5,13 +5,13 @@
  * Review = update: the request carries the reviewed version, commit and integrity.
  */
 import {
-  CodiApiError,
+  CicordApiError,
   type ListDiff,
   type StoreUpdateRequest,
   type StoreUpdateResult,
   type StoreUpdateReview,
-} from "@codi/client";
-import { useCodi } from "@codi/react";
+} from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -61,7 +61,7 @@ export function StoreUpdate({
   serverKey: string;
 }) {
   const { t } = useTranslation();
-  const { cache } = useCodi();
+  const { cache } = useCicord();
   const review = useStoreUpdateReview(source, name);
   const [done, setDone] = useState<StoreUpdateResult | null>(null);
   const r = review.data;
@@ -91,7 +91,7 @@ export function StoreUpdate({
       </Page>
     );
   if (!r) {
-    const code = review.error instanceof CodiApiError ? review.error.code : "";
+    const code = review.error instanceof CicordApiError ? review.error.code : "";
     return (
       <Page className="max-w-4xl">
         {back}
@@ -406,7 +406,7 @@ function UpdateForm({
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const d = review.detail;
   const name = d.displayName || d.name;
   const unofficial = d.trust === "unofficial";
@@ -449,7 +449,7 @@ function UpdateForm({
         cache.invalidate(["admin", "server", serverKey, "audit"]),
       ]);
     } catch (err) {
-      if (err instanceof CodiApiError && err.code === "changed") setConfirmed(false);
+      if (err instanceof CicordApiError && err.code === "changed") setConfirmed(false);
       setProblem(err);
     } finally {
       setPending(false);
@@ -636,7 +636,7 @@ function Checkbox({
 
 function UpdateProblem({ error, onChanged }: { error: unknown; onChanged: () => void }) {
   const { t } = useTranslation();
-  const e = error instanceof CodiApiError ? error : null;
+  const e = error instanceof CicordApiError ? error : null;
   const message = e?.message ?? "";
   switch (e?.code) {
     case "changed":

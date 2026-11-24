@@ -17,17 +17,17 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/codi/internal/api"
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/build"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/plugin"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state/sqlite"
-	"github.com/npjonath/codi/internal/typegen"
+	"github.com/npjonath/cicord/internal/api"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/build"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/plugin"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/typegen"
 )
 
 func init() {
@@ -84,7 +84,7 @@ type routeJSON struct {
 	Access string `json:"access"`
 }
 
-// pluginReport is the output of `codi plugin build`.
+// pluginReport is the output of `cicord plugin build`.
 type pluginReport struct {
 	Name            string         `json:"name"`
 	Version         string         `json:"version"`
@@ -201,7 +201,7 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 	if slices.Contains(m.Spec.Capabilities, "http.fetch") && (m.Spec.Network == nil || len(m.Spec.Network.Allow) == 0) {
 		r.Errors = append(r.Errors, "http.fetch requires spec.network.allow")
 	}
-	// The route contract is copied into the portals (codi portal typegen).
+	// The route contract is copied into the portals (cicord portal typegen).
 	if _, err := readRouteContract(dir, m); err != nil {
 		r.Errors = append(r.Errors, err.Error())
 	} else if m.Spec.Routes != nil && m.Spec.Routes.Types != "" && len(def.Routes) == 0 {
@@ -298,9 +298,9 @@ definition and check it against plugin.yaml like the runtime does: handlers that
 intent missing from spec.intents, schedules/routes/subscriptions without their
 capability, http.fetch without spec.network.allow. Exit 1 when the plugin would be
 rejected.`,
-		Example: `  codi plugin build plugins/welcome
-  codi plugin build plugins/welcome -o json
-  codi plugin build plugins/welcome --out dist/welcome.js`,
+		Example: `  cicord plugin build plugins/welcome
+  cicord plugin build plugins/welcome -o json
+  cicord plugin build plugins/welcome --out dist/welcome.js`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkOutput(output); err != nil {
@@ -344,19 +344,19 @@ func newPluginTypegenCmd() *cobra.Command {
 	var check bool
 	cmd := &cobra.Command{
 		Use:   "typegen <plugin-dir>",
-		Short: "Generate the typed PluginConfig (src/codi-env.d.ts) from config.schema.json",
-		Long: `Generate a TypeScript module augmentation of @codi/sdk's PluginConfig from the plugin's
+		Short: "Generate the typed PluginConfig (src/cicord-env.d.ts) from config.schema.json",
+		Long: `Generate a TypeScript module augmentation of @cicord/sdk's PluginConfig from the plugin's
 config schema (plugin.yaml spec.config.schema), so that ctx.config is typed.
 
 Fields that are required, or have a default the runtime applies (top level, nested
 objects, object elements of arrays and local $refs; not additionalProperties maps nor
-oneOf/anyOf alternatives), are non-optional. x-codi-ref fields are keys (string), enums
+oneOf/anyOf alternatives), are non-optional. x-cicord-ref fields are keys (string), enums
 become literal unions.
 
 --check compares with the existing file instead of writing it (exit 1 when it is out
 of date), for CI.`,
-		Example: `  codi plugin typegen plugins/welcome
-  codi plugin typegen plugins/welcome --check`,
+		Example: `  cicord plugin typegen plugins/welcome
+  cicord plugin typegen plugins/welcome --check`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := args[0]
@@ -375,12 +375,12 @@ of date), for CI.`,
 				return err
 			}
 			if out == "" {
-				out = filepath.Join(dir, "src", "codi-env.d.ts")
+				out = filepath.Join(dir, "src", "cicord-env.d.ts")
 			}
 			if check {
 				cur, err := os.ReadFile(out)
 				if err != nil || string(cur) != content {
-					fmt.Fprintf(cmd.ErrOrStderr(), "%s is out of date: run `codi plugin typegen %s`\n", out, dir)
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s is out of date: run `cicord plugin typegen %s`\n", out, dir)
 					return exitError{1}
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "%s is up to date\n", out)
@@ -396,7 +396,7 @@ of date), for CI.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&out, "out", "", "output file (default <plugin-dir>/src/codi-env.d.ts)")
+	cmd.Flags().StringVar(&out, "out", "", "output file (default <plugin-dir>/src/cicord-env.d.ts)")
 	cmd.Flags().BoolVar(&check, "check", false, "fail when the file is out of date instead of writing it")
 	return cmd
 }
@@ -425,10 +425,10 @@ Unless --script=false, a short scripted simulation follows: a member joins (when
 plugin handles memberJoin) and every slash command without required options is invoked
 once; the messages, DMs and replies are printed, and a failed interaction fails the test.
 
---config is the plugin config (YAML or JSON), as in bot.yaml. Required x-codi-ref fields
+--config is the plugin config (YAML or JSON), as in bot.yaml. Required x-cicord-ref fields
 without a value are filled with test resources; other required fields must be given.`,
-		Example: `  codi plugin test plugins/welcome
-  codi plugin test plugins/onboarding --config plugins/onboarding/test/config.yaml`,
+		Example: `  cicord plugin test plugins/welcome
+  cicord plugin test plugins/onboarding --config plugins/onboarding/test/config.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPluginTest(cmd, args[0], configFile, verbose, script, timeout)
@@ -441,12 +441,12 @@ without a value are filled with test resources; other required fields must be gi
 	return cmd
 }
 
-// refsOf collects the x-codi-ref values of a config (kind → keys).
+// refsOf collects the x-cicord-ref values of a config (kind → keys).
 func refsOf(schema map[string]any, v any, out map[string]map[string]bool) {
 	if schema == nil {
 		return
 	}
-	if kind, ok := schema["x-codi-ref"].(string); ok {
+	if kind, ok := schema["x-cicord-ref"].(string); ok {
 		add := func(x any) {
 			if s, ok := x.(string); ok && s != "" {
 				if out[kind] == nil {
@@ -474,7 +474,7 @@ func refsOf(schema map[string]any, v any, out map[string]map[string]bool) {
 			}
 		}
 	case []any:
-		if _, isRef := schema["x-codi-ref"]; !isRef {
+		if _, isRef := schema["x-cicord-ref"]; !isRef {
 			if items, ok := schema["items"].(map[string]any); ok {
 				for _, e := range tv {
 					refsOf(items, e, out)
@@ -535,7 +535,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 			if _, set := cfg[k]; set || sub == nil {
 				continue
 			}
-			if kind, ok := sub["x-codi-ref"].(string); ok && sub["type"] != "array" {
+			if kind, ok := sub["x-cicord-ref"].(string); ok && sub["type"] != "array" {
 				cfg[k] = "test-" + kind
 			}
 		}
@@ -548,7 +548,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	refsOf(schema, effective, refs)
 
 	// throw-away repository
-	repoDir, err := os.MkdirTemp("", "codi-plugin-test-*")
+	repoDir, err := os.MkdirTemp("", "cicord-plugin-test-*")
 	if err != nil {
 		return err
 	}
@@ -572,7 +572,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	if err != nil {
 		return err
 	}
-	src, err := source.NewLocal(repoDir, filepath.Join(repoDir, ".codi", "snapshots"))
+	src, err := source.NewLocal(repoDir, filepath.Join(repoDir, ".cicord", "snapshots"))
 	if err != nil {
 		return err
 	}
@@ -836,9 +836,9 @@ func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs 
 		inst["config"] = cfg
 	}
 	bot := map[string]any{"apiVersion": config.APIVersion, "kind": "Bot", "metadata": map[string]any{"name": "test"},
-		"spec": map[string]any{"applicationId": testAppID, "token": map[string]any{"secretRef": "CODI_PLUGIN_TEST_TOKEN"},
+		"spec": map[string]any{"applicationId": testAppID, "token": map[string]any{"secretRef": "CICORD_PLUGIN_TEST_TOKEN"},
 			"profile": map[string]any{"username": "test-bot"}, "servers": []string{"test"}, "plugins": []any{inst}}}
-	for rel, v := range map[string]any{"codi.yaml": project, "servers/test.yaml": server, "bots/test/bot.yaml": bot} {
+	for rel, v := range map[string]any{"cicord.yaml": project, "servers/test.yaml": server, "bots/test/bot.yaml": bot} {
 		if err := write(rel, v); err != nil {
 			return err
 		}

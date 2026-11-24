@@ -23,7 +23,7 @@ on the library (ADR-0009, ADR-0012).
     layer shared by REST and gateway, explicit JSON `null` where the contract needs it,
     interaction option order preserved) rather than disgo's typed models.
 - disgo's `bot`, `voice`, `sharding` and `httpserver` packages are deliberately **not
-  imported**: they pull voice / DAVE code CODI does not need, which would compromise the
+  imported**: they pull voice / DAVE code Cicord does not need, which would compromise the
   `CGO_ENABLED=0` build.
 - Member chunking is requested only when the `ServerMembers` intent is enabled (overridable).
 
@@ -36,6 +36,6 @@ on the library (ADR-0009, ADR-0012).
   (self-hosted communities). Sharding would be added inside the adapter.
 - disgo upgrades only affect the adapter. Because only `rest` and `gateway` are used, the
   surface exposed to breaking changes is small, at the cost of maintaining our own wire
-  structs for the objects CODI uses.
+  structs for the objects Cicord uses.
 - Voice features are out of scope; adding them would require revisiting the no-cgo
   constraint.

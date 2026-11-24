@@ -15,10 +15,10 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
-// Repo is a loaded CODI repository.
+// Repo is a loaded Cicord repository.
 type Repo struct {
 	Root    string // absolute path
 	Project *Project
@@ -37,7 +37,7 @@ type LoadedPlugin struct {
 	Source       string // as written in bot.yaml (first reference)
 	Manifest     *Plugin
 	ConfigSchema *jsonschema.Schema // nil when the plugin has no config schema
-	SchemaDoc    map[string]any     // raw schema (for defaults, x-codi-* and the admin UI)
+	SchemaDoc    map[string]any     // raw schema (for defaults, x-cicord-* and the admin UI)
 }
 
 // Instance is a plugin running for one (bot, server) pair (ADR-0010).
@@ -61,7 +61,7 @@ type PluginResolver interface {
 }
 
 type LoadOptions struct {
-	// EngineVersion is the running CODI version, checked against codi.yaml spec.engine.
+	// EngineVersion is the running Cicord version, checked against cicord.yaml spec.engine.
 	// Empty skips the check.
 	EngineVersion string
 	// Resolver for registry plugins; nil makes registry references an error.
@@ -73,7 +73,7 @@ type LoadOptions struct {
 }
 
 // Load reads and validates the repository rooted at dir. The returned Repo is non-nil
-// whenever codi.yaml could be parsed, even if diagnostics contain errors.
+// whenever cicord.yaml could be parsed, even if diagnostics contain errors.
 func Load(dir string, opts LoadOptions) (*Repo, Diagnostics) {
 	l := &loader{opts: opts}
 	repo := l.load(dir)
@@ -153,8 +153,8 @@ func (l *loader) load(dir string) *Repo {
 		Plugins: map[string]*LoadedPlugin{},
 	}
 
-	// codi.yaml
-	pdoc := l.readDoc(filepath.Join(abs, "codi.yaml"))
+	// cicord.yaml
+	pdoc := l.readDoc(filepath.Join(abs, "cicord.yaml"))
 	if pdoc == nil {
 		return nil
 	}
@@ -262,12 +262,12 @@ func (l *loader) checkEngine(doc *document, rng string) {
 	}
 	if !c.Check(v) {
 		l.sink.errorf(doc.file, doc.lineOf("/spec/engine"), "/spec/engine",
-			"this repository requires CODI %s, running %s", rng, l.opts.EngineVersion)
+			"this repository requires Cicord %s, running %s", rng, l.opts.EngineVersion)
 	}
 }
 
 // checkRegistries rejects duplicate registry names or URLs and the reserved name of the
-// official source (an unofficial registry named "codi" would make its plugins look official).
+// official source (an unofficial registry named "cicord" would make its plugins look official).
 func (l *loader) checkRegistries(doc *document, regs []Registry) {
 	names, urls := map[string]bool{}, map[string]bool{}
 	for i, r := range regs {
@@ -275,7 +275,7 @@ func (l *loader) checkRegistries(doc *document, regs []Registry) {
 		switch {
 		case r.Name == OfficialRegistryName:
 			l.sink.errorf(doc.file, doc.lineOf(at+"/name"), at+"/name",
-				"the registry name %q is reserved for the official CODI plugins", r.Name)
+				"the registry name %q is reserved for the official Cicord plugins", r.Name)
 		case names[r.Name]:
 			l.sink.errorf(doc.file, doc.lineOf(at+"/name"), at+"/name", "duplicate registry name %q", r.Name)
 		}
@@ -553,7 +553,7 @@ func (l *loader) loadPlugin(repo *Repo, b *Bot, base string, inst PluginInstance
 	} else {
 		if l.opts.Resolver == nil {
 			l.sink.errorf(b.File, doc.lineOf(base+"/source"), base+"/source",
-				"registry plugin %q cannot be resolved (run `codi plugin add` to lock it)", inst.Source)
+				"registry plugin %q cannot be resolved (run `cicord plugin add` to lock it)", inst.Source)
 			return nil
 		}
 		var err error
@@ -614,22 +614,22 @@ func (l *loader) checkEngineFor(doc *document, rng string) {
 	}
 	if !c.Check(v) {
 		l.sink.errorf(doc.file, doc.lineOf("/spec/engine"), "/spec/engine",
-			"plugin requires CODI %s, running %s", rng, l.opts.EngineVersion)
+			"plugin requires Cicord %s, running %s", rng, l.opts.EngineVersion)
 	}
 }
 
-// ───────────────────────────────────────────────────────────── x-codi-ref
+// ───────────────────────────────────────────────────────────── x-cicord-ref
 
 type refProblem struct{ path, msg string }
 
-// checkRefs walks the schema and the config together, checking x-codi-ref values
+// checkRefs walks the schema and the config together, checking x-cicord-ref values
 // against the server's resource keys.
 func checkRefs(schema map[string]any, v any, srv *ServerSpec, path string) []refProblem {
 	if schema == nil {
 		return nil
 	}
 	var out []refProblem
-	if kind, ok := schema["x-codi-ref"].(string); ok {
+	if kind, ok := schema["x-cicord-ref"].(string); ok {
 		check := func(p string, s any) {
 			k, ok := s.(string)
 			if !ok {
@@ -644,7 +644,7 @@ func checkRefs(schema map[string]any, v any, srv *ServerSpec, path string) []ref
 			case "role":
 				_, exists = srv.Roles[k]
 			default:
-				out = append(out, refProblem{p, fmt.Sprintf("unknown x-codi-ref kind %q in config schema", kind)})
+				out = append(out, refProblem{p, fmt.Sprintf("unknown x-cicord-ref kind %q in config schema", kind)})
 				return
 			}
 			if !exists {
@@ -671,9 +671,9 @@ func checkRefs(schema map[string]any, v any, srv *ServerSpec, path string) []ref
 			}
 		}
 	case []any:
-		// Arrays: either the array itself carries x-codi-ref (handled above) or its
+		// Arrays: either the array itself carries x-cicord-ref (handled above) or its
 		// items schema does / contains nested refs.
-		if _, isRef := schema["x-codi-ref"]; !isRef {
+		if _, isRef := schema["x-cicord-ref"]; !isRef {
 			if items, ok := schema["items"].(map[string]any); ok {
 				for i, e := range tv {
 					out = append(out, checkRefs(items, e, srv, fmt.Sprintf("%s/%d", path, i))...)

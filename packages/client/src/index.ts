@@ -1,6 +1,6 @@
 export {
-  CodiClient,
-  createCodiClient,
+  CicordClient,
+  createCicordClient,
   isSafeUrl,
   LOGIN_PARAMS,
   memoryTokenStore,
@@ -9,7 +9,7 @@ export {
 export type {
   AuthMode,
   CallOptions,
-  CodiClientOptions,
+  CicordClientOptions,
   ExchangeLinkTokenOptions,
   FetchLike,
   HistoryLike,
@@ -20,7 +20,7 @@ export type {
   StoredSession,
   TokenStore,
 } from "./client.ts";
-export { CodiApiError, codeForStatus, isCodiApiError } from "./errors.ts";
+export { CicordApiError, codeForStatus, isCicordApiError } from "./errors.ts";
 export { openEventStream, SseParser } from "./sse.ts";
 export type { EventStream, EventStreamOptions, ServerSentEvent, StreamFetch } from "./sse.ts";
 export { onboardingApi } from "./onboarding.ts";

@@ -1,6 +1,6 @@
 ---
 title: Contributing
-description: Build CODI from source, run the Go and JavaScript tests, and find your way around the repository.
+description: Build Cicord from source, run the Go and JavaScript tests, and find your way around the repository.
 ---
 
 ## Prerequisites
@@ -12,8 +12,8 @@ Go 1.27, Node 24 and pnpm (the version is pinned by `packageManager` in the root
 
 | Target | What it does |
 |---|---|
-| `make all` | `make ui` then `make build`: the complete binary in `bin/codi`. |
-| `make ui` | `pnpm install --frozen-lockfile`, builds the JS packages, then `scripts/sync-ui.sh` copies the admin console, the reference portal and the portal kit (`@codi/*` tarballs and template) into `internal/webui`, where `go build` embeds them. |
+| `make all` | `make ui` then `make build`: the complete binary in `bin/cicord`. |
+| `make ui` | `pnpm install --frozen-lockfile`, builds the JS packages, then `scripts/sync-ui.sh` copies the admin console, the reference portal and the portal kit (`@cicord/*` tarballs and template) into `internal/webui`, where `go build` embeds them. |
 | `make build` | The Go binary only (`CGO_ENABLED=0`, version and commit in the ldflags). Embeds whatever UI build is in `internal/webui`. |
 | `make test` | `make test-go` and `make test-js`. |
 | `make test-go` | `go test -race ./...` |
@@ -39,35 +39,35 @@ pnpm exec vp test examples/showcase/plugins/polls   # one plugin's unit tests
 
 On every push to `main` and every pull request:
 
-- **Go**: `go vet`, `go test -race`, a static build, and `codi validate examples/basic`.
+- **Go**: `go vet`, `go test -race`, a static build, and `cicord validate examples/basic`.
 - **JS**: `pnpm install --frozen-lockfile`, `pnpm -r build`, `pnpm -r test`.
 
 ## How things are tested
 
-- The **Discord simulator** (`internal/sim`) is an in-process implementation of CODI's Discord
+- The **Discord simulator** (`internal/sim`) is an in-process implementation of Cicord's Discord
   interfaces. Reconciler, runtime and API tests run against it, fast and without tokens.
 - `examples/showcase` is the end-to-end fixture: its seven plugins are driven through the real
   runtime on the simulator (`internal/runtime/showcase_test.go`), their portal routes through
-  the HTTP API, and `codi plugin build`, `typegen --check` and `codi plugin test` run on each.
-  [`docs/plugin-coverage.md`](https://github.com/npjonath/codi/blob/main/docs/plugin-coverage.md)
+  the HTTP API, and `cicord plugin build`, `typegen --check` and `cicord plugin test` run on each.
+  [`docs/plugin-coverage.md`](https://github.com/npjonath/cicord/blob/main/docs/plugin-coverage.md)
   maps every SDK feature to the test that exercises it.
 - The real Discord adapter (disgo) is tested against an HTTP fake of the REST API and gateway.
-- Plugin unit tests use `@codi/sdk/testing`.
+- Plugin unit tests use `@cicord/sdk/testing`.
 
 ## Repository layout
 
 | Path | Content |
 |---|---|
-| `cmd/codi/` | The single binary: CLI and `codi serve`. |
+| `cmd/cicord/` | The single binary: CLI and `cicord serve`. |
 | `internal/` | The runtime: `api`, `build`, `cli`, `config`, `discord` (and `disgoadapter`), `plugin`, `reconcile`, `registry`, `runtime`, `sim`, `source`, `state`, `writeback`, `webui`… |
-| `packages/` | `sdk`, `client`, `react`, `ui`, `admin` (the admin console), `create-codi-portal` (the reference portal). |
+| `packages/` | `sdk`, `client`, `react`, `ui`, `admin` (the admin console), `create-cicord-portal` (the reference portal). |
 | `spec/` | The contracts: JSON Schemas, the SDK types, config semantics, the HTTP API. |
 | `docs/` | The plugin guide, the deployment guide, the setup wizard, Discord parity, ADRs. |
 | `examples/` | `basic`, `showcase` and `embed`. |
 | `sites/` | The landing page and this documentation (Astro). |
 
 `spec/` is normative: when the behavior and a document disagree, the schemas and
-`spec/sdk/codi-sdk.d.ts` win.
+`spec/sdk/cicord-sdk.d.ts` win.
 
 ## This documentation
 

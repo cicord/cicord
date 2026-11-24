@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // GenericErrorMessage is the ephemeral reply sent when a handler fails before answering.

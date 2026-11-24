@@ -1,4 +1,4 @@
--- 0001_init: initial CODI runtime state schema.
+-- 0001_init: initial Cicord runtime state schema.
 -- Times are INTEGER unix nanoseconds (UTC). JSON payloads are TEXT, NULL when absent.
 
 CREATE TABLE resources (

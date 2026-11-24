@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 const fullPlugin = `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 
 export default definePlugin({
   async onStart(ctx) {},
@@ -109,7 +109,7 @@ func TestInspectDefinition(t *testing.T) {
 
 func TestInspectRejectsInvalidDefinitions(t *testing.T) {
 	src := `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   events: { memberJoined() {} },
   commands: {
@@ -173,9 +173,9 @@ func TestInspectModuleErrors(t *testing.T) {
 	cases := map[string]struct{ src, want string }{
 		"no default export": {`export const x = 1;`, "no default export"},
 		"not definePlugin":  {`export default { events: {} };`, "result of definePlugin"},
-		"throws":            {"import { definePlugin } from \"@codi/sdk\";\nconst x: any = null;\nx.boom();\nexport default definePlugin({});", "src/index.ts:3"},
+		"throws":            {"import { definePlugin } from \"@cicord/sdk\";\nconst x: any = null;\nx.boom();\nexport default definePlugin({});", "src/index.ts:3"},
 		"sdk call at top level": {
-			`import { definePlugin } from "@codi/sdk"; setTimeout(() => {}, 1); export default definePlugin({});`,
+			`import { definePlugin } from "@cicord/sdk"; setTimeout(() => {}, 1); export default definePlugin({});`,
 			"not available while the module is evaluated",
 		},
 		"require other module": {`(globalThis as any).require("left-pad"); export default 1;`, `cannot require "left-pad"`},

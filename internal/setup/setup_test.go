@@ -13,7 +13,7 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // fakeDiscord is a minimal Discord REST API for the probe.
@@ -107,14 +107,14 @@ func TestPermissionsAndHierarchy(t *testing.T) {
 	roles := []discord.Role{
 		{ID: sid, Name: "@everyone", Position: 0, Permissions: discord.MustPermissions("ViewChannel")},
 		{ID: "10", Name: "Member", Position: 1},
-		{ID: "11", Name: "CODI", Position: 2, Managed: true, Permissions: discord.MustPermissions("ManageRoles", "ManageChannels")},
+		{ID: "11", Name: "Cicord", Position: 2, Managed: true, Permissions: discord.MustPermissions("ManageRoles", "ManageChannels")},
 		{ID: "12", Name: "Moderator", Position: 3},
 		{ID: "13", Name: "Admin", Position: 4},
 		{ID: "14", Name: "OtherBot", Position: 5, Managed: true},
 	}
 	bot := discord.Member{User: discord.User{ID: "b"}, RoleIDs: []string{"11"}}
-	h := HierarchyCheck(sid, roles, bot, "CODI")
-	if h.Status != StatusFail || !strings.Contains(h.Hint, "drag the role “CODI” above “Admin”") || !strings.Contains(h.Message, "below 2 role(s)") {
+	h := HierarchyCheck(sid, roles, bot, "Cicord")
+	if h.Status != StatusFail || !strings.Contains(h.Hint, "drag the role “Cicord” above “Admin”") || !strings.Contains(h.Message, "below 2 role(s)") {
 		t.Fatalf("hierarchy = %+v", h)
 	}
 	p := PermissionsCheck(sid, roles, bot, "owner")
@@ -123,7 +123,7 @@ func TestPermissionsAndHierarchy(t *testing.T) {
 	}
 	roles[2].Position, roles[4].Position, roles[3].Position = 4, 2, 3
 	roles[2].Permissions = discord.MustPermissions("Administrator")
-	if h := HierarchyCheck(sid, roles, bot, "CODI"); h.Status != StatusOK {
+	if h := HierarchyCheck(sid, roles, bot, "Cicord"); h.Status != StatusOK {
 		t.Fatalf("hierarchy ok = %+v", h)
 	}
 	if p := PermissionsCheck(sid, roles, bot, "owner"); p.Status != StatusOK || !strings.Contains(p.Message, "Administrator") {
@@ -137,35 +137,35 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 	if _, err := git.PlainInit(remote, true); err != nil {
 		t.Fatal(err)
 	}
-	empty, hasCodi, err := CheckRemote(ctx, remote, "main", "")
-	if err != nil || !empty || hasCodi {
-		t.Fatalf("empty remote: %v %v %v", empty, hasCodi, err)
+	empty, hasCicord, err := CheckRemote(ctx, remote, "main", "")
+	if err != nil || !empty || hasCicord {
+		t.Fatalf("empty remote: %v %v %v", empty, hasCicord, err)
 	}
-	files, err := RepoFiles{Project: "ma-commu", ServerKey: "ma-commu", ServerYAML: []byte("x: 1\n"), BotKey: "codi",
-		ApplicationID: "999", SecretRef: "DISCORD_TOKEN_CODI", Repo: RepoConfig{Provider: ProviderGitHub, URL: "https://github.com/me/commu", Branch: "main"},
-		PublicURL: "https://codi.example.org"}.Generate()
+	files, err := RepoFiles{Project: "ma-commu", ServerKey: "ma-commu", ServerYAML: []byte("x: 1\n"), BotKey: "cicord",
+		ApplicationID: "999", SecretRef: "DISCORD_TOKEN_CICORD", Repo: RepoConfig{Provider: ProviderGitHub, URL: "https://github.com/me/commu", Branch: "main"},
+		PublicURL: "https://cicord.example.org"}.Generate()
 	if err != nil {
 		t.Fatal(err)
 	}
-	proj := string(files["codi.yaml"])
-	for _, want := range []string{"provider: github", "repo: https://github.com/me/commu", `paths: ["bots/**", "plugins/**"]`, "url: https://codi.example.org"} {
+	proj := string(files["cicord.yaml"])
+	for _, want := range []string{"provider: github", "repo: https://github.com/me/commu", `paths: ["bots/**", "plugins/**"]`, "url: https://cicord.example.org"} {
 		if !strings.Contains(proj, want) {
-			t.Fatalf("codi.yaml lacks %q:\n%s", want, proj)
+			t.Fatalf("cicord.yaml lacks %q:\n%s", want, proj)
 		}
 	}
-	if !strings.Contains(string(files["bots/codi/bot.yaml"]), "intents: [ServerMessages]") {
-		t.Fatalf("bot.yaml = %s", files["bots/codi/bot.yaml"])
+	if !strings.Contains(string(files["bots/cicord/bot.yaml"]), "intents: [ServerMessages]") {
+		t.Fatalf("bot.yaml = %s", files["bots/cicord/bot.yaml"])
 	}
-	sha, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: remote, Branch: "main"}, "", files, "Set up CODI")
+	sha, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: remote, Branch: "main"}, "", files, "Set up Cicord")
 	if err != nil || sha == "" {
 		t.Fatalf("init: %q %v", sha, err)
 	}
-	_, hasCodi, err = CheckRemote(ctx, remote, "main", "")
-	if err != nil || !hasCodi {
-		t.Fatalf("after push: %v %v", hasCodi, err)
+	_, hasCicord, err = CheckRemote(ctx, remote, "main", "")
+	if err != nil || !hasCicord {
+		t.Fatalf("after push: %v %v", hasCicord, err)
 	}
 	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: remote, Branch: "main"}, "", files, "again"); err == nil ||
-		!strings.Contains(err.Error(), "already contains a CODI configuration") {
+		!strings.Contains(err.Error(), "already contains a Cicord configuration") {
 		t.Fatalf("second init: %v", err)
 	}
 	// A non-empty repository (README on main) gets the configuration next to it.
@@ -174,7 +174,7 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 		map[string][]byte{"README.md": []byte("# hello\n")}, "Initial commit"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: withReadme, Branch: "main"}, "", files, "Set up CODI"); err != nil {
+	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: withReadme, Branch: "main"}, "", files, "Set up Cicord"); err != nil {
 		t.Fatal(err)
 	}
 	r, _ := git.PlainOpen(withReadme)
@@ -183,7 +183,7 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 	if cm.NumParents() != 1 {
 		t.Fatalf("setup commit should build on the README commit (parents = %d)", cm.NumParents())
 	}
-	if _, err := cm.File("codi.yaml"); err != nil {
+	if _, err := cm.File("cicord.yaml"); err != nil {
 		t.Fatal(err)
 	}
 	if f, err := cm.File("README.md"); err != nil {
@@ -192,7 +192,7 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 		t.Fatalf("the existing README was overwritten: %q", c)
 	}
 
-	// Embedded: refuses an existing repository; local: refuses an existing codi.yaml.
+	// Embedded: refuses an existing repository; local: refuses an existing cicord.yaml.
 	bare := filepath.Join(t.TempDir(), "repo.git")
 	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderEmbedded, Dir: bare}, "", files, "x"); err != nil {
 		t.Fatal(err)
@@ -209,7 +209,7 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(local, "README.md")); string(b) != "mine\n" {
 		t.Fatalf("README overwritten: %q", b)
 	}
-	if b, _ := os.ReadFile(filepath.Join(local, ".gitignore")); !strings.HasPrefix(string(b), "*.log\n.env\n# CODI\n") || strings.Count(string(b), ".env") != 1 {
+	if b, _ := os.ReadFile(filepath.Join(local, ".gitignore")); !strings.HasPrefix(string(b), "*.log\n.env\n# Cicord\n") || strings.Count(string(b), ".env") != 1 {
 		t.Fatalf(".gitignore = %q", b)
 	}
 	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderLocal, Dir: local}, "", files, "x"); err == nil {

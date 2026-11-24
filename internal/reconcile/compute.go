@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // iconState is what was recorded after the last icon upload.
@@ -119,7 +119,7 @@ func computePlan(in planInput) (Plan, error) {
 	}
 
 	// A git-owned resource whose key disappeared from the config can be re-adopted by name
-	// under a new key: renaming a key in YAML (or with `codi mv`) moves the mapping
+	// under a new key: renaming a key in YAML (or with `cicord mv`) moves the mapping
 	// instead of creating a duplicate and orphaning the original.
 	for rk, byKey := range p.git {
 		for key, m := range byKey {

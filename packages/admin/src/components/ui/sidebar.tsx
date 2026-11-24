@@ -20,7 +20,7 @@ import { Button } from "./button.tsx";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./sheet.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.tsx";
 
-const STORAGE_KEY = "codi-admin:sidebar";
+const STORAGE_KEY = "cicord-admin:sidebar";
 const WIDTH = "15rem";
 const WIDTH_ICON = "3.25rem";
 const MOBILE_QUERY = "(max-width: 767px)";

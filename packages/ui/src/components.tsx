@@ -27,9 +27,9 @@ export interface SpinnerProps {
 
 export function Spinner({ size = "md", label = "Loading", className }: SpinnerProps) {
   return (
-    <span role="status" className={cx("codi-spinner", `codi-spinner--${size}`, className)}>
-      <span className="codi-spinner__ring" aria-hidden="true" />
-      <span className="codi-visually-hidden">{label}</span>
+    <span role="status" className={cx("cicord-spinner", `cicord-spinner--${size}`, className)}>
+      <span className="cicord-spinner__ring" aria-hidden="true" />
+      <span className="cicord-visually-hidden">{label}</span>
     </span>
   );
 }
@@ -59,10 +59,10 @@ function buttonClass(
   className?: string,
 ) {
   return cx(
-    "codi-button",
-    `codi-button--${variant}`,
-    `codi-button--${size}`,
-    block && "codi-button--block",
+    "cicord-button",
+    `cicord-button--${variant}`,
+    `cicord-button--${size}`,
+    block && "cicord-button--block",
     loading && "is-loading",
     className,
   );
@@ -91,11 +91,11 @@ export function Button({
       {loading ? (
         <Spinner size="sm" label="" />
       ) : icon ? (
-        <span className="codi-button__icon" aria-hidden="true">
+        <span className="cicord-button__icon" aria-hidden="true">
           {icon}
         </span>
       ) : null}
-      <span className="codi-button__label">{children}</span>
+      <span className="cicord-button__label">{children}</span>
     </button>
   );
 }
@@ -114,11 +114,11 @@ export function LinkButton({
   return (
     <a {...rest} className={buttonClass({ variant, size, block, loading }, className)}>
       {icon ? (
-        <span className="codi-button__icon" aria-hidden="true">
+        <span className="cicord-button__icon" aria-hidden="true">
           {icon}
         </span>
       ) : null}
-      <span className="codi-button__label">{children}</span>
+      <span className="cicord-button__label">{children}</span>
     </a>
   );
 }
@@ -142,7 +142,12 @@ export function Card({
   return (
     <Tag
       {...rest}
-      className={cx("codi-card", `codi-card--${tone}`, `codi-card--pad-${padding}`, className)}
+      className={cx(
+        "cicord-card",
+        `cicord-card--${tone}`,
+        `cicord-card--pad-${padding}`,
+        className,
+      )}
     />
   );
 }
@@ -177,16 +182,16 @@ function initials(name: string): string {
 export function Avatar({ src, name, size = 40, ring, className }: AvatarProps) {
   const [failed, setFailed] = useState(false);
   const style = {
-    "--codi-avatar-size": `${size}px`,
-    "--codi-avatar-hue": hue(name),
-    ...(ring ? { "--codi-avatar-ring": ring } : {}),
+    "--cicord-avatar-size": `${size}px`,
+    "--cicord-avatar-hue": hue(name),
+    ...(ring ? { "--cicord-avatar-ring": ring } : {}),
   } as CSSProperties;
   return (
-    <span className={cx("codi-avatar", ring && "codi-avatar--ring", className)} style={style}>
+    <span className={cx("cicord-avatar", ring && "cicord-avatar--ring", className)} style={style}>
       {src && !failed ? (
         <img src={src} alt={name} width={size} height={size} onError={() => setFailed(true)} />
       ) : (
-        <span role="img" aria-label={name} className="codi-avatar__initials">
+        <span role="img" aria-label={name} className="cicord-avatar__initials">
           {initials(name)}
         </span>
       )}
@@ -211,10 +216,15 @@ export interface RoleChipProps {
 export function RoleChip({ name, color, size = "md", fresh, className, style }: RoleChipProps) {
   return (
     <span
-      className={cx("codi-role-chip", `codi-role-chip--${size}`, fresh && "is-fresh", className)}
-      style={{ ...(color ? ({ "--codi-role": color } as CSSProperties) : {}), ...style }}
+      className={cx(
+        "cicord-role-chip",
+        `cicord-role-chip--${size}`,
+        fresh && "is-fresh",
+        className,
+      )}
+      style={{ ...(color ? ({ "--cicord-role": color } as CSSProperties) : {}), ...style }}
     >
-      <span className="codi-role-chip__dot" aria-hidden="true" />
+      <span className="cicord-role-chip__dot" aria-hidden="true" />
       {name}
     </span>
   );
@@ -222,11 +232,11 @@ export function RoleChip({ name, color, size = "md", fresh, className, style }: 
 
 // ───────────────────────────────────────────────────────────── ChoiceGroup / ChoiceTile
 
-/** `--codi-role` plus a readable foreground for marks drawn on it. */
+/** `--cicord-role` plus a readable foreground for marks drawn on it. */
 function roleStyle(color: string | undefined): CSSProperties | undefined {
   const rgb = parseHex(color);
   if (!rgb) return undefined;
-  return { "--codi-role": color, "--codi-role-fg": readableOn(rgb) } as CSSProperties;
+  return { "--cicord-role": color, "--cicord-role-fg": readableOn(rgb) } as CSSProperties;
 }
 
 export interface ChoiceGroupProps {
@@ -281,7 +291,7 @@ export function ChoiceGroup({
       ref={ref}
       role={multiple ? "group" : "radiogroup"}
       {...(labelledBy ? { "aria-labelledby": labelledBy } : { "aria-label": label })}
-      className={cx("codi-choice-group", className)}
+      className={cx("cicord-choice-group", className)}
       onKeyDown={onKeyDown}
     >
       {children}
@@ -326,24 +336,24 @@ export function ChoiceTile({
       aria-describedby={description ? descriptionId : undefined}
       disabled={disabled}
       onClick={onToggle}
-      className={cx("codi-choice", selected && "is-selected", className)}
+      className={cx("cicord-choice", selected && "is-selected", className)}
       style={roleStyle(color)}
     >
-      <span className="codi-choice__emoji" aria-hidden="true">
-        {emoji || <span className="codi-choice__dot" />}
+      <span className="cicord-choice__emoji" aria-hidden="true">
+        {emoji || <span className="cicord-choice__dot" />}
       </span>
-      <span className="codi-choice__text">
-        <span id={labelId} className="codi-choice__label">
+      <span className="cicord-choice__text">
+        <span id={labelId} className="cicord-choice__label">
           {label}
         </span>
         {description ? (
-          <span id={descriptionId} className="codi-choice__description">
+          <span id={descriptionId} className="cicord-choice__description">
             {description}
           </span>
         ) : null}
       </span>
       <span
-        className={cx("codi-choice__mark", multiple ? "is-check" : "is-radio")}
+        className={cx("cicord-choice__mark", multiple ? "is-check" : "is-radio")}
         aria-hidden="true"
       >
         <svg viewBox="0 0 16 16" width="12" height="12">
@@ -390,14 +400,14 @@ export function Stepper({
 }: StepperProps) {
   const isDone = (i: number) => (done ? done.includes(i) : i < current);
   return (
-    <nav aria-label={label} className={cx("codi-stepper", className)}>
+    <nav aria-label={label} className={cx("cicord-stepper", className)}>
       <ol>
         {steps.map((step, i) => {
           const state = i === current ? "current" : isDone(i) ? "done" : "todo";
           const clickable = onSelect && (state === "done" || i < current);
           const content = (
             <>
-              <span className="codi-stepper__index" aria-hidden="true">
+              <span className="cicord-stepper__index" aria-hidden="true">
                 {state === "done" ? (
                   <svg viewBox="0 0 16 16" width="11" height="11">
                     <path
@@ -413,13 +423,13 @@ export function Stepper({
                   i + 1
                 )}
               </span>
-              <span className="codi-stepper__label">{step.label}</span>
+              <span className="cicord-stepper__label">{step.label}</span>
             </>
           );
           return (
             <li
               key={step.id}
-              className={`codi-stepper__step is-${state}`}
+              className={`cicord-stepper__step is-${state}`}
               aria-current={state === "current" ? "step" : undefined}
             >
               {clickable ? (
@@ -453,9 +463,9 @@ export function ProgressBar({ value, label, className }: ProgressBarProps) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={pct}
-      className={cx("codi-progress", className)}
+      className={cx("cicord-progress", className)}
     >
-      <span className="codi-progress__bar" style={{ width: `${pct}%` }} />
+      <span className="cicord-progress__bar" style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -474,13 +484,13 @@ export function Notice({ tone = "info", title, children, action, className }: No
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
-      className={cx("codi-notice", `codi-notice--${tone}`, className)}
+      className={cx("cicord-notice", `cicord-notice--${tone}`, className)}
     >
-      <div className="codi-notice__body">
-        {title ? <p className="codi-notice__title">{title}</p> : null}
-        {children ? <div className="codi-notice__text">{children}</div> : null}
+      <div className="cicord-notice__body">
+        {title ? <p className="cicord-notice__title">{title}</p> : null}
+        {children ? <div className="cicord-notice__text">{children}</div> : null}
       </div>
-      {action ? <div className="codi-notice__action">{action}</div> : null}
+      {action ? <div className="cicord-notice__action">{action}</div> : null}
     </div>
   );
 }
@@ -521,23 +531,28 @@ export function MemberCard({
 }: MemberCardProps) {
   const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className={cx("codi-member-card", className)}>
+    <section aria-labelledby={headingId} className={cx("cicord-member-card", className)}>
       <div
-        className="codi-member-card__banner"
+        className="cicord-member-card__banner"
         style={banner ? { background: banner } : undefined}
         aria-hidden="true"
       />
-      <div className="codi-member-card__head">
-        <Avatar src={avatarUrl} name={displayName} size={76} className="codi-member-card__avatar" />
+      <div className="cicord-member-card__head">
+        <Avatar
+          src={avatarUrl}
+          name={displayName}
+          size={76}
+          className="cicord-member-card__avatar"
+        />
       </div>
-      <div className="codi-member-card__body">
-        <h2 id={headingId} className="codi-member-card__name">
+      <div className="cicord-member-card__body">
+        <h2 id={headingId} className="cicord-member-card__name">
           {displayName}
         </h2>
-        {username ? <p className="codi-member-card__username">@{username}</p> : null}
-        {caption ? <p className="codi-member-card__caption">{caption}</p> : null}
-        <div className="codi-member-card__roles">
-          <h3 className="codi-member-card__roles-title">{rolesLabel}</h3>
+        {username ? <p className="cicord-member-card__username">@{username}</p> : null}
+        {caption ? <p className="cicord-member-card__caption">{caption}</p> : null}
+        <div className="cicord-member-card__roles">
+          <h3 className="cicord-member-card__roles-title">{rolesLabel}</h3>
           {roles.length > 0 ? (
             <ul>
               {roles.map((role) => (
@@ -552,7 +567,7 @@ export function MemberCard({
               ))}
             </ul>
           ) : (
-            <p className="codi-member-card__empty">{emptyRoles}</p>
+            <p className="cicord-member-card__empty">{emptyRoles}</p>
           )}
         </div>
         {children}

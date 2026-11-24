@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 func TestTranslateAutoModAndExpressions(t *testing.T) {

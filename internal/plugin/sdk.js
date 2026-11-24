@@ -1,4 +1,4 @@
-// CODI SDK prelude: implements @codi/sdk (spec/sdk/codi-sdk.d.ts) inside the plugin VM.
+// Cicord SDK prelude: implements @cicord/sdk (spec/sdk/cicord-sdk.d.ts) inside the plugin VM.
 //
 // Evaluated once per VM as `(function (host) { ... })`. `host` is the Go side; it never
 // leaks into plugin code. Data crosses the boundary as JSON strings:
@@ -377,7 +377,7 @@
 
   // ─────────────────────────────────────────────────────────── definition
 
-  const BRAND = Symbol("codi.plugin");
+  const BRAND = Symbol("cicord.plugin");
 
   function definePlugin(definition) {
     if (definition === null || typeof definition !== "object") throw new TypeError("definePlugin: expected an object");
@@ -553,8 +553,8 @@
     error: consoleFn("error"), debug: consoleFn("debug"),
   });
   g.require = function (name) {
-    if (name === "@codi/sdk") return sdk;
-    throw new Error(`cannot require "${name}": only @codi/sdk is available at run time (bundle other dependencies)`);
+    if (name === "@cicord/sdk") return sdk;
+    throw new Error(`cannot require "${name}": only @cicord/sdk is available at run time (bundle other dependencies)`);
   };
 
   return { sdk, mkError, errInfo, describe, loadPlugin, setup, dispatch };

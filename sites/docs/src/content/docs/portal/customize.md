@@ -19,11 +19,11 @@ spec:
       mode: dark                # light | dark | system (default)
 ```
 
-`@codi/ui` derives every color from `primary` and `accent`, with a contrast check for the
+`@cicord/ui` derives every color from `primary` and `accent`, with a contrast check for the
 chosen mode. The logo is served by `GET /api/v1/portal/<server>/logo`, with a
 `Content-Security-Policy` that sandboxes it, so an SVG can never run script.
 
-`codi validate` reports a logo outside the repository, behind a symbolic link or of an
+`cicord validate` reports a logo outside the repository, behind a symbolic link or of an
 unsupported type as an **error**, and a missing file as a **warning**.
 
 ## Texts, banner, links, pages and language
@@ -65,7 +65,7 @@ spec:
 - **`locale`**: the interface language of the reference portal, `en` or `fr`. Without it the
   browser language is used when supported, else English.
 
-[`examples/basic/servers/ma-commu.yaml`](https://github.com/npjonath/codi/blob/main/examples/basic/servers/ma-commu.yaml)
+[`examples/basic/servers/ma-commu.yaml`](https://github.com/npjonath/cicord/blob/main/examples/basic/servers/ma-commu.yaml)
 uses every option. The full field list is in the [Server reference](../../configuration/server/#portal).
 
 ## Several servers

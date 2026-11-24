@@ -1,23 +1,23 @@
 {
-  "name": "@codi/ui",
+  "name": "@cicord/ui",
   "version": "0.1.0",
-  "description": "Styled React components for CODI community portals, driven by the server theme.",
+  "description": "Styled React components for Cicord community portals, driven by the server theme.",
   "keywords": [
-    "codi",
+    "cicord",
     "community-portal",
     "components",
     "discord",
     "react",
     "ui"
   ],
-  "homepage": "https://github.com/npjonath/codi/tree/main/packages/ui#readme",
+  "homepage": "https://github.com/npjonath/cicord/tree/main/packages/ui#readme",
   "bugs": {
-    "url": "https://github.com/npjonath/codi/issues"
+    "url": "https://github.com/npjonath/cicord/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/npjonath/codi.git",
+    "url": "git+https://github.com/npjonath/cicord.git",
     "directory": "packages/ui"
   },
   "files": [

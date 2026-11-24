@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/reconcile"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/reconcile"
 )
 
 const samplePlan = `{
@@ -115,9 +115,9 @@ func TestFromReconcile(t *testing.T) {
 
 func TestMarkdown(t *testing.T) {
 	r := Result{Valid: true, Plans: []Plan{sample(t)}, Diagnostics: []config.Diagnostic{{Severity: config.SeverityWarning, File: "bots/b/bot.yaml", Message: "privileged intent"}}}
-	md := Markdown(r, MarkdownOptions{Marker: "<!-- codi-plan:x -->", Title: "CODI plan for `x`", Footer: "footer"})
+	md := Markdown(r, MarkdownOptions{Marker: "<!-- cicord-plan:x -->", Title: "Cicord plan for `x`", Footer: "footer"})
 	for _, want := range []string{
-		"<!-- codi-plan:x -->\n### CODI plan for `x`",
+		"<!-- cicord-plan:x -->\n### Cicord plan for `x`",
 		"**Plan: 1 to create",
 		"<summary>Warnings (1)</summary>",
 		"<details open><summary>Server <code>ma-commu</code>: 8 change(s), 2 blocked</summary>",

@@ -1,20 +1,20 @@
 ---
 title: Quick start
-description: Connect CODI to a real Discord server with the setup wizard, or try everything offline against the built-in Discord simulator.
+description: Connect Cicord to a real Discord server with the setup wizard, or try everything offline against the built-in Discord simulator.
 ---
 
 import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
 
-There are two ways to start. The **setup wizard** connects CODI to a real Discord server and
-checks every step live. The **simulator** (`codi dev --sim`) needs no Discord account at all.
-Both assume `codi` is [installed](../installation/).
+There are two ways to start. The **setup wizard** connects Cicord to a real Discord server and
+checks every step live. The **simulator** (`cicord dev --sim`) needs no Discord account at all.
+Both assume `cicord` is [installed](../installation/).
 
 <Tabs syncKey="quickstart">
 <TabItem label="Real Discord (setup wizard)">
 
 ## Set up a real server with the wizard
 
-Started in a directory without `codi.yaml`, the runtime enters **setup mode** and prints a
+Started in a directory without `cicord.yaml`, the runtime enters **setup mode** and prints a
 one-time link to the setup wizard.
 
 <Steps>
@@ -23,14 +23,14 @@ one-time link to the setup wizard.
 
    ```sh
    mkdir my-community && cd my-community
-   codi serve --public-url https://codi.example.org
+   cicord serve --public-url https://cicord.example.org
    ```
 
-   To work on your own machine instead, run `codi dev`: it writes the repository files
+   To work on your own machine instead, run `cicord dev`: it writes the repository files
    into the directory and hot-reloads them. The log prints the link:
 
    ```text
-   CODI is not set up yet: setup mode on http://127.0.0.1:7420
+   Cicord is not set up yet: setup mode on http://127.0.0.1:7420
      open the setup wizard: http://127.0.0.1:7420/admin/setup?token=…
    ```
 
@@ -42,25 +42,25 @@ one-time link to the setup wizard.
 
 3. **Discord application.** Follow the numbered instructions in the
    [Discord developer portal](https://discord.com/developers/applications): New
-   Application, then _Bot_, _Reset Token_, _Copy_. Paste **only the token**. CODI derives
+   Application, then _Bot_, _Reset Token_, _Copy_. Paste **only the token**. Cicord derives
    the application ID from it and names the exact privileged intents to turn on
    ("Server Members Intent", "Message Content Intent"), with a **Re-check** button.
 
 4. **Server.** Open the invite link (scopes `bot applications.commands`, Administrator
-   permission) and authorize the bot. The server appears by itself, no ID to copy. CODI
+   permission) and authorize the bot. The server appears by itself, no ID to copy. Cicord
    then checks the bot's permissions and that **its role is above every role it will
-   manage**; if not, it tells you which role to drag, for example "drag the role CODI above
+   manage**; if not, it tells you which role to drag, for example "drag the role Cicord above
    Admin" in Server Settings → Roles.
 
 5. **Repository.** Choose where the configuration lives:
-   - **Managed by CODI**: a git repository inside the data directory. No git knowledge
+   - **Managed by Cicord**: a git repository inside the data directory. No git knowledge
      needed; every change is still a commit.
    - **GitHub**: an HTTPS repository URL, a branch and a token.
-   - With `codi dev`, **This folder** writes the files into the current directory.
+   - With `cicord dev`, **This folder** writes the files into the current directory.
 
-   **Import and activate** reads the server as it is, writes `codi.yaml`,
+   **Import and activate** reads the server as it is, writes `cicord.yaml`,
    `servers/<key>.yaml` and `bots/<bot>/bot.yaml`, and computes a preflight plan. The first
-   plan must be empty: everything is **adopted**, nothing changes on Discord. CODI then
+   plan must be empty: everything is **adopted**, nothing changes on Discord. Cicord then
    writes the first commit and activates it without a restart.
 
 6. **Admin login** (optional). Add the redirect URL `<public-url>/auth/callback` in the
@@ -82,8 +82,8 @@ one-time link to the setup wizard.
 
 :::note[Where secrets go]
 Tokens and secrets pasted in the wizard are stored **encrypted** in the data directory
-(key from `CODI_SECRET_KEY`, or a generated `secret.key`). Environment variables always
-take precedence. Manage them later with [`codi secret`](../../self-hosting/backups-and-secrets/).
+(key from `CICORD_SECRET_KEY`, or a generated `secret.key`). Environment variables always
+take precedence. Manage them later with [`cicord secret`](../../self-hosting/backups-and-secrets/).
 :::
 
 The same checks are available at any time on each server's **Diagnostics** page in the admin
@@ -92,20 +92,20 @@ console. The wizard manages one server and one bot; add more by editing the repo
 </TabItem>
 <TabItem label="Offline (simulator)">
 
-## Try CODI offline with the simulator
+## Try Cicord offline with the simulator
 
-`codi dev --sim` replaces Discord with an in-memory simulator seeded from your YAML. No
+`cicord dev --sim` replaces Discord with an in-memory simulator seeded from your YAML. No
 token, no Discord account.
 
 <Steps>
 
-1. Scaffold a repository. Without `--server-id` and `--application-id`, `codi init` uses
+1. Scaffold a repository. Without `--server-id` and `--application-id`, `cicord init` uses
    placeholder IDs that work with the simulator:
 
    ```sh
-   codi init my-community
+   cicord init my-community
    cd my-community
-   codi validate
+   cicord validate
    ```
 
    ```text
@@ -115,7 +115,7 @@ token, no Discord account.
 2. Start the runtime on the simulator:
 
    ```sh
-   codi dev --sim
+   cicord dev --sim
    ```
 
    The simulated world has a user `owner` who owns every server, each bot invited with
@@ -141,7 +141,7 @@ token, no Discord account.
 To try the **setup wizard** itself offline, run it against a simulated Discord:
 
 ```sh
-codi dev --sim --setup ./my-community
+cicord dev --sim --setup ./my-community
 ```
 
 The simulated world then has a server "Pixel Pals" with roles, channels and members, and
@@ -149,7 +149,7 @@ _Simulate_ buttons stand in for discord.com (create a bot, turn intents on, auth
 invite, drag the role, send a message).
 
 :::danger[Never expose dev mode]
-`codi dev` lets anyone who can reach it sign in as any user and edits the working tree. It
+`cicord dev` lets anyone who can reach it sign in as any user and edits the working tree. It
 only answers loopback host names and is meant for your own machine only.
 :::
 
@@ -169,13 +169,13 @@ The wizard does all of this for you, but every step can be done manually:
 2. **Scaffold the repository** with your real IDs:
 
    ```sh
-   codi init my-community --server-id <discord server id> --application-id <discord application id>
+   cicord init my-community --server-id <discord server id> --application-id <discord application id>
    cd my-community
-   codi validate
+   cicord validate
    ```
 
-   To start from a server that already exists, `codi import <server-id>` writes
-   `servers/<key>.yaml` from the live server (see the [CLI reference](../../reference/cli/#codi-import)).
+   To start from a server that already exists, `cicord import <server-id>` writes
+   `servers/<key>.yaml` from the live server (see the [CLI reference](../../reference/cli/#cicord-import)).
 
 3. **Invite the bot** with the `bot` and `applications.commands` scopes and the
    Administrator permission, for example
@@ -186,13 +186,13 @@ The wizard does all of this for you, but every step can be done manually:
 
    ```sh
    export DISCORD_TOKEN_BOT=...
-   codi serve --local --public-url https://codi.example.org
+   cicord serve --local --public-url https://cicord.example.org
    ```
 
-   `--local` serves the directory as is. Without it, `codi serve` follows
-   `codi.yaml` `spec.source` (see [Deploy](../../self-hosting/deploy/)).
+   `--local` serves the directory as is. Without it, `cicord serve` follows
+   `cicord.yaml` `spec.source` (see [Deploy](../../self-hosting/deploy/)).
 
-5. **Admin login.** Set `CODI_DISCORD_CLIENT_SECRET` (the application's OAuth2 client
+5. **Admin login.** Set `CICORD_DISCORD_CLIENT_SECRET` (the application's OAuth2 client
    secret) and add `<public-url>/auth/callback` as a redirect URL. Server owners are admins;
    `spec.access` grants admin or moderator to roles and users.
 

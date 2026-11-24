@@ -1,7 +1,7 @@
 /** Minimal History API router aware of the /admin/ base path. */
 import { useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
 
-const EVENT = "codi-admin:navigate";
+const EVENT = "cicord-admin:navigate";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function subscribe(listener: () => void): () => void {

@@ -1,5 +1,5 @@
 /** Field-level diff of two configs, for the "review changes" preview before saving. */
-import type { Json } from "@codi/client";
+import type { Json } from "@cicord/client";
 import { deepEqual, isObject, toPointer, type Path, type Segment } from "./values.ts";
 
 export type ChangeKind = "added" | "removed" | "changed";

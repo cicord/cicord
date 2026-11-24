@@ -8,12 +8,12 @@ import (
 )
 
 func TestDevHostAllowList(t *testing.T) {
-	h := New(Options{Mode: "dev", Logger: testLogger(), PublicURL: "https://codi.example.com"})
+	h := New(Options{Mode: "dev", Logger: testLogger(), PublicURL: "https://cicord.example.com"})
 	for host, want := range map[string]int{
 		"127.0.0.1:7420":        http.StatusOK,
 		"localhost:7420":        http.StatusOK,
 		"[::1]:7420":            http.StatusOK,
-		"codi.example.com":      http.StatusOK,
+		"cicord.example.com":      http.StatusOK,
 		"evil.example.net:7420": http.StatusMisdirectedRequest, // DNS rebinding
 		"127.0.0.1.nip.io:7420": http.StatusMisdirectedRequest,
 	} {
@@ -28,7 +28,7 @@ func TestDevHostAllowList(t *testing.T) {
 	// serve mode does not restrict hosts (reverse proxies)
 	hs := New(Options{Mode: "serve", Logger: testLogger()})
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	req.Host = "codi.anything.org"
+	req.Host = "cicord.anything.org"
 	rec := httptest.NewRecorder()
 	hs.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -42,7 +42,7 @@ func TestDevLoginRequiresSimOrToken(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/auth/dev-login", strings.NewReader(`{"userId":"1"}`))
 		req.Host = "127.0.0.1:7420"
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Codi-Request", "1")
+		req.Header.Set("X-Cicord-Request", "1")
 		if auth != "" {
 			req.Header.Set("Authorization", "Bearer "+auth)
 		}
@@ -72,7 +72,7 @@ func TestDevLoopbackOriginsInterchangeable(t *testing.T) {
 			t.Errorf("origin %s: %v, want %v", origin, got, want)
 		}
 	}
-	prod := &server{opts: Options{Mode: "serve", PublicURL: "https://codi.example.com"}}
+	prod := &server{opts: Options{Mode: "serve", PublicURL: "https://cicord.example.com"}}
 	if prod.sameOrigin(req, "http://localhost:7420") {
 		t.Errorf("serve mode must not accept loopback origins")
 	}

@@ -15,7 +15,7 @@ import (
 
 	discordapi "github.com/disgoorg/disgo/discord"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 func readAll(r io.Reader) ([]byte, error) { return io.ReadAll(r) }
@@ -33,7 +33,7 @@ func parseSnowflake(s string) (snowflake.ID, error) {
 // ───────────────────────────────────────────────────────────── translation
 
 // translate turns one gateway dispatch (event name + raw "d" JSON) into zero or
-// more CODI events, updating the member cache on the way. Unknown or irrelevant
+// more Cicord events, updating the member cache on the way. Unknown or irrelevant
 // dispatches return nil.
 func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 	switch t {

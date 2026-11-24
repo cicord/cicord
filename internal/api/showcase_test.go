@@ -9,12 +9,12 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state/sqlite"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // TestShowcaseRouteAccess drives the plugin routes of examples/showcase through the HTTP
@@ -103,7 +103,7 @@ func TestShowcaseRouteAccess(t *testing.T) {
 	outsider.login(w.CreateUser("outsider").ID) // not a member of the server
 	viewers["outsider"] = outsider
 
-	base := "/api/v1/portal/showcase/plugins/codi/"
+	base := "/api/v1/portal/showcase/plugins/cicord/"
 	routes := []struct {
 		method, path string
 		want         map[string]int // viewer → status

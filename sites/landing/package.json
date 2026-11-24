@@ -1,7 +1,7 @@
 {
-  "name": "@codi/site-landing",
+  "name": "@cicord/site-landing",
   "private": true,
-  "description": "codi landing page (Astro).",
+  "description": "cicord landing page (Astro).",
   "type": "module",
   "scripts": {
     "dev": "astro dev",

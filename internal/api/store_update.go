@@ -9,12 +9,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/setup"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/store"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/setup"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/store"
 )
 
 // Plugin updates (spec/api.md §11): review the latest version against what is installed,
@@ -38,8 +38,8 @@ type updateReviewDTO struct {
 	Restricted []restrictedServer `json:"restricted"`
 }
 
-// updateRegistry is the registry an installed plugin updates from: a registry of codi.yaml,
-// the implicit official registry for "codi/<plugin>" locked in codi.lock, or nil for a
+// updateRegistry is the registry an installed plugin updates from: a registry of cicord.yaml,
+// the implicit official registry for "cicord/<plugin>" locked in cicord.lock, or nil for a
 // copy of a bundled official plugin (plugins/<plugin>/, updated from the binary).
 func updateRegistry(repo *config.Repo, source, name string) (*config.Registry, error) {
 	if source == config.OfficialRegistryName {
@@ -232,7 +232,7 @@ func (s *server) handleStoreUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if wb := repo.Project.Spec.WriteBack; wb != nil && wb.Enabled != nil && !*wb.Enabled {
-		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in codi.yaml"))
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in cicord.yaml"))
 		return
 	}
 

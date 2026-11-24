@@ -16,7 +16,7 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/gorilla/websocket"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 func withoutGatewayCompression() Option {
@@ -94,7 +94,7 @@ func newFakeGateway(t *testing.T, script func(send func(t string, d string), clo
 
 func (f *fakeGateway) url() string { return "ws" + strings.TrimPrefix(f.srv.URL, "http") }
 
-const readyPayload = `{"v":10,"user":{"id":"600","username":"codi","discriminator":"0","bot":true},
+const readyPayload = `{"v":10,"user":{"id":"600","username":"cicord","discriminator":"0","bot":true},
   "guilds":[{"id":"1","unavailable":true}],"session_id":"sess","resume_gateway_url":"%s",
   "application":{"id":"601","flags":0}}`
 

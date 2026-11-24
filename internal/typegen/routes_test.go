@@ -26,7 +26,7 @@ func TestGenerateRoutes(t *testing.T) {
 			{"GET", "/tickets/:id", "moderator"}, {"GET", "/tickets", "moderator"}}},
 		{Name: "my-polls", Version: "0.2.0", Source: "acme/polls", Contract: contract, Routes: []Route{
 			{"POST", "/polls/:id/votes", "member"}, {"GET", "/polls/:id", "public"}}},
-		{Name: "welcome", Version: "0.1.0", Source: "codi/welcome"}, // no routes: left out
+		{Name: "welcome", Version: "0.1.0", Source: "cicord/welcome"}, // no routes: left out
 		// the same plugin used by two bots
 		{Name: "tickets", Version: "1.0.0", Source: "../../plugins/tickets", Routes: []Route{
 			{"GET", "/tickets", "moderator"}, {"GET", "/tickets/:id", "moderator"}}},
@@ -38,13 +38,13 @@ func TestGenerateRoutes(t *testing.T) {
 		RoutesHeader,
 		"//   my-polls 0.2.0 (acme/polls): 2 route(s), typed\n",
 		"//   tickets 1.0.0 (../../plugins/tickets): 2 route(s), untyped (no spec.routes.types)\n",
-		`import type { RouteEntry } from "@codi/client";`,
-		"declare namespace codi_my_polls {\n  /** Contract. */\n  export interface Poll",
+		`import type { RouteEntry } from "@cicord/client";`,
+		"declare namespace cicord_my_polls {\n  /** Contract. */\n  export interface Poll",
 		"  export type Status =\n    | \"open\"\n",
-		`declare module "@codi/client" {`,
+		`declare module "@cicord/client" {`,
 		"    \"my-polls\": {\n" +
-			"      \"GET /polls/:id\": RouteEntry<\"public\", codi_my_polls.Routes, \"GET /polls/:id\">;\n" +
-			"      \"POST /polls/:id/votes\": RouteEntry<\"member\", codi_my_polls.Routes, \"POST /polls/:id/votes\">;\n" +
+			"      \"GET /polls/:id\": RouteEntry<\"public\", cicord_my_polls.Routes, \"GET /polls/:id\">;\n" +
+			"      \"POST /polls/:id/votes\": RouteEntry<\"member\", cicord_my_polls.Routes, \"POST /polls/:id/votes\">;\n" +
 			"    };\n",
 		"    \"tickets\": {\n      \"GET /tickets\": RouteEntry<\"moderator\">;\n      \"GET /tickets/:id\": RouteEntry<\"moderator\">;\n    };\n",
 	} {
@@ -52,7 +52,7 @@ func TestGenerateRoutes(t *testing.T) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "welcome") || strings.Count(out, `"tickets": {`) != 1 || strings.Contains(out, "namespace codi_tickets") {
+	if strings.Contains(out, "welcome") || strings.Count(out, `"tickets": {`) != 1 || strings.Contains(out, "namespace cicord_tickets") {
 		t.Errorf("unexpected plugins:\n%s", out)
 	}
 	if strings.Index(out, `"my-polls": {`) > strings.Index(out, `"tickets": {`) {

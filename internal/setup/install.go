@@ -15,16 +15,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // Installer installs plugins into the active repository through write-back, from the
-// bundled catalog (sources copied to plugins/<name>/) or from a registry (codi.lock entry
+// bundled catalog (sources copied to plugins/<name>/) or from a registry (cicord.lock entry
 // + `source: <registry>/<name>`). The instance is appended to the bot's spec.plugins with
 // every capability the plugin declares granted (as reviewed by the person installing).
 type Installer struct {
@@ -40,7 +40,7 @@ type Installer struct {
 // Package is what an install adds to the repository.
 type Package struct {
 	Name, DisplayName, Version string
-	// From names where it comes from, for the commit message ("the codi catalog").
+	// From names where it comes from, for the commit message ("the cicord catalog").
 	From              string
 	Capabilities      []string
 	PrivilegedIntents []string
@@ -126,7 +126,7 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 		edits[registry.LockFile] = func(cur []byte) ([]byte, error) {
 			if l, err := registry.ParseLock(cur); err == nil {
 				if old, ok := l.Plugins[pkg.Source]; ok && (old.Commit != lock.Commit || old.Integrity != lock.Integrity) {
-					return nil, fmt.Errorf("%s is already locked at %s: update it with codi plugin update", pkg.Source, old.Version)
+					return nil, fmt.Errorf("%s is already locked at %s: update it with cicord plugin update", pkg.Source, old.Version)
 				}
 			}
 			return registry.SetLockEntry(cur, pkg.Source, lock)
@@ -261,7 +261,7 @@ type UninstallResult struct {
 	// Removed is true when the instance was deleted; false when it keeps running on its
 	// other servers (only this server was taken off its list).
 	Removed bool `json:"removed"`
-	// Cleaned lists what went with the last instance of the plugin: the codi.lock entry
+	// Cleaned lists what went with the last instance of the plugin: the cicord.lock entry
 	// or the plugin directory.
 	Cleaned        []string `json:"cleaned"`
 	Mode           string   `json:"mode"`
@@ -271,7 +271,7 @@ type UninstallResult struct {
 
 // Uninstall takes a plugin instance off a server. An instance that also runs on other
 // servers only loses this one; otherwise it is deleted from bot.yaml and, when no other
-// instance uses the plugin any more, its codi.lock entry (registry plugin) or its
+// instance uses the plugin any more, its cicord.lock entry (registry plugin) or its
 // plugins/<name>/ directory (copied plugin) goes with it. Plugin data (KV storage) is
 // kept: reinstalling an instance with the same name finds it again.
 func (in *Installer) Uninstall(ctx context.Context, serverKey, botKey, instance, source, actor string) (UninstallResult, error) {
@@ -446,7 +446,7 @@ func listFiles(dir string) ([]string, error) {
 }
 
 func (in *Installer) validate(revDir string, edits map[string]writeback.EditFunc) (config.Diagnostics, error) {
-	tmp, err := os.MkdirTemp("", "codi-install-*")
+	tmp, err := os.MkdirTemp("", "cicord-install-*")
 	if err != nil {
 		return nil, err
 	}

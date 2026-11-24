@@ -11,7 +11,7 @@ import (
 
 const examples = "../../examples/basic/plugins"
 
-// examplePlugins lists the plugin directories whose src/codi-env.d.ts must match typegen.
+// examplePlugins lists the plugin directories whose src/cicord-env.d.ts must match typegen.
 var examplePlugins = []string{
 	"basic/plugins/welcome", "basic/plugins/onboarding",
 	"showcase/plugins/tickets", "showcase/plugins/polls", "showcase/plugins/levels", "showcase/plugins/moderation",
@@ -42,7 +42,7 @@ func TestExamplesMatchHandWritten(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want, err := os.ReadFile(filepath.Join(dir, "src", "codi-env.d.ts"))
+			want, err := os.ReadFile(filepath.Join(dir, "src", "cicord-env.d.ts"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -80,8 +80,8 @@ func TestTypes(t *testing.T) {
 	    "mode": { "enum": ["a", "b"] },
 	    "level": { "const": 3 },
 	    "maybe": { "type": ["string", "null"] },
-	    "roles": { "type": "array", "items": { "type": "string", "x-codi-ref": "role" } },
-	    "refArr": { "type": "array", "x-codi-ref": "channel", "items": { "type": "string" } },
+	    "roles": { "type": "array", "items": { "type": "string", "x-cicord-ref": "role" } },
+	    "refArr": { "type": "array", "x-cicord-ref": "channel", "items": { "type": "string" } },
 	    "tint": { "$ref": "#/$defs/color" },
 	    "limits": {
 	      "type": "object",
@@ -134,7 +134,7 @@ func TestTypeCheck(t *testing.T) {
 	if _, err := exec.LookPath("node"); err != nil {
 		t.Skip("node not installed")
 	}
-	sdk := filepath.Join(root, "spec", "sdk", "codi-sdk.d.ts")
+	sdk := filepath.Join(root, "spec", "sdk", "cicord-sdk.d.ts")
 	for _, name := range examplePlugins {
 		t.Run(name, func(t *testing.T) {
 			src := filepath.Join(root, "examples", filepath.FromSlash(name))
@@ -144,7 +144,7 @@ func TestTypeCheck(t *testing.T) {
 			}
 			entries, _ := os.ReadDir(filepath.Join(src, "src"))
 			for _, e := range entries {
-				if e.Name() == "codi-env.d.ts" || e.IsDir() {
+				if e.Name() == "cicord-env.d.ts" || e.IsDir() {
 					continue
 				}
 				data, _ := os.ReadFile(filepath.Join(src, "src", e.Name()))
@@ -155,7 +155,7 @@ func TestTypeCheck(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			os.WriteFile(filepath.Join(dir, "src", "codi-env.d.ts"), []byte(got), 0o644)
+			os.WriteFile(filepath.Join(dir, "src", "cicord-env.d.ts"), []byte(got), 0o644)
 			// the plugin's own tsconfig, with the SDK path made absolute
 			raw, err := os.ReadFile(filepath.Join(src, "tsconfig.json"))
 			if err != nil {
@@ -166,7 +166,7 @@ func TestTypeCheck(t *testing.T) {
 				t.Fatal(err)
 			}
 			co, _ := tsconfig["compilerOptions"].(map[string]any)
-			co["paths"] = map[string]any{"@codi/sdk": []string{sdk}}
+			co["paths"] = map[string]any{"@cicord/sdk": []string{sdk}}
 			data, _ := json.Marshal(tsconfig)
 			os.WriteFile(filepath.Join(dir, "tsconfig.json"), data, 0o644)
 			out, err := exec.Command(tsc, "-p", dir).CombinedOutput()

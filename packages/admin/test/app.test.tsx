@@ -1,4 +1,4 @@
-import { createCodiClient, type FetchLike } from "@codi/client";
+import { createCicordClient, type FetchLike } from "@cicord/client";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
@@ -25,7 +25,7 @@ function setup(path = "/admin/", intercept?: Intercept) {
     return res ?? runtime.fetch(input, init);
   };
   const config: AdminConfig = {
-    client: createCodiClient({ fetch: watch401(fetch) }),
+    client: createCicordClient({ fetch: watch401(fetch) }),
     loginUrl: "/auth/login?redirect=/admin/",
     mock: true,
   };
@@ -66,7 +66,7 @@ describe("login", () => {
     await runtime.fetch("/api/v1/sim/servers/112233445566778899/members", {
       method: "POST",
       body: JSON.stringify({ userId: "101" }),
-      headers: { "X-Codi-Request": "1" },
+      headers: { "X-Cicord-Request": "1" },
     });
     await user.click(screen.getByRole("button", { name: /Alice/ }));
     expect(await screen.findByRole("heading", { name: "No server to manage" })).toBeTruthy();
@@ -398,7 +398,7 @@ describe("plugins table and instance page", () => {
     });
     // What happens is spelled out before confirming.
     expect(within(dialog).getByText(/only Ma Commu is removed from it/)).toBeTruthy();
-    expect(within(dialog).getByText(/its codi.lock entry/)).toBeTruthy();
+    expect(within(dialog).getByText(/its cicord.lock entry/)).toBeTruthy();
     expect(within(dialog).getByText(/stored data \(key-value storage\) is kept/)).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Uninstall" }));
 
@@ -437,7 +437,7 @@ describe("plugins table and instance page", () => {
                 409,
               )
             : json(
-                { error: { code: "forbidden", message: "write-back is disabled in codi.yaml" } },
+                { error: { code: "forbidden", message: "write-back is disabled in cicord.yaml" } },
                 403,
               ),
     );
@@ -463,7 +463,7 @@ describe("plugins table and instance page", () => {
     mode = "forbidden";
     await confirm();
     expect(await screen.findByText("You cannot uninstall this plugin")).toBeTruthy();
-    expect(screen.getByText("write-back is disabled in codi.yaml")).toBeTruthy();
+    expect(screen.getByText("write-back is disabled in cicord.yaml")).toBeTruthy();
   });
 
   test("moderators have no danger zone", async () => {
@@ -489,7 +489,7 @@ describe("simulator", () => {
 
     await user.click(within(members).getByRole("button", { name: "DMs of alice" }));
     const link = await screen.findByRole("link", { name: /Commencer/ });
-    expect(link.getAttribute("href")).toMatch(/\/onboarding\?codi_token=/);
+    expect(link.getAttribute("href")).toMatch(/\/onboarding\?cicord_token=/);
     expect(link.getAttribute("target")).toBe("_blank");
 
     // Slash command as the owner

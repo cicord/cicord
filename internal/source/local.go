@@ -17,7 +17,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Local snapshots a working directory (used by `codi dev`). Revision IDs are content
+// Local snapshots a working directory (used by `cicord dev`). Revision IDs are content
 // hashes, so unchanged trees map to the same revision.
 type Local struct {
 	dir      string
@@ -30,7 +30,7 @@ type Local struct {
 }
 
 // ignored directories and files never copied into snapshots.
-var ignoredNames = map[string]bool{".git": true, "node_modules": true, ".codi": true, ".DS_Store": true}
+var ignoredNames = map[string]bool{".git": true, "node_modules": true, ".cicord": true, ".DS_Store": true}
 
 // NewLocal watches dir and stores snapshots under snapRoot.
 func NewLocal(dir, snapRoot string) (*Local, error) {
@@ -38,8 +38,8 @@ func NewLocal(dir, snapRoot string) (*Local, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(filepath.Join(abs, "codi.yaml")); err != nil {
-		return nil, fmt.Errorf("%s is not a CODI repository (no codi.yaml)", abs)
+	if _, err := os.Stat(filepath.Join(abs, "cicord.yaml")); err != nil {
+		return nil, fmt.Errorf("%s is not a Cicord repository (no cicord.yaml)", abs)
 	}
 	if err := os.MkdirAll(snapRoot, 0o755); err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func (l *Local) Fetch(ctx context.Context) (Revision, error) {
 	rev := Revision{ID: "local-" + sum[:7], SHA: sum, Message: "working tree", Author: "local", Time: time.Now().UTC(), Source: "local"}
 	snap := filepath.Join(l.snapRoot, sum[:16])
 	rev.Dir = snap
-	if _, err := os.Stat(filepath.Join(snap, "codi.yaml")); err == nil {
+	if _, err := os.Stat(filepath.Join(snap, "cicord.yaml")); err == nil {
 		return rev, nil
 	}
 	tmp, err := os.MkdirTemp(l.snapRoot, ".tmp-")
@@ -179,7 +179,7 @@ func (l *Local) Fetch(ctx context.Context) (Revision, error) {
 	}
 	if err := os.Rename(tmp, snap); err != nil {
 		os.RemoveAll(tmp)
-		if _, statErr := os.Stat(filepath.Join(snap, "codi.yaml")); statErr == nil {
+		if _, statErr := os.Stat(filepath.Join(snap, "cicord.yaml")); statErr == nil {
 			return rev, nil // concurrent snapshot of the same content
 		}
 		return Revision{}, err

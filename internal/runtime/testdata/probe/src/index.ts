@@ -1,4 +1,4 @@
-import { CapabilityError, command, definePlugin } from "@codi/sdk";
+import { CapabilityError, command, definePlugin } from "@cicord/sdk";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

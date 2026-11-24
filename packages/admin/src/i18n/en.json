@@ -31,7 +31,7 @@
   },
   "nav": {
     "label": "Main navigation",
-    "home": "CODI admin, overview",
+    "home": "Cicord admin, overview",
     "breadcrumb": "Breadcrumb",
     "toggleSidebar": "Toggle sidebar",
     "dev": "dev",
@@ -162,7 +162,7 @@
       },
       "adopt": {
         "label": "Adopt",
-        "description": "An existing resource with the same name becomes managed by CODI."
+        "description": "An existing resource with the same name becomes managed by Cicord."
       },
       "reorder": {
         "label": "Reorder",
@@ -170,7 +170,7 @@
       },
       "unmanage": {
         "label": "Unmanage",
-        "description": "Removed from YAML: CODI stops managing it but leaves it on Discord."
+        "description": "Removed from YAML: Cicord stops managing it but leaves it on Discord."
       },
       "blocked": {
         "label": "Blocked",
@@ -187,8 +187,8 @@
     },
     "network": {
       "title": "Can't reach the runtime",
-      "message": "The CODI runtime did not answer.",
-      "hint": "Check that codi is running and reachable, then retry."
+      "message": "The Cicord runtime did not answer.",
+      "hint": "Check that cicord is running and reachable, then retry."
     },
     "unauthenticated": {
       "title": "Your session expired",
@@ -224,7 +224,7 @@
     },
     "internal": {
       "title": "The runtime hit an internal error",
-      "message": "This is a bug in CODI, not in your configuration.",
+      "message": "This is a bug in Cicord, not in your configuration.",
       "hint": "Retry; if it persists, check the runtime logs."
     }
   },
@@ -292,7 +292,7 @@
     "now": "Sync now",
     "confirm": {
       "title": "Apply the plan to Discord?",
-      "text": "CODI changes Discord to match the active revision. Blocked operations are skipped. Review the plan first if you are unsure."
+      "text": "Cicord changes Discord to match the active revision. Blocked operations are skipped. Review the plan first if you are unsure."
     },
     "toast": {
       "upToDate": "Already in sync",
@@ -394,9 +394,9 @@
     "roles": "Roles",
     "rolesHint": "Top of the hierarchy first",
     "channels": "Categories & channels",
-    "managedHint": "Key in the YAML: CODI manages this resource",
+    "managedHint": "Key in the YAML: Cicord manages this resource",
     "unmanaged": "unmanaged",
-    "unmanagedHint": "Exists only on Discord. CODI leaves it alone.",
+    "unmanagedHint": "Exists only on Discord. Cicord leaves it alone.",
     "noRoles": "No roles",
     "noChannels": "No channels",
     "emptyCategory": "No channels",
@@ -427,7 +427,7 @@
     },
     "policy": {
       "title": "Sync policy",
-      "description": "How CODI reconciles Discord with git.",
+      "description": "How Cicord reconciles Discord with git.",
       "selfHeal": "Self-heal",
       "selfHealHelp": "Revert changes made on Discord as soon as they are seen.",
       "prune": "Prune",
@@ -541,7 +541,7 @@
       "overridesTail": "; other fields come from the base config.",
       "readOnly": {
         "title": "Read only",
-        "text": "Your role on this server cannot change these settings. Fields marked x-codi-access: moderator are editable by moderators."
+        "text": "Your role on this server cannot change these settings. Fields marked x-cicord-access: moderator are editable by moderators."
       },
       "someLocked": "Some fields are for admins only; you can view them.",
       "adminsOnly": "Admins only",
@@ -552,7 +552,7 @@
       },
       "forbidden": {
         "title": "Your role cannot save this change",
-        "hint": "Moderators can only change fields marked x-codi-access: moderator; ask an admin for the others."
+        "hint": "Moderators can only change fields marked x-cicord-access: moderator; ask an admin for the others."
       },
       "rejected": "The runtime rejected the configuration",
       "saveFailed": "Could not save the settings",
@@ -623,7 +623,7 @@
         "lead": "This changes the configuration in git:",
         "removed": "The instance {{instance}} is removed from {{server}}.",
         "otherServers": "If it also runs on other servers, only {{server}} is removed from it; the other servers keep it.",
-        "last": "If it is the last instance of {{name}}, its codi.lock entry (registry plugin) or its plugins/{{name}}/ folder (copied by the Store) is deleted too.",
+        "last": "If it is the last instance of {{name}}, its cicord.lock entry (registry plugin) or its plugins/{{name}}/ folder (copied by the Store) is deleted too.",
         "repo": "Plugins written in the repository are never deleted.",
         "data": "Its stored data (key-value storage) is kept.",
         "git": "Committed to git, or opened as a pull request, depending on the write-back policy.",
@@ -641,7 +641,7 @@
       },
       "forbidden": {
         "title": "You cannot uninstall this plugin",
-        "hint": "Uninstalling needs the admin role on this server, and write-back enabled in codi.yaml."
+        "hint": "Uninstalling needs the admin role on this server, and write-back enabled in cicord.yaml."
       },
       "done": {
         "title": "{{name}} was uninstalled from {{server}}",
@@ -684,7 +684,7 @@
     },
     "runtime": {
       "title": "Runtime",
-      "description": "The CODI runtime this console talks to.",
+      "description": "The Cicord runtime this console talks to.",
       "version": "Version",
       "mode": "Mode",
       "simulator": "Simulator",
@@ -767,7 +767,7 @@
     },
     "off": {
       "title": "The simulator is off",
-      "text": "Start the runtime with codi dev --sim to play with your bots without Discord."
+      "text": "Start the runtime with cicord dev --sim to play with your bots without Discord."
     },
     "noServer": {
       "title": "No simulated server",
@@ -934,7 +934,7 @@
     },
     "assets": {
       "title": "Images",
-      "description": "Server icon, banner and invite background. Uploading writes the file into the repository and points the profile at it (commit or pull request, per codi.yaml).",
+      "description": "Server icon, banner and invite background. Uploading writes the file into the repository and points the profile at it (commit or pull request, per cicord.yaml).",
       "icon": "Icon",
       "banner": "Banner",
       "splash": "Invite background",
@@ -1058,7 +1058,7 @@
       },
       "onboarding": {
         "title": "Onboarding & welcome screen",
-        "description": "Discord's native onboarding and welcome screen (Community). They can run alongside the CODI onboarding plugin on the portal.",
+        "description": "Discord's native onboarding and welcome screen (Community). They can run alongside the Cicord onboarding plugin on the portal.",
         "onboarding": "Native onboarding",
         "mode": "Mode",
         "defaultChannels": "Default channels",
@@ -1078,7 +1078,7 @@
     }
   },
   "setup": {
-    "title": "Set up CODI",
+    "title": "Set up Cicord",
     "brand": "setup",
     "stepper": "Setup steps",
     "stepOf": "Step {{n}} of {{total}}",
@@ -1101,7 +1101,7 @@
       "done": "Done"
     },
     "stepHints": {
-      "welcome": "What CODI will do",
+      "welcome": "What Cicord will do",
       "discord": "Your bot's token",
       "server": "Invite the bot",
       "repository": "Where settings live",
@@ -1112,43 +1112,43 @@
     },
     "access": {
       "title": "Open the setup link",
-      "text": "For security, the setup wizard only opens with the one-time link CODI printed in its logs when it started. It looks like {{example}}.",
+      "text": "For security, the setup wizard only opens with the one-time link Cicord printed in its logs when it started. It looks like {{example}}.",
       "paste": "Setup link or token",
       "placeholder": "Paste the link from the logs",
       "submit": "Open the wizard",
-      "restart": "Each link works once. Lost it? Restart CODI: it prints a new one.",
+      "restart": "Each link works once. Lost it? Restart Cicord: it prints a new one.",
       "exchanging": "Opening the setup wizard…"
     },
     "completed": {
-      "title": "CODI is already set up",
+      "title": "Cicord is already set up",
       "text": "The setup wizard has been completed. Sign in to the admin console to manage your server.",
       "open": "Open the admin console"
     },
     "welcome": {
-      "title": "Let's get your Discord server running on CODI",
-      "lead": "In about ten minutes, CODI will manage your server's roles, channels and permissions, and run plugins like welcome messages or tickets. Every change is saved as a version you can review or undo.",
+      "title": "Let's get your Discord server running on Cicord",
+      "lead": "In about ten minutes, Cicord will manage your server's roles, channels and permissions, and run plugins like welcome messages or tickets. Every change is saved as a version you can review or undo.",
       "willDo": "What happens next",
       "items": {
-        "bot": "You create a Discord bot and paste its token: CODI checks it and finds everything else itself.",
-        "invite": "You add the bot to your server with one link. CODI checks it has the rights it needs.",
-        "import": "CODI reads your server as it is today and saves it. Nothing on Discord changes.",
-        "verify": "CODI verifies everything live, then you can add a first plugin."
+        "bot": "You create a Discord bot and paste its token: Cicord checks it and finds everything else itself.",
+        "invite": "You add the bot to your server with one link. Cicord checks it has the rights it needs.",
+        "import": "Cicord reads your server as it is today and saves it. Nothing on Discord changes.",
+        "verify": "Cicord verifies everything live, then you can add a first plugin."
       },
       "question": "Where are you starting from?",
       "existing": "I already have a Discord server",
-      "existingText": "CODI adopts your roles and channels as they are.",
+      "existingText": "Cicord adopts your roles and channels as they are.",
       "new": "I'm starting a new community",
-      "newText": "Create an empty server first, CODI takes it from there.",
+      "newText": "Create an empty server first, Cicord takes it from there.",
       "newSteps": "In Discord, click the “+” at the bottom of your server list → “Create My Own” → give it a name. Come back here once it exists.",
       "openDiscord": "Open Discord",
       "start": "Start"
     },
     "discord": {
       "title": "Create your bot",
-      "lead": "A bot is how CODI acts on your server. You create it once in Discord's Developer Portal; it takes two minutes.",
+      "lead": "A bot is how Cicord acts on your server. You create it once in Discord's Developer Portal; it takes two minutes.",
       "step1": "Open the Developer Portal and click “New Application”. The name you choose is your bot's name (you can change it later). Accept the terms and click “Create”.",
       "step2": "In the left menu, open “Bot”, click “Reset Token”, confirm, then click “Copy”. Discord shows the token only once.",
-      "step3": "Paste the token below. CODI checks it with Discord and stores it encrypted; it is never shown again.",
+      "step3": "Paste the token below. Cicord checks it with Discord and stores it encrypted; it is never shown again.",
       "tokenLabel": "Bot token",
       "tokenPlaceholder": "Paste the token copied from the Bot page",
       "tokenHelp": "It is a long text with two dots. Not the Application ID, not the Client Secret.",
@@ -1173,7 +1173,7 @@
     },
     "server": {
       "title": "Add the bot to your server",
-      "lead": "Open the invite link, choose your server and click “Authorize”. Keep “Administrator” checked: CODI manages roles, channels and permissions for you.",
+      "lead": "Open the invite link, choose your server and click “Authorize”. Keep “Administrator” checked: Cicord manages roles, channels and permissions for you.",
       "invite": "Open the invite link",
       "inviteDetails": "Asks for the “bot” and “applications.commands” scopes with the Administrator permission.",
       "simInvite": "Simulate: authorize the invite",
@@ -1189,15 +1189,15 @@
       "allGood": "Everything is in place."
     },
     "repo": {
-      "title": "Where should CODI keep your configuration?",
-      "lead": "CODI saves your server's setup as files. Every change made in the admin is a new version, so you can see what changed and go back.",
+      "title": "Where should Cicord keep your configuration?",
+      "lead": "Cicord saves your server's setup as files. Every change made in the admin is a new version, so you can see what changed and go back.",
       "providers": {
-        "embedded": "Managed by CODI",
-        "embeddedText": "Stored by CODI next to its data, with full history. No git or GitHub account needed.",
+        "embedded": "Managed by Cicord",
+        "embeddedText": "Stored by Cicord next to its data, with full history. No git or GitHub account needed.",
         "github": "A GitHub repository",
-        "githubText": "For teams who review changes on GitHub. CODI pushes the first version for you.",
+        "githubText": "For teams who review changes on GitHub. Cicord pushes the first version for you.",
         "local": "This folder",
-        "localText": "Development: the files are written to the folder “codi dev” watches; edit them in your editor."
+        "localText": "Development: the files are written to the folder “cicord dev” watches; edit them in your editor."
       },
       "recommended": "Recommended",
       "url": "Repository URL",
@@ -1211,13 +1211,13 @@
       "chosen": "Configuration: {{what}}",
       "change": "Change",
       "importTitle": "Import your server",
-      "importLead": "CODI reads {{name}} as it is today (roles, channels, permissions) and saves it as the first version. Nothing changes on Discord.",
+      "importLead": "Cicord reads {{name}} as it is today (roles, channels, permissions) and saves it as the first version. Nothing changes on Discord.",
       "import": "Import and activate",
       "importing": "Importing and activating…",
-      "activated": "Your server is now managed by CODI",
-      "proof": "Proof: CODI compared the saved configuration with Discord and found nothing to change.",
-      "proofChanges_one": "CODI found {{count}} difference between the configuration and Discord.",
-      "proofChanges_other": "CODI found {{count}} differences between the configuration and Discord.",
+      "activated": "Your server is now managed by Cicord",
+      "proof": "Proof: Cicord compared the saved configuration with Discord and found nothing to change.",
+      "proofChanges_one": "Cicord found {{count}} difference between the configuration and Discord.",
+      "proofChanges_other": "Cicord found {{count}} differences between the configuration and Discord.",
       "needsConfirm": "Applying this configuration would change Discord",
       "needsConfirmText": "Usually the import adopts everything as it is. Review these changes before applying them.",
       "apply": "Apply these changes and activate",
@@ -1236,7 +1236,7 @@
       "secretPlaceholder": "Paste the Client Secret",
       "save": "Save",
       "saved": "Discord login is configured.",
-      "fromEnv": "The client secret comes from the CODI_DISCORD_CLIENT_SECRET environment variable.",
+      "fromEnv": "The client secret comes from the CICORD_DISCORD_CLIENT_SECRET environment variable.",
       "test": "Test login",
       "testing": "Waiting for the login in the other tab…",
       "testedAs": "Signed in as {{name}}.",
@@ -1244,12 +1244,12 @@
       "returnTitle": "Discord login works",
       "returnText": "You can close this tab and go back to the setup wizard.",
       "simText": "With the simulator, you sign in with “dev login” (any simulated user): nothing to configure here.",
-      "skipWarning": "Without it, only the setup link can open the admin. You can configure it later (CODI_DISCORD_CLIENT_SECRET)."
+      "skipWarning": "Without it, only the setup link can open the admin. You can configure it later (CICORD_DISCORD_CLIENT_SECRET)."
     },
     "verify": {
       "title": "Let's check everything works",
-      "lead": "CODI runs these checks live. Fix anything red, then they update on their own.",
-      "sendMessage": "Send a message in any channel of {{name}} (for example “hello CODI”). This proves CODI receives events from Discord.",
+      "lead": "Cicord runs these checks live. Fix anything red, then they update on their own.",
+      "sendMessage": "Send a message in any channel of {{name}} (for example “hello Cicord”). This proves Cicord receives events from Discord.",
       "simMessage": "Simulate: send a message",
       "allGood": "Everything works.",
       "rerun": "Run the checks again",
@@ -1299,7 +1299,7 @@
     },
     "done": {
       "title": "You're all set",
-      "lead": "{{server}} is managed by CODI.",
+      "lead": "{{server}} is managed by Cicord.",
       "summary": "What you set up",
       "bot": "Bot",
       "server": "Server",
@@ -1318,7 +1318,7 @@
       "cli": "From a terminal",
       "cliText": "Review changes before they apply:",
       "finish": "Finish and open the admin",
-      "loginWarning": "Admin login is not configured: once you finish, the setup link stops working. Configure Discord login first, or set CODI_DISCORD_CLIENT_SECRET later."
+      "loginWarning": "Admin login is not configured: once you finish, the setup link stops working. Configure Discord login first, or set CICORD_DISCORD_CLIENT_SECRET later."
     },
     "capabilities": {
       "discord_messages_read": "Read messages in channels it can see",
@@ -1351,7 +1351,7 @@
   },
   "store": {
     "title": "Store",
-    "description": "Plugins from CODI and from the sources declared in codi.yaml. Installing one commits it to git; the runtime then activates the new revision.",
+    "description": "Plugins from Cicord and from the sources declared in cicord.yaml. Installing one commits it to git; the runtime then activates the new revision.",
     "refresh": "Refresh sources",
     "refreshed": "Sources refreshed",
     "refreshFailed": "Could not refresh the sources",
@@ -1379,8 +1379,8 @@
     "trust": {
       "official": "Official",
       "unofficial": "Unofficial",
-      "officialTip": "Published by CODI, or listed by the official registry.",
-      "unofficialTip": "Not reviewed by CODI. Install only if you trust the publisher.",
+      "officialTip": "Published by Cicord, or listed by the official registry.",
+      "unofficialTip": "Not reviewed by Cicord. Install only if you trust the publisher.",
       "local": "Local",
       "localTip": "Written in the configuration repository."
     },
@@ -1407,7 +1407,7 @@
       "commit": "Commit",
       "unofficial": {
         "title": "Unofficial source: {{source}}",
-        "text": "CODI has not reviewed this plugin's code. It runs with the permissions below on your server. Install it only if you trust {{publisher}}."
+        "text": "Cicord has not reviewed this plugin's code. It runs with the permissions below on your server. Install it only if you trust {{publisher}}."
       },
       "review": "What this plugin requests",
       "reviewHint": "Every capability below is granted when you install it.",
@@ -1423,7 +1423,7 @@
       "commands": "Slash commands",
       "noCommands": "No slash command.",
       "commandsUnknown": "Known after install",
-      "commandsUnknownHint": "Listing commands runs the plugin's code, which CODI only does for official sources before installing.",
+      "commandsUnknownHint": "Listing commands runs the plugin's code, which Cicord only does for official sources before installing.",
       "installed": "Installed",
       "notInstalled": "Not installed yet.",
       "instanceOn": "{{bot}}/{{instance}} on {{server}}",
@@ -1460,7 +1460,7 @@
       "rejected": "The runtime rejected the configuration",
       "changed": {
         "title": "This plugin changed since you reviewed it",
-        "hint": "Its latest version now resolves to different code. Review it again: CODI only installs the code you reviewed.",
+        "hint": "Its latest version now resolves to different code. Review it again: Cicord only installs the code you reviewed.",
         "reload": "Reload and review"
       },
       "confirmation": {
@@ -1491,25 +1491,25 @@
     },
     "sources": {
       "title": "Sources",
-      "description": "Where CODI looks for plugins. The built-in codi source is always there; registries are declared in codi.yaml (spec.registries).",
+      "description": "Where Cicord looks for plugins. The built-in cicord source is always there; registries are declared in cicord.yaml (spec.registries).",
       "name": "Name",
       "url": "URL",
       "trust": "Trust",
       "status": "Status",
       "ok": "Fetched",
       "error": "Fetch failed",
-      "builtin": "Built into CODI",
+      "builtin": "Built into Cicord",
       "remove": "Remove",
       "removeLabel": "Remove source {{name}}",
-      "cannotRemove": "The built-in codi source cannot be removed",
+      "cannotRemove": "The built-in cicord source cannot be removed",
       "add": {
         "title": "Add a registry",
         "text": "A registry is a git repository with an index.yaml listing plugins.",
-        "risk": "Registries you add are unofficial: CODI does not review their plugins. Add only sources you trust; installing their plugins is at your own risk.",
+        "risk": "Registries you add are unofficial: Cicord does not review their plugins. Add only sources you trust; installing their plugins is at your own risk.",
         "name": "Name",
         "nameHint": "Lowercase letters, digits and dashes, up to 32 characters.",
         "url": "Git URL (https)",
-        "urlPlaceholder": "https://github.com/acme/codi-plugins.git",
+        "urlPlaceholder": "https://github.com/acme/cicord-plugins.git",
         "submit": "Add registry",
         "adding": "Adding…",
         "added": "Registry {{name}} added",
@@ -1517,7 +1517,7 @@
         "errors": {
           "nameRequired": "Enter a name",
           "namePattern": "Start with a letter or digit; use only a-z, 0-9 and -, up to 32 characters",
-          "nameReserved": "codi is reserved for the built-in source",
+          "nameReserved": "cicord is reserved for the built-in source",
           "nameTaken": "A source with this name already exists",
           "urlRequired": "Enter the repository URL",
           "urlInvalid": "Enter a valid URL",
@@ -1530,7 +1530,7 @@
       },
       "confirmRemove": {
         "title": "Remove the source {{name}}?",
-        "text": "Its plugins can no longer be installed. This changes codi.yaml for the whole project. Instances already using the source block the removal.",
+        "text": "Its plugins can no longer be installed. This changes cicord.yaml for the whole project. Instances already using the source block the removal.",
         "confirm": "Remove source"
       },
       "removed": "Source {{name}} removed",
@@ -1541,7 +1541,7 @@
       },
       "forbidden": {
         "title": "You cannot change the sources",
-        "text": "Sources live in codi.yaml and apply to the whole project: adding or removing one needs the admin role on every server CODI manages."
+        "text": "Sources live in cicord.yaml and apply to the whole project: adding or removing one needs the admin role on every server Cicord manages."
       },
       "result": {
         "committed": "Committed",
@@ -1551,9 +1551,9 @@
       "private": "Private",
       "privateTip": "This registry needs an access token, kept in the runtime's secret store.",
       "signed": "Signed",
-      "signedTip": "The index of this official registry is signed by an official CODI key.",
+      "signedTip": "The index of this official registry is signed by an official Cicord key.",
       "badSignature": "Signature invalid",
-      "badSignatureTip": "The index of this official registry has no valid signature by an official CODI key: its plugins are not listed.",
+      "badSignatureTip": "The index of this official registry has no valid signature by an official Cicord key: its plugins are not listed.",
       "token": {
         "set": "Set token",
         "replace": "Replace token",
@@ -1563,24 +1563,24 @@
         "removeLabel": "Remove the access token of {{name}}",
         "setTitle": "Set the access token of {{name}}",
         "replaceTitle": "Replace the access token of {{name}}",
-        "dialogText": "CODI checks that the registry index can be read with it before saving.",
+        "dialogText": "Cicord checks that the registry index can be read with it before saving.",
         "label": "Access token",
         "hint": "Stored in the runtime's secret store, only sent to {{host}}, never shown again.",
         "required": "Enter the token",
         "save": "Save token",
         "saving": "Checking…",
         "saved": "Token of {{name}} saved",
-        "secretOnly": "Stored in the runtime's secret store; codi.yaml did not change.",
+        "secretOnly": "Stored in the runtime's secret store; cicord.yaml did not change.",
         "failed": "Could not save the token",
         "removed": "Token of {{name}} removed",
         "removeFailed": "Could not remove the token",
         "missing": {
           "title": "The token is missing on this runtime",
-          "hint": "codi.yaml marks this registry as private, but this runtime's secret store has no token for it: its plugins cannot be listed or installed. Set the token again."
+          "hint": "cicord.yaml marks this registry as private, but this runtime's secret store has no token for it: its plugins cannot be listed or installed. Set the token again."
         },
         "confirmRemove": {
           "title": "Remove the access token of {{name}}?",
-          "text": "The registry becomes public in codi.yaml. If it is private, CODI can no longer read it. The token is deleted from the secret store when the admin UI created it.",
+          "text": "The registry becomes public in cicord.yaml. If it is private, Cicord can no longer read it. The token is deleted from the secret store when the admin UI created it.",
           "confirm": "Remove token"
         }
       }
@@ -1652,7 +1652,7 @@
       "unchanged_other": "{{count}} capabilities unchanged",
       "repoChanged": {
         "title": "The plugin moved to another repository",
-        "text": "The registry now points to another repository than the one locked in codi.lock. Make sure the publisher announced it before updating."
+        "text": "The registry now points to another repository than the one locked in cicord.lock. Make sure the publisher announced it before updating."
       },
       "instances": "Instances updated",
       "instancesHint": "Each instance's grants are set to what the new version requests.",
@@ -1696,7 +1696,7 @@
       "rejected": "The configuration is not valid with the new version",
       "changed": {
         "title": "The plugin changed since you reviewed it",
-        "hint": "Its latest version now resolves to different code. Review it again: CODI only installs the code you reviewed.",
+        "hint": "Its latest version now resolves to different code. Review it again: Cicord only installs the code you reviewed.",
         "reload": "Reload and review"
       },
       "modifiedError": {

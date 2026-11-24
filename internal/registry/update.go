@@ -8,7 +8,7 @@ import (
 )
 
 // Plugin updates (ADR-0011 "Update" sections): a registry plugin is up to date when its
-// codi.lock version is the highest release tag of its repository, any major version.
+// cicord.lock version is the highest release tag of its repository, any major version.
 
 // LatestVersion returns the highest release tag of a plugin repository listed by the
 // registry at registryURL, without cloning it (tags only). Prereleases are ignored, like

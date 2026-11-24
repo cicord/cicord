@@ -66,7 +66,7 @@ func (s *Signer) Sign(c LinkClaims) string {
 
 func (s *Signer) mac(p string) []byte {
 	m := hmac.New(sha256.New, s.key)
-	m.Write([]byte("codi-link-v1:"))
+	m.Write([]byte("cicord-link-v1:"))
 	m.Write([]byte(p))
 	return m.Sum(nil)
 }
@@ -94,10 +94,10 @@ func (s *Signer) Verify(token string) (LinkClaims, error) {
 	return c, nil
 }
 
-// Linker builds portal URLs: <base><path>?server=<key>&codi_token=<token>.
+// Linker builds portal URLs: <base><path>?server=<key>&cicord_token=<token>.
 type Linker struct {
 	Signer  *Signer
-	BaseURL string // portal origin, e.g. https://codi.example.com
+	BaseURL string // portal origin, e.g. https://cicord.example.com
 	Server  string // server key the links are for
 	MaxTTL  time.Duration
 }
@@ -120,7 +120,7 @@ func (l *Linker) Link(path, userID string, ttl time.Duration) (string, error) {
 	}
 	q := u.Query()
 	q.Set("server", l.Server)
-	q.Set("codi_token", tok)
+	q.Set("cicord_token", tok)
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }

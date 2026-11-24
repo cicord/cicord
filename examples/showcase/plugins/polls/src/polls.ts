@@ -1,5 +1,5 @@
 /** Poll records, tallies and rendering, independent of the handlers. */
-import type { ActionRow, Context, Json, Message, MessagePayload } from "@codi/sdk";
+import type { ActionRow, Context, Json, Message, MessagePayload } from "@cicord/sdk";
 
 export type PollStyle = "buttons" | "select";
 

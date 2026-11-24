@@ -3,13 +3,13 @@
 **Status:** Accepted
 
 ## Context
-CODI must deploy and keep in sync one or more Discord servers and one or more bot identities.
+Cicord must deploy and keep in sync one or more Discord servers and one or more bot identities.
 Two deployment models exist: *push* (CI builds and redeploys the bot) and *pull* (a controller
 watches git and converges, like ArgoCD). Restarting a bot drops its gateway connection and
 loses events.
 
 ## Decision
-- One Go binary, `codi`, contains the CLI and the runtime (`codi serve`).
+- One Go binary, `cicord`, contains the CLI and the runtime (`cicord serve`).
 - The runtime is a **pull-based controller**: it watches the git repo, builds immutable
   revisions, reconciles servers and hot-swaps plugin code without reconnecting to the gateway.
 - A single runtime hosts **N bots × M servers** (many-to-many). The standard case is one

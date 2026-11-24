@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/api"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/api"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 const runtimeToken = "test-runtime-token"
@@ -77,8 +77,8 @@ func startRuntime(t *testing.T) (string, string, *sim.World) {
 
 func TestPlanRemote(t *testing.T) {
 	url, deployed, _ := startRuntime(t)
-	t.Setenv("CODI_RUNTIME_TOKEN", runtimeToken)
-	t.Setenv("CODI_RUNTIME_URL", "")
+	t.Setenv("CICORD_RUNTIME_TOKEN", runtimeToken)
+	t.Setenv("CICORD_RUNTIME_URL", "")
 
 	// a pull request renaming a channel, adding a role and a channel
 	dir := t.TempDir()
@@ -102,8 +102,8 @@ func TestPlanRemote(t *testing.T) {
 			t.Errorf("plan output misses %q:\n%s", want, out)
 		}
 	}
-	// bare --remote (followed by another flag) uses CODI_RUNTIME_URL
-	t.Setenv("CODI_RUNTIME_URL", url)
+	// bare --remote (followed by another flag) uses CICORD_RUNTIME_URL
+	t.Setenv("CICORD_RUNTIME_URL", url)
 	code, out, _ = run(t, "plan", "--remote", "-o", "json", dir)
 	var res struct {
 		Valid bool
@@ -124,7 +124,7 @@ func TestPlanRemote(t *testing.T) {
 		t.Errorf("invalid plan = %d: %s", code, errOut)
 	}
 	// wrong token
-	t.Setenv("CODI_RUNTIME_TOKEN", "wrong")
+	t.Setenv("CICORD_RUNTIME_TOKEN", "wrong")
 	if code, _, errOut := run(t, "plan", "--remote", dir); code != 1 || !strings.Contains(errOut, "401") {
 		t.Errorf("wrong token = %d: %s", code, errOut)
 	}
@@ -132,10 +132,10 @@ func TestPlanRemote(t *testing.T) {
 
 func TestArchiveExclusions(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "codi.yaml"), "x")
+	writeFile(t, filepath.Join(dir, "cicord.yaml"), "x")
 	writeFile(t, filepath.Join(dir, ".gitignore"), "*.db\nlogs/\n/secret.txt\n")
 	for _, f := range []string{"servers/a.yaml", ".env", ".env.local", "x.db", "logs/a.log", "secret.txt", "sub/secret.txt",
-		"node_modules/m/i.js", ".git/HEAD", "plugins/p/dist/b.js", ".codi/state.db", "plugins/p/src/i.ts"} {
+		"node_modules/m/i.js", ".git/HEAD", "plugins/p/dist/b.js", ".cicord/state.db", "plugins/p/src/i.ts"} {
 		writeFile(t, filepath.Join(dir, filepath.FromSlash(f)), "x")
 	}
 	os.Symlink("/etc/passwd", filepath.Join(dir, "link"))
@@ -144,12 +144,12 @@ func TestArchiveExclusions(t *testing.T) {
 		t.Fatal(err)
 	}
 	names := tarNames(t, data)
-	for _, want := range []string{"codi.yaml", "servers/a.yaml", "plugins/p/src/i.ts", "sub/secret.txt", ".gitignore"} {
+	for _, want := range []string{"cicord.yaml", "servers/a.yaml", "plugins/p/src/i.ts", "sub/secret.txt", ".gitignore"} {
 		if !names[want] {
 			t.Errorf("%s missing from the archive: %v", want, names)
 		}
 	}
-	for _, not := range []string{".env", ".env.local", "x.db", "logs/a.log", "secret.txt", "node_modules/m/i.js", ".git/HEAD", "plugins/p/dist/b.js", ".codi/state.db", "link"} {
+	for _, not := range []string{".env", ".env.local", "x.db", "logs/a.log", "secret.txt", "node_modules/m/i.js", ".git/HEAD", "plugins/p/dist/b.js", ".cicord/state.db", "link"} {
 		if names[not] {
 			t.Errorf("%s must not be uploaded", not)
 		}
@@ -232,12 +232,12 @@ func TestPlanComment(t *testing.T) {
 	}))
 	defer rts.Close()
 	gh := &fakeGitHub{}
-	// 100 unrelated comments: the CODI comment is found on the second page
+	// 100 unrelated comments: the Cicord comment is found on the second page
 	for i := 0; i < 100; i++ {
 		c := ghComment{ID: int64(i + 1), Body: "lgtm"}
 		c.User.Type = "User"
 		if i == 50 { // a person quoting the marker: never edited
-			c.Body = "> <!-- codi-plan:ma-commu --> why?"
+			c.Body = "> <!-- cicord-plan:ma-commu --> why?"
 		}
 		gh.comments = append(gh.comments, c)
 	}
@@ -248,8 +248,8 @@ func TestPlanComment(t *testing.T) {
 	copyDir(t, "../../examples/basic", dir)
 	event := filepath.Join(t.TempDir(), "event.json")
 	writeFile(t, event, `{"action": "synchronize", "number": 7, "pull_request": {"number": 7}}`)
-	t.Setenv("CODI_RUNTIME_TOKEN", runtimeToken)
-	t.Setenv("CODI_RUNTIME_URL", rts.URL)
+	t.Setenv("CICORD_RUNTIME_TOKEN", runtimeToken)
+	t.Setenv("CICORD_RUNTIME_URL", rts.URL)
 	t.Setenv("GITHUB_API_URL", ghs.URL)
 	t.Setenv("GITHUB_TOKEN", "gh-token")
 	t.Setenv("GITHUB_REPOSITORY", "o/r")
@@ -282,7 +282,7 @@ func TestPlanComment(t *testing.T) {
 		t.Fatalf("posts=%d patches=%d comments=%d", gh.posts, gh.patches, len(gh.comments))
 	}
 	body := gh.comments[100].Body
-	for _, want := range []string{"<!-- codi-plan:ma-commu -->", "**Validation failed**", "servers/ma-commu.yaml:3: error: boom", "at 0123456"} {
+	for _, want := range []string{"<!-- cicord-plan:ma-commu -->", "**Validation failed**", "servers/ma-commu.yaml:3: error: boom", "at 0123456"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("comment misses %q:\n%s", want, body)
 		}
@@ -351,13 +351,13 @@ func TestStatusWait(t *testing.T) {
 	old := pollInterval
 	pollInterval = 10 * time.Millisecond
 	t.Cleanup(func() { pollInterval = old })
-	t.Setenv("CODI_RUNTIME_TOKEN", runtimeToken)
+	t.Setenv("CICORD_RUNTIME_TOKEN", runtimeToken)
 	dir := t.TempDir()
 
 	serve := func(f *fakeStatus) string {
 		ts := httptest.NewServer(f)
 		t.Cleanup(ts.Close)
-		t.Setenv("CODI_RUNTIME_URL", ts.URL)
+		t.Setenv("CICORD_RUNTIME_URL", ts.URL)
 		return ts.URL
 	}
 	const otherSHA = "aaaaaaa000000000000000000000000000000000"
@@ -433,7 +433,7 @@ func TestStatusWait(t *testing.T) {
 		if code != 0 || f.syncs != 1 || !strings.Contains(errOut, "Sync requested") {
 			t.Errorf("sync --wait = %d (%d syncs): %s", code, f.syncs, errOut)
 		}
-		t.Setenv("CODI_RUNTIME_TOKEN", "bad")
+		t.Setenv("CICORD_RUNTIME_TOKEN", "bad")
 		if code, _, errOut := run(t, "status", "--wait", dir); code != 1 || !strings.Contains(errOut, "401") {
 			t.Errorf("bad token wait = %d: %s", code, errOut)
 		}
@@ -444,8 +444,8 @@ func TestStatusWait(t *testing.T) {
 // deployed revision.
 func TestStatusAgainstRuntime(t *testing.T) {
 	url, _, _ := startRuntime(t)
-	t.Setenv("CODI_RUNTIME_TOKEN", runtimeToken)
-	t.Setenv("CODI_RUNTIME_URL", url)
+	t.Setenv("CICORD_RUNTIME_TOKEN", runtimeToken)
+	t.Setenv("CICORD_RUNTIME_URL", url)
 	code, out, errOut := run(t, "status", "-o", "json")
 	var st runtime.Status
 	if code != 0 || json.Unmarshal([]byte(out), &st) != nil || st.Revision == nil {
@@ -458,10 +458,10 @@ func TestStatusAgainstRuntime(t *testing.T) {
 }
 
 func TestRuntimeURLSecurity(t *testing.T) {
-	t.Setenv("CODI_RUNTIME_TOKEN", runtimeToken)
-	t.Setenv("CODI_RUNTIME_URL", "")
+	t.Setenv("CICORD_RUNTIME_TOKEN", runtimeToken)
+	t.Setenv("CICORD_RUNTIME_URL", "")
 	dir := t.TempDir()
-	copyDir(t, "../../examples/basic", dir) // codi.yaml has spec.runtime.url
+	copyDir(t, "../../examples/basic", dir) // cicord.yaml has spec.runtime.url
 
 	var hits atomic.Int32
 	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -471,32 +471,32 @@ func TestRuntimeURLSecurity(t *testing.T) {
 		io.WriteString(w, `{}`)
 	}))
 	defer attacker.Close()
-	// a pull request pointing codi.yaml at its own server
-	p := filepath.Join(dir, "codi.yaml")
-	writeFile(t, p, strings.Replace(readFile(t, p), "https://codi.ma-commu.example", attacker.URL, 1))
+	// a pull request pointing cicord.yaml at its own server
+	p := filepath.Join(dir, "cicord.yaml")
+	writeFile(t, p, strings.Replace(readFile(t, p), "https://cicord.ma-commu.example", attacker.URL, 1))
 	for _, args := range [][]string{{"plan", "--remote", dir}, {"status", dir}, {"sync", dir}} {
 		code, _, errOut := run(t, args...)
-		if code != 1 || !strings.Contains(errOut, "refusing to send the runtime token to a URL read from codi.yaml") {
+		if code != 1 || !strings.Contains(errOut, "refusing to send the runtime token to a URL read from cicord.yaml") {
 			t.Errorf("%v = %d: %s", args, code, errOut)
 		}
 	}
 	if hits.Load() != 0 {
-		t.Fatal("the token was sent to the codi.yaml URL")
+		t.Fatal("the token was sent to the cicord.yaml URL")
 	}
 
 	// plain http is only allowed on loopback hosts
-	for _, u := range []string{"http://codi.example.com", "http://10.0.0.1:7420"} {
+	for _, u := range []string{"http://cicord.example.com", "http://10.0.0.1:7420"} {
 		code, _, errOut := run(t, "status", "--remote="+u, dir)
 		if code != 1 || !strings.Contains(errOut, "plain http") {
 			t.Errorf("%s = %d: %s", u, code, errOut)
 		}
 	}
-	for _, u := range []string{"http://localhost:1", "http://127.0.0.1:1", "https://codi.example.com", "http://[::1]:1"} {
+	for _, u := range []string{"http://localhost:1", "http://127.0.0.1:1", "https://cicord.example.com", "http://[::1]:1"} {
 		if _, err := checkRuntimeURL(u); err != nil {
 			t.Errorf("%s refused: %v", u, err)
 		}
 	}
-	if _, err := checkRuntimeURL("https://user:pw@codi.example.com"); err == nil {
+	if _, err := checkRuntimeURL("https://user:pw@cicord.example.com"); err == nil {
 		t.Error("credentials in URL accepted")
 	}
 

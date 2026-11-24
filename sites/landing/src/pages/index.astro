@@ -3,11 +3,11 @@ import Base from "../layouts/Base.astro";
 import { links } from "../lib/links";
 import { ts, yaml, yamlLine } from "../lib/highlight";
 
-const title = "CODI: GitOps for Discord";
+const title = "Cicord: GitOps for Discord";
 const description =
-  "Declare Discord servers and bots in a git repository. CODI plans every change, applies it, heals drift and runs sandboxed TypeScript plugins. Self-hosted, single binary, pre-release.";
+  "Declare Discord servers and bots in a git repository. Cicord plans every change, applies it, heals drift and runs sandboxed TypeScript plugins. Self-hosted, single binary, pre-release.";
 
-// Hero: a commit to servers/ma-commu.yaml (examples/basic) and the plan CODI computes for
+// Hero: a commit to servers/ma-commu.yaml (examples/basic) and the plan Cicord computes for
 // it, in the exact format of internal/planfmt.
 const diff: [mark: " " | "+" | "-", text: string][] = [
   [" ", "spec:"],
@@ -29,7 +29,7 @@ const diff: [mark: " " | "+" | "-", text: string][] = [
 
 type PlanLine = { kind: "cmd" | "head" | "add" | "upd" | "field" | "blank" | "sum"; text: string };
 const plan: PlanLine[] = [
-  { kind: "cmd", text: "codi plan" },
+  { kind: "cmd", text: "cicord plan" },
   { kind: "head", text: "Server ma-commu: 2 change(s)" },
   { kind: "upd", text: '  ~ update role "Modo": permissions' },
   { kind: "field", text: "      permissions: +ManageThreads" },
@@ -67,7 +67,7 @@ const serverTree = [
   ...serverKeys.map(([k, note]) => `  ${(k + ":").padEnd(width)}${note ? `  # ${note}` : ""}`),
 ].join("\n");
 
-const pluginSource = `import { definePlugin } from "@codi/sdk";
+const pluginSource = `import { definePlugin } from "@cicord/sdk";
 
 export default definePlugin({
   events: {
@@ -139,7 +139,7 @@ const official = [
         </h1>
         <div class="hero__lede">
           <p class="hero__sub">
-            Declare your Discord servers and bots in a git repository. CODI shows the plan for every
+            Declare your Discord servers and bots in a git repository. Cicord shows the plan for every
             change, applies it, keeps the server in line with the repository, and runs your bots with
             sandboxed TypeScript plugins.
           </p>
@@ -188,13 +188,13 @@ const official = [
             <span class="pane__dots" aria-hidden="true"><i></i><i></i><i></i></span>
             <span class="pane__name">terminal</span>
           </div>
-          <pre class="pane__body term" aria-label="Output of codi plan"><code>{plan.map((l, i) => (
+          <pre class="pane__body term" aria-label="Output of cicord plan"><code>{plan.map((l, i) => (
             <span class={`tl tl--${l.kind}`} style={`--i:${i}`}>{l.kind === "cmd" ? <><span class="tl__prompt" aria-hidden="true">$ </span>{l.text}</> : l.text || " "}</span>
           ))}<span class="tl tl--cursor" style={`--i:${plan.length}`} aria-hidden="true"><span class="tl__prompt">$ </span><span class="cursor"></span></span></code></pre>
         </div>
 
         <figcaption class="flow__caption">
-          A commit to <code>examples/basic</code> and the plan CODI computes for it. The runtime
+          A commit to <code>examples/basic</code> and the plan Cicord computes for it. The runtime
           applies the same plan when the commit reaches the branch it follows.
         </figcaption>
       </figure>
@@ -210,7 +210,7 @@ const official = [
           <h3>Declare it in git</h3>
           <p>
             Roles, channels, permissions, onboarding and bots live as YAML files in a repository:
-            on GitHub, any git host, or a repository CODI manages for you.
+            on GitHub, any git host, or a repository Cicord manages for you.
           </p>
           <code class="step__artifact">servers/ma-commu.yaml</code>
         </li>
@@ -221,7 +221,7 @@ const official = [
             Each revision is compared with the live server. The plan lists every create, update and
             delete before anything is touched, and protected resources are never deleted.
           </p>
-          <code class="step__artifact">codi plan</code>
+          <code class="step__artifact">cicord plan</code>
         </li>
         <li class="step step--brand">
           <span class="step__node" aria-hidden="true"></span>
@@ -230,7 +230,7 @@ const official = [
             The runtime applies the plan in order (roles, categories, channels, overwrites,
             positions), respecting Discord rate limits, and resumes after a failure.
           </p>
-          <code class="step__artifact">codi serve</code>
+          <code class="step__artifact">cicord serve</code>
         </li>
         <li class="step step--ok">
           <span class="step__node" aria-hidden="true"></span>
@@ -258,10 +258,10 @@ const official = [
           sounds.
         </p>
         <p>
-          CODI only touches what it manages. Pointing it at an existing server adopts matching
+          Cicord only touches what it manages. Pointing it at an existing server adopts matching
           roles and channels instead of duplicating them, resources you never declared are left
           alone, and a key removed from YAML is deleted, kept or blocked according to your sync
-          policy. <code>codi validate</code> checks the files offline, and the plan blocks, with a
+          policy. <code>cicord validate</code> checks the files offline, and the plan blocks, with a
           reason, what Discord would refuse at the server's boost level.
         </p>
       </div>
@@ -278,15 +278,15 @@ const official = [
         <h2 id="f-plugins" class="section__title">Bots that run your TypeScript, in a sandbox</h2>
         <p>
           One runtime hosts any number of bots across any number of servers. Their behavior comes
-          from plugins written in TypeScript with <code>@codi/sdk</code>: events, slash commands,
+          from plugins written in TypeScript with <code>@cicord/sdk</code>: events, slash commands,
           buttons and modals, schedules, storage and portal routes.
         </p>
         <p>
           Each plugin instance runs in its own isolated VM with time and size limits, and only
           reaches its own server. A plugin can only do what its manifest declares and the bot
           grants: an ungranted call throws, and a new capability in an update shows up in review.
-          The runtime bundles the TypeScript itself, so running CODI needs no Node.js. Unit tests
-          use <code>@codi/sdk/testing</code>.
+          The runtime bundles the TypeScript itself, so running Cicord needs no Node.js. Unit tests
+          use <code>@cicord/sdk/testing</code>.
         </p>
         <p><a href={links.plugins}>Read the plugin guide</a></p>
       </div>
@@ -318,7 +318,7 @@ const official = [
           computed from the URL, never declared, so they are labeled unofficial everywhere and ask
           for an explicit confirmation. Before any install or update, the Store shows the
           capabilities, gateway intents and network hosts being granted, with privileged intents
-          highlighted. The reviewed version is pinned in <code>codi.lock</code> by commit and
+          highlighted. The reviewed version is pinned in <code>cicord.lock</code> by commit and
           content hash, and an index from the official registry is only trusted when it is signed by
           keys built into the binary.
         </p>
@@ -327,7 +327,7 @@ const official = [
         <div class="review__head">
           <div>
             <p class="review__title">Install Levels</p>
-            <p class="review__meta">codi/levels, version 0.1.0</p>
+            <p class="review__meta">cicord/levels, version 0.1.0</p>
           </div>
           <span class="tag tag--ok">Official</span>
         </div>
@@ -368,14 +368,14 @@ const official = [
           status, drift, the history of the configuration and the audit log.
         </p>
         <p>
-          Every save goes back to the repository. Path policies in <code>codi.yaml</code> decide
+          Every save goes back to the repository. Path policies in <code>cicord.yaml</code> decide
           whether a change is committed directly or opened as a pull request for review, so git
           stays the single source of truth.
         </p>
       </div>
       <div class="code-stack">
         <div class="code-card">
-          <div class="code-card__bar"><span>codi.yaml</span><span>excerpt</span></div>
+          <div class="code-card__bar"><span>cicord.yaml</span><span>excerpt</span></div>
           <pre class="code-card__body"><code set:html={yaml(writeBack)} /></pre>
         </div>
         <ul class="outcomes" aria-label="What the policy above does with two saves">
@@ -402,7 +402,7 @@ const official = [
           <dt>Setup wizard</dt>
           <dd>
             <p>
-              Start <code>codi serve</code> in an empty directory and follow the one-time link. The
+              Start <code>cicord serve</code> in an empty directory and follow the one-time link. The
               wizard checks the bot token, intents and role position live, then imports your
               existing server. The first plan has to be empty: everything is adopted, nothing
               changes on Discord.
@@ -414,7 +414,7 @@ const official = [
           <dt>Discord simulator</dt>
           <dd>
             <p>
-              <code>codi dev --sim</code> replaces Discord with an in-memory server seeded from your
+              <code>cicord dev --sim</code> replaces Discord with an in-memory server seeded from your
               YAML, with the users alice, bob and charlie. From the console's Simulator panel, join
               servers, send messages, run slash commands and click buttons while plugins hot-reload.
               No token needed.
@@ -427,8 +427,8 @@ const official = [
             <p>
               The runtime serves a community portal at <code>/</code>: sign-in with Discord,
               onboarding, member profile, themed from YAML. Fork it with
-              <code>codi portal init</code>, or build your own with <code>@codi/client</code>,
-              <code>@codi/react</code> and <code>@codi/ui</code> in a site you already have.
+              <code>cicord portal init</code>, or build your own with <code>@cicord/client</code>,
+              <code>@cicord/react</code> and <code>@cicord/ui</code> in a site you already have.
             </p>
           </dd>
         </div>
@@ -458,7 +458,7 @@ const official = [
         <aside class="notice" aria-labeledby="status-title">
           <h3 id="status-title">Status: pre-release</h3>
           <p>
-            CODI is at <code>v1alpha1</code>. The runtime, the reconciler, the plugin host, the
+            Cicord is at <code>v1alpha1</code>. The runtime, the reconciler, the plugin host, the
             simulator, the admin console and the portal SDK work end to end, but file formats and
             APIs may still change and there are no published releases yet. Expect rough edges, and
             report them on GitHub.
@@ -473,21 +473,21 @@ const official = [
         <div class="cmd">
           <p class="cmd__title">1. Build from source</p>
           <p class="cmd__note">Go 1.27, plus Node 24 and pnpm for the web UIs.</p>
-          <pre><code><span class="p">git clone https://github.com/npjonath/codi.git</span>
-<span class="p">cd codi</span>
-<span class="p">make all</span>            <span class="t-com"># builds the UIs and bin/codi</span></code></pre>
+          <pre><code><span class="p">git clone https://github.com/npjonath/cicord.git</span>
+<span class="p">cd cicord</span>
+<span class="p">make all</span>            <span class="t-com"># builds the UIs and bin/cicord</span></code></pre>
         </div>
         <div class="cmd">
           <p class="cmd__title">2a. Connect a real server</p>
-          <p class="cmd__note">With <code>bin/codi</code> on your PATH.</p>
+          <p class="cmd__note">With <code>bin/cicord</code> on your PATH.</p>
           <pre><code><span class="p">mkdir my-community && cd my-community</span>
-<span class="p">codi serve --public-url https://codi.example.org</span>
+<span class="p">cicord serve --public-url https://cicord.example.org</span>
 <span class="t-com"># open the setup link it prints</span></code></pre>
         </div>
         <div class="cmd">
           <p class="cmd__title">2b. Or try it offline</p>
           <p class="cmd__note">From the clone, on the example repository. No bot token.</p>
-          <pre><code><span class="p">codi dev --sim examples/basic</span>
+          <pre><code><span class="p">cicord dev --sim examples/basic</span>
 <span class="t-com"># then open http://127.0.0.1:7420/admin/</span></code></pre>
         </div>
       </div>

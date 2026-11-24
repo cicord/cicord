@@ -24,7 +24,7 @@ export function codeForStatus(status: number): ApiErrorCode {
  * Error raised for every non-2xx response of the runtime API (and for network failures,
  * with `status: 0` and code `"network"`).
  */
-export class CodiApiError extends Error {
+export class CicordApiError extends Error {
   /** `snake_case` error code from the body (`{"error": {"code"}}`), or derived from the status. */
   readonly code: ApiErrorCode;
   /** HTTP status, 0 for network errors. */
@@ -52,7 +52,7 @@ export class CodiApiError extends Error {
     reason?: string | undefined;
   }) {
     super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
-    this.name = "CodiApiError";
+    this.name = "CicordApiError";
     this.code = init.code;
     this.status = init.status;
     this.diagnostics = init.diagnostics ?? [];
@@ -67,7 +67,7 @@ export class CodiApiError extends Error {
     status: number,
     statusText: string,
     body: Json | string | undefined,
-  ): CodiApiError {
+  ): CicordApiError {
     if (body && typeof body === "object" && !Array.isArray(body)) {
       const error = (body as { error?: unknown }).error;
       if (error && typeof error === "object" && !Array.isArray(error)) {
@@ -80,7 +80,7 @@ export class CodiApiError extends Error {
           reason?: unknown;
         };
         const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-        return new CodiApiError({
+        return new CicordApiError({
           code: typeof e.code === "string" && e.code ? e.code : codeForStatus(status),
           status,
           message:
@@ -96,7 +96,7 @@ export class CodiApiError extends Error {
       }
     }
     const text = typeof body === "string" ? body.trim() : "";
-    return new CodiApiError({
+    return new CicordApiError({
       code: codeForStatus(status),
       status,
       message: text && text.length <= 200 ? text : statusText || `HTTP ${status}`,
@@ -105,6 +105,6 @@ export class CodiApiError extends Error {
   }
 }
 
-export function isCodiApiError(error: unknown, code?: ApiErrorCode): error is CodiApiError {
-  return error instanceof CodiApiError && (code === undefined || error.code === code);
+export function isCicordApiError(error: unknown, code?: ApiErrorCode): error is CicordApiError {
+  return error instanceof CicordApiError && (code === undefined || error.code === code);
 }

@@ -6,7 +6,7 @@ import { defineConfig } from "astro/config";
 const prefix = (process.env.BASE_PATH ?? "/").split("/").filter(Boolean).join("/");
 const landing = prefix ? `/${prefix}/` : "/";
 const site = process.env.SITE_URL ?? "http://localhost:4321";
-const repo = "https://github.com/npjonath/codi";
+const repo = "https://github.com/npjonath/cicord";
 
 export default defineConfig({
   site,
@@ -14,10 +14,10 @@ export default defineConfig({
   trailingSlash: "always",
   integrations: [
     starlight({
-      title: "CODI",
+      title: "Cicord",
       description:
         "GitOps for Discord: declare servers and bots in git, reconcile them continuously, extend them with sandboxed TypeScript plugins.",
-      logo: { src: "./src/assets/logo.svg", alt: "CODI" },
+      logo: { src: "./src/assets/logo.svg", alt: "Cicord" },
       favicon: "/favicon.svg",
       social: [{ icon: "github", label: "GitHub", href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/sites/docs/` },
@@ -25,7 +25,7 @@ export default defineConfig({
       lastUpdated: false,
       sidebar: [
         // An absolute URL: Starlight would prefix a bare path with the docs base.
-        { label: "CODI website", link: new URL(landing, site).href },
+        { label: "Cicord website", link: new URL(landing, site).href },
         {
           label: "Getting started",
           items: [
@@ -47,7 +47,7 @@ export default defineConfig({
         {
           label: "Configuration reference",
           items: [
-            { label: "Project (codi.yaml)", slug: "configuration/project" },
+            { label: "Project (cicord.yaml)", slug: "configuration/project" },
             { label: "Server", slug: "configuration/server" },
             { label: "Bot", slug: "configuration/bot" },
           ],

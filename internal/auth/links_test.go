@@ -10,21 +10,21 @@ func TestLinks(t *testing.T) {
 	s := NewSigner([]byte("secret"))
 	now := time.Unix(1_000_000, 0)
 	s.now = func() time.Time { return now }
-	l := &Linker{Signer: s, BaseURL: "https://codi.example.com/", Server: "ma-commu", MaxTTL: time.Hour}
+	l := &Linker{Signer: s, BaseURL: "https://cicord.example.com/", Server: "ma-commu", MaxTTL: time.Hour}
 	raw, err := l.Link("/onboarding", "42", 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
 	u, _ := url.Parse(raw)
-	if u.Host != "codi.example.com" || u.Path != "/onboarding" || u.Query().Get("server") != "ma-commu" {
+	if u.Host != "cicord.example.com" || u.Path != "/onboarding" || u.Query().Get("server") != "ma-commu" {
 		t.Fatalf("url = %s", raw)
 	}
-	c, err := s.Verify(u.Query().Get("codi_token"))
+	c, err := s.Verify(u.Query().Get("cicord_token"))
 	if err != nil || c.UserID != "42" || c.Server != "ma-commu" || c.Path != "/onboarding" {
 		t.Fatalf("claims = %+v, %v", c, err)
 	}
 	// tampering
-	tok := u.Query().Get("codi_token")
+	tok := u.Query().Get("cicord_token")
 	if _, err := s.Verify(tok[:len(tok)-2] + "xx"); err != ErrInvalidToken {
 		t.Errorf("tampered token: %v", err)
 	}

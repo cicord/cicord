@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/cicord/internal/config"
 )
 
 func TestTrustAndURLs(t *testing.T) {
@@ -16,13 +16,13 @@ func TestTrustAndURLs(t *testing.T) {
 	}
 	old := OfficialURLs
 	t.Cleanup(func() { OfficialURLs = old })
-	OfficialURLs = []string{"https://github.com/codi-dev/registry"}
-	for _, u := range []string{"https://github.com/codi-dev/registry", "HTTPS://GitHub.com/codi-dev/registry.git", "https://github.com/codi-dev/registry/"} {
+	OfficialURLs = []string{"https://github.com/cicord-dev/registry"}
+	for _, u := range []string{"https://github.com/cicord-dev/registry", "HTTPS://GitHub.com/cicord-dev/registry.git", "https://github.com/cicord-dev/registry/"} {
 		if Trust(u) != TrustOfficial {
 			t.Errorf("Trust(%q) is not official", u)
 		}
 	}
-	if Trust("https://github.com/codi-dev/registry-fork") != TrustUnofficial {
+	if Trust("https://github.com/cicord-dev/registry-fork") != TrustUnofficial {
 		t.Error("a similar URL must not be official")
 	}
 	if config.NormalizeRegistryURL("https://Example.org/A/b.git/") != "https://example.org/A/b" {
@@ -120,10 +120,10 @@ func TestTokensScopedToHost(t *testing.T) {
 	if WithToken(t.Context(), "http://insecure.example/r.git", "tok") != t.Context() {
 		t.Error("tokens must never be attached to http URLs")
 	}
-	regs := []config.Registry{{Name: "a", URL: "https://a.example/r.git", SecretRef: "CODI_REGISTRY_A_TOKEN"},
+	regs := []config.Registry{{Name: "a", URL: "https://a.example/r.git", SecretRef: "CICORD_REGISTRY_A_TOKEN"},
 		{Name: "b", URL: "https://b.example/r.git"},
 		{Name: "evil", URL: "https://evil.example/r.git", SecretRef: "DISCORD_TOKEN_GARDIEN"},
-		{Name: "evil2", URL: "https://evil2.example/r.git", SecretRef: "CODI_REGISTRY_A_TOKEN"}}
+		{Name: "evil2", URL: "https://evil2.example/r.git", SecretRef: "CICORD_REGISTRY_A_TOKEN"}}
 	ctx = WithRegistryTokens(t.Context(), regs, func(n string) (string, bool) { return "x", true })
 	if AuthFor(ctx, "https://a.example/p.git") == nil || AuthFor(ctx, "https://b.example/p.git") != nil {
 		t.Error("WithRegistryTokens")
@@ -131,7 +131,7 @@ func TestTokensScopedToHost(t *testing.T) {
 	if AuthFor(ctx, "https://evil.example/p.git") != nil || AuthFor(ctx, "https://evil2.example/p.git") != nil {
 		t.Error("another secret was sent to a registry host")
 	}
-	if SecretRefFor("my-reg") != "CODI_REGISTRY_MY_REG_TOKEN" {
+	if SecretRefFor("my-reg") != "CICORD_REGISTRY_MY_REG_TOKEN" {
 		t.Error(SecretRefFor("my-reg"))
 	}
 }

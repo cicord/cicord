@@ -1,4 +1,4 @@
-// Package source produces immutable revisions of a CODI repository for the runtime.
+// Package source produces immutable revisions of a Cicord repository for the runtime.
 //
 // A Revision is a read-only snapshot directory of the repository at one point in time
 // (a git commit, or a content hash of a local working directory in dev mode). The
@@ -14,7 +14,7 @@ import (
 type Revision struct {
 	ID      string    `json:"id"`  // short identifier shown to users (7-char SHA or content hash)
 	SHA     string    `json:"sha"` // full git SHA, or content hash for local sources
-	Dir     string    `json:"-"`   // snapshot directory (repo root, i.e. where codi.yaml lives)
+	Dir     string    `json:"-"`   // snapshot directory (repo root, i.e. where cicord.yaml lives)
 	Message string    `json:"message"`
 	Author  string    `json:"author"`
 	Time    time.Time `json:"time"`

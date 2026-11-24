@@ -1,23 +1,23 @@
 {
-  "name": "@codi/sdk",
+  "name": "@cicord/sdk",
   "version": "0.1.0",
-  "description": "CODI plugin SDK: authoring types (spec/sdk/codi-sdk.d.ts) and a tiny runtime for unit tests in Node.",
+  "description": "Cicord plugin SDK: authoring types (spec/sdk/cicord-sdk.d.ts) and a tiny runtime for unit tests in Node.",
   "keywords": [
-    "codi",
+    "cicord",
     "discord",
     "discord-bot",
     "gitops",
     "plugin",
     "sdk"
   ],
-  "homepage": "https://github.com/npjonath/codi/tree/main/packages/sdk#readme",
+  "homepage": "https://github.com/npjonath/cicord/tree/main/packages/sdk#readme",
   "bugs": {
-    "url": "https://github.com/npjonath/codi/issues"
+    "url": "https://github.com/npjonath/cicord/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/npjonath/codi.git",
+    "url": "git+https://github.com/npjonath/cicord.git",
     "directory": "packages/sdk"
   },
   "files": [

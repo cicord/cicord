@@ -1,5 +1,5 @@
 /** Discord-like rendering of simulator messages: content, embeds, buttons and selects. */
-import type { Message, MessageButton, MessageEmbed, MessageSelect, User } from "@codi/client";
+import type { Message, MessageButton, MessageEmbed, MessageSelect, User } from "@cicord/client";
 import { useState } from "react";
 import { Markdown, isSafeUrl } from "../schema-form/index.ts";
 import { IconExternal, IconEye } from "./kit.tsx";

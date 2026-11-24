@@ -3,7 +3,7 @@
  * pointers into bot.yaml, e.g. `/spec/plugins/0/overrides/ma-commu/config/steps/1/title`
  * or `/spec/plugins/0/config/channel`; the part after the first `/config` is the field.
  */
-import type { Diagnostic, Json } from "@codi/client";
+import type { Diagnostic, Json } from "@cicord/client";
 import { fieldKind, itemSchemaOf, resolve, type JsonSchema } from "./schema.ts";
 import type { FieldError } from "./validate.ts";
 import { isObject, toPointer, type Segment } from "./values.ts";

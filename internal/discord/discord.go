@@ -1,10 +1,10 @@
-// Package discord is CODI's boundary with Discord.
+// Package discord is Cicord's boundary with Discord.
 //
 // Everything outside this package talks to Discord through the Client / Session /
-// Connector interfaces defined here, using CODI vocabulary ("server", never "guild").
+// Connector interfaces defined here, using Cicord vocabulary ("server", never "guild").
 // Two implementations exist:
 //   - internal/discord/disgoadapter: the real Discord API (via disgo);
-//   - internal/sim: an in-memory simulator used by tests and `codi dev --sim`.
+//   - internal/sim: an in-memory simulator used by tests and `cicord dev --sim`.
 //
 // IDs are Discord snowflakes encoded as decimal strings.
 package discord
@@ -261,7 +261,7 @@ type ThreadParams struct {
 
 // ───────────────────────────────────────────────────────────── auto moderation
 
-// AutoMod trigger types (CODI names of Discord's trigger_type).
+// AutoMod trigger types (Cicord names of Discord's trigger_type).
 const (
 	AutoModKeyword       = "keyword"       // 1 KEYWORD
 	AutoModSpam          = "spam"          // 3 SPAM
@@ -717,7 +717,7 @@ type InteractionResponse struct {
 
 // ───────────────────────────────────────────────────────────── client
 
-// Client is the REST surface CODI uses. All methods are safe for concurrent use.
+// Client is the REST surface Cicord uses. All methods are safe for concurrent use.
 // Implementations handle rate limits internally (blocking until allowed).
 type Client interface {
 	GetUser(ctx context.Context, userID string) (User, error)

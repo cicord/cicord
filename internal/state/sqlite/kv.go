@@ -9,7 +9,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 const (

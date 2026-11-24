@@ -1,4 +1,4 @@
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 
 function render(template: string, vars: { member: string; server: string }): string {
   return template.replaceAll("{member}", vars.member).replaceAll("{server}", vars.server);

@@ -1,4 +1,4 @@
-import type { SyncRecord } from "@codi/client";
+import type { SyncRecord } from "@cicord/client";
 import { Bot, GitCommitHorizontal, Server } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "../i18n/index.ts";

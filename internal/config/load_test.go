@@ -126,7 +126,7 @@ func TestLoadErrors(t *testing.T) {
 		{"config ref", "bots/moderator/bot.yaml", "channel: general", "channel: nowhere", `unknown channel "nowhere"`, 0},
 		{"override ref", "bots/moderator/bot.yaml", "            message:", "            autoRole: ghost\n            message:", `[server ma-commu] unknown role "ghost"`, 0},
 		{"secret in token", "bots/moderator/bot.yaml", "secretRef: DISCORD_TOKEN_MODERATOR", "secretRef: my-token", "/spec/token/secretRef", 0},
-		{"engine", "codi.yaml", `engine: ">=0.1.0 <0.2.0"`, `engine: ">=9.0.0"`, "requires CODI", 0},
+		{"engine", "cicord.yaml", `engine: ">=0.1.0 <0.2.0"`, `engine: ">=9.0.0"`, "requires Cicord", 0},
 		{"plugin capability unknown", "plugins/welcome/plugin.yaml", "    - storage.kv", "    - storage.everything", "/spec/capabilities", 0},
 		{"wrong kind", "servers/ma-commu.yaml", "kind: Server", "kind: Guild", `expected kind "Server"`, 0},
 	}
@@ -224,15 +224,15 @@ func TestOnboardingEveryoneAccess(t *testing.T) {
 
 func TestRegistriesValidation(t *testing.T) {
 	dir := copyExample(t)
-	p := filepath.Join(dir, "codi.yaml")
+	p := filepath.Join(dir, "cicord.yaml")
 	data, _ := os.ReadFile(p)
-	data = append(data, []byte("  registries:\n    - name: codi\n      url: https://example.org/a.git\n    - name: acme\n      url: https://example.org/b.git\n    - name: acme\n      url: https://EXAMPLE.org/b\n")...)
+	data = append(data, []byte("  registries:\n    - name: cicord\n      url: https://example.org/a.git\n    - name: acme\n      url: https://example.org/b.git\n    - name: acme\n      url: https://EXAMPLE.org/b\n")...)
 	if err := os.WriteFile(p, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, ds := Load(dir, LoadOptions{})
 	got := fmt.Sprint(ds.Err())
-	for _, want := range []string{`"codi" is reserved`, `duplicate registry name "acme"`, "repeats the URL"} {
+	for _, want := range []string{`"cicord" is reserved`, `duplicate registry name "acme"`, "repeats the URL"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
@@ -240,7 +240,7 @@ func TestRegistriesValidation(t *testing.T) {
 
 	// A registry token can never be another secret (here, a bot token).
 	dir = copyExample(t)
-	p = filepath.Join(dir, "codi.yaml")
+	p = filepath.Join(dir, "cicord.yaml")
 	data, _ = os.ReadFile(p)
 	data = append(data, []byte("  registries:\n    - name: steal\n      url: https://evil.example/r.git\n      secretRef: DISCORD_TOKEN_GARDIEN\n")...)
 	if err := os.WriteFile(p, data, 0o644); err != nil {

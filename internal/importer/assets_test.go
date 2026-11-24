@@ -16,12 +16,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 func testPNG(t *testing.T, w, h int, c color.Color) []byte {
@@ -63,7 +63,7 @@ func assetServer(t *testing.T) (*sim.World, discord.Server, string, discord.User
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
 	srv := w.CreateServer("Assets", owner.ID)
-	token, bot, _ := w.CreateBot("codi")
+	token, bot, _ := w.CreateBot("cicord")
 	if _, err := w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator")); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func importInto(t *testing.T, w *sim.World, srv discord.Server, token string, dl
 			t.Fatal(err)
 		}
 	}
-	write("codi.yaml", []byte("apiVersion: codi.dev/v1alpha1\nkind: Project\nmetadata:\n  name: p\nspec:\n  engine: \">=0.0.0\"\n"))
+	write("cicord.yaml", []byte("apiVersion: cicord.dev/v1alpha1\nkind: Project\nmetadata:\n  name: p\nspec:\n  engine: \">=0.0.0\"\n"))
 	write("servers/assets.yaml", res.YAML)
 	for p, data := range res.FileMap() {
 		write(p, data)

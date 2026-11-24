@@ -6,17 +6,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // TestIntegrationSmoke talks to the real Discord API. It runs only when
-// CODI_TEST_DISCORD_TOKEN and CODI_TEST_SERVER_ID are set (the bot must be a
+// CICORD_TEST_DISCORD_TOKEN and CICORD_TEST_SERVER_ID are set (the bot must be a
 // member of that server). It only reads: no server state is modified.
 func TestIntegrationSmoke(t *testing.T) {
-	token := os.Getenv("CODI_TEST_DISCORD_TOKEN")
-	serverID := os.Getenv("CODI_TEST_SERVER_ID")
+	token := os.Getenv("CICORD_TEST_DISCORD_TOKEN")
+	serverID := os.Getenv("CICORD_TEST_SERVER_ID")
 	if token == "" || serverID == "" {
-		t.Skip("set CODI_TEST_DISCORD_TOKEN and CODI_TEST_SERVER_ID to run the Discord smoke test")
+		t.Skip("set CICORD_TEST_DISCORD_TOKEN and CICORD_TEST_SERVER_ID to run the Discord smoke test")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

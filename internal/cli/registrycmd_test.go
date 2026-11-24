@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -38,7 +39,7 @@ func commitRepo(t *testing.T, files map[string]string, tags ...string) string {
 }
 
 func TestRegistryCommands(t *testing.T) {
-	t.Setenv("CODI_CACHE_DIR", t.TempDir())
+	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
 	reg := commitRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: https://example.org/hello.git\n    description: Says hello\n    keywords: [greet]\n"})
 	dir := t.TempDir()
 	if code, _, errOut := run(t, "init", dir, "--server", "srv", "--bot", "bot"); code != 0 {
@@ -48,34 +49,34 @@ func TestRegistryCommands(t *testing.T) {
 	if code, out, errOut := run(t, "registry", "add", "acme", reg, "--dir", dir); code != 0 || !strings.Contains(out, "lists 1 plugin") || !strings.Contains(out, "unofficial") {
 		t.Fatalf("add: %d %s %s", code, out, errOut)
 	}
-	for _, args := range [][]string{{"codi", reg}, {"Bad", reg}, {"acme2", reg}, {"acme", "https://example.org/x.git"}} {
+	for _, args := range [][]string{{"cicord", reg}, {"Bad", reg}, {"acme2", reg}, {"acme", "https://example.org/x.git"}} {
 		if code, _, _ := run(t, append([]string{"registry", "add", "--no-check", "--dir", dir}, args...)...); code == 0 {
 			t.Errorf("add %v succeeded", args)
 		}
 	}
-	if code, out, _ := run(t, "registry", "list", "--dir", dir); code != 0 || !strings.Contains(out, "acme  unofficial") || !strings.Contains(out, "codi  official") {
+	if code, out, _ := run(t, "registry", "list", "--dir", dir); code != 0 || !regexp.MustCompile(`acme\s+unofficial`).MatchString(out) || !regexp.MustCompile(`cicord\s+official`).MatchString(out) {
 		t.Errorf("list: %s", out)
 	}
 	if code, out, _ := run(t, "registry", "update", "--dir", dir); code != 0 || !strings.Contains(out, "✓ acme (unofficial): 1 plugin(s)") {
 		t.Errorf("update: %s", out)
 	}
-	if code, out, _ := run(t, "registry", "search", "hello", "--dir", dir); code != 0 || !strings.Contains(out, "acme/hello") || strings.Contains(out, "codi/welcome") {
+	if code, out, _ := run(t, "registry", "search", "hello", "--dir", dir); code != 0 || !strings.Contains(out, "acme/hello") || strings.Contains(out, "cicord/welcome") {
 		t.Errorf("search: %s", out)
 	}
 
-	// A registry used by codi.lock cannot be removed.
-	writeFile(t, filepath.Join(dir, "codi.lock"), "lockVersion: 1\nplugins:\n  acme/hello:\n    version: 1.0.0\n    repo: x\n    commit: y\n    integrity: z\n")
+	// A registry used by cicord.lock cannot be removed.
+	writeFile(t, filepath.Join(dir, "cicord.lock"), "lockVersion: 1\nplugins:\n  acme/hello:\n    version: 1.0.0\n    repo: x\n    commit: y\n    integrity: z\n")
 	if code, _, errOut := run(t, "registry", "remove", "acme", "--dir", dir); code == 0 || !strings.Contains(errOut, "still used") {
 		t.Errorf("remove used: %d %s", code, errOut)
 	}
-	if err := os.Remove(filepath.Join(dir, "codi.lock")); err != nil {
+	if err := os.Remove(filepath.Join(dir, "cicord.lock")); err != nil {
 		t.Fatal(err)
 	}
 	if code, _, errOut := run(t, "registry", "remove", "acme", "--dir", dir); code != 0 {
 		t.Fatalf("remove: %s", errOut)
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, "codi.yaml"))
+	data, _ := os.ReadFile(filepath.Join(dir, "cicord.yaml"))
 	if strings.Contains(string(data), "acme") {
-		t.Errorf("codi.yaml:\n%s", data)
+		t.Errorf("cicord.yaml:\n%s", data)
 	}
 }

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // slotOrder reorders the managed items of seq (the IDs listed in desired) among the

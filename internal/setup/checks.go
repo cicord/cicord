@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // Check statuses.
@@ -117,7 +117,7 @@ func IntentsCheck(appID string, flags int, required, recommended discord.Intents
 		c.Hint = fmt.Sprintf("In the Discord Developer Portal, open your application → Bot → Privileged Gateway Intents, turn on %s, click Save Changes, then re-check.", toggles(missingRec))
 	default:
 		c.Status = StatusOK
-		c.Message = "The privileged intents CODI uses are enabled."
+		c.Message = "The privileged intents Cicord uses are enabled."
 	}
 	return c
 }
@@ -129,7 +129,7 @@ func nonNilNames(s []string) []string {
 	return s
 }
 
-// RequiredPermissions are what CODI needs when the bot is not Administrator.
+// RequiredPermissions are what Cicord needs when the bot is not Administrator.
 var RequiredPermissions = discord.MustPermissions("ViewChannel", "ManageRoles", "ManageChannels", "ManageServer",
 	"SendMessages", "EmbedLinks", "ReadMessageHistory", "AddReactions", "ManageMessages", "ModerateMembers")
 
@@ -150,8 +150,8 @@ func basePermissions(serverID string, roles []discord.Role, m discord.Member, ow
 	return p
 }
 
-// ServerChecks verifies that the bot is in the server, has the permissions CODI needs
-// and that its role is above every role CODI will manage.
+// ServerChecks verifies that the bot is in the server, has the permissions Cicord needs
+// and that its role is above every role Cicord will manage.
 func ServerChecks(ctx context.Context, c discord.Client, serverID, botUserID, botName string) []Check {
 	member := Check{ID: CheckMember}
 	srv, err := c.GetServer(ctx, serverID)
@@ -198,7 +198,7 @@ func PermissionsCheck(serverID string, roles []discord.Role, bot discord.Member,
 	case admin:
 		c.Status, c.Message = StatusOK, "The bot has the Administrator permission."
 	case missing == 0:
-		c.Status, c.Message = StatusOK, "The bot has every permission CODI needs."
+		c.Status, c.Message = StatusOK, "The bot has every permission Cicord needs."
 	default:
 		c.Status = StatusFail
 		c.Data = map[string]any{"missing": missing.Names()}
@@ -208,7 +208,7 @@ func PermissionsCheck(serverID string, roles []discord.Role, bot discord.Member,
 	return c
 }
 
-// HierarchyCheck verifies that the bot's highest role is above every role CODI manages
+// HierarchyCheck verifies that the bot's highest role is above every role Cicord manages
 // (all the roles that are not managed by an integration).
 func HierarchyCheck(serverID string, roles []discord.Role, bot discord.Member, botName string) Check {
 	c := Check{ID: CheckHierarchy}
@@ -231,7 +231,7 @@ func HierarchyCheck(serverID string, roles []discord.Role, bot discord.Member, b
 	if len(above) == 0 {
 		c.Status = StatusOK
 		if topName != "" {
-			c.Message = fmt.Sprintf("The role “%s” is above every role CODI manages.", topName)
+			c.Message = fmt.Sprintf("The role “%s” is above every role Cicord manages.", topName)
 		} else {
 			c.Message = "No role needs to be managed above the bot."
 		}
@@ -246,7 +246,7 @@ func HierarchyCheck(serverID string, roles []discord.Role, bot discord.Member, b
 	}
 	c.Status = StatusFail
 	c.Data = map[string]any{"botRole": topName, "above": names}
-	c.Message = fmt.Sprintf("The role “%s” is below %d role(s) CODI must manage: %s. A bot can only edit roles below its own.",
+	c.Message = fmt.Sprintf("The role “%s” is below %d role(s) Cicord must manage: %s. A bot can only edit roles below its own.",
 		topName, len(above), strings.Join(names, ", "))
 	c.Hint = fmt.Sprintf("In Discord, open Server Settings → Roles and drag the role “%s” above %s (to the top of the list), then re-check.",
 		topName, names[0])
@@ -390,7 +390,7 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 	case !has:
 		tok.Status = StatusFail
 		tok.Message = fmt.Sprintf("The bot token (%s) is not set.", bot.Spec.Token.SecretRef)
-		tok.Hint = "Set the environment variable " + bot.Spec.Token.SecretRef + " (or store it with `codi secret set " + bot.Spec.Token.SecretRef + "`), then restart CODI."
+		tok.Hint = "Set the environment variable " + bot.Spec.Token.SecretRef + " (or store it with `cicord secret set " + bot.Spec.Token.SecretRef + "`), then restart Cicord."
 	default:
 		ident = slow.ident
 		err := slow.identErr
@@ -398,7 +398,7 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 		case errors.Is(err, discord.ErrInvalidToken):
 			tok.Status = StatusFail
 			tok.Message = "Discord rejected the bot token (it was reset or revoked)."
-			tok.Hint = "In the Developer Portal → Bot, click Reset Token and copy it; store it with `codi secret set " + bot.Spec.Token.SecretRef + "` (or the environment variable of that name), then restart CODI."
+			tok.Hint = "In the Developer Portal → Bot, click Reset Token and copy it; store it with `cicord secret set " + bot.Spec.Token.SecretRef + "` (or the environment variable of that name), then restart Cicord."
 		case err != nil:
 			tok.Status = StatusWarn
 			tok.Message = "Could not reach Discord to validate the token: " + err.Error()
@@ -411,7 +411,7 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 			if e := rt.BotError(botKey); e != "" {
 				tok.Status = StatusFail
 				tok.Message = fmt.Sprintf("The token is valid but the bot is not connected: %s.", e)
-				tok.Hint = "Check the privileged intents below, then restart CODI if it persists."
+				tok.Hint = "Check the privileged intents below, then restart Cicord if it persists."
 			} else {
 				tok.Status = StatusOK
 				tok.Message = fmt.Sprintf("Connected as %s.", ident.BotUsername)
@@ -455,11 +455,11 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 		// events
 		ev := Check{ID: CheckEvents}
 		if at, ok := rt.LastMessageAt(serverID); ok && !at.Before(since) {
-			ev.Status, ev.Message = StatusOK, "A message from the server reached CODI through the gateway."
+			ev.Status, ev.Message = StatusOK, "A message from the server reached Cicord through the gateway."
 			ev.Data = map[string]any{"at": at.UTC()}
 		} else {
 			ev.Status = StatusPending
-			ev.Message = "Waiting for a message: send any message (for example “hello CODI”) in a text channel the bot can see. This proves CODI receives live events."
+			ev.Message = "Waiting for a message: send any message (for example “hello Cicord”) in a text channel the bot can see. This proves Cicord receives live events."
 		}
 		add(ev)
 		// plan
@@ -473,7 +473,7 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 			case len(p.Changes) > 0:
 				pl.Status = StatusWarn
 				pl.Message = fmt.Sprintf("Discord differs from the configuration: %d change(s) pending.", len(p.Changes))
-				pl.Hint = "Open Sync → Plan in the admin to review them; CODI applies them on the next sync."
+				pl.Hint = "Open Sync → Plan in the admin to review them; Cicord applies them on the next sync."
 			case len(p.Blocked) > 0:
 				pl.Status = StatusWarn
 				pl.Message = fmt.Sprintf("%d change(s) are blocked.", len(p.Blocked))
@@ -492,10 +492,10 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 		wb.Status, wb.Message = StatusWarn, "Write-back is not configured: changes made in the admin cannot be saved."
 	} else if err := slow.wbErr; err != nil {
 		wb.Status = StatusFail
-		wb.Message = "CODI cannot write to the configuration repository: " + err.Error()
+		wb.Message = "Cicord cannot write to the configuration repository: " + err.Error()
 		wb.Hint = "Check the repository URL and the token (it needs read and write access to the repository contents)."
 	} else {
-		wb.Status, wb.Message = StatusOK, "CODI can read and update the configuration repository."
+		wb.Status, wb.Message = StatusOK, "Cicord can read and update the configuration repository."
 	}
 	add(wb)
 	return finish(rep)
@@ -511,26 +511,26 @@ func finish(rep Report) Report {
 	return rep
 }
 
-// probeWriteBack runs a no-op write (codi.yaml rewritten with its own content): it
+// probeWriteBack runs a no-op write (cicord.yaml rewritten with its own content): it
 // clones/fetches the repository with the configured credentials and leaves no commit. A
-// working directory (codi dev) is only checked for write access: rewriting the file
+// working directory (cicord dev) is only checked for write access: rewriting the file
 // would race with the person editing it.
 func probeWriteBack(ctx context.Context, w writeback.Writer) error {
 	if dw, ok := w.(*writeback.DirWriter); ok {
-		f, err := os.OpenFile(filepath.Join(dw.Root, "codi.yaml"), os.O_WRONLY, 0)
+		f, err := os.OpenFile(filepath.Join(dw.Root, "cicord.yaml"), os.O_WRONLY, 0)
 		if err != nil {
 			return err
 		}
 		return f.Close()
 	}
 	_, err := w.Write(ctx, writeback.Request{
-		Edits: map[string]writeback.EditFunc{"codi.yaml": func(cur []byte) ([]byte, error) {
+		Edits: map[string]writeback.EditFunc{"cicord.yaml": func(cur []byte) ([]byte, error) {
 			if cur == nil {
-				return nil, errors.New("codi.yaml not found")
+				return nil, errors.New("cicord.yaml not found")
 			}
 			return cur, nil
 		}},
-		Message: "check write-back", Actor: "codi", Source: "setup", Mode: writeback.ModeCommit,
+		Message: "check write-back", Actor: "cicord", Source: "setup", Mode: writeback.ModeCommit,
 	})
 	return err
 }

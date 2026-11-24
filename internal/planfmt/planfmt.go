@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/reconcile"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/reconcile"
 )
 
 // Field is the from → to of one field.
@@ -228,7 +228,7 @@ func Text(w io.Writer, ps []Plan) {
 type MarkdownOptions struct {
 	// Marker is a hidden HTML comment identifying the comment (to update it later).
 	Marker string
-	// Title is the heading (default "CODI plan").
+	// Title is the heading (default "Cicord plan").
 	Title string
 	// Footer is an optional last paragraph (e.g. the commit planned).
 	Footer string
@@ -239,7 +239,7 @@ type MarkdownOptions struct {
 // Markdown renders a plan result as a pull-request comment.
 func Markdown(r Result, o MarkdownOptions) string {
 	if o.Title == "" {
-		o.Title = "CODI plan"
+		o.Title = "Cicord plan"
 	}
 	if o.MaxBytes <= 0 {
 		o.MaxBytes = 60000
@@ -303,7 +303,7 @@ func Markdown(r Result, o MarkdownOptions) string {
 		for cut > 0 && !utf8Start(out[cut]) {
 			cut--
 		}
-		out = out[:cut] + "\n```\n\n*(truncated: the plan is too long for a comment, run `codi plan --remote` to see all of it)*\n"
+		out = out[:cut] + "\n```\n\n*(truncated: the plan is too long for a comment, run `cicord plan --remote` to see all of it)*\n"
 	}
 	return out
 }

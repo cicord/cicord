@@ -11,19 +11,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/importer"
-	"github.com/npjonath/codi/internal/planfmt"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/importer"
+	"github.com/npjonath/cicord/internal/planfmt"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 func init() {
 	extraCommands = append(extraCommands, newImportCmd, newAdoptCmd)
 }
 
-// newDownloader returns the CDN downloader of codi import (tests: the simulator's).
+// newDownloader returns the CDN downloader of cicord import (tests: the simulator's).
 var newDownloader = func() importer.Downloader { return importer.HTTPDownloader(nil) }
 
 func newImportCmd() *cobra.Command {
@@ -42,13 +42,13 @@ servers/assets/<key>/ and referenced from the YAML.
 
 Keys are derived from the display names (slugified, deduplicated). Roles managed by an
 integration (bot roles) are skipped. The resource map (key → Discord ID) is written to
-the local state database (--state, default .codi/state.db), so that a later
-` + "`codi apply`" + ` adopts the existing resources instead of recreating them.
+the local state database (--state, default .cicord/state.db), so that a later
+` + "`cicord apply`" + ` adopts the existing resources instead of recreating them.
 
 The bot must be a member of the server. Add the server key to a bot's spec.servers
 afterwards.`,
-		Example: `  DISCORD_TOKEN=… codi import 112233445566778899
-  codi import 112233445566778899 ./infra --key ma-commu --token-env DISCORD_TOKEN_MODERATOR`,
+		Example: `  DISCORD_TOKEN=… cicord import 112233445566778899
+  cicord import 112233445566778899 ./infra --key ma-commu --token-env DISCORD_TOKEN_MODERATOR`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := absDir(args[1:])
@@ -180,9 +180,9 @@ func runImport(cmd *cobra.Command, serverID, dir, key, tokenEnv string, force bo
 		}
 	}
 	if !listed {
-		fmt.Fprintf(stdout, "\nNext: add %q to the spec.servers of the bot that manages it, then run `codi plan`.\n", res.Key)
+		fmt.Fprintf(stdout, "\nNext: add %q to the spec.servers of the bot that manages it, then run `cicord plan`.\n", res.Key)
 	} else {
-		fmt.Fprintln(stdout, "\nNext: run `codi plan` (it should show no changes).")
+		fmt.Fprintln(stdout, "\nNext: run `cicord plan` (it should show no changes).")
 	}
 	return nil
 }
@@ -226,10 +226,10 @@ resources are dropped; --reset ignores every existing mapping and matches everyt
 name again.
 
 The matches are shown and must be confirmed (--yes to skip; required without a
-terminal). Keys without a match are created by the next ` + "`codi apply`" + `.
+terminal). Keys without a match are created by the next ` + "`cicord apply`" + `.
 Nothing is changed in Discord.`,
-		Example: `  codi adopt
-  codi adopt --server ma-commu --reset --yes`,
+		Example: `  cicord adopt
+  cicord adopt --server ma-commu --reset --yes`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := absDir(args)

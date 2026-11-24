@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 func repoWith(regs ...config.Registry) *config.Repo {
@@ -36,7 +36,7 @@ func TestSourcesCacheAndErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(srcs) != 3 || srcs[0].Name != "codi" || srcs[1].Name != "acme" || srcs[2].Name != "down" {
+	if len(srcs) != 3 || srcs[0].Name != "cicord" || srcs[1].Name != "acme" || srcs[2].Name != "down" {
 		t.Fatalf("sources = %+v", srcs)
 	}
 	acme := srcs[1]

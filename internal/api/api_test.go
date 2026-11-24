@@ -23,13 +23,13 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state/sqlite"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 const (
@@ -56,7 +56,7 @@ func copyTree(t *testing.T, src, dst string) {
 		}
 		rel, _ := filepath.Rel(src, p)
 		if info.IsDir() {
-			if info.Name() == "node_modules" || info.Name() == ".codi" {
+			if info.Name() == "node_modules" || info.Name() == ".cicord" {
 				return filepath.SkipDir
 			}
 			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
@@ -232,7 +232,7 @@ func (c *client) do(method, path string, body any, hdr ...string) resp {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if !c.noCSRF {
-		req.Header.Set("X-Codi-Request", "1")
+		req.Header.Set("X-Cicord-Request", "1")
 	}
 	if c.bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+c.bearer)
@@ -293,7 +293,7 @@ func TestAuthMeStatus(t *testing.T) {
 	// CSRF: dev-login without the header is refused.
 	c.noCSRF = true
 	if r := c.do("POST", "/auth/dev-login", map[string]string{"userId": e.seed.Owner.ID}); r.status != 403 {
-		t.Fatalf("dev-login without X-Codi-Request = %d %s", r.status, r.body)
+		t.Fatalf("dev-login without X-Cicord-Request = %d %s", r.status, r.body)
 	}
 	c.noCSRF = false
 	if r := c.do("POST", "/auth/dev-login", map[string]string{"userId": e.seed.Owner.ID}, "Origin", "https://evil.example"); r.status != 403 {
@@ -496,7 +496,7 @@ func TestConfigPut(t *testing.T) {
 	inv["dmOnboarding"] = false
 	r = owner.do("PUT", path, map[string]any{"config": inv})
 	if r.status != 422 || !strings.Contains(string(r.body), `unknown channel \"nowhere\"`) {
-		t.Fatalf("x-codi-ref check = %d %s", r.status, r.body)
+		t.Fatalf("x-cicord-ref check = %d %s", r.status, r.body)
 	}
 
 	// Admin edits the base config.
@@ -570,7 +570,7 @@ func TestPortalLinkAndRoutes(t *testing.T) {
 	if err != nil || !strings.HasPrefix(link, e.ts.URL) {
 		t.Fatalf("link = %s", link)
 	}
-	token := u.Query().Get("codi_token")
+	token := u.Query().Get("cicord_token")
 
 	routes := "/api/v1/portal/" + serverKey + "/plugins/moderator/onboarding"
 	anon.expect(401, "GET", routes+"/steps", nil)
@@ -846,7 +846,7 @@ func TestPlanUpload(t *testing.T) {
 		"traversal": {{name: "../evil.txt", typ: tar.TypeReg, data: "x"}},
 		"absolute":  {{name: "/etc/evil", typ: tar.TypeReg, data: "x"}},
 		"symlink":   {{name: "link", typ: tar.TypeSymlink, link: "/etc/passwd"}},
-		"hardlink":  {{name: "hard", typ: tar.TypeLink, link: "codi.yaml"}},
+		"hardlink":  {{name: "hard", typ: tar.TypeLink, link: "cicord.yaml"}},
 		"nested":    {{name: "a/../../evil", typ: tar.TypeReg, data: "x"}},
 	} {
 		if r := post(makeTarGz(t, entries)); r.status != 400 || r.errCode() != "invalid" {

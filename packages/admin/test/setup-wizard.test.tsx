@@ -1,4 +1,4 @@
-import { createCodiClient, type FetchLike } from "@codi/client";
+import { createCicordClient, type FetchLike } from "@cicord/client";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
@@ -38,19 +38,19 @@ function fakeSetup() {
     simulator: false,
     version: "0.1.0",
     providers: ["embedded", "github"],
-    publicUrl: "https://codi.example.org",
+    publicUrl: "https://cicord.example.org",
     activated: false,
     login: {
       configured: false,
       skipped: false,
-      redirectUrl: "https://codi.example.org/auth/callback",
+      redirectUrl: "https://cicord.example.org/auth/callback",
       portalUrl: "",
       fromEnv: false,
     },
   };
   const intents = (): Check =>
     intentsOn
-      ? { id: "intents", status: "ok", message: "The privileged intents CODI uses are enabled." }
+      ? { id: "intents", status: "ok", message: "The privileged intents Cicord uses are enabled." }
       : {
           id: "intents",
           status: "warn",
@@ -60,19 +60,19 @@ function fakeSetup() {
           data: { missing: ["MessageContent", "ServerMembers"], enabled: [] },
         };
   const serverChecks = (): Check[] => [
-    { id: "member", status: "ok", message: "CODI is a member of Pixel Pals." },
+    { id: "member", status: "ok", message: "Cicord is a member of Pixel Pals." },
     { id: "permissions", status: "ok", message: "The bot has the Administrator permission." },
     raised
       ? {
           id: "hierarchy",
           status: "ok",
-          message: "The role “CODI” is above every role CODI manages.",
+          message: "The role “Cicord” is above every role Cicord manages.",
         }
       : {
           id: "hierarchy",
           status: "fail",
-          message: "The role “CODI” is below 3 role(s) CODI must manage.",
-          hint: "In Discord, open Server Settings → Roles and drag the role “CODI” above “Admin” (to the top of the list), then re-check.",
+          message: "The role “Cicord” is below 3 role(s) Cicord must manage.",
+          hint: "In Discord, open Server Settings → Roles and drag the role “Cicord” above “Admin” (to the top of the list), then re-check.",
         },
   ];
   const fetch: FetchLike = async (input, init) => {
@@ -80,7 +80,7 @@ function fakeSetup() {
     const p = url.pathname;
     const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
     calls.push(`${init?.method ?? "GET"} ${p}`);
-    if (p === "/api/v1/me") return apiError(503, "setup_required", "CODI is not set up yet.");
+    if (p === "/api/v1/me") return apiError(503, "setup_required", "Cicord is not set up yet.");
     if (p === "/api/v1/setup/status")
       return json({
         active: true,
@@ -94,7 +94,7 @@ function fakeSetup() {
           401,
           "unauthenticated",
           "This setup link is invalid or was already used.",
-          "Restart CODI to get a new one.",
+          "Restart Cicord to get a new one.",
         );
       authed = true;
       return json({ active: true, completed: false, authenticated: true, view });
@@ -114,12 +114,12 @@ function fakeSetup() {
             "Click “Reset Token”, copy the new token and paste it here.",
           );
         view.bot = {
-          key: "codi",
-          secretRef: "DISCORD_TOKEN_CODI",
+          key: "cicord",
+          secretRef: "DISCORD_TOKEN_CICORD",
           applicationId: "999",
-          applicationName: "CODI",
+          applicationName: "Cicord",
           userId: "1",
-          username: "CODI",
+          username: "Cicord",
           flags: 0,
           tokenStored: true,
           portalUrl: "https://discord.com/developers/applications/999/bot",
@@ -154,7 +154,7 @@ function fakeSetup() {
 
 function renderAt(path: string, fetch: FetchLike) {
   const config: AdminConfig = {
-    client: createCodiClient({ fetch }),
+    client: createCicordClient({ fetch }),
     loginUrl: "/auth/login",
     mock: false,
   };
@@ -186,7 +186,7 @@ describe("setup wizard", () => {
     await user.click(screen.getByRole("button", { name: "Open the wizard" }));
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByText("This setup link is invalid or was already used.")).toBeTruthy();
-    expect(within(alert).getByText("Restart CODI to get a new one.")).toBeTruthy();
+    expect(within(alert).getByText("Restart Cicord to get a new one.")).toBeTruthy();
     await user.clear(screen.getByLabelText("Setup link or token"));
     await user.type(
       screen.getByLabelText("Setup link or token"),
@@ -217,7 +217,7 @@ describe("setup wizard", () => {
     await user.type(input, BOT_TOKEN);
     await user.click(screen.getByRole("button", { name: "Check the token" }));
     expect(await screen.findByText(/Token accepted/)).toBeTruthy();
-    expect(screen.getByText("Stored encrypted as DISCORD_TOKEN_CODI")).toBeTruthy();
+    expect(screen.getByText("Stored encrypted as DISCORD_TOKEN_CICORD")).toBeTruthy();
     expect(document.body.textContent).not.toContain(BOT_TOKEN);
     expect(screen.getByText("Server Members Intent")).toBeTruthy();
     expect(screen.getByText("Message Content Intent")).toBeTruthy();
@@ -240,7 +240,7 @@ describe("setup wizard", () => {
       { timeout: 6000 },
     );
     await user.click(pick);
-    const hierarchy = await screen.findByText(/drag the role “CODI” above “Admin”/);
+    const hierarchy = await screen.findByText(/drag the role “Cicord” above “Admin”/);
     expect(hierarchy).toBeTruthy();
     expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(
       true,
@@ -275,7 +275,7 @@ describe("setup wizard", () => {
           ? {
               id: "events",
               status: "ok",
-              message: "A message from the server reached CODI through the gateway.",
+              message: "A message from the server reached Cicord through the gateway.",
             }
           : {
               id: "events",
@@ -284,10 +284,10 @@ describe("setup wizard", () => {
             };
         return json({
           server: "pixel-pals",
-          bot: "codi",
+          bot: "cicord",
           ranAt: new Date().toISOString(),
           ok: messageSent,
-          checks: [{ id: "token", status: "ok", message: "Connected as CODI." }, events],
+          checks: [{ id: "token", status: "ok", message: "Connected as Cicord." }, events],
         });
       }
       if (p === "/api/v1/setup/plugins")

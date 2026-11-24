@@ -2,10 +2,10 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite-plus";
 
-// `vp dev` proxies the API to a local `codi dev --sim examples/basic` (CODI_RUNTIME_URL,
+// `vp dev` proxies the API to a local `cicord dev --sim examples/basic` (CICORD_RUNTIME_URL,
 // default http://127.0.0.1:7420, the runtime's default public URL). `vp dev --mode mock` runs
 // without the Go runtime: src/mock answers the admin and simulator endpoints in the browser.
-const runtime = process.env["CODI_RUNTIME_URL"] ?? "http://127.0.0.1:7420";
+const runtime = process.env["CICORD_RUNTIME_URL"] ?? "http://127.0.0.1:7420";
 const runtimeOrigin = new URL(runtime).origin;
 
 // The runtime rejects unsafe requests whose Origin is not its public URL (CSRF protection).
@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => ({
   base: "/admin/",
   plugins: [react(), tailwindcss()],
   server: {
-    port: Number(process.env["CODI_ADMIN_PORT"] ?? 5175),
+    port: Number(process.env["CICORD_ADMIN_PORT"] ?? 5175),
     ...(mode === "mock"
       ? {}
       : {

@@ -1,15 +1,15 @@
-# CODI specification — v1alpha1
+# Cicord specification — v1alpha1
 
-The **schemas** in [`schemas/`](schemas/) and the **SDK types** in [`sdk/codi-sdk.d.ts`](sdk/codi-sdk.d.ts)
+The **schemas** in [`schemas/`](schemas/) and the **SDK types** in [`sdk/cicord-sdk.d.ts`](sdk/cicord-sdk.d.ts)
 are normative. This document explains the semantics that a schema cannot express.
 
 | File | Kind | Schema |
 |---|---|---|
-| `codi.yaml` | `Project` | [project.schema.json](schemas/project.schema.json) |
+| `cicord.yaml` | `Project` | [project.schema.json](schemas/project.schema.json) |
 | `servers/<key>.yaml` | `Server` | [server.schema.json](schemas/server.schema.json) |
 | `bots/<key>/bot.yaml` | `Bot` | [bot.schema.json](schemas/bot.schema.json) |
 | `<plugin>/plugin.yaml` | `Plugin` | [plugin.schema.json](schemas/plugin.schema.json) |
-| `codi.lock` | — | see [§7](#7-lockfile) |
+| `cicord.lock` | — | see [§7](#7-lockfile) |
 
 Editor support: add `# yaml-language-server: $schema=<url or path to schema>` at the top of a file.
 
@@ -17,7 +17,7 @@ Editor support: add `# yaml-language-server: $schema=<url or path to schema>` at
 
 ## 1. Resources and keys
 
-- Every file holds one resource: `apiVersion: codi.dev/v1alpha1`, `kind`, `metadata`, `spec`.
+- Every file holds one resource: `apiVersion: cicord.dev/v1alpha1`, `kind`, `metadata`, `spec`.
 - `metadata.name` is the resource **key**. It must match the file name (`servers/<key>.yaml`)
   or the directory name (`bots/<key>/`).
 - Keys match `^[a-z][a-z0-9-]{0,62}$` and **never change**. Display names (`name:` inside
@@ -25,12 +25,12 @@ Editor support: add `# yaml-language-server: $schema=<url or path to schema>` at
 - Changing a key keeps the Discord resource when the display name and kind are unchanged:
   the reconciler sees the old key removed and the new one added, adopts the resource under
   the new key and drops the old mapping (plan: `adopt` + `unmanage "move … mapping"`).
-  `codi mv` renames a key and every reference to it in one step. Changing the key *and* the
+  `cicord mv` renames a key and every reference to it in one step. Changing the key *and* the
   display name in the same revision is a removal plus a creation.
 
 ## 2. References
 
-All references use keys and are checked by `codi validate`:
+All references use keys and are checked by `cicord validate`:
 
 | Where | Refers to |
 |---|---|
@@ -40,7 +40,7 @@ All references use keys and are checked by `codi validate`:
 | `hierarchy[]`, `access.*.roles[]` | `roles.<key>` |
 | overwrite targets | `@everyone`, `roles.<key>`, or `member:<discord id>` |
 | `bot.spec.servers[]`, `plugins[].servers[]`, `plugins[].overrides.<k>` | `servers/<key>.yaml` |
-| plugin config fields with `x-codi-ref` | a key of the given kind in **every** server the instance runs on |
+| plugin config fields with `x-cicord-ref` | a key of the given kind in **every** server the instance runs on |
 
 ## 3. Server semantics
 
@@ -90,7 +90,7 @@ Deletions run last (channels, then categories, then roles).
 ### Live status, boost and Community gating
 The planner reads the live boost level (`premium_tier`), boost count and feature flags.
 Settings Discord would refuse are **blocked in the plan with a reason** instead of failing at
-apply time (reason prefixes, explained by the admin UI and `codi plan`):
+apply time (reason prefixes, explained by the admin UI and `cicord plan`):
 
 | Setting | Needs | Blocked reason |
 |---|---|---|
@@ -112,7 +112,7 @@ items keep the server `OutOfSync` and are applied by the first sync after the bo
 `COMMUNITY` feature. Enabling it needs a rules channel and an updates channel (text channels,
 created by the same plan if needed), `profile.verificationLevel` at least `low` and
 `profile.explicitContentFilter: allMembers`; a missing prerequisite blocks the change with
-the full list (`codi validate` reports the same). The toggle, the channels and the
+the full list (`cicord validate` reports the same). The toggle, the channels and the
 verification/filter changes are sent in one request after the channels exist; announcement
 and stage channels that need Community are created right after it. Disabling sends the live
 mutable features without `COMMUNITY`. `profile.rulesChannel` is a deprecated alias of
@@ -186,7 +186,7 @@ fail as `unresolved`.
 ### access
 Admin UI access per server. The server owner is always admin. `admins` can change any
 configuration; `moderators` can use moderation features and plugin settings marked
-`x-codi-access: moderator` (see §6).
+`x-cicord-access: moderator` (see §6).
 
 ## 4. Bot semantics
 
@@ -204,8 +204,8 @@ configuration; `moderators` can use moderation features and plugin settings mark
   two names with different configs.
 - `source`:
   - **local**: a path relative to this `bot.yaml` (`./plugins/x`, `../../plugins/x`); no `version`;
-  - **registry**: `<registry>/<plugin>` resolved through `codi.yaml` registries; `version`
-    (semver range) is required and must be locked in `codi.lock`.
+  - **registry**: `<registry>/<plugin>` resolved through `cicord.yaml` registries; `version`
+    (semver range) is required and must be locked in `cicord.lock`.
 - `servers` restricts the instance to a subset of the bot's servers (default: all).
 - `grants` must include **every** capability requested by the manifest. A plugin update that
   requests a new capability fails validation until the grant is added.
@@ -215,15 +215,15 @@ configuration; `moderators` can use moderation features and plugin settings mark
 ## 5. Project semantics
 
 - `engine`: the runtime refuses a revision whose range excludes its own version.
-- `source.provider`: `github` (token `CODI_GIT_TOKEN`: webhooks, write-back, PRs; a GitHub App with commit statuses is planned),
+- `source.provider`: `github` (token `CICORD_GIT_TOKEN`: webhooks, write-back, PRs; a GitHub App with commit statuses is planned),
   `git` (any remote, polling), `embedded` (repo hosted inside the runtime).
 - `writeBack.policies` are evaluated **in order**; the first policy with a `paths` glob
   matching the changed file decides `commit` or `pullRequest`. Otherwise `defaultMode` applies.
   A UI change touching several files uses the strictest mode among them.
 - Commit trailers added by write-back:
   ```
-  Codi-Actor: discord:<user id> (<display name>)
-  Codi-Source: admin-ui | api | cli
+  Cicord-Actor: discord:<user id> (<display name>)
+  Cicord-Source: admin-ui | api | cli
   ```
 
 ## 6. Plugin manifest
@@ -270,27 +270,27 @@ enough, so the runtime also enforces, on every request:
 5. only `https`, no credentials in URLs, request bodies ≤ 1 MiB, responses ≤ 5 MiB, a 10 s
    default timeout.
 
-`codi dev` relaxes the address checks (2–3) and allows plain `http`, so plugins can call
-local services; the host allow-list still applies. `codi serve` never relaxes them.
+`cicord dev` relaxes the address checks (2–3) and allows plain `http`, so plugins can call
+local services; the host allow-list still applies. `cicord serve` never relaxes them.
 
 ### Config schema extensions
 Plugin `config.schema.json` is standard JSON Schema (2020-12) plus:
 | Keyword | Values | Effect |
 |---|---|---|
-| `x-codi-ref` | `channel`, `category`, `role` | Value is a resource key; rendered as a picker; existence checked per server. |
-| `x-codi-widget` | `textarea`, `markdown`, `color`, `duration` | Admin UI rendering hint. |
-| `x-codi-access` | `admin` (default), `moderator` | Who may edit the field in the admin UI. |
+| `x-cicord-ref` | `channel`, `category`, `role` | Value is a resource key; rendered as a picker; existence checked per server. |
+| `x-cicord-widget` | `textarea`, `markdown`, `color`, `duration` | Admin UI rendering hint. |
+| `x-cicord-access` | `admin` (default), `moderator` | Who may edit the field in the admin UI. |
 
 ## 7. Lockfile
 
-`codi.lock` (YAML, generated — do not edit by hand):
+`cicord.lock` (YAML, generated — do not edit by hand):
 
 ```yaml
 lockVersion: 1
 plugins:
-  codi/welcome:
+  cicord/welcome:
     version: 1.2.3
-    repo: https://github.com/codi-plugins/welcome
+    repo: https://github.com/cicord-plugins/welcome
     commit: 4f0c2d9e8b1a7c6d5e4f3a2b1c0d9e8f7a6b5c4d
     integrity: sha256-Vb3nQ0x2...
     capabilities: [discord.messages.send, discord.members.read, storage.kv]
@@ -298,7 +298,7 @@ plugins:
 
 ## 8. SDK semantics
 
-Contract: [`sdk/codi-sdk.d.ts`](sdk/codi-sdk.d.ts). A plugin default-exports `definePlugin({...})`.
+Contract: [`sdk/cicord-sdk.d.ts`](sdk/cicord-sdk.d.ts). A plugin default-exports `definePlugin({...})`.
 Implemented by `internal/plugin` (the package documentation is the detailed reference).
 
 - **Isolation**: one Sobek VM and one event loop per plugin instance (bot × server, ADR-0010).
@@ -340,13 +340,13 @@ Implemented by `internal/plugin` (the package documentation is the detailed refe
   through local `$ref`s; not inside `additionalProperties` maps nor `oneOf`/`anyOf`
   alternatives. An absent optional object is materialized only when its defaults cover its
   `required` fields. A field with an applied default is always present.
-- **Config typing**: `codi plugin typegen` generates a `PluginConfig` module augmentation
+- **Config typing**: `cicord plugin typegen` generates a `PluginConfig` module augmentation
   from `config.schema.json`, with the same rules (fields that are required or have an
   applied default are non-optional).
 - **Route typing**: `plugin.yaml` `spec.routes.types` names a type-only, self-contained
   file exporting `interface Routes` (per route key: `query`, `body`, `response`).
   `defineRoutes<Routes>(routes)` (identity at run time) checks the handlers against it;
-  `codi portal typegen` copies it into the portals' `src/codi-routes.d.ts`. The runtime
+  `cicord portal typegen` copies it into the portals' `src/cicord-routes.d.ts`. The runtime
   does not validate requests against it.
 - **Message content**: gated per plugin. Without the `MessageContent` intent in its own
   manifest, a plugin sees empty `content` and `attachments` (events and
@@ -355,16 +355,16 @@ Implemented by `internal/plugin` (the package documentation is the detailed refe
 - **Globals beyond the SDK**: `setTimeout` / `setInterval` / `clearTimeout` /
   `clearInterval`, `queueMicrotask` and `console.*` (mapped to the instance logger). Timers
   belong to the handler that created them and stop with it.
-- **No Node.js APIs**: the bundle targets ES2022 (async generators lowered), `@codi/sdk` is
+- **No Node.js APIs**: the bundle targets ES2022 (async generators lowered), `@cicord/sdk` is
   the only module resolved at run time, Node built-ins cannot be imported; pure-JS libraries
   can be bundled. All I/O goes through `ctx`. Stack traces map to the TypeScript sources
   (inline source map).
 
-## 9. Naming map (CODI ↔ Discord API)
+## 9. Naming map (Cicord ↔ Discord API)
 
-CODI uses *server* where Discord's API says *guild* (ADR-0009). Only names that differ are listed.
+Cicord uses *server* where Discord's API says *guild* (ADR-0009). Only names that differ are listed.
 
-| CODI | Discord API |
+| Cicord | Discord API |
 |---|---|
 | `Server` | guild |
 | `ManageServer` | `MANAGE_GUILD` |
@@ -390,7 +390,7 @@ CODI uses *server* where Discord's API says *guild* (ADR-0009). Only names that 
 
 Other permissions and intents map 1:1 from PascalCase to SCREAMING_SNAKE_CASE.
 
-## 10. Semantic validation (`codi validate`)
+## 10. Semantic validation (`cicord validate`)
 
 Beyond JSON Schema, validation fails when:
 1. a key does not match its file/directory name, or is duplicated;
@@ -398,7 +398,7 @@ Beyond JSON Schema, validation fails when:
 3. a plugin's requested capability is not in `grants`;
 4. a handler needs an intent missing from the manifest (build step);
 5. a plugin config does not validate against its schema (after overrides, per server);
-6. a registry plugin is missing from `codi.lock`, or its integrity does not match;
+6. a registry plugin is missing from `cicord.lock`, or its integrity does not match;
 7. `engine` excludes the running CLI/runtime version;
 8. a command name is invalid or defined twice on the same bot/server;
 9. `http.fetch` is requested without `spec.network.allow`.

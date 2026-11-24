@@ -2,8 +2,8 @@
  * Live Discord state of a server (boost level, Community) and the server image uploads
  * (docs/discord-parity.md). Shared by the Overview and Server settings pages.
  */
-import type { ServerAssetKind, ServerStatus } from "@codi/client";
-import { useCodi } from "@codi/react";
+import type { ServerAssetKind, ServerStatus } from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import { Check, ExternalLink, ImageOff, Lock, Rocket, Upload, Users } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -343,7 +343,7 @@ export function AssetRow({
   canEdit: boolean;
 }) {
   const { t } = useTranslation();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const input = useRef<HTMLInputElement>(null);
   const inputId = useId();
   const [busy, setBusy] = useState(false);

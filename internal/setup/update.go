@@ -12,17 +12,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // Plugin updates (Store lifecycle: browse → install → update → uninstall).
 //
-// A plugin version is shared by every instance using it: the codi.lock entry of a
+// A plugin version is shared by every instance using it: the cicord.lock entry of a
 // registry plugin, or the plugins/<name>/ copy of an official plugin. An update changes
 // it for all of them in one write-back, with each instance's grants set to what the new
 // version requests and, for registry plugins, its version range widened when the new
@@ -30,14 +30,14 @@ import (
 
 // UpdateSpec is the version an update installs.
 type UpdateSpec struct {
-	// Source is "<registry>/<plugin>", or "codi/<plugin>" for a copy of an official plugin.
+	// Source is "<registry>/<plugin>", or "cicord/<plugin>" for a copy of an official plugin.
 	Source                     string
 	Name, DisplayName, Version string
 	Capabilities, Intents      []string
 	PrivilegedIntents, Network []string
 	// Schema is the config schema of the new version (nil: none).
 	Schema map[string]any
-	// Lock is the codi.lock entry of a registry plugin.
+	// Lock is the cicord.lock entry of a registry plugin.
 	Lock *registry.LockEntry
 	// Files are the files of a bundled plugin, relative to its directory.
 	Files map[string][]byte
@@ -113,7 +113,7 @@ type UpdatePlan struct {
 	Files *FileChanges `json:"files,omitempty"`
 	// Modified: the bundled copy was changed locally (see catalog.CopyStatus).
 	Modified bool `json:"modified"`
-	// RepoChanged: the registry index now points to another repository than codi.lock.
+	// RepoChanged: the registry index now points to another repository than cicord.lock.
 	RepoChanged bool `json:"repoChanged"`
 	// Servers where an instance of the plugin runs (an update needs admin on each).
 	Servers []string `json:"servers"`
@@ -136,13 +136,13 @@ func (p *UpdatePlan) ConfigValid() bool {
 var ErrNotInstalled = errors.New("plugin not installed")
 
 // UsesPlugin reports whether a bot.yaml instance uses the plugin of an update source:
-// "<registry>/<plugin>" locked in codi.lock (the official registry included), or for
-// "codi/<plugin>" also a copy of the official plugin in plugins/<plugin>/.
+// "<registry>/<plugin>" locked in cicord.lock (the official registry included), or for
+// "cicord/<plugin>" also a copy of the official plugin in plugins/<plugin>/.
 func UsesPlugin(b *config.Bot, p config.PluginInstance, source string) bool {
 	return usesCopy(b, p, source) || UsesLocked(p, source)
 }
 
-// UsesLocked: the instance uses the registry plugin source (a codi.lock entry).
+// UsesLocked: the instance uses the registry plugin source (a cicord.lock entry).
 func UsesLocked(p config.PluginInstance, source string) bool {
 	return !p.IsLocal() && p.Source == source
 }
@@ -153,8 +153,8 @@ func usesCopy(b *config.Bot, p config.PluginInstance, source string) bool {
 		path.Clean(path.Join(path.Dir(b.File), p.Source)) == catalog.PluginDir(name)
 }
 
-// LockedSource reports whether an instance of repo uses source through codi.lock (for
-// "codi/<plugin>": the official remote registry rather than a bundled copy).
+// LockedSource reports whether an instance of repo uses source through cicord.lock (for
+// "cicord/<plugin>": the official remote registry rather than a bundled copy).
 func LockedSource(repo *config.Repo, source string) bool {
 	if repo == nil {
 		return false

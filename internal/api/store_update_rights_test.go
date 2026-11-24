@@ -13,7 +13,7 @@ import (
 func TestStoreUpdateNeedsAdminEverywhere(t *testing.T) {
 	e, pluginDir := startStoreRepoWith(t, func(dir string) {
 		writeTestFile(t, filepath.Join(dir, "servers", "annexe.yaml"),
-			"apiVersion: codi.dev/v1alpha1\nkind: Server\nmetadata:\n  name: annexe\nspec:\n  discordId: \"223344556677889900\"\n")
+			"apiVersion: cicord.dev/v1alpha1\nkind: Server\nmetadata:\n  name: annexe\nspec:\n  discordId: \"223344556677889900\"\n")
 		p := filepath.Join(dir, "bots", "moderator", "bot.yaml")
 		data, err := os.ReadFile(p)
 		if err != nil {

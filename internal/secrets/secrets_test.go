@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 func newKey(t *testing.T) []byte {
@@ -35,31 +35,31 @@ func TestSetGetRotateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Set(ctx, "DISCORD_TOKEN_CODI", "tok-1"); err != nil {
+	if err := s.Set(ctx, "DISCORD_TOKEN_CICORD", "tok-1"); err != nil {
 		t.Fatal(err)
 	}
-	if v, err := s.Get(ctx, "DISCORD_TOKEN_CODI"); err != nil || v != "tok-1" {
+	if v, err := s.Get(ctx, "DISCORD_TOKEN_CICORD"); err != nil || v != "tok-1" {
 		t.Fatalf("get = %q, %v", v, err)
 	}
 	// Ciphertext at rest: the value never appears in the KV.
-	raw, _ := st.KV(Scope).Get(ctx, "DISCORD_TOKEN_CODI")
+	raw, _ := st.KV(Scope).Get(ctx, "DISCORD_TOKEN_CICORD")
 	if bytes.Contains(raw, []byte("tok-1")) {
 		t.Fatal("plaintext stored")
 	}
-	if err := s.Set(ctx, "DISCORD_TOKEN_CODI", "tok-2"); err != nil {
+	if err := s.Set(ctx, "DISCORD_TOKEN_CICORD", "tok-2"); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := s.Get(ctx, "DISCORD_TOKEN_CODI"); v != "tok-2" {
+	if v, _ := s.Get(ctx, "DISCORD_TOKEN_CICORD"); v != "tok-2" {
 		t.Fatalf("rotated value = %q", v)
 	}
 	ms, err := s.List(ctx)
-	if err != nil || len(ms) != 1 || ms[0].Name != "DISCORD_TOKEN_CODI" || ms[0].UpdatedAt.Before(ms[0].CreatedAt) {
+	if err != nil || len(ms) != 1 || ms[0].Name != "DISCORD_TOKEN_CICORD" || ms[0].UpdatedAt.Before(ms[0].CreatedAt) {
 		t.Fatalf("list = %+v, %v", ms, err)
 	}
-	if err := s.Delete(ctx, "DISCORD_TOKEN_CODI"); err != nil {
+	if err := s.Delete(ctx, "DISCORD_TOKEN_CICORD"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Get(ctx, "DISCORD_TOKEN_CODI"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Get(ctx, "DISCORD_TOKEN_CICORD"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("after delete: %v", err)
 	}
 	if err := s.Set(ctx, "bad name", "x"); err == nil {

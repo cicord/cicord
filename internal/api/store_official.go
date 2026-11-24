@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/setup"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/setup"
 )
 
-// officialOrigin tells an install of source "codi" whether the plugin comes from the
+// officialOrigin tells an install of source "cicord" whether the plugin comes from the
 // official remote registry (store.Service.OfficialRemote) or from the binary. The install
 // must match what was reviewed: a reviewed commit means the remote version, none the
 // bundled one; when the origin changed in between, the install is refused (409 changed).

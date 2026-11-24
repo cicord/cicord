@@ -9,18 +9,18 @@ has (a game fan site with its own domain and design). A fixed app cannot cover t
 
 ## Decision
 - The portal is a set of packages usable in **any React app** — or any web page:
-  - `@codi/client` — typed, framework-agnostic API client (Discord OAuth, members, roles,
+  - `@cicord/client` — typed, framework-agnostic API client (Discord OAuth, members, roles,
     plugin routes), with a cookie mode and a **token mode** for other origins;
-  - `@codi/react` — hooks and headless components (`useMember`, `useRoles`, `<OnboardingFlow>`);
-  - `@codi/ui` — optional styled components using the server theme (`spec.portal.theme`).
-- CODI ships `create-codi-portal`, a reference portal that is a **complete showcase** of the
+  - `@cicord/react` — hooks and headless components (`useMember`, `useRoles`, `<OnboardingFlow>`);
+  - `@cicord/ui` — optional styled components using the server theme (`spec.portal.theme`).
+- Cicord ships `create-cicord-portal`, a reference portal that is a **complete showcase** of the
   SDK (every portal endpoint, cookie and token auth, profile, onboarding, plugin routes) and
-  is meant to be forked (`codi portal init`).
+  is meant to be forked (`cicord portal init`).
 - **No-code customization** (`spec.portal`: theme, title, tagline, Markdown description,
   banner, links, page toggles, locale) is part of the API (`PortalServer`), so every portal
   built on the SDK gets it.
 - **Hosting**: a fork lives in the repository (`portal/`); its build output is **committed**
-  and served by the runtime from the active revision (`codi.yaml spec.portal.path`), in place
+  and served by the runtime from the active revision (`cicord.yaml spec.portal.path`), in place
   of the default portal. The runtime has no Node; CI checks that the committed build matches
   the sources. Otherwise the runtime serves the default portal.
 - **Embedding / external hosting**: a site on another origin uses token mode — Discord login
@@ -35,7 +35,7 @@ has (a game fan site with its own domain and design). A fixed app cannot cover t
 - Bot → portal links use signed, short-lived URLs (`ctx.portal.link()`).
 
 ## Consequences
-- Total freedom for community developers; CODI maintains API stability of the SDK packages.
+- Total freedom for community developers; Cicord maintains API stability of the SDK packages.
 - The runtime HTTP API becomes a public contract and must be versioned.
 - A custom portal is code running on the runtime's origin: it is reviewed like code (the CI
   build check makes the sources the thing to review).

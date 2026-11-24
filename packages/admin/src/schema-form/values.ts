@@ -1,5 +1,5 @@
 /** Immutable helpers on JSON values addressed by paths (arrays of keys / indices). */
-import type { Json } from "@codi/client";
+import type { Json } from "@cicord/client";
 
 export type Segment = string | number;
 export type Path = readonly Segment[];

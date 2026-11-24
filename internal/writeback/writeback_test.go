@@ -11,11 +11,11 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/cicord/internal/config"
 )
 
 const botYAML = `# The moderator bot
-apiVersion: codi.dev/v1alpha1
+apiVersion: cicord.dev/v1alpha1
 kind: Bot
 metadata:
   name: moderator
@@ -89,7 +89,7 @@ func TestModeFor(t *testing.T) {
 	cases := map[string]string{
 		"bots/moderator/bot.yaml": "commit",
 		"servers/a.yaml":          "pullRequest",
-		"codi.yaml":               "pullRequest",
+		"cicord.yaml":               "pullRequest",
 	}
 	for p, want := range cases {
 		if got := ModeFor(wb, []string{p}); got != want {
@@ -142,7 +142,7 @@ func TestGitWriter(t *testing.T) {
 	br, _ := git.PlainOpen(bare)
 	ref, _ := br.Reference("refs/heads/main", true)
 	c, _ := br.CommitObject(ref.Hash())
-	if !strings.Contains(c.Message, "Codi-Actor: discord:1 (Alice)") || c.Author.Name != "codi[bot]" {
+	if !strings.Contains(c.Message, "Cicord-Actor: discord:1 (Alice)") || c.Author.Name != "cicord[bot]" {
 		t.Errorf("commit = %q by %s", c.Message, c.Author.Name)
 	}
 	f, _ := c.File("bots/moderator/bot.yaml")
@@ -159,7 +159,7 @@ func TestGitWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(res2.Branch, "codi/change-") {
+	if !strings.HasPrefix(res2.Branch, "cicord/change-") {
 		t.Errorf("branch = %q", res2.Branch)
 	}
 	ref2, _ := br.Reference("refs/heads/main", true)

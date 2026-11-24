@@ -2,12 +2,12 @@
 # Copies the built web UIs and the portal kit into internal/webui so that `go build`
 # embeds them:
 #   packages/admin/dist              → internal/webui/admin
-#   packages/create-codi-portal/dist → internal/webui/portal
-#   pnpm pack of @codi/sdk, @codi/client, @codi/react, @codi/ui → internal/webui/kit/packages/*.tgz
-#     (@codi/sdk for the unit tests of `codi plugin new`, the others for `codi portal init`)
-#   the reference portal template    → internal/webui/kit/template (codi portal init)
+#   packages/create-cicord-portal/dist → internal/webui/portal
+#   pnpm pack of @cicord/sdk, @cicord/client, @cicord/react, @cicord/ui → internal/webui/kit/packages/*.tgz
+#     (@cicord/sdk for the unit tests of `cicord plugin new`, the others for `cicord portal init`)
+#   the reference portal template    → internal/webui/kit/template (cicord portal init)
 # A UI that has not been built is left as is (placeholder index.html); a missing kit only
-# disables `codi portal init` (it explains how to build it).
+# disables `cicord portal init` (it explains how to build it).
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,10 +42,10 @@ sync_kit() {
     # pnpm pack rewrites workspace:/catalog: specifiers to real versions.
     (cd "$root/packages/$p" && pnpm pack --pack-destination "$kit/packages" >/dev/null)
   done
-  node "$root/packages/create-codi-portal/bin/create-codi-portal.mjs" "$kit/template" --force >/dev/null
+  node "$root/packages/create-cicord-portal/bin/create-cicord-portal.mjs" "$kit/template" --force >/dev/null
   echo "synced portal kit → internal/webui/kit ($(cd "$kit/packages" && ls *.tgz | tr '\n' ' '))"
 }
 
 sync_one packages/admin/dist admin
-sync_one packages/create-codi-portal/dist portal
+sync_one packages/create-cicord-portal/dist portal
 sync_kit

@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/build"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/build"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // ───────────────────────────────────────────────────────────── fake Discord client
@@ -105,7 +105,7 @@ func (f *fakeDiscord) SendMessage(ctx context.Context, channelID string, m disco
 	if err := f.record(ctx, "SendMessage", channelID, m); err != nil {
 		return discord.Message{}, err
 	}
-	return discord.Message{ID: f.id(), ChannelID: channelID, Content: m.Content, Author: discord.User{ID: "1", Username: "codi", Bot: true}, CreatedAt: time.Unix(1700000000, 0)}, nil
+	return discord.Message{ID: f.id(), ChannelID: channelID, Content: m.Content, Author: discord.User{ID: "1", Username: "cicord", Bot: true}, CreatedAt: time.Unix(1700000000, 0)}, nil
 }
 
 func (f *fakeDiscord) EditMessage(ctx context.Context, channelID, messageID string, m discord.MessageCreate) (discord.Message, error) {
@@ -559,7 +559,7 @@ func bundleSource(t *testing.T, src string) string {
 func testEnv(dc *fakeDiscord) Env {
 	return Env{
 		BotKey: "moderator", InstanceName: "inst", PluginName: "test", PluginVersion: "0.1.0",
-		Bot: discord.User{ID: "1", Username: "codi", Bot: true}, ApplicationID: "app",
+		Bot: discord.User{ID: "1", Username: "cicord", Bot: true}, ApplicationID: "app",
 		ServerKey: "ma-commu", ServerID: "10", ServerName: "Ma Commu",
 		Config: map[string]any{"greeting": "hi"}, Grants: allGrants, MessageContent: true,
 		Discord: dc, Resolver: newFakeResolver(), Portal: fakePortal{}, TaskScope: "plugin:moderator/inst/ma-commu",

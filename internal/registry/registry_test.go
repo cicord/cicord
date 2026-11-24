@@ -11,7 +11,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/cicord/internal/config"
 )
 
 func initRepo(t *testing.T, files map[string]string, tags ...string) string {
@@ -40,7 +40,7 @@ func initRepo(t *testing.T, files map[string]string, tags ...string) string {
 	return dir
 }
 
-const manifest = `apiVersion: codi.dev/v1alpha1
+const manifest = `apiVersion: cicord.dev/v1alpha1
 kind: Plugin
 metadata:
   name: hello
@@ -54,11 +54,11 @@ spec:
 func TestResolveAndLock(t *testing.T) {
 	plugin := initRepo(t, map[string]string{"plugin.yaml": manifest, "src/index.ts": "export default {}"}, "v1.1.0", "v1.2.0", "v2.0.0")
 	reg := initRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: " + plugin + "\n    verified: true\n"})
-	regs := []config.Registry{{Name: "codi", URL: reg}}
+	regs := []config.Registry{{Name: "cicord", URL: reg}}
 	cache := t.TempDir()
 	ctx := context.Background()
 
-	res, err := ResolveLatest(ctx, regs, cache, "codi/hello", "^1.0.0")
+	res, err := ResolveLatest(ctx, regs, cache, "cicord/hello", "^1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,34 +71,34 @@ func TestResolveAndLock(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	lock := &Lock{Plugins: map[string]LockEntry{"codi/hello": res.Entry}}
+	lock := &Lock{Plugins: map[string]LockEntry{"cicord/hello": res.Entry}}
 	if err := WriteLock(root, lock); err != nil {
 		t.Fatal(err)
 	}
 
 	// Resolve from the lock with an empty cache: downloads and verifies integrity.
 	r := NewResolver(root, t.TempDir())
-	dir, key, err := r.Resolve("codi/hello", "^1.0.0")
+	dir, key, err := r.Resolve("cicord/hello", "^1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if key != "codi/hello@1.2.0" {
+	if key != "cicord/hello@1.2.0" {
 		t.Errorf("key = %s", key)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "plugin.yaml")); err != nil {
 		t.Errorf("not materialized: %v", err)
 	}
-	if _, _, err := NewResolver(root, t.TempDir()).Resolve("codi/hello", "^2.0.0"); err == nil {
+	if _, _, err := NewResolver(root, t.TempDir()).Resolve("cicord/hello", "^2.0.0"); err == nil {
 		t.Errorf("range mismatch with the lock should fail")
 	}
-	if _, _, err := NewResolver(root, t.TempDir()).Resolve("codi/other", "*"); err == nil {
+	if _, _, err := NewResolver(root, t.TempDir()).Resolve("cicord/other", "*"); err == nil {
 		t.Errorf("missing lock entry should fail")
 	}
 
 	// Tampered integrity is rejected.
 	bad := res.Entry
 	bad.Integrity = "sha256-AAAA"
-	if _, err := Materialize(ctx, t.TempDir(), "codi/hello", bad); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
+	if _, err := Materialize(ctx, t.TempDir(), "cicord/hello", bad); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
 		t.Errorf("expected integrity mismatch, got %v", err)
 	}
 }

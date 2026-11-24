@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 // Latest versions are looked up once per TTL (tags only), like indexes, and only for

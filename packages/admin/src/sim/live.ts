@@ -1,12 +1,12 @@
 /** Keeps simulator queries fresh: SSE change hints, with polling as a fallback. */
-import { useCodi } from "@codi/react";
+import { useCicord } from "@cicord/react";
 import { useEffect, useRef, useState } from "react";
 import { keys } from "../api.ts";
 
 export type LiveMode = "connecting" | "live" | "polling";
 
 export function useSimLive(enabled = true): LiveMode {
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const [mode, setMode] = useState<LiveMode>("connecting");
   const failures = useRef(0);
 

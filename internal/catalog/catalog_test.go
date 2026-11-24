@@ -32,7 +32,7 @@ func TestOfficialCatalog(t *testing.T) {
 		t.Fatalf("files = %v", SortedPaths(files))
 	}
 	if strings.Contains(string(files["plugins/tickets/tsconfig.json"]), "spec/sdk") {
-		t.Fatal("tsconfig still points at the CODI repository")
+		t.Fatal("tsconfig still points at the Cicord repository")
 	}
 	for p := range files {
 		if strings.Contains(p, "node_modules") || strings.Contains(p, "/test/") {

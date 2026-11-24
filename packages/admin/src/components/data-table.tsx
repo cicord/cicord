@@ -8,8 +8,8 @@
  * (keyboard, middle-click and ⌘-click work natively); a click anywhere else on the row
  * follows it too.
  */
-import type { Page, SortOrder } from "@codi/client";
-import { useCodiQuery } from "@codi/react";
+import type { Page, SortOrder } from "@cicord/client";
+import { useCicordQuery } from "@cicord/react";
 import {
   ArrowDown,
   ArrowUp,
@@ -229,7 +229,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   }, [text, debounce]);
 
   // ── data: keep the previous page on screen while the next one loads
-  const result = useCodiQuery(props.queryKey(query), (signal) => props.fetch(query, signal));
+  const result = useCicordQuery(props.queryKey(query), (signal) => props.fetch(query, signal));
   const last = useRef<Page<T> | undefined>(undefined);
   if (result.data) last.current = result.data;
   const page = result.data ?? (result.status === "error" ? undefined : last.current);

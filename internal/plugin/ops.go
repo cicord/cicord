@@ -15,8 +15,8 @@ import (
 
 	"github.com/grafana/sobek"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // Capabilities (spec/README.md §6).
@@ -873,7 +873,7 @@ func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 		p.Overwrites = &ows
 	}
 	return func(ctx context.Context) (any, error) {
-		ch, err := i.env.Discord.CreateChannel(ctx, i.env.ServerID, p, "codi: created by plugin "+i.env.PluginName+" ("+i.env.InstanceName+")")
+		ch, err := i.env.Discord.CreateChannel(ctx, i.env.ServerID, p, "cicord: created by plugin "+i.env.PluginName+" ("+i.env.InstanceName+")")
 		if err != nil {
 			return nil, err
 		}

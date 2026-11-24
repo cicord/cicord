@@ -119,7 +119,7 @@ export function Markdown({ source, baseLevel = 2, className }: MarkdownProps) {
   const blocks = parseMarkdown(source);
   if (!blocks.length) return null;
   return (
-    <div className={["codi-markdown", className].filter(Boolean).join(" ")}>
+    <div className={["cicord-markdown", className].filter(Boolean).join(" ")}>
       {blocks.map((b, i) => {
         const key = `b${i}`;
         switch (b.type) {

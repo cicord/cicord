@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/webui"
+	"github.com/npjonath/cicord/internal/webui"
 )
 
 func TestPluginNewTestSetup(t *testing.T) {
@@ -23,13 +23,13 @@ func TestPluginNewTestSetup(t *testing.T) {
 	if !strings.Contains(out, "npm install && npm test") {
 		t.Errorf("no test hint:\n%s", out)
 	}
-	for _, f := range []string{"package.json", "test/hello.test.ts", ".gitignore", "vendor/codi-sdk-0.1.0.tgz", "src/index.ts"} {
+	for _, f := range []string{"package.json", "test/hello.test.ts", ".gitignore", "vendor/cicord-sdk-0.1.0.tgz", "src/index.ts"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Errorf("missing %s", f)
 		}
 	}
-	if got, _ := os.ReadFile(filepath.Join(dir, "vendor", "codi-sdk-0.1.0.tgz")); !bytes.Equal(got, kit["packages/codi-sdk-0.1.0.tgz"].Data) {
-		t.Error("vendored @codi/sdk differs from the kit")
+	if got, _ := os.ReadFile(filepath.Join(dir, "vendor", "cicord-sdk-0.1.0.tgz")); !bytes.Equal(got, kit["packages/cicord-sdk-0.1.0.tgz"].Data) {
+		t.Error("vendored @cicord/sdk differs from the kit")
 	}
 	var pj struct {
 		Name            string
@@ -40,12 +40,12 @@ func TestPluginNewTestSetup(t *testing.T) {
 	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(dir, "package.json"))), &pj); err != nil {
 		t.Fatal(err)
 	}
-	if pj.Name != "hello" || pj.Type != "module" || pj.DevDependencies["@codi/sdk"] != "file:vendor/codi-sdk-0.1.0.tgz" ||
+	if pj.Name != "hello" || pj.Type != "module" || pj.DevDependencies["@cicord/sdk"] != "file:vendor/cicord-sdk-0.1.0.tgz" ||
 		!strings.HasPrefix(pj.Scripts["test"], "node --test") {
 		t.Errorf("package.json = %+v", pj)
 	}
 	test := readFile(t, filepath.Join(dir, "test", "hello.test.ts"))
-	for _, want := range []string{`from "@codi/sdk/testing"`, `from "../src/index.ts"`, `from "node:test"`, `runCommand(plugin, t, "hello"`} {
+	for _, want := range []string{`from "@cicord/sdk/testing"`, `from "../src/index.ts"`, `from "node:test"`, `runCommand(plugin, t, "hello"`} {
 		if !strings.Contains(test, want) {
 			t.Errorf("test misses %q:\n%s", want, test)
 		}
@@ -69,14 +69,14 @@ func TestFromNPM(t *testing.T) {
 	if code, _, stderr := run(t, "plugin", "new", plugin, "--from-npm"); code != 0 {
 		t.Fatal(stderr)
 	}
-	if pj := readFile(t, filepath.Join(plugin, "package.json")); !strings.Contains(pj, `"@codi/sdk": "^0.1.0"`) {
+	if pj := readFile(t, filepath.Join(plugin, "package.json")); !strings.Contains(pj, `"@cicord/sdk": "^0.1.0"`) {
 		t.Errorf("plugin package.json:\n%s", pj)
 	}
 	if _, err := os.Stat(filepath.Join(plugin, "vendor")); err == nil {
 		t.Error("vendor/ written with --from-npm")
 	}
 
-	t.Setenv("CODI_FROM_NPM", "true") // same as --from-npm
+	t.Setenv("CICORD_FROM_NPM", "true") // same as --from-npm
 	portal := filepath.Join(t.TempDir(), "portal")
 	if code, _, stderr := run(t, "portal", "init", portal); code != 0 {
 		t.Fatal(stderr)
@@ -89,13 +89,13 @@ func TestFromNPM(t *testing.T) {
 	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(portal, "package.json"))), &pj); err != nil {
 		t.Fatal(err)
 	}
-	for _, n := range []string{"@codi/client", "@codi/react", "@codi/ui"} {
+	for _, n := range []string{"@cicord/client", "@cicord/react", "@cicord/ui"} {
 		if pj.Dependencies[n] != "^0.1.0" || pj.Overrides[n] != "" || pj.Pnpm.Overrides[n] != "" {
 			t.Errorf("%s = %q (overrides %q %q)", n, pj.Dependencies[n], pj.Overrides[n], pj.Pnpm.Overrides[n])
 		}
 	}
 	if _, err := os.Stat(filepath.Join(portal, "vendor")); err == nil {
-		t.Error("vendor/ written with CODI_FROM_NPM")
+		t.Error("vendor/ written with CICORD_FROM_NPM")
 	}
 }
 
@@ -116,7 +116,7 @@ func TestPluginNewWithoutKit(t *testing.T) {
 
 // TestPluginNewTestsRunWithNode scaffolds a plugin outside the repository with the kit
 // embedded in this binary and runs its unit tests for real: `npm install --offline`
-// (the only dependency is the vendored @codi/sdk tarball) then `npm test`.
+// (the only dependency is the vendored @cicord/sdk tarball) then `npm test`.
 func TestPluginNewTestsRunWithNode(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short")
@@ -126,7 +126,7 @@ func TestPluginNewTestsRunWithNode(t *testing.T) {
 		t.Skip("portal kit not generated (make ui)")
 	}
 	if pkgs, _ := readKitPackages(kit); !hasPackage(pkgs, sdkPackage) {
-		t.Skip("the embedded kit has no @codi/sdk (make ui)")
+		t.Skip("the embedded kit has no @cicord/sdk (make ui)")
 	}
 	npm, err := exec.LookPath("npm")
 	if err != nil {

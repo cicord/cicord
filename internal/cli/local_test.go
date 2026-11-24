@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 type simServer struct {
@@ -24,7 +24,7 @@ type simServer struct {
 func ptr[T any](v T) *T { return &v }
 
 // buildLiveServer creates a hand-made Discord server in the simulator, as if it had been
-// configured by hand before adopting CODI.
+// configured by hand before adopting Cicord.
 func buildLiveServer(t *testing.T) *simServer {
 	t.Helper()
 	w := sim.NewWorld()
@@ -105,8 +105,8 @@ func buildLiveServer(t *testing.T) *simServer {
 func newRepo(t *testing.T, appID, serverKey string) string {
 	t.Helper()
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "codi.yaml"), "apiVersion: codi.dev/v1alpha1\nkind: Project\nmetadata:\n  name: test\nspec:\n  engine: \""+engineRange()+"\"\n")
-	writeFile(t, filepath.Join(dir, "bots", "gardien", "bot.yaml"), `apiVersion: codi.dev/v1alpha1
+	writeFile(t, filepath.Join(dir, "cicord.yaml"), "apiVersion: cicord.dev/v1alpha1\nkind: Project\nmetadata:\n  name: test\nspec:\n  engine: \""+engineRange()+"\"\n")
+	writeFile(t, filepath.Join(dir, "bots", "gardien", "bot.yaml"), `apiVersion: cicord.dev/v1alpha1
 kind: Bot
 metadata:
   name: gardien
@@ -159,7 +159,7 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 		t.Fatalf("validate = %d: %s", code, errOut)
 	}
 	// the resource map was written
-	store, err := sqlite.Open(filepath.Join(dir, ".codi", "state.db"))
+	store, err := sqlite.Open(filepath.Join(dir, ".cicord", "state.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,12 +215,12 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 	}
 
 	// adopt: lose the state, rebuild it by name
-	os.Remove(filepath.Join(dir, ".codi", "state.db"))
+	os.Remove(filepath.Join(dir, ".cicord", "state.db"))
 	code, out, _ = run(t, "plan", dir)
 	if code != 0 || !strings.Contains(out, "to adopt") {
 		t.Errorf("plan without state = %d\n%s", code, out)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".codi", "state.db")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, ".cicord", "state.db")); err == nil {
 		t.Error("plan created the state database")
 	}
 	code, out, errOut = run(t, "adopt", dir, "--yes")
@@ -256,7 +256,7 @@ func TestApplyCreatesFromScratch(t *testing.T) {
 	}
 	useSim(t, w, map[string]string{"DISCORD_TOKEN_GARDIEN": token})
 	dir := newRepo(t, appID, "fresh")
-	writeFile(t, filepath.Join(dir, "servers", "fresh.yaml"), `apiVersion: codi.dev/v1alpha1
+	writeFile(t, filepath.Join(dir, "servers", "fresh.yaml"), `apiVersion: cicord.dev/v1alpha1
 kind: Server
 metadata:
   name: fresh
@@ -281,7 +281,7 @@ spec:
 	if _, ok := w.RoleByName(srv.ID, "Member"); !ok {
 		t.Error("role not created")
 	}
-	store := must[*sqlite.Store](t)(sqlite.Open(filepath.Join(dir, ".codi", "state.db")))
+	store := must[*sqlite.Store](t)(sqlite.Open(filepath.Join(dir, ".cicord", "state.db")))
 	defer store.Close()
 	r, err := store.Resources().Get(context.Background(), "fresh", state.KindChannel, "general")
 	if ch, ok := w.ChannelByName(srv.ID, "general"); err != nil || !ok || r.ID != ch.ID {

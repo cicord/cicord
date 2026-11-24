@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/sim"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/sim"
 )
 
 // ───────────────────────────────────────────────────────────── DTOs
@@ -139,7 +139,7 @@ func toMessages(ms []discord.Message) []messageDTO {
 func (s *server) simOnly(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.opts.Sim == nil {
-			writeError(w, http.StatusNotFound, "not_found", "the simulator is not enabled (codi dev --sim)")
+			writeError(w, http.StatusNotFound, "not_found", "the simulator is not enabled (cicord dev --sim)")
 			return
 		}
 		fn(w, r)

@@ -1,5 +1,5 @@
 /** Wizard steps 4–8: repository + import, admin login, verify, first plugin, done. */
-import { CodiApiError, type Plan } from "@codi/client";
+import { CicordApiError, type Plan } from "@cicord/client";
 import {
   ArrowRight,
   CheckCircle2,
@@ -567,7 +567,7 @@ function PluginReview({
   };
   useEffect(() => {
     const e = a.error;
-    if (e instanceof CodiApiError && e.diagnostics.length)
+    if (e instanceof CicordApiError && e.diagnostics.length)
       setServerErrors(mapDiagnostics(e.diagnostics, collectPointers(schema, draft)).byField);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a.error]);
@@ -807,7 +807,7 @@ export function DoneStep({ view, api, onView }: StepProps) {
             {t("setup.done.cli")}
           </p>
           <p className="mt-0.5 text-[13px] text-muted-foreground">{t("setup.done.cliText")}</p>
-          <CopyField value="codi plan --remote" />
+          <CopyField value="cicord plan --remote" />
         </li>
       </ul>
       {!loginOn ? (

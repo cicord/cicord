@@ -14,15 +14,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 const (
-	sessionCookie = "codi_session"
-	oauthCookie   = "codi_oauth_state"
+	sessionCookie = "cicord_session"
+	oauthCookie   = "cicord_oauth_state"
 	maxLinkTTL    = 24 * time.Hour
 )
 
@@ -99,7 +99,7 @@ func (s *server) identify(r *http.Request) (*identity, error) {
 	var d sessionData
 	_ = json.Unmarshal(sess.Data, &d)
 	if d.Token || d.Method == setupSessionMethod {
-		return nil, nil // token / setup sessions are never accepted as codi_session cookies
+		return nil, nil // token / setup sessions are never accepted as cicord_session cookies
 	}
 	return &identity{sessionID: sess.ID, data: d, user: discord.User{
 		ID: sess.UserID, Username: d.Username, GlobalName: d.DisplayName, AvatarURL: d.AvatarURL,
@@ -617,7 +617,7 @@ func (s *server) publicURL(r *http.Request) string {
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	cid := s.clientID()
 	if cid == "" || s.clientSecret() == "" {
-		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "Discord login is not configured (CODI_DISCORD_CLIENT_SECRET)"))
+		s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "Discord login is not configured (CICORD_DISCORD_CLIENT_SECRET)"))
 		return
 	}
 	mode := r.URL.Query().Get("mode")

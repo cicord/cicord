@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 const baseYAML = `
-apiVersion: codi.dev/v1alpha1
+apiVersion: cicord.dev/v1alpha1
 kind: Server
 metadata: {name: test}
 spec:

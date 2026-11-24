@@ -2,7 +2,7 @@
 //
 // It implements discord.Connector and discord.Session (hence discord.Client) entirely
 // in-process, so the reconciler, the bot host, plugins, end-to-end tests and
-// `codi dev --sim` can run without real Discord. Its behaviour follows the real API
+// `cicord dev --sim` can run without real Discord. Its behaviour follows the real API
 // closely enough that code tested against it should also work against the real API.
 // That covers permissions and role hierarchy, gateway intents, message-content gating,
 // position normalization and the interaction lifecycle with its 3 s deadline.
@@ -12,7 +12,7 @@
 //	w := sim.NewWorld()
 //	owner := w.CreateUser("owner")
 //	alice := w.CreateUser("alice")
-//	token, bot, appID := w.CreateBot("codi")
+//	token, bot, appID := w.CreateBot("cicord")
 //	srv := w.CreateServer("Test", owner.ID, sim.WithGeneralChannel())
 //	_ = w.AddMember(srv.ID, alice.ID)
 //	_, _ = w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator"))
@@ -87,8 +87,8 @@
 // Discord's limits (rules per trigger, keyword/regex/allow-list sizes, actions per
 // trigger, timeout ≤ 4 weeks with ModerateMembers).
 //
-// `codi dev --sim` honors two Server annotations: sim.codi.dev/boosts ("14") and
-// sim.codi.dev/features ("PARTNERED,VERIFIED"); POST /api/v1/sim/servers/{id}/boosts
+// `cicord dev --sim` honors two Server annotations: sim.cicord.dev/boosts ("14") and
+// sim.cicord.dev/features ("PARTNERED,VERIFIED"); POST /api/v1/sim/servers/{id}/boosts
 // with {"count": n} changes the boosts of a running simulator.
 //
 // # Errors

@@ -1,10 +1,10 @@
-import type { Embed, Message, MessagePayload } from "@codi/sdk";
+import type { Embed, Message, MessagePayload } from "@cicord/sdk";
 import {
   callRoute,
   createTestContext,
   runCommand,
   type TestContextOptions,
-} from "@codi/sdk/testing";
+} from "@cicord/sdk/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";

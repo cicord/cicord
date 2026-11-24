@@ -3,7 +3,7 @@ package sim
 import (
 	"context"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // ───────────────────────────────────────────────────────────── admin mutations

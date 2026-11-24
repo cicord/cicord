@@ -7,8 +7,8 @@ import type {
   PlanBlocked,
   PlanChange,
   SyncRecord,
-} from "@codi/client";
-import { useCodi } from "@codi/react";
+} from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import {
   CircleCheck,
   CircleHelp,
@@ -72,7 +72,7 @@ import { Swatch } from "../schema-form/index.ts";
 
 export function SyncButton({ serverKey, size }: { serverKey: string; size?: "sm" | "default" }) {
   const { t } = useTranslation();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = async () => {

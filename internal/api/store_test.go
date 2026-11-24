@@ -13,12 +13,12 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/secrets"
-	"github.com/npjonath/codi/internal/state/sqlite"
-	"github.com/npjonath/codi/internal/store"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/secrets"
+	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/store"
 )
 
 func gitRepo(t *testing.T, files map[string]string, tags ...string) string {
@@ -53,7 +53,7 @@ func gitRepo(t *testing.T, files map[string]string, tags ...string) string {
 	return dir
 }
 
-const helloManifest = `apiVersion: codi.dev/v1alpha1
+const helloManifest = `apiVersion: cicord.dev/v1alpha1
 kind: Plugin
 metadata:
   name: hello
@@ -66,7 +66,7 @@ spec:
   capabilities: [discord.messages.send]
 `
 
-const helloSource = `import { command, definePlugin } from "@codi/sdk";
+const helloSource = `import { command, definePlugin } from "@cicord/sdk";
 
 export default definePlugin({
   commands: {
@@ -97,12 +97,12 @@ func startStoreRepo(t *testing.T) (*env, string) {
 // startStoreRepoWith is startStoreRepo with another hook on the repository.
 func startStoreRepoWith(t *testing.T, prepare func(dir string)) (*env, string) {
 	t.Helper()
-	t.Setenv("CODI_CACHE_DIR", t.TempDir())
+	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
 	plugin := gitRepo(t, map[string]string{"plugin.yaml": helloManifest, "src/index.ts": helloSource}, "v1.0.0")
 	reg := gitRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: " + plugin + "\n    publisher: acme\n    verified: true\n    keywords: [greetings]\n"})
 	cache := registry.DefaultCacheDir()
 	return startFull(t, func(dir string) {
-		p := filepath.Join(dir, "codi.yaml")
+		p := filepath.Join(dir, "cicord.yaml")
 		data, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
@@ -152,7 +152,7 @@ func TestStoreBrowseAndInstallFromRegistry(t *testing.T) {
 
 	var list storeSourcesDTO
 	c.expect(200, "GET", "/api/v1/store", nil).json(t, &list)
-	if len(list.Sources) != 2 || list.Sources[0].Name != "codi" || list.Sources[0].Trust != "official" || list.Sources[0].Kind != "bundled" {
+	if len(list.Sources) != 2 || list.Sources[0].Name != "cicord" || list.Sources[0].Trust != "official" || list.Sources[0].Kind != "bundled" {
 		t.Fatalf("sources = %+v", list.Sources)
 	}
 	acme := list.Sources[1]
@@ -208,7 +208,7 @@ func TestStoreBrowseAndInstallFromRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if le := lock.Plugins["acme/hello"]; le.Commit != d.Commit || le.Integrity != d.Integrity {
-		t.Errorf("codi.lock = %+v", lock.Plugins)
+		t.Errorf("cicord.lock = %+v", lock.Plugins)
 	}
 
 	// Installed instances show up in the Store; a used registry cannot be removed.
@@ -224,14 +224,14 @@ func TestStoreBrowseAndInstallFromRegistry(t *testing.T) {
 		t.Fatalf("second install: %d %s", r.status, r.body)
 	}
 
-	// Uninstall: the instance and its codi.lock entry go; the registry can then be removed.
+	// Uninstall: the instance and its cicord.lock entry go; the registry can then be removed.
 	var un struct {
 		Removed bool
 		Cleaned []string
 		Mode    string
 	}
 	c.expect(200, "DELETE", "/api/v1/servers/"+serverKey+"/plugins/moderator/hello", nil).json(t, &un)
-	if !un.Removed || un.Mode != "commit" || len(un.Cleaned) != 1 || un.Cleaned[0] != "codi.lock: acme/hello" {
+	if !un.Removed || un.Mode != "commit" || len(un.Cleaned) != 1 || un.Cleaned[0] != "cicord.lock: acme/hello" {
 		t.Fatalf("uninstall = %+v", un)
 	}
 	bot, _ = os.ReadFile(filepath.Join(e.dir, "bots", "moderator", "bot.yaml"))
@@ -239,7 +239,7 @@ func TestStoreBrowseAndInstallFromRegistry(t *testing.T) {
 		t.Errorf("bot.yaml still has the instance:\n%s", bot)
 	}
 	if lock, _ := registry.ReadLock(e.dir); len(lock.Plugins) != 0 {
-		t.Errorf("codi.lock = %+v", lock.Plugins)
+		t.Errorf("cicord.lock = %+v", lock.Plugins)
 	}
 	e.waitFor("instance gone", func() bool { return len(e.rt.Instances(serverKey)) > 0 && !hasInstance(e, "hello") })
 	c.expect(404, "DELETE", "/api/v1/servers/"+serverKey+"/plugins/moderator/hello", nil)
@@ -291,7 +291,7 @@ func TestStoreRegistryManagement(t *testing.T) {
 	owner.login(e.seed.Owner.ID)
 
 	for _, body := range []map[string]string{
-		{"name": "codi", "url": "https://example.org/r.git"},
+		{"name": "cicord", "url": "https://example.org/r.git"},
 		{"name": "Bad Name", "url": "https://example.org/r.git"},
 		{"name": "local", "url": "file:///etc"},
 		{"name": "local", "url": "/tmp/registry"},
@@ -314,15 +314,15 @@ func TestStoreRegistryManagement(t *testing.T) {
 		t.Errorf("moderator browse: %d %s", r.status, r.body)
 	}
 
-	// Removing an unused registry rewrites codi.yaml.
+	// Removing an unused registry rewrites cicord.yaml.
 	var wr struct{ Mode string }
 	owner.expect(200, "DELETE", "/api/v1/registries/acme", nil).json(t, &wr)
 	if wr.Mode != "commit" {
 		t.Errorf("mode = %q", wr.Mode)
 	}
-	data, _ := os.ReadFile(filepath.Join(e.dir, "codi.yaml"))
+	data, _ := os.ReadFile(filepath.Join(e.dir, "cicord.yaml"))
 	if strings.Contains(string(data), "name: acme") {
-		t.Errorf("codi.yaml still lists acme:\n%s", data)
+		t.Errorf("cicord.yaml still lists acme:\n%s", data)
 	}
 	e.waitFor("registry removed", func() bool {
 		r := e.rt.Repo()
@@ -331,7 +331,7 @@ func TestStoreRegistryManagement(t *testing.T) {
 	owner.expect(404, "DELETE", "/api/v1/registries/acme", nil)
 }
 
-// Private registries: the token goes to the secret store, codi.yaml only names it, the
+// Private registries: the token goes to the secret store, cicord.yaml only names it, the
 // index fetch carries it for the registry host, and it can be replaced or removed.
 func TestPrivateRegistryTokens(t *testing.T) {
 	db, err := sqlite.Open(":memory:")
@@ -370,11 +370,11 @@ func TestPrivateRegistryTokens(t *testing.T) {
 		t.Fatalf("add without token: %d %s", r.status, r.body)
 	}
 	c.expect(200, "POST", "/api/v1/registries", map[string]string{"name": "corp", "url": regURL, "token": "t0k3n"})
-	data, _ := os.ReadFile(filepath.Join(e.dir, "codi.yaml"))
-	if !strings.Contains(string(data), "secretRef: CODI_REGISTRY_CORP_TOKEN") || strings.Contains(string(data), "t0k3n") {
-		t.Fatalf("codi.yaml:\n%s", data)
+	data, _ := os.ReadFile(filepath.Join(e.dir, "cicord.yaml"))
+	if !strings.Contains(string(data), "secretRef: CICORD_REGISTRY_CORP_TOKEN") || strings.Contains(string(data), "t0k3n") {
+		t.Fatalf("cicord.yaml:\n%s", data)
 	}
-	if v, err := sec.Get(t.Context(), "CODI_REGISTRY_CORP_TOKEN"); err != nil || v != "t0k3n" {
+	if v, err := sec.Get(t.Context(), "CICORD_REGISTRY_CORP_TOKEN"); err != nil || v != "t0k3n" {
 		t.Fatalf("secret = %q, %v", v, err)
 	}
 	e.waitFor("registry active", func() bool { r := e.rt.Repo(); return r != nil && len(r.Project.Spec.Registries) == 1 })
@@ -395,18 +395,18 @@ func TestPrivateRegistryTokens(t *testing.T) {
 		t.Fatal("the token leaked into the Store listing")
 	}
 
-	// Replace the token (no commit: codi.yaml already names the secret), then remove it.
+	// Replace the token (no commit: cicord.yaml already names the secret), then remove it.
 	c.expect(200, "PUT", "/api/v1/registries/corp/token", map[string]string{"token": "n3w"})
-	if v, _ := sec.Get(t.Context(), "CODI_REGISTRY_CORP_TOKEN"); v != "n3w" {
+	if v, _ := sec.Get(t.Context(), "CICORD_REGISTRY_CORP_TOKEN"); v != "n3w" {
 		t.Errorf("token not replaced: %q", v)
 	}
 	c.expect(200, "DELETE", "/api/v1/registries/corp/token", nil)
-	if sec.Has(t.Context(), "CODI_REGISTRY_CORP_TOKEN") {
+	if sec.Has(t.Context(), "CICORD_REGISTRY_CORP_TOKEN") {
 		t.Error("token not deleted")
 	}
-	data, _ = os.ReadFile(filepath.Join(e.dir, "codi.yaml"))
+	data, _ = os.ReadFile(filepath.Join(e.dir, "cicord.yaml"))
 	if strings.Contains(string(data), "secretRef") {
-		t.Errorf("secretRef left in codi.yaml:\n%s", data)
+		t.Errorf("secretRef left in cicord.yaml:\n%s", data)
 	}
 	mod := e.client()
 	mod.login(e.moderator().ID)
@@ -464,14 +464,14 @@ func TestPaginatedTables(t *testing.T) {
 
 	// Installed instances: paginated, with their origin.
 	c.expect(200, "GET", "/api/v1/servers/"+serverKey+"/plugins?limit=1&sort=instance", nil).json(t, &p)
-	if p.Total < 1 || len(p.Items) != 1 || p.Items[0].Source != "codi" || p.Items[0].Trust != "official" {
+	if p.Total < 1 || len(p.Items) != 1 || p.Items[0].Source != "cicord" || p.Items[0].Trust != "official" {
 		t.Fatalf("instances = %+v", p)
 	}
 	var one struct {
 		Instance, Bot, Source string
 	}
 	c.expect(200, "GET", "/api/v1/servers/"+serverKey+"/plugins/moderator/welcome", nil).json(t, &one)
-	if one.Instance != "welcome" || one.Source != "codi" {
+	if one.Instance != "welcome" || one.Source != "cicord" {
 		t.Errorf("instance = %+v", one)
 	}
 	c.expect(404, "GET", "/api/v1/servers/"+serverKey+"/plugins/moderator/nope", nil)

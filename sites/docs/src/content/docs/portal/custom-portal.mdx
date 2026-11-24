@@ -1,6 +1,6 @@
 ---
 title: Custom portal
-description: Fork the reference portal with codi portal init, build it with codi portal build, type plugin routes with codi portal typegen, and develop against codi dev.
+description: Fork the reference portal with cicord portal init, build it with cicord portal build, type plugin routes with cicord portal typegen, and develop against cicord dev.
 ---
 
 import { FileTree, Steps } from "@astrojs/starlight/components";
@@ -10,10 +10,10 @@ The runtime then serves **your build** at `/`, from the active revision.
 
 <Steps>
 
-1. **Scaffold** it inside your CODI repository (the directory with `codi.yaml`):
+1. **Scaffold** it inside your Cicord repository (the directory with `cicord.yaml`):
 
    ```sh
-   codi portal init            # → portal/   (or: codi portal init <dir>)
+   cicord portal init            # → portal/   (or: cicord portal init <dir>)
    ```
 
 2. **Build** it:
@@ -22,26 +22,26 @@ The runtime then serves **your build** at `/`, from the active revision.
    cd portal && pnpm install && pnpm build
    ```
 
-3. **Point the runtime at the build** in `codi.yaml`:
+3. **Point the runtime at the build** in `cicord.yaml`:
 
-   ```yaml title="codi.yaml"
+   ```yaml title="cicord.yaml"
    spec:
      portal:
-       path: ./portal/dist # the build output, relative to codi.yaml
+       path: ./portal/dist # the build output, relative to cicord.yaml
    ```
 
 4. **Commit everything**, the build included:
 
    ```sh
-   git add portal codi.yaml    # sources, pnpm-lock.yaml, vendor/ AND dist/
+   git add portal cicord.yaml    # sources, pnpm-lock.yaml, vendor/ AND dist/
    ```
 
-5. From then on, `codi portal build` (from the repository root) runs the install when needed,
+5. From then on, `cicord portal build` (from the repository root) runs the install when needed,
    regenerates the route types and builds into `spec.portal.path`.
 
 </Steps>
 
-## What `codi portal init` writes
+## What `cicord portal init` writes
 
 The reference portal is React 19 with Vite+.
 
@@ -53,19 +53,19 @@ The reference portal is React 19 with Vite+.
     - portal.tsx server selection, theme, navigation, sign-in
     - i18n/ en, fr
     - mock/ an in-browser fake runtime for `pnpm dev`
-    - codi-routes.d.ts the types of the repository's plugin routes
-  - vendor/ `@codi/client`, `@codi/react`, `@codi/ui` tarballs, from the codi binary
+    - cicord-routes.d.ts the types of the repository's plugin routes
+  - vendor/ `@cicord/client`, `@cicord/react`, `@cicord/ui` tarballs, from the cicord binary
   - package.json `file:` dependencies on vendor/
 - .github/
   - workflows/
-    - codi-portal.yml rebuilds and checks the committed build
+    - cicord-portal.yml rebuilds and checks the committed build
 
 </FileTree>
 
-The `@codi/*` packages are not on npm yet, so they are vendored as `file:` dependencies (plus
-`pnpm.overrides`, because `@codi/react` depends on `@codi/client` by version). Once they are
-published, `codi portal init --from-npm` (or `CODI_FROM_NPM=true`) writes
-`"@codi/client": "^<version of codi>"` instead, with no `vendor/`. `--force` writes into a
+The `@cicord/*` packages are not on npm yet, so they are vendored as `file:` dependencies (plus
+`pnpm.overrides`, because `@cicord/react` depends on `@cicord/client` by version). Once they are
+published, `cicord portal init --from-npm` (or `CICORD_FROM_NPM=true`) writes
+`"@cicord/client": "^<version of cicord>"` instead, with no `vendor/`. `--force` writes into a
 non-empty directory.
 
 The **Developers** page is a live map of the SDK: the session (cookie or token), every portal
@@ -80,16 +80,16 @@ output must be in that revision. Committing `dist/` keeps the served portal exac
 reviewed, works with every source provider (GitHub, git, embedded, local) and needs no
 artifact storage. Vite builds are deterministic for the same lockfile.
 
-The generated `.github/workflows/codi-portal.yml` rebuilds the portal on every pull request
+The generated `.github/workflows/cicord-portal.yml` rebuilds the portal on every pull request
 and push, runs its tests, and **fails when the committed `dist/` differs from a fresh build**,
-so reviewers only need to read `src/`. Locally, `codi portal build --check` does the same.
+so reviewers only need to read `src/`. Locally, `cicord portal build --check` does the same.
 
 The runtime serves `<active revision>/<path>` at `/` with an SPA fallback, swaps it with every
 new revision (no restart), and never lets it shadow `/api`, `/auth`, `/hooks`, `/admin`,
 `/healthz` or `/readyz`. Files are read through a root confined to the portal directory: `..`
 and symbolic links leading outside are refused.
 
-`codi validate` checks `spec.portal.path`: outside the repository, through a symbolic link or
+`cicord validate` checks `spec.portal.path`: outside the repository, through a symbolic link or
 not a directory is an **error**; missing, or without `index.html`, is a **warning** (the
 runtime serves the default portal until the build is committed).
 
@@ -100,7 +100,7 @@ like code.
 
 ## Typed plugin routes
 
-`codi portal init` and `codi portal build` write `src/codi-routes.d.ts`; `codi portal typegen`
+`cicord portal init` and `cicord portal build` write `src/cicord-routes.d.ts`; `cicord portal typegen`
 regenerates it on its own. It describes the routes of **every plugin installed in the
 repository** (every instance of every bot, local or from a registry), keyed by plugin name
 then route key, with their access level, path parameters and the query, body and response
@@ -108,7 +108,7 @@ types of each plugin's [route contract](../../plugins/api/#typed-routes). Routes
 without a contract are typed as untyped JSON. Commit the file.
 
 ```tsx
-import { useRouteQuery, useRouteMutation } from "@codi/react";
+import { useRouteQuery, useRouteMutation } from "@cicord/react";
 
 // The instance is found by plugin name in PortalServer.plugins; no instance → idle query.
 const board = useRouteQuery("levels", "GET /leaderboard", { query: { limit: 50 } });
@@ -118,8 +118,8 @@ const poll = useRouteQuery("polls", "GET /polls/:id", { params: { id } });
 
 An unknown route, a missing or extra path parameter, a wrong query or body and a wrong use of
 the response are type errors, so a portal build fails when a plugin changes its contract.
-`codi portal typegen --check` (also a step of `codi-portal.yml`, which runs when `plugins/`,
-`bots/` or `codi.lock` change) and `codi portal build --check` fail when the file is out of
+`cicord portal typegen --check` (also a step of `cicord-portal.yml`, which runs when `plugins/`,
+`bots/` or `cicord.lock` change) and `cicord portal build --check` fail when the file is out of
 date.
 
 ## Dev loop
@@ -127,22 +127,22 @@ date.
 Two terminals:
 
 ```sh
-codi dev --sim                       # runtime + Discord simulator on http://127.0.0.1:7420
+cicord dev --sim                       # runtime + Discord simulator on http://127.0.0.1:7420
 cd portal && pnpm dev:runtime        # Vite dev server on http://localhost:5174, hot reload
 ```
 
-`pnpm dev:runtime` proxies `/api` and `/auth` to `CODI_RUNTIME_URL` (default
+`pnpm dev:runtime` proxies `/api` and `/auth` to `CICORD_RUNTIME_URL` (default
 `http://127.0.0.1:7420`), so the page and the API are same-origin and cookie sessions work.
 The proxy keeps a loopback `Host` and rewrites `Origin` to the runtime's, which dev mode
 requires.
 
-`codi dev --sim` has no Discord OAuth: the portal's sign-in block lists the simulated users and
+`cicord dev --sim` has no Discord OAuth: the portal's sign-in block lists the simulated users and
 signs in with the dev login.
 
 Other loops:
 
 - `pnpm dev` (mock mode) needs no runtime at all: `src/mock` fakes the API in the browser
   (`?role=moderator` previews the moderator pages, `?mode=light` the light palette);
-- `codi dev` also serves the committed build: run `codi portal build` and the next revision
+- `cicord dev` also serves the committed build: run `cicord portal build` and the next revision
   serves it at `http://127.0.0.1:7420/`;
 - `pnpm test` runs the portal's tests (Vitest and Testing Library, against the mock).

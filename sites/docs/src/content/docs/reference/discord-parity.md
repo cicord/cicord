@@ -1,19 +1,19 @@
 ---
 title: Discord parity
-description: Which Discord server settings CODI can declare and reconcile, which are not supported yet, and which only the Discord client can change.
+description: Which Discord server settings Cicord can declare and reconcile, which are not supported yet, and which only the Discord client can change.
 ---
 
 Goal: everything a server owner can set in Discord **and** that the bot API allows is
 declarable in YAML, one to one; the rest is listed here as "Discord only". This table comes
 from an audit of the Discord server settings against the `Server` resource.
 
-**Legend.** **Yes**: declared in YAML and reconciled. **Not yet**: the API allows it, CODI does
+**Legend.** **Yes**: declared in YAML and reconciled. **Not yet**: the API allows it, Cicord does
 not support it yet. **Discord only**: not settable by a bot. **Data**: runtime data, not
 configuration.
 
 ## Server profile and overview
 
-| Discord setting | CODI | Field and notes |
+| Discord setting | Cicord | Field and notes |
 |---|---|---|
 | Name | Yes | `profile.name` |
 | Icon | Yes | `profile.icon`; animated icons need boost level 1. Also uploadable from the admin console. |
@@ -27,7 +27,7 @@ configuration.
 
 ## Engagement
 
-| Discord setting | CODI | Field and notes |
+| Discord setting | Cicord | Field and notes |
 |---|---|---|
 | System messages channel | Yes | `profile.systemChannel` |
 | System message toggles | Yes | `profile.systemChannelFlags`: `welcomeMessages`, `welcomeStickerReplies`, `boostMessages`, `setupTips`, `roleSubscriptionMessages`, `roleSubscriptionStickerReplies` |
@@ -38,7 +38,7 @@ configuration.
 
 ## Access and safety
 
-| Discord setting | CODI | Field and notes |
+| Discord setting | Cicord | Field and notes |
 |---|---|---|
 | Verification level | Yes | `profile.verificationLevel` |
 | Explicit (sensitive) content filter | Yes | `profile.explicitContentFilter` |
@@ -47,9 +47,9 @@ configuration.
 
 ## Community
 
-| Discord setting | CODI | Field and notes |
+| Discord setting | Cicord | Field and notes |
 |---|---|---|
-| Enable Community | Yes | `community.enabled`; prerequisites (rules and updates channels, verification at least low, content filter on all members) are checked by `codi validate` and blocked in the plan with the missing list. |
+| Enable Community | Yes | `community.enabled`; prerequisites (rules and updates channels, verification at least low, content filter on all members) are checked by `cicord validate` and blocked in the plan with the missing list. |
 | Rules channel | Yes | `community.rulesChannel` (`profile.rulesChannel` is a deprecated alias) |
 | Community updates channel | Yes | `community.updatesChannel` |
 | Welcome screen | Yes | `welcomeScreen` |
@@ -58,7 +58,7 @@ configuration.
 
 ## Roles
 
-| Discord setting | CODI | Field and notes |
+| Discord setting | Cicord | Field and notes |
 |---|---|---|
 | Name, color, hoist, mentionable, permissions, hierarchy | Yes | `roles`, `hierarchy` |
 | Gradient and holographic colors | Yes | `roles.*.colors`; boost level 2. `color` stays the solid shorthand. |
@@ -69,7 +69,7 @@ configuration.
 
 ## Channels and categories
 
-| Discord setting | CODI | Field and notes |
+| Discord setting | Cicord | Field and notes |
 |---|---|---|
 | Name, type, category, position, topic, NSFW, slowmode, overwrites, sync with category | Yes | |
 | Voice bitrate, user limit, region, video quality | Yes | `bitrate`, `userLimit`, `voiceRegion`, `videoQuality` |
@@ -81,7 +81,7 @@ configuration.
 
 ## Expressions and moderation
 
-| Discord setting | CODI | Field and notes |
+| Discord setting | Cicord | Field and notes |
 |---|---|---|
 | Emojis | Yes | `emojis: { key: { name, image, roles } }`; slots per boost level blocked in the plan. |
 | Stickers | Yes | `stickers: { key: { name, description, emoji, file } }` |
@@ -98,7 +98,7 @@ The admin console and the planner read the live boost level and boost count, the
 boost level are **blocked in the plan with a clear reason** ("banner requires boost level 2,
 server is level 0") instead of failing on apply.
 
-`codi import` (and the setup wizard's import) downloads the server icon, banner and invite
+`cicord import` (and the setup wizard's import) downloads the server icon, banner and invite
 splash, role icons, emojis (GIF when animated), stickers and soundboard sounds into
 `servers/assets/<server>/`, so the first plan is empty. Files over Discord's upload limits and
 managed emojis are reported and skipped.
@@ -107,15 +107,15 @@ managed emojis are reported and skipped.
 
 - **Default mention spam rule.** A Community server lists a "Block Mention Spam" rule created
   by Discord's AutoMod system user. It is a placeholder that does not count toward the caps;
-  CODI ignores it, and declaring a real `mentionSpam` rule replaces it.
+  Cicord ignores it, and declaring a real `mentionSpam` rule replaces it.
 - **Once-per-server triggers** (`mentionSpam`, `spam`, `keywordPreset`, `memberProfile`): an
   existing rule with that trigger is adopted whatever its name, and renamed.
 - **The mention spam rule cannot be deleted on a Community server**: removing its key with
   prune is blocked in the plan (`undeletable`); set `enabled: false` instead.
 - **Onboarding default channels must be open to `@everyone`** (`ViewChannel`, plus `Connect`
-  for voice and stage), and 5 of them must let `@everyone` send messages. `codi validate`
+  for voice and stage), and 5 of them must let `@everyone` send messages. `cicord validate`
   reports both when `spec.everyone` is declared.
-- **Roles can share a position** after a drag in the Discord client. CODI ranks tied roles the
+- **Roles can share a position** after a drag in the Discord client. Cicord ranks tied roles the
   way Discord does (the older role is higher), so hierarchy checks and reordering see the real
   order.
 
@@ -127,7 +127,7 @@ They are complementary and can run together:
   a Community server: default channels and a few questions that grant roles and channels. It
   needs Community, and at least 7 default channels (5 where `@everyone` can send messages) in
   default mode.
-- **The CODI [onboarding plugin](../../plugins/official/#onboarding)** runs on the community
+- **The Cicord [onboarding plugin](../../plugins/official/#onboarding)** runs on the community
   portal (and with `/onboarding`): richer steps, custom logic, links to the portal profile. It
   works on any server.
 

@@ -1,4 +1,4 @@
-import type { Json, ServerResources } from "@codi/client";
+import type { Json, ServerResources } from "@cicord/client";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -119,7 +119,7 @@ describe("rendering the welcome schema", () => {
     const channel = screen.getByRole("combobox", { name: "Channel" });
     expect(channel.textContent).toContain("général");
     expect(screen.getByText("Channel where welcome messages are posted.")).toBeTruthy();
-    // x-codi-widget: textarea
+    // x-cicord-widget: textarea
     const message = screen.getByRole("textbox", { name: "Message" });
     expect(message.tagName).toBe("TEXTAREA");
     expect((message as HTMLTextAreaElement).value).toBe("Bienvenue {member} sur {server} !");
@@ -179,7 +179,7 @@ describe("rendering the welcome schema", () => {
     expect(screen.getAllByText("Admins only")).toHaveLength(3);
   });
 
-  test("editableFor mirrors x-codi-access", () => {
+  test("editableFor mirrors x-cicord-access", () => {
     expect(editableFor(welcome, "admin")).toEqual([
       "autoRole",
       "channel",
@@ -326,12 +326,12 @@ describe("validation", () => {
     expect(isDuration("10 minutes")).toBe(false);
   });
 
-  test("x-codi-ref on an array applies to its items (lists of roles or channels)", () => {
+  test("x-cicord-ref on an array applies to its items (lists of roles or channels)", () => {
     // As in the showcase plugins: polls.managerRoles, levels.ignoredChannels.
     const schema = {
       type: "object",
       properties: {
-        roles: { type: "array", items: { type: "string" }, default: [], "x-codi-ref": "role" },
+        roles: { type: "array", items: { type: "string" }, default: [], "x-cicord-ref": "role" },
       },
     } as unknown as JsonSchema;
     expect(validate(schema, { roles: [] }, resources)).toEqual([]);
@@ -383,7 +383,7 @@ describe("markdown", () => {
     render(
       <Markdown
         source={
-          "**Hi** <@42> in <#7>\n[portal](https://example.org/onboarding?codi_token=x) [bad](javascript:alert(1)) {member}"
+          "**Hi** <@42> in <#7>\n[portal](https://example.org/onboarding?cicord_token=x) [bad](javascript:alert(1)) {member}"
         }
         placeholders
         resolveMention={(kind, id) =>
@@ -395,7 +395,7 @@ describe("markdown", () => {
     expect(screen.getByText("Alice", { exact: false }).textContent).toBe("@Alice");
     expect(screen.getByText("général", { exact: false }).textContent).toBe("#général");
     const link = screen.getByRole("link", { name: "portal" });
-    expect(link.getAttribute("href")).toBe("https://example.org/onboarding?codi_token=x");
+    expect(link.getAttribute("href")).toBe("https://example.org/onboarding?cicord_token=x");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
     expect(screen.getByText("{member}").className).toBe("md-placeholder");
@@ -411,10 +411,10 @@ describe("every widget kind (synthetic schema)", () => {
       ratio: { type: "number" },
       mode: { type: "string", enum: ["fast", "slow"] },
       level: { type: "string", enum: ["one", "two", "three", "four", "five"] },
-      parent: { type: "string", "x-codi-ref": "category" },
-      accent: { type: "string", "x-codi-widget": "color" },
-      body: { type: "string", "x-codi-widget": "markdown" },
-      delay: { type: "string", "x-codi-widget": "duration" },
+      parent: { type: "string", "x-cicord-ref": "category" },
+      accent: { type: "string", "x-cicord-widget": "color" },
+      body: { type: "string", "x-cicord-widget": "markdown" },
+      delay: { type: "string", "x-cicord-widget": "duration" },
       limits: {
         type: "object",
         description: "Nested object.",
@@ -446,7 +446,7 @@ describe("every widget kind (synthetic schema)", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Level" }), "four");
     expect(value["level"]).toBe("four");
 
-    // x-codi-ref: category
+    // x-cicord-ref: category
     await user.click(screen.getByRole("combobox", { name: "Parent" }));
     await user.click(screen.getByRole("option", { name: /Communauté/ }));
     expect(value["parent"]).toBe("community");

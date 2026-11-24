@@ -28,7 +28,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <link rel="icon" type="image/svg+xml" href={url("favicon.svg")} />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="CODI" />
+    <meta property="og:site_name" content="Cicord" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
@@ -45,9 +45,9 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <a class="skip" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="wrap site-header__inner">
-        <a class="brand" href={links.home} aria-label="CODI home">
+        <a class="brand" href={links.home} aria-label="Cicord home">
           <Logo />
-          <span class="brand__word" aria-hidden="true">codi</span>
+          <span class="brand__word" aria-hidden="true">cicord</span>
         </a>
         <nav aria-label="Main">
           <ul class="nav">
@@ -67,11 +67,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <footer class="site-footer">
       <div class="wrap site-footer__inner">
         <div class="site-footer__brand">
-          <a class="brand" href={links.home} aria-label="CODI home">
+          <a class="brand" href={links.home} aria-label="Cicord home">
             <Logo />
-            <span class="brand__word" aria-hidden="true">codi</span>
+            <span class="brand__word" aria-hidden="true">cicord</span>
           </a>
-          <p>CI/CD Oriented Discord Integration. GitOps for Discord servers and bots.</p>
+          <p>CI/CD for Discord. GitOps for Discord servers and bots.</p>
         </div>
         <nav aria-label="Footer">
           <ul class="site-footer__links">
@@ -85,9 +85,9 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
         </nav>
         <div class="site-footer__legal">
           <p>
-          The SDKs (<code>@codi/sdk</code>, <code>@codi/client</code>, <code>@codi/react</code>,
-          <code>@codi/ui</code>, <code>create-codi-portal</code>) are licensed under Apache-2.0. The
-          license of the runtime, the CLI and the admin console is to be announced. CODI is an
+          The SDKs (<code>@cicord/sdk</code>, <code>@cicord/client</code>, <code>@cicord/react</code>,
+          <code>@cicord/ui</code>, <code>create-cicord-portal</code>) are licensed under Apache-2.0. The
+          license of the runtime, the CLI and the admin console is to be announced. Cicord is an
           independent project, not affiliated with Discord.
           </p>
         </div>

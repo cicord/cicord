@@ -5,11 +5,11 @@
 //   - values are sealed with AES-256-GCM (random 96-bit nonce per write); the secret
 //     name is the additional authenticated data, so a ciphertext cannot be moved to
 //     another name;
-//   - the 32-byte key comes from CODI_SECRET_KEY (base64 or hex of exactly 32 bytes) or
+//   - the 32-byte key comes from CICORD_SECRET_KEY (base64 or hex of exactly 32 bytes) or
 //     from a key file generated in the data dir with mode 0600 (LoadKey);
 //   - a sentinel ciphertext detects a wrong key at startup (Open fails instead of
 //     returning garbage later);
-//   - ciphertexts live in the state KV scope "codi:secrets" (JSON objects), so no schema
+//   - ciphertexts live in the state KV scope "cicord:secrets" (JSON objects), so no schema
 //     migration is needed;
 //   - nothing in this package returns a value except Get and the Resolver used by the
 //     runtime; List returns names and timestamps only.
@@ -36,14 +36,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 const (
 	// Scope is the state KV scope holding the ciphertexts.
-	Scope = "codi:secrets"
+	Scope = "cicord:secrets"
 	// KeyEnv is the environment variable holding the encryption key.
-	KeyEnv = "CODI_SECRET_KEY"
+	KeyEnv = "CICORD_SECRET_KEY"
 	// KeyFile is the generated key file name in the data dir.
 	KeyFile  = "secret.key"
 	sentinel = "\x00sentinel"
@@ -54,7 +54,7 @@ const (
 var ErrNotFound = errors.New("secrets: not found")
 
 // ErrWrongKey means the store was encrypted with another key.
-var ErrWrongKey = errors.New("secrets: the encryption key does not match the stored secrets (CODI_SECRET_KEY or " + KeyFile + " changed)")
+var ErrWrongKey = errors.New("secrets: the encryption key does not match the stored secrets (CICORD_SECRET_KEY or " + KeyFile + " changed)")
 
 var namePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
@@ -62,7 +62,7 @@ var namePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 // style identifier, like token.secretRef).
 func ValidName(name string) bool { return namePattern.MatchString(name) }
 
-// ParseKey decodes a CODI_SECRET_KEY value: base64 (std or URL, padded or not) or hex of
+// ParseKey decodes a CICORD_SECRET_KEY value: base64 (std or URL, padded or not) or hex of
 // exactly 32 bytes.
 func ParseKey(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
@@ -82,7 +82,7 @@ func ParseKey(s string) ([]byte, error) {
 	return nil, fmt.Errorf("%s must be the base64 or hex encoding of %d random bytes (e.g. `openssl rand -base64 32`)", KeyEnv, keySize)
 }
 
-// LoadKey returns the key from CODI_SECRET_KEY (lookup) or from <dataDir>/secret.key,
+// LoadKey returns the key from CICORD_SECRET_KEY (lookup) or from <dataDir>/secret.key,
 // generating the file (0600) on first use. source describes where the key came from.
 func LoadKey(dataDir string, lookup func(string) (string, bool)) (key []byte, source string, err error) {
 	if lookup == nil {
@@ -170,7 +170,7 @@ func Open(ctx context.Context, st state.Store, key []byte) (*Store, error) {
 	raw, err := s.kv.Get(ctx, sentinel)
 	switch {
 	case errors.Is(err, state.ErrNotFound):
-		if err := s.put(ctx, sentinel, "codi", time.Time{}); err != nil {
+		if err := s.put(ctx, sentinel, "cicord", time.Time{}); err != nil {
 			return nil, err
 		}
 	case err != nil:
@@ -318,7 +318,7 @@ func (s *Store) List(ctx context.Context) ([]Meta, error) {
 }
 
 // RotateKey re-encrypts every secret (and the sentinel) with newKey. On success the
-// store uses newKey; the caller must persist it (CODI_SECRET_KEY / key file) before the
+// store uses newKey; the caller must persist it (CICORD_SECRET_KEY / key file) before the
 // next start.
 func (s *Store) RotateKey(ctx context.Context, newKey []byte) error {
 	gcm, err := newAEAD(newKey)

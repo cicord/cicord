@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 func pngBytes(t *testing.T, w, h int) []byte {
@@ -164,7 +164,7 @@ func (p *prWriter) Write(_ context.Context, req writeback.Request) (writeback.Re
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.reqs = append(p.reqs, req)
-	return writeback.Result{Mode: writeback.ModePullRequest, PullRequestURL: "https://github.com/example/ma-commu-codi/pull/7"}, nil
+	return writeback.Result{Mode: writeback.ModePullRequest, PullRequestURL: "https://github.com/example/ma-commu-cicord/pull/7"}, nil
 }
 
 func TestAssetUploadPullRequest(t *testing.T) {
@@ -181,7 +181,7 @@ func TestAssetUploadPullRequest(t *testing.T) {
 		t.Fatalf("writes = %d", len(pw.reqs))
 	}
 	req := pw.reqs[0]
-	// codi.yaml: servers/** → pullRequest.
+	// cicord.yaml: servers/** → pullRequest.
 	if req.Mode != writeback.ModePullRequest || len(req.Edits) != 2 || !strings.HasPrefix(req.Message, "server(ma-commu): update banner") {
 		t.Fatalf("request = %+v", req)
 	}

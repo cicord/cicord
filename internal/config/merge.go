@@ -28,7 +28,7 @@ func MergePatch(target, patch any) any {
 // arrays (`items`, including elements that come from an array's own `default`), and
 // through local `$ref`s (#/$defs/…, #/definitions/…). Values of `additionalProperties`
 // maps and `oneOf`/`anyOf` alternatives are left alone (which alternative applies is
-// ambiguous). `codi plugin typegen` (internal/typegen) follows the same rules to decide
+// ambiguous). `cicord plugin typegen` (internal/typegen) follows the same rules to decide
 // which config fields are non-optional.
 func ApplyDefaults(schema map[string]any, v map[string]any) {
 	applyObjectDefaults(schema, schema, v, 0)

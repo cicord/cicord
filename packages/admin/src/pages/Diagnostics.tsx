@@ -1,5 +1,5 @@
 /** Diagnostics: the setup wizard's live checklist, re-runnable at any time. */
-import { useCodi } from "@codi/react";
+import { useCicord } from "@cicord/react";
 import { RotateCw } from "lucide-react";
 import { Page, PageHeader, Time } from "../components/common.tsx";
 import { Button } from "../components/ui/button.tsx";
@@ -10,7 +10,7 @@ import { Checklist, SetupError } from "../setup/kit.tsx";
 
 export function DiagnosticsPage({ serverKey }: { serverKey: string }) {
   const { t } = useTranslation();
-  const { client } = useCodi();
+  const { client } = useCicord();
   const rep = usePoll((signal) => diagnostics(client, serverKey, signal), 15_000);
   return (
     <Page className="max-w-3xl">

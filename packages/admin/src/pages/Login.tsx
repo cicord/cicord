@@ -1,5 +1,5 @@
-import type { Me, SimState } from "@codi/client";
-import { codiKeys, useCodi } from "@codi/react";
+import type { Me, SimState } from "@cicord/client";
+import { cicordKeys, useCicord } from "@cicord/react";
 import { ChevronRight, Loader2, LogIn } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { UserAvatar } from "../components/common.tsx";
@@ -21,7 +21,7 @@ function DiscordGlyph() {
 
 export function LoginPage() {
   const { t } = useTranslation();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const config = useAdminConfig();
   const { search } = useLocation();
   const [sim, setSim] = useState<SimState | null | undefined>(undefined);
@@ -44,7 +44,7 @@ export function LoginPage() {
     setError(null);
     try {
       const me: Me = await client.auth.devLogin(id);
-      cache.setData(codiKeys.me(), me);
+      cache.setData(cicordKeys.me(), me);
       void cache.invalidate(["admin"]);
     } catch (e) {
       const d = describeError(e);
@@ -80,7 +80,7 @@ export function LoginPage() {
       <div className="w-full max-w-[400px]">
         <div className="mb-8 flex items-center gap-2">
           <BrandMark size={24} />
-          <span className="text-[17px] font-semibold tracking-tight">codi</span>
+          <span className="text-[17px] font-semibold tracking-tight">cicord</span>
           <span className="text-[15px] text-subtle-foreground">{t("app.admin")}</span>
         </div>
         <h1 className="text-xl font-semibold tracking-[-0.01em]">{t("login.title")}</h1>

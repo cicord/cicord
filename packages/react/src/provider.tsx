@@ -1,18 +1,18 @@
-import type { CodiClient } from "@codi/client";
+import type { CicordClient } from "@cicord/client";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { QueryCache } from "./cache.ts";
 
-export interface CodiContextValue {
-  client: CodiClient;
+export interface CicordContextValue {
+  client: CicordClient;
   /** Default server key used by hooks when none is passed. */
   server: string | undefined;
   cache: QueryCache;
 }
 
-const CodiContext = createContext<CodiContextValue | null>(null);
+const CicordContext = createContext<CicordContextValue | null>(null);
 
-export interface CodiProviderProps {
-  client: CodiClient;
+export interface CicordProviderProps {
+  client: CicordClient;
   /** Server key (servers/<key>.yaml) used by hooks by default. */
   server?: string | undefined;
   /** Share a cache between providers (tests, micro-frontends). */
@@ -20,7 +20,7 @@ export interface CodiProviderProps {
   children?: ReactNode;
 }
 
-export function CodiProvider({ client, server, cache, children }: CodiProviderProps) {
+export function CicordProvider({ client, server, cache, children }: CicordProviderProps) {
   const [ownCache] = useState(() => new QueryCache());
   const store = cache ?? ownCache;
   // Token mode: a token that expires or is revoked (401) logs the viewer out everywhere.
@@ -28,32 +28,32 @@ export function CodiProvider({ client, server, cache, children }: CodiProviderPr
     () =>
       client.onSessionChange(() => {
         if (!client.session()) {
-          store.setData(["codi", "me"], null);
-          void store.invalidate(["codi", "portal"]);
-          void store.invalidate(["codi", "plugin"]);
+          store.setData(["cicord", "me"], null);
+          void store.invalidate(["cicord", "portal"]);
+          void store.invalidate(["cicord", "plugin"]);
         }
       }),
     [client, store],
   );
-  const value = useMemo<CodiContextValue>(
+  const value = useMemo<CicordContextValue>(
     () => ({ client, server, cache: store }),
     [client, server, store],
   );
-  return <CodiContext.Provider value={value}>{children}</CodiContext.Provider>;
+  return <CicordContext.Provider value={value}>{children}</CicordContext.Provider>;
 }
 
-export function useCodi(): CodiContextValue {
-  const value = useContext(CodiContext);
-  if (!value) throw new Error("@codi/react: wrap your app in <CodiProvider client={…}>");
+export function useCicord(): CicordContextValue {
+  const value = useContext(CicordContext);
+  if (!value) throw new Error("@cicord/react: wrap your app in <CicordProvider client={…}>");
   return value;
 }
 
-export function useCodiClient(): CodiClient {
-  return useCodi().client;
+export function useCicordClient(): CicordClient {
+  return useCicord().client;
 }
 
 /** The given server key, or the provider's (undefined while unknown: hooks then wait). */
 export function useServerKey(server?: string): string | undefined {
-  const fallback = useCodi().server;
+  const fallback = useCicord().server;
   return server ?? fallback;
 }

@@ -4,11 +4,11 @@ description: Reference of servers/<key>.yaml - profile, roles, categories, chann
 ---
 
 A **Server** file, `servers/<key>.yaml`, is the desired state of one Discord server. Schema:
-[`spec/schemas/server.schema.json`](https://github.com/npjonath/codi/blob/main/spec/schemas/server.schema.json).
+[`spec/schemas/server.schema.json`](https://github.com/npjonath/cicord/blob/main/spec/schemas/server.schema.json).
 How it is applied is described in [Reconciliation](../../concepts/reconciliation/).
 
 ```yaml title="servers/ma-commu.yaml"
-apiVersion: codi.dev/v1alpha1
+apiVersion: cicord.dev/v1alpha1
 kind: Server
 metadata:
   name: ma-commu
@@ -196,7 +196,7 @@ YAML are removed. A channel with `syncWithCategory` gets exactly its category's 
 
 ### Permission names
 
-CODI names permissions in PascalCase, saying **server** where Discord says guild:
+Cicord names permissions in PascalCase, saying **server** where Discord says guild:
 `CreateInstantInvite`, `KickMembers`, `BanMembers`, `Administrator`, `ManageChannels`,
 `ManageServer`, `AddReactions`, `ViewAuditLog`, `PrioritySpeaker`, `Stream`, `ViewChannel`,
 `SendMessages`, `SendTTSMessages`, `ManageMessages`, `EmbedLinks`, `AttachFiles`,
@@ -244,7 +244,7 @@ community:
 | `safetyAlertsChannel` | text channel key | Receives safety alerts (raids, spam). |
 
 Enabling Community also needs `profile.verificationLevel` at least `low` and
-`profile.explicitContentFilter: allMembers`. `codi validate` reports a missing prerequisite
+`profile.explicitContentFilter: allMembers`. `cicord validate` reports a missing prerequisite
 and the plan blocks the change with the full list. Channels that need Community are created
 right after it is enabled, in the same sync.
 
@@ -285,7 +285,7 @@ its name. On a Community server the mention spam rule cannot be deleted: set
 ## `onboarding` (native)
 
 Discord's own onboarding, shown in the Discord client to new members of a Community server.
-It complements the CODI [onboarding plugin](../../plugins/official/#onboarding), which runs on
+It complements the Cicord [onboarding plugin](../../plugins/official/#onboarding), which runs on
 the portal.
 
 ```yaml
@@ -344,7 +344,7 @@ soundboard:
 
 Slots depend on the boost level (emojis 50/100/150/250 static plus as many animated,
 stickers 5/15/30/60, sounds 8/24/36/48); extra items are blocked in the plan. A changed file
-cannot be updated in place: declare a new key. `codi import` downloads existing expressions
+cannot be updated in place: declare a new key. `cicord import` downloads existing expressions
 into `servers/assets/<server>/`.
 
 ## Boost-gated settings
@@ -396,12 +396,12 @@ Details and examples: [Customize from YAML](../../portal/customize/).
 
 ## Annotations for the simulator
 
-With `codi dev --sim`, the server annotations `sim.codi.dev/boosts: "<n>"` and
-`sim.codi.dev/features: "A,B"` seed the simulated boost count and feature flags:
+With `cicord dev --sim`, the server annotations `sim.cicord.dev/boosts: "<n>"` and
+`sim.cicord.dev/features: "A,B"` seed the simulated boost count and feature flags:
 
 ```yaml
 metadata:
   name: ma-commu
   annotations:
-    sim.codi.dev/boosts: "7"
+    sim.cicord.dev/boosts: "7"
 ```

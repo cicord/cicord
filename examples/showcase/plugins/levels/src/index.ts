@@ -5,7 +5,7 @@ import {
   type Context,
   type Member,
   type Message,
-} from "@codi/sdk";
+} from "@cicord/sdk";
 import {
   authorKey,
   bar,
@@ -252,7 +252,7 @@ export default definePlugin({
     },
   },
 
-  // Checked against the portal contract in routes.ts (copied into portals by `codi portal typegen`).
+  // Checked against the portal contract in routes.ts (copied into portals by `cicord portal typegen`).
   routes: defineRoutes<Routes>({
     /** Public leaderboard for the community portal. `?limit=` 1-100 (default 25). */
     "GET /leaderboard": {

@@ -1,0 +1,51 @@
+{
+  "name": "create-cicord-portal",
+  "version": "0.1.0",
+  "description": "Reference Cicord community portal (React + Vite+), meant to be forked: `pnpm create cicord-portal my-portal`.",
+  "license": "Apache-2.0",
+  "bin": {
+    "create-cicord-portal": "./bin/create-cicord-portal.mjs"
+  },
+  "files": [
+    "bin",
+    "public",
+    "src",
+    "test",
+    "index.html",
+    "tsconfig.json",
+    "vite.config.ts",
+    "env.d.ts",
+    "LICENSE"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --mode mock",
+    "dev:runtime": "vp dev",
+    "build": "tsc --noEmit && vp build",
+    "preview": "vp preview",
+    "test": "vp test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cicord/client": "workspace:*",
+    "@cicord/react": "workspace:*",
+    "@cicord/ui": "workspace:*",
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

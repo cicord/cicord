@@ -7,9 +7,9 @@ The project is open source and monetized through hosting (SaaS). The SDKs must b
 adopt; the runtime should not be re-hosted by a competitor without contributing back.
 
 ## Proposal
-- **Apache-2.0** for SDKs and authoring tools: `@codi/sdk`, `@codi/client`, `@codi/react`,
-  `@codi/ui`, `create-codi-portal`, JSON Schemas.
-- **AGPL-3.0** for the runtime and CLI (`codi`).
+- **Apache-2.0** for SDKs and authoring tools: `@cicord/sdk`, `@cicord/client`, `@cicord/react`,
+  `@cicord/ui`, `create-cicord-portal`, JSON Schemas.
+- **AGPL-3.0** for the runtime and CLI (`cicord`).
 - Plugins choose their own license (declared in `plugin.yaml`).
 
 ## Alternatives
@@ -21,7 +21,7 @@ adopt; the runtime should not be re-hosted by a competitor without contributing 
 Before the first public release.
 
 ## Decision so far (2026-11-21)
-- **Apache-2.0** for `@codi/sdk`, `@codi/client`, `@codi/react`, `@codi/ui` and
-  `create-codi-portal` (`LICENSE` file in each package).
+- **Apache-2.0** for `@cicord/sdk`, `@cicord/client`, `@cicord/react`, `@cicord/ui` and
+  `create-cicord-portal` (`LICENSE` file in each package).
 - The **runtime, CLI and admin UI are not licensed yet** (all rights reserved by default);
   whether they become open source is decided later, before any public release.

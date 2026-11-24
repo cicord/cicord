@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 // Updating bundled plugins: the Store copies a catalog plugin to plugins/<name>/ of the
@@ -23,28 +23,49 @@ import (
 // the current version by the version field of plugin.yaml.
 
 // released maps plugin → version → integrities (registry.Integrity of PluginFiles) of
-// every version bundled in a CODI build. When the files of a bundled plugin change, add
+// every version bundled in a Cicord build. When the files of a bundled plugin change, add
 // the new integrity to its version (keep the old ones: copies made by earlier builds stay
 // recognized); TestReleasedIntegrity fails and prints the value until it is recorded.
 var released = map[string]map[string][]string{
-	"welcome":    {"0.1.0": {"sha256-Vc5USPwpH2u+lnQSZpc7phHFxtp6xb5jmy/BFXbVPJ8="}},
-	"onboarding": {"0.1.0": {"sha256-MKVQjq2L+jA2skWMdzZCUozF1n3y59TwnxOVjEPuqNg="}},
-	"tickets":    {"0.1.0": {"sha256-L5+NgFlgHE/P0n5n8GyrW+DumWbmKl+n5jRpVWNrOP8="}},
+	"welcome": {"0.1.0": {
+		"sha256-Vc5USPwpH2u+lnQSZpc7phHFxtp6xb5jmy/BFXbVPJ8=",
+		"sha256-IhSR6HcCZguQ2/K/IBs/QDYn80hXjSlOw9ylu8ySBT0=", // rename to Cicord (@cicord/sdk imports)
+	}},
+	"onboarding": {"0.1.0": {
+		"sha256-MKVQjq2L+jA2skWMdzZCUozF1n3y59TwnxOVjEPuqNg=",
+		"sha256-LS5IHZLOt50r8S/bK9NvuqPLHf/xuzGchTXQMDRx/0A=", // rename to Cicord (@cicord/sdk imports)
+	}},
+	"tickets": {"0.1.0": {
+		"sha256-L5+NgFlgHE/P0n5n8GyrW+DumWbmKl+n5jRpVWNrOP8=",
+		"sha256-UzOujz9ctRAfYIJ3JtqJCqRC3A6lgzhX35cCk0eW3Ao=", // rename to Cicord (@cicord/sdk imports)
+	}},
 	"polls": {"0.1.0": {
 		"sha256-J2By/eEG8diCTxf6xekJyQyBzyn+qX9wskGmRmVptBs=",
 		"sha256-innGAtvVzpodj1AtwyVMX5tTMbc4AM0WSw8g/khOXoA=", // route contract (src/routes.ts)
+		"sha256-5F37/61i51+mE/n9ViqJwZdGiBpxquwWt/xEIYp1nes=", // rename to Cicord (@cicord/sdk imports)
 	}},
 	"levels": {"0.1.0": {
 		"sha256-FrdXmmfH7j5m0hN6XwwyttgOVU1cBvNlLmXW4vZrBO0=",
 		"sha256-Phlqcqh1igaLpy2gCf7Jd/uSblJxNSU+G8b1JpchAUY=", // route contract (src/routes.ts)
+		"sha256-bkc96UvDhOJ0R1Kq3oZHn7jS4adb3meFfvi2WIaPTvk=", // rename to Cicord (@cicord/sdk imports)
 	}},
 	"moderation": {"0.1.0": {
 		"sha256-JYpd9sY6f38cc9ZI3APfJX6LYab0MGuBUcURYXyjx2A=",
 		"sha256-ciiRRkOU3+n/3+Cs1xlgz4LV4QsiA/1uVlhvo/G7RJ0=", // publishes moderation.case
+		"sha256-D1hAQQTYTdf9hUkDmK6Xph51WWwD9gsmZPN6PYN4jFM=", // rename to Cicord (@cicord/sdk imports)
 	}},
-	"reaction-roles": {"0.1.0": {"sha256-QdfT6KQQqvWVZqz8jX1DVgDkm37ZCkG5BVzECErUDCw="}},
-	"audit-log":      {"0.1.0": {"sha256-CqUKC4C6sA9vNJBI0tClq77TpE8X7PgJGsq0Jyz1YjQ="}},
-	"announcements":  {"0.1.0": {"sha256-2FUTA2TWaOuUgM7FFhDbaYT41VFR1QW5LLJdXNWDuJk="}},
+	"reaction-roles": {"0.1.0": {
+		"sha256-QdfT6KQQqvWVZqz8jX1DVgDkm37ZCkG5BVzECErUDCw=",
+		"sha256-LYyxabLe8FGcnQMgyAmsAnMbyPYicoJDvZSG7KHeiNY=", // rename to Cicord (@cicord/sdk imports)
+	}},
+	"audit-log": {"0.1.0": {
+		"sha256-CqUKC4C6sA9vNJBI0tClq77TpE8X7PgJGsq0Jyz1YjQ=",
+		"sha256-/DS7OjfqTtK3XZ58P7BVQ0CUMV1c2mfCBOp8Jb6Bo8M=", // rename to Cicord (@cicord/sdk imports)
+	}},
+	"announcements": {"0.1.0": {
+		"sha256-2FUTA2TWaOuUgM7FFhDbaYT41VFR1QW5LLJdXNWDuJk=",
+		"sha256-NozhyJgHRpaiIgOR/UK4XR/sbuUX2DBrz5oIF6OnWo0=", // rename to Cicord (@cicord/sdk imports)
+	}},
 }
 
 // PluginFiles returns the files of a catalog plugin relative to its directory (what an

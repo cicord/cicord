@@ -102,7 +102,7 @@ export interface LinkIconProps {
 export function LinkIcon({ name, size = 20, className }: LinkIconProps) {
   return (
     <svg
-      className={["codi-link-icon", className].filter(Boolean).join(" ")}
+      className={["cicord-link-icon", className].filter(Boolean).join(" ")}
       viewBox="0 0 24 24"
       width={size}
       height={size}

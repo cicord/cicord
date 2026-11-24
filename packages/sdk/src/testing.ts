@@ -1,15 +1,15 @@
 /**
- * @codi/sdk/testing — in-memory fakes to unit-test CODI plugins in Node (Vitest, node:test…).
+ * @cicord/sdk/testing — in-memory fakes to unit-test Cicord plugins in Node (Vitest, node:test…).
  *
  * ```ts
  * import plugin from "../src/index.ts";
- * import { createTestContext, callRoute } from "@codi/sdk/testing";
+ * import { createTestContext, callRoute } from "@cicord/sdk/testing";
  *
  * const t = createTestContext({ config: {...}, roles: { pc: { name: "PC" } }, members: [{ id: "1" }] });
  * const res = await callRoute(plugin, t, "GET /steps", { viewer: "1" });
  * ```
  *
- * The fakes follow spec/sdk/codi-sdk.d.ts. Capabilities are enforced only when `grants` is
+ * The fakes follow spec/sdk/cicord-sdk.d.ts. Capabilities are enforced only when `grants` is
  * given; then a call without its grant throws `CapabilityError`, like the real host. Pass the
  * plugin's `schema` (config.schema.json) to get the config defaults the runtime applies.
  *
@@ -41,7 +41,7 @@ import type {
   Server,
   TextChannel,
   User,
-} from "@codi/sdk";
+} from "@cicord/sdk";
 import { CapabilityError } from "./index.js";
 
 // ───────────────────────────────────────────────────────────── options
@@ -632,7 +632,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         need("portal.links");
         const memberId = opts?.member?.id;
         const token = `test-${memberId ?? "anonymous"}`;
-        const url = `${portalUrl}${path.startsWith("/") ? path : `/${path}`}?codi_token=${token}`;
+        const url = `${portalUrl}${path.startsWith("/") ? path : `/${path}`}?cicord_token=${token}`;
         links.push({ path, ...(memberId ? { member: memberId } : {}), url });
         return url;
       },

@@ -1,16 +1,16 @@
 import {
-  createCodiClient,
+  createCicordClient,
   type FetchLike,
   type OnboardingSteps,
   type PollResults,
   type RouteEntry,
-} from "@codi/client";
+} from "@cicord/client";
 import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode, type ReactNode } from "react";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vite-plus/test";
 import {
-  CodiProvider,
+  CicordProvider,
   OnboardingFlow,
   useLinkTokenLogin,
   useMe,
@@ -21,8 +21,8 @@ import {
   useRouteQuery,
 } from "../src/index.ts";
 
-// As written by `codi portal typegen` for a plugin with a contract.
-declare module "@codi/client" {
+// As written by `cicord portal typegen` for a plugin with a contract.
+declare module "@cicord/client" {
   interface PluginRouteRegistry {
     counter: {
       "POST /items/:id/votes": RouteEntry<
@@ -130,12 +130,12 @@ function setup(handler: Handler) {
       handler(method, path, body) ?? json({ error: { code: "not_found", message: path } }, 404)
     );
   };
-  const client = createCodiClient({ fetch });
+  const client = createCicordClient({ fetch });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <StrictMode>
-      <CodiProvider client={client} server="ma-commu">
+      <CicordProvider client={client} server="ma-commu">
         {children}
-      </CodiProvider>
+      </CicordProvider>
     </StrictMode>
   );
   return { client, calls, wrapper };
@@ -172,7 +172,7 @@ describe("hooks", () => {
   });
 
   test("useLinkTokenLogin exchanges the token once (StrictMode) and cleans the URL", async () => {
-    window.history.replaceState(null, "", "/onboarding?codi_token=signed.token&x=1");
+    window.history.replaceState(null, "", "/onboarding?cicord_token=signed.token&x=1");
     const { wrapper, calls } = setup((method, path) =>
       method === "POST" && path === "/auth/link"
         ? json(me)

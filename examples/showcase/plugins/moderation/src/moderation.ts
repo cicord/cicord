@@ -1,5 +1,5 @@
 /** Cases, warnings, the audit log and the webhook, independent of the handlers. */
-import type { Context, Embed, Json, User } from "@codi/sdk";
+import type { Context, Embed, Json, User } from "@cicord/sdk";
 
 export type Action = "warn" | "timeout" | "untimeout" | "kick" | "ban" | "clear";
 

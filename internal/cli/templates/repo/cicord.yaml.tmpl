@@ -1,0 +1,21 @@
+apiVersion: cicord.dev/v1alpha1
+kind: Project
+metadata:
+  name: {{.Project}}
+spec:
+  engine: "{{.EngineRange}}"
+{{- if .Provider}}
+  source:
+    provider: {{.Provider}}
+{{- if .Repo}}
+    repo: {{.Repo}}
+{{- end}}
+    branch: main
+{{- end}}
+  writeBack:
+    defaultMode: pullRequest
+    policies:
+      - paths: ["bots/**"]
+        mode: commit
+      - paths: ["servers/**"]
+        mode: pullRequest

@@ -6,10 +6,10 @@
 **/dist
 **/*.tsbuildinfo
 bin
-.codi
-.codi-data
-**/.codi
-**/.codi-data
+.cicord
+.cicord-data
+**/.cicord
+**/.cicord-data
 *.db
 *.db-*
 .env

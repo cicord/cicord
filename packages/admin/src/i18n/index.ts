@@ -19,7 +19,7 @@ declare module "i18next" {
   }
 }
 
-const LANG_KEY = "codi-admin:lang";
+const LANG_KEY = "cicord-admin:lang";
 
 function initialLanguage(): Language {
   try {

@@ -1,12 +1,12 @@
-// Package build bundles CODI plugins (TypeScript or JavaScript) into a single script that the
+// Package build bundles Cicord plugins (TypeScript or JavaScript) into a single script that the
 // plugin host (internal/plugin, Sobek) can run. It uses esbuild as a Go library: no Node.js
 // is involved anywhere.
 //
 // Output contract (consumed by internal/plugin):
 //
-//   - format: IIFE assigned to the global variable GlobalName ("__codi_plugin"); the plugin's
+//   - format: IIFE assigned to the global variable GlobalName ("__cicord_plugin"); the plugin's
 //     default export is GlobalName.default;
-//   - "@codi/sdk" is external: the bundle calls the global `require("@codi/sdk")`, which the
+//   - "@cicord/sdk" is external: the bundle calls the global `require("@cicord/sdk")`, which the
 //     plugin host provides. No other module can be required at run time;
 //   - target: ES2022 minus async generators (not supported by Sobek; esbuild lowers them);
 //   - an inline source map is appended as the last line, so Sobek maps stack traces back to
@@ -29,10 +29,10 @@ import (
 )
 
 // SDKModule is the only module resolved at run time by the plugin host.
-const SDKModule = "@codi/sdk"
+const SDKModule = "@cicord/sdk"
 
 // GlobalName is the global variable the bundle assigns its exports to.
-const GlobalName = "__codi_plugin"
+const GlobalName = "__cicord_plugin"
 
 // Result is a bundled plugin.
 type Result struct {
@@ -95,12 +95,12 @@ var builtinFilter = regexp.MustCompile(`^(node:.*|[a-z_]+(/promises)?)$`)
 
 func noNodeBuiltins() api.Plugin {
 	return api.Plugin{
-		Name: "codi-no-node-builtins",
+		Name: "cicord-no-node-builtins",
 		Setup: func(b api.PluginBuild) {
 			b.OnResolve(api.OnResolveOptions{Filter: builtinFilter.String()}, func(a api.OnResolveArgs) (api.OnResolveResult, error) {
 				name := strings.TrimPrefix(a.Path, "node:")
 				if strings.HasPrefix(a.Path, "node:") || nodeBuiltins[name] {
-					return api.OnResolveResult{}, fmt.Errorf("cannot import %q: Node.js built-in modules are not available in CODI plugins (all I/O goes through ctx)", a.Path)
+					return api.OnResolveResult{}, fmt.Errorf("cannot import %q: Node.js built-in modules are not available in Cicord plugins (all I/O goes through ctx)", a.Path)
 				}
 				return api.OnResolveResult{}, nil
 			})

@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from "vite-plus/test";
 import {
-  createCodiClient,
+  createCicordClient,
   resolveRoute,
   type FetchLike,
   type Json,
@@ -9,9 +9,9 @@ import {
   type RouteParams,
 } from "../src/index.ts";
 
-// What `codi portal typegen` generates for a plugin with a contract (see
-// internal/typegen/routes.go and packages/create-codi-portal/src/codi-routes.d.ts).
-declare namespace codi_demo {
+// What `cicord portal typegen` generates for a plugin with a contract (see
+// internal/typegen/routes.go and packages/create-cicord-portal/src/cicord-routes.d.ts).
+declare namespace cicord_demo {
   interface Item {
     id: string;
     title: string;
@@ -27,14 +27,14 @@ declare namespace codi_demo {
 declare module "../src/routes.ts" {
   interface PluginRouteRegistry {
     demo: {
-      "GET /items": RouteEntry<"public", codi_demo.Routes, "GET /items">;
-      "GET /items/:id": RouteEntry<"public", codi_demo.Routes, "GET /items/:id">;
+      "GET /items": RouteEntry<"public", cicord_demo.Routes, "GET /items">;
+      "GET /items/:id": RouteEntry<"public", cicord_demo.Routes, "GET /items/:id">;
       "POST /items/:id/votes/:choice": RouteEntry<
         "member",
-        codi_demo.Routes,
+        cicord_demo.Routes,
         "POST /items/:id/votes/:choice"
       >;
-      "DELETE /items/:id": RouteEntry<"admin", codi_demo.Routes, "DELETE /items/:id">;
+      "DELETE /items/:id": RouteEntry<"admin", cicord_demo.Routes, "DELETE /items/:id">;
       "GET /raw": RouteEntry<"public">;
     };
   }
@@ -54,7 +54,7 @@ function recorder() {
           headers: { "Content-Type": "application/json" },
         });
   };
-  return { calls, client: createCodiClient({ fetch }) };
+  return { calls, client: createCicordClient({ fetch }) };
 }
 
 const at = { bot: "helper", instance: "demo-1" };
@@ -100,17 +100,17 @@ describe("typed plugin routes", () => {
       client.routes("demo", "s", at).call("GET /items/:id", { params: { id: ".." } }),
     ).rejects.toThrow(/invalid parameter/);
     await client.routes("demo", "s", at).call("GET /items/:id", { params: { id: "..." } });
-    expect(new URL(calls[0]!.url, "https://codi.example").pathname).toBe(
+    expect(new URL(calls[0]!.url, "https://cicord.example").pathname).toBe(
       "/api/v1/portal/s/plugins/helper/demo-1/items/%2E%2E%2E",
     );
   });
 
   test("types come from the registry", () => {
-    const demo = createCodiClient().routes("demo", "s", at);
+    const demo = createCicordClient().routes("demo", "s", at);
     expectTypeOf(demo.call<"GET /items">).returns.resolves.toEqualTypeOf<{
-      items: codi_demo.Item[];
+      items: cicord_demo.Item[];
     }>();
-    expectTypeOf(demo.call<"GET /items/:id">).returns.resolves.toEqualTypeOf<codi_demo.Item>();
+    expectTypeOf(demo.call<"GET /items/:id">).returns.resolves.toEqualTypeOf<cicord_demo.Item>();
     expectTypeOf(demo.call<"DELETE /items/:id">).returns.resolves.toEqualTypeOf<undefined>();
     expectTypeOf(demo.call<"GET /raw">).returns.resolves.toEqualTypeOf<Json>();
     expectTypeOf<RouteParams<"POST /a/:x/b/:y">>().toEqualTypeOf<{ x: string } & { y: string }>();
@@ -137,9 +137,9 @@ describe("typed plugin routes", () => {
   });
 
   test("official plugins are typed without a generated registry entry", () => {
-    const levels = createCodiClient().routes("levels", "s", at);
+    const levels = createCicordClient().routes("levels", "s", at);
     expectTypeOf(levels.call<"GET /leaderboard">).returns.resolves.toEqualTypeOf<Leaderboard>();
-    const other = createCodiClient().routes("not-installed", "s", at);
+    const other = createCicordClient().routes("not-installed", "s", at);
     expectTypeOf(other.call<"GET /anything/:id">).returns.resolves.toEqualTypeOf<Json>();
   });
 });

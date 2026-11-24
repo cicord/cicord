@@ -24,7 +24,7 @@ import (
 type GitOptions struct {
 	URL    string // remote URL (https://…, file://…, or a local path)
 	Branch string // default "main"
-	// Path is the sub-directory containing codi.yaml (monorepos). Default ".".
+	// Path is the sub-directory containing cicord.yaml (monorepos). Default ".".
 	Path string
 	// CacheDir holds the mirror clone and the revision snapshots.
 	CacheDir string
@@ -211,8 +211,8 @@ func (g *Git) snapshot(r *git.Repository, h plumbing.Hash) (Revision, error) {
 			return Revision{}, err
 		}
 	}
-	if _, err := os.Stat(filepath.Join(rev.Dir, "codi.yaml")); err != nil {
-		return rev, fmt.Errorf("commit %s has no codi.yaml in %q", rev.ID, g.opts.Path)
+	if _, err := os.Stat(filepath.Join(rev.Dir, "cicord.yaml")); err != nil {
+		return rev, fmt.Errorf("commit %s has no cicord.yaml in %q", rev.ID, g.opts.Path)
 	}
 	return rev, nil
 }

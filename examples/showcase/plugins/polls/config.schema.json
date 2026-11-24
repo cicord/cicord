@@ -9,7 +9,7 @@
       "exclusiveMinimum": 0,
       "maximum": 720,
       "default": 24,
-      "x-codi-access": "moderator"
+      "x-cicord-access": "moderator"
     },
     "maxHours": {
       "description": "Longest poll allowed (hours).",
@@ -17,7 +17,7 @@
       "exclusiveMinimum": 0,
       "maximum": 720,
       "default": 168,
-      "x-codi-access": "moderator"
+      "x-cicord-access": "moderator"
     },
     "channels": {
       "description": "Channels where /poll may be used. Empty: everywhere.",
@@ -25,8 +25,8 @@
       "items": { "type": "string" },
       "uniqueItems": true,
       "default": [],
-      "x-codi-ref": "channel",
-      "x-codi-access": "moderator"
+      "x-cicord-ref": "channel",
+      "x-cicord-access": "moderator"
     },
     "managerRoles": {
       "description": "Roles that may close any poll (its author always can).",
@@ -34,7 +34,7 @@
       "items": { "type": "string" },
       "uniqueItems": true,
       "default": [],
-      "x-codi-ref": "role"
+      "x-cicord-ref": "role"
     },
     "confirmVotes": {
       "description": "Tell voters privately what they voted for.",
@@ -46,7 +46,7 @@
       "type": "string",
       "pattern": "^#[0-9a-fA-F]{6}$",
       "default": "#5865f2",
-      "x-codi-widget": "color"
+      "x-cicord-widget": "color"
     }
   },
   "additionalProperties": false

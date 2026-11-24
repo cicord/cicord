@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 func TestCreateServerWithID(t *testing.T) {
@@ -76,7 +76,7 @@ func TestCreateBotWithApplicationID(t *testing.T) {
 	owner := w.CreateUser("owner")
 	srv := w.CreateServer("S", owner.ID, WithGeneralChannel())
 	const appID = "1300000000000000000"
-	token, bot, err := w.CreateBotWithApplicationID("codi", appID)
+	token, bot, err := w.CreateBotWithApplicationID("cicord", appID)
 	isErr(t, err, nil)
 	if !bot.Bot || bot.ID == appID {
 		t.Fatalf("bot = %+v", bot)

@@ -1,7 +1,7 @@
-import { createCodiClient, type CodiClient, type FetchLike } from "@codi/client";
+import { createCicordClient, type CicordClient, type FetchLike } from "@cicord/client";
 
 export interface AdminConfig {
-  client: CodiClient;
+  client: CicordClient;
   /** URL of "Continue with Discord" (Discord OAuth2, back to /admin/). */
   loginUrl: string;
   /** In-browser fake runtime (`vp dev --mode mock`). */
@@ -9,7 +9,7 @@ export interface AdminConfig {
 }
 
 /** Fired when any API call answers 401: the session expired, show the login page. */
-export const UNAUTHENTICATED_EVENT = "codi-admin:unauthenticated";
+export const UNAUTHENTICATED_EVENT = "cicord-admin:unauthenticated";
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -33,13 +33,13 @@ export async function createAdminConfig(): Promise<AdminConfig> {
     const { createMockRuntime } = await import("./mock/runtime.ts");
     const runtime = createMockRuntime({ demoInstances: 75, demoUpdates: true });
     return {
-      client: createCodiClient({ fetch: watch401(runtime.fetch) }),
+      client: createCicordClient({ fetch: watch401(runtime.fetch) }),
       loginUrl: `${BASE}login?mock-oauth=1`,
       mock: true,
     };
   }
-  const client = createCodiClient({
-    baseUrl: import.meta.env.VITE_CODI_API_URL ?? "",
+  const client = createCicordClient({
+    baseUrl: import.meta.env.VITE_CICORD_API_URL ?? "",
     fetch: watch401((input, init) => globalThis.fetch(input, init)),
   });
   return { client, loginUrl: client.auth.loginUrl(BASE), mock: false };

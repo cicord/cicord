@@ -1,5 +1,5 @@
 /** Log entries, the batch queue and the rendering of a batch. Independent of the handlers. */
-import type { Context, Embed, Json, MessagePayload } from "@codi/sdk";
+import type { Context, Embed, Json, MessagePayload } from "@cicord/sdk";
 
 /** Where an entry goes (config `channels.<group>`, else `channel`). */
 export type Group = "members" | "messages" | "plugins";

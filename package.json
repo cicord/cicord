@@ -1,17 +1,17 @@
 {
-  "name": "codi-js",
+  "name": "cicord-js",
   "private": true,
-  "description": "JavaScript side of CODI: plugin SDK, runtime API client, React bindings, UI kit and the reference community portal.",
+  "description": "JavaScript side of Cicord: plugin SDK, runtime API client, React bindings, UI kit and the reference community portal.",
   "type": "module",
   "scripts": {
     "build": "vp run -r build",
     "test": "vp run -r build && vp run -r test && vp test",
     "check": "vp run -r build && vp check && vp run -r typecheck && pnpm run typecheck:examples",
     "typecheck:examples": "tsc -p examples/basic/plugins/welcome && tsc -p examples/basic/plugins/onboarding && tsc -p examples/basic/plugins/onboarding/test && tsc -p examples/showcase/plugins/tickets && tsc -p examples/showcase/plugins/tickets/test && tsc -p examples/showcase/plugins/polls && tsc -p examples/showcase/plugins/polls/test && tsc -p examples/showcase/plugins/levels && tsc -p examples/showcase/plugins/levels/test && tsc -p examples/showcase/plugins/moderation && tsc -p examples/showcase/plugins/moderation/test && tsc -p examples/showcase/plugins/reaction-roles && tsc -p examples/showcase/plugins/reaction-roles/test && tsc -p examples/showcase/plugins/audit-log && tsc -p examples/showcase/plugins/audit-log/test && tsc -p examples/showcase/plugins/announcements && tsc -p examples/showcase/plugins/announcements/test",
-    "dev:portal": "vp run -t create-codi-portal#build && vp run create-codi-portal#dev"
+    "dev:portal": "vp run -t create-cicord-portal#build && vp run create-cicord-portal#dev"
   },
   "devDependencies": {
-    "@codi/sdk": "workspace:*",
+    "@cicord/sdk": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

@@ -1,5 +1,5 @@
-import type { Message, MessagePayload } from "@codi/sdk";
-import { callRoute, createTestContext, runCommand } from "@codi/sdk/testing";
+import type { Message, MessagePayload } from "@cicord/sdk";
+import { callRoute, createTestContext, runCommand } from "@cicord/sdk/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
@@ -172,7 +172,7 @@ describe("commands", () => {
                 type: "link",
                 label: "Leaderboard",
                 emoji: "🏆",
-                url: "https://portal.test/leaderboard?codi_token=test-1",
+                url: "https://portal.test/leaderboard?cicord_token=test-1",
               },
             ],
           },

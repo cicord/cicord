@@ -1,8 +1,8 @@
 /**
  * Client-side validation for immediate feedback. The runtime stays the authority (schema +
- * `x-codi-ref` checks, 422 diagnostics); this covers the common keywords only.
+ * `x-cicord-ref` checks, 422 diagnostics); this covers the common keywords only.
  */
-import type { Json, ServerResources } from "@codi/client";
+import type { Json, ServerResources } from "@cicord/client";
 import {
   enumOptions,
   fieldKind,
@@ -83,11 +83,11 @@ function check(
         // invalid pattern in the schema: let the runtime decide
       }
     }
-    if (s["x-codi-widget"] === "duration" && value !== "" && !isDuration(value))
+    if (s["x-cicord-widget"] === "duration" && value !== "" && !isDuration(value))
       fail(i18n.t("form.errors.duration"));
-    if (s["x-codi-widget"] === "color" && value !== "" && !/^#[0-9a-fA-F]{6}$/.test(value))
+    if (s["x-cicord-widget"] === "color" && value !== "" && !/^#[0-9a-fA-F]{6}$/.test(value))
       fail(i18n.t("form.errors.color"));
-    const ref = s["x-codi-ref"];
+    const ref = s["x-cicord-ref"];
     if (ref && resources && value !== "") {
       const list =
         ref === "role"

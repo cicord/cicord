@@ -7,12 +7,12 @@
     "panelChannel": {
       "description": "Default channel of the ticket panel (/ticket-panel can post it elsewhere).",
       "type": "string",
-      "x-codi-ref": "channel"
+      "x-cicord-ref": "channel"
     },
     "category": {
       "description": "Category ticket channels are created in. Without it, at the top of the channel list.",
       "type": "string",
-      "x-codi-ref": "category"
+      "x-cicord-ref": "category"
     },
     "staffRoles": {
       "description": "Roles that see every ticket and can close them.",
@@ -21,17 +21,17 @@
       "uniqueItems": true,
       "maxItems": 10,
       "default": [],
-      "x-codi-ref": "role"
+      "x-cicord-ref": "role"
     },
     "logChannel": {
       "description": "Staff channel that receives a summary of each closed ticket. No summary without it.",
       "type": "string",
-      "x-codi-ref": "channel"
+      "x-cicord-ref": "channel"
     },
     "panel": {
       "description": "The message with the \"open a ticket\" button.",
       "type": "object",
-      "x-codi-access": "moderator",
+      "x-cicord-access": "moderator",
       "properties": {
         "title": { "type": "string", "minLength": 1, "maxLength": 256, "default": "Need help?" },
         "description": {
@@ -39,10 +39,10 @@
           "minLength": 1,
           "maxLength": 2000,
           "default": "Click the button below to open a private ticket with the team.",
-          "x-codi-widget": "markdown"
+          "x-cicord-widget": "markdown"
         },
         "buttonLabel": { "type": "string", "minLength": 1, "maxLength": 80, "default": "Open a ticket" },
-        "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#5865f2", "x-codi-widget": "color" }
+        "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#5865f2", "x-cicord-widget": "color" }
       },
       "additionalProperties": false
     },
@@ -52,8 +52,8 @@
       "minLength": 1,
       "maxLength": 2000,
       "default": "Hi {member}, thanks for reaching out! {staff} will be with you shortly.",
-      "x-codi-widget": "markdown",
-      "x-codi-access": "moderator"
+      "x-cicord-widget": "markdown",
+      "x-cicord-access": "moderator"
     },
     "channelName": {
       "description": "Name of ticket channels. Placeholders: {number}, {member}.",
@@ -68,7 +68,7 @@
       "minimum": 1,
       "maximum": 10,
       "default": 1,
-      "x-codi-access": "moderator"
+      "x-cicord-access": "moderator"
     }
   },
   "additionalProperties": false

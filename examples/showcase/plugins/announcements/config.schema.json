@@ -87,14 +87,14 @@
       "$ref": "#/$defs/timeZone",
       "description": "Time zone of the schedules and of the dates typed in /announce.",
       "default": "UTC",
-      "x-codi-access": "moderator"
+      "x-cicord-access": "moderator"
     },
     "announcements": {
       "description": "Recurring or one-off announcements. Each one sets exactly one of cron, every or at.",
       "type": "array",
       "maxItems": 50,
       "default": [],
-      "x-codi-access": "moderator",
+      "x-cicord-access": "moderator",
       "items": {
         "type": "object",
         "required": [
@@ -110,7 +110,7 @@
           "channel": {
             "description": "Where it is posted.",
             "type": "string",
-            "x-codi-ref": "channel"
+            "x-cicord-ref": "channel"
           },
           "enabled": {
             "description": "Off: kept in the config but never posted.",
@@ -146,7 +146,7 @@
             "description": "Message text (Markdown; at most 2000 characters with the mentions).",
             "type": "string",
             "maxLength": 2000,
-            "x-codi-widget": "markdown"
+            "x-cicord-widget": "markdown"
           },
           "embed": {
             "description": "Optional embed under the text.",
@@ -159,7 +159,7 @@
               "description": {
                 "type": "string",
                 "maxLength": 4000,
-                "x-codi-widget": "markdown"
+                "x-cicord-widget": "markdown"
               },
               "url": {
                 "type": "string",
@@ -168,7 +168,7 @@
               "color": {
                 "type": "string",
                 "pattern": "^#[0-9a-fA-F]{6}$",
-                "x-codi-widget": "color"
+                "x-cicord-widget": "color"
               },
               "imageUrl": {
                 "type": "string",
@@ -192,7 +192,7 @@
                 },
                 "uniqueItems": true,
                 "maxItems": 10,
-                "x-codi-ref": "role"
+                "x-cicord-ref": "role"
               },
               "everyone": {
                 "description": "@everyone (needs allowEveryone).",
@@ -222,15 +222,15 @@
       },
       "uniqueItems": true,
       "default": [],
-      "x-codi-ref": "channel"
+      "x-cicord-ref": "channel"
     },
     "color": {
       "description": "Embed color of /announce messages.",
       "type": "string",
       "pattern": "^#[0-9a-fA-F]{6}$",
       "default": "#5865f2",
-      "x-codi-widget": "color",
-      "x-codi-access": "moderator"
+      "x-cicord-widget": "color",
+      "x-cicord-access": "moderator"
     },
     "maxScheduled": {
       "description": "Most /announce messages waiting at once.",

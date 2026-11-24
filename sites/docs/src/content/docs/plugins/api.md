@@ -3,12 +3,12 @@ title: Plugin API
 description: definePlugin and the ctx object - events, slash commands, interactions, components, modals, portal routes and typed route contracts, schedules and tasks, plugin-owned channels, cross-plugin events, KV storage, HTTP and logging.
 ---
 
-A plugin default-exports `definePlugin({...})` from `@codi/sdk`. The normative contract is
-[`spec/sdk/codi-sdk.d.ts`](https://github.com/npjonath/codi/blob/main/spec/sdk/codi-sdk.d.ts);
+A plugin default-exports `definePlugin({...})` from `@cicord/sdk`. The normative contract is
+[`spec/sdk/cicord-sdk.d.ts`](https://github.com/npjonath/cicord/blob/main/spec/sdk/cicord-sdk.d.ts);
 this page is a guided tour.
 
 ```ts
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 
 export default definePlugin({
   onStart(ctx) {},          // instance start (new revision, restart)
@@ -43,7 +43,7 @@ Every handler receives `ctx`:
 
 Server resources are referenced by their **key** in `servers/<server>.yaml`
 (`ctx.server.channel("general")`, `member.addRole("member")`), or by `{ id }` for resources
-CODI does not manage.
+Cicord does not manage.
 
 ## Events
 
@@ -229,7 +229,7 @@ export interface Routes {
 Wrap the routes with `defineRoutes<Routes>()` (identity at run time):
 
 ```ts
-import { definePlugin, defineRoutes } from "@codi/sdk";
+import { definePlugin, defineRoutes } from "@cicord/sdk";
 import type { Routes } from "./routes.ts";
 
 export default definePlugin({
@@ -248,8 +248,8 @@ export default definePlugin({
 ```
 
 The runtime does **not** validate queries or bodies against the types: check them like any
-input. `codi plugin build` reports a contract that cannot be copied. Portals pick contracts up
-with [`codi portal typegen`](../../portal/custom-portal/#typed-plugin-routes). The official
+input. `cicord plugin build` reports a contract that cannot be copied. Portals pick contracts up
+with [`cicord portal typegen`](../../portal/custom-portal/#typed-plugin-routes). The official
 `levels` and `polls` plugins have one.
 
 ### Portal links

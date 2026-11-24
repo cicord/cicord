@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 var ctx = context.Background()
@@ -86,7 +86,7 @@ func newFixture(t *testing.T, o fixtureOpts) *fixture {
 	f := &fixture{w: w, rec: &recorder{}}
 	f.owner = w.CreateUser("owner")
 	f.alice = w.CreateUser("alice")
-	f.token, f.bot, f.appID = w.CreateBot("codi")
+	f.token, f.bot, f.appID = w.CreateBot("cicord")
 	f.srv = w.CreateServer("Test", f.owner.ID, WithGeneralChannel())
 	if err := w.AddMember(f.srv.ID, f.alice.ID); err != nil {
 		t.Fatal(err)
@@ -602,12 +602,12 @@ func TestRolePositions(t *testing.T) {
 	b, _ := f.sess.CreateRole(ctx, f.srv.ID, discord.RoleParams{Name: ptr("b")}, "")
 	c, _ := f.sess.CreateRole(ctx, f.srv.ID, discord.RoleParams{Name: ptr("c")}, "")
 	// New roles land at position 1, pushing the others up; the bot role stays on top.
-	if got, want := fmt.Sprint(names()), "[@everyone:0 c:1 b:2 a:3 codi:4]"; got != want {
+	if got, want := fmt.Sprint(names()), "[@everyone:0 c:1 b:2 a:3 cicord:4]"; got != want {
 		t.Fatalf("roles = %s, want %s", got, want)
 	}
 	f.resetEvents()
 	isErr(t, f.sess.SetRolePositions(ctx, f.srv.ID, []discord.RolePosition{{ID: c.ID, Position: 3}}), nil)
-	if got, want := fmt.Sprint(names()), "[@everyone:0 b:1 a:2 c:3 codi:4]"; got != want {
+	if got, want := fmt.Sprint(names()), "[@everyone:0 b:1 a:2 c:3 cicord:4]"; got != want {
 		t.Fatalf("roles = %s, want %s", got, want)
 	}
 	f.w.WaitIdle()
@@ -616,7 +616,7 @@ func TestRolePositions(t *testing.T) {
 	}
 	// Out-of-range positions are clamped and normalized.
 	isErr(t, f.sess.SetRolePositions(ctx, f.srv.ID, []discord.RolePosition{{ID: a.ID, Position: -5}}), nil)
-	if got, want := fmt.Sprint(names()), "[@everyone:0 a:1 b:2 c:3 codi:4]"; got != want {
+	if got, want := fmt.Sprint(names()), "[@everyone:0 a:1 b:2 c:3 cicord:4]"; got != want {
 		t.Fatalf("roles = %s, want %s", got, want)
 	}
 	// Cannot move a role to or above the bot's own role, nor move @everyone.
@@ -628,7 +628,7 @@ func TestRolePositions(t *testing.T) {
 func TestManagedRoleLifecycle(t *testing.T) {
 	f := newFixture(t, fixtureOpts{perms: discord.MustPermissions("ManageRoles")})
 	r, ok := f.w.Role(f.srv.ID, f.botRole.ID)
-	if !ok || !r.Managed || r.Name != "codi" || r.Position != len(f.w.Roles(f.srv.ID))-1 {
+	if !ok || !r.Managed || r.Name != "cicord" || r.Position != len(f.w.Roles(f.srv.ID))-1 {
 		t.Fatalf("managed role = %+v", r)
 	}
 	if m, _ := f.w.Member(f.srv.ID, f.bot.ID); !m.HasRole(r.ID) {
@@ -1049,9 +1049,9 @@ func TestUpdateServerAndSelf(t *testing.T) {
 	_, err = f.sess.UpdateServer(ctx, f.srv.ID, discord.ServerParams{RulesChannelID: ptr("1")})
 	isErr(t, err, discord.ErrBadRequest)
 
-	u, err := f.sess.UpdateSelf(ctx, discord.SelfParams{Username: ptr("codi-bot"), Avatar: ptr([]byte("img"))})
+	u, err := f.sess.UpdateSelf(ctx, discord.SelfParams{Username: ptr("cicord-bot"), Avatar: ptr([]byte("img"))})
 	isErr(t, err, nil)
-	if u.Username != "codi-bot" || u.AvatarURL == "" || f.sess.Self().Username != "codi-bot" {
+	if u.Username != "cicord-bot" || u.AvatarURL == "" || f.sess.Self().Username != "cicord-bot" {
 		t.Fatalf("self = %+v", u)
 	}
 	_, err = f.sess.UpdateSelf(ctx, discord.SelfParams{Username: ptr("x")})

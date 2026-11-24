@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // cdnPut keeps the bytes served at a CDN URL and returns the URL. Caller holds w.mu.

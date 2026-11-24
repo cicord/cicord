@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../spec/schemas/project.schema.json
+# Cicord showcase: a community server running the official plugin set (tickets, polls, levels,
+# moderation, reaction-roles, audit-log, announcements). It is also the end-to-end fixture of
+# internal/runtime/showcase_test.go and showcase_more_test.go.
+apiVersion: cicord.dev/v1alpha1
+kind: Project
+metadata:
+  name: showcase
+spec:
+  engine: ">=0.1.0 <0.2.0"
+  source:
+    provider: github
+    repo: https://github.com/example/cicord-showcase
+    branch: main
+  runtime:
+    url: https://cicord.showcase.example
+  writeBack:
+    defaultMode: pullRequest
+    policies:
+      - paths: ["bots/**"]
+        mode: commit

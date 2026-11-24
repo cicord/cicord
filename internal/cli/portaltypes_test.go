@@ -8,18 +8,18 @@ import (
 	"testing/fstest"
 )
 
-// The reference portal's src/codi-routes.d.ts is generated from examples/showcase: it must
+// The reference portal's src/cicord-routes.d.ts is generated from examples/showcase: it must
 // stay up to date with the showcase plugins (their routes and route contracts).
 func TestReferencePortalRouteTypesUpToDate(t *testing.T) {
-	out := filepath.Join("..", "..", "packages", "create-codi-portal", "src", "codi-routes.d.ts")
+	out := filepath.Join("..", "..", "packages", "create-cicord-portal", "src", "cicord-routes.d.ts")
 	code, stdout, stderr := run(t, "portal", "typegen", filepath.Join("..", "..", "examples", "showcase"), "--out", out, "--check")
 	if code != 0 {
-		t.Fatalf("%s\n%s\nregenerate with: go run ./cmd/codi portal typegen examples/showcase --out packages/create-codi-portal/src/codi-routes.d.ts", stdout, stderr)
+		t.Fatalf("%s\n%s\nregenerate with: go run ./cmd/cicord portal typegen examples/showcase --out packages/create-cicord-portal/src/cicord-routes.d.ts", stdout, stderr)
 	}
 	got := readFile(t, out)
 	for _, want := range []string{
-		`"GET /leaderboard": RouteEntry<"public", codi_levels.Routes, "GET /leaderboard">;`,
-		`"GET /polls/:id": RouteEntry<"public", codi_polls.Routes, "GET /polls/:id">;`,
+		`"GET /leaderboard": RouteEntry<"public", cicord_levels.Routes, "GET /leaderboard">;`,
+		`"GET /polls/:id": RouteEntry<"public", cicord_polls.Routes, "GET /polls/:id">;`,
 		`"GET /tickets": RouteEntry<"moderator">;`,
 		"export interface LeaderboardEntry {",
 	} {
@@ -38,12 +38,12 @@ func TestPortalTypegen(t *testing.T) {
 	if code, _, stderr := run(t, "portal", "typegen", repo); code == 0 || !strings.Contains(stderr, "--out") {
 		t.Fatalf("without portal = %d %s", code, stderr)
 	}
-	writeFile(t, filepath.Join(repo, "portal", "package.json"), `{"dependencies":{"@codi/client":"file:vendor/x.tgz"}}`)
-	out := filepath.Join(repo, "portal", "src", "codi-routes.d.ts")
+	writeFile(t, filepath.Join(repo, "portal", "package.json"), `{"dependencies":{"@cicord/client":"file:vendor/x.tgz"}}`)
+	out := filepath.Join(repo, "portal", "src", "cicord-routes.d.ts")
 
 	// A plugin with routes and a contract on the bot.
 	plugin := filepath.Join(repo, "plugins", "votes")
-	writeFile(t, filepath.Join(plugin, "plugin.yaml"), `apiVersion: codi.dev/v1alpha1
+	writeFile(t, filepath.Join(plugin, "plugin.yaml"), `apiVersion: cicord.dev/v1alpha1
 kind: Plugin
 metadata: { name: votes, version: 1.2.0 }
 spec:
@@ -59,7 +59,7 @@ export interface Routes {
   "POST /count/:key": { body: { by: number }; response: Count };
 }
 `)
-	writeFile(t, filepath.Join(plugin, "src", "index.ts"), `import { definePlugin, defineRoutes } from "@codi/sdk";
+	writeFile(t, filepath.Join(plugin, "src", "index.ts"), `import { definePlugin, defineRoutes } from "@cicord/sdk";
 import type { Routes } from "./routes.ts";
 export default definePlugin({
   routes: defineRoutes<Routes>({
@@ -80,9 +80,9 @@ export default definePlugin({
 	got := readFile(t, out)
 	for _, want := range []string{
 		"//   votes 1.2.0 (../../plugins/votes): 2 route(s), typed",
-		"declare namespace codi_votes {\n  export interface Count { n: number }",
-		`"GET /count/:key": RouteEntry<"public", codi_votes.Routes, "GET /count/:key">;`,
-		`"POST /count/:key": RouteEntry<"member", codi_votes.Routes, "POST /count/:key">;`,
+		"declare namespace cicord_votes {\n  export interface Count { n: number }",
+		`"GET /count/:key": RouteEntry<"public", cicord_votes.Routes, "GET /count/:key">;`,
+		`"POST /count/:key": RouteEntry<"member", cicord_votes.Routes, "POST /count/:key">;`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in\n%s", want, got)
@@ -98,7 +98,7 @@ export default definePlugin({
 		t.Errorf("--check after change = %d %s", code, stderr)
 	}
 
-	// A contract that cannot be copied is an error, here and in `codi plugin build`.
+	// A contract that cannot be copied is an error, here and in `cicord plugin build`.
 	writeFile(t, filepath.Join(plugin, "src", "routes.ts"), "import type { X } from \"./x.ts\";\nexport interface Routes { \"GET /count/:key\": { response: X } }\n")
 	if code, _, stderr := run(t, "portal", "typegen", repo); code == 0 || !strings.Contains(stderr, "imports and re-exports are not allowed") {
 		t.Errorf("bad contract = %d %s", code, stderr)
@@ -108,18 +108,18 @@ export default definePlugin({
 	}
 }
 
-// minimalKit is a portal kit with the four @codi/* tarballs and a tiny template.
+// minimalKit is a portal kit with the four @cicord/* tarballs and a tiny template.
 func minimalKit(t *testing.T) fstest.MapFS {
 	return fstest.MapFS{
-		"packages/codi-client-0.1.0.tgz": {Data: fakeTgz(t, `{"name":"@codi/client","version":"0.1.0"}`)},
-		"packages/codi-react-0.1.0.tgz":  {Data: fakeTgz(t, `{"name":"@codi/react","version":"0.1.0","dependencies":{"@codi/client":"0.1.0"}}`)},
-		"packages/codi-ui-0.1.0.tgz":     {Data: fakeTgz(t, `{"name":"@codi/ui","version":"0.1.0"}`)},
-		"packages/codi-sdk-0.1.0.tgz":    {Data: fakeTgz(t, `{"name":"@codi/sdk","version":"0.1.0"}`)},
+		"packages/cicord-client-0.1.0.tgz": {Data: fakeTgz(t, `{"name":"@cicord/client","version":"0.1.0"}`)},
+		"packages/cicord-react-0.1.0.tgz":  {Data: fakeTgz(t, `{"name":"@cicord/react","version":"0.1.0","dependencies":{"@cicord/client":"0.1.0"}}`)},
+		"packages/cicord-ui-0.1.0.tgz":     {Data: fakeTgz(t, `{"name":"@cicord/ui","version":"0.1.0"}`)},
+		"packages/cicord-sdk-0.1.0.tgz":    {Data: fakeTgz(t, `{"name":"@cicord/sdk","version":"0.1.0"}`)},
 		"template/package.json": {Data: []byte(`{"name":"portal","private":true,"version":"0.0.0","type":"module",
 			"scripts":{"build":"vp build"},
-			"dependencies":{"@codi/client":"^0.1.0","@codi/react":"^0.1.0","@codi/ui":"^0.1.0"}}`)},
+			"dependencies":{"@cicord/client":"^0.1.0","@cicord/react":"^0.1.0","@cicord/ui":"^0.1.0"}}`)},
 		"template/src/main.tsx":         {Data: []byte("// main")},
-		"template/src/codi-routes.d.ts": {Data: []byte("// template types of the monorepo examples")},
+		"template/src/cicord-routes.d.ts": {Data: []byte("// template types of the monorepo examples")},
 	}
 }
 
@@ -130,11 +130,11 @@ func TestPortalInitWritesRouteTypes(t *testing.T) {
 	if code, _, stderr := run(t, "portal", "init", dir); code != 0 {
 		t.Fatal(stderr)
 	}
-	got := readFile(t, filepath.Join(dir, "src", "codi-routes.d.ts"))
+	got := readFile(t, filepath.Join(dir, "src", "cicord-routes.d.ts"))
 	if !strings.Contains(got, "No plugin of the repository has portal routes.") || strings.Contains(got, "template") {
 		t.Errorf("route types outside a repo:\n%s", got)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "vendor", "codi-sdk-0.1.0.tgz")); err == nil {
-		t.Error("@codi/sdk must not be vendored into portals")
+	if _, err := os.Stat(filepath.Join(dir, "vendor", "cicord-sdk-0.1.0.tgz")); err == nil {
+		t.Error("@cicord/sdk must not be vendored into portals")
 	}
 }

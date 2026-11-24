@@ -7,7 +7,7 @@
     "logChannel": {
       "description": "Staff channel of the audit log (every action, joins and leaves).",
       "type": "string",
-      "x-codi-ref": "channel"
+      "x-cicord-ref": "channel"
     },
     "warningDays": {
       "description": "Warnings expire after this many days.",
@@ -15,14 +15,14 @@
       "exclusiveMinimum": 0,
       "maximum": 3650,
       "default": 30,
-      "x-codi-access": "moderator"
+      "x-cicord-access": "moderator"
     },
     "escalation": {
       "description": "Automatic action when a member reaches a number of active warnings.",
       "type": "array",
       "maxItems": 10,
       "default": [{ "warnings": 3, "action": "timeout" }],
-      "x-codi-access": "moderator",
+      "x-cicord-access": "moderator",
       "items": {
         "type": "object",
         "required": ["warnings", "action"],
@@ -58,7 +58,7 @@
           "items": { "type": "string" },
           "uniqueItems": true,
           "default": [],
-          "x-codi-ref": "role"
+          "x-cicord-ref": "role"
         }
       },
       "additionalProperties": false

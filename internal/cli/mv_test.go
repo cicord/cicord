@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 func TestMvRewritesReferences(t *testing.T) {
@@ -18,8 +18,8 @@ func TestMvRewritesReferences(t *testing.T) {
 	srvBefore, botBefore := readFile(t, srvFile), readFile(t, botFile)
 
 	// a state database with the mapping of the role
-	statePath := filepath.Join(dir, ".codi", "state.db")
-	writeFile(t, filepath.Join(dir, ".codi", ".keep"), "")
+	statePath := filepath.Join(dir, ".cicord", "state.db")
+	writeFile(t, filepath.Join(dir, ".cicord", ".keep"), "")
 	store := must[*sqlite.Store](t)(sqlite.Open(statePath))
 	ctx := context.Background()
 	store.Resources().Put(ctx, state.Resource{Server: "ma-commu", Kind: state.KindRole, Key: "modo", ID: "111111111111111111", Owner: state.OwnerGit})
@@ -57,7 +57,7 @@ func TestMvRewritesReferences(t *testing.T) {
 		t.Errorf("state mapping: %+v %v, old still there: %v", r, err, oldErr == nil)
 	}
 
-	// role referenced by plugin configs through x-codi-ref (onboarding steps, nested in arrays)
+	// role referenced by plugin configs through x-cicord-ref (onboarding steps, nested in arrays)
 	code, out, errOut = run(t, "mv", "ma-commu", "role", "minecraft", "mc", dir)
 	if code != 0 {
 		t.Fatalf("mv minecraft = %d\n%s\n%s", code, out, errOut)

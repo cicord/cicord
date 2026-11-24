@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/setup"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/store"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/setup"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/store"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // Store endpoints (spec/api.md §11).
@@ -47,7 +47,7 @@ func (s *server) requireAnyAdmin(r *http.Request) (*identity, error) {
 }
 
 // requireProjectAdmin accepts bearer clients and admins of every managed server:
-// codi.yaml changes affect the whole project.
+// cicord.yaml changes affect the whole project.
 func (s *server) requireProjectAdmin(r *http.Request) (*identity, error) {
 	id, err := s.requireAuth(r)
 	if err != nil {
@@ -288,7 +288,7 @@ func (s *server) handleStoreInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if wb := repo.Project.Spec.WriteBack; wb != nil && wb.Enabled != nil && !*wb.Enabled {
-		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in codi.yaml"))
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in cicord.yaml"))
 		return
 	}
 	// Bot: the only bot managing the server, unless given.
@@ -408,7 +408,7 @@ func (s *server) handlePluginUninstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if wb := repo.Project.Spec.WriteBack; wb != nil && wb.Enabled != nil && !*wb.Enabled {
-		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in codi.yaml"))
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in cicord.yaml"))
 		return
 	}
 	s.writeMu.Lock()
@@ -454,7 +454,7 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry names use 1 to 32 lowercase letters, digits and dashes"))
 		return
 	case body.Name == config.OfficialRegistryName:
-		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "the name %q is reserved for the official CODI plugins", body.Name))
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "the name %q is reserved for the official Cicord plugins", body.Name))
 		return
 	case !registry.IsRemoteURL(body.URL):
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must start with https://"))
@@ -479,12 +479,12 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := registry.CheckPublicHost(r.Context(), body.URL); err != nil {
-		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must point to a public host (%v); declare registries on your own network in codi.yaml", err))
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "registry URLs must point to a public host (%v); declare registries on your own network in cicord.yaml", err))
 		return
 	}
 	if token != "" {
 		if s.opts.SecretStore == nil {
-			s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "this runtime has no secret store: set the token as an environment variable and declare secretRef in codi.yaml"))
+			s.fail(w, httpErr(http.StatusServiceUnavailable, "unavailable", "this runtime has no secret store: set the token as an environment variable and declare secretRef in cicord.yaml"))
 			return
 		}
 		body.SecretRef = registry.SecretRefFor(body.Name)
@@ -504,7 +504,7 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	edit := func(cur []byte) ([]byte, error) {
 		if cur == nil {
-			return nil, errors.New("codi.yaml does not exist")
+			return nil, errors.New("cicord.yaml does not exist")
 		}
 		return writeback.AppendYAML(cur, []writeback.PathElem{writeback.Key("spec"), writeback.Key("registries")}, reg)
 	}
@@ -515,7 +515,7 @@ func (s *server) handleRegistryAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRegistryToken sets (PUT {"token"}) or removes (DELETE) the access token of a
-// registry. The token goes to the secret store; codi.yaml only gets the secretRef.
+// registry. The token goes to the secret store; cicord.yaml only gets the secretRef.
 func (s *server) handleRegistryToken(w http.ResponseWriter, r *http.Request) {
 	id, err := s.requireProjectAdmin(r)
 	if err != nil {
@@ -564,7 +564,7 @@ func (s *server) handleRegistryToken(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "token is required (DELETE removes it)"))
 		return
 	}
-	// Always this registry's own secret: never another one named in codi.yaml.
+	// Always this registry's own secret: never another one named in cicord.yaml.
 	ref := registry.SecretRefFor(name)
 	check := reg
 	check.SecretRef = ref
@@ -588,7 +588,7 @@ func (s *server) handleRegistryToken(w http.ResponseWriter, r *http.Request) {
 		s.audit(r.Context(), state.AuditEntry{Server: k, Actor: id.auditActor(), Action: "registry.token", Target: name, Details: mustJSON(map[string]any{"set": true})})
 	}
 	if reg.SecretRef == ref {
-		// codi.yaml already names this secret: nothing to commit.
+		// cicord.yaml already names this secret: nothing to commit.
 		_, _ = s.pluginStore().Sources(r.Context(), repo, true)
 		writeJSON(w, http.StatusOK, registryWriteResult{Mode: writeback.ModeCommit})
 		return
@@ -637,7 +637,7 @@ func (s *server) handleRegistryRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	edit := func(cur []byte) ([]byte, error) {
 		if cur == nil {
-			return nil, errors.New("codi.yaml does not exist")
+			return nil, errors.New("cicord.yaml does not exist")
 		}
 		return writeback.SetYAML(cur, []writeback.PathElem{writeback.Key("spec"), writeback.Key("registries"), writeback.Match("name", name)}, nil)
 	}
@@ -648,7 +648,7 @@ func (s *server) handleRegistryRemove(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writeProject writes codi.yaml through write-back and audits the change on every server.
+// writeProject writes cicord.yaml through write-back and audits the change on every server.
 func (s *server) writeProject(w http.ResponseWriter, r *http.Request, id *identity, edit writeback.EditFunc,
 	message, action, target string, details map[string]any) bool {
 	if s.opts.Writer == nil {
@@ -660,14 +660,14 @@ func (s *server) writeProject(w http.ResponseWriter, r *http.Request, id *identi
 	repo := s.rt.Repo()
 	wb := repo.Project.Spec.WriteBack
 	if wb != nil && wb.Enabled != nil && !*wb.Enabled {
-		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in codi.yaml"))
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in cicord.yaml"))
 		return false
 	}
 	rev, _ := s.rt.Revision()
-	mode := writeback.ModeFor(wb, []string{"codi.yaml"})
+	mode := writeback.ModeFor(wb, []string{"cicord.yaml"})
 	prevErr := s.rt.Status().LastError
 	res, err := s.opts.Writer.Write(r.Context(), writeback.Request{
-		Edits:   map[string]writeback.EditFunc{"codi.yaml": edit},
+		Edits:   map[string]writeback.EditFunc{"cicord.yaml": edit},
 		Message: message, Actor: id.actor(), Source: "admin-ui", Mode: mode,
 	})
 	if err != nil {

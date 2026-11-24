@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // ───────────────────────────────────────────────────────────── image / file state
@@ -25,7 +25,7 @@ func imageKVKey(name string) string {
 
 // RecordFile records that a repository file is what Discord shows now, as the
 // reconciler does after uploading it, so that the next plan does not upload it again
-// (codi import downloads the files of a server). kv is the reconciler KV of the server
+// (cicord import downloads the files of a server). kv is the reconciler KV of the server
 // (scope "reconcile:<key>"); name is the logical file name ("icon", "banner",
 // "splash", "role:<key>", "emoji:<key>", "sticker:<key>" or "sound:<key>"); url is the
 // live CDN URL of a server or role image ("" for expressions).

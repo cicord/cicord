@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codi.dev/schemas/v1alpha1/common.schema.json",
-  "title": "CODI common definitions",
+  "$id": "https://cicord.dev/schemas/v1alpha1/common.schema.json",
+  "title": "Cicord common definitions",
   "$defs": {
     "apiVersion": {
-      "const": "codi.dev/v1alpha1"
+      "const": "cicord.dev/v1alpha1"
     },
     "key": {
       "description": "Stable resource key. Never changes when the display name changes. Used for references and state.",
@@ -52,7 +52,7 @@
       "additionalProperties": false
     },
     "permission": {
-      "description": "Discord permission, CODI naming (server instead of guild). See spec/README.md for the mapping.",
+      "description": "Discord permission, Cicord naming (server instead of guild). See spec/README.md for the mapping.",
       "enum": [
         "CreateInstantInvite", "KickMembers", "BanMembers", "Administrator", "ManageChannels",
         "ManageServer", "AddReactions", "ViewAuditLog", "PrioritySpeaker", "Stream", "ViewChannel",
@@ -73,7 +73,7 @@
       "uniqueItems": true
     },
     "intent": {
-      "description": "Gateway intent, CODI naming. See spec/README.md for the mapping.",
+      "description": "Gateway intent, Cicord naming. See spec/README.md for the mapping.",
       "enum": [
         "Servers", "ServerMembers", "ServerModeration", "ServerExpressions", "ServerIntegrations",
         "ServerWebhooks", "ServerInvites", "ServerVoiceStates", "ServerPresences", "ServerMessages",

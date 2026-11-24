@@ -23,7 +23,7 @@ func writeFile(t *testing.T, p, content string) {
 
 func TestLocalSnapshots(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "codi.yaml"), "a: 1\n")
+	writeFile(t, filepath.Join(dir, "cicord.yaml"), "a: 1\n")
 	writeFile(t, filepath.Join(dir, "node_modules/x.js"), "ignored")
 	l, err := NewLocal(dir, t.TempDir())
 	if err != nil {
@@ -42,7 +42,7 @@ func TestLocalSnapshots(t *testing.T) {
 	if r1.SHA != r2.SHA || r1.Dir != r2.Dir {
 		t.Errorf("same content should give same revision")
 	}
-	writeFile(t, filepath.Join(dir, "codi.yaml"), "a: 2\n")
+	writeFile(t, filepath.Join(dir, "cicord.yaml"), "a: 2\n")
 	select {
 	case <-l.Changes():
 	case <-time.After(3 * time.Second):
@@ -52,7 +52,7 @@ func TestLocalSnapshots(t *testing.T) {
 	if r3.SHA == r1.SHA {
 		t.Errorf("content change should give a new revision")
 	}
-	data, _ := os.ReadFile(filepath.Join(r1.Dir, "codi.yaml"))
+	data, _ := os.ReadFile(filepath.Join(r1.Dir, "cicord.yaml"))
 	if string(data) != "a: 1\n" {
 		t.Errorf("old snapshot mutated: %q", data)
 	}
@@ -76,7 +76,7 @@ func TestGitSource(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	commit("first", map[string]string{"repo/codi.yaml": "v: 1\n", "repo/servers/s.yaml": "x"})
+	commit("first", map[string]string{"repo/cicord.yaml": "v: 1\n", "repo/servers/s.yaml": "x"})
 
 	g, err := NewGit(GitOptions{URL: upstream, Branch: "main", Path: "repo", CacheDir: t.TempDir()})
 	if err != nil {
@@ -94,7 +94,7 @@ func TestGitSource(t *testing.T) {
 	if data, _ := os.ReadFile(filepath.Join(r1.Dir, "servers/s.yaml")); string(data) != "x" {
 		t.Errorf("snapshot content = %q", data)
 	}
-	commit("second", map[string]string{"repo/codi.yaml": "v: 2\n"})
+	commit("second", map[string]string{"repo/cicord.yaml": "v: 2\n"})
 	r2, err := g.Fetch(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -102,14 +102,14 @@ func TestGitSource(t *testing.T) {
 	if r2.SHA == r1.SHA || r2.Message != "second" {
 		t.Errorf("second rev = %+v", r2)
 	}
-	if data, _ := os.ReadFile(filepath.Join(r1.Dir, "codi.yaml")); string(data) != "v: 1\n" {
+	if data, _ := os.ReadFile(filepath.Join(r1.Dir, "cicord.yaml")); string(data) != "v: 1\n" {
 		t.Errorf("first snapshot changed: %q", data)
 	}
 }
 
 func TestLocalWatchesNestedNewDirectories(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "codi.yaml"), "a: 1\n")
+	writeFile(t, filepath.Join(dir, "cicord.yaml"), "a: 1\n")
 	l, err := NewLocal(dir, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

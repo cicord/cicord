@@ -9,10 +9,11 @@ on:
   workflow_dispatch:
     inputs:
       site_url:
-        description: "Public origin of the site (e.g. https://<owner>.github.io)"
+        description: "Public origin of the site (https://cicord.dev, or https://<owner>.github.io)"
         required: true
+        default: "https://cicord.dev"
       base_path:
-        description: "Path prefix the site is served under (e.g. /codi for https://<owner>.github.io/codi/; / for a custom domain)"
+        description: "Path prefix the site is served under (e.g. /cicord for https://<owner>.github.io/cicord/; / for a custom domain)"
         required: true
         default: "/"
 

@@ -12,7 +12,7 @@ import {
 export type ThemePreference = "system" | "light" | "dark";
 export type Theme = "light" | "dark";
 
-const KEY = "codi-admin:theme";
+const KEY = "cicord-admin:theme";
 const QUERY = "(prefers-color-scheme: dark)";
 
 export function savedPreference(): ThemePreference {

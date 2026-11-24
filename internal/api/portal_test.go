@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 func writeTestFile(t *testing.T, path, content string) {
@@ -24,10 +24,10 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
-// setPortalPath rewrites codi.yaml spec.portal of the working copy.
+// setPortalPath rewrites cicord.yaml spec.portal of the working copy.
 func (e *env) setProjectPortal(t *testing.T, yaml string) {
 	t.Helper()
-	p := filepath.Join(e.dir, "codi.yaml")
+	p := filepath.Join(e.dir, "cicord.yaml")
 	data, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestCustomPortalFromRevision(t *testing.T) {
 	e.waitFor("custom portal served", func() bool { return string(c.do("GET", "/", nil).body) == "<html>custom v1</html>" })
 
 	r := c.expect(200, "GET", "/onboarding?server=ma-commu", nil)
-	if string(r.body) != "<html>custom v1</html>" || r.header.Get("Cache-Control") != "no-cache" || r.header.Get("X-Codi-Portal") != "repository" {
+	if string(r.body) != "<html>custom v1</html>" || r.header.Get("Cache-Control") != "no-cache" || r.header.Get("X-Cicord-Portal") != "repository" {
 		t.Errorf("SPA fallback = %s %v", r.body, r.header)
 	}
 	r = c.expect(200, "GET", "/assets/index-abc123.js", nil)
@@ -249,7 +249,7 @@ func TestTokenModeSessions(t *testing.T) {
 	}
 
 	// Dev login in token mode from the embedding origin: no cookie, a token.
-	r = c.do("POST", "/auth/dev-login", map[string]string{"userId": e.seed.Owner.ID, "mode": "token"}, "Origin", fan, "X-Codi-Request", "1")
+	r = c.do("POST", "/auth/dev-login", map[string]string{"userId": e.seed.Owner.ID, "mode": "token"}, "Origin", fan, "X-Cicord-Request", "1")
 	if r.status != 200 || len(r.header.Values("Set-Cookie")) != 0 {
 		t.Fatalf("token dev-login = %d %v %s", r.status, r.header, r.body)
 	}
@@ -304,7 +304,7 @@ func TestTokenModeSessions(t *testing.T) {
 	if r := tc.do("GET", "/api/v1/me", nil); r.status != 401 {
 		t.Errorf("after logout = %d", r.status)
 	}
-	if r := c.do("POST", "/auth/dev-login", map[string]string{"userId": e.seed.Owner.ID, "mode": "weird"}, "X-Codi-Request", "1"); r.status != 400 {
+	if r := c.do("POST", "/auth/dev-login", map[string]string{"userId": e.seed.Owner.ID, "mode": "weird"}, "X-Cicord-Request", "1"); r.status != 400 {
 		t.Errorf("bad mode = %d", r.status)
 	}
 }
@@ -351,17 +351,17 @@ func TestOAuthTokenMode(t *testing.T) {
 	loc, _ := url.Parse(res.Header.Get("Location"))
 	res = get(ts.URL + "/auth/callback?code=good&state=" + url.QueryEscape(loc.Query().Get("state")))
 	back, _ := url.Parse(res.Header.Get("Location"))
-	if res.StatusCode != 302 || back.Host != "fan.example" || back.Path != "/cb" || back.Query().Get("x") != "1" || back.Query().Get("codi_code") == "" {
+	if res.StatusCode != 302 || back.Host != "fan.example" || back.Path != "/cb" || back.Query().Get("x") != "1" || back.Query().Get("cicord_code") == "" {
 		t.Fatalf("callback = %d %s", res.StatusCode, back)
 	}
 	if len(res.Header.Values("Set-Cookie")) > 1 { // only the cleared OAuth state cookie
 		t.Errorf("token mode set cookies: %v", res.Header.Values("Set-Cookie"))
 	}
-	code := back.Query().Get("codi_code")
+	code := back.Query().Get("cicord_code")
 	redeem := func(origin string) (int, string) {
 		req, _ := http.NewRequest("POST", ts.URL+"/auth/token", strings.NewReader(`{"code":"`+code+`"}`))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Codi-Request", "1")
+		req.Header.Set("X-Cicord-Request", "1")
 		req.Header.Set("Origin", origin)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -380,7 +380,7 @@ func TestOAuthTokenMode(t *testing.T) {
 	loc, _ = url.Parse(res.Header.Get("Location"))
 	res = get(ts.URL + "/auth/callback?code=good&state=" + url.QueryEscape(loc.Query().Get("state")))
 	back, _ = url.Parse(res.Header.Get("Location"))
-	code = back.Query().Get("codi_code")
+	code = back.Query().Get("cicord_code")
 	st, body := redeem(fan)
 	if st != 200 || !strings.Contains(body, `"token":"`+tokenPrefix) || !strings.Contains(body, `"id":"777"`) {
 		t.Fatalf("redeem = %d %s", st, body)

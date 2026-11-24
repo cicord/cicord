@@ -1,15 +1,15 @@
 // Package disgoadapter implements discord.Connector / discord.Session on top of
 // github.com/disgoorg/disgo.
 //
-// It is the only package in CODI where the Discord API word "guild" appears
-// (ADR-0009): everything it returns uses CODI's vocabulary ("server").
+// It is the only package in Cicord where the Discord API word "guild" appears
+// (ADR-0009): everything it returns uses Cicord's vocabulary ("server").
 //
 // Layering (see wire.go): disgo's rest.Client carries every REST call (auth,
 // endpoint definitions, per-route and global rate limiting with 429 retries) and
 // disgo's gateway.Gateway carries the websocket (identify, heartbeats, resume,
 // reconnect with backoff, zstd compression). Payloads are encoded/decoded with the
 // adapter's own wire structs. disgo's bot, voice, sharding and httpserver packages
-// are deliberately not imported: they pull voice / DAVE code CODI does not need,
+// are deliberately not imported: they pull voice / DAVE code Cicord does not need,
 // and the binary must stay CGO_ENABLED=0 friendly.
 package disgoadapter
 
@@ -26,10 +26,10 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/disgo/rest"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
-const userAgent = "DiscordBot (https://github.com/npjonath/codi, 0)"
+const userAgent = "DiscordBot (https://github.com/npjonath/cicord, 0)"
 
 // Option configures a Connector.
 type Option func(*config)
@@ -218,8 +218,8 @@ func (s *session) Open(ctx context.Context, intents discord.Intents, handler fun
 		gateway.WithIntents(gateway.Intents(intents)),
 		gateway.WithEnableRawEvents(true),
 		gateway.WithOS("linux"),
-		gateway.WithBrowser("codi"),
-		gateway.WithDevice("codi"),
+		gateway.WithBrowser("cicord"),
+		gateway.WithDevice("cicord"),
 	}
 	if s.cfg.gatewayURL != "" {
 		gopts = append(gopts, gateway.WithURL(s.cfg.gatewayURL))

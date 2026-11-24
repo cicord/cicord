@@ -1,5 +1,5 @@
 /** Panels: rendering, emoji handling, and finding a posted panel again. Independent of the handlers. */
-import type { ActionRow, Context, Message, MessagePayload, PluginConfig, Role } from "@codi/sdk";
+import type { ActionRow, Context, Message, MessagePayload, PluginConfig, Role } from "@cicord/sdk";
 
 export type Panel = PluginConfig["panels"][number];
 export type PanelOption = Panel["options"][number];

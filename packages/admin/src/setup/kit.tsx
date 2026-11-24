@@ -1,5 +1,5 @@
 /** Building blocks of the setup wizard (and of the Diagnostics page). */
-import { CodiApiError } from "@codi/client";
+import { CicordApiError } from "@cicord/client";
 import {
   AlertTriangle,
   Check as CheckIcon,
@@ -85,7 +85,7 @@ export function CopyField({ value, label }: { value: string; label?: string }) {
   );
 }
 
-/** Buttons that stand in for discord.com in `codi dev --sim --setup`. */
+/** Buttons that stand in for discord.com in `cicord dev --sim --setup`. */
 export function SimButton(props: ComponentProps<typeof Button>) {
   return (
     <Button variant="outline" size="sm" {...props} className={cn("border-dashed", props.className)}>
@@ -173,7 +173,7 @@ export function SetupError({ error, className }: { error: unknown; className?: s
   let d = describeError(error);
   // The setup endpoints explain every error themselves (message + hint): keep their words
   // even for codes the console words generically (unauthenticated, conflict…).
-  if (error instanceof CodiApiError && error.hint && error.code !== "network") {
+  if (error instanceof CicordApiError && error.hint && error.code !== "network") {
     d = {
       ...d,
       message: error.message,
@@ -182,7 +182,7 @@ export function SetupError({ error, className }: { error: unknown; className?: s
     };
   }
   let link: string | undefined;
-  if (error instanceof CodiApiError && error.body && typeof error.body === "object") {
+  if (error instanceof CicordApiError && error.body && typeof error.body === "object") {
     const e = (error.body as { error?: { link?: unknown } }).error;
     if (e && typeof e.link === "string") link = e.link;
   }

@@ -13,11 +13,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
-// Maintainer tooling of the signed official index (ADR-0011): `codi registry keygen`,
-// `codi registry sign` and `codi registry verify`. They work on a local checkout of a
+// Maintainer tooling of the signed official index (ADR-0011): `cicord registry keygen`,
+// `cicord registry sign` and `cicord registry verify`. They work on a local checkout of a
 // registry repository.
 
 func init() {
@@ -32,7 +32,7 @@ func newRegistryKeygenCmd() *cobra.Command {
 		Long: `Create a signing key for a registry index. The private key is written to --out (mode
 0600, never overwritten); keep it out of any repository. The public key is printed: for
 the official registry, it is the value to add to registry.OfficialKeys.`,
-		Example: `  codi registry keygen --out ~/.config/codi/registry.key`,
+		Example: `  cicord registry keygen --out ~/.config/cicord/registry.key`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if out == "" {
@@ -147,8 +147,8 @@ Repeat --key to sign with several keys (key rotation: sign with the old and the 
 until every runtime trusts the new one).
 
 The index is checked first: plugin names, https:// repositories without credentials.`,
-		Example: `  codi registry sign . --key ~/.config/codi/registry.key --registry-url https://github.com/codi-dev/registry
-  CODI_REGISTRY_SIGNING_KEY=… codi registry sign . --key env:CODI_REGISTRY_SIGNING_KEY`,
+		Example: `  cicord registry sign . --key ~/.config/cicord/registry.key --registry-url https://github.com/cicord-dev/registry
+  CICORD_REGISTRY_SIGNING_KEY=… cicord registry sign . --key env:CICORD_REGISTRY_SIGNING_KEY`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(keys) == 0 {

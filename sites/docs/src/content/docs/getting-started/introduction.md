@@ -1,29 +1,29 @@
 ---
 title: Introduction
-description: What CODI is, why it exists, and the handful of concepts you need before you start.
+description: What Cicord is, why it exists, and the handful of concepts you need before you start.
 ---
 
-**CODI** (*CI/CD Oriented Discord Integration*) is GitOps for Discord. You describe your
+**Cicord** (*CI + Discord*) is GitOps for Discord. You describe your
 Discord servers and the bots that live on them in YAML files in a git repository. A single
-runtime, `codi serve`, follows that repository, reconciles the servers continuously, runs
+runtime, `cicord serve`, follows that repository, reconciles the servers continuously, runs
 your bots on a shared engine and extends them with sandboxed TypeScript plugins.
 
 :::caution[Pre-release software]
-CODI is **v1alpha1, pre-release**. Formats and APIs may still change between commits.
-There are no published binaries, Docker images or npm packages yet: you build `codi` from
+Cicord is **v1alpha1, pre-release**. Formats and APIs may still change between commits.
+There are no published binaries, Docker images or npm packages yet: you build `cicord` from
 source (see [Installation](../installation/)).
 :::
 
-## Why CODI
+## Why Cicord
 
 Discord server settings usually live in one person's head and a few hundred clicks. Bots
-are separate projects, each with its own hosting, token handling and deployment. CODI
+are separate projects, each with its own hosting, token handling and deployment. Cicord
 treats a community the way infrastructure teams treat servers:
 
 - **Declarative.** Roles, categories, channels, permissions, Community settings, AutoMod,
   native onboarding, emojis, stickers and soundboard sounds are declared in YAML,
   Kubernetes style (`apiVersion` / `kind` / `metadata` / `spec`).
-- **Reviewable.** A change is a commit. `codi plan` shows what it would do before anything
+- **Reviewable.** A change is a commit. `cicord plan` shows what it would do before anything
   happens, and CI can post that plan on the pull request.
 - **One engine, many bots.** One runtime hosts *N* bot identities across *M* servers. New
   revisions are hot-swapped without reconnecting to the Discord gateway.
@@ -39,7 +39,7 @@ treats a community the way infrastructure teams treat servers:
 
 | Concept | Where | What it is |
 |---|---|---|
-| **Project** | `codi.yaml` | Repository-level settings: engine version, where the runtime reads the repository from, plugin registries, write-back policy, portal. |
+| **Project** | `cicord.yaml` | Repository-level settings: engine version, where the runtime reads the repository from, plugin registries, write-back policy, portal. |
 | **Server** | `servers/<key>.yaml` | The desired state of one Discord server. |
 | **Bot** | `bots/<key>/bot.yaml` | One Discord application (one token, one identity), the servers it joins and the plugins it runs. |
 | **Plugin** | `plugin.yaml` + `src/` | A TypeScript module with a static manifest: capabilities, gateway intents, config schema. |
@@ -55,11 +55,11 @@ A few rules make everything else predictable:
   Deleting requires `prune: true` and turning `deletionProtection` off.
 - **Configuration in git, data in the database.** XP, warnings, tickets and member
   preferences live in the runtime's SQLite database, never in git.
-- **Server, never guild.** CODI says *server* everywhere (`ManageServer`, `ServerMembers`),
+- **Server, never guild.** Cicord says *server* everywhere (`ManageServer`, `ServerMembers`),
   where the Discord API says *guild*.
 
 ```yaml title="servers/ma-commu.yaml"
-apiVersion: codi.dev/v1alpha1
+apiVersion: cicord.dev/v1alpha1
 kind: Server
 metadata:
   name: ma-commu
@@ -75,11 +75,11 @@ spec:
 
 ```text
             ┌──────────────── git repository ────────────────┐
-            │ codi.yaml  servers/  bots/  plugins/  codi.lock│
+            │ cicord.yaml  servers/  bots/  plugins/  cicord.lock│
             └──────▲─────────────────────────┬───────────────┘
    write-back      │                         │ webhook / poll
    (admin edits)   │                         ▼
-            ┌──────┴──────────────── codi serve ─────────────────────┐
+            ┌──────┴──────────────── cicord serve ─────────────────────┐
             │ source → validate → build → revision                    │
             │           ├─ server reconciler (plan · apply · drift)   │
             │           └─ bot host (gateway sessions, plugin VMs)    │
@@ -90,12 +90,12 @@ spec:
                                       Discord
 ```
 
-Everything ships as **one Go binary, `codi`**: the command line tool and the runtime. The
+Everything ships as **one Go binary, `cicord`**: the command line tool and the runtime. The
 admin console and the default community portal are embedded in it.
 
 ## Where to go next
 
-- [Installation](../installation/): build `codi` from source or as a Docker image.
-- [Quick start](../quick-start/): the setup wizard on a real server, or `codi dev --sim`
+- [Installation](../installation/): build `cicord` from source or as a Docker image.
+- [Quick start](../quick-start/): the setup wizard on a real server, or `cicord dev --sim`
   offline.
 - [Repository layout](../../concepts/repository-layout/): what each file is for.

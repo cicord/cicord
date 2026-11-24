@@ -9,14 +9,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 const cdnBase = "https://cdn.discordapp.com"
 
 // ───────────────────────────────────────────────────────────── enums
 
-// Verification levels (Discord ints ↔ CODI names).
+// Verification levels (Discord ints ↔ Cicord names).
 var verificationLevels = []string{"none", "low", "medium", "high", "highest"}
 
 // Default message notification levels.
@@ -142,7 +142,7 @@ func cdnImage(kind, id string, hash *string) string {
 
 // ───────────────────────────────────────────────────────────── emoji
 
-// emojiToWire parses a CODI emoji string: a unicode emoji, "name:id", "a:name:id",
+// emojiToWire parses a Cicord emoji string: a unicode emoji, "name:id", "a:name:id",
 // or the mention form "<:name:id>" / "<a:name:id>".
 func emojiToWire(s string) *wireEmoji {
 	s = strings.TrimSpace(s)
@@ -165,7 +165,7 @@ func emojiToWire(s string) *wireEmoji {
 	return &wireEmoji{Name: s}
 }
 
-// emojiFromWire returns the CODI emoji string: unicode, or "name:id" for custom emojis.
+// emojiFromWire returns the Cicord emoji string: unicode, or "name:id" for custom emojis.
 func emojiFromWire(e *wireEmoji) string {
 	if e == nil {
 		return ""
@@ -400,7 +400,7 @@ func nullIfZero(v int) any {
 	return v
 }
 
-// splitEmoji turns a CODI emoji string (unicode, "name:id", "<:name:id>" or a bare
+// splitEmoji turns a Cicord emoji string (unicode, "name:id", "<:name:id>" or a bare
 // custom emoji ID) into Discord's emoji_id / emoji_name pair.
 func splitEmoji(s string) (id, name *string) {
 	s = strings.TrimSpace(s)

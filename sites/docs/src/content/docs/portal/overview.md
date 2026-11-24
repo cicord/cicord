@@ -4,7 +4,7 @@ description: The public face of a server - sign-in with Discord, onboarding, pro
 ---
 
 The community portal is the public face of a server: a home page, sign-in with Discord,
-onboarding, member profiles, leaderboards, tickets for staff… In CODI it is **an SDK, not a
+onboarding, member profiles, leaderboards, tickets for staff… In Cicord it is **an SDK, not a
 fixed app**, so every community can have its own.
 
 The runtime serves a complete **reference portal** at `/` out of the box. Declaring
@@ -17,7 +17,7 @@ From the least to the most effort, a community can:
 1. **Theme it** from YAML: primary and accent colors, logo, light or dark mode.
 2. **Customize it without code**: title, tagline, Markdown description, banner, links, pages,
    language. See [Customize from YAML](../customize/).
-3. **Fork it** with `codi portal init`, change anything, and have the runtime serve your build
+3. **Fork it** with `cicord portal init`, change anything, and have the runtime serve your build
    from the repository, with a hot-reloading dev loop. See [Custom portal](../custom-portal/).
 4. **Embed it in another site** (a fan site with its own domain and design), in token mode. See
    [Embedding](../embedding/).
@@ -38,7 +38,7 @@ off with `spec.portal.pages`. The interface is in English and French.
 
 ## How members get in
 
-- **Sign in with Discord** (OAuth2). The runtime needs `CODI_DISCORD_CLIENT_SECRET` and the
+- **Sign in with Discord** (OAuth2). The runtime needs `CICORD_DISCORD_CLIENT_SECRET` and the
   redirect URL `<public-url>/auth/callback` registered in the Discord application.
 - **Links from bots.** A plugin calls `ctx.portal.link("/onboarding", { member })` and sends
   the result, typically in a DM with a button. Opening it signs that member in, restricted to
@@ -59,16 +59,16 @@ at run time: the portal stays code you review.
 
 | Package | Role |
 |---|---|
-| `@codi/client` | Typed, framework-agnostic client of the runtime API: auth (cookie or token mode), portal endpoints, plugin routes. |
-| `@codi/react` | Provider, data hooks and headless components such as `<OnboardingFlow>`. |
-| `@codi/ui` | Optional styled components driven by the server theme. |
-| `create-codi-portal` | The reference portal, meant to be forked. |
+| `@cicord/client` | Typed, framework-agnostic client of the runtime API: auth (cookie or token mode), portal endpoints, plugin routes. |
+| `@cicord/react` | Provider, data hooks and headless components such as `<OnboardingFlow>`. |
+| `@cicord/ui` | Optional styled components driven by the server theme. |
+| `create-cicord-portal` | The reference portal, meant to be forked. |
 
-See [SDK packages](../sdk/). The packages are **not on npm yet**: `codi portal init` vendors
-them from the `codi` binary.
+See [SDK packages](../sdk/). The packages are **not on npm yet**: `cicord portal init` vendors
+them from the `cicord` binary.
 
 :::note[Inside Discord?]
 Running the portal inside the Discord client as an Activity is a proposed option
-([ADR-0016](https://github.com/npjonath/codi/blob/main/docs/adr/0016-portal-as-discord-activity.md)),
+([ADR-0016](https://github.com/npjonath/cicord/blob/main/docs/adr/0016-portal-as-discord-activity.md)),
 not implemented.
 :::

@@ -1,93 +1,93 @@
-/* @codi/ui — styles. Import once: `import "@codi/ui/styles.css"`.
- * Every color derives from a few tokens; the server theme sets --codi-primary / --codi-accent
+/* @cicord/ui — styles. Import once: `import "@cicord/ui/styles.css"`.
+ * Every color derives from a few tokens; the server theme sets --cicord-primary / --cicord-accent
  * (and their computed foregrounds) through <ThemeProvider>. */
 
-.codi-root {
-  --codi-font-display:
+.cicord-root {
+  --cicord-font-display:
     "Bricolage Grotesque Variable", "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
-  --codi-font-body:
+  --cicord-font-body:
     "Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", sans-serif;
 
-  --codi-primary: #5865f2;
-  --codi-primary-fg: #ffffff;
-  --codi-primary-text: #8f98ff;
-  --codi-accent: #eb459e;
-  --codi-accent-fg: #ffffff;
-  --codi-accent-text: #f27bbd;
+  --cicord-primary: #5865f2;
+  --cicord-primary-fg: #ffffff;
+  --cicord-primary-text: #8f98ff;
+  --cicord-accent: #eb459e;
+  --cicord-accent-fg: #ffffff;
+  --cicord-accent-text: #f27bbd;
 
-  --codi-success: #3ba55d;
-  --codi-danger: #ed4245;
+  --cicord-success: #3ba55d;
+  --cicord-danger: #ed4245;
 
-  --codi-radius-sm: 8px;
-  --codi-radius-md: 12px;
-  --codi-radius-lg: 16px;
-  --codi-radius-xl: 24px;
+  --cicord-radius-sm: 8px;
+  --cicord-radius-md: 12px;
+  --cicord-radius-lg: 16px;
+  --cicord-radius-xl: 24px;
 
-  --codi-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --codi-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --cicord-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --cicord-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Dark is the default palette (Discord-like). */
-.codi-root,
-.codi-root[data-codi-mode="dark"],
-[data-codi-mode="dark"] .codi-root {
-  --codi-bg: #16171f;
-  --codi-surface: #1b1d26;
-  --codi-raised: #232633;
-  --codi-sunken: #121319;
-  --codi-line: rgb(255 255 255 / 0.08);
-  --codi-line-strong: rgb(255 255 255 / 0.16);
-  --codi-text: #eceef5;
-  --codi-muted: #a3a9c0;
-  --codi-subtle: #737a94;
-  --codi-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 18px 40px -18px rgb(0 0 0 / 0.65);
-  --codi-danger-text: #ff8a8c;
-  --codi-success-text: #6fd394;
+.cicord-root,
+.cicord-root[data-cicord-mode="dark"],
+[data-cicord-mode="dark"] .cicord-root {
+  --cicord-bg: #16171f;
+  --cicord-surface: #1b1d26;
+  --cicord-raised: #232633;
+  --cicord-sunken: #121319;
+  --cicord-line: rgb(255 255 255 / 0.08);
+  --cicord-line-strong: rgb(255 255 255 / 0.16);
+  --cicord-text: #eceef5;
+  --cicord-muted: #a3a9c0;
+  --cicord-subtle: #737a94;
+  --cicord-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 18px 40px -18px rgb(0 0 0 / 0.65);
+  --cicord-danger-text: #ff8a8c;
+  --cicord-success-text: #6fd394;
   color-scheme: dark;
 }
 
-.codi-root[data-codi-mode="light"],
-[data-codi-mode="light"] .codi-root {
-  --codi-bg: #f2f3f7;
-  --codi-surface: #ffffff;
-  --codi-raised: #f7f8fb;
-  --codi-sunken: #e8eaf1;
-  --codi-line: rgb(22 26 45 / 0.1);
-  --codi-line-strong: rgb(22 26 45 / 0.2);
-  --codi-text: #191b24;
-  --codi-muted: #565c72;
-  --codi-subtle: #7d8399;
-  --codi-shadow: 0 1px 2px rgb(22 26 45 / 0.06), 0 16px 36px -20px rgb(22 26 45 / 0.28);
-  --codi-danger-text: #c42b2e;
-  --codi-success-text: #23804a;
+.cicord-root[data-cicord-mode="light"],
+[data-cicord-mode="light"] .cicord-root {
+  --cicord-bg: #f2f3f7;
+  --cicord-surface: #ffffff;
+  --cicord-raised: #f7f8fb;
+  --cicord-sunken: #e8eaf1;
+  --cicord-line: rgb(22 26 45 / 0.1);
+  --cicord-line-strong: rgb(22 26 45 / 0.2);
+  --cicord-text: #191b24;
+  --cicord-muted: #565c72;
+  --cicord-subtle: #7d8399;
+  --cicord-shadow: 0 1px 2px rgb(22 26 45 / 0.06), 0 16px 36px -20px rgb(22 26 45 / 0.28);
+  --cicord-danger-text: #c42b2e;
+  --cicord-success-text: #23804a;
   color-scheme: light;
 }
 
-.codi-root {
-  color: var(--codi-text);
-  font-family: var(--codi-font-body);
+.cicord-root {
+  color: var(--cicord-text);
+  font-family: var(--cicord-font-body);
   font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-html.codi-root {
-  background: var(--codi-bg);
+html.cicord-root {
+  background: var(--cicord-bg);
 }
 
-.codi-root *,
-.codi-root *::before,
-.codi-root *::after {
+.cicord-root *,
+.cicord-root *::before,
+.cicord-root *::after {
   box-sizing: border-box;
 }
 
-.codi-root :focus-visible {
-  outline: 2px solid var(--codi-primary-text);
+.cicord-root :focus-visible {
+  outline: 2px solid var(--cicord-primary-text);
   outline-offset: 2px;
 }
 
-.codi-visually-hidden {
+.cicord-visually-hidden {
   position: absolute !important;
   width: 1px;
   height: 1px;
@@ -101,27 +101,27 @@ html.codi-root {
 
 /* ─────────────────────────────────────────────── Spinner */
 
-.codi-spinner {
+.cicord-spinner {
   display: inline-flex;
-  --codi-spinner-size: 20px;
+  --cicord-spinner-size: 20px;
 }
-.codi-spinner--sm {
-  --codi-spinner-size: 14px;
+.cicord-spinner--sm {
+  --cicord-spinner-size: 14px;
 }
-.codi-spinner--lg {
-  --codi-spinner-size: 32px;
+.cicord-spinner--lg {
+  --cicord-spinner-size: 32px;
 }
-.codi-spinner__ring {
-  width: var(--codi-spinner-size);
-  height: var(--codi-spinner-size);
+.cicord-spinner__ring {
+  width: var(--cicord-spinner-size);
+  height: var(--cicord-spinner-size);
   border-radius: 50%;
-  border: max(2px, calc(var(--codi-spinner-size) / 9)) solid currentColor;
+  border: max(2px, calc(var(--cicord-spinner-size) / 9)) solid currentColor;
   border-right-color: transparent;
   opacity: 0.85;
-  animation: codi-spin 0.7s linear infinite;
+  animation: cicord-spin 0.7s linear infinite;
 }
 
-@keyframes codi-spin {
+@keyframes cicord-spin {
   to {
     transform: rotate(360deg);
   }
@@ -129,20 +129,20 @@ html.codi-root {
 
 /* ─────────────────────────────────────────────── Button */
 
-.codi-button {
-  --codi-button-bg: var(--codi-primary);
-  --codi-button-fg: var(--codi-primary-fg);
-  --codi-button-border: transparent;
+.cicord-button {
+  --cicord-button-bg: var(--cicord-primary);
+  --cicord-button-fg: var(--cicord-primary-fg);
+  --cicord-button-border: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5em;
   min-height: 44px;
   padding: 0 1.15em;
-  border: 1px solid var(--codi-button-border);
-  border-radius: var(--codi-radius-md);
-  background: var(--codi-button-bg);
-  color: var(--codi-button-fg);
+  border: 1px solid var(--cicord-button-border);
+  border-radius: var(--cicord-radius-md);
+  background: var(--cicord-button-bg);
+  color: var(--cicord-button-fg);
   font: inherit;
   font-weight: 650;
   letter-spacing: 0.005em;
@@ -150,62 +150,62 @@ html.codi-root {
   cursor: pointer;
   user-select: none;
   transition:
-    background-color 0.15s var(--codi-ease),
-    border-color 0.15s var(--codi-ease),
-    transform 0.15s var(--codi-ease),
-    filter 0.15s var(--codi-ease);
+    background-color 0.15s var(--cicord-ease),
+    border-color 0.15s var(--cicord-ease),
+    transform 0.15s var(--cicord-ease),
+    filter 0.15s var(--cicord-ease);
 }
-.codi-button:hover {
+.cicord-button:hover {
   filter: brightness(1.08);
 }
-.codi-button:active {
+.cicord-button:active {
   transform: translateY(1px) scale(0.99);
 }
-.codi-button:disabled,
-.codi-button[aria-disabled="true"] {
+.cicord-button:disabled,
+.cicord-button[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.5;
   filter: none;
   transform: none;
 }
-.codi-button.is-loading {
+.cicord-button.is-loading {
   opacity: 0.8;
   cursor: progress;
 }
-.codi-button--sm {
+.cicord-button--sm {
   min-height: 34px;
   padding: 0 0.85em;
   font-size: 0.875rem;
-  border-radius: var(--codi-radius-sm);
+  border-radius: var(--cicord-radius-sm);
 }
-.codi-button--lg {
+.cicord-button--lg {
   min-height: 52px;
   padding: 0 1.5em;
   font-size: 1.0625rem;
 }
-.codi-button--block {
+.cicord-button--block {
   display: flex;
   width: 100%;
 }
-.codi-button--secondary {
-  --codi-button-bg: var(--codi-raised);
-  --codi-button-fg: var(--codi-text);
-  --codi-button-border: var(--codi-line-strong);
+.cicord-button--secondary {
+  --cicord-button-bg: var(--cicord-raised);
+  --cicord-button-fg: var(--cicord-text);
+  --cicord-button-border: var(--cicord-line-strong);
 }
-.codi-button--ghost {
-  --codi-button-bg: transparent;
-  --codi-button-fg: var(--codi-muted);
+.cicord-button--ghost {
+  --cicord-button-bg: transparent;
+  --cicord-button-fg: var(--cicord-muted);
 }
-.codi-button--ghost:hover {
-  --codi-button-bg: var(--codi-raised);
-  --codi-button-fg: var(--codi-text);
+.cicord-button--ghost:hover {
+  --cicord-button-bg: var(--cicord-raised);
+  --cicord-button-fg: var(--cicord-text);
   filter: none;
 }
-.codi-button--danger {
-  --codi-button-bg: var(--codi-danger);
-  --codi-button-fg: #fff;
+.cicord-button--danger {
+  --cicord-button-bg: var(--cicord-danger);
+  --cicord-button-fg: #fff;
 }
-.codi-button__icon {
+.cicord-button__icon {
   display: inline-flex;
   font-size: 1.15em;
   line-height: 1;
@@ -213,74 +213,74 @@ html.codi-root {
 
 /* ─────────────────────────────────────────────── Card */
 
-.codi-card {
-  background: var(--codi-surface);
-  border: 1px solid var(--codi-line);
-  border-radius: var(--codi-radius-xl);
-  box-shadow: var(--codi-shadow);
+.cicord-card {
+  background: var(--cicord-surface);
+  border: 1px solid var(--cicord-line);
+  border-radius: var(--cicord-radius-xl);
+  box-shadow: var(--cicord-shadow);
 }
-.codi-card--inset {
-  background: var(--codi-sunken);
+.cicord-card--inset {
+  background: var(--cicord-sunken);
   box-shadow: none;
-  border-radius: var(--codi-radius-lg);
+  border-radius: var(--cicord-radius-lg);
 }
-.codi-card--pad-sm {
+.cicord-card--pad-sm {
   padding: 12px;
 }
-.codi-card--pad-md {
+.cicord-card--pad-md {
   padding: clamp(16px, 3vw, 24px);
 }
-.codi-card--pad-lg {
+.cicord-card--pad-lg {
   padding: clamp(20px, 5vw, 40px);
 }
 
 /* ─────────────────────────────────────────────── Avatar */
 
-.codi-avatar {
-  --codi-avatar-size: 40px;
+.cicord-avatar {
+  --cicord-avatar-size: 40px;
   position: relative;
   display: inline-flex;
   flex: none;
-  width: var(--codi-avatar-size);
-  height: var(--codi-avatar-size);
+  width: var(--cicord-avatar-size);
+  height: var(--cicord-avatar-size);
   border-radius: 50%;
   overflow: hidden;
-  background: hsl(var(--codi-avatar-hue, 230) 55% 46%);
+  background: hsl(var(--cicord-avatar-hue, 230) 55% 46%);
   color: #fff;
 }
-.codi-avatar img {
+.cicord-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.codi-avatar__initials {
+.cicord-avatar__initials {
   display: grid;
   place-items: center;
   width: 100%;
-  font-family: var(--codi-font-display);
+  font-family: var(--cicord-font-display);
   font-weight: 700;
-  font-size: calc(var(--codi-avatar-size) * 0.38);
+  font-size: calc(var(--cicord-avatar-size) * 0.38);
   letter-spacing: 0.02em;
 }
-.codi-avatar--ring {
+.cicord-avatar--ring {
   box-shadow:
-    0 0 0 2px var(--codi-bg),
-    0 0 0 4px var(--codi-avatar-ring);
+    0 0 0 2px var(--cicord-bg),
+    0 0 0 4px var(--cicord-avatar-ring);
 }
 
 /* ─────────────────────────────────────────────── RoleChip */
 
-.codi-role-chip {
-  --codi-role: var(--codi-subtle);
+.cicord-role-chip {
+  --cicord-role: var(--cicord-subtle);
   display: inline-flex;
   align-items: center;
   gap: 6px;
   max-width: 100%;
   padding: 3px 10px 3px 8px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--codi-role) 45%, var(--codi-line));
-  background: color-mix(in oklab, var(--codi-role) 12%, var(--codi-raised));
-  color: var(--codi-text);
+  border: 1px solid color-mix(in oklab, var(--cicord-role) 45%, var(--cicord-line));
+  background: color-mix(in oklab, var(--cicord-role) 12%, var(--cicord-raised));
+  color: var(--cicord-text);
   font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.3;
@@ -288,25 +288,25 @@ html.codi-root {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.codi-role-chip--sm {
+.cicord-role-chip--sm {
   font-size: 0.8125rem;
   padding: 2px 9px 2px 7px;
 }
-.codi-role-chip__dot {
+.cicord-role-chip__dot {
   flex: none;
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--codi-role);
+  background: var(--cicord-role);
 }
-.codi-role-chip.is-fresh {
-  animation: codi-chip-in 0.45s var(--codi-ease-spring) both;
+.cicord-role-chip.is-fresh {
+  animation: cicord-chip-in 0.45s var(--cicord-ease-spring) both;
 }
-.codi-role-chip.is-fresh .codi-role-chip__dot {
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--codi-role) 30%, transparent);
+.cicord-role-chip.is-fresh .cicord-role-chip__dot {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--cicord-role) 30%, transparent);
 }
 
-@keyframes codi-chip-in {
+@keyframes cicord-chip-in {
   from {
     opacity: 0;
     transform: scale(0.6);
@@ -315,14 +315,14 @@ html.codi-root {
 
 /* ─────────────────────────────────────────────── ChoiceTile */
 
-.codi-choice-group {
+.cicord-choice-group {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
   gap: 12px;
 }
 
-.codi-choice {
-  --codi-role: var(--codi-primary);
+.cicord-choice {
+  --cicord-role: var(--cicord-primary);
   position: relative;
   display: flex;
   align-items: center;
@@ -330,107 +330,107 @@ html.codi-root {
   width: 100%;
   min-height: 76px;
   padding: 14px 16px;
-  border: 1.5px solid var(--codi-line-strong);
-  border-radius: var(--codi-radius-lg);
-  background: var(--codi-surface);
-  color: var(--codi-text);
+  border: 1.5px solid var(--cicord-line-strong);
+  border-radius: var(--cicord-radius-lg);
+  background: var(--cicord-surface);
+  color: var(--cicord-text);
   font: inherit;
   text-align: left;
   cursor: pointer;
   transition:
-    border-color 0.18s var(--codi-ease),
-    background-color 0.18s var(--codi-ease),
-    box-shadow 0.18s var(--codi-ease),
-    transform 0.18s var(--codi-ease);
+    border-color 0.18s var(--cicord-ease),
+    background-color 0.18s var(--cicord-ease),
+    box-shadow 0.18s var(--cicord-ease),
+    transform 0.18s var(--cicord-ease);
 }
-.codi-choice:hover {
-  border-color: color-mix(in oklab, var(--codi-role) 55%, var(--codi-line-strong));
+.cicord-choice:hover {
+  border-color: color-mix(in oklab, var(--cicord-role) 55%, var(--cicord-line-strong));
 }
-.codi-choice:active {
+.cicord-choice:active {
   transform: scale(0.985);
 }
-.codi-choice:disabled {
+.cicord-choice:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.codi-choice.is-selected {
-  border-color: var(--codi-role);
-  background: color-mix(in oklab, var(--codi-role) 13%, var(--codi-surface));
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--codi-role) 22%, transparent);
+.cicord-choice.is-selected {
+  border-color: var(--cicord-role);
+  background: color-mix(in oklab, var(--cicord-role) 13%, var(--cicord-surface));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--cicord-role) 22%, transparent);
 }
-.codi-choice__emoji {
+.cicord-choice__emoji {
   flex: none;
   display: grid;
   place-items: center;
   width: 46px;
   height: 46px;
-  border-radius: var(--codi-radius-md);
-  background: color-mix(in oklab, var(--codi-role) 18%, var(--codi-raised));
+  border-radius: var(--cicord-radius-md);
+  background: color-mix(in oklab, var(--cicord-role) 18%, var(--cicord-raised));
   font-size: 1.5rem;
   line-height: 1;
 }
-.codi-choice__dot {
+.cicord-choice__dot {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--codi-role);
+  background: var(--cicord-role);
 }
-.codi-choice__text {
+.cicord-choice__text {
   display: grid;
   gap: 2px;
   min-width: 0;
   flex: 1;
 }
-.codi-choice__label {
+.cicord-choice__label {
   font-weight: 700;
   font-size: 1.0625rem;
   line-height: 1.25;
 }
-.codi-choice__description {
-  color: var(--codi-muted);
+.cicord-choice__description {
+  color: var(--cicord-muted);
   font-size: 0.875rem;
   line-height: 1.4;
 }
-.codi-choice__mark {
+.cicord-choice__mark {
   flex: none;
   display: grid;
   place-items: center;
   width: 22px;
   height: 22px;
-  border: 1.5px solid var(--codi-line-strong);
+  border: 1.5px solid var(--cicord-line-strong);
   color: transparent;
   transition:
-    background-color 0.18s var(--codi-ease),
-    border-color 0.18s var(--codi-ease),
-    color 0.18s var(--codi-ease);
+    background-color 0.18s var(--cicord-ease),
+    border-color 0.18s var(--cicord-ease),
+    color 0.18s var(--cicord-ease);
 }
-.codi-choice__mark.is-check {
+.cicord-choice__mark.is-check {
   border-radius: 7px;
 }
-.codi-choice__mark.is-radio {
+.cicord-choice__mark.is-radio {
   border-radius: 50%;
 }
-.codi-choice.is-selected .codi-choice__mark {
-  border-color: var(--codi-role);
-  background: var(--codi-role);
-  color: var(--codi-role-fg, var(--codi-primary-fg));
+.cicord-choice.is-selected .cicord-choice__mark {
+  border-color: var(--cicord-role);
+  background: var(--cicord-role);
+  color: var(--cicord-role-fg, var(--cicord-primary-fg));
 }
 
 /* ─────────────────────────────────────────────── Stepper */
 
-.codi-stepper ol {
+.cicord-stepper ol {
   display: flex;
   gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.codi-stepper__step {
+.cicord-stepper__step {
   flex: 1;
   min-width: 0;
 }
-.codi-stepper__step > span,
-.codi-stepper__step > button {
+.cicord-stepper__step > span,
+.cicord-stepper__step > button {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -438,166 +438,166 @@ html.codi-root {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--codi-subtle);
+  color: var(--cicord-subtle);
   font: inherit;
   text-align: left;
 }
-.codi-stepper__step > button {
+.cicord-stepper__step > button {
   cursor: pointer;
 }
-.codi-stepper__step > span::before,
-.codi-stepper__step > button::before {
+.cicord-stepper__step > span::before,
+.cicord-stepper__step > button::before {
   content: "";
   order: -1;
   height: 4px;
   border-radius: 99px;
-  background: var(--codi-line-strong);
-  transition: background-color 0.3s var(--codi-ease);
+  background: var(--cicord-line-strong);
+  transition: background-color 0.3s var(--cicord-ease);
 }
-.codi-stepper__step.is-done > *::before {
-  background: var(--codi-primary);
+.cicord-stepper__step.is-done > *::before {
+  background: var(--cicord-primary);
 }
-.codi-stepper__step.is-current > *::before {
-  background: linear-gradient(90deg, var(--codi-primary), var(--codi-accent));
+.cicord-stepper__step.is-current > *::before {
+  background: linear-gradient(90deg, var(--cicord-primary), var(--cicord-accent));
 }
-.codi-stepper__step.is-current > *,
-.codi-stepper__step.is-done > * {
-  color: var(--codi-text);
+.cicord-stepper__step.is-current > *,
+.cicord-stepper__step.is-done > * {
+  color: var(--cicord-text);
 }
-.codi-stepper__index {
+.cicord-stepper__index {
   display: none;
 }
-.codi-stepper__label {
+.cicord-stepper__label {
   overflow: hidden;
   font-size: 0.8125rem;
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.codi-stepper__step.is-todo .codi-stepper__label {
+.cicord-stepper__step.is-todo .cicord-stepper__label {
   font-weight: 500;
 }
 @media (max-width: 560px) {
-  .codi-stepper__step:not(.is-current) .codi-stepper__label {
+  .cicord-stepper__step:not(.is-current) .cicord-stepper__label {
     visibility: hidden;
   }
 }
 
 /* ─────────────────────────────────────────────── ProgressBar */
 
-.codi-progress {
+.cicord-progress {
   height: 6px;
   border-radius: 99px;
-  background: var(--codi-line-strong);
+  background: var(--cicord-line-strong);
   overflow: hidden;
 }
-.codi-progress__bar {
+.cicord-progress__bar {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--codi-primary), var(--codi-accent));
-  transition: width 0.4s var(--codi-ease);
+  background: linear-gradient(90deg, var(--cicord-primary), var(--cicord-accent));
+  transition: width 0.4s var(--cicord-ease);
 }
 
 /* ─────────────────────────────────────────────── Notice */
 
-.codi-notice {
-  --codi-notice: var(--codi-primary-text);
+.cicord-notice {
+  --cicord-notice: var(--cicord-primary-text);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 16px;
   padding: 14px 16px;
-  border: 1px solid color-mix(in oklab, var(--codi-notice) 35%, var(--codi-line));
+  border: 1px solid color-mix(in oklab, var(--cicord-notice) 35%, var(--cicord-line));
   border-left-width: 4px;
-  border-radius: var(--codi-radius-md);
-  background: color-mix(in oklab, var(--codi-notice) 8%, var(--codi-surface));
+  border-radius: var(--cicord-radius-md);
+  background: color-mix(in oklab, var(--cicord-notice) 8%, var(--cicord-surface));
 }
-.codi-notice--error {
-  --codi-notice: var(--codi-danger-text);
+.cicord-notice--error {
+  --cicord-notice: var(--cicord-danger-text);
 }
-.codi-notice--success {
-  --codi-notice: var(--codi-success-text);
+.cicord-notice--success {
+  --cicord-notice: var(--cicord-success-text);
 }
-.codi-notice__body {
+.cicord-notice__body {
   flex: 1 1 240px;
 }
-.codi-notice__title {
+.cicord-notice__title {
   margin: 0;
   font-weight: 700;
 }
-.codi-notice__text {
-  color: var(--codi-muted);
+.cicord-notice__text {
+  color: var(--cicord-muted);
   font-size: 0.9375rem;
 }
-.codi-notice__text > :first-child {
+.cicord-notice__text > :first-child {
   margin-top: 0;
 }
-.codi-notice__text > :last-child {
+.cicord-notice__text > :last-child {
   margin-bottom: 0;
 }
 
 /* ─────────────────────────────────────────────── MemberCard */
 
-.codi-member-card {
+.cicord-member-card {
   overflow: hidden;
-  border: 1px solid var(--codi-line);
-  border-radius: var(--codi-radius-xl);
-  background: var(--codi-surface);
-  box-shadow: var(--codi-shadow);
+  border: 1px solid var(--cicord-line);
+  border-radius: var(--cicord-radius-xl);
+  background: var(--cicord-surface);
+  box-shadow: var(--cicord-shadow);
 }
-.codi-member-card__banner {
+.cicord-member-card__banner {
   height: 84px;
   background:
     radial-gradient(
       120% 140% at 100% 0%,
-      color-mix(in oklab, var(--codi-accent) 85%, transparent),
+      color-mix(in oklab, var(--cicord-accent) 85%, transparent),
       transparent 60%
     ),
-    var(--codi-primary);
+    var(--cicord-primary);
 }
-.codi-member-card__head {
+.cicord-member-card__head {
   height: 0;
   padding-left: 18px;
 }
-.codi-member-card__avatar {
+.cicord-member-card__avatar {
   transform: translateY(-50%);
-  box-shadow: 0 0 0 6px var(--codi-surface);
+  box-shadow: 0 0 0 6px var(--cicord-surface);
 }
-.codi-member-card__body {
+.cicord-member-card__body {
   padding: 50px 20px 20px;
 }
-.codi-member-card__name {
+.cicord-member-card__name {
   margin: 0;
-  font-family: var(--codi-font-display);
+  font-family: var(--cicord-font-display);
   font-size: 1.375rem;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
-.codi-member-card__username {
+.cicord-member-card__username {
   margin: 2px 0 0;
-  color: var(--codi-muted);
+  color: var(--cicord-muted);
   font-size: 0.9375rem;
 }
-.codi-member-card__caption {
+.cicord-member-card__caption {
   margin: 8px 0 0;
-  color: var(--codi-muted);
+  color: var(--cicord-muted);
   font-size: 0.875rem;
 }
-.codi-member-card__roles {
+.cicord-member-card__roles {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid var(--codi-line);
+  border-top: 1px solid var(--cicord-line);
 }
-.codi-member-card__roles-title {
+.cicord-member-card__roles-title {
   margin: 0 0 10px;
-  color: var(--codi-muted);
+  color: var(--cicord-muted);
   font-size: 0.8125rem;
   font-weight: 700;
 }
-.codi-member-card__roles ul {
+.cicord-member-card__roles ul {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -605,24 +605,24 @@ html.codi-root {
   padding: 0;
   list-style: none;
 }
-.codi-member-card__roles li {
+.cicord-member-card__roles li {
   max-width: 100%;
 }
-.codi-member-card__empty {
+.cicord-member-card__empty {
   margin: 0;
-  color: var(--codi-subtle);
+  color: var(--cicord-subtle);
   font-size: 0.875rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .codi-root *,
-  .codi-root *::before,
-  .codi-root *::after {
+  .cicord-root *,
+  .cicord-root *::before,
+  .cicord-root *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .codi-spinner__ring {
+  .cicord-spinner__ring {
     animation-duration: 1.5s !important;
     animation-iteration-count: infinite !important;
   }
@@ -630,60 +630,60 @@ html.codi-root {
 
 /* ───────────────────────────────────────────── Markdown (spec.portal.description) */
 
-.codi-markdown {
-  color: var(--codi-text);
+.cicord-markdown {
+  color: var(--cicord-text);
   line-height: 1.65;
 }
-.codi-markdown > * + * {
+.cicord-markdown > * + * {
   margin-top: 0.85em;
 }
-.codi-markdown :is(h2, h3, h4, h5) {
-  font-family: var(--codi-font-display);
+.cicord-markdown :is(h2, h3, h4, h5) {
+  font-family: var(--cicord-font-display);
   line-height: 1.25;
   letter-spacing: -0.01em;
   margin-top: 1.4em;
 }
-.codi-markdown :is(h2, h3, h4, h5):first-child {
+.cicord-markdown :is(h2, h3, h4, h5):first-child {
   margin-top: 0;
 }
-.codi-markdown h2 {
+.cicord-markdown h2 {
   font-size: 1.35em;
 }
-.codi-markdown h3 {
+.cicord-markdown h3 {
   font-size: 1.15em;
 }
-.codi-markdown :is(ul, ol) {
+.cicord-markdown :is(ul, ol) {
   padding-left: 1.3em;
 }
-.codi-markdown li + li {
+.cicord-markdown li + li {
   margin-top: 0.3em;
 }
-.codi-markdown li::marker {
-  color: var(--codi-primary-text);
+.cicord-markdown li::marker {
+  color: var(--cicord-primary-text);
 }
-.codi-markdown a {
-  color: var(--codi-primary-text);
+.cicord-markdown a {
+  color: var(--cicord-primary-text);
   text-decoration: underline;
   text-underline-offset: 0.18em;
   text-decoration-thickness: 1px;
 }
-.codi-markdown a:hover {
+.cicord-markdown a:hover {
   text-decoration-thickness: 2px;
 }
-.codi-markdown code {
+.cicord-markdown code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.9em;
   padding: 0.1em 0.35em;
   border-radius: 6px;
-  background: var(--codi-sunken);
+  background: var(--cicord-sunken);
 }
-.codi-markdown blockquote {
+.cicord-markdown blockquote {
   margin: 0;
   padding: 0.2em 0 0.2em 1em;
-  border-left: 3px solid var(--codi-accent);
-  color: var(--codi-muted);
+  border-left: 3px solid var(--cicord-accent);
+  color: var(--cicord-muted);
 }
 
-.codi-link-icon {
+.cicord-link-icon {
   flex: none;
 }

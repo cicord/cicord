@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // Change actions (spec/api.md §4, plus "unmanage").

@@ -1,6 +1,6 @@
 // Package store is the plugin Store (ADR-0011, apt/Homebrew-style sources): it lists the
-// plugins of every source — the official plugins bundled in the binary (source "codi")
-// and the registries of codi.yaml — and describes a plugin before it is installed.
+// plugins of every source — the official plugins bundled in the binary (source "cicord")
+// and the registries of cicord.yaml — and describes a plugin before it is installed.
 //
 // Registry indexes are cached in memory (refreshed after TTL or on demand). Trust is
 // computed (registry.Trust), never declared. What a plugin requests (capabilities,
@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 // Source kinds.
@@ -51,7 +51,7 @@ type Source struct {
 	Credentials string `json:"credentials,omitempty"`
 	// Signature is "verified" when the index is signed by an official key, "invalid" for
 	// an official URL whose index is not (the source then has an error and no remote
-	// plugins). Omitted for unofficial registries and the bundled-only "codi" source.
+	// plugins). Omitted for unofficial registries and the bundled-only "cicord" source.
 	Signature string   `json:"signature,omitempty"`
 	Plugins   []Plugin `json:"plugins"`
 }
@@ -262,7 +262,7 @@ func (s *Service) CheckWithToken(ctx context.Context, r config.Registry, token s
 	return s.index(ctx, r, true).err
 }
 
-// Sources lists every source: "codi" first, then the registries in codi.yaml order.
+// Sources lists every source: "cicord" first, then the registries in cicord.yaml order.
 // force refetches every registry index. repo (may be nil) fills Plugin.Installed.
 func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([]Source, error) {
 	inst := installations(repo, s.Catalog)
@@ -276,7 +276,7 @@ func (s *Service) Sources(ctx context.Context, repo *config.Repo, force bool) ([
 		for _, e := range es {
 			official.Plugins = append(official.Plugins, Plugin{Source: official.Name, Name: e.Name,
 				DisplayName: e.DisplayName, Description: e.Description, Keywords: nonNil(e.Keywords),
-				Version: e.Version, Publisher: "CODI", Verified: true, Trust: registry.TrustOfficial,
+				Version: e.Version, Publisher: "Cicord", Verified: true, Trust: registry.TrustOfficial,
 				Installed: nonNilInst(inst[official.Name+"/"+e.Name])})
 		}
 	}
@@ -406,7 +406,7 @@ func (s *Service) BundledDetail(repo *config.Repo, name string) (Detail, error) 
 	}
 	inst := installations(repo, s.Catalog)
 	d := Detail{Plugin: Plugin{Source: source, Name: e.Name, DisplayName: e.DisplayName, Description: e.Description,
-		Keywords: nonNil(e.Keywords), Version: e.Version, Publisher: "CODI", Verified: true,
+		Keywords: nonNil(e.Keywords), Version: e.Version, Publisher: "Cicord", Verified: true,
 		Trust: registry.TrustOfficial, Installed: nonNilInst(inst[source+"/"+name])}}
 	// The integrity of the bundled files: an update checks it was the reviewed version.
 	d.Integrity, _ = s.Catalog.Integrity(name)
@@ -417,7 +417,7 @@ func (s *Service) BundledDetail(repo *config.Repo, name string) (Detail, error) 
 	return d, nil
 }
 
-// RegistryDetail describes plugin name of registry reg (codi.yaml or the official
+// RegistryDetail describes plugin name of registry reg (cicord.yaml or the official
 // registry) at its latest version, downloaded to the cache.
 func (s *Service) RegistryDetail(ctx context.Context, repo *config.Repo, reg config.Registry, name string) (Detail, error) {
 	source := reg.Name
@@ -534,7 +534,7 @@ func ExplainFetch(err error) *SourceError {
 	switch {
 	case errors.Is(err, registry.ErrBadSignature):
 		e.Message = "The official registry index has no valid, current signature (missing, invalid, expired or older than one already seen): its plugins are not listed."
-		e.Hint = "This is never ignored. Try again later; if it persists, report it to the CODI maintainers."
+		e.Hint = "This is never ignored. Try again later; if it persists, report it to the Cicord maintainers."
 	case errors.Is(err, context.DeadlineExceeded):
 		e.Message, e.Hint = "This source did not answer in time.", "Try again later, or check the URL."
 	case strings.Contains(msg, "no index.yaml"):

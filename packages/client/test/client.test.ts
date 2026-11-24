@@ -1,8 +1,8 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
-  CodiApiError,
+  CicordApiError,
   codeForStatus,
-  createCodiClient,
+  createCicordClient,
   onboardingApi,
   SseParser,
   type FetchLike,
@@ -44,24 +44,24 @@ const me = {
 describe("transport", () => {
   test("sends credentials, JSON headers and base URL", async () => {
     const { fetch, calls } = mockFetch(() => json(me));
-    const client = createCodiClient({ baseUrl: "https://codi.example/", fetch });
+    const client = createCicordClient({ baseUrl: "https://cicord.example/", fetch });
     await expect(client.me()).resolves.toEqual(me);
-    expect(calls[0]?.url).toBe("https://codi.example/api/v1/me");
+    expect(calls[0]?.url).toBe("https://cicord.example/api/v1/me");
     expect(calls[0]?.credentials).toBe("include");
     expect(calls[0]?.headers.get("Accept")).toBe("application/json");
-    expect(calls[0]?.headers.get("X-Codi-Request")).toBe("1");
+    expect(calls[0]?.headers.get("X-Cicord-Request")).toBe("1");
   });
 
   test("bearer token", async () => {
     const { fetch, calls } = mockFetch(() => json({}));
-    await createCodiClient({ fetch, token: () => "secret" }).admin.status();
+    await createCicordClient({ fetch, token: () => "secret" }).admin.status();
     expect(calls[0]?.headers.get("Authorization")).toBe("Bearer secret");
     expect(calls[0]?.url).toBe("/api/v1/status");
   });
 
   test("uses the global fetch at call time", async () => {
     const spy = vi.fn(async () => json(me));
-    const client = createCodiClient();
+    const client = createCicordClient();
     vi.stubGlobal("fetch", spy);
     try {
       await client.me();
@@ -71,16 +71,16 @@ describe("transport", () => {
     }
   });
 
-  test("API errors become CodiApiError with diagnostics", async () => {
+  test("API errors become CicordApiError with diagnostics", async () => {
     const diagnostics = [{ severity: "error", path: "/message", message: "too long" }];
     const { fetch } = mockFetch(() =>
       json({ error: { code: "invalid", message: "config is invalid", diagnostics } }, 422),
     );
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     const error = await client.admin
       .updatePluginConfig("ma-commu", "moderator", "welcome", { config: {}, revision: "abc" })
       .catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(CodiApiError);
+    expect(error).toBeInstanceOf(CicordApiError);
     expect(error).toMatchObject({
       code: "invalid",
       status: 422,
@@ -104,7 +104,7 @@ describe("transport", () => {
         503,
       ),
     );
-    await expect(createCodiClient({ fetch }).admin.sync("ma-commu")).rejects.toMatchObject({
+    await expect(createCicordClient({ fetch }).admin.sync("ma-commu")).rejects.toMatchObject({
       code: "unavailable",
       hint: "Enable Community",
       details: "sync: raw",
@@ -116,7 +116,7 @@ describe("transport", () => {
     const { fetch } = mockFetch(
       () => new Response("404 page not found", { status: 404, statusText: "Not Found" }),
     );
-    await expect(createCodiClient({ fetch }).portal.server("x")).rejects.toMatchObject({
+    await expect(createCicordClient({ fetch }).portal.server("x")).rejects.toMatchObject({
       code: "not_found",
       status: 404,
       message: "404 page not found",
@@ -132,7 +132,7 @@ describe("transport", () => {
   });
 
   test("network errors", async () => {
-    const client = createCodiClient({
+    const client = createCicordClient({
       fetch: async () => {
         throw new TypeError("Failed to fetch");
       },
@@ -144,32 +144,32 @@ describe("transport", () => {
     const { fetch } = mockFetch(() =>
       json({ error: { code: "unauthenticated", message: "login" } }, 401),
     );
-    await expect(createCodiClient({ fetch }).meOrNull()).resolves.toBeNull();
+    await expect(createCicordClient({ fetch }).meOrNull()).resolves.toBeNull();
   });
 
   test("204 resolves undefined", async () => {
     const { fetch, calls } = mockFetch(() => new Response(null, { status: 204 }));
-    await expect(createCodiClient({ fetch }).auth.logout()).resolves.toBeUndefined();
+    await expect(createCicordClient({ fetch }).auth.logout()).resolves.toBeUndefined();
     expect(calls[0]).toMatchObject({ method: "POST", url: "/auth/logout" });
   });
 });
 
 describe("auth", () => {
   test("loginUrl", () => {
-    const client = createCodiClient({ baseUrl: "https://codi.example" });
+    const client = createCicordClient({ baseUrl: "https://cicord.example" });
     expect(client.auth.loginUrl("/onboarding?x=1")).toBe(
-      "https://codi.example/auth/login?redirect=%2Fonboarding%3Fx%3D1",
+      "https://cicord.example/auth/login?redirect=%2Fonboarding%3Fx%3D1",
     );
-    expect(createCodiClient({ authPath: "/api/v1/auth/" }).auth.loginUrl("/")).toBe(
+    expect(createCicordClient({ authPath: "/api/v1/auth/" }).auth.loginUrl("/")).toBe(
       "/api/v1/auth/login?redirect=%2F",
     );
   });
 
   test("exchangeLinkToken cleans the URL, posts the token once and shares the exchange", async () => {
     const { fetch, calls } = mockFetch(() => json(me));
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     const location = {
-      href: "https://portal.example/onboarding?server=ma-commu&codi_token=abc.def#top",
+      href: "https://portal.example/onboarding?server=ma-commu&cicord_token=abc.def#top",
     };
     const history = {
       state: null,
@@ -194,7 +194,7 @@ describe("auth", () => {
 
   test("devLogin", async () => {
     const { fetch, calls } = mockFetch(() => json(me));
-    await createCodiClient({ fetch }).auth.devLogin("42");
+    await createCicordClient({ fetch }).auth.devLogin("42");
     expect(calls[0]).toMatchObject({
       method: "POST",
       url: "/auth/dev-login",
@@ -209,7 +209,7 @@ describe("portal & plugins", () => {
     const { fetch, calls } = mockFetch((c) =>
       c.url.endsWith("/servers") ? json({ items: [server] }) : json(server),
     );
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await expect(client.portal.servers()).resolves.toEqual([server]);
     await client.portal.server("ma-commu");
     await client.portal.me("ma commu");
@@ -222,7 +222,7 @@ describe("portal & plugins", () => {
 
   test("plugin routes", async () => {
     const { fetch, calls } = mockFetch(() => json({ ok: true }));
-    const routes = createCodiClient({ fetch }).plugin("ma-commu", "moderator", "onboarding");
+    const routes = createCicordClient({ fetch }).plugin("ma-commu", "moderator", "onboarding");
     await routes.get("/steps", { lang: "fr" });
     await routes.post("complete", { answers: { jeux: ["minecraft"] } });
     await routes.delete("/x");
@@ -237,7 +237,7 @@ describe("portal & plugins", () => {
 
   test("onboardingApi", async () => {
     const { fetch, calls } = mockFetch(() => json({ completed: true }));
-    const api = onboardingApi(createCodiClient({ fetch }).plugin("s", "b", "i"));
+    const api = onboardingApi(createCicordClient({ fetch }).plugin("s", "b", "i"));
     await api.complete({ step: ["role"] });
     expect(calls[0]).toMatchObject({ method: "POST", body: { answers: { step: ["role"] } } });
   });
@@ -246,7 +246,7 @@ describe("portal & plugins", () => {
 describe("admin & machine", () => {
   test("admin endpoints", async () => {
     const { fetch, calls } = mockFetch(() => json({ items: [] }));
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await client.admin.history({ limit: 10 });
     await client.admin.history({ target: "server:s" });
     await client.admin.server("s");
@@ -278,12 +278,12 @@ describe("admin & machine", () => {
     const page = { items: [], total: 0, offset: 0, limit: 25, sort: "name", order: "asc" };
     const { fetch, calls } = mockFetch((c) =>
       c.method === "DELETE"
-        ? json({ removed: true, cleaned: ["codi.lock: acme/xp"], mode: "commit", revision: "r2" })
+        ? json({ removed: true, cleaned: ["cicord.lock: acme/xp"], mode: "commit", revision: "r2" })
         : c.url.includes("?")
           ? json(page)
           : json({ bot: "b", instance: "i" }),
     );
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await expect(
       client.admin.pluginsPage("s", {
         q: "  wel come ",
@@ -298,7 +298,7 @@ describe("admin & machine", () => {
     await client.admin.plugin("s", "b", "my instance");
     await expect(client.admin.uninstallPlugin("s", "b", "xp")).resolves.toEqual({
       removed: true,
-      cleaned: ["codi.lock: acme/xp"],
+      cleaned: ["cicord.lock: acme/xp"],
       mode: "commit",
       revision: "r2",
     });
@@ -308,12 +308,12 @@ describe("admin & machine", () => {
       "GET /api/v1/servers/s/plugins/b/my%20instance",
       "DELETE /api/v1/servers/s/plugins/b/xp",
     ]);
-    expect(calls[3]?.headers.get("X-Codi-Request")).toBe("1");
+    expect(calls[3]?.headers.get("X-Cicord-Request")).toBe("1");
   });
 
   test("server asset upload", async () => {
     const { fetch, calls } = mockFetch(() => json({ mode: "commit", warnings: [] }));
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     const image = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: "image/png" });
     await client.admin.uploadServerAsset("s", "banner", image, { revision: "r1" });
     await client.admin.uploadServerAsset("s", "icon", new Uint8Array([1]));
@@ -333,7 +333,7 @@ describe("admin & machine", () => {
         ? new Response("not ready", { status: 503 })
         : new Response("ok", { status: 200 }),
     );
-    const client = createCodiClient({ fetch, token: "t" });
+    const client = createCicordClient({ fetch, token: "t" });
     await expect(client.machine.healthz()).resolves.toBe(true);
     await expect(client.machine.readyz()).resolves.toBe(false);
     await client.machine.plan(new Uint8Array([1, 2, 3]));
@@ -347,7 +347,7 @@ describe("store & registries", () => {
   const source = {
     name: "acme",
     kind: "git",
-    url: "https://github.com/acme/codi-plugins.git",
+    url: "https://github.com/acme/cicord-plugins.git",
     trust: "unofficial",
     plugins: [],
   };
@@ -358,7 +358,7 @@ describe("store & registries", () => {
         ? json({ sources: [source] })
         : json({ instance: "xp", health: "Healthy", mode: "commit", revision: "abc" }),
     );
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await expect(client.store.list()).resolves.toEqual([source]);
     await expect(client.store.refresh()).resolves.toEqual([source]);
     await client.store.detail("acme", "x/p");
@@ -384,8 +384,8 @@ describe("store & registries", () => {
     ]);
     expect(calls[3]?.body).toEqual(request);
     // CSRF header on the state-changing calls.
-    expect(calls[1]?.headers.get("X-Codi-Request")).toBe("1");
-    expect(calls[3]?.headers.get("X-Codi-Request")).toBe("1");
+    expect(calls[1]?.headers.get("X-Cicord-Request")).toBe("1");
+    expect(calls[3]?.headers.get("X-Cicord-Request")).toBe("1");
     expect(calls[3]?.headers.get("Content-Type")).toBe("application/json");
   });
 
@@ -395,7 +395,7 @@ describe("store & registries", () => {
     const { fetch, calls } = mockFetch((c) =>
       c.url.includes("/store/plugins") ? json(page) : json({ sources: [summary] }),
     );
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await expect(client.store.sources()).resolves.toEqual([summary]);
     await client.store.sources({ summary: false });
     await expect(
@@ -424,7 +424,7 @@ describe("store & registries", () => {
     const { fetch, calls } = mockFetch((c) =>
       c.method === "POST" ? json(result) : json({ available: true, items: [], total: 0 }),
     );
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await client.store.updateReview("acme", "xp");
     const request = {
       version: "1.1.0",
@@ -433,24 +433,24 @@ describe("store & registries", () => {
       confirmUnofficial: true,
     };
     await expect(client.store.update("acme", "xp", request)).resolves.toEqual(result);
-    await client.store.update("codi", "welcome", { version: "0.2.0", force: true });
+    await client.store.update("cicord", "welcome", { version: "0.2.0", force: true });
     await client.store.plugins({ updates: true });
     await client.admin.pluginsPage("ma-commu", { updates: true, limit: 25 });
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       "GET /api/v1/store/acme/xp/update",
       "POST /api/v1/store/acme/xp/update",
-      "POST /api/v1/store/codi/welcome/update",
+      "POST /api/v1/store/cicord/welcome/update",
       "GET /api/v1/store/plugins?updates=true",
       "GET /api/v1/servers/ma-commu/plugins?limit=25&updates=true",
     ]);
     expect(calls[1]?.body).toEqual(request);
     expect(calls[2]?.body).toEqual({ version: "0.2.0", force: true });
-    expect(calls[1]?.headers.get("X-Codi-Request")).toBe("1");
+    expect(calls[1]?.headers.get("X-Cicord-Request")).toBe("1");
   });
 
   test("private registry tokens", async () => {
     const { fetch, calls } = mockFetch(() => json({ mode: "commit", revision: "r" }));
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await client.registries.add({ name: "acme", url: "https://git.acme.dev/p.git", token: "tok" });
     await client.registries.setToken("acme", "new-token");
     await client.registries.removeToken("acme");
@@ -465,14 +465,14 @@ describe("store & registries", () => {
       token: "tok",
     });
     expect(calls[1]?.body).toEqual({ token: "new-token" });
-    expect(calls.every((c) => c.headers.get("X-Codi-Request") === "1")).toBe(true);
+    expect(calls.every((c) => c.headers.get("X-Cicord-Request") === "1")).toBe(true);
   });
 
   test("registry endpoints", async () => {
     const { fetch, calls } = mockFetch(() => json({ mode: "pullRequest", pullRequestUrl: "u" }));
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await expect(
-      client.registries.add({ name: "acme", url: "https://github.com/acme/codi-plugins.git" }),
+      client.registries.add({ name: "acme", url: "https://github.com/acme/cicord-plugins.git" }),
     ).resolves.toEqual({ mode: "pullRequest", pullRequestUrl: "u" });
     await client.registries.remove("acme");
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
@@ -481,9 +481,9 @@ describe("store & registries", () => {
     ]);
     expect(calls[0]?.body).toEqual({
       name: "acme",
-      url: "https://github.com/acme/codi-plugins.git",
+      url: "https://github.com/acme/cicord-plugins.git",
     });
-    expect(calls.every((c) => c.headers.get("X-Codi-Request") === "1")).toBe(true);
+    expect(calls.every((c) => c.headers.get("X-Cicord-Request") === "1")).toBe(true);
   });
 
   test("abort signals are passed through", async () => {
@@ -492,10 +492,10 @@ describe("store & registries", () => {
       signals.push(init.signal);
       return json({ sources: [] });
     };
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     const ctrl = new AbortController();
     await client.store.list({ signal: ctrl.signal });
-    await client.store.detail("codi", "welcome", { signal: ctrl.signal });
+    await client.store.detail("cicord", "welcome", { signal: ctrl.signal });
     expect(signals).toEqual([ctrl.signal, ctrl.signal]);
   });
 
@@ -525,11 +525,11 @@ describe("store & registries", () => {
             )
           : json({ error: { code: "registry_unavailable", message: "fetch failed" } }, 502),
     );
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     const changed = await client.store
       .install("s", { source: "acme", plugin: "xp" })
       .catch((e: unknown) => e);
-    expect(changed).toBeInstanceOf(CodiApiError);
+    expect(changed).toBeInstanceOf(CicordApiError);
     expect(changed).toMatchObject({
       code: "changed",
       status: 409,
@@ -549,7 +549,7 @@ describe("store & registries", () => {
 describe("simulator", () => {
   test("sim endpoints", async () => {
     const { fetch, calls } = mockFetch(() => json({ items: [] }));
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await client.sim.state();
     await client.sim.createUser("bob");
     await client.sim.join("srv", "u1");
@@ -617,7 +617,7 @@ describe("simulator", () => {
       });
       return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
     };
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     const events: ServerSentEvent[] = [];
     const stream = client.sim.subscribe((e) => events.push(e), { once: true });
     await stream.closed;
@@ -630,7 +630,7 @@ describe("simulator", () => {
 
   test("SSE reconnects after errors until closed", async () => {
     let calls = 0;
-    const client = createCodiClient({
+    const client = createCicordClient({
       fetch: async () => {
         calls++;
         return new Response("down", { status: 503 });

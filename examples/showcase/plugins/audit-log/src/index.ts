@@ -1,4 +1,4 @@
-import { definePlugin, type Context, type Message, type Role, type TextChannel } from "@codi/sdk";
+import { definePlugin, type Context, type Message, type Role, type TextChannel } from "@cicord/sdk";
 import { esc, flush, messageLink, record, snowflakeTime, ts } from "./log.ts";
 
 /**

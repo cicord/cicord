@@ -5,12 +5,12 @@ package api
 // It gets a bearer session token instead:
 //
 //   - OAuth: /auth/login?mode=token&redirect=<allowed origin URL> → Discord → /auth/callback
-//     redirects to <redirect>?codi_code=<one-time code> → POST /auth/token {code} from that
+//     redirects to <redirect>?cicord_code=<one-time code> → POST /auth/token {code} from that
 //     origin → {token, expiresAt, me}.
 //   - Portal links: POST /auth/link {token, mode: "token"} → {token, expiresAt, me}.
 //   - Dev: POST /auth/dev-login {userId, mode: "token"} → {token, expiresAt, me}.
 //
-// Token sessions are sent as `Authorization: Bearer codi_st_…`. They have the full role of
+// Token sessions are sent as `Authorization: Bearer cicord_st_…`. They have the full role of
 // the user on portal endpoints and at most `member` everywhere else (like link sessions),
 // so a token stored by a third-party site never reaches the admin endpoints.
 
@@ -25,21 +25,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 const (
 	// tokenPrefix distinguishes session tokens from the runtime token.
-	tokenPrefix = "codi_st_"
+	tokenPrefix = "cicord_st_"
 	// authCodeTTL bounds the one-time code of the OAuth token flow.
 	authCodeTTL = 60 * time.Second
 )
 
 // originPolicy says whether an origin may call the runtime cross-origin and whether it may
 // do so with credentials (cookies). Operator origins (--cors-origin) get credentials;
-// origins declared in the repository (codi.yaml spec.portal.allowedOrigins) are token-mode
+// origins declared in the repository (cicord.yaml spec.portal.allowedOrigins) are token-mode
 // only, so that a merged pull request can never open cookie sessions to a new site.
 func (s *server) originPolicy(origin string) (allowed, credentials bool) {
 	if origin == "" {
@@ -146,7 +146,7 @@ func (s *server) issueAuthCode(ctx context.Context, u discord.User, redirect str
 		return "", err
 	}
 	q := tu.Query()
-	q.Set("codi_code", code)
+	q.Set("cicord_code", code)
 	tu.RawQuery = q.Encode()
 	return tu.String(), nil
 }

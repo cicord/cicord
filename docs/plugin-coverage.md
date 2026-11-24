@@ -1,6 +1,6 @@
 # Plugin SDK coverage
 
-Every surface of [`spec/sdk/codi-sdk.d.ts`](../spec/sdk/codi-sdk.d.ts), the plugin of
+Every surface of [`spec/sdk/cicord-sdk.d.ts`](../spec/sdk/cicord-sdk.d.ts), the plugin of
 [`examples/showcase`](../examples/showcase/) that uses it, and the end-to-end test that drives
 it through the real runtime on the Discord simulator (reconciler, bot host, plugin host,
 scheduler, SQLite store). The last column tracks the manual check on real Discord.
@@ -12,9 +12,9 @@ Tests (Go, run by `go test ./...`):
   (`internal/runtime/testdata/probe`) covers error paths a real plugin never hits on purpose.
 - `api/…`: `internal/api/showcase_test.go` (`TestShowcaseRouteAccess`): portal routes
   through the HTTP API, which enforces the access levels.
-- `cli/…`: `internal/cli/plugin_test.go` (`TestShowcasePlugins`: `codi plugin build`,
-  `typegen --check` and `codi plugin test` for every showcase plugin).
-- Unit tests of each plugin with `@codi/sdk/testing` live in
+- `cli/…`: `internal/cli/plugin_test.go` (`TestShowcasePlugins`: `cicord plugin build`,
+  `typegen --check` and `cicord plugin test` for every showcase plugin).
+- Unit tests of each plugin with `@cicord/sdk/testing` live in
   `examples/showcase/plugins/*/test` (`pnpm test`).
 
 Real Discord status: **to verify on real Discord** unless noted. The checklist at the end
@@ -81,7 +81,7 @@ lists the precise steps.
 | `http.fetch` to an allow-listed host | moderation webhook (`hooks.slack.com`) | rt/Moderation (TLS httptest server via `Options.PluginHTTPClient`) | to verify with a real Slack/Discord webhook |
 | `http.fetch` egress refusals (allow-list, private addresses, redirects) | — | `internal/plugin` fetch tests | n/a |
 | `events.publish` + `subscriptions` (`polls.closed`) | polls → levels bonus XP | rt/Polls | n/a |
-| `ctx.portal.link` | levels `/rank` | rt/Levels (signed `codi_token`) | to verify on real Discord (open the link) |
+| `ctx.portal.link` | levels `/rank` | rt/Levels (signed `cicord_token`) | to verify on real Discord (open the link) |
 | Portal route `public` | levels `GET /leaderboard`, polls `GET /polls/:id` | api/RouteAccess, rt/Levels, rt/Polls | to verify with the portal |
 | Portal route `member` | levels `GET /me` | api/RouteAccess (401 anonymous, 403 non-member) | to verify with the portal |
 | Portal route `moderator` | tickets `GET /tickets`, moderation `GET /warnings/:userId` | api/RouteAccess (403 member), rt/Tickets | to verify with the portal |
@@ -242,14 +242,14 @@ Administrator, then try once more without Administrator but with Manage Channels
 Roles, Manage Messages, Moderate/Kick/Ban Members). Use a second account for the "member"
 steps.
 
-1. **Reconcile**: `codi apply` creates the roles, categories and channels of
+1. **Reconcile**: `cicord apply` creates the roles, categories and channels of
    `servers/showcase.yaml` (no announcement channel, so no Community feature needed).
 2. **Tickets**: as the owner run `/ticket-panel` (then `/ticket-panel channel:#general`);
    check the reply is ephemeral and the member account cannot see the command. As the
    member click **Open a ticket**, fill the modal; check the ephemeral "Your ticket is
    open" (after a short "thinking"), the `ticket-1` channel under *Support*, visible to
    the member, Support and Moderator but not to a third account; the welcome pings the
-   member and @Support. Post a few messages, run `codi sync`/wait for a resync: the
+   member and @Support. Post a few messages, run `cicord sync`/wait for a resync: the
    channel stays. Click **Close** → ephemeral confirmation → **Close ticket**: the summary
    lands in #ticket-log (message count, participants), the channel is deleted. Repeat with
    a bot **without Administrator** (the `member:<bot>` overwrite must keep its access).
@@ -275,7 +275,7 @@ steps.
 6. **Portal routes**: with the portal, `GET …/levels/leaderboard` anonymously,
    `…/levels/me` as a member, `…/tickets/tickets` and `…/moderation/warnings/<id>` as a
    moderator, `DELETE …/moderation/warnings/<id>` as an admin (403 for a moderator).
-7. **Hot reload**: change `defaultHours` in `bots/codi/bot.yaml` and push: the bot does not
+7. **Hot reload**: change `defaultHours` in `bots/cicord/bot.yaml` and push: the bot does not
    reconnect, open polls keep their votes and still close on time.
 8. **Reaction roles**: the three panels appear in #roles at start. As the member pick Red then
    Blue (Red goes away), pick Events in the select (refused without the Member role), react

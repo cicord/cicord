@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // DefaultInteractionDeadline is how long an interaction may stay unacknowledged

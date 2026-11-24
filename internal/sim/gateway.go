@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 var (

@@ -5,11 +5,11 @@ description: Overview of the runtime's HTTP API v1 - authentication, roles, CSRF
 
 The runtime serves a JSON HTTP API used by the admin console, the portal SDK and the CLI. This
 page is an overview. The normative contract, with every shape, is
-[`spec/api.md`](https://github.com/npjonath/codi/blob/main/spec/api.md);
-`@codi/client` mirrors it in TypeScript.
+[`spec/api.md`](https://github.com/npjonath/cicord/blob/main/spec/api.md);
+`@cicord/client` mirrors it in TypeScript.
 
 :::caution
-The API is `v1` of a pre-release project: shapes may still change. Prefer `@codi/client` over
+The API is `v1` of a pre-release project: shapes may still change. Prefer `@cicord/client` over
 hand-written calls.
 :::
 
@@ -45,20 +45,20 @@ hand-written calls.
 
 | Client | How |
 |---|---|
-| Browser, same origin | The `codi_session` cookie (HttpOnly, `SameSite=Lax`), from Discord OAuth2 (`/auth/login`) or a portal link (`/auth/link`). |
-| Portal on another origin | A session token, `Authorization: Bearer codi_st_…` (token mode). |
-| CLI, CI | `Authorization: Bearer <CODI_RUNTIME_TOKEN>`: admin on every server. |
+| Browser, same origin | The `cicord_session` cookie (HttpOnly, `SameSite=Lax`), from Discord OAuth2 (`/auth/login`) or a portal link (`/auth/link`). |
+| Portal on another origin | A session token, `Authorization: Bearer cicord_st_…` (token mode). |
+| CLI, CI | `Authorization: Bearer <CICORD_RUNTIME_TOKEN>`: admin on every server. |
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /auth/login?redirect=<path>[&mode=token]` | Redirect to Discord OAuth2 (scope `identify`). |
 | `GET /auth/callback` | OAuth2 callback. Register `<public-url>/auth/callback` in the Discord application. |
-| `POST /auth/link` | Exchange a `ctx.portal.link()` token (`codi_token`) for a session scoped to one server. |
-| `POST /auth/token` | Token mode: redeem the one-time `codi_code` for a 24-hour session token. |
+| `POST /auth/link` | Exchange a `ctx.portal.link()` token (`cicord_token`) for a session scoped to one server. |
+| `POST /auth/token` | Token mode: redeem the one-time `cicord_code` for a 24-hour session token. |
 | `POST /auth/dev-login` | Dev mode only: sign in as any user (needs `--sim` or the runtime token). |
 | `POST /auth/logout` | End the session (or revoke the bearer session token). |
 
-**CSRF**: every unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) needs `X-Codi-Request: 1`
+**CSRF**: every unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) needs `X-Cicord-Request: 1`
 unless it has an `Authorization` header, and an `Origin` that is the public URL or an allowed
 CORS origin. `/hooks/*` is exempt (HMAC).
 
@@ -110,32 +110,32 @@ resolved from the user's live Discord roles. See [Access and roles](../../concep
 
 | Method | Path | Auth | Result |
 |---|---|---|---|
-| POST | `/api/v1/sync` | bearer | Fetch the source now and sync (`202`). Used by `codi sync`. |
-| POST | `/api/v1/plan` | bearer | Body: a `.tar.gz` of a repository. Validates and plans it against live Discord without applying (`codi plan --remote`). |
-| POST | `/hooks/github` | HMAC (`CODI_WEBHOOK_SECRET`) | GitHub push webhook. |
+| POST | `/api/v1/sync` | bearer | Fetch the source now and sync (`202`). Used by `cicord sync`. |
+| POST | `/api/v1/plan` | bearer | Body: a `.tar.gz` of a repository. Validates and plans it against live Discord without applying (`cicord plan --remote`). |
+| POST | `/hooks/github` | HMAC (`CICORD_WEBHOOK_SECRET`) | GitHub push webhook. |
 
 ### Store and registries
 
 | Method | Path | Role | Result |
 |---|---|---|---|
 | GET | `/api/v1/catalog` | admin | The official plugins bundled in the binary. |
-| GET | `/api/v1/store` | admin | Every source (`codi` first, then registries) with its plugins. |
+| GET | `/api/v1/store` | admin | Every source (`cicord` first, then registries) with its plugins. |
 | GET | `/api/v1/store/plugins` | admin | Plugins across sources (paged, filterable by source, trust, installed, updates). |
 | POST | `/api/v1/store/refresh` | admin | Refetch every registry index. |
 | GET | `/api/v1/store/{source}/{plugin}` | admin | What the latest version requests (capabilities, intents, network, schema, commands). |
 | GET, POST | `/api/v1/store/{source}/{plugin}/update` | admin (POST: on every server running it) | Review, then apply, an update. |
 | POST | `/api/v1/servers/{server}/store/install` | admin | Install exactly the reviewed version (`409 changed` otherwise). |
-| POST, DELETE | `/api/v1/registries`, `/api/v1/registries/{name}` | admin of every server | Add or remove a registry (write-back to `codi.yaml`). |
+| POST, DELETE | `/api/v1/registries`, `/api/v1/registries/{name}` | admin of every server | Add or remove a registry (write-back to `cicord.yaml`). |
 | PUT, DELETE | `/api/v1/registries/{name}/token` | admin of every server | Set or remove a private registry's token. |
 
 ### Setup wizard
 
-In setup mode (no `codi.yaml`), only the admin console, `/api/v1/setup/*`, `/api/v1/catalog`
+In setup mode (no `cicord.yaml`), only the admin console, `/api/v1/setup/*`, `/api/v1/catalog`
 and the health endpoints are served; everything else answers `503 setup_required`. The wizard
 endpoints are under `/api/v1/setup` and need the setup session obtained from the one-time
 token (`POST /api/v1/setup/session`). After **Finish** they answer `410 gone`.
 
-### Simulator (`codi dev --sim` only)
+### Simulator (`cicord dev --sim` only)
 
 `/api/v1/sim/*` exposes the simulated world to the admin console's Simulator panel: state,
 users, joins and leaves, boosts, messages, DMs, slash commands, components, modals, and a
@@ -147,5 +147,5 @@ Server-Sent Events stream of changes. These endpoints answer `404` without `--si
   JSON responses are `Cache-Control: no-store`; the admin console is served with
   `X-Frame-Options: DENY`.
 - CORS is same-origin by default. Operator origins (`--cors-origin`) are allowed **with**
-  credentials; repository origins (`codi.yaml` `spec.portal.allowedOrigins`) **without**
+  credentials; repository origins (`cicord.yaml` `spec.portal.allowedOrigins`) **without**
   credentials, for token mode only.

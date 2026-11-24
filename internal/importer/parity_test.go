@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 // TestImportParityRoundTrip: a server configured by hand with every parity block
@@ -23,7 +23,7 @@ func TestImportParityRoundTrip(t *testing.T) {
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
 	srv := w.CreateServer("Parity", owner.ID)
-	token, bot, _ := w.CreateBot("codi")
+	token, bot, _ := w.CreateBot("cicord")
 	if _, err := w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator")); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestImportParityRoundTrip(t *testing.T) {
 	}
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "servers"), 0o755)
-	os.WriteFile(filepath.Join(dir, "codi.yaml"), []byte("apiVersion: codi.dev/v1alpha1\nkind: Project\nmetadata:\n  name: p\nspec:\n  engine: \">=0.0.0\"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "cicord.yaml"), []byte("apiVersion: cicord.dev/v1alpha1\nkind: Project\nmetadata:\n  name: p\nspec:\n  engine: \">=0.0.0\"\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "servers", "parity.yaml"), res.YAML, 0o644)
 	repo, diags := config.Load(dir, config.LoadOptions{})
 	if repo == nil || diags.HasErrors() {

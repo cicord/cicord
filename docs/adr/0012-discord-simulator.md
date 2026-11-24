@@ -4,14 +4,14 @@
 
 ## Context
 Testing the reconciler, the bot host and plugins against real Discord is slow, rate
-limited and hard to automate. Most of CODI will be written with AI agents, which are
+limited and hard to automate. Most of Cicord will be written with AI agents, which are
 reliable when they have precise contracts and fast tests. Two designs were possible:
 an HTTP/websocket fake that speaks Discord's wire protocol (so the real adapter could be
-pointed at it), or an in-process implementation of CODI's own Discord interface.
+pointed at it), or an in-process implementation of Cicord's own Discord interface.
 
 ## Decision
-- All of CODI talks to Discord through the `internal/discord` interfaces
-  (`Connector`, `Session`, `Client`, in CODI vocabulary, ADR-0009). There are two
+- All of Cicord talks to Discord through the `internal/discord` interfaces
+  (`Connector`, `Session`, `Client`, in Cicord vocabulary, ADR-0009). There are two
   implementations: `internal/discord/disgoadapter` (real Discord, ADR-0014) and
   **`internal/sim`**, an **in-process, in-memory** implementation of the same interfaces.
 - The simulator is **not** an HTTP-level fake of the Discord API: no wire protocol, no
@@ -29,11 +29,11 @@ pointed at it), or an in-process implementation of CODI's own Discord interface.
   `UserClient` returns a full `discord.Client` for any user. Every mutating call is
   recorded in a call log; `WaitIdle` waits for all event cascades.
 - Used by Go tests (reconciler integration tests, runtime and API tests) and by
-  `codi dev --sim` (ADR-0017), where the HTTP API exposes it to the admin UI's Simulator
+  `cicord dev --sim` (ADR-0017), where the HTTP API exposes it to the admin UI's Simulator
   panel (`/api/v1/sim/*`, spec/api.md §8).
 - The wire-level behaviour of the real adapter is tested separately against an
   `httptest` fake of the REST API and gateway inside `disgoadapter`'s own tests.
-- Plugin unit tests in Node use `@codi/sdk/testing` (JS fakes of the SDK context); they do
+- Plugin unit tests in Node use `@cicord/sdk/testing` (JS fakes of the SDK context); they do
   not go through the simulator.
 
 ## Consequences
@@ -43,5 +43,5 @@ pointed at it), or an in-process implementation of CODI's own Discord interface.
   against a real test server. The recorded-fixture mode comparing the simulator with real
   Discord, mentioned in the original proposal, is not implemented.
 - Every new method on the `discord` interfaces must be implemented twice (adapter and
-  simulator); the simulator stays narrow to what CODI actually calls.
-- Simulator IDs are new on every run, so `codi dev --sim` keeps its state DB in memory.
+  simulator); the simulator stays narrow to what Cicord actually calls.
+- Simulator IDs are new on every run, so `cicord dev --sim` keeps its state DB in memory.

@@ -20,17 +20,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/plugin"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/plugin"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 const (
 	showcaseServer = "showcase"
-	showcaseBot    = "codi"
+	showcaseBot    = "cicord"
 )
 
 type showcaseOpts struct {
@@ -73,8 +73,8 @@ func startShowcase(t *testing.T, o showcaseOpts) *showcase {
 	t.Helper()
 	w := sim.NewWorld(o.simOpts...)
 	owner := w.CreateUser("owner")
-	srv := w.CreateServer("CODI Showcase", owner.ID)
-	token, bot, appID := w.CreateBot("CODI")
+	srv := w.CreateServer("Cicord Showcase", owner.ID)
+	token, bot, appID := w.CreateBot("Cicord")
 	if _, err := w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator")); err != nil {
 		t.Fatal(err)
 	}
@@ -82,10 +82,10 @@ func startShowcase(t *testing.T, o showcaseOpts) *showcase {
 	dir := t.TempDir()
 	copyTree(t, "../../examples/showcase", dir)
 	replaceIn(t, filepath.Join(dir, "servers/showcase.yaml"), `discordId: "223344556677889900"`, `discordId: "`+srv.ID+`"`)
-	replaceIn(t, filepath.Join(dir, "bots/codi/bot.yaml"), `applicationId: "887766554433221100"`, `applicationId: "`+appID+`"`)
+	replaceIn(t, filepath.Join(dir, "bots/cicord/bot.yaml"), `applicationId: "887766554433221100"`, `applicationId: "`+appID+`"`)
 	if o.probe {
 		copyTree(t, "testdata/probe", filepath.Join(dir, "plugins/probe"))
-		appendTo(t, filepath.Join(dir, "bots/codi/bot.yaml"), `
+		appendTo(t, filepath.Join(dir, "bots/cicord/bot.yaml"), `
     - name: probe
       source: ../../plugins/probe
       grants: [storage.kv, portal.routes, discord.messages.send]
@@ -111,7 +111,7 @@ func startShowcase(t *testing.T, o showcaseOpts) *showcase {
 	logger := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	rt := New(Options{
 		Source: src, Connector: w, Store: store, Mode: "dev", Simulator: true,
-		Secrets:   func(n string) (string, bool) { return token, n == "DISCORD_TOKEN_CODI" },
+		Secrets:   func(n string) (string, bool) { return token, n == "DISCORD_TOKEN_CICORD" },
 		PortalURL: "http://localhost:7499", Logger: logger, ResyncInterval: -1,
 		PluginLimits: o.limits, AllowPrivateNetworks: o.httpClient != nil, PluginHTTPClient: o.httpClient,
 	})
@@ -381,7 +381,7 @@ func TestShowcaseTickets(t *testing.T) {
 		t.Fatal("the reconciler pruned a plugin-owned channel")
 	}
 	res, err := s.store.Resources().GetByID(context.Background(), showcaseServer, ticket.ID)
-	if err != nil || res.Owner != "plugin:codi/tickets" || res.Kind != state.KindChannel {
+	if err != nil || res.Owner != "plugin:cicord/tickets" || res.Kind != state.KindChannel {
 		t.Fatalf("ownership = %+v, %v", res, err)
 	}
 	if !perms(alice) || perms(eve) {
@@ -647,7 +647,7 @@ func TestShowcasePolls(t *testing.T) {
 	}
 
 	rev, _ := s.rt.Revision()
-	replaceIn(t, filepath.Join(s.dir, "bots/codi/bot.yaml"), "defaultHours: 24", "defaultHours: 12")
+	replaceIn(t, filepath.Join(s.dir, "bots/cicord/bot.yaml"), "defaultHours: 24", "defaultHours: 12")
 	s.waitFor("new revision", func() bool { r, _ := s.rt.Revision(); return r.SHA != rev.SHA })
 	if n := w.OpenSessions(); n != 1 {
 		t.Errorf("open sessions after reload = %d", n)
@@ -670,7 +670,7 @@ func TestShowcasePolls(t *testing.T) {
 
 func TestShowcaseLevels(t *testing.T) {
 	s := startShowcase(t, showcaseOpts{prepare: func(dir string) {
-		bot := filepath.Join(dir, "bots/codi/bot.yaml")
+		bot := filepath.Join(dir, "bots/cicord/bot.yaml")
 		replaceIn(t, bot, "cooldownSeconds: 60", "cooldownSeconds: 0\n        xpPerMessage: 100")
 		replaceIn(t, bot, "{ level: 5, role: regular }", "{ level: 1, role: regular, keep: false }")
 		replaceIn(t, bot, "{ level: 10, role: veteran }", "{ level: 2, role: veteran }")
@@ -728,7 +728,7 @@ func TestShowcaseLevels(t *testing.T) {
 		t.Fatalf("/rank = %+v (%s)", st, replyText(st))
 	}
 	link := st.Message.Components[0].Components[0]
-	if link.Style != discord.ButtonLink || !strings.HasPrefix(link.URL, "http://localhost:7499/leaderboard?") || !strings.Contains(link.URL, "codi_token=") {
+	if link.Style != discord.ButtonLink || !strings.HasPrefix(link.URL, "http://localhost:7499/leaderboard?") || !strings.Contains(link.URL, "cicord_token=") {
 		t.Errorf("leaderboard link = %+v", link)
 	}
 
@@ -800,7 +800,7 @@ func TestShowcaseModeration(t *testing.T) {
 	client = &http.Client{Transport: tr}
 
 	s := startShowcase(t, showcaseOpts{httpClient: client, prepare: func(dir string) {
-		bot := filepath.Join(dir, "bots/codi/bot.yaml")
+		bot := filepath.Join(dir, "bots/cicord/bot.yaml")
 		replaceIn(t, bot, "warningDays: 30", "warningDays: 0.00002") // ≈ 2 s
 		replaceIn(t, bot, "{ warnings: 3, action: timeout, durationMinutes: 60 }", "{ warnings: 2, action: timeout }")
 		replaceIn(t, bot, "flood:\n          exemptRoles: [mod, admin]", "flood:\n          messages: 4\n          exemptRoles: [mod, admin]\n        webhook:\n          url: https://hooks.slack.com/services/T0/B0/x")
@@ -832,7 +832,7 @@ func TestShowcaseModeration(t *testing.T) {
 	}
 	s.waitFor("warning DM", func() bool {
 		for _, m := range w.DMs(troll.ID, s.bot.ID) {
-			if strings.Contains(m.Content, "You received a warning on **CODI Showcase**: spam") {
+			if strings.Contains(m.Content, "You received a warning on **Cicord Showcase**: spam") {
 				return true
 			}
 		}
@@ -904,7 +904,7 @@ func TestShowcaseModeration(t *testing.T) {
 	logged("<@" + troll.ID + "> (troll) left.")
 	found := false
 	for _, m := range w.DMs(troll.ID, s.bot.ID) {
-		found = found || strings.Contains(m.Content, "You were kicked from **CODI Showcase**: bye")
+		found = found || strings.Contains(m.Content, "You were kicked from **Cicord Showcase**: bye")
 	}
 	if !found {
 		t.Error("no DM before the kick")

@@ -1,4 +1,4 @@
-import { CodiApiError, createCodiClient, type FetchLike } from "@codi/client";
+import { CicordApiError, createCicordClient, type FetchLike } from "@cicord/client";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
@@ -37,7 +37,7 @@ function setup(path = "/admin/servers/ma-commu/store", intercept?: Intercept) {
     return res ?? runtime.fetch(input, init);
   };
   const config: AdminConfig = {
-    client: createCodiClient({ fetch: watch401(fetch) }),
+    client: createCicordClient({ fetch: watch401(fetch) }),
     loginUrl: "/auth/login?redirect=/admin/",
     mock: true,
   };
@@ -132,7 +132,7 @@ describe("store: browse", () => {
   });
 
   test("detail page: permissions review, privileged intents, network, installed instances", async () => {
-    const { user } = setup(`${STORE}/codi/moderation`);
+    const { user } = setup(`${STORE}/cicord/moderation`);
     await login(user);
     const page = await pluginPage("Moderation");
     expect(await within(page).findByText("What this plugin requests")).toBeTruthy();
@@ -155,7 +155,7 @@ describe("store: browse", () => {
   });
 
   test("detail page of an installed and of an unofficial plugin; unknown plugin", async () => {
-    const { user } = setup(`${STORE}/codi/welcome`);
+    const { user } = setup(`${STORE}/cicord/welcome`);
     await login(user);
     const welcome = await pluginPage("Welcome");
     expect(await within(welcome).findByText("moderator/welcome on ma-commu")).toBeTruthy();
@@ -185,7 +185,7 @@ describe("store: browse", () => {
 
 describe("store: install", () => {
   test("an official plugin installs without version pinning, then links to its page", async () => {
-    const { user, sent } = setup(`${STORE}/codi/polls`);
+    const { user, sent } = setup(`${STORE}/cicord/polls`);
     await login(user);
     const page = await pluginPage("Polls");
     await user.click(await within(page).findByRole("button", { name: "Install on Ma Commu" }));
@@ -195,7 +195,7 @@ describe("store: install", () => {
     expect(await within(page).findByText("Polls is installed")).toBeTruthy();
     expect(within(page).getByText("/poll")).toBeTruthy();
     const body = installs(sent)[0]!.body as Record<string, unknown>;
-    expect(body).toMatchObject({ source: "codi", plugin: "polls", instance: "polls" });
+    expect(body).toMatchObject({ source: "cicord", plugin: "polls", instance: "polls" });
     expect(body).not.toHaveProperty("version");
     expect(body).not.toHaveProperty("confirmUnofficial");
     expect(body).not.toHaveProperty("bot");
@@ -295,7 +295,7 @@ describe("store: install", () => {
   });
 
   test("a taken instance name is explained (409 conflict)", async () => {
-    const { user } = setup(`${STORE}/codi/polls`);
+    const { user } = setup(`${STORE}/cicord/polls`);
     await login(user);
     const polls = await pluginPage("Polls");
     await user.click(await within(polls).findByRole("button", { name: "Install on Ma Commu" }));
@@ -309,7 +309,7 @@ describe("store: install", () => {
   });
 
   test("intents error links to the developer portal", async () => {
-    const { user } = setup(`${STORE}/codi/polls`, (url, init) =>
+    const { user } = setup(`${STORE}/cicord/polls`, (url, init) =>
       init.method === "POST" && url.pathname.endsWith("/store/install")
         ? json(
             {
@@ -345,7 +345,7 @@ describe("store: sources", () => {
     await login(user);
     const list = await screen.findByRole("list", { name: "Sources" });
     // The bundled source cannot be removed, the registries can.
-    expect(within(list).queryByRole("button", { name: "Remove source codi" })).toBeNull();
+    expect(within(list).queryByRole("button", { name: "Remove source cicord" })).toBeNull();
     expect(within(list).getByRole("button", { name: "Remove source acme" })).toBeTruthy();
     expect(within(list).getByText("Fetch failed")).toBeTruthy();
     expect(within(list).getByText(/120 plugins/)).toBeTruthy();
@@ -353,10 +353,10 @@ describe("store: sources", () => {
 
     const name = screen.getByLabelText("Name");
     const url = screen.getByLabelText("Git URL (https)");
-    await user.type(name, "codi");
+    await user.type(name, "cicord");
     await user.type(url, "http://example.com/x.git");
     await user.click(screen.getByRole("button", { name: "Add registry" }));
-    expect(screen.getByText("codi is reserved for the built-in source")).toBeTruthy();
+    expect(screen.getByText("cicord is reserved for the built-in source")).toBeTruthy();
     expect(screen.getByText("Only https:// URLs are accepted")).toBeTruthy();
     await user.clear(name);
     await user.type(name, "Bad_Name");
@@ -368,7 +368,7 @@ describe("store: sources", () => {
     await user.clear(name);
     await user.type(name, "friends");
     await user.clear(url);
-    await user.type(url, "https://github.com/friends/codi-plugins.git");
+    await user.type(url, "https://github.com/friends/cicord-plugins.git");
     await user.click(screen.getByRole("button", { name: "Add registry" }));
     const note = await screen.findByText("Registry friends added", { selector: "[role=status] *" });
     expect(
@@ -448,13 +448,13 @@ describe("store: sources", () => {
       selector: "[role=status] *",
     });
     // Replacing a token changes no file.
-    expect(saved.closest("[role=status]")!.textContent).toMatch(/codi.yaml did not change/);
+    expect(saved.closest("[role=status]")!.textContent).toMatch(/cicord.yaml did not change/);
     await waitFor(() =>
       expect(
         within(row("community")).queryByText("The token is missing on this runtime"),
       ).toBeNull(),
     );
-    expect(runtime.state.secrets).toContain("CODI_REGISTRY_COMMUNITY_TOKEN");
+    expect(runtime.state.secrets).toContain("CICORD_REGISTRY_COMMUNITY_TOKEN");
     expect(sent.filter((s) => s.method === "PUT").map((s) => s.body)).toEqual([
       { token: "bad" },
       { token: "s3cret-value" },
@@ -488,7 +488,7 @@ describe("store: sources", () => {
       await screen.findByText("Token of hub removed", { selector: "[role=status] *" }),
     ).toBeTruthy();
     await waitFor(() => expect(within(row("hub")).queryByText("Private")).toBeNull());
-    expect(runtime.state.secrets).not.toContain("CODI_REGISTRY_HUB_TOKEN");
+    expect(runtime.state.secrets).not.toContain("CICORD_REGISTRY_HUB_TOKEN");
     expect(
       sent.some((s) => s.method === "DELETE" && s.path === "/api/v1/registries/hub/token"),
     ).toBe(true);
@@ -514,7 +514,7 @@ describe("store: sources", () => {
     });
     expect(runtime.state.registries.at(-1)).toMatchObject({
       name: "secret",
-      secretRef: "CODI_REGISTRY_SECRET_TOKEN",
+      secretRef: "CICORD_REGISTRY_SECRET_TOKEN",
     });
     // Without a token, none is sent.
     await user.type(screen.getByLabelText("Name"), "open");
@@ -541,14 +541,14 @@ describe("store: sources", () => {
     await user.type(screen.getByLabelText("Git URL (https)"), "https://example.com/p.git");
     await user.click(screen.getByRole("button", { name: "Add registry" }));
     expect(await screen.findByText("You cannot change the sources")).toBeTruthy();
-    expect(screen.getByText(/needs the admin role on every server CODI manages/)).toBeTruthy();
+    expect(screen.getByText(/needs the admin role on every server Cicord manages/)).toBeTruthy();
   });
 });
 
 describe("store helpers", () => {
   test("validateRegistry follows the spec rules", () => {
     const sources: RegistryRef[] = [
-      { name: "codi" },
+      { name: "cicord" },
       { name: "acme", url: "https://a.example/x.git" },
     ];
     const v = (name: string, url: string) => validateRegistry(name, url, sources);
@@ -557,7 +557,7 @@ describe("store helpers", () => {
     expect(v("-x", "x").name).toBe("namePattern");
     expect(v("a".repeat(33), "x").name).toBe("namePattern");
     expect(v("a".repeat(32), "x").name).toBeUndefined();
-    expect(v("codi", "x").name).toBe("nameReserved");
+    expect(v("cicord", "x").name).toBe("nameReserved");
     expect(v("acme", "x").name).toBe("nameTaken");
     expect(v("x", "not a url").url).toBe("urlInvalid");
     expect(v("x", "file:///tmp/reg").url).toBe("urlHttps");
@@ -566,7 +566,7 @@ describe("store helpers", () => {
 
   test("inUseItems accepts text or a list", () => {
     const err = (details: unknown) =>
-      new CodiApiError({
+      new CicordApiError({
         code: "in_use",
         status: 409,
         message: "in use",

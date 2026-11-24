@@ -11,7 +11,7 @@ import (
 
 	"github.com/grafana/sobek"
 
-	"github.com/npjonath/codi/internal/build"
+	"github.com/npjonath/cicord/internal/build"
 )
 
 //go:embed sdk.js
@@ -25,7 +25,7 @@ var (
 
 func preludeProgram() (*sobek.Program, error) {
 	preludeOnce.Do(func() {
-		preludeProg, preludeErr = sobek.Compile("codi:sdk.js", preludeSource, true)
+		preludeProg, preludeErr = sobek.Compile("cicord:sdk.js", preludeSource, true)
 	})
 	return preludeProg, preludeErr
 }

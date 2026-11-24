@@ -1,11 +1,11 @@
-import type { Message } from "@codi/sdk";
+import type { Message } from "@cicord/sdk";
 import {
   callRoute,
   createTestContext,
   runCommand,
   runComponent,
   submitModal,
-} from "@codi/sdk/testing";
+} from "@cicord/sdk/testing";
 import { describe, expect, test } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";

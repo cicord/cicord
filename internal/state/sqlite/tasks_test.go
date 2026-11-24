@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 func TestTasks(t *testing.T) {

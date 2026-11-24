@@ -13,8 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/planfmt"
-	"github.com/npjonath/codi/internal/runtime"
+	"github.com/npjonath/cicord/internal/planfmt"
+	"github.com/npjonath/cicord/internal/runtime"
 )
 
 func init() {
@@ -43,11 +43,11 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [dir]",
 		Short: "Show the runtime's revision and the sync/health of servers and bots",
-		Long: `Show the status of a CODI runtime (GET /api/v1/status): the active revision, every
+		Long: `Show the status of a Cicord runtime (GET /api/v1/status): the active revision, every
 server (sync, health, drift) and every bot with its plugin instances.
 
-The runtime URL is --remote=URL, else CODI_RUNTIME_URL (https, or http on localhost);
-the bearer token is CODI_RUNTIME_TOKEN. codi.yaml spec.runtime.url is never used to send
+The runtime URL is --remote=URL, else CICORD_RUNTIME_URL (https, or http on localhost);
+the bearer token is CICORD_RUNTIME_TOKEN. cicord.yaml spec.runtime.url is never used to send
 the token.
 
 --wait polls until --revision (a SHA or a prefix; default: the active one) is active and
@@ -55,9 +55,9 @@ every server is Synced and Healthy. It fails (exit 1) when the revision is rejec
 server is Degraded, or the timeout expires; the last error / history entry is printed.
 A server with blocked operations (deletionProtection, hierarchy…) stays OutOfSync, so
 --wait times out on it: the drift is printed to explain why.`,
-		Example: `  codi status
-  codi status --remote=https://codi.example.com -o json
-  codi status --wait --revision $GITHUB_SHA --timeout 10m`,
+		Example: `  cicord status
+  cicord status --remote=https://cicord.example.com -o json
+  cicord status --wait --revision $GITHUB_SHA --timeout 10m`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			args = rf.splitRemoteArgs(args)
@@ -113,11 +113,11 @@ func newSyncCmd() *cobra.Command {
 or local directory) and activates the new revision, if any. Use it after a push when no
 webhook is configured.
 
-With --wait, the command then waits like ` + "`codi status --wait`" + `. Without --revision it
+With --wait, the command then waits like ` + "`cicord status --wait`" + `. Without --revision it
 waits for the active revision to be Synced and Healthy, which may still be the previous
 one if the fetch has not completed yet: pass --revision for an exact wait.`,
-		Example: `  codi sync
-  codi sync --wait --revision $(git rev-parse HEAD)`,
+		Example: `  cicord sync
+  cicord sync --wait --revision $(git rev-parse HEAD)`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			args = rf.splitRemoteArgs(args)

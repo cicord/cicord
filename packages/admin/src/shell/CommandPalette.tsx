@@ -1,5 +1,5 @@
 /** ⌘K / Ctrl+K: jump to a page, a server or a plugin instance; theme; log out. */
-import { useLogout } from "@codi/react";
+import { useLogout } from "@cicord/react";
 import { LogOut, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePlugins } from "../api.ts";

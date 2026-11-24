@@ -1,20 +1,20 @@
 ---
 title: Installation
-description: Build the codi binary from source, or build the Docker image locally.
+description: Build the cicord binary from source, or build the Docker image locally.
 ---
 
 import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
 
-`codi` is a single static binary: the command line tool **and** the runtime
-(`codi serve`), with the admin console, the default community portal and the plugin
+`cicord` is a single static binary: the command line tool **and** the runtime
+(`cicord serve`), with the admin console, the default community portal and the plugin
 toolkit embedded in it.
 
 :::caution[Build from source for now]
-CODI is **pre-release**. There are no published binaries, no published Docker image, no
+Cicord is **pre-release**. There are no published binaries, no published Docker image, no
 npm packages and no `go install` path that includes the web UIs yet. Today you either
 **build from source** with `make all`, or **build the Docker image locally** with
 `docker build .`. Release binaries, a published container image, npm packages for the
-`@codi/*` SDKs and a `go install` that embeds the UIs are planned; see
+`@cicord/*` SDKs and a `go install` that embeds the UIs are planned; see
 [Status and roadmap](../../project/status/).
 :::
 
@@ -22,11 +22,11 @@ npm packages and no `go install` path that includes the web UIs yet. Today you e
 
 | Tool               | Needed for                                                                                                                                                   |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Go 1.27**        | Building the `codi` binary (`CGO_ENABLED=0`, a static binary).                                                                                               |
+| **Go 1.27**        | Building the `cicord` binary (`CGO_ENABLED=0`, a static binary).                                                                                             |
 | **Node 24 + pnpm** | Building the embedded web UIs (admin console, default portal) and the portal kit. The pnpm version is pinned by `packageManager` in the root `package.json`. |
 | **git**            | Cloning the repository.                                                                                                                                      |
 
-Node.js is only a **build-time** dependency of the UIs. Running CODI needs no Node.js:
+Node.js is only a **build-time** dependency of the UIs. Running Cicord needs no Node.js:
 plugins are bundled by the runtime itself (esbuild used as a Go library), git is handled
 in Go and SQLite is a pure Go driver.
 
@@ -40,8 +40,8 @@ in Go and SQLite is a pure Go driver.
 1. Clone the repository and enter it:
 
    ```sh
-   git clone https://github.com/npjonath/codi.git
-   cd codi
+   git clone https://github.com/npjonath/cicord.git
+   cd cicord
    ```
 
 2. Build everything:
@@ -52,9 +52,9 @@ in Go and SQLite is a pure Go driver.
 
    `make all` runs `make ui` (installs the JS workspace with `pnpm install
 --frozen-lockfile`, builds the packages and copies the admin console, the portal and the
-   portal kit into `internal/webui`), then `make build`, which writes `bin/codi`.
+   portal kit into `internal/webui`), then `make build`, which writes `bin/cicord`.
 
-3. Put `bin/codi` on your `PATH`, or call it by its path:
+3. Put `bin/cicord` on your `PATH`, or call it by its path:
 
    ```sh
    export PATH="$PWD/bin:$PATH"
@@ -65,7 +65,7 @@ in Go and SQLite is a pure Go driver.
 :::note
 `make build` alone builds only the Go binary. It embeds whatever UI build is already in
 `internal/webui`, which is a placeholder on a fresh clone. Without the portal kit,
-`codi portal init` explains how to build it, and `codi plugin new` scaffolds plugins
+`cicord portal init` explains how to build it, and `cicord plugin new` scaffolds plugins
 without their unit-test setup. Use `make all` unless you only work on Go code.
 :::
 
@@ -73,7 +73,7 @@ without their unit-test setup. Use `make all` unless you only work on Go code.
 <TabItem label="Docker (built locally)">
 
 The root `Dockerfile` mirrors `make all`: it builds the UIs with Node 24 and pnpm, builds
-`codi` with `CGO_ENABLED=0`, and ships it on `gcr.io/distroless/static-debian12:nonroot`
+`cicord` with `CGO_ENABLED=0`, and ships it on `gcr.io/distroless/static-debian12:nonroot`
 (user 65532, no shell).
 
 <Steps>
@@ -81,25 +81,25 @@ The root `Dockerfile` mirrors `make all`: it builds the UIs with Node 24 and pnp
 1. Clone the repository:
 
    ```sh
-   git clone https://github.com/npjonath/codi.git
-   cd codi
+   git clone https://github.com/npjonath/cicord.git
+   cd cicord
    ```
 
-2. Build the image (the version and commit end up in `codi version`):
+2. Build the image (the version and commit end up in `cicord version`):
 
    ```sh
-   docker build -t codi --build-arg VERSION=0.1.0 --build-arg COMMIT=$(git rev-parse --short HEAD) .
+   docker build -t cicord --build-arg VERSION=0.1.0 --build-arg COMMIT=$(git rev-parse --short HEAD) .
    ```
 
-3. The image entrypoint is `codi`, so any command works:
+3. The image entrypoint is `cicord`, so any command works:
 
    ```sh
-   docker run --rm codi version
+   docker run --rm cicord version
    ```
 
 </Steps>
 
-The default command is `codi serve /repo --data-dir /data --listen :7420`, with a volume on
+The default command is `cicord serve /repo --data-dir /data --listen :7420`, with a volume on
 `/data` and port `7420`. Running it in production is covered in
 [Deploy](../../self-hosting/deploy/#docker).
 
@@ -109,43 +109,43 @@ The default command is `codi serve /repo --data-dir /data --listen :7420`, with 
 ## Verify the installation
 
 ```sh
-codi version
+cicord version
 ```
 
 ```text
-codi 0.1.0 (dee0768)
+cicord 0.1.0 (dee0768)
 ```
 
 The first part is the version (`VERSION`, `0.1.0` by default), the second the git commit
 the binary was built from. Then list the commands:
 
 ```sh
-codi --help
+cicord --help
 ```
 
 ## Editor support
 
-The JSON Schemas of every file live in `spec/schemas/` of the CODI repository. With the
+The JSON Schemas of every file live in `spec/schemas/` of the Cicord repository. With the
 YAML language server (VS Code YAML extension and others), add a schema comment at the top
 of a file to get completion and validation:
 
 ```yaml title="servers/ma-commu.yaml"
-# yaml-language-server: $schema=../../codi/spec/schemas/server.schema.json
-apiVersion: codi.dev/v1alpha1
+# yaml-language-server: $schema=../../cicord/spec/schemas/server.schema.json
+apiVersion: cicord.dev/v1alpha1
 kind: Server
 ```
 
-The path is relative to the file; point it at your checkout of CODI.
+The path is relative to the file; point it at your checkout of Cicord.
 
 ## CI without the UIs
 
-The workflow written by `codi init` (`.github/workflows/codi.yml`) only needs the CLI
-(`codi validate`, `codi plan --remote`, `codi status --wait`). Until release binaries exist
-it installs it with `go install github.com/npjonath/codi/cmd/codi@latest`, which builds the
+The workflow written by `cicord init` (`.github/workflows/cicord.yml`) only needs the CLI
+(`cicord validate`, `cicord plan --remote`, `cicord status --wait`). Until release binaries exist
+it installs it with `go install github.com/npjonath/cicord/cmd/cicord@latest`, which builds the
 command line tool **without** the embedded UIs. That is fine for CI, not for running the
 runtime. See [Your first change](../first-change/#run-it-in-ci).
 
 ## Next steps
 
-- [Quick start](../quick-start/): set up a server with the wizard, or try CODI offline.
-- [Deploy](../../self-hosting/deploy/): run `codi serve` for real.
+- [Quick start](../quick-start/): set up a server with the wizard, or try Cicord offline.
+- [Deploy](../../self-hosting/deploy/): run `cicord serve` for real.

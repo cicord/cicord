@@ -1,14 +1,14 @@
-# Discord ↔ CODI parity
+# Discord ↔ Cicord parity
 
 Audit of the Discord server settings UI (test server "Ma Commu", 2026-11-21) against what a
-CODI `Server` resource can declare and reconcile. Goal: everything a server owner can set in
+Cicord `Server` resource can declare and reconcile. Goal: everything a server owner can set in
 Discord and that the bot API allows must be declarable in YAML (1:1), and the rest must be
 listed explicitly as "Discord UI only".
 
 Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it) · 🚫 not settable by a bot (Discord UI only)
 
 ## Server profile & overview
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
 | Name | ✅ `profile.name` | |
 | Icon | ✅ `profile.icon` | upload from Server settings; animated icons need boost level 1 |
@@ -21,7 +21,7 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | Boost progress bar | ✅ `profile.premiumProgressBar` | |
 
 ## Engagement ("Participation")
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
 | System messages channel | ✅ `profile.systemChannel` | |
 | System message toggles (welcome message, sticker replies, boost message, setup tips) | ✅ `profile.systemChannelFlags` | readable booleans (`welcomeMessages`, `welcomeStickerReplies`, `boostMessages`, `setupTips`, `roleSubscriptionMessages`, `roleSubscriptionStickerReplies`) |
@@ -31,7 +31,7 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | Server widget (enabled + channel) | ✅ `widget: {enabled, channel}` | |
 
 ## Access & safety
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
 | Join mode (invite only / apply / discovery) | 🚫 | join requests & discovery are not settable by bots |
 | Age-restricted server | 🚫 | `nsfw_level` is read-only |
@@ -43,17 +43,17 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | Members in channel list | 🚫 | |
 
 ## Community
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
-| Enable Community | ✅ `community.enabled` | prerequisites (rules/updates channels, verification ≥ low, filter = all members) checked by `codi validate` and blocked in the plan with the missing list |
+| Enable Community | ✅ `community.enabled` | prerequisites (rules/updates channels, verification ≥ low, filter = all members) checked by `cicord validate` and blocked in the plan with the missing list |
 | Rules channel | ✅ `community.rulesChannel` | `profile.rulesChannel` still accepted (deprecated alias); blocked without Community |
 | Community updates channel | ✅ `community.updatesChannel` | |
 | Welcome screen | ✅ `welcomeScreen` | |
-| Onboarding (questions, default channels, mode) | ✅ `onboarding` | see "Native onboarding and the CODI onboarding plugin" below |
+| Onboarding (questions, default channels, mode) | ✅ `onboarding` | see "Native onboarding and the Cicord onboarding plugin" below |
 | Announcement channels | ✅ `type: announcement` | need Community: blocked in the plan, created right after Community is enabled |
 
 ## Roles
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
 | Name, color, hoist, mentionable, permissions, hierarchy | ✅ | |
 | Role style: gradient / holographic colors | ✅ `roles.*.colors` | boost level 2; `color` stays the solid shorthand |
@@ -63,7 +63,7 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | @everyone permissions | ✅ `everyone.permissions` | |
 
 ## Channels & categories
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
 | Name, type, category, position, topic, NSFW, slowmode, overwrites, sync with category | ✅ | |
 | Voice bitrate, user limit | ✅ | |
@@ -78,13 +78,13 @@ Legend: ✅ declared + reconciled · 🟡 partial · ❌ missing (API allows it)
 | Invites | ❌ | permanent invite links could be declared — TODO |
 
 ## Expression
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
 | Emojis | ✅ `emojis: {key: {name, image, roles}}` | slots per boost level blocked in the plan; a changed file needs a new key |
 | Stickers | ✅ `stickers: {key: {name, description, emoji, file}}` | |
 | Soundboard sounds | ✅ `soundboard: {key: {name, sound, volume, emoji}}` | |
 
-`codi import` (and the setup wizard's import) downloads the server icon, banner and invite
+`cicord import` (and the setup wizard's import) downloads the server icon, banner and invite
 splash, role icons, emojis (GIF when animated), stickers and soundboard sounds from the
 Discord CDN into `servers/assets/<server>/` and records them as uploaded, so the first
 plan is empty. Files over Discord's upload limits and managed emojis are reported and
@@ -93,21 +93,21 @@ reconciler through the gateway (`AUTO_MODERATION_RULE_*`, `GUILD_EMOJIS_UPDATE`,
 `GUILD_STICKERS_UPDATE`, `GUILD_SOUNDBOARD_SOUND_*`) and trigger selfHeal.
 
 ## Moderation
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
 | AutoMod rules (mention spam, spam, keyword presets, custom keywords, actions, exemptions) | ✅ `automod: {key: {...}}` | keyed, adopted by name + trigger, rule caps blocked in the plan |
 | Bans | — | data, not configuration |
 | Audit log | — | read-only |
 
 ## Other
-| Discord setting | CODI | Notes |
+| Discord setting | Cicord | Notes |
 |---|---|---|
 | Scheduled events | — | runtime data (plugins), not configuration |
 | Server template | 🚫 | |
 | Boost perks | 🚫 | |
 
 ## Live server status (read-only, shown in the admin UI and used by the planner)
-| Information | CODI | Notes |
+| Information | Cicord | Notes |
 |---|---|---|
 | Boost level and boost count | ✅ | `premium_tier`, `premium_subscription_count`: features locked by boost level (banner, role icons, gradient role colors, splash, upload limits…) must be **blocked in the plan with a clear reason** ("banner requires boost level 2, server is level 0") instead of failing on apply |
 | Community enabled | ✅ | `features` contains `COMMUNITY` (also `DISCOVERABLE`, `WELCOME_SCREEN_ENABLED`, `ROLE_ICONS`…) |
@@ -162,7 +162,7 @@ spec:
 
 ## Behaviour observed on real Discord
 
-Verified on the test server (Community enabled by CODI, 2026-11-21):
+Verified on the test server (Community enabled by Cicord, 2026-11-21):
 
 - **Default mention spam rule.** A community server lists a "Block Mention Spam" rule
   created by Discord's AutoMod system user (`1008776202191634432`). It is a placeholder:
@@ -175,7 +175,7 @@ Verified on the test server (Community enabled by CODI, 2026-11-21):
   removing its key with prune is blocked in the plan (`undeletable`); set `enabled: false`.
 - **Onboarding default channels must be open to @everyone** (`ViewChannel`, plus
   `Connect` for voice and stage; `DEFAULT_CHANNEL_REQUIRES_EVERYONE_ACCESS`), and 5 of the
-  counted channels must let @everyone send messages. `codi validate` reports both when
+  counted channels must let @everyone send messages. `cicord validate` reports both when
   `spec.everyone` is declared.
 - Boost gating (banner, role icon) is blocked in the plan at level 0, as designed.
 - **Roles can share a position.** After a drag in the Discord client the API listed every
@@ -183,16 +183,16 @@ Verified on the test server (Community enabled by CODI, 2026-11-21):
   could edit the tied roles. The adapter turns positions into distinct ranks in that
   order, so the hierarchy checks and the reorder planner see the real hierarchy. Any
   bulk `PATCH /roles` (even a no-op on one role) makes Discord renumber every role
-  1..n in that same order, so positions CODI writes from those ranks stay consistent.
+  1..n in that same order, so positions Cicord writes from those ranks stay consistent.
 
-## Native onboarding and the CODI onboarding plugin
+## Native onboarding and the Cicord onboarding plugin
 
 They are complementary and can run together:
 - **Discord onboarding** (`spec.onboarding`) runs inside the Discord client when a member
   joins a Community server: default channels and a few questions that grant roles and
   channels. It needs Community and at least 7 default channels (5 where @everyone can send
   messages) in default mode.
-- **The CODI onboarding plugin** runs on the community portal (and with slash commands):
+- **The Cicord onboarding plugin** runs on the community portal (and with slash commands):
   richer steps, custom logic, KV state, links to the portal profile. It works on any server.
 
 A typical setup keeps the essential interest roles in Discord onboarding (members see them

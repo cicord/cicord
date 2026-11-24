@@ -14,8 +14,8 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 // useOfficial makes urls the official registry, trusting a fresh test key, with a fresh
@@ -47,7 +47,7 @@ func mustSign(t *testing.T, index string, env Envelope, keys ...ed25519.PrivateK
 	return string(sig)
 }
 
-const regURL = "https://registry.codi.example/official"
+const regURL = "https://registry.cicord.example/official"
 
 func TestSignAndVerify(t *testing.T) {
 	pub, privFile, err := GenerateSigningKey()
@@ -108,7 +108,7 @@ func TestSignAndVerify(t *testing.T) {
 		"garbage":                 {index, []byte("ed25519 zz !!!\nnot a line\n"), trusted, opts},
 		"right key id, wrong sig": {index, []byte(strings.SplitAfter(string(sig), "\ned25519 ")[0] + KeyID(pub) + " " + strings.Repeat("A", 86) + "==\n"), trusted, opts},
 		"bad embedded key":        {index, sig, []string{"not-a-key"}, opts},
-		"wrong registry URL":      {index, sig, trusted, VerifyOptions{Registries: []string{"https://registry.codi.example/other"}}},
+		"wrong registry URL":      {index, sig, trusted, VerifyOptions{Registries: []string{"https://registry.cicord.example/other"}}},
 		"expired":                 {index, expired, trusted, opts},
 		"edited serial":           {index, reSerial, trusted, opts},
 		"edited registry":         {index, reURL, trusted, VerifyOptions{}},
@@ -143,7 +143,7 @@ func TestSignAndVerify(t *testing.T) {
 func TestOfficialIndexMustBeSigned(t *testing.T) {
 	ctx := context.Background()
 	plugin := initRepo(t, map[string]string{"plugin.yaml": manifest, "src/index.ts": "export default {}"}, "v1.2.0")
-	index := "plugins:\n  hello:\n    repo: " + plugin + "\n    publisher: CODI\n    verified: true\n"
+	index := "plugins:\n  hello:\n    repo: " + plugin + "\n    publisher: Cicord\n    verified: true\n"
 
 	_, stranger, _ := ed25519.GenerateKey(rand.Reader)
 	unsigned := initRepo(t, map[string]string{"index.yaml": index})
@@ -161,7 +161,7 @@ func TestOfficialIndexMustBeSigned(t *testing.T) {
 		"unknown key": initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, envFor(regURL, 6), stranger)}),
 		"stale":       initRepo(t, map[string]string{"index.yaml": index + "  evil:\n    repo: " + plugin + "\n", "index.yaml.sig": mustSign(t, index, envFor(regURL, 6), key)}),
 		"other registry": initRepo(t, map[string]string{"index.yaml": index,
-			"index.yaml.sig": mustSign(t, index, envFor("https://staging.codi.example/registry", 6), key)}),
+			"index.yaml.sig": mustSign(t, index, envFor("https://staging.cicord.example/registry", 6), key)}),
 		"expired": initRepo(t, map[string]string{"index.yaml": index,
 			"index.yaml.sig": mustSign(t, index, Envelope{Registry: regURL, Serial: 6, Expires: time.Now().Add(-time.Hour)}, key)}),
 	}
@@ -170,7 +170,7 @@ func TestOfficialIndexMustBeSigned(t *testing.T) {
 		if idx, err := FetchIndex(ctx, url); !errors.Is(err, ErrBadSignature) || idx != nil {
 			t.Errorf("%s: %+v, %v", name, idx, err)
 		}
-		// ResolveLatest (codi plugin add) goes through the same check.
+		// ResolveLatest (cicord plugin add) goes through the same check.
 		if _, err := ResolveLatest(ctx, []config.Registry{{Name: "mirror", URL: url}}, t.TempDir(), "mirror/hello", "*"); !errors.Is(err, ErrBadSignature) {
 			t.Errorf("%s: ResolveLatest = %v", name, err)
 		}
@@ -201,7 +201,7 @@ func TestSerialRollback(t *testing.T) {
 	OfficialURLs = []string{regURL, newer, older} // the same registry, served from two places
 
 	// Trust on first use: the older index is accepted while nothing newer was seen.
-	db := filepath.Join(t.TempDir(), "codi.db")
+	db := filepath.Join(t.TempDir(), "cicord.db")
 	st, err := sqlite.Open(db)
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func TestSerialRollback(t *testing.T) {
 
 	// Every official URL shares one serial: an older envelope signed for another official
 	// URL (alias B) is refused after a higher serial was seen through alias A.
-	aliasB := "https://mirror.codi.example/official"
+	aliasB := "https://mirror.cicord.example/official"
 	OfficialURLs = append(OfficialURLs, aliasB)
 	viaB := initRepo(t, map[string]string{"index.yaml": index, "index.yaml.sig": mustSign(t, index, envFor(aliasB, 15), key)})
 	OfficialURLs = append(OfficialURLs, viaB)
@@ -296,23 +296,23 @@ func TestImplicitOfficialRegistry(t *testing.T) {
 		t.Errorf("WithOfficial = %+v", regs)
 	}
 
-	// `codi plugin add codi/hello` resolves through the official registry, with no codi.yaml entry.
-	res, err := ResolveLatest(ctx, nil, t.TempDir(), "codi/hello", "*")
+	// `cicord plugin add cicord/hello` resolves through the official registry, with no cicord.yaml entry.
+	res, err := ResolveLatest(ctx, nil, t.TempDir(), "cicord/hello", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !res.Index.Verified || res.Entry.Version != "1.2.0" {
 		t.Errorf("resolution = %+v", res)
 	}
-	// The runtime resolves codi/<name> from codi.lock (no registry lookup).
+	// The runtime resolves cicord/<name> from cicord.lock (no registry lookup).
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "codi.yaml"), []byte("apiVersion: codi.dev/v1alpha1\nkind: Project\nmetadata:\n  name: p\nspec: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "cicord.yaml"), []byte("apiVersion: cicord.dev/v1alpha1\nkind: Project\nmetadata:\n  name: p\nspec: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteLock(root, &Lock{Plugins: map[string]LockEntry{"codi/hello": res.Entry}}); err != nil {
+	if err := WriteLock(root, &Lock{Plugins: map[string]LockEntry{"cicord/hello": res.Entry}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, key, err := NewResolver(root, t.TempDir()).Resolve("codi/hello", "^1.0.0"); err != nil || key != "codi/hello@1.2.0" {
+	if _, key, err := NewResolver(root, t.TempDir()).Resolve("cicord/hello", "^1.0.0"); err != nil || key != "cicord/hello@1.2.0" {
 		t.Errorf("Resolve = %q, %v", key, err)
 	}
 
@@ -331,12 +331,12 @@ func TestImplicitOfficialRegistry(t *testing.T) {
 	if off, _ := Official(); off.URL != staging || Trust(url) == TrustOfficial {
 		t.Errorf("override in a development build: %+v", off)
 	}
-	if _, err := ResolveLatest(ctx, nil, t.TempDir(), "codi/hello", "*"); err != nil {
+	if _, err := ResolveLatest(ctx, nil, t.TempDir(), "cicord/hello", "*"); err != nil {
 		t.Errorf("signed staging registry: %v", err)
 	}
 	unsigned := initRepo(t, map[string]string{"index.yaml": index})
 	t.Setenv(DevOfficialRegistryEnv, unsigned)
-	if _, err := ResolveLatest(ctx, nil, t.TempDir(), "codi/hello", "*"); !errors.Is(err, ErrBadSignature) {
+	if _, err := ResolveLatest(ctx, nil, t.TempDir(), "cicord/hello", "*"); !errors.Is(err, ErrBadSignature) {
 		t.Errorf("override to an unsigned registry: %v", err)
 	}
 }

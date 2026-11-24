@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/reconcile"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/reconcile"
 )
 
 func TestSlug(t *testing.T) {

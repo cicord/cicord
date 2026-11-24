@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 // gitTest runs git in dir with an isolated configuration (no user signing settings).
@@ -83,7 +83,7 @@ func TestPluginPublish(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("publish = %d\n%s\n%s", code, out, errOut)
 	}
-	for _, want := range []string{"tagged v0.1.0", "pushed v0.1.0 to origin", "added welcome", "index.yaml.sig is now stale", "codi registry sign"} {
+	for _, want := range []string{"tagged v0.1.0", "pushed v0.1.0 to origin", "added welcome", "index.yaml.sig is now stale", "cicord registry sign"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}

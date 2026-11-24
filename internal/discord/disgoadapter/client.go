@@ -10,7 +10,7 @@ import (
 
 	"github.com/disgoorg/disgo/rest"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // checkIDs rejects IDs that are not snowflakes before they are spliced into a URL.
@@ -114,7 +114,7 @@ func (s *session) ListRoles(ctx context.Context, serverID string) ([]discord.Rol
 // normalizeRolePositions rewrites positions as Discord's effective hierarchy rank.
 // Discord lets several roles share a position (seen live: every role at 1 after
 // a drag in the client) and then ranks the older role (lower ID) higher. The rest
-// of CODI compares positions numerically, so ties are broken here, once: @everyone
+// of Cicord compares positions numerically, so ties are broken here, once: @everyone
 // (ID = server ID) stays 0 and the others get distinct ranks 1..n in Discord's order.
 func normalizeRolePositions(serverID string, roles []discord.Role) {
 	idx := make([]int, 0, len(roles))

@@ -20,17 +20,17 @@ afterEach(cleanup);
 describe("theme", () => {
   test("maps the server theme to CSS variables with readable foregrounds", () => {
     const vars = themeVariables({ primary: "#fee75c", accent: "#123" }, "dark");
-    expect(vars["--codi-primary"]).toBe("#fee75c");
-    expect(vars["--codi-primary-fg"]).not.toBe("#ffffff"); // yellow needs dark text
-    expect(vars["--codi-accent"]).toBe("#112233");
+    expect(vars["--cicord-primary"]).toBe("#fee75c");
+    expect(vars["--cicord-primary-fg"]).not.toBe("#ffffff"); // yellow needs dark text
+    expect(vars["--cicord-accent"]).toBe("#112233");
     // A very dark accent is lightened enough to be legible on the dark surface.
-    const text = parseHex(vars["--codi-accent-text"])!;
+    const text = parseHex(vars["--cicord-accent-text"])!;
     expect(contrast(text, [27, 29, 38])).toBeGreaterThanOrEqual(4.5);
   });
 
   test("falls back to defaults on missing or invalid colors", () => {
-    expect(themeVariables(undefined, "light")["--codi-primary"]).toBe("#5865f2");
-    expect(themeVariables({ primary: "blue" }, "light")["--codi-primary"]).toBe("#5865f2");
+    expect(themeVariables(undefined, "light")["--cicord-primary"]).toBe("#5865f2");
+    expect(themeVariables({ primary: "blue" }, "light")["--cicord-primary"]).toBe("#5865f2");
   });
 
   test("resolves mode, including system", () => {
@@ -42,9 +42,9 @@ describe("theme", () => {
     const { container, rerender } = render(
       <ThemeProvider theme={{ mode: "system" }}>x</ThemeProvider>,
     );
-    expect(container.firstElementChild?.getAttribute("data-codi-mode")).toBe("light");
+    expect(container.firstElementChild?.getAttribute("data-cicord-mode")).toBe("light");
     rerender(<ThemeProvider theme={{ mode: "dark" }}>x</ThemeProvider>);
-    expect(container.firstElementChild?.getAttribute("data-codi-mode")).toBe("dark");
+    expect(container.firstElementChild?.getAttribute("data-cicord-mode")).toBe("dark");
     vi.unstubAllGlobals();
   });
 
@@ -52,10 +52,10 @@ describe("theme", () => {
     const { unmount } = render(
       <ThemeProvider theme={{ mode: "light", primary: "#ff0000" }} global />,
     );
-    expect(document.documentElement.getAttribute("data-codi-mode")).toBe("light");
-    expect(document.documentElement.style.getPropertyValue("--codi-primary")).toBe("#ff0000");
+    expect(document.documentElement.getAttribute("data-cicord-mode")).toBe("light");
+    expect(document.documentElement.style.getPropertyValue("--cicord-primary")).toBe("#ff0000");
     unmount();
-    expect(document.documentElement.style.getPropertyValue("--codi-primary")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--cicord-primary")).toBe("");
   });
 });
 

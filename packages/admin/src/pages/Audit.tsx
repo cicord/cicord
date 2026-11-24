@@ -1,6 +1,6 @@
 /** Audit log: who changed what on this server (runtime database, not git). */
-import type { AuditEntry } from "@codi/client";
-import { useCodi } from "@codi/react";
+import type { AuditEntry } from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import { ExternalLink, RotateCw, ScrollText } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { AUDIT_PAGE, keys, useAudit } from "../api.ts";
@@ -15,7 +15,7 @@ import { jsonText } from "../schema-form/index.ts";
 export function AuditPage({ serverKey }: { serverKey: string }) {
   const { t } = useTranslation();
   const [cursors, setCursors] = useState<string[]>([""]);
-  const { cache } = useCodi();
+  const { cache } = useCicord();
   return (
     <Page>
       <PageHeader

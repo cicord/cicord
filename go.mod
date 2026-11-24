@@ -1,4 +1,4 @@
-module github.com/npjonath/codi
+module github.com/npjonath/cicord
 
 go 1.27.4
 

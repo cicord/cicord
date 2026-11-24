@@ -1,5 +1,5 @@
 /** Console settings: appearance, language, account and runtime information. */
-import { useLogout } from "@codi/react";
+import { useLogout } from "@cicord/react";
 import { LogOut, Monitor, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import { Mono, Page, PageHeader, Sha, Time, UserAvatar } from "../components/common.tsx";
@@ -109,7 +109,7 @@ export function SettingsPage() {
         </Row>
         <Row label={t("settings.runtime.mode")}>
           <span className="flex items-center gap-2">
-            <Mono className="text-foreground">codi {st?.mode ?? "—"}</Mono>
+            <Mono className="text-foreground">cicord {st?.mode ?? "—"}</Mono>
             {st?.simulator ? <Badge tone="violet">{t("settings.runtime.simulator")}</Badge> : null}
             {config.mock ? <Badge tone="violet">{t("app.mock")}</Badge> : null}
           </span>

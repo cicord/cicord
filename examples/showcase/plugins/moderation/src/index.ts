@@ -6,7 +6,7 @@ import {
   type Json,
   type Member,
   type RouteResponse,
-} from "@codi/sdk";
+} from "@cicord/sdk";
 import {
   activeWarnings,
   duration,

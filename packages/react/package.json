@@ -1,22 +1,22 @@
 {
-  "name": "@codi/react",
+  "name": "@cicord/react",
   "version": "0.1.0",
-  "description": "React bindings for CODI community portals: provider, data hooks and headless components (<OnboardingFlow>).",
+  "description": "React bindings for Cicord community portals: provider, data hooks and headless components (<OnboardingFlow>).",
   "keywords": [
-    "codi",
+    "cicord",
     "community-portal",
     "discord",
     "hooks",
     "react"
   ],
-  "homepage": "https://github.com/npjonath/codi/tree/main/packages/react#readme",
+  "homepage": "https://github.com/npjonath/cicord/tree/main/packages/react#readme",
   "bugs": {
-    "url": "https://github.com/npjonath/codi/issues"
+    "url": "https://github.com/npjonath/cicord/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/npjonath/codi.git",
+    "url": "git+https://github.com/npjonath/cicord.git",
     "directory": "packages/react"
   },
   "files": [
@@ -46,7 +46,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@codi/client": "workspace:*"
+    "@cicord/client": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "catalog:",

@@ -1,6 +1,6 @@
 // Package importer turns the live state of a Discord server (reconcile.Snapshot) into a
 // Server YAML document (servers/<key>.yaml) plus the resource map entries that tie the
-// generated keys to the existing Discord IDs (codi import, ADR-0003).
+// generated keys to the existing Discord IDs (cicord import, ADR-0003).
 //
 // Keys are derived from display names: accents are stripped, everything else that is
 // not [a-z0-9] becomes a dash, a leading digit gets a prefix, and duplicates get a
@@ -17,7 +17,7 @@
 // splash, role icons, emojis, stickers and soundboard sounds are downloaded from the
 // Discord CDN into servers/assets/<key>/ (Result.Files) and referenced from the YAML;
 // Result.RecordFiles records them for the reconciler so that the first plan is empty.
-// Not imported: threads, channel types CODI does not manage, managed emojis, files over
+// Not imported: threads, channel types Cicord does not manage, managed emojis, files over
 // Discord's upload limits, and overwrites targeting managed roles (they cannot be
 // referenced by key: a warning is returned for each).
 package importer
@@ -39,10 +39,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // Options configures Generate.
@@ -225,7 +225,7 @@ func (g *gen) importChannels() {
 		case c.Type == discord.ChannelAnnouncementThread || c.Type == discord.ChannelPublicThread || c.Type == discord.ChannelPrivateThread:
 			// threads are never managed
 		default:
-			g.warn("channel %q (%s) has a type CODI does not manage (%s): not imported", c.Name, c.ID, c.Type)
+			g.warn("channel %q (%s) has a type Cicord does not manage (%s): not imported", c.Name, c.ID, c.Type)
 		}
 	}
 	byPos := func(s []discord.Channel) {
@@ -710,7 +710,7 @@ func (g *gen) document(sp config.ServerSpec) ([]byte, error) {
 	root.add("spec", spec.n)
 
 	doc := &node{Kind: yaml.DocumentNode, Content: []*node{root.n}}
-	doc.HeadComment = fmt.Sprintf("Imported from the Discord server %q (%s) by `codi import`.\nKeys (role, category and channel names below spec) are stable identifiers: rename them\nwith `codi mv`, change display names freely.", g.snap.Server.Name, g.serverID)
+	doc.HeadComment = fmt.Sprintf("Imported from the Discord server %q (%s) by `cicord import`.\nKeys (role, category and channel names below spec) are stable identifiers: rename them\nwith `cicord mv`, change display names freely.", g.snap.Server.Name, g.serverID)
 	var b strings.Builder
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)

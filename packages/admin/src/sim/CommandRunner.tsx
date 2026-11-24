@@ -1,5 +1,5 @@
 /** Slash command runner: pick a command, fill its options from their types, run it. */
-import type { Json, SimCommand, SimCommandOption, SimServer } from "@codi/client";
+import type { Json, SimCommand, SimCommandOption, SimServer } from "@cicord/client";
 import { useMemo, useState, type FormEvent } from "react";
 import { jsonText } from "../schema-form/values.ts";
 import { IconPlay, IconSlash } from "./kit.tsx";

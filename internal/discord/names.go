@@ -12,7 +12,7 @@ type Permissions uint64
 // Intents is a Discord gateway intents bitset.
 type Intents uint64
 
-// permissionBits maps CODI permission names (spec/README.md §9) to Discord bits.
+// permissionBits maps Cicord permission names (spec/README.md §9) to Discord bits.
 var permissionBits = map[string]uint{
 	"CreateInstantInvite":              0,
 	"KickMembers":                      1,
@@ -113,7 +113,7 @@ func MustPermissions(names ...string) Permissions {
 	return p
 }
 
-// Names returns the CODI names of the set bits, sorted. Unknown bits are ignored.
+// Names returns the Cicord names of the set bits, sorted. Unknown bits are ignored.
 func (p Permissions) Names() []string { return names(uint64(p), permissionBits) }
 
 func (p Permissions) Has(q Permissions) bool { return p&q == q }
@@ -185,7 +185,7 @@ var channelTypeNames = map[ChannelType]string{
 	ChannelMedia:              "media",
 }
 
-// String returns the CODI name of the channel type (as used in Server YAML).
+// String returns the Cicord name of the channel type (as used in Server YAML).
 func (t ChannelType) String() string {
 	if n, ok := channelTypeNames[t]; ok {
 		return n

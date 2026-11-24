@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/setup"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/setup"
 )
 
 // Setup wizard endpoints (spec/api.md §10), the plugin catalog and Diagnostics.
@@ -21,7 +21,7 @@ import (
 // endpoint except status answers 410 and the setup sessions are revoked.
 
 const (
-	setupCookie        = "codi_setup"
+	setupCookie        = "cicord_setup"
 	setupSessionMethod = setup.SessionMethod
 )
 
@@ -89,8 +89,8 @@ func NewSetup(opts Options) http.Handler {
 	})
 	setupRequired := func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": map[string]any{
-			"code": "setup_required", "message": "CODI is not set up yet.",
-			"hint": "Open the setup link printed in the CODI logs (/admin/setup?token=…).",
+			"code": "setup_required", "message": "Cicord is not set up yet.",
+			"hint": "Open the setup link printed in the Cicord logs (/admin/setup?token=…).",
 		}})
 	}
 	h("/api/", setupRequired)
@@ -161,7 +161,7 @@ func (s *server) setupOnly(fn func(http.ResponseWriter, *http.Request, *setup.Wi
 		if !wz.ValidSession(r.Context(), s.setupSessionID(r)) {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{
 				"code": "unauthenticated", "message": "Your setup session expired or is missing.",
-				"hint": "Open the setup link printed in the CODI logs (restart CODI to print a new one).",
+				"hint": "Open the setup link printed in the Cicord logs (restart Cicord to print a new one).",
 			}})
 			return
 		}
@@ -446,7 +446,7 @@ func (s *server) simEnv(w http.ResponseWriter, wz *setup.Wizard) *setup.SimEnv {
 	if e := wz.SimEnv(); e != nil {
 		return e
 	}
-	writeError(w, http.StatusNotFound, "not_found", "the setup simulator is only available with codi dev --sim --setup")
+	writeError(w, http.StatusNotFound, "not_found", "the setup simulator is only available with cicord dev --sim --setup")
 	return nil
 }
 

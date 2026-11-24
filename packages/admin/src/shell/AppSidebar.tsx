@@ -1,5 +1,5 @@
-import type { Me } from "@codi/client";
-import { useLogout } from "@codi/react";
+import type { Me } from "@cicord/client";
+import { useLogout } from "@cicord/react";
 import { Check, ChevronsUpDown, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import { ServerAvatar, UserAvatar } from "../components/common.tsx";
 import { StatusDot, healthTone, syncTone } from "../components/status.tsx";
@@ -55,7 +55,7 @@ export function AppSidebar({ page }: { page: PageId }) {
         >
           <BrandMark size={20} />
           <span className="text-[15px] font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-            codi
+            cicord
           </span>
           <span className="text-[13px] text-subtle-foreground group-data-[collapsible=icon]:hidden">
             {t("app.admin")}

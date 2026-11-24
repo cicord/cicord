@@ -1,5 +1,5 @@
 // Package webui embeds the prebuilt admin UI and default community portal served by
-// the runtime (/admin/ and /), and the portal kit used by `codi portal init`. Real builds
+// the runtime (/admin/ and /), and the portal kit used by `cicord portal init`. Real builds
 // are copied here by scripts/sync-ui.sh; the committed files are placeholders.
 package webui
 
@@ -25,10 +25,10 @@ func Admin() fs.FS { return sub(admin, "admin") }
 func Portal() fs.FS { return sub(portal, "portal") }
 
 // ErrNoKit means the binary was built without the portal kit (make ui).
-var ErrNoKit = errors.New("this codi binary was built without the portal kit (@codi/* packages and the portal template): " +
+var ErrNoKit = errors.New("this cicord binary was built without the portal kit (@cicord/* packages and the portal template): " +
 	"build it with `make ui build` (or run scripts/sync-ui.sh before `go build`)")
 
-// PortalKit returns the portal kit: packages/*.tgz (the @codi/* tarballs) and template/
+// PortalKit returns the portal kit: packages/*.tgz (the @cicord/* tarballs) and template/
 // (the reference portal). It fails with ErrNoKit when the kit was not generated.
 func PortalKit() (fs.FS, error) {
 	k := sub(kit, "kit")

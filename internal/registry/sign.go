@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/cicord/internal/config"
 )
 
 // Signed official index (ADR-0011, "Update (2026-11-23)").
@@ -27,9 +27,9 @@ import (
 // the exact bytes of index.yaml, followed by one ed25519 signature of that envelope per
 // signing key:
 //
-//	# Signatures of index.yaml (codi registry sign). Do not edit.
-//	format: codi-registry-signature-v1
-//	registry: https://github.com/codi-dev/registry
+//	# Signatures of index.yaml (cicord registry sign). Do not edit.
+//	format: cicord-registry-signature-v1
+//	registry: https://github.com/cicord-dev/registry
 //	serial: 1764000000
 //	expires: 2026-12-23T00:00:00Z
 //	index-sha256: 9f86d081…
@@ -48,14 +48,14 @@ const (
 	// SignatureFile holds the signature envelope of IndexFile.
 	SignatureFile = "index.yaml.sig"
 	// SignatureFormat is the envelope version.
-	SignatureFormat = "codi-registry-signature-v1"
+	SignatureFormat = "cicord-registry-signature-v1"
 	sigAlgo         = "ed25519"
 	// maxSignatureFile bounds what is read from a registry.
 	maxSignatureFile = 64 << 10
 )
 
 // OfficialKeys are the public keys (base64 of the 32-byte ed25519 key, as printed by
-// `codi registry keygen`) whose signatures make an index official.
+// `cicord registry keygen`) whose signatures make an index official.
 //
 // TODO(owner): embed the production key once the official registry repository and its
 // signing key exist. While empty, no index can verify, so an official URL (if any) is
@@ -64,17 +64,17 @@ var OfficialKeys = []string{}
 
 // devOfficialKey is an extra trusted key for development builds only, set at build time:
 //
-//	go build -ldflags "-X github.com/npjonath/codi/internal/registry.devOfficialKey=<base64>"
+//	go build -ldflags "-X github.com/npjonath/cicord/internal/registry.devOfficialKey=<base64>"
 //
 // Release builds never set it. It is also what makes a build a development build for
-// DevOfficialRegistryEnv. It cannot be changed by codi.yaml, the API or the environment.
+// DevOfficialRegistryEnv. It cannot be changed by cicord.yaml, the API or the environment.
 var devOfficialKey = ""
 
 // DevOfficialRegistryEnv overrides the official registry URL in development builds
 // (devOfficialKey set) only; a release build ignores it, so an environment variable can
 // never redefine what is official in production. Even then, the index there must be
 // signed (for that URL) by a trusted key.
-const DevOfficialRegistryEnv = "CODI_DEV_OFFICIAL_REGISTRY"
+const DevOfficialRegistryEnv = "CICORD_DEV_OFFICIAL_REGISTRY"
 
 // ErrBadSignature: an official index without a valid, current signature by an official key.
 var ErrBadSignature = errors.New("the official registry index is not validly signed by an official key")
@@ -103,7 +103,7 @@ func officialKeys() []string {
 	return OfficialKeys
 }
 
-// Official is the implicit official remote registry, named "codi" (config.OfficialRegistryName):
+// Official is the implicit official remote registry, named "cicord" (config.OfficialRegistryName):
 // the first official URL (the others are aliases, e.g. an old address). ok is false when
 // there is none: the official plugins are then only the bundled ones.
 func Official() (config.Registry, bool) {
@@ -115,7 +115,7 @@ func Official() (config.Registry, bool) {
 }
 
 // WithOfficial returns regs plus the implicit official registry (when there is one).
-// codi.yaml cannot declare a registry named "codi" (config validation), so there is no
+// cicord.yaml cannot declare a registry named "cicord" (config validation), so there is no
 // conflict.
 func WithOfficial(regs []config.Registry) []config.Registry {
 	off, ok := Official()
@@ -152,7 +152,7 @@ func ParsePublicKey(s string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(b), nil
 }
 
-const privateKeyHeader = "# codi registry signing key (ed25519 seed, base64). Keep it secret."
+const privateKeyHeader = "# cicord registry signing key (ed25519 seed, base64). Keep it secret."
 
 // GenerateSigningKey returns a new key pair: the public key and the private key file
 // content (EncodePrivateKey).
@@ -185,7 +185,7 @@ func ParsePrivateKey(data []byte) (ed25519.PrivateKey, error) {
 	}
 	seed, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil || len(seed) != ed25519.SeedSize {
-		return nil, errors.New("invalid signing key (expected the base64 ed25519 seed written by `codi registry keygen`)")
+		return nil, errors.New("invalid signing key (expected the base64 ed25519 seed written by `cicord registry keygen`)")
 	}
 	return ed25519.NewKeyFromSeed(seed), nil
 }
@@ -239,7 +239,7 @@ func SignIndex(index []byte, env Envelope, keys ...ed25519.PrivateKey) ([]byte, 
 	env.IndexSHA256 = indexHash(index)
 	msg := signedMessage(env)
 	var b bytes.Buffer
-	b.WriteString("# Signatures of index.yaml (codi registry sign). Do not edit.\n")
+	b.WriteString("# Signatures of index.yaml (cicord registry sign). Do not edit.\n")
 	fmt.Fprintf(&b, "format: %s\nregistry: %s\nserial: %d\nexpires: %s\nindex-sha256: %s\n",
 		SignatureFormat, env.Registry, env.Serial, env.Expires.Format(time.RFC3339), env.IndexSHA256)
 	for _, k := range keys {
@@ -314,7 +314,7 @@ func parseSignatureFile(sig []byte) (Envelope, []sigLine, error) {
 // VerifyOptions are the checks of VerifyIndex besides the signature itself.
 type VerifyOptions struct {
 	// Registries are the URLs the envelope may name (normalized before comparison);
-	// empty: any (only for `codi registry verify` on a checkout).
+	// empty: any (only for `cicord registry verify` on a checkout).
 	Registries []string
 	// Now is the time the expiry is checked against (zero: time.Now()).
 	Now time.Time

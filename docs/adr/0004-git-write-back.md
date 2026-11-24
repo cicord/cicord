@@ -11,12 +11,12 @@ being the source of truth and the next sync overwrites them.
   applied from that commit. The runtime never applies an uncommitted change.
 - Providers: **GitHub App** (repo-scoped, short-lived tokens), generic git remote, or an
   **embedded repository** (go-git) for users without a forge — same model, git invisible.
-- Commits are authored by `codi[bot]` with trailers:
+- Commits are authored by `cicord[bot]` with trailers:
   ```
-  Codi-Actor: discord:<user id> (<display name>)
-  Codi-Source: admin-ui
+  Cicord-Actor: discord:<user id> (<display name>)
+  Cicord-Source: admin-ui
   ```
-- **Policy by path** (`spec.writeBack.policies` in `codi.yaml`): `commit` (direct) or
+- **Policy by path** (`spec.writeBack.policies` in `cicord.yaml`): `commit` (direct) or
   `pullRequest` (review required). Example: plugin settings → commit; roles/permissions → PR.
 - **Format preservation**: YAML is patched at the node level (`yaml.v3`), keeping comments
   and key order.

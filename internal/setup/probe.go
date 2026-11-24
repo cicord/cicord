@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // Application flags: see the discord package (aliases kept for the setup API).
@@ -57,7 +57,7 @@ type ServerSummary struct {
 // GUILD_CREATE events: it works before the privileged intents are enabled (a gateway
 // identify with disallowed intents is closed with 4014), does not spend identify quota,
 // does not leave a second gateway session behind when the runtime connects, and cannot
-// miss a join that happened while CODI was stopped. A 2-second poll is fast enough for a
+// miss a join that happened while Cicord was stopped. A 2-second poll is fast enough for a
 // person clicking "Authorize" in another tab.
 type Probe interface {
 	Identify(ctx context.Context, token string) (Identity, error)
@@ -108,7 +108,7 @@ func (p *HTTPProbe) get(ctx context.Context, token, path string, out any) error 
 			return err
 		}
 		req.Header.Set("Authorization", "Bot "+token)
-		req.Header.Set("User-Agent", "DiscordBot (https://github.com/npjonath/codi, 0)")
+		req.Header.Set("User-Agent", "DiscordBot (https://github.com/npjonath/cicord, 0)")
 		resp, err := p.client().Do(req)
 		if err != nil {
 			return fmt.Errorf("discord %s: %w", path, err)

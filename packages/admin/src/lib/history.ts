@@ -1,4 +1,4 @@
-import type { HumanError, SyncRecord } from "@codi/client";
+import type { HumanError, SyncRecord } from "@cicord/client";
 import { errorOf } from "./errors.ts";
 
 /** Consecutive identical history records, newest first. */

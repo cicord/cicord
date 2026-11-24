@@ -1,16 +1,16 @@
 ---
 title: Reconciliation
-description: How CODI plans and applies changes, adopts existing resources, decides what it owns, handles removed keys, explains blocked changes, and detects drift.
+description: How Cicord plans and applies changes, adopts existing resources, decides what it owns, handles removed keys, explains blocked changes, and detects drift.
 ---
 
 The **server reconciler** turns the YAML of a server into Discord state. It runs inside the
-runtime on every new revision and whenever drift is detected, and behind `codi plan` and
-`codi apply` on the command line.
+runtime on every new revision and whenever drift is detected, and behind `cicord plan` and
+`cicord apply` on the command line.
 
 ## Plan and apply
 
 A **plan** is the ordered list of changes between the YAML and the live server. Its actions
-are `create`, `update`, `delete`, `adopt`, `reorder` and `unmanage`. Operations CODI refuses
+are `create`, `update`, `delete`, `adopt`, `reorder` and `unmanage`. Operations Cicord refuses
 are reported separately as **blocked**, with a reason; they never fail the plan.
 
 **Apply** runs the plan in a fixed order, aware of Discord's rate limits:
@@ -28,7 +28,7 @@ Apply continues past failures. Changes that depend on a failed one fail as `unre
 the next sync resumes. A failed apply on one server does not block the others.
 
 In production you never run apply yourself: the runtime applies every revision it
-activates. `codi apply` exists for development and bootstrapping.
+activates. `cicord apply` exists for development and bootstrapping.
 
 ## Lifecycle of a revision
 
@@ -52,7 +52,7 @@ Each server and bot reports a status, ArgoCD style:
 
 ## Adoption by name
 
-Pointing CODI at an existing server does not duplicate it. A declared key without a mapping
+Pointing Cicord at an existing server does not duplicate it. A declared key without a mapping
 **adopts** an unmapped live resource of the same kind (role, category, or channel of the same
 type) with exactly the same display name. Differing fields are updated by the same change.
 
@@ -63,11 +63,11 @@ type) with exactly the same display name. Differing fields are updated by the sa
 - Mappings are written as soon as a create succeeds, so a resource created by a crashed
   apply is simply adopted on the next run.
 
-The setup wizard and `codi import` rely on this: the first plan after an import is empty.
-After losing the state database, `codi adopt` rebuilds the local resource map by name, with
+The setup wizard and `cicord import` rely on this: the first plan after an import is empty.
+After losing the state database, `cicord adopt` rebuilds the local resource map by name, with
 confirmation.
 
-## What CODI owns
+## What Cicord owns
 
 - **Only mapped resources are ever modified.** Roles, channels and categories that were
   never declared are ignored.
@@ -90,13 +90,13 @@ YAML:
 | `true` | `true` (default) | Blocked (`deletionProtection`); the mapping is kept, so turning protection off later deletes it. |
 | `true` | `false` | `delete`. |
 
-Deletions always run last. `codi validate` warns when `prune: true` is combined with
+Deletions always run last. `cicord validate` warns when `prune: true` is combined with
 `deletionProtection: false`.
 
 ## Blocked changes and their explanations
 
-CODI refuses, ahead of time, what Discord would refuse at apply time, and says why. The admin
-console and `codi plan` explain each reason:
+Cicord refuses, ahead of time, what Discord would refuse at apply time, and says why. The admin
+console and `cicord plan` explain each reason:
 
 | Reason | Example |
 |---|---|
@@ -138,6 +138,6 @@ are only seen at the next plan.
 ## Moving the resource map
 
 Keys are mapped to Discord IDs in the runtime's database, never in git. The command line
-keeps its own map in `.codi/state.db` (used by `codi plan`, `codi apply`, `codi import`,
-`codi adopt` and `codi mv`). If the CLI and a runtime apply to the same servers without
+keeps its own map in `.cicord/state.db` (used by `cicord plan`, `cicord apply`, `cicord import`,
+`cicord adopt` and `cicord mv`). If the CLI and a runtime apply to the same servers without
 sharing that database, the runtime simply adopts the resources by name on its next sync.

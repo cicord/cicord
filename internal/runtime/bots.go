@@ -16,11 +16,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/plugin"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/plugin"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // botHost is one connected bot identity: a session plus the routing table of the
@@ -137,7 +137,7 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 			r.appIntents.Store(key, enabled)
 			if missing := intents & discord.PrivilegedIntents &^ enabled; missing != 0 {
 				// Discord would close the gateway with 4014: say which toggle to turn on.
-				msg := fmt.Sprintf("the privileged intent(s) %s are not enabled for the application: turn them on in the Discord developer portal (%s → Privileged Gateway Intents), then restart CODI or push a new revision",
+				msg := fmt.Sprintf("the privileged intent(s) %s are not enabled for the application: turn them on in the Discord developer portal (%s → Privileged Gateway Intents), then restart Cicord or push a new revision",
 					strings.Join(missing.Names(), ", "), discord.PortalBotURL(b.Spec.ApplicationID))
 				r.botErrs.Store(key, msg)
 				r.log.Error("bot privileged intents not enabled", "bot", key, "missing", strings.Join(missing.Names(), ","), "portal", discord.PortalBotURL(b.Spec.ApplicationID))
@@ -417,7 +417,7 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 	case discord.InteractionComponent, discord.InteractionModalSubmit:
 		name, local, ok := plugin.ParseCustomID(it.CustomID)
 		if !ok {
-			return // not a CODI component (another app's message?)
+			return // not a Cicord component (another app's message?)
 		}
 		kind, localID = "component", local
 		if it.Type == discord.InteractionModalSubmit {

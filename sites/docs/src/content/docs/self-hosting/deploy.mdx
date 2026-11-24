@@ -1,69 +1,69 @@
 ---
 title: Deploy
-description: Run codi serve in production - what it needs, environment variables, the data directory, Docker and Compose, a reverse proxy with TLS, webhooks and health checks.
+description: Run cicord serve in production - what it needs, environment variables, the data directory, Docker and Compose, a reverse proxy with TLS, webhooks and health checks.
 ---
 
 import { Tabs, TabItem } from "@astrojs/starlight/components";
 
-`codi serve` is a single static binary: the runtime (reconciler, bot gateways, plugin host),
+`cicord serve` is a single static binary: the runtime (reconciler, bot gateways, plugin host),
 the HTTP API, the admin console (`/admin/`) and the default community portal (`/`). It needs a
 data directory and outbound access to Discord (and to your git host). There is no database
 server, no Node.js and no `git` binary to install: git is implemented in Go and SQLite is a
 pure Go driver.
 
-:::danger[Never deploy `codi dev`]
-`codi dev` is for local development only: it lets anyone who can reach it sign in as any user
-(`/auth/dev-login`) and edits the working tree. Always run `codi serve` on a server.
+:::danger[Never deploy `cicord dev`]
+`cicord dev` is for local development only: it lets anyone who can reach it sign in as any user
+(`/auth/dev-login`) and edits the working tree. Always run `cicord serve` on a server.
 :::
 
-## `codi serve`
+## `cicord serve`
 
 ```text
-codi serve [dir] [--data-dir DIR] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local]
+cicord serve [dir] [--data-dir DIR] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local]
 ```
 
-- **`dir`** (default `.`) must contain `codi.yaml`. Its `spec.source` says what to follow:
+- **`dir`** (default `.`) must contain `cicord.yaml`. Its `spec.source` says what to follow:
   - `provider: github` or `git`, with `repo`, `branch` (default `main`), `path` and
     `pollInterval` (default `1m`): the runtime clones and polls the repository. `dir` only
-    needs `codi.yaml`.
+    needs `cicord.yaml`.
   - `provider: embedded`: on first start, the contents of `dir` are imported into a bare
     repository in the data directory (`repo.git`), which is then the source of truth.
   - no `spec.source`, or **`--local`**: `dir` is watched as is (no git). Admin console edits
     are written to the files, so `dir` must be writable.
 - **`--listen`** defaults to `:7420`.
-- **`--public-url`** (env `CODI_PUBLIC_URL`) is the URL browsers use, for example
-  `https://codi.example.org`. **Set it for every non-local deployment**: it is the OAuth
+- **`--public-url`** (env `CICORD_PUBLIC_URL`) is the URL browsers use, for example
+  `https://cicord.example.org`. **Set it for every non-local deployment**: it is the OAuth
   redirect base, the base of portal links, the origin of the CSRF check, and an `https://`
   value turns on `Secure` cookies. Without it, the runtime assumes `http://<listen>`, and
   browser `POST`/`PUT` requests from any other origin are rejected with `403`.
-- **`--cors-origin`** (repeatable; env `CODI_CORS_ORIGINS`, comma-separated): origins of
+- **`--cors-origin`** (repeatable; env `CICORD_CORS_ORIGINS`, comma-separated): origins of
   external portals allowed to call the API **with credentials** (cookie sessions).
-- **`--data-dir`** defaults to `.codi-data`, relative to the working directory. With a local
-  source inside the repository, it must be under `<repo>/.codi/`.
+- **`--data-dir`** defaults to `.cicord-data`, relative to the working directory. With a local
+  source inside the repository, it must be under `<repo>/.cicord/`.
 - **`--log-level`**: `debug`, `info` (default), `warn` or `error`.
 
-Started in a directory without `codi.yaml`, `codi serve` enters [setup mode](../../getting-started/quick-start/)
+Started in a directory without `cicord.yaml`, `cicord serve` enters [setup mode](../../getting-started/quick-start/)
 and prints a one-time link to the setup wizard.
 
 ## Environment variables
 
-| Variable                               | Purpose                                                                                                                                                          |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DISCORD_TOKEN_*`                      | Bot tokens. The name is each bot's `spec.token.secretRef`, e.g. `DISCORD_TOKEN_MODERATOR`. A missing token leaves that bot `Missing`.                            |
-| `CODI_GIT_TOKEN`                       | HTTPS token to fetch a private repository, push write-back commits and open GitHub pull requests (contents: write; pull requests: write for `pullRequest` mode). |
-| `CODI_RUNTIME_TOKEN`                   | Bearer token of the CLI and CI (`codi plan --remote`, `codi status`, `codi sync`). Acts as admin on every server. Unset: the machine endpoints answer `401`.     |
-| `CODI_WEBHOOK_SECRET`                  | Secret of the GitHub webhook (`POST /hooks/github`). Unset: webhooks are rejected.                                                                               |
-| `CODI_DISCORD_CLIENT_SECRET`           | OAuth2 client secret for "Log in with Discord" (admin console, portal). Unset: `/auth/login` answers `503`.                                                      |
-| `CODI_DISCORD_CLIENT_ID`               | OAuth2 client ID. Default: the application ID of the first bot (by key).                                                                                         |
-| `CODI_LINK_SECRET`                     | Signing key of portal links. Default: generated once in the data directory (`link.key`).                                                                         |
-| `CODI_SECRET_KEY`                      | Key of the encrypted secret store: base64 or hex of exactly 32 bytes (`openssl rand -base64 32`). Default: `secret.key`, generated in the data directory.        |
-| `CODI_PUBLIC_URL`, `CODI_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`.                                                                                                                  |
-| `CODI_CACHE_DIR`                       | Plugin download cache. Default: the user cache directory; the Docker image sets `/data/cache`.                                                                   |
-| `CODI_ALLOW_PRIVATE_REGISTRIES`        | `true` lets the Store and plugin downloads reach private networks.                                                                                               |
-| `CODI_REGISTRY_<NAME>_TOKEN`           | Access token of a private registry (see [Publishing](../../plugins/publishing/#private-registries)).                                                             |
+| Variable                                   | Purpose                                                                                                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DISCORD_TOKEN_*`                          | Bot tokens. The name is each bot's `spec.token.secretRef`, e.g. `DISCORD_TOKEN_MODERATOR`. A missing token leaves that bot `Missing`.                              |
+| `CICORD_GIT_TOKEN`                         | HTTPS token to fetch a private repository, push write-back commits and open GitHub pull requests (contents: write; pull requests: write for `pullRequest` mode).   |
+| `CICORD_RUNTIME_TOKEN`                     | Bearer token of the CLI and CI (`cicord plan --remote`, `cicord status`, `cicord sync`). Acts as admin on every server. Unset: the machine endpoints answer `401`. |
+| `CICORD_WEBHOOK_SECRET`                    | Secret of the GitHub webhook (`POST /hooks/github`). Unset: webhooks are rejected.                                                                                 |
+| `CICORD_DISCORD_CLIENT_SECRET`             | OAuth2 client secret for "Log in with Discord" (admin console, portal). Unset: `/auth/login` answers `503`.                                                        |
+| `CICORD_DISCORD_CLIENT_ID`                 | OAuth2 client ID. Default: the application ID of the first bot (by key).                                                                                           |
+| `CICORD_LINK_SECRET`                       | Signing key of portal links. Default: generated once in the data directory (`link.key`).                                                                           |
+| `CICORD_SECRET_KEY`                        | Key of the encrypted secret store: base64 or hex of exactly 32 bytes (`openssl rand -base64 32`). Default: `secret.key`, generated in the data directory.          |
+| `CICORD_PUBLIC_URL`, `CICORD_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`.                                                                                                                    |
+| `CICORD_CACHE_DIR`                         | Plugin download cache. Default: the user cache directory; the Docker image sets `/data/cache`.                                                                     |
+| `CICORD_ALLOW_PRIVATE_REGISTRIES`          | `true` lets the Store and plugin downloads reach private networks.                                                                                                 |
+| `CICORD_REGISTRY_<NAME>_TOKEN`             | Access token of a private registry (see [Publishing](../../plugins/publishing/#private-registries)).                                                               |
 
-Bot tokens, `CODI_GIT_TOKEN`, the OAuth client secret and registry tokens can also live in the
-encrypted secret store (the setup wizard writes them there, `codi secret set` too). The
+Bot tokens, `CICORD_GIT_TOKEN`, the OAuth client secret and registry tokens can also live in the
+encrypted secret store (the setup wizard writes them there, `cicord secret set` too). The
 environment always wins. See [Backups and secrets](../backups-and-secrets/).
 
 In the Discord developer portal, add `<public-url>/auth/callback` as an OAuth2 redirect URL of
@@ -71,16 +71,16 @@ the application used for login.
 
 ## Data directory
 
-| Path                                       | Content                                                                                                | Back up?           |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------ |
-| `codi.db` (+ `codi.db-wal`, `codi.db-shm`) | SQLite (WAL mode): resource map, plugin storage, sessions, audit log, sync history, encrypted secrets. | **Yes**            |
-| `secret.key`                               | Key of the secret store (when `CODI_SECRET_KEY` is not set).                                           | **Yes**            |
-| `link.key`                                 | Portal link signing key (when `CODI_LINK_SECRET` is not set). Losing it invalidates outstanding links. | Yes                |
-| `repo.git`                                 | Bare repository of the `embedded` provider: this **is** your configuration.                            | **Yes**            |
-| `source/`                                  | Clone of the git source.                                                                               | No (fetched again) |
-| `writeback/`                               | Work tree used to commit and push admin console edits.                                                 | No                 |
-| `snapshots/`                               | Snapshots of a local source.                                                                           | No                 |
-| `cache/` (Docker image)                    | Downloaded plugins.                                                                                    | No                 |
+| Path                                             | Content                                                                                                  | Back up?           |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------ |
+| `cicord.db` (+ `cicord.db-wal`, `cicord.db-shm`) | SQLite (WAL mode): resource map, plugin storage, sessions, audit log, sync history, encrypted secrets.   | **Yes**            |
+| `secret.key`                                     | Key of the secret store (when `CICORD_SECRET_KEY` is not set).                                           | **Yes**            |
+| `link.key`                                       | Portal link signing key (when `CICORD_LINK_SECRET` is not set). Losing it invalidates outstanding links. | Yes                |
+| `repo.git`                                       | Bare repository of the `embedded` provider: this **is** your configuration.                              | **Yes**            |
+| `source/`                                        | Clone of the git source.                                                                                 | No (fetched again) |
+| `writeback/`                                     | Work tree used to commit and push admin console edits.                                                   | No                 |
+| `snapshots/`                                     | Snapshots of a local source.                                                                             | No                 |
+| `cache/` (Docker image)                          | Downloaded plugins.                                                                                      | No                 |
 
 Run **a single runtime per data directory and per set of bot tokens**. Backups are covered in
 [Backups and secrets](../backups-and-secrets/).
@@ -91,36 +91,36 @@ The image is built locally from the repository (no image is published yet; see
 [Installation](../../getting-started/installation/)):
 
 ```sh
-docker build -t codi --build-arg VERSION=0.1.0 --build-arg COMMIT=$(git rev-parse --short HEAD) .
+docker build -t cicord --build-arg VERSION=0.1.0 --build-arg COMMIT=$(git rev-parse --short HEAD) .
 ```
 
-It runs `codi serve /repo --data-dir /data --listen :7420` as user 65532 on a distroless
-image, with a volume on `/data` and port `7420`. `/repo` must contain at least `codi.yaml`.
+It runs `cicord serve /repo --data-dir /data --listen :7420` as user 65532 on a distroless
+image, with a volume on `/data` and port `7420`. `/repo` must contain at least `cicord.yaml`.
 
 <Tabs syncKey="docker">
 <TabItem label="docker run">
 
-For a git source, mounting `codi.yaml` alone is enough:
+For a git source, mounting `cicord.yaml` alone is enough:
 
 ```sh
-docker run -d --name codi --restart unless-stopped \
+docker run -d --name cicord --restart unless-stopped \
   -p 127.0.0.1:7420:7420 \
-  -v codi-data:/data \
-  -v "$PWD/codi.yaml:/repo/codi.yaml:ro" \
-  --env-file codi.env \
-  codi serve /repo --data-dir /data --listen :7420 --public-url https://codi.example.org
+  -v cicord-data:/data \
+  -v "$PWD/cicord.yaml:/repo/cicord.yaml:ro" \
+  --env-file cicord.env \
+  cicord serve /repo --data-dir /data --listen :7420 --public-url https://cicord.example.org
 ```
 
 Arguments after the image name replace the default command, so repeat the defaults when you
-add flags. The entrypoint is `codi`, so `docker run --rm codi validate /repo` works too.
+add flags. The entrypoint is `cicord`, so `docker run --rm cicord validate /repo` works too.
 
 </TabItem>
 <TabItem label="Compose">
 
 ```yaml title="compose.yaml"
 services:
-  codi:
-    image: codi:latest # or build: .
+  cicord:
+    image: cicord:latest # or build: .
     restart: unless-stopped
     command:
       [
@@ -131,15 +131,15 @@ services:
         "--listen",
         ":7420",
         "--public-url",
-        "https://codi.example.org",
+        "https://cicord.example.org",
       ]
     ports: ["127.0.0.1:7420:7420"]
-    env_file: codi.env # DISCORD_TOKEN_*, CODI_* (keep it out of git)
+    env_file: cicord.env # DISCORD_TOKEN_*, CICORD_* (keep it out of git)
     volumes:
-      - codi-data:/data
-      - ./codi.yaml:/repo/codi.yaml:ro
+      - cicord-data:/data
+      - ./cicord.yaml:/repo/cicord.yaml:ro
 volumes:
-  codi-data:
+  cicord-data:
 ```
 
 </TabItem>
@@ -157,12 +157,12 @@ volumes:
 
 ## Reverse proxy and TLS
 
-Run CODI behind a TLS-terminating proxy (Caddy, nginx, Traefik) and keep port 7420 private
+Run Cicord behind a TLS-terminating proxy (Caddy, nginx, Traefik) and keep port 7420 private
 (bound to `127.0.0.1` or an internal network).
 
 - `--public-url` must be exactly the scheme, host and port browsers see. The CSRF check compares
   the browser's `Origin` with it, so the proxy must pass `Origin` through unchanged. `Host` is
-  not used by `codi serve`.
+  not used by `cicord serve`.
 - Request bodies: JSON up to 1 MiB, `POST /api/v1/plan` up to 32 MiB (for nginx,
   `client_max_body_size 32m`). API handlers time out after 60 seconds and a configuration edit
   may wait up to 20 seconds for the new revision, so keep proxy read timeouts above 60 seconds.
@@ -172,7 +172,7 @@ Run CODI behind a TLS-terminating proxy (Caddy, nginx, Traefik) and keep port 74
 <TabItem label="Caddy">
 
 ```text title="Caddyfile"
-codi.example.org {
+cicord.example.org {
 	reverse_proxy 127.0.0.1:7420
 }
 ```
@@ -183,7 +183,7 @@ codi.example.org {
 ```nginx title="nginx.conf"
 server {
   listen 443 ssl;
-  server_name codi.example.org;
+  server_name cicord.example.org;
   # ssl_certificate ...;
   client_max_body_size 32m;
   location / {
@@ -202,15 +202,15 @@ server {
 The runtime polls its git source (every minute by default). For instant syncs, add a GitHub
 webhook:
 
-| Setting      | Value                                                                         |
-| ------------ | ----------------------------------------------------------------------------- |
-| Payload URL  | `<public-url>/hooks/github`                                                   |
-| Content type | `application/json`                                                            |
-| Secret       | the value of `CODI_WEBHOOK_SECRET` (signatures are verified with HMAC-SHA256) |
-| Events       | `push`                                                                        |
+| Setting      | Value                                                                           |
+| ------------ | ------------------------------------------------------------------------------- |
+| Payload URL  | `<public-url>/hooks/github`                                                     |
+| Content type | `application/json`                                                              |
+| Secret       | the value of `CICORD_WEBHOOK_SECRET` (signatures are verified with HMAC-SHA256) |
+| Events       | `push`                                                                          |
 
 Pushes to the tracked branch trigger a sync; polling still runs as a fallback. Without a
-webhook, `codi sync` (with `CODI_RUNTIME_TOKEN`) asks the runtime to fetch now.
+webhook, `cicord sync` (with `CICORD_RUNTIME_TOKEN`) asks the runtime to fetch now.
 
 ## Next
 

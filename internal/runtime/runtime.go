@@ -1,4 +1,4 @@
-// Package runtime is the CODI controller (ARCHITECTURE.md §4–5): it watches a source,
+// Package runtime is the Cicord controller (ARCHITECTURE.md §4–5): it watches a source,
 // turns each new revision into a validated, built snapshot, reconciles servers, runs
 // plugin instances for every (bot, server) pair and swaps them atomically.
 package runtime
@@ -20,15 +20,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/build"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/plugin"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/version"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/build"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/plugin"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/version"
 )
 
 type Options struct {
@@ -361,7 +361,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		rt.rec = reconcile.New(reconcile.Options{
 			Server: srv, RepoRoot: rev.Dir, Client: host.session, Resources: r.opts.Store.Resources(),
 			KV: r.opts.Store.KV("reconcile:" + key), BotUserID: host.session.Self().ID,
-			Logger: log.With("server", key), Reason: "codi " + rev.ID, Context: context.Background(),
+			Logger: log.With("server", key), Reason: "cicord " + rev.ID, Context: context.Background(),
 			OnSync: func(p reconcile.Plan, res reconcile.Result, err error) { r.afterSelfHeal(rt, p, res, err) },
 		})
 		r.syncServer(ctx, rev, rt)
@@ -530,7 +530,7 @@ func (r *Runtime) PlanServer(ctx context.Context, key string) (reconcile.Plan, e
 }
 
 // PlanDir validates a repository directory and plans every server against live
-// Discord, without applying (codi plan --remote).
+// Discord, without applying (cicord plan --remote).
 func (r *Runtime) PlanDir(ctx context.Context, dir string) (config.Diagnostics, []reconcile.Plan, error) {
 	repo, _, ds, err := r.LoadAndBuild(dir)
 	if err != nil {

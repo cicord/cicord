@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/plugin"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/plugin"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 type env struct {
@@ -39,7 +39,7 @@ func copyTree(t *testing.T, src, dst string) {
 		}
 		rel, _ := filepath.Rel(src, p)
 		if info.IsDir() {
-			if info.Name() == "node_modules" || info.Name() == ".codi" {
+			if info.Name() == "node_modules" || info.Name() == ".cicord" {
 				return filepath.SkipDir
 			}
 			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
@@ -202,7 +202,7 @@ func TestExampleEndToEnd(t *testing.T) {
 		}
 		return false
 	})
-	if !strings.HasPrefix(link, "http://localhost:7420/onboarding?") || !strings.Contains(link, "codi_token=") {
+	if !strings.HasPrefix(link, "http://localhost:7420/onboarding?") || !strings.Contains(link, "cicord_token=") {
 		t.Errorf("link = %s", link)
 	}
 

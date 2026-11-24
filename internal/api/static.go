@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/cicord/internal/config"
 )
 
 // reservedPrefixes are never shadowed by a static UI: unknown paths there are JSON 404s.
@@ -45,7 +45,7 @@ func (s *server) staticHandler(fsys fs.FS, prefix string, admin bool) http.Handl
 }
 
 // portalHandler serves the community portal at /: the custom portal of the active
-// revision (codi.yaml spec.portal.path) when it has been built, otherwise the embedded
+// revision (cicord.yaml spec.portal.path) when it has been built, otherwise the embedded
 // default portal. The directory is resolved per request, so a new revision swaps the
 // served files without a restart.
 func (s *server) portalHandler() http.HandlerFunc {
@@ -56,7 +56,7 @@ func (s *server) portalHandler() http.HandlerFunc {
 		}
 		if root := s.customPortalRoot(); root != nil {
 			defer root.Close()
-			w.Header().Set("X-Codi-Portal", "repository")
+			w.Header().Set("X-Cicord-Portal", "repository")
 			serveSPA(w, r, root.FS(), "/")
 			return
 		}
@@ -78,10 +78,10 @@ func (s *server) customPortalRoot() *os.Root {
 	return openPortalDir(repo.Root, repo.Project.Spec.Portal.Path)
 }
 
-// openPortalDir opens <root>/<p> (p relative to codi.yaml) when it stays in the repository,
+// openPortalDir opens <root>/<p> (p relative to cicord.yaml) when it stays in the repository,
 // is reached without symbolic links and contains index.html.
 func openPortalDir(root, p string) *os.Root {
-	rel, ok := config.ResolveRepoPath("codi.yaml", p)
+	rel, ok := config.ResolveRepoPath("cicord.yaml", p)
 	if !ok || config.LocalPathError(root, rel) != nil {
 		return nil
 	}

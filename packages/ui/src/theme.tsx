@@ -10,7 +10,7 @@ import {
 import { legibleOn, parseHex, readableOn, toHex, type Rgb } from "./color.ts";
 
 /** Server theme (`spec.portal.theme`, as served by `GET /api/v1/portal/{server}`). */
-export interface CodiTheme {
+export interface CicordTheme {
   primary?: string | undefined;
   accent?: string | undefined;
   logo?: string | undefined;
@@ -28,19 +28,19 @@ const SURFACE: Record<ResolvedMode, Rgb> = { dark: [27, 29, 38], light: [255, 25
 
 /** CSS custom properties for a theme in a given mode. */
 export function themeVariables(
-  theme: CodiTheme | undefined,
+  theme: CicordTheme | undefined,
   mode: ResolvedMode,
 ): Record<string, string> {
   const primary = parseHex(theme?.primary) ?? (parseHex(DEFAULT_PRIMARY) as Rgb);
   const accent = parseHex(theme?.accent) ?? (parseHex(DEFAULT_ACCENT) as Rgb);
   const surface = SURFACE[mode];
   return {
-    "--codi-primary": toHex(primary),
-    "--codi-primary-fg": readableOn(primary),
-    "--codi-primary-text": legibleOn(primary, surface),
-    "--codi-accent": toHex(accent),
-    "--codi-accent-fg": readableOn(accent),
-    "--codi-accent-text": legibleOn(accent, surface),
+    "--cicord-primary": toHex(primary),
+    "--cicord-primary-fg": readableOn(primary),
+    "--cicord-primary-text": legibleOn(primary, surface),
+    "--cicord-accent": toHex(accent),
+    "--cicord-accent-fg": readableOn(accent),
+    "--cicord-accent-text": legibleOn(accent, surface),
   };
 }
 
@@ -50,7 +50,7 @@ function systemMode(): ResolvedMode {
 }
 
 /** Resolves "system" with `prefers-color-scheme` and follows its changes. Default: dark. */
-export function useResolvedMode(mode: CodiTheme["mode"]): ResolvedMode {
+export function useResolvedMode(mode: CicordTheme["mode"]): ResolvedMode {
   const [system, setSystem] = useState<ResolvedMode>(systemMode);
   useEffect(() => {
     if (mode !== "system" || typeof window === "undefined" || !window.matchMedia) return;
@@ -66,20 +66,20 @@ export function useResolvedMode(mode: CodiTheme["mode"]): ResolvedMode {
 }
 
 interface ThemeContextValue {
-  theme: CodiTheme;
+  theme: CicordTheme;
   mode: ResolvedMode;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({ theme: {}, mode: "dark" });
 
-export function useCodiTheme(): ThemeContextValue {
+export function useCicordTheme(): ThemeContextValue {
   return useContext(ThemeContext);
 }
 
 export interface ThemeProviderProps {
-  theme?: CodiTheme | undefined;
+  theme?: CicordTheme | undefined;
   /** Overrides `theme.mode`. */
-  mode?: CodiTheme["mode"];
+  mode?: CicordTheme["mode"];
   /**
    * Apply the variables and mode to `<html>` too, so the page background, scrollbars and
    * form controls follow the theme. Use it once, at the root of a portal.
@@ -91,8 +91,8 @@ export interface ThemeProviderProps {
 }
 
 /**
- * Maps the server theme `{primary, accent, mode}` to CSS variables (`--codi-*`) and a
- * `data-codi-mode` attribute that switches the light/dark palettes of styles.css.
+ * Maps the server theme `{primary, accent, mode}` to CSS variables (`--cicord-*`) and a
+ * `data-cicord-mode` attribute that switches the light/dark palettes of styles.css.
  */
 export function ThemeProvider({
   theme,
@@ -109,14 +109,14 @@ export function ThemeProvider({
   useEffect(() => {
     if (!global || typeof document === "undefined") return;
     const root = document.documentElement;
-    const previous = root.getAttribute("data-codi-mode");
-    root.setAttribute("data-codi-mode", resolved);
+    const previous = root.getAttribute("data-cicord-mode");
+    root.setAttribute("data-cicord-mode", resolved);
     root.style.colorScheme = resolved;
     for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
-    root.classList.add("codi-root");
+    root.classList.add("cicord-root");
     return () => {
-      if (previous === null) root.removeAttribute("data-codi-mode");
-      else root.setAttribute("data-codi-mode", previous);
+      if (previous === null) root.removeAttribute("data-cicord-mode");
+      else root.setAttribute("data-cicord-mode", previous);
       for (const k of Object.keys(vars)) root.style.removeProperty(k);
     };
   }, [global, resolved, vars]);
@@ -124,8 +124,8 @@ export function ThemeProvider({
   return (
     <ThemeContext.Provider value={value}>
       <div
-        className={["codi-root", className].filter(Boolean).join(" ")}
-        data-codi-mode={resolved}
+        className={["cicord-root", className].filter(Boolean).join(" ")}
+        data-cicord-mode={resolved}
         style={{ ...(vars as CSSProperties), colorScheme: resolved, ...style }}
       >
         {children}

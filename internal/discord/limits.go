@@ -2,7 +2,7 @@ package discord
 
 import "fmt"
 
-// Server feature flags CODI cares about (Discord's `features` strings).
+// Server feature flags Cicord cares about (Discord's `features` strings).
 const (
 	FeatureCommunity            = "COMMUNITY"
 	FeatureNews                 = "NEWS"

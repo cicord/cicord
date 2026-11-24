@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 func TestOpenRejectsEmptyPath(t *testing.T) {
@@ -80,7 +80,7 @@ func TestMigrationsIdempotentAndPersistent(t *testing.T) {
 	must(t, err)
 	must(t, s1.Resources().Put(ctx(t), state.Resource{Server: "main", Kind: state.KindRole, Key: "mod", ID: "42", Owner: state.OwnerGit, UpdatedAt: when}))
 	must(t, s1.KV("p").Set(ctx(t), "k", json.RawMessage(`{"a":1}`), 0))
-	id, err := s1.Audit().Append(ctx(t), state.AuditEntry{Server: "main", Actor: "codi", Action: "sync.apply"})
+	id, err := s1.Audit().Append(ctx(t), state.AuditEntry{Server: "main", Actor: "cicord", Action: "sync.apply"})
 	must(t, err)
 	must(t, s1.Close())
 

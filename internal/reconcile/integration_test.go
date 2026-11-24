@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 // env is a simulated server managed by a bot, plus a state store.
@@ -45,7 +45,7 @@ func newEnv(t *testing.T, desired *config.Server, root string) *env {
 	t.Helper()
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
-	token, bot, _ := w.CreateBot("codi")
+	token, bot, _ := w.CreateBot("cicord")
 	srv := w.CreateServer("Fresh", owner.ID, sim.WithGeneralChannel())
 	if _, err := w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator")); err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestSyncExample(t *testing.T) {
 	}
 	// roles: hierarchy below the bot's role
 	admin, modo, member := e.role("Admin"), e.role("Modo"), e.role("Membre")
-	botRole := e.role("codi")
+	botRole := e.role("cicord")
 	if !(botRole.Position > admin.Position && admin.Position > modo.Position && modo.Position > member.Position) {
 		t.Errorf("positions bot=%d admin=%d modo=%d member=%d", botRole.Position, admin.Position, modo.Position, member.Position)
 	}
@@ -220,7 +220,7 @@ func TestSyncIcon(t *testing.T) {
 func TestAdoptExisting(t *testing.T) {
 	desired, root := loadExample(t)
 	e := newEnv(t, desired, root)
-	// resources created by hand before CODI manages the server
+	// resources created by hand before Cicord manages the server
 	admin, err := e.w.AdminCreateRole(e.srv.ID, discord.RoleParams{Name: new("Admin")})
 	if err != nil {
 		t.Fatal(err)
@@ -621,7 +621,7 @@ func TestHierarchyBlocked(t *testing.T) {
 	}
 	// someone moves Admin above the bot's role and changes its color
 	admin := e.role("Admin")
-	top := e.role("codi").Position
+	top := e.role("cicord").Position
 	if err := e.w.AdminSetRolePositions(e.srv.ID, []discord.RolePosition{{ID: admin.ID, Position: top}}); err != nil {
 		t.Fatal(err)
 	}

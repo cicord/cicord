@@ -1,6 +1,6 @@
 ---
-title: CODI documentation
-description: GitOps for Discord. Declare your Discord servers and bots in a git repository; the CODI runtime reconciles them continuously and runs sandboxed TypeScript plugins.
+title: Cicord documentation
+description: GitOps for Discord. Declare your Discord servers and bots in a git repository; the Cicord runtime reconciles them continuously and runs sandboxed TypeScript plugins.
 template: splash
 hero:
   tagline: GitOps for Discord. Declare your servers and bots in a git repository, let the runtime reconcile them, and extend them with sandboxed TypeScript plugins.
@@ -14,7 +14,7 @@ hero:
       link: getting-started/installation/
       variant: minimal
     - text: View on GitHub
-      link: https://github.com/npjonath/codi
+      link: https://github.com/npjonath/cicord
       icon: external
       variant: minimal
 ---
@@ -22,14 +22,14 @@ hero:
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 :::caution[Pre-release]
-CODI is **v1alpha1 and pre-release**. The runtime, the reconciler, the plugin host, the
+Cicord is **v1alpha1 and pre-release**. The runtime, the reconciler, the plugin host, the
 simulator, the admin console and the portal SDK work end to end, but file formats and APIs
-may still change, and there are no published binaries or npm packages yet. You build CODI
+may still change, and there are no published binaries or npm packages yet. You build Cicord
 from source today: see [Installation](getting-started/installation/).
 :::
 
 ```text
-git push ──▶ codi serve ──▶ Discord
+git push ──▶ cicord serve ──▶ Discord
              ├─ reconciles servers (roles, categories, channels, permissions…)
              ├─ runs N bots × M servers with TypeScript plugins
              ├─ admin console (every change is a git commit or a pull request)
@@ -41,10 +41,10 @@ git push ──▶ codi serve ──▶ Discord
 <CardGrid>
   <Card title="Servers as code" icon="document">
     Roles, categories, channels, permissions, Community settings, AutoMod, onboarding, emojis and
-    more, declared in YAML. `codi plan` shows the diff, the runtime applies it.
+    more, declared in YAML. `cicord plan` shows the diff, the runtime applies it.
   </Card>
   <Card title="One runtime, many bots" icon="server">
-    A single `codi` binary hosts every bot of your community, with hot reload of new revisions and
+    A single `cicord` binary hosts every bot of your community, with hot reload of new revisions and
     no gateway reconnect.
   </Card>
   <Card title="Sandboxed plugins" icon="puzzle">
@@ -62,7 +62,7 @@ git push ──▶ codi serve ──▶ Discord
 <CardGrid>
   <LinkCard
     title="Introduction"
-    description="What CODI is, and the concepts you need in two minutes."
+    description="What Cicord is, and the concepts you need in two minutes."
     href="getting-started/introduction/"
   />
   <LinkCard
@@ -72,14 +72,14 @@ git push ──▶ codi serve ──▶ Discord
   />
   <LinkCard
     title="Plugins"
-    description="Install official plugins, or write your own with @codi/sdk."
+    description="Install official plugins, or write your own with @cicord/sdk."
     href="plugins/overview/"
   />
   <LinkCard
     title="Self-hosting"
-    description="Run codi serve behind a reverse proxy, with Docker or as a plain binary."
+    description="Run cicord serve behind a reverse proxy, with Docker or as a plain binary."
     href="self-hosting/deploy/"
   />
 </CardGrid>
 
-[Back to the CODI website](../)
+[Back to the Cicord website](../)

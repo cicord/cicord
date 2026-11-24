@@ -7,19 +7,19 @@
     "channel": {
       "description": "Channel where welcome messages are posted.",
       "type": "string",
-      "x-codi-ref": "channel"
+      "x-cicord-ref": "channel"
     },
     "message": {
       "description": "Template. Placeholders: {member}, {server}.",
       "type": "string",
       "default": "Welcome {member} to {server}!",
-      "x-codi-widget": "textarea",
-      "x-codi-access": "moderator"
+      "x-cicord-widget": "textarea",
+      "x-cicord-access": "moderator"
     },
     "autoRole": {
       "description": "Role given to every new member.",
       "type": "string",
-      "x-codi-ref": "role"
+      "x-cicord-ref": "role"
     },
     "dmOnboarding": {
       "description": "Send a DM with a link to the onboarding page of the portal.",

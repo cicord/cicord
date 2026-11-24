@@ -1,5 +1,5 @@
 /** Setup wizard API (spec/api.md §10): typed calls on top of the generic client. */
-import type { CodiClient, Plan } from "@codi/client";
+import type { CicordClient, Plan } from "@cicord/client";
 
 export type CheckStatus = "ok" | "warn" | "fail" | "pending" | "skip";
 
@@ -145,7 +145,7 @@ export interface LoginTest {
 const P = "/api/v1/setup";
 
 /** Wizard calls. */
-export function setupApi(client: CodiClient) {
+export function setupApi(client: CicordClient) {
   const get = <T>(path: string, signal?: AbortSignal) =>
     client.request<T>("GET", `${P}${path}`, signal ? { signal } : {});
   const post = <T>(path: string, body: unknown = {}) =>
@@ -187,7 +187,7 @@ export function setupApi(client: CodiClient) {
 export type SetupApi = ReturnType<typeof setupApi>;
 
 /** Diagnostics of a server (same checks as the Verify step). */
-export function diagnostics(client: CodiClient, serverKey: string, signal?: AbortSignal) {
+export function diagnostics(client: CicordClient, serverKey: string, signal?: AbortSignal) {
   return client.request<Report>(
     "GET",
     `/api/v1/servers/${encodeURIComponent(serverKey)}/diagnostics`,

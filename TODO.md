@@ -1,4 +1,4 @@
-# CODI — TODO
+# Cicord — TODO
 
 Living tracker of what is left. Updated as work lands (`[x]` = done, with the commit or PR).
 No public release until the product is complete.
@@ -9,25 +9,25 @@ No public release until the product is complete.
       routes per access level, plugin-owned channels, reactions, message content):
       examples/showcase (tickets, polls, levels, moderation) + docs/plugin-coverage.md
 - [ ] Same on real Discord: checklist at the end of docs/plugin-coverage.md
-- [x] Plugin developer loop: `codi plugin new` → `codi dev --sim` hot reload → `typegen` →
-      `plugin test` → unit tests with `@codi/sdk/testing` (component/modal runners, schema
+- [x] Plugin developer loop: `cicord plugin new` → `cicord dev --sim` hot reload → `typegen` →
+      `plugin test` → unit tests with `@cicord/sdk/testing` (component/modal runners, schema
       defaults, richer fakes); friction fixed (init placeholders work with `--sim`, `plugin new`
       prints the bot.yaml snippet, array-item defaults, `plugin test` docs)
-- [x] Unit tests of a plugin outside the monorepo: `codi plugin new` scaffolds `node --test` with the vendored @codi/sdk
+- [x] Unit tests of a plugin outside the monorepo: `cicord plugin new` scaffolds `node --test` with the vendored @cicord/sdk
 - [ ] SDK: fetch a message by id (`channel.message(id)`) instead of the `messages({ before })`
       workaround (needs `GetMessage` in the Discord contract)
 - [ ] Community portal customization (docs/portal.md):
   - [x] theme from YAML end to end (colors, mode, logo served; banner too)
   - [x] no-code customization from YAML (title, tagline, Markdown description, banner, links, pages, locale)
   - [x] custom portal in the repo (`portal/`, committed build), served by the runtime from the active revision
-  - [x] `codi portal init` (scaffold from the template) + `codi portal build` + dev loop against `codi dev`
-  - [x] `@codi/*` usable outside the monorepo before npm publication (tarballs embedded in `codi`, vendored by `portal init`)
+  - [x] `cicord portal init` (scaffold from the template) + `cicord portal build` + dev loop against `cicord dev`
+  - [x] `@cicord/*` usable outside the monorepo before npm publication (tarballs embedded in `cicord`, vendored by `portal init`)
   - [x] embeddable in third-party sites (token mode: portal-scoped bearer sessions, `spec.portal.allowedOrigins`, examples/embed) — decision: SDK-first, plugin UI = plugin routes via the SDK (ADR-0008)
   - [x] reference portal = complete showcase of everything the SDK can do (leaderboard, tickets, developers page, en/fr)
-  - [x] typed plugin routes: route contracts (`spec.routes.types`, `defineRoutes`), `codi portal typegen`, `client.routes`, `useRouteQuery` (levels, polls)
+  - [x] typed plugin routes: route contracts (`spec.routes.types`, `defineRoutes`), `cicord portal typegen`, `client.routes`, `useRouteQuery` (levels, polls)
   - [ ] route contracts for tickets, moderation, announcements
   - [x] npm publication prepared (package metadata, release workflow, `--from-npm`), RELEASING.md
-  - [ ] **Owner:** create the npm org `codi`, NPM_TOKEN secret, public repo, then run the release workflow (RELEASING.md)
+  - [ ] **Owner:** create the npm org `cicord`, NPM_TOKEN secret, public repo, then run the release workflow (RELEASING.md)
 - [ ] Real Discord: test member join (needs a second account)
 - [x] Admin console redesign: shadcn/ui + Tailwind v4, collapsible sidebar with server switcher,
       ⌘K palette, true-black dark + light themes, i18n (`src/i18n/en.json`, typed keys), one
@@ -54,7 +54,7 @@ No public release until the product is complete.
 - [x] Gateway events for AutoMod rules, emojis, stickers, soundboard sounds: hand edits of managed ones trigger a resync (intents requested only when managed)
 - [ ] Widget, onboarding and welcome screen still drift until the next plan (Discord has no events for them)
 - [ ] Invites (declared permanent invite links), webhooks (secrets)
-- [ ] `codi import --force` leaves stale files in servers/assets/<key>/
+- [ ] `cicord import --force` leaves stale files in servers/assets/<key>/
 - [ ] Holographic role style preset (`colors: holographic`) instead of the three magic colors
 - [ ] Admin UI: plan page refreshes on live server updates (boost level changes need a manual Refresh)
 
@@ -70,18 +70,18 @@ No public release until the product is complete.
 - [ ] Setup wizard: manage several servers / bots; Store page on top of the catalog (registries)
 
 ## Store (core of the vision) — apt/Homebrew-style sources (ADR-0011 update)
-- [x] Sources: bundled official plugins (`codi`, reserved) + `codi.yaml spec.registries`; trust computed from the URL (unofficial unless official URL), `verified` only honoured for official
+- [x] Sources: bundled official plugins (`cicord`, reserved) + `cicord.yaml spec.registries`; trust computed from the URL (unofficial unless official URL), `verified` only honoured for official
 - [x] Store API (§11): browse, detail from plugin.yaml at the resolved version (no unofficial code run before consent), install with reviewed version/commit/integrity (`409 changed`), explicit confirmation for unofficial, registries add/remove (project admins, https only, `in_use`)
-- [x] `codi registry list|add|remove|update|search` (file:// and local paths for dev registries)
+- [x] `cicord registry list|add|remove|update|search` (file:// and local paths for dev registries)
 - [x] Admin UI Store page: browse/search by source, trust badges, permissions review, install (bot, instance, config, unofficial confirmation, `changed` re-review), sources add/remove
-- [x] Signed official index (ed25519 envelope bound to URL, serial, expiry; anti-rollback serial), implicit official registry merged into source `codi`, `codi registry keygen|sign|verify`
+- [x] Signed official index (ed25519 envelope bound to URL, serial, expiry; anti-rollback serial), implicit official registry merged into source `cicord`, `cicord registry keygen|sign|verify`
 - [ ] **Owner:** create the official registry repository + production signing key, set `registry.OfficialURLs` / `OfficialKeys`, schedule the re-signing CI job (docs/plugins.md §9)
 - [x] Background refresh of registry indexes (10 s after start, then every 30 min)
 - [x] Uninstall (API: instance, lock entry or copied plugin dir; per-server for multi-server instances)
-- [x] Plugin updates: detection (registry tags, bundled copies with modified-copy detection), review with permission diff, update in one write-back, `codi plugin update`, admin badges/filters/review page
-- [x] Private registries: `secretRef` per registry, token in the secret store, sent to the registry host only; `codi registry add --private`
-- [x] `codi plugin publish` (checks, tag, index entry); verified publishers honoured only from the verified official index
-- [ ] `codi plugin publish`: build from the tagged tree (today: the working tree)
+- [x] Plugin updates: detection (registry tags, bundled copies with modified-copy detection), review with permission diff, update in one write-back, `cicord plugin update`, admin badges/filters/review page
+- [x] Private registries: `secretRef` per registry, token in the secret store, sent to the registry host only; `cicord registry add --private`
+- [x] `cicord plugin publish` (checks, tag, index entry); verified publishers honoured only from the verified official index
+- [ ] `cicord plugin publish`: build from the tagged tree (today: the working tree)
 - [x] Official plugins: reaction-roles, audit-log, announcements (9 in the catalog); moderation publishes `moderation.case`
 - [ ] SDK gaps found while writing them: subcommands, channel/role/ban events and actor, message content before edit/delete, allowedMentions id lists, Intl/time zones in the plugin host, removing others' reactions, role hierarchy info
 
@@ -95,19 +95,19 @@ No public release until the product is complete.
       fatal disconnect event, `CommandOption.MinLength/MaxLength`, select menu types 5–8
 - [ ] Simulator: reseed when hot reload adds servers/bots
 - [ ] Security review: plugin sandbox escapes, Sobek memory limits, YAML fuzzing, link token reuse
-- [ ] `codi mv` against a remote runtime (mapping move endpoint) — rename detection already in the reconciler
+- [ ] `cicord mv` against a remote runtime (mapping move endpoint) — rename detection already in the reconciler
 - [ ] Export runtime manifest checks / writeback helpers reused by the CLI (dedupe)
-- [ ] `@codi/sdk/testing`: enforce route access levels and `messages.manage` in fakes
+- [ ] `@cicord/sdk/testing`: enforce route access levels and `messages.manage` in fakes
 
 ## Grand public & SaaS
-- [ ] Onboarding without git: "Add to Discord" → embedded repo → automatic `codi import` → admin UI only
+- [ ] Onboarding without git: "Add to Discord" → embedded repo → automatic `cicord import` → admin UI only
 - [ ] Multi-tenant runtime, stronger plugin isolation (QuickJS/WASM), quotas, managed git, billing
 - [ ] Portal as a Discord Activity (ADR-0016, verify constraints first)
 - [ ] Admin UI i18n
 
 ## Release (later)
 - [ ] Runtime license decision (ADR-0013) — SDKs are Apache-2.0
-- [ ] GoReleaser binaries, Docker image (ghcr.io), npm publication of `@codi/*`
+- [ ] GoReleaser binaries, Docker image (ghcr.io), npm publication of `@cicord/*`
 - [ ] `go install` with embedded UIs (commit built assets or release-only builds)
 
 ## Done (recent)

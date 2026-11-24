@@ -1,11 +1,11 @@
-import type { Me } from "@codi/client";
-import { CodiProvider, codiKeys, useCodi, useLogout, useMe } from "@codi/react";
+import type { Me } from "@cicord/client";
+import { CicordProvider, cicordKeys, useCicord, useLogout, useMe } from "@cicord/react";
 import { Loader2, LogOut, Moon, Sun } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { usePlugin, useStatus, useStoreDetail } from "./api.ts";
 import { EmptyState, Sha } from "./components/common.tsx";
 import { ErrorState } from "./components/errors.tsx";
-import { CodiApiError } from "@codi/client";
+import { CicordApiError } from "@cicord/client";
 import { Badge } from "./components/ui/badge.tsx";
 import {
   Breadcrumb,
@@ -58,14 +58,14 @@ import { SimulatorPage } from "./sim/Simulator.tsx";
 export function App({ config }: { config: AdminConfig }) {
   return (
     <ConfigContext.Provider value={config}>
-      <CodiProvider client={config.client}>
+      <CicordProvider client={config.client}>
         <ThemeProvider>
           <TooltipProvider delayDuration={300}>
             <Root />
             <ThemedToaster />
           </TooltipProvider>
         </ThemeProvider>
-      </CodiProvider>
+      </CicordProvider>
     </ConfigContext.Provider>
   );
 }
@@ -77,19 +77,22 @@ function ThemedToaster() {
 
 function Root() {
   const { t } = useTranslation();
-  const { cache } = useCodi();
+  const { cache } = useCicord();
   const me = useMe();
   const { path } = useLocation();
 
   useEffect(() => {
-    const onExpired = () => void cache.invalidate(codiKeys.me());
+    const onExpired = () => void cache.invalidate(cicordKeys.me());
     window.addEventListener(UNAUTHENTICATED_EVENT, onExpired);
     return () => window.removeEventListener(UNAUTHENTICATED_EVENT, onExpired);
   }, [cache]);
 
   // The setup wizard is a full page outside the shell (like Login); a runtime in setup
   // mode answers every other API call with setup_required.
-  if (path === "/setup" || (me.error instanceof CodiApiError && me.error.code === "setup_required"))
+  if (
+    path === "/setup" ||
+    (me.error instanceof CicordApiError && me.error.code === "setup_required")
+  )
     return <SetupPage />;
   if (me.isLoading)
     return (
@@ -122,7 +125,7 @@ function Root() {
 
 // ───────────────────────────────────────────────────────────── workspace
 
-const SERVER_KEY = "codi-admin:server";
+const SERVER_KEY = "cicord-admin:server";
 
 function rememberServer(key: string) {
   try {

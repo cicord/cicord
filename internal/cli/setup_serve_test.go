@@ -14,29 +14,29 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/setup"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/setup"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
-type codiProc struct {
+type cicordProc struct {
 	stdout, stderr syncBuffer
 	cancel         context.CancelFunc
 	done           chan int
 }
 
-func startCodi(t *testing.T, args ...string) *codiProc {
+func startCicord(t *testing.T, args ...string) *cicordProc {
 	t.Helper()
-	p := &codiProc{done: make(chan int, 1)}
+	p := &cicordProc{done: make(chan int, 1)}
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
 	go func() { p.done <- ExecuteContext(ctx, args, &p.stdout, &p.stderr) }()
 	return p
 }
 
-func (p *codiProc) wait(t *testing.T, re *regexp.Regexp) []string {
+func (p *cicordProc) wait(t *testing.T, re *regexp.Regexp) []string {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
@@ -45,7 +45,7 @@ func (p *codiProc) wait(t *testing.T, re *regexp.Regexp) []string {
 		}
 		select {
 		case code := <-p.done:
-			t.Fatalf("codi exited with %d:\n%s\n%s", code, p.stdout.String(), p.stderr.String())
+			t.Fatalf("cicord exited with %d:\n%s\n%s", code, p.stdout.String(), p.stderr.String())
 		default:
 		}
 		if time.Now().After(deadline) {
@@ -55,7 +55,7 @@ func (p *codiProc) wait(t *testing.T, re *regexp.Regexp) []string {
 	}
 }
 
-func (p *codiProc) stop(t *testing.T) {
+func (p *cicordProc) stop(t *testing.T) {
 	t.Helper()
 	p.cancel()
 	select {
@@ -64,7 +64,7 @@ func (p *codiProc) stop(t *testing.T) {
 			t.Errorf("exit code %d; stderr:\n%s", code, p.stderr.String())
 		}
 	case <-time.After(30 * time.Second):
-		t.Error("codi did not stop")
+		t.Error("cicord did not stop")
 	}
 }
 
@@ -75,7 +75,7 @@ func newSetupClient(t *testing.T, base string) *setupClient {
 	return &setupClient{t: t, base: base, hc: &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
-// TestServeSetupResumeAndRestart covers `codi serve` without codi.yaml: setup mode, the
+// TestServeSetupResumeAndRestart covers `cicord serve` without cicord.yaml: setup mode, the
 // wizard resumes after a restart, the embedded repository gets the first commit, the
 // runtime activates without restart, and a later restart boots from the repository the
 // wizard created (bot token read back from the encrypted secret store).
@@ -88,19 +88,19 @@ func TestServeSetupResumeAndRestart(t *testing.T) {
 	old := serveDiscord
 	serveDiscord = func(*slog.Logger) (discord.Connector, setup.Probe) { return world, env.Probe() }
 	defer func() { serveDiscord = old }()
-	t.Setenv("CODI_SECRET_KEY", "")
-	t.Setenv("CODI_RUNTIME_TOKEN", "")
+	t.Setenv("CICORD_SECRET_KEY", "")
+	t.Setenv("CICORD_RUNTIME_TOKEN", "")
 
 	dir, data := t.TempDir(), t.TempDir()
 	args := []string{"serve", "--listen", "127.0.0.1:0", "--data-dir", data, "--log-level", "warn", dir}
 
 	// Run 1: token + server, then stop.
-	p := startCodi(t, args...)
+	p := startCicord(t, args...)
 	m := p.wait(t, setupURLRe)
 	c := newSetupClient(t, m[1])
 	c.ok("POST", "/api/v1/setup/session", map[string]any{"token": m[2]})
 	c.ok("POST", "/api/v1/setup/intent", map[string]any{"intent": "existing"})
-	tok, appID := env.CreateBot("CODI")
+	tok, appID := env.CreateBot("Cicord")
 	if err := env.SetIntents(appID, discord.PrivilegedIntents); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestServeSetupResumeAndRestart(t *testing.T) {
 	}
 
 	// Run 2: a new link; the wizard resumes at the Server step.
-	p = startCodi(t, args...)
+	p = startCicord(t, args...)
 	m2 := p.wait(t, setupURLRe)
 	if m2[2] == m[2] {
 		t.Fatal("setup token reused across restarts")
@@ -131,7 +131,7 @@ func TestServeSetupResumeAndRestart(t *testing.T) {
 		t.Fatalf("old token = %d", code)
 	}
 	st := c.ok("POST", "/api/v1/setup/session", map[string]any{"token": m2[2]})
-	if get(st, "view", "step") != "server" || get(st, "view", "bot", "username") != "CODI" || get(st, "view", "server", "key") != "pixel-pals" {
+	if get(st, "view", "step") != "server" || get(st, "view", "bot", "username") != "Cicord" || get(st, "view", "server", "key") != "pixel-pals" {
 		t.Fatalf("resumed view = %v", st["view"])
 	}
 	if ps := get(st, "view", "providers").([]any); ps[0] != "embedded" || ps[1] != "github" {
@@ -149,7 +149,7 @@ func TestServeSetupResumeAndRestart(t *testing.T) {
 	}
 	head, _ := repo.Head()
 	commit, _ := repo.CommitObject(head.Hash())
-	if !strings.HasPrefix(commit.Message, "Set up CODI for Pixel Pals") {
+	if !strings.HasPrefix(commit.Message, "Set up Cicord for Pixel Pals") {
 		t.Fatalf("first commit = %q", commit.Message)
 	}
 	if code, _ := c.do("GET", "/readyz", nil); code != 200 {
@@ -158,7 +158,7 @@ func TestServeSetupResumeAndRestart(t *testing.T) {
 	p.stop(t)
 
 	// Run 3: boots from the embedded repository; the unfinished wizard is resumable.
-	p = startCodi(t, args...)
+	p = startCicord(t, args...)
 	p.wait(t, regexp.MustCompile(`configuration: embedded repository`))
 	m3 := p.wait(t, regexp.MustCompile(`setup wizard not finished: (http://127\.0\.0\.1:\d+)/admin/setup\?token=(\S+)`))
 	c = newSetupClient(t, m3[1])
@@ -192,13 +192,13 @@ func TestSetupBootDecision(t *testing.T) {
 	copyDir(t, "../../examples/basic", dir)
 	var out, errb syncBuffer
 	if code := ExecuteContext(context.Background(), []string{"dev", "--setup", "--listen", "127.0.0.1:0", dir}, &out, &errb); code == 0 ||
-		!strings.Contains(errb.String(), "already contains a codi.yaml") {
+		!strings.Contains(errb.String(), "already contains a cicord.yaml") {
 		t.Fatalf("dev --setup on a repository = %d %s", code, errb.String())
 	}
-	p := startCodi(t, "dev", "--sim", "--listen", "127.0.0.1:0", "--data-dir", t.TempDir(), "--log-level", "warn", dir)
+	p := startCicord(t, "dev", "--sim", "--listen", "127.0.0.1:0", "--data-dir", t.TempDir(), "--log-level", "warn", dir)
 	p.wait(t, regexp.MustCompile(`listening on http://`))
 	if strings.Contains(p.stdout.String(), "setup") {
-		t.Fatalf("setup mode with codi.yaml:\n%s", p.stdout.String())
+		t.Fatalf("setup mode with cicord.yaml:\n%s", p.stdout.String())
 	}
 	p.stop(t)
 }
@@ -206,7 +206,7 @@ func TestSetupBootDecision(t *testing.T) {
 func TestSecretCommandAndDataDirGuard(t *testing.T) {
 	data := t.TempDir()
 	// A data dir with a sync history belongs to a deployment: no setup mode on it.
-	st, err := sqlite.Open(filepath.Join(data, "codi.db"))
+	st, err := sqlite.Open(filepath.Join(data, "cicord.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestSecretCommandAndDataDirGuard(t *testing.T) {
 		t.Fatalf("serve on a used data dir = %d %s", code, errb.String())
 	}
 
-	// codi secret set / ls / rotate-key / rm.
+	// cicord secret set / ls / rotate-key / rm.
 	run := func(stdin string, args ...string) (int, string) {
 		var o, e syncBuffer
 		cmd := newRootCmd()
@@ -233,26 +233,26 @@ func TestSecretCommandAndDataDirGuard(t *testing.T) {
 		}
 		return 0, o.String()
 	}
-	t.Setenv("CODI_SECRET_KEY", "")
-	if code, o := run("tok-123\n", "secret", "set", "DISCORD_TOKEN_CODI"); code != 0 || strings.Contains(o, "tok-123") {
+	t.Setenv("CICORD_SECRET_KEY", "")
+	if code, o := run("tok-123\n", "secret", "set", "DISCORD_TOKEN_CICORD"); code != 0 || strings.Contains(o, "tok-123") {
 		t.Fatalf("set = %d %s", code, o)
 	}
 	if code, o := run("", "secret", "rotate-key"); code != 0 {
 		t.Fatalf("rotate = %s", o)
 	}
-	if code, o := run("", "secret", "ls"); code != 0 || !strings.Contains(o, "DISCORD_TOKEN_CODI") || strings.Contains(o, "tok-123") {
+	if code, o := run("", "secret", "ls"); code != 0 || !strings.Contains(o, "DISCORD_TOKEN_CICORD") || strings.Contains(o, "tok-123") {
 		t.Fatalf("ls = %d %s", code, o)
 	}
-	st, _ = sqlite.Open(filepath.Join(data, "codi.db"))
+	st, _ = sqlite.Open(filepath.Join(data, "cicord.db"))
 	sec, err := openSecrets(context.Background(), st, data, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := sec.Get(context.Background(), "DISCORD_TOKEN_CODI"); v != "tok-123" {
+	if v, _ := sec.Get(context.Background(), "DISCORD_TOKEN_CICORD"); v != "tok-123" {
 		t.Fatalf("value after rotation = %q", v)
 	}
 	st.Close()
-	if code, o := run("", "secret", "rm", "DISCORD_TOKEN_CODI"); code != 0 {
+	if code, o := run("", "secret", "rm", "DISCORD_TOKEN_CICORD"); code != 0 {
 		t.Fatal(o)
 	}
 }

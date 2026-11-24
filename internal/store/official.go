@@ -8,18 +8,18 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 // The implicit official registry (ADR-0011, "Update (2026-11-23)").
 //
-// When registry.Official() has a URL, source "codi" is the union of the plugins bundled in
+// When registry.Official() has a URL, source "cicord" is the union of the plugins bundled in
 // the binary and those of the official remote registry (its signed index), without any
-// codi.yaml entry. A plugin in both comes from the remote registry only when its index
+// cicord.yaml entry. A plugin in both comes from the remote registry only when its index
 // entry has a valid semver `version` greater than the bundled version; otherwise the
 // bundled copy wins (it ships with the binary and needs no network). When the official
-// index cannot be read or verified, source "codi" lists the bundled plugins and carries
+// index cannot be read or verified, source "cicord" lists the bundled plugins and carries
 // the error.
 
 // Signature states of a source.
@@ -108,7 +108,7 @@ func signatureOf(url string, c cached) string {
 	return ""
 }
 
-// mergeOfficial adds the plugins of the official remote index to source "codi".
+// mergeOfficial adds the plugins of the official remote index to source "cicord".
 func mergeOfficial(src *Source, off config.Registry, c cached, inst map[string][]Installation) {
 	src.URL = registry.Redact(off.URL)
 	at := c.at

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // ───────────────────────────────────────────────────────────── reaction-roles
@@ -194,7 +194,7 @@ func TestShowcaseAuditLog(t *testing.T) {
 func TestShowcaseAnnouncements(t *testing.T) {
 	s := startShowcase(t, showcaseOpts{prepare: func(dir string) {
 		// An announcement due every minute, to drive the tick.
-		replaceIn(t, filepath.Join(dir, "bots/codi/bot.yaml"), "        announcements:\n          - name: game-night",
+		replaceIn(t, filepath.Join(dir, "bots/cicord/bot.yaml"), "        announcements:\n          - name: game-night",
 			"        announcements:\n          - name: heartbeat\n            channel: general\n            cron: \"* * * * *\"\n            content: Still here @everyone\n          - name: game-night")
 	}})
 	w := s.world

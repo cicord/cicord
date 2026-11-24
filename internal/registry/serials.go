@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // Anti-rollback: the highest signature serial seen for the official registry. Trust on
@@ -121,7 +121,7 @@ func (s kvSerials) Record(ctx context.Context, r string, n uint64) error {
 }
 
 // SerialKVScope is the state KV scope of SerialStore.
-const SerialKVScope = "codi:registry-serials"
+const SerialKVScope = "cicord:registry-serials"
 
 // FileSerialStore keeps serials in a JSON file (the CLI, which has no state store).
 func FileSerialStore(path string) SerialStore { return fileSerials{path} }

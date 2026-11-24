@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/store"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/store"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 func init() {
@@ -25,16 +25,16 @@ func init() {
 
 var registryNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
-// newRegistryCmd manages plugin sources (ADR-0011): `codi registry add|remove|list|update|search`.
-// It edits codi.yaml locally, like the admin UI does through write-back.
+// newRegistryCmd manages plugin sources (ADR-0011): `cicord registry add|remove|list|update|search`.
+// It edits cicord.yaml locally, like the admin UI does through write-back.
 func newRegistryCmd() *cobra.Command {
 	var dir string
 	cmd := &cobra.Command{
 		Use:   "registry",
-		Short: "Manage plugin sources (registries) of codi.yaml",
-		Long: `Plugin sources work like apt sources or Homebrew taps. The official CODI plugins
-(source "codi") are always available; other registries are git repositories with an
-index.yaml, declared in codi.yaml spec.registries. They are unofficial: install their
+		Short: "Manage plugin sources (registries) of cicord.yaml",
+		Long: `Plugin sources work like apt sources or Homebrew taps. The official Cicord plugins
+(source "cicord") are always available; other registries are git repositories with an
+index.yaml, declared in cicord.yaml spec.registries. They are unofficial: install their
 plugins only if you trust them.`,
 	}
 	cmd.PersistentFlags().StringVar(&dir, "dir", ".", "repository root")
@@ -59,9 +59,9 @@ plugins only if you trust them.`,
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(tw, "NAME\tTRUST\tURL\tTOKEN")
-			officialURL := "(bundled with codi)"
+			officialURL := "(bundled with cicord)"
 			if off, ok := registry.Official(); ok {
-				officialURL = "(bundled with codi) + " + registry.Redact(off.URL) + " (signed index)"
+				officialURL = "(bundled with cicord) + " + registry.Redact(off.URL) + " (signed index)"
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t-\n", config.OfficialRegistryName, registry.TrustOfficial, officialURL)
 			for _, r := range repo.Project.Spec.Registries {
@@ -78,14 +78,14 @@ plugins only if you trust them.`,
 	var noCheck, private bool
 	add := &cobra.Command{
 		Use:   "add <name> <url>",
-		Short: "Add a registry to codi.yaml (https://, file:// or a local path)",
-		Long: `Add a registry to codi.yaml. For a private registry, --private reads its access token
-from CODI_REGISTRY_<NAME>_TOKEN (environment variable here; on the runtime, an environment
-variable or ` + "`codi secret set`" + `); codi.yaml only stores that name. The token is sent to
+		Short: "Add a registry to cicord.yaml (https://, file:// or a local path)",
+		Long: `Add a registry to cicord.yaml. For a private registry, --private reads its access token
+from CICORD_REGISTRY_<NAME>_TOKEN (environment variable here; on the runtime, an environment
+variable or ` + "`cicord secret set`" + `); cicord.yaml only stores that name. The token is sent to
 the registry's host only.`,
-		Example: `  codi registry add acme https://github.com/acme/codi-plugins.git
-  CODI_REGISTRY_ACME_TOKEN=… codi registry add acme https://github.com/acme/private-plugins.git --private
-  codi registry add dev ../my-registry`,
+		Example: `  cicord registry add acme https://github.com/acme/cicord-plugins.git
+  CICORD_REGISTRY_ACME_TOKEN=… cicord registry add acme https://github.com/acme/private-plugins.git --private
+  cicord registry add dev ../my-registry`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, url := args[0], strings.TrimSpace(args[1])
@@ -101,9 +101,9 @@ the registry's host only.`,
 			case !registryNameRe.MatchString(name):
 				return fmt.Errorf("registry names use 1 to 32 lowercase letters, digits and dashes")
 			case name == config.OfficialRegistryName:
-				return fmt.Errorf("the name %q is reserved for the official CODI plugins", name)
+				return fmt.Errorf("the name %q is reserved for the official Cicord plugins", name)
 			case registry.HasUserinfo(url):
-				return fmt.Errorf("registry URLs must not contain credentials: use --secret-ref (codi.yaml is committed and shown in the admin UI)")
+				return fmt.Errorf("registry URLs must not contain credentials: use --secret-ref (cicord.yaml is committed and shown in the admin UI)")
 			}
 			secretRef := ""
 			if private {
@@ -144,7 +144,7 @@ the registry's host only.`,
 				return err
 			}
 			w := cmd.OutOrStdout()
-			fmt.Fprintf(w, "Added %s (%s) to codi.yaml.\n", name, registry.Trust(url))
+			fmt.Fprintf(w, "Added %s (%s) to cicord.yaml.\n", name, registry.Trust(url))
 			if registry.Trust(url) != registry.TrustOfficial {
 				fmt.Fprintln(w, "This source is unofficial: review the capabilities of its plugins before installing them.")
 			}
@@ -152,11 +152,11 @@ the registry's host only.`,
 		},
 	}
 	add.Flags().BoolVar(&noCheck, "no-check", false, "do not fetch the index before adding")
-	add.Flags().BoolVar(&private, "private", false, "private registry: its token is CODI_REGISTRY_<NAME>_TOKEN")
+	add.Flags().BoolVar(&private, "private", false, "private registry: its token is CICORD_REGISTRY_<NAME>_TOKEN")
 
 	remove := &cobra.Command{
 		Use:   "remove <name>",
-		Short: "Remove an unused registry from codi.yaml",
+		Short: "Remove an unused registry from cicord.yaml",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -191,7 +191,7 @@ the registry's host only.`,
 			}); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Removed %s from codi.yaml.\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Removed %s from cicord.yaml.\n", name)
 			return nil
 		},
 	}
@@ -232,7 +232,7 @@ the registry's host only.`,
 				fmt.Fprintf(w, "✓ %s (%s%s): %d plugin(s)\n", src.Name, src.Trust, private, len(src.Plugins))
 			}
 			if len(srcs) == 1 && srcs[0].URL == "" {
-				fmt.Fprintln(w, "No registry in codi.yaml: only the official plugins bundled with codi are available.")
+				fmt.Fprintln(w, "No registry in cicord.yaml: only the official plugins bundled with cicord are available.")
 			}
 			if failed {
 				return exitError{1}
@@ -293,7 +293,7 @@ the registry's host only.`,
 	return cmd
 }
 
-// registrySubcommands lets other files add `codi registry` subcommands (sign, keygen…).
+// registrySubcommands lets other files add `cicord registry` subcommands (sign, keygen…).
 var registrySubcommands []func() *cobra.Command
 
 // runtimePluginStore is the Store of a running runtime: guarded fetches, registry tokens
@@ -304,9 +304,9 @@ func runtimePluginStore(cat *catalog.Catalog, secret func(string) (string, bool)
 	return s
 }
 
-// editProject rewrites codi.yaml with edit and checks the result still loads.
+// editProject rewrites cicord.yaml with edit and checks the result still loads.
 func editProject(root string, edit func([]byte) ([]byte, error)) error {
-	p := filepath.Join(root, "codi.yaml")
+	p := filepath.Join(root, "cicord.yaml")
 	cur, err := os.ReadFile(p)
 	if err != nil {
 		return err
@@ -320,7 +320,7 @@ func editProject(root string, edit func([]byte) ([]byte, error)) error {
 	}
 	if _, ds := config.Load(root, config.LoadOptions{}); ds.HasErrors() {
 		_ = os.WriteFile(p, cur, 0o644)
-		return errors.New("codi.yaml would become invalid: " + ds.Err().Error())
+		return errors.New("cicord.yaml would become invalid: " + ds.Err().Error())
 	}
 	return nil
 }

@@ -1,6 +1,6 @@
 /** Plugin instances of a server: a server-side table; each row opens the instance's page. */
-import type { PluginInstance, PluginListParams, PluginSortKey } from "@codi/client";
-import { useCodi } from "@codi/react";
+import type { PluginInstance, PluginListParams, PluginSortKey } from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import { Puzzle } from "lucide-react";
 import { keys } from "../api.ts";
 import { EmptyState, Mono, Page, PageHeader } from "../components/common.tsx";
@@ -26,7 +26,7 @@ export const pluginParams = (q: TableQuery): PluginListParams => ({
 
 export function PluginsPage({ serverKey }: { serverKey: string }) {
   const { t } = useTranslation();
-  const { client } = useCodi();
+  const { client } = useCicord();
   // The result of an uninstall made on the instance's page, shown once.
   const [flash, dismissFlash] = useFlash<UninstallFlash>(`uninstall:${serverKey}`);
 

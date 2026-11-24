@@ -1,4 +1,4 @@
-import { createCodiClient, type FetchLike } from "@codi/client";
+import { createCicordClient, type FetchLike } from "@cicord/client";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
@@ -40,7 +40,7 @@ function setup(path: string, intercept?: Intercept) {
     return (await intercept?.(url, init, runtime)) ?? runtime.fetch(input, init);
   };
   const config: AdminConfig = {
-    client: createCodiClient({ fetch: watch401(fetch) }),
+    client: createCicordClient({ fetch: watch401(fetch) }),
     loginUrl: "/auth/login?redirect=/admin/",
     mock: true,
   };
@@ -105,7 +105,7 @@ describe("plugin updates", () => {
     await user.click(within(main).getByRole("button", { name: "Update to 0.1.0" }));
     expect(await within(main).findByText("Welcome is updated to 0.1.0")).toBeTruthy();
     expect(updates(sent)[0]).toMatchObject({
-      path: "/api/v1/store/codi/welcome/update",
+      path: "/api/v1/store/cicord/welcome/update",
       body: { version: "0.1.0" },
     });
   });

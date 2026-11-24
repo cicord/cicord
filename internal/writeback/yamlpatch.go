@@ -1,6 +1,6 @@
 // Package writeback turns UI/API configuration changes into git commits (ADR-0004):
 // YAML files are patched at the node level (comments and key order preserved), then
-// committed directly or proposed as a pull request according to codi.yaml policies.
+// committed directly or proposed as a pull request according to cicord.yaml policies.
 package writeback
 
 import (

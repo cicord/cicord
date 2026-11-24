@@ -3,9 +3,9 @@ title: Status and roadmap
 description: What works today, what is next, and what is waiting on the project owner before a first public release.
 ---
 
-CODI is **v1alpha1, pre-release**. There is no public release yet: the project's rule is no
+Cicord is **v1alpha1, pre-release**. There is no public release yet: the project's rule is no
 release until the product is complete. This page summarizes the project's living tracker,
-[`TODO.md`](https://github.com/npjonath/codi/blob/main/TODO.md). No dates are promised.
+[`TODO.md`](https://github.com/npjonath/cicord/blob/main/TODO.md). No dates are promised.
 
 ## What works today
 
@@ -26,9 +26,9 @@ release until the product is complete. This page summarizes the project's living
 - **Setup wizard**: from nothing to a synced server, with live checks, an encrypted secret
   store and an import that produces an empty first plan.
 - **Plugin Store**: bundled official plugins, git registries (including private ones), computed
-  trust, permission review, install, update and uninstall, `codi plugin publish`, and the
+  trust, permission review, install, update and uninstall, `cicord plugin publish`, and the
   signed official index mechanism.
-- **Community portal**: the SDK (`@codi/client`, `@codi/react`, `@codi/ui`), the reference
+- **Community portal**: the SDK (`@cicord/client`, `@cicord/react`, `@cicord/ui`), the reference
   portal, no-code customization, custom portals served from the repository, embedding in token
   mode.
 - **CLI**: `init`, `validate`, `plan` (local and remote, with pull request comments), `apply`,
@@ -51,7 +51,7 @@ release until the product is complete. This page summarizes the project's living
   plan page, drift detection for widget, onboarding and welcome screen.
 - Setup wizard: GitHub App instead of a personal access token, a webhook step, several servers
   and bots.
-- `codi plugin publish` building from the tagged tree; `codi mv` against a remote runtime.
+- `cicord plugin publish` building from the tagged tree; `cicord mv` against a remote runtime.
 
 ## Production hardening
 
@@ -64,9 +64,9 @@ release until the product is complete. This page summarizes the project's living
 
 These steps need decisions or accounts from the project owner:
 
-- **npm publication** of `@codi/sdk`, `@codi/client`, `@codi/react` and `@codi/ui`: create the
+- **npm publication** of `@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui`: create the
   npm organization, the publish token and a public repository, then run the prepared release
-  workflow ([`RELEASING.md`](https://github.com/npjonath/codi/blob/main/RELEASING.md)).
+  workflow ([`RELEASING.md`](https://github.com/npjonath/cicord/blob/main/RELEASING.md)).
 - **The official plugin registry**: create its repository and production signing key, embed
   them in the binary and schedule the re-signing job.
 - **The runtime license** (see [License](../license/)).

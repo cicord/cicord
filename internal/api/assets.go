@@ -16,14 +16,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // Server images editable from the admin UI (spec/api.md §4, "Server assets"): the file
 // is written into the repository next to the server YAML and spec.profile.<kind> is
-// pointed at it, in one write-back (commit or pull request per codi.yaml policies).
+// pointed at it, in one write-back (commit or pull request per cicord.yaml policies).
 
 // maxAssetBytes bounds an uploaded server image (Discord accepts up to 10 MiB).
 const maxAssetBytes = 8 << 20
@@ -208,7 +208,7 @@ func (s *server) handleAssetPut(w http.ResponseWriter, r *http.Request) {
 	}
 	wb := repo.Project.Spec.WriteBack
 	if wb != nil && wb.Enabled != nil && !*wb.Enabled {
-		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in codi.yaml"))
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in cicord.yaml"))
 		return
 	}
 	edits := map[string]writeback.EditFunc{

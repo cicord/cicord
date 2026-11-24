@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 type recorded struct {
@@ -39,8 +39,8 @@ type fakeDiscord struct {
 
 func newFakeDiscord(t *testing.T) *fakeDiscord {
 	f := &fakeDiscord{t: t, routes: map[string]func(http.ResponseWriter, *http.Request){}}
-	f.json("GET /users/@me", 200, `{"id":"600","username":"codi","bot":true}`)
-	f.json("GET /oauth2/applications/@me", 200, `{"id":"601","name":"CODI","flags":32768}`)
+	f.json("GET /users/@me", 200, `{"id":"600","username":"cicord","bot":true}`)
+	f.json("GET /oauth2/applications/@me", 200, `{"id":"601","name":"Cicord","flags":32768}`)
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -140,7 +140,7 @@ func TestCreateChannelRequest(t *testing.T) {
 	ow := []discord.Overwrite{{ID: "1", Type: discord.OverwriteRole, Deny: discord.MustPermissions("SendMessages")}}
 	ch, err := s.CreateChannel(context.Background(), "1", discord.ChannelParams{
 		Name: ptr("announcements"), Type: discord.ChannelAnnouncement, ParentID: ptr("4"), Topic: ptr("news"), Overwrites: &ow,
-	}, "codi apply rev abc")
+	}, "cicord apply rev abc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestCreateChannelRequest(t *testing.T) {
 	if req.Method != "POST" || req.URI != "/guilds/1/channels" || !reflect.DeepEqual(req.Body, want) {
 		t.Errorf("request = %+v", req)
 	}
-	if req.Reason != "codi apply rev abc" {
+	if req.Reason != "cicord apply rev abc" {
 		t.Errorf("audit log reason = %q", req.Reason)
 	}
 	if ch.ID != "10" || ch.Type != discord.ChannelAnnouncement || ch.ParentID != "4" || len(ch.Overwrites) != 1 {
@@ -321,7 +321,7 @@ func TestRateLimitIsRetried(t *testing.T) {
 
 func TestMessagesAndInteractionsRequests(t *testing.T) {
 	f := newFakeDiscord(t)
-	msg := `{"id":"100","channel_id":"10","author":{"id":"600","username":"codi","bot":true},"content":"x","timestamp":"2024-01-01T00:00:00Z"}`
+	msg := `{"id":"100","channel_id":"10","author":{"id":"600","username":"cicord","bot":true},"content":"x","timestamp":"2024-01-01T00:00:00Z"}`
 	f.json("PATCH /channels/10/messages/100", 200, msg)
 	f.json("GET /channels/10/messages", 200, "["+msg+"]")
 	f.json("PATCH /webhooks/601/tok/messages/@original", 200, msg)
@@ -421,7 +421,7 @@ func TestPresenceBeforeOpenAndClose(t *testing.T) {
 
 // Discord can return several roles at the same position (seen live after a drag in
 // the client: every role at 1) and ranks the older one (lower ID) higher. ListRoles
-// must hand CODI distinct positions in that order, or a bot whose role ties with the
+// must hand Cicord distinct positions in that order, or a bot whose role ties with the
 // roles it manages is wrongly reported below them.
 func TestListRolesBreaksPositionTies(t *testing.T) {
 	f := newFakeDiscord(t)

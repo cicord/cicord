@@ -1,10 +1,10 @@
 /**
  * Store (spec/api.md §11): browse the plugins of every source, review what a plugin requests,
- * install it on the current server, and manage the registries of codi.yaml.
+ * install it on the current server, and manage the registries of cicord.yaml.
  * Trust is shown everywhere a plugin or a source appears: `official` vs `unofficial`.
  */
 import {
-  CodiApiError,
+  CicordApiError,
   type InstallResult,
   type StoreDetail,
   type StoreInstallRequest,
@@ -14,8 +14,8 @@ import {
   type StoreSourceSummary,
   type StoreTrust,
   type WriteResult,
-} from "@codi/client";
-import { useCodi } from "@codi/react";
+} from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -142,7 +142,7 @@ export function validateRegistry(
   const out: { name?: RegistryFieldError; url?: RegistryFieldError } = {};
   const n = name.trim();
   if (!n) out.name = "nameRequired";
-  else if (n === "codi") out.name = "nameReserved";
+  else if (n === "cicord") out.name = "nameReserved";
   else if (!REGISTRY_NAME.test(n)) out.name = "namePattern";
   else if (sources.some((s) => s.name === n)) out.name = "nameTaken";
   const u = url.trim();
@@ -164,7 +164,7 @@ export function validateRegistry(
 
 /** `error.link` of an explained error (developer portal…), when the runtime sent one. */
 export function errorLink(error: unknown): string | undefined {
-  if (!(error instanceof CodiApiError) || !error.body || typeof error.body !== "object")
+  if (!(error instanceof CicordApiError) || !error.body || typeof error.body !== "object")
     return undefined;
   const e = (error.body as { error?: { link?: unknown } }).error;
   return e && typeof e.link === "string" && e.link ? e.link : undefined;
@@ -172,7 +172,7 @@ export function errorLink(error: unknown): string | undefined {
 
 /** The instances listed by an `in_use` error (`details`: text lines or a list). */
 export function inUseItems(error: unknown): string[] {
-  if (!(error instanceof CodiApiError)) return [];
+  if (!(error instanceof CicordApiError)) return [];
   const body = error.body;
   const raw =
     body && typeof body === "object" && !Array.isArray(body)
@@ -220,7 +220,7 @@ type Tab = "browse" | "sources";
 
 function Store({ serverKey }: { serverKey: string }) {
   const { t } = useTranslation();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const sources = useStoreSources();
   const { path, search } = useLocation();
   const tab: Tab = search.get("tab") === "sources" ? "sources" : "browse";
@@ -331,7 +331,7 @@ export const storeParams = (q: TableQuery): StorePluginParams => ({
 
 function Browse({ sources, serverKey }: { sources: StoreSourceSummary[]; serverKey: string }) {
   const { t } = useTranslation();
-  const { client } = useCodi();
+  const { client } = useCicord();
   const failing = sources.filter((s) => s.error);
 
   const columns: DataTableColumn<StorePlugin>[] = [
@@ -528,7 +528,7 @@ function PluginDetail({
 }) {
   const { t } = useTranslation();
   const ws = useWorkspace();
-  const { cache } = useCodi();
+  const { cache } = useCicord();
   const detail = useStoreDetail(source, name);
   const [step, setStep] = useState<Step>("review");
   const [done, setDone] = useState<{ result: InstallResult; bot: string | undefined } | null>(null);
@@ -547,7 +547,7 @@ function PluginDetail({
     setStep("review");
   };
 
-  const notFound = detail.error instanceof CodiApiError && detail.error.code === "not_found";
+  const notFound = detail.error instanceof CicordApiError && detail.error.code === "not_found";
   return (
     <Page className="max-w-4xl">
       {step === "install" && !done && d ? (
@@ -939,7 +939,7 @@ function InstallForm({
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const status = useStatus();
   const resources = useResources(serverKey);
   const ids = useId();
@@ -987,8 +987,8 @@ function InstallForm({
       toast.error(t("store.install.fixFirst"));
       return;
     }
-    // A codi plugin from the official registry has a reviewed commit like a registry one.
-    const registry = detail.source !== "codi" || detail.commit !== undefined;
+    // A cicord plugin from the official registry has a reviewed commit like a registry one.
+    const registry = detail.source !== "cicord" || detail.commit !== undefined;
     const request: StoreInstallRequest = {
       source: detail.source,
       plugin: detail.name,
@@ -1016,9 +1016,9 @@ function InstallForm({
         cache.invalidate(["admin", "server", serverKey, "audit"]),
       ]);
     } catch (err) {
-      if (err instanceof CodiApiError && err.code === "invalid" && err.diagnostics.length)
+      if (err instanceof CicordApiError && err.code === "invalid" && err.diagnostics.length)
         setServerErrors(mapDiagnostics(err.diagnostics, collectPointers(schema, draft)));
-      if (err instanceof CodiApiError && err.code === "changed") setConfirmed(false);
+      if (err instanceof CicordApiError && err.code === "changed") setConfirmed(false);
       setProblem(err);
     } finally {
       setPending(false);
@@ -1218,8 +1218,8 @@ function InstallProblem({
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
-  const code = error instanceof CodiApiError ? error.code : "";
-  const message = error instanceof CodiApiError ? error.message : "";
+  const code = error instanceof CicordApiError ? error.code : "";
+  const message = error instanceof CicordApiError ? error.message : "";
   switch (code) {
     case "changed":
       return (
@@ -1247,7 +1247,7 @@ function InstallProblem({
         </Callout>
       );
     case "intents": {
-      const hint = error instanceof CodiApiError ? error.hint : undefined;
+      const hint = error instanceof CicordApiError ? error.hint : undefined;
       return (
         <Callout
           tone="danger"
@@ -1407,7 +1407,7 @@ type SourcesOutcome =
 
 function Sources({ sources }: { sources: StoreSourceSummary[] }) {
   const { t } = useTranslation();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const [removing, setRemoving] = useState<string | null>(null);
   const [tokenFor, setTokenFor] = useState<StoreSourceSummary | null>(null);
   const [clearingToken, setClearingToken] = useState<string | null>(null);
@@ -1422,7 +1422,7 @@ function Sources({ sources }: { sources: StoreSourceSummary[] }) {
     ]);
 
   const failed = (e: unknown, fallback: string) => {
-    if (e instanceof CodiApiError && e.code === "forbidden")
+    if (e instanceof CicordApiError && e.code === "forbidden")
       setOutcome({ kind: "forbidden", message: e.message });
     else toastError(e, fallback);
   };
@@ -1437,7 +1437,7 @@ function Sources({ sources }: { sources: StoreSourceSummary[] }) {
       toast.success(t("store.sources.removed", { name }));
       await afterWrite();
     } catch (e) {
-      if (e instanceof CodiApiError && e.code === "in_use")
+      if (e instanceof CicordApiError && e.code === "in_use")
         setOutcome({ kind: "inUse", name, message: e.message, items: inUseItems(e) });
       else failed(e, t("store.sources.removeFailed"));
     } finally {
@@ -1519,7 +1519,7 @@ function Sources({ sources }: { sources: StoreSourceSummary[] }) {
                     </>
                   ) : null}
                 </span>
-                {s.kind === "git" && s.name !== "codi" ? (
+                {s.kind === "git" && s.name !== "cicord" ? (
                   <div className="flex flex-wrap items-center gap-1">
                     <Button
                       variant="ghost"
@@ -1665,7 +1665,7 @@ function TokenDialog({
   onForbidden: (message: string) => void;
 }) {
   const { t } = useTranslation();
-  const { client } = useCodi();
+  const { client } = useCicord();
   const ids = useId();
   const [token, setToken] = useState("");
   const [attempted, setAttempted] = useState(false);
@@ -1698,7 +1698,7 @@ function TokenDialog({
       reset();
       onSaved(source.name, result);
     } catch (err) {
-      if (err instanceof CodiApiError && err.code === "forbidden") {
+      if (err instanceof CicordApiError && err.code === "forbidden") {
         reset();
         onForbidden(err.message);
       } else setProblem(err);
@@ -1887,7 +1887,7 @@ function AddRegistry({
   onForbidden: (message: string) => void;
 }) {
   const { t } = useTranslation();
-  const { client } = useCodi();
+  const { client } = useCicord();
   const ids = useId();
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
@@ -1928,7 +1928,7 @@ function AddRegistry({
       setAttempted(false);
       onWritten(n, result);
     } catch (err) {
-      if (err instanceof CodiApiError && err.code === "forbidden") onForbidden(err.message);
+      if (err instanceof CicordApiError && err.code === "forbidden") onForbidden(err.message);
       else setProblem(err);
     } finally {
       setPending(false);

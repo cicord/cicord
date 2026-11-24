@@ -11,36 +11,36 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/typegen"
-	"github.com/npjonath/codi/internal/version"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/typegen"
+	"github.com/npjonath/cicord/internal/version"
 )
 
-// routeTypesFile is the file written by `codi portal typegen`, relative to the portal.
-const routeTypesFile = "src/codi-routes.d.ts"
+// routeTypesFile is the file written by `cicord portal typegen`, relative to the portal.
+const routeTypesFile = "src/cicord-routes.d.ts"
 
 func newPortalTypegenCmd() *cobra.Command {
 	var out string
 	var check bool
 	cmd := &cobra.Command{
 		Use:   "typegen [repo-dir]",
-		Short: "Generate the types of the plugin routes for the portal (src/codi-routes.d.ts)",
+		Short: "Generate the types of the plugin routes for the portal (src/cicord-routes.d.ts)",
 		Long: `Writes a TypeScript declaration file describing the portal routes of every plugin
 installed in the repository (every plugin instance of every bot), keyed by plugin name:
 the route keys and their access level, the path parameters, and the query, body and
 response types declared by the plugin's route contract (plugin.yaml spec.routes.types).
 Routes of plugins without a contract are typed as untyped JSON.
 
-@codi/client (client.routes) and @codi/react (useRouteQuery, useRouteMutation) read it
+@cicord/client (client.routes) and @cicord/react (useRouteQuery, useRouteMutation) read it
 through a module augmentation, so portal code calling a route that does not exist, or
 with the wrong parameters, fails to type-check.
 
-The default output is <portal>/src/codi-routes.d.ts, <portal> being the directory of
-codi.yaml spec.portal.path (or ./portal). ` + "`codi portal build`" + ` regenerates it before
-building, and ` + "`codi portal build --check`" + ` fails when it is out of date.`,
-		Example: `  codi portal typegen
-  codi portal typegen --check
-  codi portal typegen examples/showcase --out packages/create-codi-portal/src/codi-routes.d.ts`,
+The default output is <portal>/src/cicord-routes.d.ts, <portal> being the directory of
+cicord.yaml spec.portal.path (or ./portal). ` + "`cicord portal build`" + ` regenerates it before
+building, and ` + "`cicord portal build --check`" + ` fails when it is out of date.`,
+		Example: `  cicord portal typegen
+  cicord portal typegen --check
+  cicord portal typegen examples/showcase --out packages/create-cicord-portal/src/cicord-routes.d.ts`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -73,7 +73,7 @@ building, and ` + "`codi portal build --check`" + ` fails when it is out of date
 			}
 			switch {
 			case check && changed:
-				fmt.Fprintf(cmd.ErrOrStderr(), "%s is out of date: run `codi portal typegen`\n", rel)
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s is out of date: run `cicord portal typegen`\n", rel)
 				return exitError{1}
 			case check:
 				fmt.Fprintf(cmd.OutOrStdout(), "%s is up to date\n", rel)
@@ -85,20 +85,20 @@ building, and ` + "`codi portal build --check`" + ` fails when it is out of date
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&out, "out", "", "output file (default <portal>/src/codi-routes.d.ts)")
+	cmd.Flags().StringVar(&out, "out", "", "output file (default <portal>/src/cicord-routes.d.ts)")
 	cmd.Flags().BoolVar(&check, "check", false, "fail when the file is out of date instead of writing it")
 	return cmd
 }
 
 // portalSourceDir returns the portal package directory of a repository: the nearest
-// directory above codi.yaml spec.portal.path with a package.json, else ./portal.
+// directory above cicord.yaml spec.portal.path with a package.json, else ./portal.
 func portalSourceDir(root string) (string, error) {
 	proj, err := readProject(root)
 	if err != nil {
 		return "", err
 	}
 	if proj.Spec.Portal != nil && proj.Spec.Portal.Path != "" {
-		rel, ok := config.ResolveRepoPath("codi.yaml", proj.Spec.Portal.Path)
+		rel, ok := config.ResolveRepoPath("cicord.yaml", proj.Spec.Portal.Path)
 		if !ok {
 			return "", fmt.Errorf("spec.portal.path %q must be inside the repository", proj.Spec.Portal.Path)
 		}
@@ -112,7 +112,7 @@ func portalSourceDir(root string) (string, error) {
 	if _, err := os.Stat(filepath.Join(root, "portal", "package.json")); err == nil {
 		return filepath.Join(root, "portal"), nil
 	}
-	return "", errors.New("no custom portal found (codi.yaml spec.portal.path, or ./portal): create one with `codi portal init`, or pass --out")
+	return "", errors.New("no custom portal found (cicord.yaml spec.portal.path, or ./portal): create one with `cicord portal init`, or pass --out")
 }
 
 // writeRouteTypes generates the route types of the repository at root into out. With
@@ -141,7 +141,7 @@ func routeTypes(stderr io.Writer, root string) (string, error) {
 	repo, ds := config.Load(root, config.LoadOptions{EngineVersion: version.Version, Resolver: defaultResolver(root)})
 	if repo == nil || ds.HasErrors() {
 		printDiagnostics(stderr, ds.Errors())
-		return "", errors.New("the repository does not validate (codi validate): cannot type its plugin routes")
+		return "", errors.New("the repository does not validate (cicord validate): cannot type its plugin routes")
 	}
 	plugins, err := routePlugins(repo)
 	if err != nil {
@@ -173,7 +173,7 @@ func routePlugins(repo *config.Repo) ([]typegen.RoutePlugin, error) {
 			return nil, fmt.Errorf("plugin %s: %w", lp.Manifest.Metadata.Name, err)
 		}
 		if len(rep.Errors) > 0 {
-			return nil, fmt.Errorf("plugin %s does not build (codi plugin build %s): %s", rep.Name, relOr(repo.Root, lp.Dir), rep.Errors[0])
+			return nil, fmt.Errorf("plugin %s does not build (cicord plugin build %s): %s", rep.Name, relOr(repo.Root, lp.Dir), rep.Errors[0])
 		}
 		rp := typegen.RoutePlugin{Name: rep.Name, Version: rep.Version, Source: lp.Source}
 		for _, r := range rep.Routes {

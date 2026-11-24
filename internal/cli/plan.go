@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/planfmt"
-	"github.com/npjonath/codi/internal/reconcile"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/planfmt"
+	"github.com/npjonath/cicord/internal/reconcile"
 )
 
 func init() {
@@ -38,30 +38,30 @@ func newPlanCmd() *cobra.Command {
 		Long: `Compute the diff between the repository and the live Discord servers. Nothing is applied.
 
 Remote (CI): with --remote, the repository is uploaded (.tar.gz, without .git,
-node_modules, .codi, dist, .env files and the root .gitignore patterns) to the runtime,
+node_modules, .cicord, dist, .env files and the root .gitignore patterns) to the runtime,
 which validates it and plans it with its own state and bots (POST /api/v1/plan).
-The runtime URL is --remote=URL, else CODI_RUNTIME_URL (https, or http on localhost);
-the bearer token is CODI_RUNTIME_TOKEN. codi.yaml spec.runtime.url is never used to
-send the token (a pull request controls that file): set CODI_RUNTIME_URL in CI.
+The runtime URL is --remote=URL, else CICORD_RUNTIME_URL (https, or http on localhost);
+the bearer token is CICORD_RUNTIME_TOKEN. cicord.yaml spec.runtime.url is never used to
+send the token (a pull request controls that file): set CICORD_RUNTIME_URL in CI.
 
 Local: without --remote, the repository is validated, then planned against Discord
 directly with the bot tokens from the environment (token.secretRef) and the local
-state database (--state, default .codi/state.db; read only, never created).
+state database (--state, default .cicord/state.db; read only, never created).
 
 --comment posts the plan on the pull request when running in GitHub Actions
 (GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_EVENT_PATH; GITHUB_API_URL for GitHub
-Enterprise), updating the previous CODI comment instead of adding a new one.
+Enterprise), updating the previous Cicord comment instead of adding a new one.
 
 Symbols: + create, ~ update, - delete, > reorder, = adopt (existing resource with the
 same name), # stop managing (left in Discord), ! blocked (with the reason).
 
 Exit codes: 0 success, 1 error or invalid configuration, 2 changes pending (only with
 --detailed-exitcode).`,
-		Example: `  codi plan                                   # local, bot tokens from the environment
-  codi plan --remote                          # runtime from CODI_RUNTIME_URL
-  codi plan --remote=https://codi.example.com --comment
-  codi plan --remote -o json
-  codi plan --detailed-exitcode; echo $?      # 0 no changes, 1 error, 2 changes pending`,
+		Example: `  cicord plan                                   # local, bot tokens from the environment
+  cicord plan --remote                          # runtime from CICORD_RUNTIME_URL
+  cicord plan --remote=https://cicord.example.com --comment
+  cicord plan --remote -o json
+  cicord plan --detailed-exitcode; echo $?      # 0 no changes, 1 error, 2 changes pending`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			args = o.splitRemoteArgs(args)
@@ -237,11 +237,11 @@ func postPlanComment(ctx context.Context, stderr io.Writer, project string, res 
 	if err != nil {
 		return fmt.Errorf("--comment: %w", err)
 	}
-	marker := "<!-- codi-plan -->"
-	title := "CODI plan"
+	marker := "<!-- cicord-plan -->"
+	title := "Cicord plan"
 	if project != "" {
-		marker = fmt.Sprintf("<!-- codi-plan:%s -->", project)
-		title = fmt.Sprintf("CODI plan for `%s`", project)
+		marker = fmt.Sprintf("<!-- cicord-plan:%s -->", project)
+		title = fmt.Sprintf("Cicord plan for `%s`", project)
 	}
 	footer := "<sub>Planned against " + where
 	if sha := os.Getenv("GITHUB_SHA"); sha != "" {
@@ -250,7 +250,7 @@ func postPlanComment(ctx context.Context, stderr io.Writer, project string, res 
 		}
 		footer += " at " + sha
 	}
-	footer += " by `codi plan`. Nothing is applied until the change is merged.</sub>"
+	footer += " by `cicord plan`. Nothing is applied until the change is merged.</sub>"
 	body := planfmt.Markdown(res, planfmt.MarkdownOptions{Marker: marker, Title: title, Footer: footer})
 	url, created, err := gh.upsert(ctx, marker, body)
 	if err != nil {
@@ -276,17 +276,17 @@ func newApplyCmd() *cobra.Command {
 		Long: `Validate the repository, plan every server against Discord with the bot tokens from the
 environment (token.secretRef), show the plan, ask for confirmation, then apply it and
 record the created/adopted resources in the local state database (--state, default
-.codi/state.db).
+.cicord/state.db).
 
-This is for development and bootstrapping: in production the runtime (codi serve)
+This is for development and bootstrapping: in production the runtime (cicord serve)
 applies merged changes and keeps its own state. Applying with the CLI and with a runtime
 on the same servers requires sharing the state database, otherwise the runtime adopts the
 resources by name on its next sync.
 
 Without a terminal, --yes is required.`,
-		Example: `  DISCORD_TOKEN_MODERATOR=… codi apply
-  codi apply --server ma-commu --yes
-  codi apply ./infra --state /var/lib/codi/state.db`,
+		Example: `  DISCORD_TOKEN_MODERATOR=… cicord apply
+  cicord apply --server ma-commu --yes
+  cicord apply ./infra --state /var/lib/cicord/state.db`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkOutput(output); err != nil {

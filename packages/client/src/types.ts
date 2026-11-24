@@ -1,5 +1,5 @@
 /**
- * Types of the CODI runtime HTTP API v1 (spec/api.md). Field names and shapes follow the
+ * Types of the Cicord runtime HTTP API v1 (spec/api.md). Field names and shapes follow the
  * JSON DTOs of the runtime (`internal/api`, `internal/runtime/status.go`,
  * `internal/reconcile/plan.go`); comments point at the spec section that defines them.
  * Optional (`?`) fields are omitted by the runtime when empty.
@@ -25,7 +25,7 @@ export type ApiErrorCode =
   // Codes are an open set: unknown codes are passed through.
   | (string & {});
 
-/** Validation finding (`codi validate`), returned with `invalid` errors and by `POST /plan`. */
+/** Validation finding (`cicord validate`), returned with `invalid` errors and by `POST /plan`. */
 export interface Diagnostic {
   severity: "error" | "warning";
   /** Relative to the repository root. */
@@ -436,14 +436,14 @@ export interface PluginInstance {
   baseConfig: { [key: string]: Json };
   /** `overrides.<server>.config` as written, `null` when there is none. */
   override: { [key: string]: Json } | null;
-  /** Top-level fields this user may edit (x-codi-access). */
+  /** Top-level fields this user may edit (x-cicord-access). */
   editable: string[];
   commands: PluginCommandSummary[];
   /** Portal route keys (§6), e.g. "GET /steps". */
   routes: string[];
   health: HealthState;
   message: string;
-  /** `codi` (official catalog), a registry name, or `local` (written in the repository). */
+  /** `cicord` (official catalog), a registry name, or `local` (written in the repository). */
   source: string;
   trust: PluginTrust;
   /**
@@ -471,7 +471,7 @@ export interface UninstallResult {
    * servers and only this server was removed from it.
    */
   removed: boolean;
-  /** What went with the last instance of the plugin (`codi.lock: acme/xp`, `plugins/xp/`). */
+  /** What went with the last instance of the plugin (`cicord.lock: acme/xp`, `plugins/xp/`). */
   cleaned: string[];
   mode: "commit" | "pullRequest";
   revision?: string;
@@ -499,7 +499,7 @@ export type WriteBackResult =
  * `/auth/dev-login` with `mode: "token"`): a bearer session token for embedding sites.
  */
 export interface TokenSession {
-  /** `codi_st_…`, sent as `Authorization: Bearer <token>`. */
+  /** `cicord_st_…`, sent as `Authorization: Bearer <token>`. */
   token: string;
   expiresAt: Timestamp;
   me: Me;
@@ -514,7 +514,7 @@ export interface PortalTheme {
   accent?: string;
   /**
    * URL of the logo: `/api/v1/portal/{server}/logo?v=<revision>` or an absolute URL.
-   * `@codi/client` makes runtime paths absolute when `baseUrl` is set (embedded portals).
+   * `@cicord/client` makes runtime paths absolute when `baseUrl` is set (embedded portals).
    */
   logo?: string;
   mode?: "light" | "dark" | "system" | "";
@@ -576,7 +576,7 @@ export interface PortalServer {
   title: string;
   /** "" when unset. */
   tagline: string;
-  /** Markdown subset ("" when unset); render it with `<Markdown>` from @codi/ui. */
+  /** Markdown subset ("" when unset); render it with `<Markdown>` from @cicord/ui. */
   description: string;
   /** URL of the banner image ("" when unset); like `theme.logo`. */
   banner: string;
@@ -833,13 +833,13 @@ export interface SimCommand {
 
 /**
  * Trust of a Store source. Computed by the runtime, never declared: `official` only for the
- * `codi` source (bundled plugins, plus the official registry once it exists) and the official
+ * `cicord` source (bundled plugins, plus the official registry once it exists) and the official
  * registry URL, whose index must be signed by an official key; every other registry is
  * `unofficial`.
  */
 export type StoreTrust = "official" | "unofficial";
 
-/** `bundled`: the official plugins in the binary (source `codi`); `git`: a registry. */
+/** `bundled`: the official plugins in the binary (source `cicord`); `git`: a registry. */
 export type StoreSourceKind = "bundled" | "git";
 
 /** An instance created from a Store plugin. */
@@ -851,7 +851,7 @@ export interface StoreInstallation {
 
 /** A plugin as listed by the Store (from the catalog or the registry index). */
 export interface StorePlugin {
-  /** Source name (`codi` or a registry of `codi.yaml spec.registries`). */
+  /** Source name (`cicord` or a registry of `cicord.yaml spec.registries`). */
   source: string;
   name: string;
   displayName: string;
@@ -871,7 +871,7 @@ export interface StorePlugin {
 }
 
 /**
- * `registry`: the codi.lock version is not the highest release tag of the plugin repository
+ * `registry`: the cicord.lock version is not the highest release tag of the plugin repository
  * (any major version). `bundled`: a copy of an official plugin (`plugins/<name>/`) is older
  * than the version bundled in the runtime.
  */
@@ -904,14 +904,14 @@ export interface StoreSourceSummary {
   trust: StoreTrust;
   fetchedAt?: Timestamp;
   error?: HumanError;
-  /** A registry with an access token (`secretRef` in codi.yaml). */
+  /** A registry with an access token (`secretRef` in cicord.yaml). */
   private: boolean;
   /** Private registries: whether this runtime has the token. */
   credentials?: "ok" | "missing";
   /**
    * Official registry index signature: `verified` (signed by an official key) or `invalid`
    * (missing or wrong: the source has an `error` and lists no remote plugins). Absent for
-   * unofficial registries and for a `codi` source with only bundled plugins.
+   * unofficial registries and for a `cicord` source with only bundled plugins.
    */
   signature?: StoreSignature;
   pluginCount: number;
@@ -1009,7 +1009,7 @@ export interface PermissionDiff {
 /** The installed version of a plugin (read from the active configuration). */
 export interface InstalledPluginVersion {
   version: string;
-  /** Registry plugins: the codi.lock entry. */
+  /** Registry plugins: the cicord.lock entry. */
   commit?: string;
   integrity?: string;
   repo?: string;
@@ -1059,7 +1059,7 @@ export interface StoreUpdateReview {
   files?: PluginUpdateFiles;
   /** Bundled copies: modified locally (the update needs `force`). */
   modified: boolean;
-  /** Registry plugins: the registry index now points to another repository than codi.lock. */
+  /** Registry plugins: the registry index now points to another repository than cicord.lock. */
   repoChanged: boolean;
   /** Servers where an instance runs: the update needs the admin role on each of them. */
   servers: string[];
@@ -1122,7 +1122,7 @@ export interface InstallResult {
 
 /** `POST /registries` request. */
 export interface AddRegistryRequest {
-  /** `^[a-z0-9][a-z0-9-]{0,31}$`, not `codi`, unique. */
+  /** `^[a-z0-9][a-z0-9-]{0,31}$`, not `cicord`, unique. */
   name: string;
   /** `https://` only, unique. */
   url: string;
@@ -1133,7 +1133,7 @@ export interface AddRegistryRequest {
   token?: string;
 }
 
-/** Result of a `codi.yaml` write-back (`POST /registries`, `DELETE /registries/{name}`). */
+/** Result of a `cicord.yaml` write-back (`POST /registries`, `DELETE /registries/{name}`). */
 export interface WriteResult {
   mode: "commit" | "pullRequest";
   revision?: string;

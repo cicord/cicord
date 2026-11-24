@@ -11,18 +11,18 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/setup"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/setup"
 )
 
 func init() {
 	pluginSubcommands = append(pluginSubcommands, newPluginUpdateCmd)
 }
 
-// newPluginUpdateCmd is `codi plugin update`: the CLI side of Store updates (spec/api.md
-// §11). It edits codi.lock and bot.yaml (or plugins/<name>/ for copies of official
+// newPluginUpdateCmd is `cicord plugin update`: the CLI side of Store updates (spec/api.md
+// §11). It edits cicord.lock and bot.yaml (or plugins/<name>/ for copies of official
 // plugins) locally; commit the result like any other change.
 func newPluginUpdateCmd() *cobra.Command {
 	var dir, to string
@@ -31,17 +31,17 @@ func newPluginUpdateCmd() *cobra.Command {
 		Use:   "update [<registry>/<plugin>]",
 		Short: "Update a plugin to its latest version, or list available updates",
 		Long: `Without argument, lists the plugins of the repository that have a newer version:
-registry plugins (codi.lock) and copies of the official plugins (plugins/<name>/).
+registry plugins (cicord.lock) and copies of the official plugins (plugins/<name>/).
 
-With a plugin, updates every instance using it: the codi.lock entry, the version range of
+With a plugin, updates every instance using it: the cicord.lock entry, the version range of
 each instance when the new version is outside it, and the grants (set to what the new
-version requests). Copies of official plugins (codi/<name>) are rewritten from the plugins
+version requests). Copies of official plugins (cicord/<name>) are rewritten from the plugins
 bundled in this binary; a locally modified copy is only overwritten with --force.
 Review the printed capability changes before committing.`,
-		Example: `  codi plugin update
-  codi plugin update acme/xp
-  codi plugin update acme/xp --to ^2.0.0
-  codi plugin update codi/welcome`,
+		Example: `  cicord plugin update
+  cicord plugin update acme/xp
+  cicord plugin update acme/xp --to ^2.0.0
+  cicord plugin update cicord/welcome`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			abs, err := filepath.Abs(dir)
@@ -92,13 +92,13 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 			n++
 		}
 	}
-	// Registry plugins of codi.lock.
+	// Registry plugins of cicord.lock.
 	lock, err := registry.ReadLock(repo.Root)
 	if err != nil {
 		return err
 	}
 	ctx := registry.WithRegistryTokens(cmd.Context(), repo.Project.Spec.Registries, os.LookupEnv)
-	// codi.yaml registries and the implicit official one ("codi/<plugin>" lock entries).
+	// cicord.yaml registries and the implicit official one ("cicord/<plugin>" lock entries).
 	regs := registry.WithOfficial(repo.Project.Spec.Registries)
 	indexes := map[string]*registry.Index{}
 	sources := make([]string, 0, len(lock.Plugins))
@@ -148,7 +148,7 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 		return nil
 	}
 	tw.Flush()
-	fmt.Fprintln(w, "\nRun `codi plugin update <plugin>` to review and apply an update.")
+	fmt.Fprintln(w, "\nRun `cicord plugin update <plugin>` to review and apply an update.")
 	return nil
 }
 
@@ -158,11 +158,11 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 		return err
 	}
 	if len(setup.PluginServers(repo, source)) == 0 {
-		return fmt.Errorf("%s is not installed (use `codi plugin add`)", source)
+		return fmt.Errorf("%s is not installed (use `cicord plugin add`)", source)
 	}
 	var spec setup.UpdateSpec
 	trust := registry.TrustOfficial
-	// "codi/<plugin>": a copy of a bundled official plugin, unless it is locked from the
+	// "cicord/<plugin>": a copy of a bundled official plugin, unless it is locked from the
 	// official registry (then it updates like any registry plugin).
 	if regName == config.OfficialRegistryName && !setup.LockedSource(repo, source) {
 		if to != "" {
@@ -246,7 +246,7 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 	if err := setup.ApplyEdits(repo.Root, plan.Edits); err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "Updated %s to %s. Run `codi validate`, then commit.\n", source, spec.Version)
+	fmt.Fprintf(w, "Updated %s to %s. Run `cicord validate`, then commit.\n", source, spec.Version)
 	return nil
 }
 

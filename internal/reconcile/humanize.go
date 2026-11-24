@@ -180,7 +180,7 @@ func classify(h *HumanError, raw, text, discordMsg string) {
 		if m := reIntents.FindStringSubmatch(text); m != nil {
 			h.Message += ": " + strings.TrimSpace(m[1])
 		}
-		h.Hint = "In the Discord Developer Portal (your application → Bot → Privileged Gateway Intents), enable the intents the plugins need, then restart CODI."
+		h.Hint = "In the Discord Developer Portal (your application → Bot → Privileged Gateway Intents), enable the intents the plugins need, then restart Cicord."
 
 	case reGrant.MatchString(text):
 		perms := strings.TrimSpace(reGrant.FindStringSubmatch(text)[1])
@@ -191,7 +191,7 @@ func classify(h *HumanError, raw, text, discordMsg string) {
 	case strings.Contains(lower, "highest role") || strings.Contains(lower, "role hierarchy"):
 		h.Code = ErrCodeRoleHierarchy
 		h.Message = "The bot's role is not high enough to change " + orDefault(what, "this role")
-		h.Hint = "In Server Settings → Roles, drag the bot's role above every role CODI manages, then sync again."
+		h.Hint = "In Server Settings → Roles, drag the bot's role above every role Cicord manages, then sync again."
 
 	case code == 50001 || strings.Contains(lower, "missing access"):
 		h.Code = ErrCodeMissingAccess
@@ -243,12 +243,12 @@ func classify(h *HumanError, raw, text, discordMsg string) {
 	case h.HTTPStatus == 401 || strings.Contains(lower, "invalid token") || strings.Contains(lower, "authentication failed"):
 		h.Code = ErrCodeInvalidToken
 		h.Message = "Discord rejected the bot token"
-		h.Hint = "Reset the token in the Discord Developer Portal (your application → Bot), update the bot's secret, then restart CODI."
+		h.Hint = "Reset the token in the Discord Developer Portal (your application → Bot), update the bot's secret, then restart Cicord."
 
 	case h.HTTPStatus == 429 || strings.Contains(lower, "rate limit"):
 		h.Code = ErrCodeRateLimited
 		h.Message = "Discord is rate limiting the bot"
-		h.Hint = "CODI retries automatically. Wait a minute, then sync again."
+		h.Hint = "Cicord retries automatically. Wait a minute, then sync again."
 
 	case h.HTTPStatus >= 500:
 		h.Code = ErrCodeDiscordUnavailable
@@ -268,7 +268,7 @@ func classify(h *HumanError, raw, text, discordMsg string) {
 	case lower == "not connected" || strings.Contains(lower, "bot is not connected") || strings.Contains(lower, "session is not connected"):
 		h.Code = ErrCodeBotNotConnected
 		h.Message = "The bot is not connected to Discord"
-		h.Hint = "Check the bot token and the runtime logs. CODI reconnects automatically."
+		h.Hint = "Check the bot token and the runtime logs. Cicord reconnects automatically."
 
 	case reUnresolved.MatchString(text):
 		m := reUnresolved.FindStringSubmatch(text)
@@ -330,7 +330,7 @@ func ExplainBlocked(b Blocked) *HumanError {
 	case reason == "deletionProtection":
 		h.Code = ErrCodeDeletionProtection
 		h.Message = capitalize(what) + " was removed from the YAML but deletion protection is on"
-		h.Hint = "Set syncPolicy.deletionProtection: false to let CODI delete it, or add it back to the YAML."
+		h.Hint = "Set syncPolicy.deletionProtection: false to let Cicord delete it, or add it back to the YAML."
 	case strings.HasPrefix(reason, "hierarchy"):
 		h.Code = ErrCodeRoleHierarchy
 		h.Message = capitalize(what) + " is at or above the bot's highest role"
@@ -355,7 +355,7 @@ func ExplainBlocked(b Blocked) *HumanError {
 	case strings.HasPrefix(reason, prefixBoost):
 		h.Code = ErrCodeBoostRequired
 		h.Message = capitalize(strings.TrimPrefix(reason, prefixBoost))
-		h.Hint = "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. CODI applies it as soon as the level is reached."
+		h.Hint = "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. Cicord applies it as soon as the level is reached."
 	case strings.HasPrefix(reason, prefixCommunity):
 		h.Code = ErrCodeCommunityRequired
 		h.Message = capitalize(strings.TrimPrefix(reason, prefixCommunity))

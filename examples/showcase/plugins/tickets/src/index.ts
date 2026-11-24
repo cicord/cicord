@@ -6,7 +6,7 @@ import {
   type Json,
   type Permission,
   type RouteResponse,
-} from "@codi/sdk";
+} from "@cicord/sdk";
 import {
   activityKey,
   channelKey,

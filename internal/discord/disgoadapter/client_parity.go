@@ -7,7 +7,7 @@ import (
 
 	"github.com/disgoorg/disgo/rest"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // Endpoints disgo does not define.

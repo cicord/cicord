@@ -1,14 +1,14 @@
 /*
- * CODI brand on top of Starlight's color tokens (same palette as the admin console and the
+ * Cicord brand on top of Starlight's color tokens (same palette as the admin console and the
  * landing page): true black, Discord blurple accent, green for success. Starlight's
  * `:root` tokens are the dark theme; `[data-theme="light"]` is the light theme.
  */
 
 :root {
-  --codi-blurple: #5865f2;
-  --codi-blurple-dark: #4752c4;
-  --codi-blurple-soft: #8b94f7;
-  --codi-green: #3dd68c;
+  --cicord-blurple: #5865f2;
+  --cicord-blurple-dark: #4752c4;
+  --cicord-blurple-soft: #8b94f7;
+  --cicord-green: #3dd68c;
 
   /* Dark theme (default) */
   --sl-color-white: #ffffff;
@@ -21,16 +21,16 @@
   --sl-color-black: #000000;
 
   --sl-color-accent-low: #181b45;
-  --sl-color-accent: var(--codi-blurple);
-  --sl-color-accent-high: var(--codi-blurple-soft);
+  --sl-color-accent: var(--cicord-blurple);
+  --sl-color-accent-high: var(--cicord-blurple-soft);
 
   --sl-hue-green: 151;
   --sl-color-green-low: #0d2e1f;
-  --sl-color-green: var(--codi-green);
+  --sl-color-green: var(--cicord-green);
   --sl-color-green-high: #9ef0c6;
 
   --sl-color-text: var(--sl-color-gray-1);
-  --sl-color-text-accent: var(--codi-blurple-soft);
+  --sl-color-text-accent: var(--cicord-blurple-soft);
   --sl-color-bg: #000000;
   --sl-color-bg-nav: #000000;
   --sl-color-bg-sidebar: #000000;
@@ -53,7 +53,7 @@
   --sl-color-black: #ffffff;
 
   --sl-color-accent-low: #e2e5fd;
-  --sl-color-accent: var(--codi-blurple-dark);
+  --sl-color-accent: var(--cicord-blurple-dark);
   --sl-color-accent-high: #2f3790;
 
   --sl-color-green-low: #d6f7e6;
@@ -61,7 +61,7 @@
   --sl-color-green-high: #11643d;
 
   --sl-color-text: var(--sl-color-gray-1);
-  --sl-color-text-accent: var(--codi-blurple-dark);
+  --sl-color-text-accent: var(--cicord-blurple-dark);
   --sl-color-bg: #ffffff;
   --sl-color-bg-nav: #ffffff;
   --sl-color-bg-sidebar: #ffffff;

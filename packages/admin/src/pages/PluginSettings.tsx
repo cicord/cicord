@@ -3,13 +3,13 @@
  * base config), the schema form, the diff review and the save to git.
  */
 import {
-  CodiApiError,
+  CicordApiError,
   type ConfigScope,
   type Json,
   type PluginInstance,
   type WriteBackResult,
-} from "@codi/client";
-import { useCodi } from "@codi/react";
+} from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import { ExternalLink, GitCommitHorizontal, Lock } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -151,7 +151,7 @@ function SettingsEditor({
   onOutcome: (o: SaveOutcome | null) => void;
 }) {
   const { t } = useTranslation();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const schema = instance.schema as JsonSchema;
   // "server" edits the effective config on this server; "base" edits spec.plugins[].config.
   const baseConfig = instance.baseConfig ? applyDefaults(schema, instance.baseConfig) : undefined;
@@ -254,14 +254,14 @@ function SettingsEditor({
       ]);
     } catch (e) {
       setReviewing(false);
-      if (e instanceof CodiApiError && e.code === "invalid" && e.diagnostics.length) {
+      if (e instanceof CicordApiError && e.code === "invalid" && e.diagnostics.length) {
         const mapped = mapDiagnostics(e.diagnostics, collectPointers(schema, draft));
         setServerErrors(mapped);
         setAttempted(true);
         setProblem({ kind: "error", message: e.message });
-      } else if (e instanceof CodiApiError && e.code === "forbidden") {
+      } else if (e instanceof CicordApiError && e.code === "forbidden") {
         setProblem({ kind: "forbidden", message: e.message });
-      } else if (e instanceof CodiApiError && e.code === "conflict") {
+      } else if (e instanceof CicordApiError && e.code === "conflict") {
         setProblem({ kind: "conflict", message: e.message });
       } else {
         const d = toastError(e, t("plugins.editor.saveFailed"));

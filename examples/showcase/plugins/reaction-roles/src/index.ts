@@ -6,7 +6,7 @@ import {
   type Json,
   type Member,
   type Message,
-} from "@codi/sdk";
+} from "@cicord/sdk";
 import {
   apiEmoji,
   findMessage,

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 // TestWithSQLiteStore runs the storage-backed SDK calls against the real state store.
@@ -21,7 +21,7 @@ func TestWithSQLiteStore(t *testing.T) {
 	defer store.Close()
 	scope := "plugin:moderator/inst/ma-commu"
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   commands: {
     run: command({ description: "x", async run(ctx, it) {

@@ -1,4 +1,4 @@
-/** Data hooks of the admin console, on top of @codi/react's query cache. */
+/** Data hooks of the admin console, on top of @cicord/react's query cache. */
 import type {
   AccessRole,
   AuditEntry,
@@ -17,8 +17,8 @@ import type {
   StoreSourceSummary,
   StoreUpdateReview,
   SyncRecord,
-} from "@codi/client";
-import { useCodi, useCodiQuery, type QueryResult } from "@codi/react";
+} from "@cicord/client";
+import { useCicord, useCicordQuery, type QueryResult } from "@cicord/react";
 import { useMemo } from "react";
 
 export const keys = {
@@ -51,40 +51,42 @@ export const keys = {
 };
 
 export function useStatus(): QueryResult<RuntimeStatus> {
-  const { client } = useCodi();
-  return useCodiQuery(keys.status(), (signal) => client.admin.status({ signal }));
+  const { client } = useCicord();
+  return useCicordQuery(keys.status(), (signal) => client.admin.status({ signal }));
 }
 
 export function useHistory(limit = 30, target?: string): QueryResult<SyncRecord[]> {
-  const { client } = useCodi();
-  return useCodiQuery(keys.history(limit, target ?? ""), (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(keys.history(limit, target ?? ""), (signal) =>
     client.admin.history(target ? { limit, target } : { limit }, { signal }),
   );
 }
 
 export function useServer(key: string): QueryResult<ServerDetail> {
-  const { client } = useCodi();
-  return useCodiQuery(keys.server(key), (signal) => client.admin.server(key, { signal }));
+  const { client } = useCicord();
+  return useCicordQuery(keys.server(key), (signal) => client.admin.server(key, { signal }));
 }
 
 export function useResources(key: string | undefined): QueryResult<ServerResources> {
-  const { client } = useCodi();
-  return useCodiQuery(key ? keys.resources(key) : null, (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(key ? keys.resources(key) : null, (signal) =>
     client.admin.resources(key!, { signal }),
   );
 }
 
 export function usePlan(key: string, enabled = true): QueryResult<Plan> {
   // (enabled = false for moderators: the plan endpoint is admin-only)
-  const { client } = useCodi();
-  return useCodiQuery(keys.plan(key), (signal) => client.admin.plan(key, { signal }), { enabled });
+  const { client } = useCicord();
+  return useCicordQuery(keys.plan(key), (signal) => client.admin.plan(key, { signal }), {
+    enabled,
+  });
 }
 
 export const AUDIT_PAGE = 25;
 
 export function useAudit(key: string, before: string): QueryResult<AuditEntry[]> {
-  const { client } = useCodi();
-  return useCodiQuery(keys.audit(key, before), (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(keys.audit(key, before), (signal) =>
     client.admin.audit(key, before ? { before, limit: AUDIT_PAGE } : { limit: AUDIT_PAGE }, {
       signal,
     }),
@@ -93,8 +95,8 @@ export function useAudit(key: string, before: string): QueryResult<AuditEntry[]>
 
 /** Every plugin instance of a server (⌘K palette). */
 export function usePlugins(key: string | undefined): QueryResult<PluginInstance[]> {
-  const { client } = useCodi();
-  return useCodiQuery(key ? keys.pluginsAll(key) : null, (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(key ? keys.pluginsAll(key) : null, (signal) =>
     client.admin.plugins(key!, { signal }),
   );
 }
@@ -105,16 +107,16 @@ export function usePlugin(
   bot: string | undefined,
   instance: string | undefined,
 ): QueryResult<PluginInstance> {
-  const { client } = useCodi();
-  return useCodiQuery(bot && instance ? keys.plugin(key, bot, instance) : null, (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(bot && instance ? keys.plugin(key, bot, instance) : null, (signal) =>
     client.admin.plugin(key, bot!, instance!, { signal }),
   );
 }
 
 /** Store sources with their plugin counts (`GET /store?summary=1`). */
 export function useStoreSources(enabled = true): QueryResult<StoreSourceSummary[]> {
-  const { client } = useCodi();
-  return useCodiQuery(keys.storeSources(), (signal) => client.store.sources({}, { signal }), {
+  const { client } = useCicord();
+  return useCicordQuery(keys.storeSources(), (signal) => client.store.sources({}, { signal }), {
     enabled,
   });
 }
@@ -124,8 +126,8 @@ export function useStoreDetail(
   source: string | undefined,
   plugin: string | undefined,
 ): QueryResult<StoreDetail> {
-  const { client } = useCodi();
-  return useCodiQuery(source && plugin ? keys.storeDetail(source, plugin) : null, (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(source && plugin ? keys.storeDetail(source, plugin) : null, (signal) =>
     client.store.detail(source!, plugin!, { signal }),
   );
 }
@@ -135,34 +137,34 @@ export function useStoreUpdateReview(
   source: string,
   plugin: string,
 ): QueryResult<StoreUpdateReview> {
-  const { client } = useCodi();
-  return useCodiQuery(keys.storeUpdate(source, plugin), (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(keys.storeUpdate(source, plugin), (signal) =>
     client.store.updateReview(source, plugin, { signal }),
   );
 }
 
 export function useSimState(enabled = true): QueryResult<SimState> {
-  const { client } = useCodi();
-  return useCodiQuery(keys.simState(), (signal) => client.sim.state({ signal }), { enabled });
+  const { client } = useCicord();
+  return useCicordQuery(keys.simState(), (signal) => client.sim.state({ signal }), { enabled });
 }
 
 export function useSimCommands(serverId: string | undefined): QueryResult<SimCommand[]> {
-  const { client } = useCodi();
-  return useCodiQuery(serverId ? keys.simCommands(serverId) : null, (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(serverId ? keys.simCommands(serverId) : null, (signal) =>
     client.sim.commands(serverId, { signal }),
   );
 }
 
 export function useSimMessages(channelId: string | undefined): QueryResult<Message[]> {
-  const { client } = useCodi();
-  return useCodiQuery(channelId ? keys.simMessages(channelId) : null, (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(channelId ? keys.simMessages(channelId) : null, (signal) =>
     client.sim.messages(channelId!, { limit: 100 }, { signal }),
   );
 }
 
 export function useSimDms(userId: string | undefined): QueryResult<Message[]> {
-  const { client } = useCodi();
-  return useCodiQuery(userId ? keys.simDms(userId) : null, (signal) =>
+  const { client } = useCicord();
+  return useCicordQuery(userId ? keys.simDms(userId) : null, (signal) =>
     client.sim.dms(userId!, { signal }),
   );
 }

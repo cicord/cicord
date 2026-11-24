@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  createCodiClient,
+  createCicordClient,
   isSafeUrl,
   levelsApi,
   memoryTokenStore,
@@ -41,9 +41,9 @@ const me = {
   servers: [{ key: "ma-commu", name: "Ma Commu", role: "member" }],
 };
 const future = new Date(Date.now() + 3600_000).toISOString();
-const session = { token: "codi_st_abc", expiresAt: future, me };
+const session = { token: "cicord_st_abc", expiresAt: future, me };
 
-const base = "https://codi.example";
+const base = "https://cicord.example";
 
 describe("token mode", () => {
   test("dev login stores the token and sends it as Authorization, without credentials", async () => {
@@ -51,17 +51,17 @@ describe("token mode", () => {
       c.url.endsWith("/auth/dev-login") ? json(session) : json(me),
     );
     const store = memoryTokenStore();
-    const client = createCodiClient({ baseUrl: base, fetch, auth: "token", tokenStore: store });
+    const client = createCicordClient({ baseUrl: base, fetch, auth: "token", tokenStore: store });
     let changes = 0;
     client.onSessionChange(() => changes++);
     await expect(client.auth.devLogin("1")).resolves.toEqual(me);
     expect(calls[0]?.body).toEqual({ userId: "1", mode: "token" });
     expect(calls[0]?.credentials).toBe("omit");
-    expect(store.get()).toEqual({ token: "codi_st_abc", expiresAt: future });
+    expect(store.get()).toEqual({ token: "cicord_st_abc", expiresAt: future });
     expect(changes).toBe(1);
 
     await client.me();
-    expect(calls[1]?.headers.get("Authorization")).toBe("Bearer codi_st_abc");
+    expect(calls[1]?.headers.get("Authorization")).toBe("Bearer cicord_st_abc");
     expect(calls[1]?.credentials).toBe("omit");
   });
 
@@ -70,48 +70,53 @@ describe("token mode", () => {
       json({ error: { code: "unauthenticated", message: "expired" } }, 401),
     );
     const store = memoryTokenStore();
-    store.set({ token: "codi_st_old", expiresAt: future });
-    const client = createCodiClient({ baseUrl: base, fetch, auth: "token", tokenStore: store });
+    store.set({ token: "cicord_st_old", expiresAt: future });
+    const client = createCicordClient({ baseUrl: base, fetch, auth: "token", tokenStore: store });
     await expect(client.meOrNull()).resolves.toBeNull();
     expect(store.get()).toBeNull();
 
-    store.set({ token: "codi_st_gone", expiresAt: new Date(Date.now() - 1000).toISOString() });
+    store.set({ token: "cicord_st_gone", expiresAt: new Date(Date.now() - 1000).toISOString() });
     expect(client.session()).toBeNull();
     await client.meOrNull();
     expect(calls[1]?.headers.get("Authorization")).toBeNull();
   });
 
   test("login URL carries mode=token and an absolute redirect", () => {
-    const client = createCodiClient({ baseUrl: base, auth: "token", tokenStore: "memory" });
+    const client = createCicordClient({ baseUrl: base, auth: "token", tokenStore: "memory" });
     const url = new URL(client.auth.loginUrl("https://fans.example/members?x=1"));
     expect(url.origin + url.pathname).toBe(`${base}/auth/login`);
     expect(url.searchParams.get("mode")).toBe("token");
     expect(url.searchParams.get("redirect")).toBe("https://fans.example/members?x=1");
   });
 
-  test("exchangeLinkToken redeems codi_code and cleans the URL", async () => {
+  test("exchangeLinkToken redeems cicord_code and cleans the URL", async () => {
     const { fetch, calls } = mockFetch(() => json(session));
     const store = memoryTokenStore();
-    const client = createCodiClient({ baseUrl: base, fetch, auth: "token", tokenStore: store });
+    const client = createCicordClient({ baseUrl: base, fetch, auth: "token", tokenStore: store });
     let replaced = "";
     await expect(
       client.auth.exchangeLinkToken({
-        location: { href: "https://fans.example/cb?codi_code=one-time&keep=1" },
+        location: { href: "https://fans.example/cb?cicord_code=one-time&keep=1" },
         history: { replaceState: (_d, _u, url) => void (replaced = String(url)) },
       }),
     ).resolves.toEqual(me);
     expect(calls[0]?.url).toBe(`${base}/auth/token`);
     expect(calls[0]?.body).toEqual({ code: "one-time" });
     expect(replaced).toBe("/cb?keep=1");
-    expect(store.get()?.token).toBe("codi_st_abc");
+    expect(store.get()?.token).toBe("cicord_st_abc");
   });
 
   test("link tokens in token mode", async () => {
     const { fetch, calls } = mockFetch(() => json(session));
-    const client = createCodiClient({ baseUrl: base, fetch, auth: "token", tokenStore: "memory" });
+    const client = createCicordClient({
+      baseUrl: base,
+      fetch,
+      auth: "token",
+      tokenStore: "memory",
+    });
     await client.auth.link("signed");
     expect(calls[0]?.body).toEqual({ token: "signed", mode: "token" });
-    expect(client.session()?.token).toBe("codi_st_abc");
+    expect(client.session()?.token).toBe("cicord_st_abc");
   });
 
   test("logout revokes and forgets the token even when the request fails", async () => {
@@ -119,10 +124,10 @@ describe("token mode", () => {
       json({ error: { code: "internal", message: "x" } }, 500),
     );
     const store = memoryTokenStore();
-    store.set({ token: "codi_st_abc", expiresAt: future });
-    const client = createCodiClient({ baseUrl: base, fetch, auth: "token", tokenStore: store });
+    store.set({ token: "cicord_st_abc", expiresAt: future });
+    const client = createCicordClient({ baseUrl: base, fetch, auth: "token", tokenStore: store });
     await expect(client.auth.logout()).rejects.toThrow();
-    expect(calls[0]?.headers.get("Authorization")).toBe("Bearer codi_st_abc");
+    expect(calls[0]?.headers.get("Authorization")).toBe("Bearer cicord_st_abc");
     expect(store.get()).toBeNull();
   });
 
@@ -145,7 +150,7 @@ describe("token mode", () => {
 
   test("cookie mode is unchanged", async () => {
     const { fetch, calls } = mockFetch(() => json(me));
-    const client = createCodiClient({ fetch });
+    const client = createCicordClient({ fetch });
     await client.auth.devLogin("1");
     expect(calls[0]?.body).toEqual({ userId: "1" });
     expect(calls[0]?.credentials).toBe("include");
@@ -171,11 +176,11 @@ describe("portal", () => {
 
   test("image URLs are absolute when the runtime is on another origin", async () => {
     const { fetch } = mockFetch(() => json({ items: [server] }));
-    const [s] = await createCodiClient({ baseUrl: base, fetch }).portal.servers();
+    const [s] = await createCicordClient({ baseUrl: base, fetch }).portal.servers();
     expect(s?.theme.logo).toBe(`${base}/api/v1/portal/ma-commu/logo?v=1`);
     expect(s?.banner).toBe(`${base}/api/v1/portal/ma-commu/banner?v=1`);
     const { fetch: f2 } = mockFetch(() => json(server));
-    const same = await createCodiClient({ fetch: f2 }).portal.server("ma-commu");
+    const same = await createCicordClient({ fetch: f2 }).portal.server("ma-commu");
     expect(same.banner).toBe("/api/v1/portal/ma-commu/banner?v=1");
   });
 
@@ -188,12 +193,12 @@ describe("portal", () => {
 
   test("showcase plugin wrappers", async () => {
     const { fetch, calls } = mockFetch(() => json({ items: [] }));
-    const client = createCodiClient({ fetch });
-    await ticketsApi(client.plugin("showcase", "codi", "tickets")).list({ status: "open" });
-    await levelsApi(client.plugin("showcase", "codi", "levels")).leaderboard({ limit: 10 });
+    const client = createCicordClient({ fetch });
+    await ticketsApi(client.plugin("showcase", "cicord", "tickets")).list({ status: "open" });
+    await levelsApi(client.plugin("showcase", "cicord", "levels")).leaderboard({ limit: 10 });
     expect(calls.map((c) => c.url)).toEqual([
-      "/api/v1/portal/showcase/plugins/codi/tickets/tickets?status=open",
-      "/api/v1/portal/showcase/plugins/codi/levels/leaderboard?limit=10",
+      "/api/v1/portal/showcase/plugins/cicord/tickets/tickets?status=open",
+      "/api/v1/portal/showcase/plugins/cicord/levels/leaderboard?limit=10",
     ]);
   });
 });

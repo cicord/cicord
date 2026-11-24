@@ -2,7 +2,7 @@
  * Mock data mirroring examples/basic (servers/ma-commu.yaml, bots/moderator/bot.yaml and the
  * two example plugins). Used by `vp dev --mode mock` and the tests.
  */
-import type { Json } from "@codi/client";
+import type { Json } from "@cicord/client";
 import onboardingSchema from "../../../../examples/basic/plugins/onboarding/config.schema.json";
 import welcomeSchema from "../../../../examples/basic/plugins/welcome/config.schema.json";
 import levelsSchema from "../../../../examples/showcase/plugins/levels/config.schema.json";
@@ -207,13 +207,13 @@ export const PRIVILEGED_INTENTS = ["ServerMembers", "MessageContent", "ServerPre
 /** Privileged intents enabled on the mock bot's application. */
 export const ENABLED_INTENTS = ["ServerMembers"];
 
-/** The official plugins bundled in the binary (the catalog, source `codi`). */
+/** The official plugins bundled in the binary (the catalog, source `cicord`). */
 export const bundledPlugins: MockStorePlugin[] = [
   {
     ...plugins.welcome,
     keywords: ["welcome", "onboarding"],
     verified: true,
-    publisher: "codi",
+    publisher: "cicord",
     network: [],
     schema: schemas["welcome"]!,
   },
@@ -221,7 +221,7 @@ export const bundledPlugins: MockStorePlugin[] = [
     ...plugins.onboarding,
     keywords: ["onboarding", "roles", "portal"],
     verified: true,
-    publisher: "codi",
+    publisher: "cicord",
     network: [],
     schema: schemas["onboarding"]!,
   },
@@ -233,7 +233,7 @@ export const bundledPlugins: MockStorePlugin[] = [
       "Support tickets in private channels. Members open a ticket from a panel button and a short form; staff and the member talk in a channel only they can see.",
     keywords: ["tickets", "support", "helpdesk", "portal"],
     verified: true,
-    publisher: "codi",
+    publisher: "cicord",
     capabilities: [
       "discord.messages.send",
       "discord.messages.read",
@@ -255,7 +255,7 @@ export const bundledPlugins: MockStorePlugin[] = [
       "Quick polls with buttons or a select menu, live results, automatic closing and an optional discussion thread.",
     keywords: ["polls", "votes", "community", "events"],
     verified: true,
-    publisher: "codi",
+    publisher: "cicord",
     capabilities: [
       "discord.messages.send",
       "discord.messages.read",
@@ -279,7 +279,7 @@ export const bundledPlugins: MockStorePlugin[] = [
       "XP and levels for chatting, receiving reactions and voting in polls. Level-up announcements, role rewards, /rank, /top and a public leaderboard.",
     keywords: ["xp", "levels", "leaderboard", "roles", "portal"],
     verified: true,
-    publisher: "codi",
+    publisher: "cicord",
     capabilities: [
       "discord.messages.send",
       "discord.reactions.manage",
@@ -308,7 +308,7 @@ export const bundledPlugins: MockStorePlugin[] = [
       "/warn, /timeout, /kick and /ban with an audit log, expiring warnings, automatic escalation, flood protection and an optional webhook.",
     keywords: ["moderation", "warnings", "audit", "automod"],
     verified: true,
-    publisher: "codi",
+    publisher: "cicord",
     capabilities: [
       "discord.messages.send",
       "discord.messages.manage",
@@ -332,13 +332,13 @@ export const bundledPlugins: MockStorePlugin[] = [
   },
 ];
 
-/** Registries of the mock codi.yaml (spec.registries). */
+/** Registries of the mock cicord.yaml (spec.registries). */
 export interface MockRegistry {
   name: string;
   url: string;
   /** Index fetch failure (the registry is listed with an error and no plugins). */
   error?: { code: string; message: string; hint?: string; details?: string };
-  /** Private registry: the secret holding its access token (codi.yaml `secretRef`). */
+  /** Private registry: the secret holding its access token (cicord.yaml `secretRef`). */
   secretRef?: string;
   plugins: (MockStorePlugin & { commit: string; integrity: string })[];
 }
@@ -346,7 +346,7 @@ export interface MockRegistry {
 export const seedRegistries = (): MockRegistry[] => [
   {
     name: "acme",
-    url: "https://github.com/acme/codi-plugins.git",
+    url: "https://github.com/acme/cicord-plugins.git",
     plugins: [
       {
         name: "xp",
@@ -356,7 +356,7 @@ export const seedRegistries = (): MockRegistry[] => [
         version: "1.2.0",
         publisher: "acme",
         verified: false,
-        repo: "https://github.com/acme/codi-xp",
+        repo: "https://github.com/acme/cicord-xp",
         capabilities: [
           "discord.messages.read",
           "discord.messages.send",
@@ -372,7 +372,7 @@ export const seedRegistries = (): MockRegistry[] => [
               type: "string",
               title: "Announcement channel",
               description: "Where level-ups are announced.",
-              "x-codi-ref": "channel",
+              "x-cicord-ref": "channel",
             },
             xpPerMessage: { type: "integer", title: "XP per message", default: 10, minimum: 1 },
           },
@@ -390,7 +390,7 @@ export const seedRegistries = (): MockRegistry[] => [
         version: "0.4.1",
         publisher: "acme",
         verified: false,
-        repo: "https://github.com/acme/codi-giveaways",
+        repo: "https://github.com/acme/cicord-giveaways",
         capabilities: [
           "discord.messages.send",
           "discord.reactions.manage",
@@ -405,7 +405,7 @@ export const seedRegistries = (): MockRegistry[] => [
             channel: {
               type: "string",
               title: "Giveaway channel",
-              "x-codi-ref": "channel",
+              "x-cicord-ref": "channel",
               default: "general",
             },
             winners: { type: "integer", title: "Winners per giveaway", default: 1, minimum: 1 },
@@ -419,22 +419,22 @@ export const seedRegistries = (): MockRegistry[] => [
   },
   {
     name: "community",
-    url: "https://git.example.org/community/codi-plugins.git",
+    url: "https://git.example.org/community/cicord-plugins.git",
     // Private, but the token is not in this runtime's secret store.
-    secretRef: "CODI_REGISTRY_COMMUNITY_TOKEN",
+    secretRef: "CICORD_REGISTRY_COMMUNITY_TOKEN",
     error: {
       code: "fetch_failed",
       message: "Could not fetch the registry index",
-      hint: "Check the URL and that the repository is public (or that CODI's git token can read it), then refresh the sources.",
+      hint: "Check the URL and that the repository is public (or that Cicord's git token can read it), then refresh the sources.",
       details:
-        "git ls-remote https://git.example.org/community/codi-plugins.git: fatal: repository not found",
+        "git ls-remote https://git.example.org/community/cicord-plugins.git: fatal: repository not found",
     },
     plugins: [],
   },
   {
     name: "hub",
-    url: "https://git.codi-hub.dev/hub/codi-plugins.git",
-    secretRef: "CODI_REGISTRY_HUB_TOKEN",
+    url: "https://git.cicord-hub.dev/hub/cicord-plugins.git",
+    secretRef: "CICORD_REGISTRY_HUB_TOKEN",
     plugins: hubPlugins(),
   },
 ];
@@ -485,26 +485,26 @@ function hubPlugins(): MockRegistry["plugins"] {
       version: `${(i % 3) + (n % 2)}.${(i * 7) % 12}.${i % 5}`,
       publisher: HUB_PUBLISHERS[i % HUB_PUBLISHERS.length]!,
       verified: false,
-      repo: `https://git.codi-hub.dev/hub/${name}`,
+      repo: `https://git.cicord-hub.dev/hub/${name}`,
       capabilities: ["discord.messages.send", "discord.channels.read", "storage.kv"].concat(
         i % 4 === 0 ? ["discord.roles.assign"] : [],
       ),
       intents: i % 5 === 0 ? ["ServerMessages"] : [],
-      network: i % 9 === 0 ? ["api.codi-hub.dev"] : [],
+      network: i % 9 === 0 ? ["api.cicord-hub.dev"] : [],
       schema: {
         type: "object",
         properties: {
           channel: {
             type: "string",
             title: "Channel",
-            "x-codi-ref": "channel",
+            "x-cicord-ref": "channel",
             default: "general",
           },
           enabled: {
             type: "boolean",
             title: "Enabled",
             default: true,
-            "x-codi-access": "moderator",
+            "x-cicord-access": "moderator",
           },
         },
       } as unknown as JsonSchema,

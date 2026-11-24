@@ -1,12 +1,12 @@
 # yaml-language-server: $schema=../../../spec/schemas/server.schema.json
-apiVersion: codi.dev/v1alpha1
+apiVersion: cicord.dev/v1alpha1
 kind: Server
 metadata:
   name: showcase
 spec:
   discordId: "223344556677889900"
   profile:
-    name: CODI Showcase
+    name: Cicord Showcase
     verificationLevel: low
     defaultNotifications: onlyMentions
     explicitContentFilter: allMembers

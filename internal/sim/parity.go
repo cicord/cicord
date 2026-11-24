@@ -14,7 +14,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 var (
@@ -1286,5 +1286,5 @@ func featureList(s string) []string {
 	return out
 }
 
-// ParseFeatureList parses the sim.codi.dev/features annotation value.
+// ParseFeatureList parses the sim.cicord.dev/features annotation value.
 func ParseFeatureList(s string) []string { return featureList(s) }

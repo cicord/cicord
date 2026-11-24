@@ -14,13 +14,13 @@ TypeScript embedded in Go, WASM (Extism), Starlark-like DSLs.
 | Sandbox | CPU limits | CPU limits (memory depends on engine) | best |
 
 ## Decision
-- Plugins are written in **TypeScript** against `@codi/sdk` (contract: `spec/sdk/codi-sdk.d.ts`).
-- Bundled by **esbuild used as a Go library** (`codi plugin build`, and inside the runtime):
+- Plugins are written in **TypeScript** against `@cicord/sdk` (contract: `spec/sdk/cicord-sdk.d.ts`).
+- Bundled by **esbuild used as a Go library** (`cicord plugin build`, and inside the runtime):
   no Node.js dependency anywhere.
 - Executed by **Sobek** (Grafana's goja fork used by k6: pure Go, ESM, async/await).
 - Bundle contract (`internal/build`, confirmed in implementation): a single IIFE script,
   **target ES2022** minus async generators (Sobek does not support them; esbuild lowers
-  them), platform neutral, `@codi/sdk` external (the only module the host resolves, through
+  them), platform neutral, `@cicord/sdk` external (the only module the host resolves, through
   a global `require`), Node built-ins rejected at build time with a readable error, and an
   **inline source map** appended to the bundle so Sobek maps stack traces back to the
   TypeScript sources (`src/index.ts:12:5`).

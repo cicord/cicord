@@ -7,14 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 // Update kinds.
 const (
-	// UpdateRegistry: the codi.lock version of a registry plugin is not the highest
+	// UpdateRegistry: the cicord.lock version of a registry plugin is not the highest
 	// release tag of its repository (any major version).
 	UpdateRegistry = "registry"
 	// UpdateBundled: a copy of an official plugin (plugins/<name>/) is older than the
@@ -65,8 +65,8 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 	if repo == nil {
 		return out
 	}
-	// Copies of official plugins (plugins/<name>/) and registry sources (codi.lock),
-	// including "codi/<name>" locked from the implicit official registry.
+	// Copies of official plugins (plugins/<name>/) and registry sources (cicord.lock),
+	// including "cicord/<name>" locked from the implicit official registry.
 	copies, locked := map[string]bool{}, map[string]bool{}
 	for _, i := range repo.Instances {
 		if i.Plugin == nil || i.Plugin.Manifest == nil {

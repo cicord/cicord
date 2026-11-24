@@ -1,9 +1,9 @@
 ---
 title: Plugins overview
-description: Using plugins - sources and the Store, trust levels, the permission review, installing, updating and uninstalling, and codi.lock.
+description: Using plugins - sources and the Store, trust levels, the permission review, installing, updating and uninstalling, and cicord.lock.
 ---
 
-Everything a CODI bot *does* comes from plugins: greeting members, tickets, polls, levels,
+Everything a Cicord bot *does* comes from plugins: greeting members, tickets, polls, levels,
 moderation… A plugin is a small TypeScript module with a static manifest. It runs sandboxed
 inside the runtime, one **instance** per (bot, server), and can only do what its grants
 allow.
@@ -14,8 +14,8 @@ Plugins are installed from **sources**, like apt sources or Homebrew taps:
 
 | Source | What it is | Trust |
 |---|---|---|
-| **`codi`** | The [official plugins](../official/) bundled with the binary: welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log, announcements. Always available, no configuration. | `official` |
-| **Registries** | Git repositories with an `index.yaml`, declared in `codi.yaml` `spec.registries`. Community collections, your organization's private plugins, your own development registry. | `unofficial` |
+| **`cicord`** | The [official plugins](../official/) bundled with the binary: welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log, announcements. Always available, no configuration. | `official` |
+| **Registries** | Git repositories with an `index.yaml`, declared in `cicord.yaml` `spec.registries`. Community collections, your organization's private plugins, your own development registry. | `unofficial` |
 | **Local plugins** | A directory of your repository (`plugins/<name>/`), referenced by path. | `local` |
 
 Trust is **computed from the URL, never declared**: a registry can't call itself official. The
@@ -23,8 +23,8 @@ admin console labels unofficial sources everywhere and asks for an explicit conf
 restating the capabilities and network access being granted, before installing from them.
 
 :::note[Official registry]
-A signed official registry is designed and implemented (its plugins would join source `codi`
-automatically), but its repository and signing key do not exist yet. Until then, `codi` is
+A signed official registry is designed and implemented (its plugins would join source `cicord`
+automatically), but its repository and signing key do not exist yet. Until then, `cicord` is
 the plugins bundled in your binary. See [Publishing](../publishing/#the-official-registry).
 :::
 
@@ -45,32 +45,32 @@ reviewed version: if a new release appears between the review and the click, the
 you to review again.
 
 Under **Sources**, admins add or remove registries (`https://` only in the admin console),
-including private ones with a token. Adding or removing a source changes `codi.yaml`, so it
+including private ones with a token. Adding or removing a source changes `cicord.yaml`, so it
 needs the admin role on every server.
 
 ## Installing from the command line
 
 ```sh
-codi registry add acme https://github.com/acme/codi-plugins.git
-codi registry search xp
-codi plugin add acme/xp --bot moderator
+cicord registry add acme https://github.com/acme/cicord-plugins.git
+cicord registry search xp
+cicord plugin add acme/xp --bot moderator
 ```
 
-`codi plugin add <registry>/<plugin>[@<range>]` adds an instance to the bot (`--name` sets the
-instance key, default the plugin name) and locks the version in `codi.lock`. It works with
-the registries declared in `codi.yaml`; the bundled official plugins are installed from the
-setup wizard or the Store (`codi plugin add codi/<name>` needs the official registry, which does
+`cicord plugin add <registry>/<plugin>[@<range>]` adds an instance to the bot (`--name` sets the
+instance key, default the plugin name) and locks the version in `cicord.lock`. It works with
+the registries declared in `cicord.yaml`; the bundled official plugins are installed from the
+setup wizard or the Store (`cicord plugin add cicord/<name>` needs the official registry, which does
 not exist yet).
 
 Installing a **bundled** official plugin from the Store or the setup wizard copies its sources
 to `plugins/<name>/` and adds a local instance; installing from a registry adds
-`source: <registry>/<plugin>` with a `version` range and a `codi.lock` entry. Either way, the
+`source: <registry>/<plugin>` with a `version` range and a `cicord.lock` entry. Either way, the
 change is one [write-back](../../concepts/write-back/) commit or pull request, and every
 capability the plugin requests is granted, as reviewed.
 
 ## Updating
 
-CODI compares each locked version with the highest release tag of the plugin's repository
+Cicord compares each locked version with the highest release tag of the plugin's repository
 (any major version) and shows **Update available** in the Store, the Plugins table and the
 plugin's page. The update review shows:
 
@@ -85,13 +85,13 @@ instance at once (the version is shared), so it needs the admin role on every se
 plugin runs.
 
 ```sh
-codi plugin update                       # list available updates
-codi plugin update acme/xp               # update to the latest version, print the capability diff
-codi plugin update acme/xp --to ^2.0.0   # or to a range (written to every instance)
-codi plugin update codi/welcome          # a copy of an official plugin, from this binary
+cicord plugin update                       # list available updates
+cicord plugin update acme/xp               # update to the latest version, print the capability diff
+cicord plugin update acme/xp --to ^2.0.0   # or to a range (written to every instance)
+cicord plugin update cicord/welcome          # a copy of an official plugin, from this binary
 ```
 
-Copies of official plugins in `plugins/<name>/` update from the binary: a newer CODI may bundle
+Copies of official plugins in `plugins/<name>/` update from the binary: a newer Cicord may bundle
 a newer version. A copy you changed is not overwritten unless you force it (admin console
 checkbox, or `--force`).
 
@@ -99,26 +99,26 @@ checkbox, or `--force`).
 
 From a plugin's page in the admin console, **Uninstall** removes the instance from the bot
 (only this server, when the instance runs on several). When no other instance uses the
-plugin, its `codi.lock` entry or its copied `plugins/<name>/` directory goes too. Its stored
+plugin, its `cicord.lock` entry or its copied `plugins/<name>/` directory goes too. Its stored
 data is kept.
 
-## `codi.lock`
+## `cicord.lock`
 
-`codi.lock` pins every registry plugin. It is generated (`codi plugin add`,
-`codi plugin update`, the Store); do not edit it by hand.
+`cicord.lock` pins every registry plugin. It is generated (`cicord plugin add`,
+`cicord plugin update`, the Store); do not edit it by hand.
 
-```yaml title="codi.lock (example)"
+```yaml title="cicord.lock (example)"
 lockVersion: 1
 plugins:
-  codi/welcome:
+  cicord/welcome:
     version: 1.2.3
-    repo: https://github.com/codi-plugins/welcome
+    repo: https://github.com/cicord-plugins/welcome
     commit: 4f0c2d9e8b1a7c6d5e4f3a2b1c0d9e8f7a6b5c4d
     integrity: sha256-Vb3nQ0x2...
     capabilities: [discord.messages.send, discord.members.read, storage.kv]
 ```
 
-- The runtime refuses a registry plugin that is missing from `codi.lock`, or whose content
+- The runtime refuses a registry plugin that is missing from `cicord.lock`, or whose content
   does not match `integrity`.
 - Because the capabilities are recorded, a permission change of a plugin shows up in the diff
   of a pull request.
@@ -129,4 +129,4 @@ plugins:
 Instances are declared in `bots/<bot>/bot.yaml` (see [Bot](../../configuration/bot/#plugin-instances)).
 Their settings are also editable in the admin console, on pages generated from each plugin's
 `config.schema.json`: admins edit every field, moderators the fields the plugin marks
-`x-codi-access: moderator`. Saves are written back like any other change.
+`x-cicord-access: moderator`. Saves are written back like any other change.

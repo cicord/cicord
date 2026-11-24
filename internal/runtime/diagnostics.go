@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // diagnostics records what the setup wizard and the Diagnostics page check after the

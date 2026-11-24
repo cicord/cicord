@@ -16,8 +16,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/secrets"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/secrets"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 func init() {
@@ -30,7 +30,7 @@ func init() {
 func newSecretCmd() *cobra.Command {
 	var dataDir string
 	open := func(ctx context.Context) (*secrets.Store, func(), error) {
-		db := filepath.Join(dataDir, "codi.db")
+		db := filepath.Join(dataDir, "cicord.db")
 		if _, err := os.Stat(db); err != nil {
 			return nil, nil, fmt.Errorf("no runtime state in %s (use --data-dir): %w", dataDir, err)
 		}
@@ -49,11 +49,11 @@ func newSecretCmd() *cobra.Command {
 		Use:   "secret",
 		Short: "Manage the runtime secret store (bot tokens, OAuth and git secrets)",
 		Long: `Manage the encrypted secrets the runtime keeps in its data dir (written by the setup
-wizard): bot tokens (token.secretRef), CODI_DISCORD_CLIENT_SECRET, CODI_GIT_TOKEN.
+wizard): bot tokens (token.secretRef), CICORD_DISCORD_CLIENT_SECRET, CICORD_GIT_TOKEN.
 Environment variables always take precedence over stored secrets. Values are read from
 stdin and never printed. The runtime picks a changed bot token up on its next restart.`,
 	}
-	cmd.PersistentFlags().StringVar(&dataDir, "data-dir", ".codi-data", "runtime state directory")
+	cmd.PersistentFlags().StringVar(&dataDir, "data-dir", ".cicord-data", "runtime state directory")
 
 	cmd.AddCommand(&cobra.Command{
 		Use: "ls", Short: "List stored secrets (names only)", Args: cobra.NoArgs,
@@ -77,7 +77,7 @@ stdin and never printed. The runtime picks a changed bot token up on its next re
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use: "set NAME", Short: "Store or rotate a secret (value read from stdin)", Args: cobra.ExactArgs(1),
-		Example: "  codi secret set DISCORD_TOKEN_CODI --data-dir /data   # paste the token, then Enter",
+		Example: "  cicord secret set DISCORD_TOKEN_CICORD --data-dir /data   # paste the token, then Enter",
 		RunE: func(c *cobra.Command, args []string) error {
 			if !secrets.ValidName(args[0]) {
 				return fmt.Errorf("invalid secret name %q (letters, digits and _)", args[0])

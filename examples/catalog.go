@@ -1,4 +1,4 @@
-// Package examples embeds the official example plugins into the codi binary: they are
+// Package examples embeds the official example plugins into the cicord binary: they are
 // the bundled plugin catalog of the setup wizard and of the future Store page
 // (internal/catalog), until the plugin registry exists.
 //

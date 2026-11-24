@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/secrets"
-	"github.com/npjonath/codi/internal/setup"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/secrets"
+	"github.com/npjonath/cicord/internal/setup"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 func TestSetupModeHandler(t *testing.T) {
@@ -27,9 +27,9 @@ func TestSetupModeHandler(t *testing.T) {
 	}
 	w := sim.NewWorld()
 	env, _ := setup.NewSimEnv(w)
-	wz := setup.New(setup.Options{Mode: "serve", Store: store, Secrets: sec, Connector: w, Probe: env.Probe(), PublicURL: "https://codi.example.org"})
+	wz := setup.New(setup.Options{Mode: "serve", Store: store, Secrets: sec, Connector: w, Probe: env.Probe(), PublicURL: "https://cicord.example.org"})
 	tok := wz.IssueToken()
-	ts := httptest.NewServer(NewSetup(Options{Store: store, Setup: wz, PublicURL: "https://codi.example.org"}))
+	ts := httptest.NewServer(NewSetup(Options{Store: store, Setup: wz, PublicURL: "https://cicord.example.org"}))
 	defer ts.Close()
 
 	post := func(path, body string, hdr map[string]string) *http.Response {
@@ -44,11 +44,11 @@ func TestSetupModeHandler(t *testing.T) {
 		}
 		return res
 	}
-	// CSRF: the exchange needs X-Codi-Request like every unsafe request.
+	// CSRF: the exchange needs X-Cicord-Request like every unsafe request.
 	if res := post("/api/v1/setup/session", `{"token":"`+tok+`"}`, nil); res.StatusCode != http.StatusForbidden {
-		t.Fatalf("exchange without X-Codi-Request = %d", res.StatusCode)
+		t.Fatalf("exchange without X-Cicord-Request = %d", res.StatusCode)
 	}
-	res := post("/api/v1/setup/session", `{"token":"`+tok+`"}`, map[string]string{"X-Codi-Request": "1"})
+	res := post("/api/v1/setup/session", `{"token":"`+tok+`"}`, map[string]string{"X-Cicord-Request": "1"})
 	body, _ := io.ReadAll(res.Body)
 	if res.StatusCode != 200 || strings.Contains(string(body), tok) {
 		t.Fatalf("exchange = %d %s", res.StatusCode, body)
@@ -76,7 +76,7 @@ func TestSetupModeHandler(t *testing.T) {
 	r, _ := http.DefaultClient.Do(req)
 	b, _ := io.ReadAll(r.Body)
 	if strings.Contains(string(b), `"authenticated":true`) {
-		t.Fatalf("setup session accepted under codi_session: %s", b)
+		t.Fatalf("setup session accepted under cicord_session: %s", b)
 	}
 }
 

@@ -1,4 +1,4 @@
-import { CodiApiError } from "./errors.ts";
+import { CicordApiError } from "./errors.ts";
 import { resolveRoute, type TypedPluginRoutes } from "./routes.ts";
 import {
   openEventStream,
@@ -59,10 +59,10 @@ export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 /**
  * How browser clients authenticate (spec/api.md §1):
- * - `"cookie"` (default): the `codi_session` cookie, for a portal served by the runtime or
+ * - `"cookie"` (default): the `cicord_session` cookie, for a portal served by the runtime or
  *   on a same-site origin listed in `--cors-origin`;
  * - `"token"`: a bearer session token kept in a `TokenStore` and sent as `Authorization`,
- *   for sites embedding the SDK on another origin (codi.yaml `spec.portal.allowedOrigins`).
+ *   for sites embedding the SDK on another origin (cicord.yaml `spec.portal.allowedOrigins`).
  */
 export type AuthMode = "cookie" | "token";
 
@@ -87,7 +87,7 @@ export function memoryTokenStore(): TokenStore {
 /** Keeps the token in `localStorage` / `sessionStorage` (falls back to memory when unavailable). */
 export function webStorageTokenStore(
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | undefined,
-  key = "codi:session",
+  key = "cicord:session",
 ): TokenStore {
   const memory = memoryTokenStore();
   if (!storage) return memory;
@@ -124,9 +124,9 @@ export function isSafeUrl(url: string): boolean {
   }
 }
 
-export interface CodiClientOptions {
+export interface CicordClientOptions {
   /**
-   * Origin (or origin + prefix) of the CODI runtime, e.g. "https://codi.example.org".
+   * Origin (or origin + prefix) of the Cicord runtime, e.g. "https://cicord.example.org".
    * Default "": same origin as the page.
    */
   baseUrl?: string;
@@ -152,7 +152,7 @@ export interface CodiClientOptions {
    * "session" use Web Storage under `storageKey`; "memory" forgets it on reload.
    */
   tokenStore?: TokenStore | "local" | "session" | "memory";
-  /** Web Storage key of token mode. Default "codi:session:<baseUrl>". */
+  /** Web Storage key of token mode. Default "cicord:session:<baseUrl>". */
   storageKey?: string;
 }
 
@@ -200,14 +200,14 @@ export interface HistoryLike {
 export interface ExchangeLinkTokenOptions {
   location?: LocationLike;
   history?: HistoryLike;
-  /** Query parameter carrying the token. Default "codi_token". */
+  /** Query parameter carrying the token. Default "cicord_token". */
   param?: string;
-  /** Query parameter carrying the one-time code of a token-mode login. Default "codi_code". */
+  /** Query parameter carrying the one-time code of a token-mode login. Default "cicord_code". */
   codeParam?: string;
 }
 
 /** Query parameters a login may leave in the URL (removed by `exchangeLinkToken`). */
-export const LOGIN_PARAMS = ["codi_token", "codi_code"] as const;
+export const LOGIN_PARAMS = ["cicord_token", "cicord_code"] as const;
 
 const isRawBody = (body: unknown): boolean =>
   typeof body === "string" ||
@@ -246,20 +246,20 @@ function withQuery(url: string, query?: Query): string {
 }
 
 /**
- * Typed client for the CODI runtime HTTP API v1 (spec/api.md). Framework-agnostic: works in
- * browsers, Node 24, workers. Every non-2xx response rejects with `CodiApiError`.
+ * Typed client for the Cicord runtime HTTP API v1 (spec/api.md). Framework-agnostic: works in
+ * browsers, Node 24, workers. Every non-2xx response rejects with `CicordApiError`.
  */
-export class CodiClient {
+export class CicordClient {
   readonly baseUrl: string;
   readonly apiPath: string;
   readonly authPath: string;
   readonly authMode: AuthMode;
-  readonly #options: CodiClientOptions;
+  readonly #options: CicordClientOptions;
   readonly #store: TokenStore;
   readonly #listeners = new Set<() => void>();
   #pendingLink: Promise<Me> | undefined;
 
-  constructor(options: CodiClientOptions = {}) {
+  constructor(options: CicordClientOptions = {}) {
     this.#options = options;
     this.baseUrl = trimSlash(options.baseUrl ?? "");
     this.apiPath = trimSlash(options.apiPath ?? "/api/v1");
@@ -267,7 +267,7 @@ export class CodiClient {
     this.authMode = options.auth ?? "cookie";
     this.#store = resolveStore(
       options.tokenStore,
-      options.storageKey ?? `codi:session:${this.baseUrl}`,
+      options.storageKey ?? `cicord:session:${this.baseUrl}`,
     );
   }
 
@@ -316,7 +316,7 @@ export class CodiClient {
     const headers = new Headers(this.#options.headers);
     // CSRF protection (spec/api.md §1): the runtime rejects cookie-authenticated
     // state-changing requests without this header.
-    headers.set("X-Codi-Request", "1");
+    headers.set("X-Cicord-Request", "1");
     const token =
       (typeof this.#options.token === "function" ? this.#options.token() : this.#options.token) ??
       this.session()?.token;
@@ -327,7 +327,7 @@ export class CodiClient {
 
   #fetch: FetchLike = (input, init) => {
     const impl = this.#options.fetch ?? (globalThis.fetch as FetchLike | undefined);
-    if (!impl) throw new Error("@codi/client: no fetch implementation available");
+    if (!impl) throw new Error("@cicord/client: no fetch implementation available");
     return impl(input, init);
   };
 
@@ -358,7 +358,7 @@ export class CodiClient {
       response = await this.#fetch(this.url(path, options.query), init);
     } catch (cause) {
       if (options.signal?.aborted) throw cause;
-      throw new CodiApiError({
+      throw new CicordApiError({
         code: "network",
         status: 0,
         message: cause instanceof Error ? cause.message : "network error",
@@ -371,7 +371,7 @@ export class CodiClient {
       // A revoked or expired token: forget it so the app shows the logged-out state.
       if (response.status === 401 && this.session()?.token && !this.#options.token)
         this.#setSession(null);
-      throw CodiApiError.fromResponse(response.status, response.statusText, parsed);
+      throw CicordApiError.fromResponse(response.status, response.statusText, parsed);
     }
     return parsed as T;
   }
@@ -396,7 +396,7 @@ export class CodiClient {
     try {
       return await this.me(options);
     } catch (error) {
-      if (error instanceof CodiApiError && error.code === "unauthenticated") return null;
+      if (error instanceof CicordApiError && error.code === "unauthenticated") return null;
       throw error;
     }
   }
@@ -408,7 +408,7 @@ export class CodiClient {
      */
     loginUrl: (redirect?: string): string => {
       if (this.authMode === "token") {
-        // The runtime redirects back with ?codi_code=… to this absolute URL, which must be
+        // The runtime redirects back with ?cicord_code=… to this absolute URL, which must be
         // on an allowed origin (spec.portal.allowedOrigins or --cors-origin).
         const here = globalLocation()?.href;
         const target =
@@ -424,7 +424,7 @@ export class CodiClient {
       const url = this.auth.loginUrl(redirect);
       if (location?.assign) location.assign(url);
       else if (location) location.href = url;
-      else throw new Error("@codi/client: auth.login() needs a browser location");
+      else throw new Error("@cicord/client: auth.login() needs a browser location");
     },
 
     /** `POST /auth/link` with an explicit token (stores the session token in token mode). */
@@ -449,15 +449,15 @@ export class CodiClient {
       ),
 
     /**
-     * Reads `codi_token` from the current URL (a signed link from `ctx.portal.link()`),
+     * Reads `cicord_token` from the current URL (a signed link from `ctx.portal.link()`),
      * removes it from the address bar right away (so it is neither bookmarked nor sent twice),
      * and exchanges it for a session. Resolves `null` when the URL has no token.
      * Calls made while an exchange is in flight share it (safe under React StrictMode).
      */
     exchangeLinkToken: (options: ExchangeLinkTokenOptions = {}): Promise<Me | null> => {
       const location = options.location ?? globalLocation();
-      const param = options.param ?? "codi_token";
-      const codeParam = options.codeParam ?? "codi_code";
+      const param = options.param ?? "cicord_token";
+      const codeParam = options.codeParam ?? "cicord_code";
       if (!location) return Promise.resolve(null);
       const url = new URL(location.href);
       const token = url.searchParams.get(param);
@@ -480,7 +480,7 @@ export class CodiClient {
       return pending;
     },
 
-    /** `POST /auth/dev-login` — `codi dev` only (stores the session token in token mode). */
+    /** `POST /auth/dev-login` — `cicord dev` only (stores the session token in token mode). */
     devLogin: async (userId: string, options?: CallOptions): Promise<Me> => {
       if (this.authMode !== "token")
         return this.request<Me>("POST", `${this.authPath}/dev-login`, {
@@ -563,7 +563,7 @@ export class CodiClient {
 
   /**
    * Typed calls to the routes of an instance of plugin `plugin` (types from the generated
-   * `src/codi-routes.d.ts`, see `PluginRouteRegistry`). `at` is the instance, typically
+   * `src/cicord-routes.d.ts`, see `PluginRouteRegistry`). `at` is the instance, typically
    * found in `PortalServer.plugins` by plugin name.
    */
   routes<N extends string>(
@@ -726,7 +726,7 @@ export class CodiClient {
   // ─────────────────────────────────────────────────────────── store (§11)
 
   readonly store = {
-    /** `GET /store` (admin of a server): every source, `codi` first, then the registries. */
+    /** `GET /store` (admin of a server): every source, `cicord` first, then the registries. */
     list: async (options?: CallOptions): Promise<StoreSource[]> =>
       (await this.#api<{ sources: StoreSource[] }>("GET", "/store", options)).sources,
     /**
@@ -812,7 +812,7 @@ export class CodiClient {
   readonly registries = {
     /**
      * `POST /registries` (bearer, or admin of every server): adds a registry to
-     * `codi.yaml`. Rejects with `invalid` (400 bad name / URL, 422 unreachable index) or
+     * `cicord.yaml`. Rejects with `invalid` (400 bad name / URL, 422 unreachable index) or
      * `forbidden` (403).
      */
     add: (request: AddRegistryRequest, options?: CallOptions): Promise<WriteResult> =>
@@ -866,7 +866,7 @@ export class CodiClient {
       });
       return true;
     } catch (error) {
-      if (error instanceof CodiApiError) return false;
+      if (error instanceof CicordApiError) return false;
       throw error;
     }
   }
@@ -992,7 +992,7 @@ async function readBody(response: Response): Promise<Json | string | undefined> 
   return text;
 }
 
-function resolveStore(store: CodiClientOptions["tokenStore"], key: string): TokenStore {
+function resolveStore(store: CicordClientOptions["tokenStore"], key: string): TokenStore {
   if (store && typeof store === "object") return store;
   if (store === "memory") return memoryTokenStore();
   const storage = (name: "localStorage" | "sessionStorage") => {
@@ -1023,7 +1023,7 @@ function currentPath(): string | undefined {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-/** Creates a client. See `CodiClientOptions`. */
-export function createCodiClient(options?: CodiClientOptions): CodiClient {
-  return new CodiClient(options);
+/** Creates a client. See `CicordClientOptions`. */
+export function createCicordClient(options?: CicordClientOptions): CicordClient {
+  return new CicordClient(options);
 }

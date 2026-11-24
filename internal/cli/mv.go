@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/importer"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/importer"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 func init() {
@@ -31,21 +31,21 @@ func newMvCmd() *cobra.Command {
 		Long: `Rename the key of a role, category or channel of a server: the server YAML is rewritten
 (the key and every reference to it: channel categories, hierarchy, access roles,
 overwrite targets, profile system/rules channels) as well as the plugin configurations
-that reference it through x-codi-ref (base config and the server's override), and the
-local state database mapping (--state, default .codi/state.db) is moved to the new key.
+that reference it through x-cicord-ref (base config and the server's override), and the
+local state database mapping (--state, default .cicord/state.db) is moved to the new key.
 
 Only the renamed tokens are changed in the files: comments and formatting are kept.
 When a plugin instance runs on several servers and its base config references the key,
 the command stops before writing anything (add an override for this server first, or
 pass --force to rename anyway and fix the config by hand).
 
-A runtime (codi serve) keeps its own resource map: when the renamed file reaches it, the
+A runtime (cicord serve) keeps its own resource map: when the renamed file reaches it, the
 reconciler sees the old key removed and the new key added with the same display name, and
 moves the mapping (plan: "adopt" + "move … mapping"): the Discord resource is kept, never
 duplicated. Changing the display name in the same commit defeats this matching, so rename
 the key first, then the display name.`,
-		Example: `  codi mv ma-commu channel general discussions
-  codi mv ma-commu role modo moderators --dry-run`,
+		Example: `  cicord mv ma-commu channel general discussions
+  cicord mv ma-commu role modo moderators --dry-run`,
 		Args: cobra.RangeArgs(4, 5),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := absDir(args[4:])
@@ -395,7 +395,7 @@ func botEdits(repo *config.Repo, server string, kind state.ResourceKind, oldKey,
 }
 
 // rewriteRefs walks a YAML value with its JSON schema (like config checkRefs) and calls
-// found for every scalar that is an x-codi-ref of kind equal to old.
+// found for every scalar that is an x-cicord-ref of kind equal to old.
 func rewriteRefs(schema map[string]any, n *yaml.Node, kind, old string, found func(*yaml.Node, string), path string) {
 	if schema == nil || n == nil {
 		return
@@ -403,7 +403,7 @@ func rewriteRefs(schema map[string]any, n *yaml.Node, kind, old string, found fu
 	if n.Kind == yaml.AliasNode {
 		return
 	}
-	ref, isRef := schema["x-codi-ref"].(string)
+	ref, isRef := schema["x-cicord-ref"].(string)
 	if isRef && ref == kind {
 		switch n.Kind {
 		case yaml.ScalarNode:

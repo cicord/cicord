@@ -3,7 +3,7 @@
  * (uploaded through write-back), and everything the server YAML declares (read only), plus
  * the settings only the Discord app can change.
  */
-import type { Json } from "@codi/client";
+import type { Json } from "@cicord/client";
 import { FileCode2, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import { useServer } from "../api.ts";

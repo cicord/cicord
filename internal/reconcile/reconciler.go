@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // Options configures a Reconciler for one server.
@@ -35,7 +35,7 @@ type Options struct {
 	BotUserID string
 	// Logger defaults to a discarding logger.
 	Logger *slog.Logger
-	// Reason is the audit log reason sent to Discord (default "codi sync").
+	// Reason is the audit log reason sent to Discord (default "cicord sync").
 	Reason string
 	// SelfHealDelay debounces event-triggered syncs (default 2s).
 	SelfHealDelay time.Duration
@@ -79,7 +79,7 @@ func New(opts Options) *Reconciler {
 		opts.Logger = slog.New(slog.DiscardHandler)
 	}
 	if opts.Reason == "" {
-		opts.Reason = "codi sync"
+		opts.Reason = "cicord sync"
 	}
 	if opts.SelfHealDelay <= 0 {
 		opts.SelfHealDelay = 2 * time.Second

@@ -14,7 +14,7 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	"github.com/npjonath/codi/spec"
+	"github.com/npjonath/cicord/spec"
 )
 
 var printer = message.NewPrinter(language.English)
@@ -25,7 +25,7 @@ var (
 	schemasErr  error
 )
 
-// kindSchemas compiles the embedded CODI schemas once.
+// kindSchemas compiles the embedded Cicord schemas once.
 func kindSchemas() (map[string]*jsonschema.Schema, error) {
 	schemasOnce.Do(func() {
 		c := jsonschema.NewCompiler()
@@ -127,8 +127,8 @@ func validateValue(sink *diagSink, doc *document, s *jsonschema.Schema, v any, p
 	return false
 }
 
-// compilePluginConfigSchema compiles a plugin's config.schema.json. CODI extension
-// keywords (x-codi-*) are ignored by the validator and read separately.
+// compilePluginConfigSchema compiles a plugin's config.schema.json. Cicord extension
+// keywords (x-cicord-*) are ignored by the validator and read separately.
 func compilePluginConfigSchema(url string, raw []byte) (*jsonschema.Schema, map[string]any, error) {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {

@@ -1,15 +1,15 @@
 ---
 title: Official plugins
-description: The nine plugins bundled in the codi binary - welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log and announcements - with their commands, capabilities and settings.
+description: The nine plugins bundled in the cicord binary - welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log and announcements - with their commands, capabilities and settings.
 ---
 
-Nine official plugins are bundled in the `codi` binary (source `codi`). Install them from the
+Nine official plugins are bundled in the `cicord` binary (source `cicord`). Install them from the
 setup wizard or the admin console's Store, which copy the plugin into `plugins/<name>/` of your
 repository and add an instance to the bot; or copy a plugin directory yourself and reference it
 from `bot.yaml`.
 They are also complete examples of the SDK: their sources live in
-[`examples/basic/plugins`](https://github.com/npjonath/codi/tree/main/examples/basic/plugins)
-and [`examples/showcase/plugins`](https://github.com/npjonath/codi/tree/main/examples/showcase/plugins).
+[`examples/basic/plugins`](https://github.com/npjonath/cicord/tree/main/examples/basic/plugins)
+and [`examples/showcase/plugins`](https://github.com/npjonath/cicord/tree/main/examples/showcase/plugins).
 
 | Plugin | In one line | Commands | Privileged intents |
 |---|---|---|---|
@@ -239,10 +239,10 @@ the time zones listed in its schema.
 
 ## Using them together
 
-[`examples/showcase`](https://github.com/npjonath/codi/tree/main/examples/showcase) runs
+[`examples/showcase`](https://github.com/npjonath/cicord/tree/main/examples/showcase) runs
 tickets, polls, levels, moderation, reaction-roles, audit-log and announcements on one bot,
 and is the end-to-end test fixture of the runtime. Try it offline:
 
 ```sh
-codi dev --sim examples/showcase
+cicord dev --sim examples/showcase
 ```

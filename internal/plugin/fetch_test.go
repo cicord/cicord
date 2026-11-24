@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 const fetchPlugin = `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   commands: {
     fetch: command({
@@ -92,7 +92,7 @@ func TestHTTPFetchAllowList(t *testing.T) {
 	if got["status"] != float64(200) || got["type"] != "application/json" || !jsonEq(got["json"], map[string]any{"method": "GET"}) {
 		t.Fatalf("GET: %v", got)
 	}
-	if lastHeaders.Get("X-Test") != "1" || lastHeaders.Get("User-Agent") != "codi-plugin/1" {
+	if lastHeaders.Get("X-Test") != "1" || lastHeaders.Get("User-Agent") != "cicord-plugin/1" {
 		t.Fatalf("headers: %v", lastHeaders)
 	}
 	got = fetchVia(t, h, srv.URL+"/json", "post")
@@ -201,7 +201,7 @@ func TestHTTPFetchTimeout(t *testing.T) {
 	defer close(block)
 	u, _ := url.Parse(srv.URL)
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({ commands: { f: command({ description: "x", options: { url: { type: "string", description: "u", required: true } },
   async run(ctx, it) {
     try { await ctx.http.fetch(it.options.url, { timeoutMs: 50 }); } catch (e) { await it.reply((e as Error).message); }
@@ -233,7 +233,7 @@ func TestHTTPFetchLargeJSONWithinDefaultBudget(t *testing.T) {
 	defer srv.Close()
 	u, _ := url.Parse(srv.URL)
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({ commands: { f: command({ description: "x", options: { url: { type: "string", description: "u", required: true } },
   async run(ctx, it) {
     const r = await ctx.http.fetch(it.options.url);

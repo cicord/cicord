@@ -1,10 +1,10 @@
-export { CodiProvider, useCodi, useCodiClient, useServerKey } from "./provider.tsx";
-export type { CodiContextValue, CodiProviderProps } from "./provider.tsx";
+export { CicordProvider, useCicord, useCicordClient, useServerKey } from "./provider.tsx";
+export type { CicordContextValue, CicordProviderProps } from "./provider.tsx";
 export { QueryCache, hashKey } from "./cache.ts";
 export type { QueryKey, QueryState, QueryStatus } from "./cache.ts";
 export {
-  codiKeys,
-  useCodiQuery,
+  cicordKeys,
+  useCicordQuery,
   useLinkTokenLogin,
   useLogout,
   useMe,

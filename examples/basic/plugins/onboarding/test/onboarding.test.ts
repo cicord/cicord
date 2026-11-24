@@ -1,4 +1,4 @@
-import { callRoute, createTestContext, runCommand } from "@codi/sdk/testing";
+import { callRoute, createTestContext, runCommand } from "@cicord/sdk/testing";
 import { describe, expect, test } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
@@ -168,7 +168,11 @@ describe("/onboarding command", () => {
     const t = setup();
     const result = await runCommand(plugin, t, "onboarding", { user: "1" });
     expect(t.links).toEqual([
-      { path: "/onboarding", member: "1", url: "https://portal.test/onboarding?codi_token=test-1" },
+      {
+        path: "/onboarding",
+        member: "1",
+        url: "https://portal.test/onboarding?cicord_token=test-1",
+      },
     ]);
     expect(result.replies).toEqual([
       {
@@ -182,7 +186,7 @@ describe("/onboarding command", () => {
                 type: "link",
                 label: "Choisir",
                 emoji: "✨",
-                url: "https://portal.test/onboarding?codi_token=test-1",
+                url: "https://portal.test/onboarding?cicord_token=test-1",
               },
             ],
           },

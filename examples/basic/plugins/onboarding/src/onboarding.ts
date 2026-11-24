@@ -1,8 +1,8 @@
 /**
  * Onboarding logic, independent of the route plumbing. The portal contract (response
- * shapes) is mirrored by `@codi/client`'s `onboarding.ts`; keep both in sync.
+ * shapes) is mirrored by `@cicord/client`'s `onboarding.ts`; keep both in sync.
  */
-import type { Context, Json, Member, PluginConfig, Role } from "@codi/sdk";
+import type { Context, Json, Member, PluginConfig, Role } from "@cicord/sdk";
 
 type StepConfig = PluginConfig["steps"][number];
 
@@ -52,7 +52,7 @@ export type CompletionRecord = { at: string; answers: { [step: string]: string[]
 
 export type Answers = Map<string, string[]>;
 
-/** Same shape as the runtime's validation diagnostics, so `CodiApiError.diagnostics` works. */
+/** Same shape as the runtime's validation diagnostics, so `CicordApiError.diagnostics` works. */
 export type Problem = { severity: "error"; path: string; message: string };
 
 // ───────────────────────────────────────────────────────────── helpers

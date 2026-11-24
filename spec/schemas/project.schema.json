@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codi.dev/schemas/v1alpha1/project.schema.json",
-  "title": "CODI Project",
-  "description": "Repository-level settings. File: codi.yaml at the repo root.",
+  "$id": "https://cicord.dev/schemas/v1alpha1/project.schema.json",
+  "title": "Cicord Project",
+  "description": "Repository-level settings. File: cicord.yaml at the repo root.",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata", "spec"],
   "properties": {
@@ -14,7 +14,7 @@
       "required": ["engine"],
       "properties": {
         "engine": {
-          "description": "Compatible CODI engine versions.",
+          "description": "Compatible Cicord engine versions.",
           "$ref": "common.schema.json#/$defs/semverRange"
         },
         "source": {
@@ -29,7 +29,7 @@
             },
             "branch": { "type": "string", "default": "main" },
             "path": {
-              "description": "Sub-directory containing codi.yaml, for monorepos.",
+              "description": "Sub-directory containing cicord.yaml, for monorepos.",
               "type": "string",
               "default": "."
             },
@@ -66,9 +66,9 @@
               "name": { "$ref": "common.schema.json#/$defs/key" },
               "url": { "type": "string" },
               "secretRef": {
-                "description": "Secret holding an access token for a private registry (environment variable or `codi secret set`), which must be CODI_REGISTRY_<NAME>_TOKEN for this registry name. Never the token itself.",
+                "description": "Secret holding an access token for a private registry (environment variable or `cicord secret set`), which must be CICORD_REGISTRY_<NAME>_TOKEN for this registry name. Never the token itself.",
                 "type": "string",
-                "pattern": "^CODI_REGISTRY_[A-Z0-9_]+_TOKEN$"
+                "pattern": "^CICORD_REGISTRY_[A-Z0-9_]+_TOKEN$"
               }
             },
             "additionalProperties": false

@@ -109,7 +109,7 @@ type AuditEntry struct {
 	ID      int64
 	Time    time.Time
 	Server  string // server key, "" for project-level entries
-	Actor   string // e.g. "discord:<id>", "plugin:<bot>/<instance>", "codi"
+	Actor   string // e.g. "discord:<id>", "plugin:<bot>/<instance>", "cicord"
 	Action  string // e.g. "config.update", "member.kick", "sync.apply"
 	Target  string
 	Details json.RawMessage

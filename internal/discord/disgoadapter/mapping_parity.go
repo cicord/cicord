@@ -13,7 +13,7 @@ import (
 
 	disgodiscord "github.com/disgoorg/disgo/discord"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // ───────────────────────────────────────────────────────────── widget

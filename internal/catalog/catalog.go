@@ -19,11 +19,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/npjonath/codi/examples"
-	"github.com/npjonath/codi/internal/build"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/plugin"
+	"github.com/npjonath/cicord/examples"
+	"github.com/npjonath/cicord/internal/build"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/plugin"
 )
 
 // Command is a slash command a plugin registers.
@@ -90,7 +90,7 @@ func (c *Catalog) Get(name string) (Entry, bool) {
 }
 
 func (c *Catalog) load() ([]Entry, error) {
-	tmp, err := os.MkdirTemp("", "codi-catalog-*")
+	tmp, err := os.MkdirTemp("", "cicord-catalog-*")
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (c *Catalog) loadOne(dir, tmp string) (Entry, error) {
 // Listing commands builds and evaluates the plugin's code (in the sandbox, without host
 // APIs): callers only pass inspect for trusted sources. Commands is nil when not inspected.
 func Describe(dir string, inspect bool) (Entry, error) {
-	tmp, err := os.MkdirTemp("", "codi-describe-*")
+	tmp, err := os.MkdirTemp("", "cicord-describe-*")
 	if err != nil {
 		return Entry{}, err
 	}
@@ -263,7 +263,7 @@ func SortedPaths(files map[string][]byte) []string {
 }
 
 // portableTSConfig drops compilerOptions.paths: in the examples it points to the SDK
-// types of the CODI repository, which do not exist in a user's repository.
+// types of the Cicord repository, which do not exist in a user's repository.
 func portableTSConfig(data []byte) []byte {
 	var doc map[string]any
 	if json.Unmarshal(data, &doc) != nil {

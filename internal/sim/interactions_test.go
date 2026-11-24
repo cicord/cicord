@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 func TestSetServerCommandsValidation(t *testing.T) {

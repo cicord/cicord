@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// portalDiags loads a copy of the example with codi.yaml spec.portal.path set to path
+// portalDiags loads a copy of the example with cicord.yaml spec.portal.path set to path
 // (after prepare ran on the copy) and returns the portal diagnostics.
 func portalDiags(t *testing.T, path string, prepare func(dir string)) Diagnostics {
 	t.Helper()
@@ -15,7 +15,7 @@ func portalDiags(t *testing.T, path string, prepare func(dir string)) Diagnostic
 	if prepare != nil {
 		prepare(dir)
 	}
-	f := filepath.Join(dir, "codi.yaml")
+	f := filepath.Join(dir, "cicord.yaml")
 	data, _ := os.ReadFile(f)
 	if err := os.WriteFile(f, append(data, []byte("  portal:\n    path: "+path+"\n")...), 0o644); err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestPortalPathValidation(t *testing.T) {
 		{"no index", "./portal/dist", func(dir string) { mustWrite(t, filepath.Join(dir, "portal", "dist", "app.js"), "") }, SeverityWarning, "index.html not found"},
 		{"outside", "../elsewhere", nil, SeverityError, "inside the repository"},
 		{"root", "./", nil, SeverityError, "inside the repository"},
-		{"file", "./codi.yaml", nil, SeverityError, "must be a directory"},
+		{"file", "./cicord.yaml", nil, SeverityError, "must be a directory"},
 		{"symlink", "./portal/dist", func(dir string) {
 			out := t.TempDir()
 			mustWrite(t, filepath.Join(out, "index.html"), "x")
@@ -71,7 +71,7 @@ func TestPortalPathValidation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ds := portalDiags(t, tc.path, tc.prepare)
-			if len(ds) != 1 || ds[0].Severity != tc.severity || !strings.Contains(ds[0].Message, tc.want) || ds[0].File != "codi.yaml" || ds[0].Line == 0 {
+			if len(ds) != 1 || ds[0].Severity != tc.severity || !strings.Contains(ds[0].Message, tc.want) || ds[0].File != "cicord.yaml" || ds[0].Line == 0 {
 				t.Fatalf("diagnostics = %v", ds)
 			}
 		})

@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 type configPutRequest struct {
@@ -227,7 +227,7 @@ func (s *server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 		what = "base config"
 	}
 
-	// Authorization: moderators may only change fields marked x-codi-access: moderator.
+	// Authorization: moderators may only change fields marked x-cicord-access: moderator.
 	servers := make([]string, 0, len(effective))
 	for sk := range effective {
 		servers = append(servers, sk)
@@ -290,7 +290,7 @@ func (s *server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 	}
 	wb := repo.Project.Spec.WriteBack
 	if wb != nil && wb.Enabled != nil && !*wb.Enabled {
-		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in codi.yaml"))
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "write-back is disabled in cicord.yaml"))
 		return
 	}
 	mode := writeback.ModeFor(wb, []string{bot.File})

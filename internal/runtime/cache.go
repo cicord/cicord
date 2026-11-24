@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // serverCache keeps, per server, the key ↔ Discord ID mapping (from the resource map)

@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/runtime"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/runtime"
 )
 
 const rawCommunity = `reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request ` +

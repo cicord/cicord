@@ -5,8 +5,8 @@ dist/
 .env
 .env.*
 .DS_Store
-.codi/
-.codi-data/
+.cicord/
+.cicord-data/
 /bin/
 *.tsbuildinfo
 internal/webui/admin/assets/

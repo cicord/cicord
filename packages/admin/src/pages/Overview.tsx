@@ -1,5 +1,5 @@
 /** Server overview: state and problems first, then the facts, recent activity and bots. */
-import type { BotStatus, ServerDetail } from "@codi/client";
+import type { BotStatus, ServerDetail } from "@cicord/client";
 import { ArrowRight, CircleHelp, History } from "lucide-react";
 import { useMemo } from "react";
 import { useHistory, useServer, useStatus } from "../api.ts";

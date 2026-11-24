@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codi.dev/schemas/v1alpha1/server.schema.json",
-  "title": "CODI Server",
+  "$id": "https://cicord.dev/schemas/v1alpha1/server.schema.json",
+  "title": "Cicord Server",
   "description": "Desired state of one Discord server. File: servers/<metadata.name>.yaml",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata", "spec"],
@@ -549,7 +549,7 @@
       "additionalProperties": false
     },
     "onboarding": {
-      "description": "Discord's native onboarding (needs Community). Complements the CODI onboarding plugin.",
+      "description": "Discord's native onboarding (needs Community). Complements the Cicord onboarding plugin.",
       "type": "object",
       "required": ["enabled"],
       "properties": {

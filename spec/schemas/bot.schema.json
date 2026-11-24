@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codi.dev/schemas/v1alpha1/bot.schema.json",
-  "title": "CODI Bot",
+  "$id": "https://cicord.dev/schemas/v1alpha1/bot.schema.json",
+  "title": "Cicord Bot",
   "description": "One Discord application (one token, one identity). File: bots/<metadata.name>/bot.yaml",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata", "spec"],

@@ -2,7 +2,7 @@
  * Ticket records and helpers, independent of the handlers. The `GET /tickets` shape is
  * consumed by the community portal (keep `TicketSummary` stable).
  */
-import type { Context, Embed, Json, Member, MessagePayload, User } from "@codi/sdk";
+import type { Context, Embed, Json, Member, MessagePayload, User } from "@cicord/sdk";
 
 export type TicketStatus = "open" | "closed";
 

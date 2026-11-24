@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
 )
 
 // localFlags are shared by the commands that talk to Discord directly (plan, apply,
@@ -27,7 +27,7 @@ type localFlags struct {
 }
 
 func (f *localFlags) register(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.statePath, "state", "", "local state database (resource map) (default <dir>/.codi/state.db)")
+	cmd.Flags().StringVar(&f.statePath, "state", "", "local state database (resource map) (default <dir>/.cicord/state.db)")
 }
 
 func (f *localFlags) registerServers(cmd *cobra.Command) {
@@ -38,7 +38,7 @@ func (f *localFlags) path(dir string) string {
 	if f.statePath != "" {
 		return f.statePath
 	}
-	return filepath.Join(dir, ".codi", "state.db")
+	return filepath.Join(dir, ".cicord", "state.db")
 }
 
 // openState opens the local state database. With readOnly and no database file, an
@@ -202,7 +202,7 @@ func (f *localFlags) reconcilers(ctx context.Context, repo *config.Repo, b *bots
 		}
 		rec := reconcile.New(reconcile.Options{
 			Server: srv, RepoRoot: repo.Root, Client: sess, Resources: res,
-			KV: store.KV("reconcile:" + key), BotUserID: sess.Self().ID, Reason: "codi apply (cli)",
+			KV: store.KV("reconcile:" + key), BotUserID: sess.Self().ID, Reason: "cicord apply (cli)",
 		})
 		out = append(out, serverReconciler{key: key, bot: bk, rec: rec})
 	}

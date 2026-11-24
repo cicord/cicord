@@ -22,8 +22,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/discord/disgoadapter"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/discord/disgoadapter"
 )
 
 // ───────────────────────────────────────────────────────────── test seams
@@ -70,9 +70,9 @@ type remoteFlags struct {
 }
 
 func (f *remoteFlags) register(cmd *cobra.Command, always bool) {
-	usage := "runtime URL (--remote=URL); without a value: CODI_RUNTIME_URL (https, or http on localhost)"
+	usage := "runtime URL (--remote=URL); without a value: CICORD_RUNTIME_URL (https, or http on localhost)"
 	if always {
-		usage = "runtime URL (default: CODI_RUNTIME_URL; https, or http on localhost)"
+		usage = "runtime URL (default: CICORD_RUNTIME_URL; https, or http on localhost)"
 	}
 	cmd.Flags().StringVar(&f.remote, "remote", "", usage)
 	// `--remote` alone must not swallow the next argument (e.g. --comment).
@@ -80,7 +80,7 @@ func (f *remoteFlags) register(cmd *cobra.Command, always bool) {
 }
 
 // splitRemoteArgs extracts a URL given as a positional argument after a bare --remote
-// (`codi plan --remote https://codi.example .`): pflag cannot bind it to the flag.
+// (`cicord plan --remote https://cicord.example .`): pflag cannot bind it to the flag.
 func (f *remoteFlags) splitRemoteArgs(args []string) []string {
 	var out []string
 	for _, a := range args {
@@ -94,7 +94,7 @@ func (f *remoteFlags) splitRemoteArgs(args []string) []string {
 }
 
 // resolveURL returns the runtime URL the bearer token is sent to: --remote=URL, else
-// CODI_RUNTIME_URL. codi.yaml spec.runtime.url is never trusted on its own: on a pull
+// CICORD_RUNTIME_URL. cicord.yaml spec.runtime.url is never trusted on its own: on a pull
 // request the file is controlled by the PR author, and sending the runtime token there
 // would leak it. It is only accepted when it designates the same origin as the explicit
 // pin (in which case the pin is used anyway).
@@ -104,15 +104,15 @@ func (f *remoteFlags) resolveURL(dir string) (string, error) {
 		u = ""
 	}
 	if u == "" {
-		u = os.Getenv("CODI_RUNTIME_URL")
+		u = os.Getenv("CICORD_RUNTIME_URL")
 	}
 	if u == "" {
 		if p, err := readProject(dir); err == nil && p.Spec.Runtime != nil && p.Spec.Runtime.URL != "" {
-			return "", fmt.Errorf("codi.yaml spec.runtime.url is %s, but the runtime URL must be set explicitly: "+
-				"set CODI_RUNTIME_URL (or pass --remote=URL); refusing to send the runtime token to a URL read from codi.yaml",
+			return "", fmt.Errorf("cicord.yaml spec.runtime.url is %s, but the runtime URL must be set explicitly: "+
+				"set CICORD_RUNTIME_URL (or pass --remote=URL); refusing to send the runtime token to a URL read from cicord.yaml",
 				p.Spec.Runtime.URL)
 		}
-		return "", errors.New("no runtime URL: pass --remote=URL or set CODI_RUNTIME_URL")
+		return "", errors.New("no runtime URL: pass --remote=URL or set CICORD_RUNTIME_URL")
 	}
 	return checkRuntimeURL(u)
 }
@@ -162,9 +162,9 @@ type apiClient struct {
 }
 
 func newAPIClient(base string) (*apiClient, error) {
-	token := os.Getenv("CODI_RUNTIME_TOKEN")
+	token := os.Getenv("CICORD_RUNTIME_TOKEN")
 	if token == "" {
-		return nil, errors.New("CODI_RUNTIME_TOKEN is not set (the runtime's bearer token)")
+		return nil, errors.New("CICORD_RUNTIME_TOKEN is not set (the runtime's bearer token)")
 	}
 	return &apiClient{base: base, token: token}, nil
 }
@@ -235,7 +235,7 @@ const (
 )
 
 // alwaysExcluded are directory names never uploaded, at any depth.
-var alwaysExcluded = map[string]bool{".git": true, "node_modules": true, ".codi": true, ".codi-data": true, "dist": true}
+var alwaysExcluded = map[string]bool{".git": true, "node_modules": true, ".cicord": true, ".cicord-data": true, "dist": true}
 
 // ignoreRules is a minimal .gitignore matcher (root .gitignore only): blank lines and
 // comments are skipped, "!" negations are not supported, a trailing "/" matches
@@ -302,11 +302,11 @@ func secretFile(name string) bool {
 	return name == ".env" || strings.HasPrefix(name, ".env.")
 }
 
-// archiveRepo builds a .tar.gz of the repository rooted at dir (codi.yaml at the root of
+// archiveRepo builds a .tar.gz of the repository rooted at dir (cicord.yaml at the root of
 // the archive). It returns the archive and the number of files.
 func archiveRepo(dir string) ([]byte, int, error) {
-	if _, err := os.Stat(filepath.Join(dir, "codi.yaml")); err != nil {
-		return nil, 0, fmt.Errorf("%s is not a CODI repository (no codi.yaml)", dir)
+	if _, err := os.Stat(filepath.Join(dir, "cicord.yaml")); err != nil {
+		return nil, 0, fmt.Errorf("%s is not a Cicord repository (no cicord.yaml)", dir)
 	}
 	ign := loadIgnore(dir)
 	var buf bytes.Buffer

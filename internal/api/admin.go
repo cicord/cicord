@@ -14,14 +14,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/store"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/store"
 )
 
 // visibleServers returns the servers where the caller has at least min.
@@ -590,7 +590,7 @@ type pluginItemDTO struct {
 	Routes     []string       `json:"routes"`
 	Health     string         `json:"health"`
 	Message    string         `json:"message"`
-	// Source is where the plugin comes from ("codi", a registry, or "local") and Trust
+	// Source is where the plugin comes from ("cicord", a registry, or "local") and Trust
 	// its trust level ("official", "unofficial" or "local").
 	Source string `json:"source"`
 	Trust  string `json:"trust"`
@@ -598,13 +598,13 @@ type pluginItemDTO struct {
 	Update *store.UpdateInfo `json:"update,omitempty"`
 }
 
-// editableFields lists the top-level config fields a role may edit (x-codi-access).
+// editableFields lists the top-level config fields a role may edit (x-cicord-access).
 func editableFields(schema map[string]any, r role) []string {
 	out := []string{}
 	props, _ := schema["properties"].(map[string]any)
 	for k, raw := range props {
 		sub, _ := raw.(map[string]any)
-		access, _ := sub["x-codi-access"].(string)
+		access, _ := sub["x-cicord-access"].(string)
 		if access == "" {
 			access = "admin"
 		}
@@ -722,7 +722,7 @@ func (s *server) pluginItem(in runtime.InstanceInfo, key string, ro role, ups ma
 	return it
 }
 
-// pluginOrigin is the Store source of a loaded plugin ("codi", a registry name, or
+// pluginOrigin is the Store source of a loaded plugin ("cicord", a registry name, or
 // "local" for a plugin written in the repository) and its trust.
 func (s *server) pluginOrigin(lp *config.LoadedPlugin) (source, trust string) {
 	if lp == nil || lp.Manifest == nil {
@@ -732,7 +732,7 @@ func (s *server) pluginOrigin(lp *config.LoadedPlugin) (source, trust string) {
 		reg, _, _ := strings.Cut(lp.Source, "/")
 		trust = registry.TrustUnofficial
 		if _, ok := registry.Official(); ok && reg == config.OfficialRegistryName {
-			trust = registry.TrustOfficial // the implicit official registry (codi.yaml cannot declare "codi")
+			trust = registry.TrustOfficial // the implicit official registry (cicord.yaml cannot declare "cicord")
 		} else if repo := s.rt.Repo(); repo != nil && repo.Project != nil {
 			for _, rg := range repo.Project.Spec.Registries {
 				if rg.Name == reg {

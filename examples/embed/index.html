@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
-  A third-party site (its own domain, its own design) embedding a CODI community with the
+  A third-party site (its own domain, its own design) embedding a Cicord community with the
   portal SDK in token mode: Discord login (or the simulator's users), the member's roles
-  and a plugin route. No framework, no build: plain HTML + the @codi/client ES module.
+  and a plugin route. No framework, no build: plain HTML + the @cicord/client ES module.
   Served by serve.mjs (docs/portal.md, "Embedding in another site").
 -->
 <html lang="en">
@@ -196,12 +196,12 @@
     <footer id="footer"></footer>
 
     <script type="module">
-      import { CodiApiError, createCodiClient, isSafeUrl } from "/codi-client.mjs";
+      import { CicordApiError, createCicordClient, isSafeUrl } from "/cicord-client.mjs";
 
-      const RUNTIME = "__CODI_RUNTIME_URL__";
+      const RUNTIME = "__CICORD_RUNTIME_URL__";
       // Token mode: the runtime is on another origin, so no cookies — a bearer session token
       // kept in localStorage (tokenStore: "memory" | "session" | a custom store also work).
-      const client = createCodiClient({ baseUrl: RUNTIME, auth: "token" });
+      const client = createCicordClient({ baseUrl: RUNTIME, auth: "token" });
       const $ = (id) => document.getElementById(id);
       const esc = (s) =>
         String(s).replace(
@@ -212,7 +212,7 @@
       let server;
 
       async function render() {
-        // Back from Discord (?codi_code=) or from a bot link (?codi_token=): finish the login.
+        // Back from Discord (?cicord_code=) or from a bot link (?cicord_token=): finish the login.
         try {
           await client.auth.exchangeLinkToken();
         } catch (e) {
@@ -234,7 +234,7 @@
         if (!me) {
           let sim = null;
           try {
-            sim = await client.sim.state(); // only on `codi dev --sim`
+            sim = await client.sim.state(); // only on `cicord dev --sim`
           } catch {}
           const world = sim?.servers.find((s) => s.key === server.key);
           const users = (sim?.users ?? [])
@@ -324,7 +324,7 @@
           }
         } catch (e) {
           const why =
-            e instanceof CodiApiError && e.code === "unauthenticated"
+            e instanceof CicordApiError && e.code === "unauthenticated"
               ? "Sign in to see this."
               : esc(e.message);
           $("plugin").innerHTML = `<p class="muted">${why}</p>`;

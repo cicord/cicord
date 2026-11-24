@@ -12,7 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/npjonath/codi/internal/webui"
+	"github.com/npjonath/cicord/internal/webui"
 )
 
 func fakeTgz(t *testing.T, manifest string) []byte {
@@ -40,12 +40,12 @@ func useKit(t *testing.T, kit fs.FS, err error) {
 
 func TestPortalInit(t *testing.T) {
 	kit := fstest.MapFS{
-		"packages/codi-client-0.1.0.tgz": {Data: fakeTgz(t, `{"name":"@codi/client","version":"0.1.0"}`)},
-		"packages/codi-react-0.1.0.tgz":  {Data: fakeTgz(t, `{"name":"@codi/react","version":"0.1.0","dependencies":{"@codi/client":"0.1.0"}}`)},
-		"packages/codi-ui-0.1.0.tgz":     {Data: fakeTgz(t, `{"name":"@codi/ui","version":"0.1.0"}`)},
+		"packages/cicord-client-0.1.0.tgz": {Data: fakeTgz(t, `{"name":"@cicord/client","version":"0.1.0"}`)},
+		"packages/cicord-react-0.1.0.tgz":  {Data: fakeTgz(t, `{"name":"@cicord/react","version":"0.1.0","dependencies":{"@cicord/client":"0.1.0"}}`)},
+		"packages/cicord-ui-0.1.0.tgz":     {Data: fakeTgz(t, `{"name":"@cicord/ui","version":"0.1.0"}`)},
 		"template/package.json": {Data: []byte(`{"name":"portal","private":true,"version":"0.0.0","type":"module",
 			"scripts":{"build":"tsc --noEmit && vp build","dev:runtime":"vp dev"},
-			"dependencies":{"@codi/client":"^0.1.0","@codi/react":"^0.1.0","@codi/ui":"^0.1.0","react":"^19.2.0"},
+			"dependencies":{"@cicord/client":"^0.1.0","@cicord/react":"^0.1.0","@cicord/ui":"^0.1.0","react":"^19.2.0"},
 			"devDependencies":{"vite":"npm:@voidzero-dev/vite-plus-core@0.2.7","vite-plus":"0.2.7"},
 			"pnpm":{"overrides":{"vite":"npm:@voidzero-dev/vite-plus-core@0.2.7"}}}`)},
 		"template/.gitignore":     {Data: []byte("node_modules/\ndist/\n")},
@@ -68,13 +68,13 @@ func TestPortalInit(t *testing.T) {
 		t.Errorf("next steps:\n%s", out)
 	}
 	for _, f := range []string{"portal/index.html", "portal/src/main.tsx", "portal/vite.config.ts",
-		"portal/vendor/codi-client-0.1.0.tgz", "portal/vendor/codi-react-0.1.0.tgz", "portal/vendor/codi-ui-0.1.0.tgz",
-		".github/workflows/codi-portal.yml"} {
+		"portal/vendor/cicord-client-0.1.0.tgz", "portal/vendor/cicord-react-0.1.0.tgz", "portal/vendor/cicord-ui-0.1.0.tgz",
+		".github/workflows/cicord-portal.yml"} {
 		if _, err := os.Stat(filepath.Join(repo, f)); err != nil {
 			t.Errorf("missing %s", f)
 		}
 	}
-	if got, _ := os.ReadFile(filepath.Join(repo, "portal/vendor/codi-react-0.1.0.tgz")); !bytes.Equal(got, kit["packages/codi-react-0.1.0.tgz"].Data) {
+	if got, _ := os.ReadFile(filepath.Join(repo, "portal/vendor/cicord-react-0.1.0.tgz")); !bytes.Equal(got, kit["packages/cicord-react-0.1.0.tgz"].Data) {
 		t.Error("vendored tarball differs from the kit")
 	}
 	if gi := readFile(t, filepath.Join(repo, "portal/.gitignore")); strings.Contains(gi, "\ndist/") || !strings.Contains(gi, "node_modules/") {
@@ -97,16 +97,16 @@ func TestPortalInit(t *testing.T) {
 		t.Errorf("package.json = %+v", pj)
 	}
 	for _, name := range []string{"client", "react", "ui"} {
-		want := "file:vendor/codi-" + name + "-0.1.0.tgz"
-		if pj.Dependencies["@codi/"+name] != want || pj.Pnpm.Overrides["@codi/"+name] != want || pj.Overrides["@codi/"+name] != want {
-			t.Errorf("@codi/%s = %q / %q / %q", name, pj.Dependencies["@codi/"+name], pj.Pnpm.Overrides["@codi/"+name], pj.Overrides["@codi/"+name])
+		want := "file:vendor/cicord-" + name + "-0.1.0.tgz"
+		if pj.Dependencies["@cicord/"+name] != want || pj.Pnpm.Overrides["@cicord/"+name] != want || pj.Overrides["@cicord/"+name] != want {
+			t.Errorf("@cicord/%s = %q / %q / %q", name, pj.Dependencies["@cicord/"+name], pj.Pnpm.Overrides["@cicord/"+name], pj.Overrides["@cicord/"+name])
 		}
 	}
 	if pj.Pnpm.Overrides["vite"] != "npm:@voidzero-dev/vite-plus-core@0.2.7" {
 		t.Errorf("vite override lost: %v", pj.Pnpm.Overrides)
 	}
-	wf := readFile(t, filepath.Join(repo, ".github/workflows/codi-portal.yml"))
-	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "codi portal typegen --check --out portal/src/codi-routes.d.ts"} {
+	wf := readFile(t, filepath.Join(repo, ".github/workflows/cicord-portal.yml"))
+	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "cicord portal typegen --check --out portal/src/cicord-routes.d.ts"} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow misses %q:\n%s", want, wf)
 		}
@@ -149,7 +149,7 @@ func TestEmbeddedKitIsConsistent(t *testing.T) {
 	for _, p := range pkgs {
 		names[p.Name] = true
 	}
-	for _, n := range []string{"@codi/sdk", "@codi/client", "@codi/react", "@codi/ui"} {
+	for _, n := range []string{"@cicord/sdk", "@cicord/client", "@cicord/react", "@cicord/ui"} {
 		if !names[n] {
 			t.Errorf("kit misses %s (%v)", n, names)
 		}

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codi.dev/schemas/v1alpha1/plugin.schema.json",
-  "title": "CODI Plugin manifest",
+  "$id": "https://cicord.dev/schemas/v1alpha1/plugin.schema.json",
+  "title": "Cicord Plugin manifest",
   "description": "Static, reviewable description of a plugin. File: plugin.yaml at the plugin root. Commands, handlers and routes come from the code (definePlugin).",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata", "spec"],
@@ -82,7 +82,7 @@
           "required": ["schema"],
           "properties": {
             "schema": {
-              "description": "JSON Schema of the plugin config. Supports x-codi-ref and x-codi-widget.",
+              "description": "JSON Schema of the plugin config. Supports x-cicord-ref and x-cicord-widget.",
               "$ref": "common.schema.json#/$defs/relativePath"
             }
           },
@@ -92,7 +92,7 @@
           "type": "object",
           "properties": {
             "types": {
-              "description": "Type-only, self-contained TypeScript file exporting `interface Routes` (the declared query, body and response of each portal route). `codi portal typegen` copies it into the portals; handlers are checked against it with defineRoutes<Routes>().",
+              "description": "Type-only, self-contained TypeScript file exporting `interface Routes` (the declared query, body and response of each portal route). `cicord portal typegen` copies it into the portals; handlers are checked against it with defineRoutes<Routes>().",
               "$ref": "common.schema.json#/$defs/relativePath"
             }
           },

@@ -1,5 +1,5 @@
 import {
-  CodiApiError,
+  CicordApiError,
   resolveRoute,
   type OptionalArg,
   type RouteInput,
@@ -15,10 +15,10 @@ import {
   type PortalServer,
   type Query,
   type StoredSession,
-} from "@codi/client";
+} from "@cicord/client";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { hashKey, type QueryKey, type QueryState, type QueryStatus } from "./cache.ts";
-import { useCodi, useServerKey } from "./provider.tsx";
+import { useCicord, useServerKey } from "./provider.tsx";
 
 // ───────────────────────────────────────────────────────────── generic query
 
@@ -39,12 +39,12 @@ export interface QueryOptions {
 }
 
 /** Cached query bound to the provider's cache. `key: null` disables the query. */
-export function useCodiQuery<T>(
+export function useCicordQuery<T>(
   key: QueryKey | null,
   fn: (signal: AbortSignal) => Promise<T>,
   options: QueryOptions = {},
 ): QueryResult<T> {
-  const { cache } = useCodi();
+  const { cache } = useCicord();
   const enabled = key !== null && (options.enabled ?? true);
   const hash = key ? hashKey(key) : "";
   const fnRef = useRef(fn);
@@ -93,20 +93,28 @@ export function useCodiQuery<T>(
 
 // ───────────────────────────────────────────────────────────── keys
 
-export const codiKeys = {
-  me: () => ["codi", "me"] as const,
-  portalServers: () => ["codi", "portal", "servers"] as const,
-  portalServer: (server: string) => ["codi", "portal", server] as const,
-  member: (server: string) => ["codi", "portal", server, "me"] as const,
+export const cicordKeys = {
+  me: () => ["cicord", "me"] as const,
+  portalServers: () => ["cicord", "portal", "servers"] as const,
+  portalServer: (server: string) => ["cicord", "portal", server] as const,
+  member: (server: string) => ["cicord", "portal", server, "me"] as const,
   plugin: (server: string, bot: string, instance: string, path: string, query?: Query) =>
-    ["codi", "plugin", server, bot, instance, path, query ? JSON.stringify(query) : null] as const,
+    [
+      "cicord",
+      "plugin",
+      server,
+      bot,
+      instance,
+      path,
+      query ? JSON.stringify(query) : null,
+    ] as const,
 };
 
 const nullOn401 = async <T>(promise: Promise<T>): Promise<T | null> => {
   try {
     return await promise;
   } catch (error) {
-    if (error instanceof CodiApiError && error.code === "unauthenticated") return null;
+    if (error instanceof CicordApiError && error.code === "unauthenticated") return null;
     throw error;
   }
 };
@@ -115,8 +123,8 @@ const nullOn401 = async <T>(promise: Promise<T>): Promise<T | null> => {
 
 /** Current user (`GET /me`); `data` is `null` when logged out. */
 export function useMe(): QueryResult<Me | null> {
-  const { client } = useCodi();
-  return useCodiQuery(codiKeys.me(), (signal) => client.meOrNull({ signal }));
+  const { client } = useCicord();
+  return useCicordQuery(cicordKeys.me(), (signal) => client.meOrNull({ signal }));
 }
 
 export type LinkTokenLoginState =
@@ -128,22 +136,22 @@ export type LinkTokenLoginState =
 // One exchange per token and client, whatever the number of mounts (StrictMode, remounts).
 const exchanges = new WeakMap<object, Map<string, Promise<Me | null>>>();
 
-/** The login credential left in the current URL: `codi_token` (bot link) or, in token mode, `codi_code`. */
+/** The login credential left in the current URL: `cicord_token` (bot link) or, in token mode, `cicord_code`. */
 function urlCredential(param: string, tokenMode: boolean): string | null {
   if (typeof location === "undefined") return null;
   const params = new URL(location.href).searchParams;
-  return params.get(param) ?? (tokenMode ? params.get("codi_code") : null);
+  return params.get(param) ?? (tokenMode ? params.get("cicord_code") : null);
 }
 
 /**
- * Exchanges the `codi_token` of the current URL (signed link sent by a bot) — or, in token
- * mode, the `codi_code` of an OAuth login — for a session, once. The parameter is removed
+ * Exchanges the `cicord_token` of the current URL (signed link sent by a bot) — or, in token
+ * mode, the `cicord_code` of an OAuth login — for a session, once. The parameter is removed
  * from the address bar immediately. On success, the cached user and member queries are
  * refreshed.
  */
 export function useLinkTokenLogin(options: { param?: string } = {}): LinkTokenLoginState {
-  const { client, cache } = useCodi();
-  const param = options.param ?? "codi_token";
+  const { client, cache } = useCicord();
+  const param = options.param ?? "cicord_token";
   const tokenMode = client.authMode === "token";
   const [state, setState] = useState<LinkTokenLoginState>(() => {
     const token = urlCredential(param, tokenMode);
@@ -170,9 +178,9 @@ export function useLinkTokenLogin(options: { param?: string } = {}): LinkTokenLo
       (me) => {
         if (!active) return;
         if (me) {
-          cache.setData(codiKeys.me(), me);
-          void cache.invalidate(["codi", "portal"]);
-          void cache.invalidate(["codi", "plugin"]);
+          cache.setData(cicordKeys.me(), me);
+          void cache.invalidate(["cicord", "portal"]);
+          void cache.invalidate(["cicord", "plugin"]);
           setState({ status: "success", me });
         } else setState({ status: "none" });
       },
@@ -193,7 +201,7 @@ export function useLinkTokenLogin(options: { param?: string } = {}): LinkTokenLo
  * logout and expiry.
  */
 export function useSession(): StoredSession | null {
-  const { client } = useCodi();
+  const { client } = useCicord();
   const subscribe = useCallback((fn: () => void) => client.onSessionChange(fn), [client]);
   const token = useSyncExternalStore(
     subscribe,
@@ -205,35 +213,35 @@ export function useSession(): StoredSession | null {
 
 /** Logs out and clears every cached query. */
 export function useLogout(): () => Promise<void> {
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   return useCallback(async () => {
     await client.auth.logout();
     cache.clear();
-    cache.setData(codiKeys.me(), null);
+    cache.setData(cicordKeys.me(), null);
   }, [client, cache]);
 }
 
 // ───────────────────────────────────────────────────────────── portal
 
 export function usePortalServers(): QueryResult<PortalServer[]> {
-  const { client } = useCodi();
-  return useCodiQuery(codiKeys.portalServers(), (signal) => client.portal.servers({ signal }));
+  const { client } = useCicord();
+  return useCicordQuery(cicordKeys.portalServers(), (signal) => client.portal.servers({ signal }));
 }
 
 /** `GET /portal/{server}` for the given (or provider's) server. */
 export function usePortalServer(server?: string): QueryResult<PortalServer> {
-  const { client } = useCodi();
+  const { client } = useCicord();
   const key = useServerKey(server);
-  return useCodiQuery(key ? codiKeys.portalServer(key) : null, (signal) =>
+  return useCicordQuery(key ? cicordKeys.portalServer(key) : null, (signal) =>
     client.portal.server(key as string, { signal }),
   );
 }
 
 /** The viewer as a member of the server; `data` is `null` when logged out. */
 export function useMember(server?: string): QueryResult<PortalMe | null> {
-  const { client } = useCodi();
+  const { client } = useCicord();
   const key = useServerKey(server);
-  return useCodiQuery(key ? codiKeys.member(key) : null, (signal) =>
+  return useCicordQuery(key ? cicordKeys.member(key) : null, (signal) =>
     nullOn401(client.portal.me(key as string, { signal })),
   );
 }
@@ -272,11 +280,11 @@ export function usePluginQuery<T = Json>(
   path: string,
   options: QueryOptions & { query?: Query } = {},
 ): QueryResult<T> {
-  const { client } = useCodi();
+  const { client } = useCicord();
   const server = useServerKey(ref?.server);
   const key =
-    ref && server ? codiKeys.plugin(server, ref.bot, ref.instance, path, options.query) : null;
-  return useCodiQuery<T>(
+    ref && server ? cicordKeys.plugin(server, ref.bot, ref.instance, path, options.query) : null;
+  return useCicordQuery<T>(
     key,
     (signal) =>
       client
@@ -314,7 +322,7 @@ export function usePluginMutation<TBody = Json, TResult = Json>(
     invalidate?: boolean;
   } = {},
 ): MutationResult<TBody, TResult> {
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const server = useServerKey(ref?.server);
   const [state, setState] = useState<{
     status: MutationStatus;
@@ -331,7 +339,7 @@ export function usePluginMutation<TBody = Json, TResult = Json>(
   const mutateAsync = useCallback(
     async (body: TBody): Promise<TResult> => {
       if (!ref || !server)
-        throw new Error("@codi/react: usePluginMutation called before the plugin is known");
+        throw new Error("@cicord/react: usePluginMutation called before the plugin is known");
       setState({ status: "pending", data: undefined, error: undefined });
       try {
         const { method = "POST", invalidate = true, onSuccess } = optionsRef.current;
@@ -340,8 +348,8 @@ export function usePluginMutation<TBody = Json, TResult = Json>(
           .request<TResult>(method, path, body === undefined ? {} : { body });
         setState({ status: "success", data: result, error: undefined });
         if (invalidate) {
-          void cache.invalidate(["codi", "plugin", server, ref.bot, ref.instance]);
-          void cache.invalidate(codiKeys.member(server));
+          void cache.invalidate(["cicord", "plugin", server, ref.bot, ref.instance]);
+          void cache.invalidate(cicordKeys.member(server));
         }
         onSuccess?.(result);
         return result;
@@ -393,7 +401,7 @@ function routeTarget(o: RouteTarget): RouteTarget {
 
 /**
  * `GET` on a typed plugin route, cached: the instance is found by plugin name in
- * `PortalServer.plugins` and the types come from the generated `src/codi-routes.d.ts`
+ * `PortalServer.plugins` and the types come from the generated `src/cicord-routes.d.ts`
  * (`PluginRouteRegistry`).
  *
  * ```ts
@@ -411,7 +419,7 @@ export function useRouteQuery<N extends string, K extends RouteKeyOf<N, "GET"> &
 ): QueryResult<RouteResponseOf<RoutesOf<N>[K]>> & { instance: PortalPlugin | undefined } {
   type T = RouteResponseOf<RoutesOf<N>[K]>;
   const opts = (options[0] ?? {}) as LooseInput;
-  const { client } = useCodi();
+  const { client } = useCicord();
   const { instance } = usePortalPlugin(plugin, routeTarget(opts));
   const server = useServerKey(opts.server);
   // An invalid parameter (".." from the page URL…) is an error state, never a request.
@@ -425,7 +433,7 @@ export function useRouteQuery<N extends string, K extends RouteKeyOf<N, "GET"> &
   const query = opts.query as Query | undefined;
   const key =
     instance && server
-      ? codiKeys.plugin(
+      ? cicordKeys.plugin(
           server,
           instance.bot,
           instance.instance,
@@ -433,7 +441,7 @@ export function useRouteQuery<N extends string, K extends RouteKeyOf<N, "GET"> &
           query,
         )
       : null;
-  const result = useCodiQuery<T>(
+  const result = useCicordQuery<T>(
     key,
     (signal) =>
       invalid !== undefined || path === undefined
@@ -466,7 +474,7 @@ export function useRouteMutation<
 } {
   type T = RouteResponseOf<RoutesOf<N>[K]>;
   type I = RouteInput<K, RoutesOf<N>[K]>;
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const { instance } = usePortalPlugin(plugin, routeTarget(options));
   const server = useServerKey(options.server);
   const [state, setState] = useState<{
@@ -480,7 +488,7 @@ export function useRouteMutation<
   const mutateAsync = useCallback(
     async (input: I): Promise<T> => {
       if (!instance || !server)
-        throw new Error(`@codi/react: the ${plugin} plugin is not installed on this server`);
+        throw new Error(`@cicord/react: the ${plugin} plugin is not installed on this server`);
       const { params, body } = input as LooseInput;
       setState({ status: "pending", data: undefined, error: undefined });
       try {
@@ -491,8 +499,8 @@ export function useRouteMutation<
         setState({ status: "success", data: result, error: undefined });
         const { invalidate = true, onSuccess } = optionsRef.current;
         if (invalidate) {
-          void cache.invalidate(["codi", "plugin", server, instance.bot, instance.instance]);
-          void cache.invalidate(codiKeys.member(server));
+          void cache.invalidate(["cicord", "plugin", server, instance.bot, instance.instance]);
+          void cache.invalidate(cicordKeys.member(server));
         }
         onSuccess?.(result);
         return result;

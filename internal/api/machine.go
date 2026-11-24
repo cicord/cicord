@@ -15,8 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/reconcile"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/reconcile"
 )
 
 // Limits of an uploaded repository archive (POST /api/v1/plan).
@@ -68,7 +68,7 @@ func (s *server) handlePlanUpload(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusUnsupportedMediaType, "invalid", "expected a .tar.gz body (Content-Type: application/gzip)"))
 		return
 	}
-	tmp, err := os.MkdirTemp("", "codi-plan-*")
+	tmp, err := os.MkdirTemp("", "cicord-plan-*")
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -173,9 +173,9 @@ func extractTarGz(r io.Reader, dst string) error {
 	}
 }
 
-// findRepoRoot accepts codi.yaml at the root or inside a single top-level directory.
+// findRepoRoot accepts cicord.yaml at the root or inside a single top-level directory.
 func findRepoRoot(dir string) (string, error) {
-	if _, err := os.Stat(filepath.Join(dir, "codi.yaml")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "cicord.yaml")); err == nil {
 		return dir, nil
 	}
 	entries, err := os.ReadDir(dir)
@@ -184,11 +184,11 @@ func findRepoRoot(dir string) (string, error) {
 	}
 	if len(entries) == 1 && entries[0].IsDir() {
 		sub := filepath.Join(dir, entries[0].Name())
-		if _, err := os.Stat(filepath.Join(sub, "codi.yaml")); err == nil {
+		if _, err := os.Stat(filepath.Join(sub, "cicord.yaml")); err == nil {
 			return sub, nil
 		}
 	}
-	return "", errors.New("the archive does not contain a codi.yaml")
+	return "", errors.New("the archive does not contain a cicord.yaml")
 }
 
 // ───────────────────────────────────────────────────────────── GitHub webhook

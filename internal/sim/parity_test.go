@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 var (
@@ -508,7 +508,7 @@ func TestWelcomeScreen(t *testing.T) {
 func TestExpressions(t *testing.T) {
 	f := newFixture(t, fixtureOpts{})
 	role, _ := f.sess.CreateRole(ctx, f.srv.ID, discord.RoleParams{Name: ptr("vip")}, "")
-	e, err := f.sess.CreateEmoji(ctx, f.srv.ID, discord.EmojiParams{Name: "codi_logo", Image: pngBytes, RoleIDs: &[]string{role.ID}}, "")
+	e, err := f.sess.CreateEmoji(ctx, f.srv.ID, discord.EmojiParams{Name: "cicord_logo", Image: pngBytes, RoleIDs: &[]string{role.ID}}, "")
 	isErr(t, err, nil)
 	if e.ID == "" || e.Animated || len(e.RoleIDs) != 1 {
 		t.Fatalf("emoji = %+v", e)
@@ -523,9 +523,9 @@ func TestExpressions(t *testing.T) {
 		_, err := f.sess.CreateEmoji(ctx, f.srv.ID, p, "")
 		isErr(t, err, discord.ErrBadRequest)
 	}
-	e, err = f.sess.UpdateEmoji(ctx, f.srv.ID, e.ID, discord.EmojiParams{Name: "codi", RoleIDs: &[]string{}}, "")
+	e, err = f.sess.UpdateEmoji(ctx, f.srv.ID, e.ID, discord.EmojiParams{Name: "cicord", RoleIDs: &[]string{}}, "")
 	isErr(t, err, nil)
-	if e.Name != "codi" || len(e.RoleIDs) != 0 {
+	if e.Name != "cicord" || len(e.RoleIDs) != 0 {
 		t.Fatalf("emoji = %+v", e)
 	}
 	// slots: 50 static (49 more), animated counted apart

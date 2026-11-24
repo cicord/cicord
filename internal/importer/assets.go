@@ -11,10 +11,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // Downloader fetches a CDN URL. When max > 0, a file larger than max bytes is an error
@@ -34,7 +34,7 @@ func HTTPDownloader(c *http.Client) Downloader {
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("User-Agent", "DiscordBot (https://github.com/npjonath/codi, 0)")
+		req.Header.Set("User-Agent", "DiscordBot (https://github.com/npjonath/cicord, 0)")
 		resp, err := c.Do(req)
 		if err != nil {
 			return nil, err
@@ -162,7 +162,7 @@ func (g *gen) download(name, url, rel string, max int64, sniff func([]byte) stri
 	}
 	ext := sniff(data)
 	if ext == "" {
-		g.warn("%s is not imported: %s is not a file type CODI can upload", what, url)
+		g.warn("%s is not imported: %s is not a file type Cicord can upload", what, url)
 		return ""
 	}
 	value := "./" + path.Join("assets", g.res.Key, rel+"."+ext)

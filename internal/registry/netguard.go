@@ -98,8 +98,8 @@ func (t switchTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // AllowPrivateRegistries reports whether the operator lets registry fetches reach private
-// networks (CODI_ALLOW_PRIVATE_REGISTRIES=true).
-func AllowPrivateRegistries() bool { return os.Getenv("CODI_ALLOW_PRIVATE_REGISTRIES") == "true" }
+// networks (CICORD_ALLOW_PRIVATE_REGISTRIES=true).
+func AllowPrivateRegistries() bool { return os.Getenv("CICORD_ALLOW_PRIVATE_REGISTRIES") == "true" }
 
 // CheckPublicHost refuses URLs whose host is, or resolves to, a non-public address. It
 // gives an early, clear error; the dialer guard (WithPublicOnly) is what enforces it.

@@ -1,5 +1,5 @@
 /** Announcement messages and mention safety. Independent of the handlers. */
-import type { Context, Embed, MessagePayload, PluginConfig } from "@codi/sdk";
+import type { Context, Embed, MessagePayload, PluginConfig } from "@cicord/sdk";
 
 export type Configured = PluginConfig["announcements"][number];
 

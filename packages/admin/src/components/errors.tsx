@@ -1,4 +1,4 @@
-import type { HumanError } from "@codi/client";
+import type { HumanError } from "@cicord/client";
 import { AlertTriangle, ChevronRight, Info, OctagonAlert, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";

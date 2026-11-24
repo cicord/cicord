@@ -1,4 +1,4 @@
-import { createCodiClient, type FetchLike } from "@codi/client";
+import { createCicordClient, type FetchLike } from "@cicord/client";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
@@ -19,7 +19,7 @@ async function start(path = "/", intercept?: Intercept) {
   const fetch: FetchLike = async (input, init) =>
     intercept?.(new URL(input, window.location.origin), init) ?? runtime.fetch(input, init);
   const config: AdminConfig = {
-    client: createCodiClient({ fetch: watch401(fetch) }),
+    client: createCicordClient({ fetch: watch401(fetch) }),
     loginUrl: "/auth/login",
     mock: true,
   };
@@ -52,7 +52,7 @@ describe("layout", () => {
     const order = within(nav)
       .getAllByRole("link")
       .map((a) => a.textContent?.replace(/dev$/, "").replace(/\d+$/, ""))
-      .filter((x) => x && x !== "codiadmin");
+      .filter((x) => x && x !== "cicordadmin");
     expect(order).toEqual([
       "Overview",
       "Roles & channels",
@@ -111,7 +111,7 @@ describe("layout", () => {
     await waitFor(() => expect(document.documentElement.classList.contains("light")).toBe(true));
     await user.click(screen.getByRole("radio", { name: "Dark" }));
     expect(document.documentElement.classList.contains("dark")).toBe(true);
-    expect(localStorage.getItem("codi-admin:theme")).toBe("dark");
+    expect(localStorage.getItem("cicord-admin:theme")).toBe("dark");
     await user.click(screen.getByRole("button", { name: "Switch to light theme" }));
     expect(document.documentElement.classList.contains("light")).toBe(true);
     expect(screen.getByText("0.1.0-dev")).toBeTruthy();
@@ -181,7 +181,7 @@ describe("server switcher while the status loads", () => {
       return runtime.fetch(input, init);
     };
     const config: AdminConfig = {
-      client: createCodiClient({ fetch: watch401(fetch) }),
+      client: createCicordClient({ fetch: watch401(fetch) }),
       loginUrl: "/auth/login",
       mock: true,
     };

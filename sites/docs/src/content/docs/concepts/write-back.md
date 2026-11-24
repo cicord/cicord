@@ -9,7 +9,7 @@ commit. The runtime never applies a change that is not committed.
 
 ```text
 admin edit ─▶ validated against the schemas ─▶ YAML patched (comments and key order kept)
-          ─▶ commit on the latest branch head (author codi[bot])
+          ─▶ commit on the latest branch head (author cicord[bot])
           ─▶ policy: commit       → the runtime activates its own commit immediately
                      pullRequest  → the change waits for review and merge, then syncs normally
           ─▶ conflict: re-applied on the latest head; if it no longer applies → 409
@@ -17,10 +17,10 @@ admin edit ─▶ validated against the schemas ─▶ YAML patched (comments an
 
 ## Policies
 
-`codi.yaml` `spec.writeBack` decides, per file, whether a change is committed directly or
+`cicord.yaml` `spec.writeBack` decides, per file, whether a change is committed directly or
 proposed as a pull request:
 
-```yaml title="codi.yaml"
+```yaml title="cicord.yaml"
 spec:
   writeBack:
     defaultMode: pullRequest
@@ -42,31 +42,31 @@ spec:
 
 ## Commits
 
-Commits are authored by `codi[bot]` and carry trailers that say who made the change and
+Commits are authored by `cicord[bot]` and carry trailers that say who made the change and
 from where:
 
 ```text
-Codi-Actor: discord:<user id> (<display name>)
-Codi-Source: admin-ui | api | cli
+Cicord-Actor: discord:<user id> (<display name>)
+Cicord-Source: admin-ui | api | cli
 ```
 
 So `git log` and `git blame` show every change, and a bad edit is reverted like any commit.
 
 ## Providers
 
-How write-back reaches the repository depends on `codi.yaml` `spec.source`:
+How write-back reaches the repository depends on `cicord.yaml` `spec.source`:
 
 | Source | Commit mode | Pull request mode |
 |---|---|---|
-| `provider: github` | Pushed to the tracked branch with `CODI_GIT_TOKEN`. | Pushed to a `codi/change-…` branch and opened as a pull request through the GitHub API. |
-| `provider: git` (any HTTPS remote) | Pushed with `CODI_GIT_TOKEN`. | Pushed to a `codi/change-…` branch (no pull request is opened). |
-| `provider: embedded` (Managed by CODI) | Committed to the bare repository in the data directory. | Same as `git`. |
-| No source, `codi serve --local` or `codi dev` | Written straight into the files of the directory (no commit). | Same. |
+| `provider: github` | Pushed to the tracked branch with `CICORD_GIT_TOKEN`. | Pushed to a `cicord/change-…` branch and opened as a pull request through the GitHub API. |
+| `provider: git` (any HTTPS remote) | Pushed with `CICORD_GIT_TOKEN`. | Pushed to a `cicord/change-…` branch (no pull request is opened). |
+| `provider: embedded` (Managed by Cicord) | Committed to the bare repository in the data directory. | Same as `git`. |
+| No source, `cicord serve --local` or `cicord dev` | Written straight into the files of the directory (no commit). | Same. |
 
 Outside GitHub, a `pullRequest` policy leaves the change on a branch that someone has to merge
 by hand, so prefer `commit` policies for `git` and `embedded` sources (the setup wizard does).
 
-`CODI_GIT_TOKEN` needs `contents: write`, plus `pull requests: write` for the pull request
+`CICORD_GIT_TOKEN` needs `contents: write`, plus `pull requests: write` for the pull request
 mode on GitHub. Authentication with a GitHub App instead of a token is planned.
 
 The setup wizard writes policies that match the repository it creates: everything is

@@ -15,10 +15,10 @@ Statuses: `Proposed` (not decided yet), `Accepted`, `Superseded by ADR-XXXX`.
 | [0008](0008-community-portal-sdk.md) | Community portal as layered SDKs + forkable template | Accepted |
 | [0009](0009-server-vocabulary.md) | "Server", never "guild", outside the Discord adapter | Accepted |
 | [0010](0010-plugin-instance-per-bot-server.md) | One plugin instance per (bot, server) | Accepted |
-| [0011](0011-git-registry-and-lockfile.md) | Git-based plugin registry + `codi.lock` | Accepted |
+| [0011](0011-git-registry-and-lockfile.md) | Git-based plugin registry + `cicord.lock` | Accepted |
 | [0012](0012-discord-simulator.md) | In-process Discord simulator behind the `discord` interfaces | Accepted |
 | [0013](0013-licensing.md) | Apache-2.0 SDKs; runtime license undecided | Partially accepted |
 | [0014](0014-discord-library.md) | `disgo` (`rest` + `gateway` only) as the Discord library | Accepted |
 | [0015](0015-yaml-k8s-style.md) | Kubernetes-style YAML resources | Accepted |
 | [0016](0016-portal-as-discord-activity.md) | Community portal runnable as a Discord Activity | Proposed |
-| [0017](0017-dev-mode-with-simulator.md) | `codi dev --sim`: local runtime on the simulator, loopback-only | Accepted |
+| [0017](0017-dev-mode-with-simulator.md) | `cicord dev --sim`: local runtime on the simulator, loopback-only | Accepted |

@@ -1,7 +1,7 @@
 /**
  * Tiny query cache (dedupes requests, shares results between components, invalidation by key
  * prefix). Deliberately small: portals that want more can use TanStack Query with the
- * framework-agnostic @codi/client directly.
+ * framework-agnostic @cicord/client directly.
  */
 
 export type QueryKey = readonly (string | number | boolean | null | undefined)[];

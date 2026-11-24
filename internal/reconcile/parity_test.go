@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 func pngBytes(t *testing.T, w, h int, c color.Color) []byte {
@@ -31,7 +31,7 @@ func pngBytes(t *testing.T, w, h int, c color.Color) []byte {
 	return b.Bytes()
 }
 
-const parityProject = "apiVersion: codi.dev/v1alpha1\nkind: Project\nmetadata:\n  name: parity\nspec:\n  engine: \">=0.0.0\"\n"
+const parityProject = "apiVersion: cicord.dev/v1alpha1\nkind: Project\nmetadata:\n  name: parity\nspec:\n  engine: \">=0.0.0\"\n"
 
 // parityRepo writes a repository with one server (the given spec body, indented under
 // spec:) and the asset files it uses; it returns the loaded server.
@@ -47,7 +47,7 @@ func parityRepo(t *testing.T, spec string) (*config.Server, string) {
 			t.Fatal(err)
 		}
 	}
-	write("codi.yaml", []byte(parityProject))
+	write("cicord.yaml", []byte(parityProject))
 	write("servers/assets/banner.png", pngBytes(t, 96, 54, color.RGBA{200, 10, 10, 255}))
 	write("servers/assets/banner2.png", pngBytes(t, 96, 54, color.RGBA{10, 200, 10, 255}))
 	write("servers/assets/role.png", pngBytes(t, 64, 64, color.RGBA{10, 10, 200, 255}))
@@ -55,7 +55,7 @@ func parityRepo(t *testing.T, spec string) (*config.Server, string) {
 	write("servers/assets/emoji2.png", pngBytes(t, 32, 32, color.RGBA{4, 5, 6, 255}))
 	write("servers/assets/sticker.png", pngBytes(t, 160, 160, color.RGBA{7, 8, 9, 255}))
 	write("servers/assets/sound.ogg", append([]byte("OggS\x00\x02"), make([]byte, 64)...))
-	write("servers/parity.yaml", []byte("apiVersion: codi.dev/v1alpha1\nkind: Server\nmetadata:\n  name: parity\nspec:\n  discordId: \"112233445566778899\"\n"+spec))
+	write("servers/parity.yaml", []byte("apiVersion: cicord.dev/v1alpha1\nkind: Server\nmetadata:\n  name: parity\nspec:\n  discordId: \"112233445566778899\"\n"+spec))
 	repo, diags := config.Load(dir, config.LoadOptions{})
 	if repo == nil || diags.HasErrors() {
 		t.Fatalf("load: %v", diags.Errors())
@@ -418,7 +418,7 @@ func TestParityCommunityGating(t *testing.T) {
   channels:
     rules: {name: rules, type: text}
 `)
-	desired.Spec.Community = &config.CommunitySpec{Enabled: true, RulesChannel: "rules"} // invalid for codi validate too
+	desired.Spec.Community = &config.CommunitySpec{Enabled: true, RulesChannel: "rules"} // invalid for cicord validate too
 	e = newEnv(t, desired, root)
 	r = e.reconciler(e.session)
 	p, err = r.Plan(ctx)

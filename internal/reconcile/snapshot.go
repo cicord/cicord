@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // Snapshot is the live state of a server.
@@ -40,7 +40,7 @@ type FetchOptions struct {
 	Widget, Onboarding, WelcomeScreen, AutoMod, Emojis, Stickers, Sounds bool
 }
 
-// FetchAll fetches every optional part (codi import).
+// FetchAll fetches every optional part (cicord import).
 var FetchAll = FetchOptions{Widget: true, Onboarding: true, WelcomeScreen: true, AutoMod: true, Emojis: true, Stickers: true, Sounds: true}
 
 // Fetch reads the live state of a server. botUserID may be empty, in which case no

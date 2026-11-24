@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // actor is who performs a call: a bot (appID set) or a human user.

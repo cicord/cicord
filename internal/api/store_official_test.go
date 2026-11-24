@@ -9,24 +9,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
 )
 
 // TestStoreImplicitOfficialRegistry: with an official registry URL (a signed local
-// registry here), source "codi" lists its plugins without any codi.yaml entry, and
-// installing one locks "codi/<name>", which the runtime resolves.
+// registry here), source "cicord" lists its plugins without any cicord.yaml entry, and
+// installing one locks "cicord/<name>", which the runtime resolves.
 func TestStoreImplicitOfficialRegistry(t *testing.T) {
-	t.Setenv("CODI_CACHE_DIR", t.TempDir())
+	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
 	t.Setenv(registry.DevOfficialRegistryEnv, "")
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	plugin := gitRepo(t, map[string]string{"plugin.yaml": helloManifest, "src/index.ts": helloSource}, "v1.0.0")
-	index := "plugins:\n  hello:\n    repo: " + plugin + "\n    publisher: CODI\n    verified: true\n    version: 1.0.0\n"
-	const officialURL = "https://registry.codi.example/official"
+	index := "plugins:\n  hello:\n    repo: " + plugin + "\n    publisher: Cicord\n    verified: true\n    version: 1.0.0\n"
+	const officialURL = "https://registry.cicord.example/official"
 	sig, err := registry.SignIndex([]byte(index), registry.Envelope{Registry: officialURL, Serial: 1, Expires: time.Now().Add(time.Hour)}, key)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestStoreImplicitOfficialRegistry(t *testing.T) {
 
 	cache := registry.DefaultCacheDir()
 	e := startFull(t, func(dir string) {
-		p := filepath.Join(dir, "codi.yaml")
+		p := filepath.Join(dir, "cicord.yaml")
 		data, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
@@ -64,51 +64,51 @@ func TestStoreImplicitOfficialRegistry(t *testing.T) {
 		}
 	}
 	c.expect(200, "GET", "/api/v1/store", nil).json(t, &list)
-	codi := list.Sources[0]
-	if len(list.Sources) != 1 || codi.Name != "codi" || codi.Signature != "verified" || codi.URL != reg {
+	cicord := list.Sources[0]
+	if len(list.Sources) != 1 || cicord.Name != "cicord" || cicord.Signature != "verified" || cicord.URL != reg {
 		t.Fatalf("sources = %+v", list.Sources)
 	}
 	var hello *struct {
 		Name, Trust, Repo string
 		Verified          bool
 	}
-	for i, p := range codi.Plugins {
+	for i, p := range cicord.Plugins {
 		if p.Name == "hello" {
-			hello = &codi.Plugins[i]
+			hello = &cicord.Plugins[i]
 		}
 	}
 	if hello == nil || hello.Trust != "official" || !hello.Verified || hello.Repo != plugin {
-		t.Fatalf("hello = %+v (plugins %+v)", hello, codi.Plugins)
+		t.Fatalf("hello = %+v (plugins %+v)", hello, cicord.Plugins)
 	}
 
 	var d storeDetailDTO
-	c.expect(200, "GET", "/api/v1/store/codi/hello", nil).json(t, &d)
+	c.expect(200, "GET", "/api/v1/store/cicord/hello", nil).json(t, &d)
 	if d.Version != "1.0.0" || d.Commit == "" || d.Trust != "official" || len(d.Commands) != 1 {
 		t.Fatalf("detail = %+v", d)
 	}
 
 	install := "/api/v1/servers/" + serverKey + "/store/install"
 	// Reviewed as the bundled kind (no commit): the origin changed → review again.
-	if r := c.do("POST", install, map[string]any{"source": "codi", "plugin": "hello"}); r.status != 409 || !strings.Contains(string(r.body), `"changed"`) {
+	if r := c.do("POST", install, map[string]any{"source": "cicord", "plugin": "hello"}); r.status != 409 || !strings.Contains(string(r.body), `"changed"`) {
 		t.Fatalf("install without the reviewed commit: %d %s", r.status, r.body)
 	}
 	// Official: no confirmUnofficial needed.
 	var res struct{ Instance, Mode, Health, Command string }
-	c.expect(200, "POST", install, map[string]any{"source": "codi", "plugin": "hello",
+	c.expect(200, "POST", install, map[string]any{"source": "cicord", "plugin": "hello",
 		"version": d.Version, "commit": d.Commit, "integrity": d.Integrity}).json(t, &res)
 	if res.Instance != "hello" || res.Health != "Healthy" || res.Command != "hello" {
 		t.Fatalf("install = %+v", res)
 	}
 	bot, err := os.ReadFile(filepath.Join(e.dir, "bots", "moderator", "bot.yaml"))
-	if err != nil || !strings.Contains(string(bot), "source: codi/hello") {
+	if err != nil || !strings.Contains(string(bot), "source: cicord/hello") {
 		t.Errorf("bot.yaml: %v\n%s", err, bot)
 	}
 	lock, err := registry.ReadLock(e.dir)
-	if err != nil || lock.Plugins["codi/hello"].Commit != d.Commit {
-		t.Errorf("codi.lock = %+v, %v", lock, err)
+	if err != nil || lock.Plugins["cicord/hello"].Commit != d.Commit {
+		t.Errorf("cicord.lock = %+v, %v", lock, err)
 	}
-	if data, _ := os.ReadFile(filepath.Join(e.dir, "codi.yaml")); strings.Contains(string(data), "registries") {
-		t.Errorf("codi.yaml must not declare the official registry:\n%s", data)
+	if data, _ := os.ReadFile(filepath.Join(e.dir, "cicord.yaml")); strings.Contains(string(data), "registries") {
+		t.Errorf("cicord.yaml must not declare the official registry:\n%s", data)
 	}
 	// The instance is labelled official.
 	var insts struct {
@@ -118,25 +118,25 @@ func TestStoreImplicitOfficialRegistry(t *testing.T) {
 	found := false
 	for _, it := range insts.Items {
 		if it.Instance == "hello" {
-			found = it.Source == "codi" && it.Trust == "official"
+			found = it.Source == "cicord" && it.Trust == "official"
 		}
 	}
 	if !found {
 		t.Errorf("instances = %+v", insts.Items)
 	}
 
-	// Updates of "codi/<name>" locked from the official registry resolve through it (no
-	// codi.yaml registry), as official: no unofficial confirmation, the reviewed commit.
+	// Updates of "cicord/<name>" locked from the official registry resolve through it (no
+	// cicord.yaml registry), as official: no unofficial confirmation, the reviewed commit.
 	release(t, plugin, map[string]string{"plugin.yaml": strings.Replace(strings.Replace(helloManifest, "version: 1.0.0", "version: 1.1.0", 1),
 		"capabilities: [discord.messages.send]", "capabilities: [discord.messages.send, storage.kv]", 1)}, "v1.1.0")
 	c.expect(200, "POST", "/api/v1/store/refresh", nil)
 	var rv updateReviewTestDTO
-	c.expect(200, "GET", "/api/v1/store/codi/hello/update", nil).json(t, &rv)
+	c.expect(200, "GET", "/api/v1/store/cicord/hello/update", nil).json(t, &rv)
 	if !rv.Available || rv.Update == nil || rv.Update.Kind != "registry" || rv.Detail.Version != "1.1.0" || rv.Detail.Trust != "official" ||
 		len(rv.Diff.Capabilities.Added) != 1 || rv.Files != nil {
 		t.Fatalf("review = %+v", rv)
 	}
-	update := "/api/v1/store/codi/hello/update"
+	update := "/api/v1/store/cicord/hello/update"
 	if r := c.do("POST", update, map[string]any{"version": "1.1.0"}); r.status != 400 {
 		t.Fatalf("update without the reviewed commit: %d %s", r.status, r.body)
 	}
@@ -145,7 +145,7 @@ func TestStoreImplicitOfficialRegistry(t *testing.T) {
 	if ur.Version != "1.1.0" || len(ur.Instances) != 1 || ur.Instances[0].Health != "Healthy" {
 		t.Fatalf("update = %+v", ur)
 	}
-	if lock, _ := registry.ReadLock(e.dir); lock.Plugins["codi/hello"].Version != "1.1.0" {
-		t.Errorf("codi.lock = %+v", lock.Plugins)
+	if lock, _ := registry.ReadLock(e.dir); lock.Plugins["cicord/hello"].Version != "1.1.0" {
+		t.Errorf("cicord.lock = %+v", lock.Plugins)
 	}
 }

@@ -1,4 +1,4 @@
-// Package spec embeds the normative CODI schemas and SDK contract so the Go code
+// Package spec embeds the normative Cicord schemas and SDK contract so the Go code
 // validates against exactly what is documented.
 package spec
 
@@ -9,10 +9,10 @@ import "embed"
 //go:embed schemas/*.schema.json
 var Schemas embed.FS
 
-// SDKTypes is the TypeScript contract of @codi/sdk.
+// SDKTypes is the TypeScript contract of @cicord/sdk.
 //
-//go:embed sdk/codi-sdk.d.ts
+//go:embed sdk/cicord-sdk.d.ts
 var SDKTypes string
 
-// SchemaBaseURL is the $id prefix of every CODI schema.
-const SchemaBaseURL = "https://codi.dev/schemas/v1alpha1/"
+// SchemaBaseURL is the $id prefix of every Cicord schema.
+const SchemaBaseURL = "https://cicord.dev/schemas/v1alpha1/"

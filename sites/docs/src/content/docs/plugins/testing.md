@@ -1,6 +1,6 @@
 ---
 title: Testing and limits
-description: The plugin execution model and its limits, unit tests with @codi/sdk/testing, codi plugin test on the simulator, and the end-to-end loop with codi dev --sim.
+description: The plugin execution model and its limits, unit tests with @cicord/sdk/testing, cicord plugin test on the simulator, and the end-to-end loop with cicord dev --sim.
 ---
 
 ## Execution model and limits
@@ -29,15 +29,15 @@ Handlers start in arrival order and interleave at `await` points, like in Node.
 An uncaught error is logged with the instance and the revision. After **three failures in a
 row**, the instance shows as `Degraded` in the status.
 
-## Unit tests with `@codi/sdk/testing`
+## Unit tests with `@cicord/sdk/testing`
 
-`@codi/sdk/testing` provides in-memory fakes that follow the SDK contract. They run in
+`@cicord/sdk/testing` provides in-memory fakes that follow the SDK contract. They run in
 `node:test` or Vitest, without Discord and without the runtime.
 
 ```ts title="test/hello.test.ts"
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createTestContext, runCommand } from "@codi/sdk/testing";
+import { createTestContext, runCommand } from "@cicord/sdk/testing";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
 
@@ -52,7 +52,7 @@ test("/hello replies with the default greeting", async () => {
 });
 ```
 
-This is the test `codi plugin new` writes. Run it from the plugin directory:
+This is the test `cicord plugin new` writes. Run it from the plugin directory:
 
 ```sh
 npm install && npm test      # or: pnpm install && pnpm test
@@ -96,9 +96,9 @@ and `normalizeRouteResponse(response)` are exported helpers.
 Importing the JSON schema in tests needs `"resolveJsonModule": true` in the test
 `tsconfig.json`.
 
-## `codi plugin test`: a smoke test on the simulator
+## `cicord plugin test`: a smoke test on the simulator
 
-`codi plugin test <dir>` is different from unit tests: it builds the plugin and deploys it in a
+`cicord plugin test <dir>` is different from unit tests: it builds the plugin and deploys it in a
 throw-away repository on the Discord simulator, with the **real runtime**. It creates a test
 server (with the channels, roles and categories its config references), a bot granted every
 requested capability and one instance of the plugin, then runs a short script: a member joins
@@ -106,21 +106,21 @@ requested capability and one instance of the plugin, then runs a short script: a
 invoked once. Messages, DMs and replies are printed.
 
 ```sh
-codi plugin test plugins/welcome
-codi plugin test plugins/onboarding --config plugins/onboarding/test/config.yaml
+cicord plugin test plugins/welcome
+cicord plugin test plugins/onboarding --config plugins/onboarding/test/config.yaml
 ```
 
 The test fails when the plugin does not build, its config does not validate, the instance
 does not start, or an interaction fails. `--config` takes a YAML or JSON config (required
-`x-codi-ref` fields without a value are filled with test resources), `--script=false` skips
+`x-cicord-ref` fields without a value are filled with test resources), `--script=false` skips
 the simulation, `-v` shows the runtime and plugin logs, `--timeout` bounds the whole run.
 
-## End to end with `codi dev --sim`
+## End to end with `cicord dev --sim`
 
 To try a plugin interactively, run the whole runtime on the simulator:
 
 ```sh
-codi dev --sim
+cicord dev --sim
 ```
 
 Open `http://127.0.0.1:7420/admin/`, sign in as a simulated user and use the **Simulator**
@@ -135,8 +135,8 @@ and the role hierarchy of a bot that is not Administrator.
 ## In CI
 
 ```sh
-codi plugin build plugins/hello            # bundles and checks against the manifest (exit 1 if rejected)
-codi plugin typegen plugins/hello --check  # src/codi-env.d.ts is up to date
-codi plugin test plugins/hello             # smoke test on the simulator
-codi validate                              # the whole repository
+cicord plugin build plugins/hello            # bundles and checks against the manifest (exit 1 if rejected)
+cicord plugin typegen plugins/hello --check  # src/cicord-env.d.ts is up to date
+cicord plugin test plugins/hello             # smoke test on the simulator
+cicord validate                              # the whole repository
 ```

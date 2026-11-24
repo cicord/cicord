@@ -19,10 +19,10 @@ Options: state file in git, remote state file, name matching, markers hidden in 
   - `deletionProtection` (default `true`): refuse any deletion, even with `prune`.
 - **Ownership**: never-declared resources are never touched. Resources created by plugins at
   runtime are owned by their plugin instance and ignored by the reconciler.
-- **Recovery**: `codi adopt` rebuilds the map by matching display names, with confirmation.
-  `codi import` generates YAML from an existing server and fills the map.
+- **Recovery**: `cicord adopt` rebuilds the map by matching display names, with confirmation.
+  `cicord import` generates YAML from an existing server and fills the map.
 
 ## Consequences
 - The DB must be backed up; losing it is recoverable (`adopt`) but needs a human check.
-- `codi plan` in CI needs the runtime (`--remote`) for an exact diff; an offline plan is
+- `cicord plan` in CI needs the runtime (`--remote`) for an exact diff; an offline plan is
   only a schema/semantic check.

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 var ctx = context.Background()
@@ -167,7 +167,7 @@ func TestAutoModREST(t *testing.T) {
 	}
 	in := discord.AutoModRule{Name: "bad words", Trigger: "keyword", Keywords: []string{"foo*"}, Enabled: true,
 		Actions: []discord.AutoModAction{{Type: "block", CustomMessage: "no"}, {Type: "alert", ChannelID: "7"}, {Type: "timeout", DurationSeconds: 60}}}
-	if _, err := s.CreateAutoModRule(ctx, "1", in, "codi"); err != nil {
+	if _, err := s.CreateAutoModRule(ctx, "1", in, "cicord"); err != nil {
 		t.Fatal(err)
 	}
 	body := f.last().Body.(map[string]any)
@@ -219,7 +219,7 @@ func TestOnboardingREST(t *testing.T) {
 		t.Fatalf("onboarding = %+v", o)
 	}
 	o.Prompts = append(o.Prompts, discord.OnboardingPrompt{Title: "New", Options: []discord.OnboardingOption{{Title: "A", Emoji: "a:dance:123456789012345678"}}})
-	if _, err := s.UpdateOnboarding(ctx, "1", o, "codi"); err != nil {
+	if _, err := s.UpdateOnboarding(ctx, "1", o, "cicord"); err != nil {
 		t.Fatal(err)
 	}
 	req := f.last()
@@ -312,12 +312,12 @@ func TestStickerREST(t *testing.T) {
 		t.Fatalf("stickers = %+v, %v", list, err)
 	}
 	png := []byte("\x89PNG\r\n\x1a\nDATA")
-	if _, err := s.CreateSticker(ctx, "1", discord.StickerParams{Name: "wave", Description: "hi", Tags: "wave", File: png}, "codi"); err != nil {
+	if _, err := s.CreateSticker(ctx, "1", discord.StickerParams{Name: "wave", Description: "hi", Tags: "wave", File: png}, "cicord"); err != nil {
 		t.Fatal(err)
 	}
 	req := f.last()
 	mt, params, err := mime.ParseMediaType(req.ContentType)
-	if err != nil || mt != "multipart/form-data" || req.Reason != "codi" {
+	if err != nil || mt != "multipart/form-data" || req.Reason != "cicord" {
 		t.Fatalf("content type = %q (%v), reason %q", req.ContentType, err, req.Reason)
 	}
 	mr := multipart.NewReader(strings.NewReader(string(req.Raw)), params["boundary"])

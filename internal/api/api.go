@@ -1,7 +1,7 @@
-// Package api implements the CODI runtime HTTP API v1 (spec/api.md): authentication,
+// Package api implements the Cicord runtime HTTP API v1 (spec/api.md): authentication,
 // admin endpoints (status, servers, plugin configuration with git write-back), the
 // community portal (including plugin routes), machine endpoints (CI, webhooks), the
-// Discord simulator endpoints of `codi dev --sim` and the embedded static UIs.
+// Discord simulator endpoints of `cicord dev --sim` and the embedded static UIs.
 package api
 
 import (
@@ -21,16 +21,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/secrets"
-	"github.com/npjonath/codi/internal/setup"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/store"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/secrets"
+	"github.com/npjonath/cicord/internal/setup"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/store"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // OAuth configures the Discord OAuth2 authorization-code flow (scope identify).
@@ -62,7 +62,7 @@ type Options struct {
 	RuntimeToken string
 	// WebhookSecret verifies GitHub webhooks ("" rejects every webhook).
 	WebhookSecret string
-	// Branch is the tracked branch for webhooks (default: codi.yaml spec.source.branch, then "main").
+	// Branch is the tracked branch for webhooks (default: cicord.yaml spec.source.branch, then "main").
 	Branch string
 	OAuth  OAuth
 	// PublicURL is the public origin of the runtime (OAuth redirect URI, Secure cookies).
@@ -71,7 +71,7 @@ type Options struct {
 	// CORSOrigins are external portal origins allowed with credentials.
 	CORSOrigins []string
 	// AdminUI is served under /admin/, Portal under / (both with SPA fallback). Nil: 404.
-	// The custom portal of the active revision (codi.yaml spec.portal.path) takes
+	// The custom portal of the active revision (cicord.yaml spec.portal.path) takes
 	// precedence over Portal once it has been built.
 	AdminUI fs.FS
 	Portal  fs.FS
@@ -104,7 +104,7 @@ type Options struct {
 	SecretStore *secrets.Store
 	Secret      func(name string) (string, bool)
 	// PluginStore lists and describes Store plugins (default: Catalog + the registries of
-	// the active codi.yaml, cached in registry.DefaultCacheDir()).
+	// the active cicord.yaml, cached in registry.DefaultCacheDir()).
 	PluginStore *store.Service
 }
 
@@ -289,7 +289,7 @@ func (s *server) middleware(next http.Handler) http.Handler {
 			return
 		}
 		hdr.Set("X-Content-Type-Options", "nosniff")
-		// Portal URLs carry codi_token: never leak them to other origins.
+		// Portal URLs carry cicord_token: never leak them to other origins.
 		hdr.Set("Referrer-Policy", "same-origin")
 
 		// CORS
@@ -307,14 +307,14 @@ func (s *server) middleware(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 			if allowed {
 				hdr.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-				hdr.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Codi-Request, Last-Event-ID")
+				hdr.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Cicord-Request, Last-Event-ID")
 				hdr.Set("Access-Control-Max-Age", "600")
 			}
 			sw.WriteHeader(http.StatusNoContent)
 			return
 		}
 
-		// CSRF (spec/api.md §1): unsafe methods need X-Codi-Request unless they carry an
+		// CSRF (spec/api.md §1): unsafe methods need X-Cicord-Request unless they carry an
 		// Authorization header; cross-origin requests must come from an allowed origin.
 		if !isSafeMethod(r.Method) && !strings.HasPrefix(r.URL.Path, "/hooks/") {
 			if origin != "" && !allowed && !s.sameOrigin(r, origin) {
@@ -323,8 +323,8 @@ func (s *server) middleware(next http.Handler) http.Handler {
 			}
 			// Browsers never attach an Authorization header on their own, so requests
 			// carrying one (valid or not: auth answers 401) cannot be forged cross-site.
-			if r.Header.Get("Authorization") == "" && r.Header.Get("X-Codi-Request") == "" {
-				writeError(sw, http.StatusForbidden, "forbidden", "missing X-Codi-Request header (CSRF protection)")
+			if r.Header.Get("Authorization") == "" && r.Header.Get("X-Cicord-Request") == "" {
+				writeError(sw, http.StatusForbidden, "forbidden", "missing X-Cicord-Request header (CSRF protection)")
 				return
 			}
 		}

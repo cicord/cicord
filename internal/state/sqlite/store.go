@@ -1,5 +1,5 @@
 // Package sqlite implements state.Store on SQLite using the pure-Go driver
-// modernc.org/sqlite, so the codi binary builds with CGO_ENABLED=0.
+// modernc.org/sqlite, so the cicord binary builds with CGO_ENABLED=0.
 //
 // Connection model:
 //
@@ -34,7 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/state"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 )

@@ -11,23 +11,23 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/api"
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/discord/disgoadapter"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/secrets"
-	"github.com/npjonath/codi/internal/setup"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
-	"github.com/npjonath/codi/internal/version"
-	"github.com/npjonath/codi/internal/webui"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/api"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/discord/disgoadapter"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/secrets"
+	"github.com/npjonath/cicord/internal/setup"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/version"
+	"github.com/npjonath/cicord/internal/webui"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 func newDevCmd() *cobra.Command {
@@ -36,7 +36,7 @@ func newDevCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dev [dir]",
 		Short: "Run the runtime locally with hot reload (real Discord or --sim)",
-		Long: `Run the CODI runtime on a local working directory: every saved change becomes a new
+		Long: `Run the Cicord runtime on a local working directory: every saved change becomes a new
 revision (hot reload), admin UI edits are written back to the files, and
 POST /auth/dev-login signs in as any user.
 
@@ -46,11 +46,11 @@ Administrator), an "owner" user who owns every server and a few extra users. Ope
 Simulator panel of the admin UI to play the users. Without --sim, the bot tokens are
 read from the environment (token.secretRef), then from the runtime secret store.
 
-In a directory without codi.yaml, the runtime starts in setup mode: open the printed
+In a directory without cicord.yaml, the runtime starts in setup mode: open the printed
 /admin/setup link to create the configuration with the setup wizard (the files are
 written into the directory). With --sim, the wizard runs against a simulated Discord
 (a simulated bot, server and invite); --setup makes the intent explicit and fails when
-the directory already has a codi.yaml.`,
+the directory already has a cicord.yaml.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -62,7 +62,7 @@ the directory already has a codi.yaml.`,
 	}
 	f.register(cmd, "127.0.0.1:7420")
 	cmd.Flags().BoolVar(&useSim, "sim", false, "use the Discord simulator instead of real Discord")
-	cmd.Flags().BoolVar(&forceSetup, "setup", false, "start the setup wizard (the directory must not contain codi.yaml)")
+	cmd.Flags().BoolVar(&forceSetup, "setup", false, "start the setup wizard (the directory must not contain cicord.yaml)")
 	return cmd
 }
 
@@ -72,10 +72,10 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	if err != nil {
 		return err
 	}
-	_, statErr := os.Stat(filepath.Join(absDir, "codi.yaml"))
+	_, statErr := os.Stat(filepath.Join(absDir, "cicord.yaml"))
 	hasProject := statErr == nil
 	if forceSetup && hasProject {
-		return fmt.Errorf("%s already contains a codi.yaml: the setup wizard only runs on a directory without configuration", absDir)
+		return fmt.Errorf("%s already contains a cicord.yaml: the setup wizard only runs on a directory without configuration", absDir)
 	}
 	if hasProject {
 		if _, err := readProject(absDir); err != nil {
@@ -83,7 +83,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 		}
 	}
 	if f.dataDir == "" {
-		f.dataDir = filepath.Join(absDir, ".codi", "dev")
+		f.dataDir = filepath.Join(absDir, ".cicord", "dev")
 	}
 	if f.dataDir, err = checkLocalDataDir(absDir, f.dataDir, explicitDataDir); err != nil {
 		return err
@@ -109,7 +109,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	if useSim {
 		store, err = sqlite.Open(":memory:")
 	} else {
-		store, err = sqlite.Open(filepath.Join(f.dataDir, "codi.db"))
+		store, err = sqlite.Open(filepath.Join(f.dataDir, "cicord.db"))
 	}
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 		// Discord tokens the normal egress rules apply.
 		AllowPrivateNetworks: useSim, Logger: log,
 	})
-	token := os.Getenv("CODI_RUNTIME_TOKEN")
+	token := os.Getenv("CICORD_RUNTIME_TOKEN")
 	generated := false
 	if token == "" {
 		token, generated = auth.RandomID(24), true
@@ -194,15 +194,15 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	cat := catalog.Official()
 	h := api.New(api.Options{
 		Runtime: rt, Writer: writer, Mode: "dev", Sim: world,
-		RuntimeToken: token, WebhookSecret: os.Getenv("CODI_WEBHOOK_SECRET"),
-		OAuth: api.OAuth{ClientID: os.Getenv("CODI_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CODI_DISCORD_CLIENT_SECRET"),
+		RuntimeToken: token, WebhookSecret: os.Getenv("CICORD_WEBHOOK_SECRET"),
+		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
 		PublicURL: public, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
 		Stopping: stopping, Setup: wz, Checker: checker,
 		Catalog: cat, SecretStore: sec, Secret: stored, PluginStore: runtimePluginStore(cat, stored, stopping, rt.Repo),
 	})
 
-	fmt.Fprintf(stdout, "CODI dev runtime listening on %s\n", public)
+	fmt.Fprintf(stdout, "Cicord dev runtime listening on %s\n", public)
 	fmt.Fprintf(stdout, "  admin UI: %s/admin/\n", public)
 	fmt.Fprintf(stdout, "  watching: %s (hot reload; admin UI edits are written to these files)\n", absDir)
 	if generated {

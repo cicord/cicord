@@ -1,5 +1,5 @@
-/** Roles & channels: what exists on Discord, and which part CODI manages. */
-import type { ServerResources } from "@codi/client";
+/** Roles & channels: what exists on Discord, and which part Cicord manages. */
+import type { ServerResources } from "@cicord/client";
 import { FolderClosed } from "lucide-react";
 import { useState } from "react";
 import { useResources } from "../api.ts";

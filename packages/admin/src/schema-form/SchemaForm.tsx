@@ -2,7 +2,7 @@
  * Settings form generated from a plugin's JSON Schema (ADR-0007). Controlled: `value` is the
  * whole config object and `onChange` receives the next one.
  */
-import type { Json, ServerResources } from "@codi/client";
+import type { Json, ServerResources } from "@cicord/client";
 import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { Markdown } from "./markdown.tsx";
 import { Picker } from "./Picker.tsx";
@@ -36,7 +36,7 @@ export interface SchemaFormProps {
   onChange: (next: JsonObject) => void;
   /** Top-level fields the user may edit (`editable` from the API); default: all. */
   editable?: readonly string[];
-  /** Resources of the server, for `x-codi-ref` pickers. */
+  /** Resources of the server, for `x-cicord-ref` pickers. */
   resources?: ServerResources;
   /** Error messages per field pointer (client validation + runtime diagnostics). */
   errors?: Record<string, string[]>;
@@ -274,7 +274,7 @@ function ScalarControl(p: ControlProps) {
   const kind = fieldKind(s);
 
   if (kind === "ref") {
-    const ref = s["x-codi-ref"]!;
+    const ref = s["x-cicord-ref"]!;
     const value = typeof p.value === "string" ? p.value : undefined;
     return (
       <Picker
@@ -370,7 +370,7 @@ function ScalarControl(p: ControlProps) {
   // strings
   const text = jsonText(p.value);
   const set = (raw: string) => p.onChange(raw === "" ? emptyValue(s, p.required) : raw);
-  const widget = s["x-codi-widget"];
+  const widget = s["x-cicord-widget"];
   const counter =
     s.maxLength !== undefined && text.length > s.maxLength * 0.6 ? (
       <span className="sf-counter" data-over={text.length > s.maxLength || undefined}>
@@ -617,7 +617,7 @@ function summarize(item: Json | undefined, schema: JsonSchema, ctx: Ctx): string
     const p = resolve(raw, ctx.root);
     const v = item[key];
     if (typeof v !== "string" || !v) continue;
-    const ref = p["x-codi-ref"];
+    const ref = p["x-cicord-ref"];
     if (ref) return `${emoji}${refLabel(ref, v, ctx.resources) ?? v}`;
     if (key !== "emoji") return `${emoji}${v}`;
   }

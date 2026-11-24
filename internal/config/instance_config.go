@@ -35,7 +35,7 @@ func EffectiveConfig(lp *LoadedPlugin, base, override map[string]any) map[string
 
 // ValidateInstanceConfig validates an effective plugin config (defaults already
 // applied, see EffectiveConfig) for one server: the plugin's config schema, then the
-// x-codi-ref references against the server's resource keys. Diagnostics are reported in
+// x-cicord-ref references against the server's resource keys. Diagnostics are reported in
 // file (the bot.yaml, relative to the repo root) under path (e.g. "/spec/plugins/0/config"),
 // with messages prefixed by "[server <key>]" like Load.
 func ValidateInstanceConfig(lp *LoadedPlugin, cfg map[string]any, serverKey string, srv *ServerSpec, file, path string) Diagnostics {

@@ -3,8 +3,8 @@
  * sub-navigation between its settings, an overview of what it does and may do, and (admins)
  * the danger zone to uninstall it from the server.
  */
-import { CodiApiError, type PluginInstance, type UninstallResult } from "@codi/client";
-import { useCodi } from "@codi/react";
+import { CicordApiError, type PluginInstance, type UninstallResult } from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -88,7 +88,7 @@ export function PluginInstancePage({
       </Page>
     );
   if (!query.data) {
-    const notFound = query.error instanceof CodiApiError && query.error.code === "not_found";
+    const notFound = query.error instanceof CicordApiError && query.error.code === "not_found";
     return (
       <Page>
         {back}
@@ -362,7 +362,7 @@ export interface UninstallFlash {
 function DangerZone({ instance, serverKey }: { instance: PluginInstance; serverKey: string }) {
   const { t } = useTranslation();
   const ws = useWorkspace();
-  const { client, cache } = useCodi();
+  const { client, cache } = useCicord();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<unknown>(null);
@@ -471,7 +471,7 @@ function DangerZone({ instance, serverKey }: { instance: PluginInstance; serverK
 
 function UninstallProblem({ error }: { error: unknown }) {
   const { t } = useTranslation();
-  const api = error instanceof CodiApiError ? error : undefined;
+  const api = error instanceof CicordApiError ? error : undefined;
   switch (api?.code) {
     case "invalid":
       return (

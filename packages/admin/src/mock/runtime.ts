@@ -1,5 +1,5 @@
 /**
- * In-browser fake of the CODI runtime for `vp dev --mode mock` and the tests: auth (dev
+ * In-browser fake of the Cicord runtime for `vp dev --mode mock` and the tests: auth (dev
  * login), admin endpoints (spec/api.md §2–§5) and the simulator (§8), including the SSE
  * change stream and the behaviour of the example plugins (welcome, onboarding). State lives in
  * sessionStorage so it survives reloads.
@@ -16,7 +16,7 @@ import type {
   Revision,
   SyncRecord,
   User,
-} from "@codi/client";
+} from "@cicord/client";
 import { applyDefaults, type JsonSchema } from "../schema-form/schema.ts";
 import { validate } from "../schema-form/validate.ts";
 import { deepEqual, isObject, jsonText } from "../schema-form/values.ts";
@@ -57,7 +57,7 @@ interface Instance {
   instance: string;
   /** Plugin name (default: the instance name). */
   plugin?: string;
-  /** `codi`, a registry name or `local` (default: by plugin, see pluginInfo). */
+  /** `cicord`, a registry name or `local` (default: by plugin, see pluginInfo). */
   source?: string;
   base: Obj;
   override: Obj;
@@ -93,14 +93,14 @@ interface MockState {
   audit: AuditEntry[];
   welcomed: number;
   seq: number;
-  /** Store (§11): codi.yaml spec.registries and the instances installed from the Store. */
+  /** Store (§11): cicord.yaml spec.registries and the instances installed from the Store. */
   registries: MockRegistry[];
   storeInstalls: StoreInstall[];
   storeFetchedAt: string;
   /** Names of the secrets in the runtime's secret store (registry tokens). */
   secrets: string[];
   /**
-   * Installed versions of Store plugins by "<source>/<plugin>" (codi.lock entries and copies
+   * Installed versions of Store plugins by "<source>/<plugin>" (cicord.lock entries and copies
    * of official plugins); the latest version is the one of the source. Absent: the latest.
    */
   versions?: Record<string, MockVersion>;
@@ -124,7 +124,7 @@ interface StoreInstall {
   instance: string;
 }
 
-const STORAGE = "codi-admin:mock:v2";
+const STORAGE = "cicord-admin:mock:v2";
 
 const firstLine = (s: string) => s.split("\n")[0]!;
 
@@ -281,7 +281,7 @@ function seed(): MockState {
         id: 7,
         time: ago(3),
         server: SERVER_KEY,
-        actor: "codi",
+        actor: "cicord",
         action: "sync.apply",
         target: SERVER_KEY,
         details: { applied: 3 },
@@ -308,7 +308,7 @@ function seed(): MockState {
         id: 4,
         time: ago(60 * 26),
         server: SERVER_KEY,
-        actor: "codi",
+        actor: "cicord",
         action: "sync.apply",
         target: SERVER_KEY,
         details: { applied: 1 },
@@ -317,7 +317,7 @@ function seed(): MockState {
         id: 3,
         time: ago(60 * 50),
         server: SERVER_KEY,
-        actor: "codi",
+        actor: "cicord",
         action: "sync.apply",
         target: SERVER_KEY,
         details: { applied: 12 },
@@ -335,7 +335,7 @@ function seed(): MockState {
         id: 1,
         time: ago(60 * 51),
         server: SERVER_KEY,
-        actor: "codi",
+        actor: "cicord",
         action: "bot.start",
         target: "moderator",
         details: {},
@@ -351,9 +351,9 @@ function seed(): MockState {
   };
 }
 
-/** Secret holding the token of a private registry (`CODI_REGISTRY_<NAME>_TOKEN`). */
+/** Secret holding the token of a private registry (`CICORD_REGISTRY_<NAME>_TOKEN`). */
 const registrySecret = (name: string) =>
-  `CODI_REGISTRY_${name.toUpperCase().replaceAll("-", "_")}_TOKEN`;
+  `CICORD_REGISTRY_${name.toUpperCase().replaceAll("-", "_")}_TOKEN`;
 
 // ───────────────────────────────────────────── data tables (spec/api.md "Data tables")
 
@@ -521,7 +521,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (options.demoUpdates) {
       s.versions = {};
       const welcome = bundledPlugins.find((p) => p.name === "welcome")!;
-      s.versions["codi/welcome"] = {
+      s.versions["cicord/welcome"] = {
         version: "0.0.9",
         capabilities: welcome.capabilities.slice(0, -1),
         intents: welcome.intents,
@@ -640,12 +640,12 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         schema: schemas[name]!,
         // welcome comes from the official catalog (plugins/welcome/ copied by the Store),
         // onboarding is written in the repository.
-        source: name === "welcome" ? "codi" : "local",
+        source: name === "welcome" ? "cicord" : "local",
         trust: name === "welcome" ? "official" : "local",
       };
     const source = inst.source ?? "local";
     const store =
-      source === "codi"
+      source === "cicord"
         ? bundledPlugins.find((p) => p.name === name)
         : state.registries.find((r) => r.name === source)?.plugins.find((p) => p.name === name);
     if (store)
@@ -659,7 +659,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         commands: store.commands ?? [],
         schema: store.schema,
         source,
-        trust: source === "codi" ? "official" : source === "local" ? "local" : "unofficial",
+        trust: source === "cicord" ? "official" : source === "local" ? "local" : "unofficial",
       };
     return {
       name,
@@ -671,7 +671,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       commands: [],
       schema: { type: "object" } as JsonSchema,
       source,
-      trust: source === "codi" ? "official" : source === "local" ? "local" : "unofficial",
+      trust: source === "cicord" ? "official" : source === "local" ? "local" : "unofficial",
     };
   }
 
@@ -772,7 +772,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         error: {
           code: "deletion_protection",
           message: "The role “VIP 2023” was removed from the YAML but deletion protection is on",
-          hint: "Set syncPolicy.deletionProtection: false to let CODI delete it, or add it back to the YAML.",
+          hint: "Set syncPolicy.deletionProtection: false to let Cicord delete it, or add it back to the YAML.",
           details: "deletionProtection",
           resource: { action: "delete", kind: "role", key: "VIP 2023" },
         },
@@ -815,7 +815,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       const editable = Object.entries(schema.properties ?? {})
         .filter(
           ([, p]) =>
-            role === "admin" || (role === "moderator" && p["x-codi-access"] === "moderator"),
+            role === "admin" || (role === "moderator" && p["x-cicord-access"] === "moderator"),
         )
         .map(([k]) => k)
         .sort();
@@ -919,11 +919,11 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     );
     const cleaned = stillUsed
       ? []
-      : info.source === "codi"
+      : info.source === "cicord"
         ? [`plugins/${info.name}/`]
         : info.source === "local"
           ? []
-          : [`codi.lock: ${info.source}/${info.name}`];
+          : [`cicord.lock: ${info.source}/${info.name}`];
     const user = userById(viewer)!;
     newRevision(
       `chore(plugins): uninstall ${inst.bot}/${inst.instance} from ${SERVER_KEY}`,
@@ -1001,7 +1001,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     const schema = pluginInfo(inst).schema;
     const editable = new Set(
       Object.entries(schema.properties ?? {})
-        .filter(([, p]) => role === "admin" || p["x-codi-access"] === "moderator")
+        .filter(([, p]) => role === "admin" || p["x-cicord-access"] === "moderator")
         .map(([k]) => k),
     );
     const denied = changedKeys.filter((k) => !editable.has(k));
@@ -1059,7 +1059,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     template.replaceAll("{member}", memberMention).replaceAll("{server}", "Ma Commu");
 
   function portalLink(path: string, userId: string) {
-    return `${window.location.origin}${path}?codi_token=mock-${userId}-${Date.now().toString(36)}`;
+    return `${window.location.origin}${path}?cicord_token=mock-${userId}-${Date.now().toString(36)}`;
   }
 
   function join(userId: string): Response {
@@ -1293,9 +1293,9 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       keywords: p.keywords,
       version: p.version,
       ...(p.publisher ? { publisher: p.publisher } : {}),
-      verified: source === "codi" ? p.verified : false,
+      verified: source === "cicord" ? p.verified : false,
       ...(p.repo ? { repo: p.repo } : {}),
-      trust: source === "codi" ? "official" : "unofficial",
+      trust: source === "cicord" ? "official" : "unofficial",
       installed: storeInstalled(source, p.name),
       ...withUpdate(updateOf(source, p.name)),
     };
@@ -1319,17 +1319,17 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     const v = state.versions?.[`${source}/${name}`];
     if (!v || source === "local") return undefined;
     const latest =
-      source === "codi"
+      source === "cicord"
         ? bundledPlugins.find((x) => x.name === name)
         : state.registries.find((r) => r.name === source)?.plugins.find((x) => x.name === name);
     const level = latest ? updateLevel(v.version, latest.version) : "";
     if (!latest || !level) return undefined;
     return {
-      kind: source === "codi" ? ("bundled" as const) : ("registry" as const),
+      kind: source === "cicord" ? ("bundled" as const) : ("registry" as const),
       current: v.version,
       latest: latest.version,
       level,
-      ...(source === "codi" && v.modified ? { modified: true } : {}),
+      ...(source === "cicord" && v.modified ? { modified: true } : {}),
     };
   }
 
@@ -1410,7 +1410,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (!storeInstalled(source, name).length)
       return fail(404, "not_installed", `${source}/${name} is not installed`);
     const plan = updatePlan(source, name);
-    const bundled = source === "codi";
+    const bundled = source === "cicord";
     return json({
       available: !!updateOf(source, name),
       update: updateOf(source, name) ?? null,
@@ -1554,11 +1554,11 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
 
   const sourceRows = () => [
     {
-      name: "codi",
+      name: "cicord",
       kind: "bundled",
       trust: "official",
       private: false,
-      plugins: bundledPlugins.map((p) => storePlugin("codi", p)),
+      plugins: bundledPlugins.map((p) => storePlugin("cicord", p)),
     },
     ...state.registries.map((r) => {
       const error = registryError(r);
@@ -1637,7 +1637,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
   }
 
   function findStorePlugin(source: string, name: string) {
-    if (source === "codi") {
+    if (source === "cicord") {
       const p = bundledPlugins.find((x) => x.name === name);
       return p ? { plugin: p, registry: undefined } : undefined;
     }
@@ -1784,7 +1784,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     const url = jsonText(body["url"]).trim();
     if (!registryName.test(name))
       return fail(400, "invalid", `invalid registry name "${name}": use a-z, 0-9 and -`);
-    if (name === "codi") return fail(400, "invalid", "the name codi is reserved");
+    if (name === "cicord") return fail(400, "invalid", "the name cicord is reserved");
     if (state.registries.some((r) => r.name === name))
       return fail(400, "invalid", `a registry named ${name} already exists`);
     if (!url.startsWith("https://"))
@@ -1973,7 +1973,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
                 {
                   id: "intents",
                   status: "ok",
-                  message: "The privileged intents CODI uses are enabled.",
+                  message: "The privileged intents Cicord uses are enabled.",
                 },
                 { id: "member", status: "ok", message: "Gardien is a member of Ma Commu." },
                 {
@@ -1984,7 +1984,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
                 {
                   id: "hierarchy",
                   status: "ok",
-                  message: "The role “Gardien” is above every role CODI manages.",
+                  message: "The role “Gardien” is above every role Cicord manages.",
                 },
                 { id: "commands", status: "ok", message: "2 slash command(s) registered." },
                 {
@@ -1997,12 +1997,12 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
                   id: "plan",
                   status: "warn",
                   message: "Discord differs from the configuration: 3 change(s) pending.",
-                  hint: "Open Sync → Plan in the admin to review them; CODI applies them on the next sync.",
+                  hint: "Open Sync → Plan in the admin to review them; Cicord applies them on the next sync.",
                 },
                 {
                   id: "writeback",
                   status: "ok",
-                  message: "CODI can read and update the configuration repository.",
+                  message: "Cicord can read and update the configuration repository.",
                 },
               ],
             }),
@@ -2142,8 +2142,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       if (isObject(parsed)) body = parsed;
     }
     if (latency > 0) await new Promise((r) => setTimeout(r, latency));
-    if (method !== "GET" && new Headers(init.headers).get("X-Codi-Request") !== "1")
-      return fail(403, "forbidden", "missing X-Codi-Request header (CSRF protection)");
+    if (method !== "GET" && new Headers(init.headers).get("X-Cicord-Request") !== "1")
+      return fail(403, "forbidden", "missing X-Cicord-Request header (CSRF protection)");
     return route(method, url, body);
   };
 

@@ -1,5 +1,5 @@
-// Package plugin is CODI's plugin host: it runs plugin bundles (built by internal/build) in
-// Sobek VMs and implements the @codi/sdk contract (spec/sdk/codi-sdk.d.ts, spec/README.md §6
+// Package plugin is Cicord's plugin host: it runs plugin bundles (built by internal/build) in
+// Sobek VMs and implements the @cicord/sdk contract (spec/sdk/cicord-sdk.d.ts, spec/README.md §6
 // and §8) on top of the discord and state contracts.
 //
 // # Lifecycle
@@ -58,7 +58,7 @@
 //
 // # SDK extensions
 //
-// Beyond codi-sdk.d.ts the VM provides setTimeout/setInterval/clearTimeout/clearInterval,
+// Beyond cicord-sdk.d.ts the VM provides setTimeout/setInterval/clearTimeout/clearInterval,
 // queueMicrotask and console.* (mapped to the instance logger). Timers belong to the handler
 // that created them and stop with it. Component handler lookup falls back to the part of the
 // local id before the first ':' ("vote:42" → components.vote), so ids can carry data.

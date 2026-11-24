@@ -10,11 +10,11 @@ import (
 	"image/png"
 	"sync"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/sim"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/sim"
 )
 
-// SimEnv is the simulated Discord of `codi dev --sim --setup`: a world with an owner, a
+// SimEnv is the simulated Discord of `cicord dev --sim --setup`: a world with an owner, a
 // community server that already has roles and channels (so the import has something to
 // adopt), and helpers standing in for what a person does on discord.com (create a bot,
 // toggle the privileged intents, authorize the invite, drag the bot role, send a
@@ -236,7 +236,7 @@ func (e *SimEnv) ServersOf(ctx context.Context, token string) ([]ServerSummary, 
 	return out, nil
 }
 
-// NewSimProbe returns a Probe on a world that was not seeded by NewSimEnv (`codi dev
+// NewSimProbe returns a Probe on a world that was not seeded by NewSimEnv (`cicord dev
 // --sim` Diagnostics): privileged intents are reported enabled (the simulator default).
 func NewSimProbe(w *sim.World) Probe {
 	return simProbe{&SimEnv{World: w, intents: map[string]discord.Intents{}, names: map[string]string{}}}

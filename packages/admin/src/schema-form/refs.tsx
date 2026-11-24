@@ -1,5 +1,5 @@
-/** Picker options for `x-codi-ref` fields, built from `GET /servers/{key}/resources`. */
-import type { ServerResources } from "@codi/client";
+/** Picker options for `x-cicord-ref` fields, built from `GET /servers/{key}/resources`. */
+import type { ServerResources } from "@cicord/client";
 import type { PickerOption } from "./Picker.tsx";
 import type { RefKind } from "./schema.ts";
 import { i18n } from "../i18n/index.ts";

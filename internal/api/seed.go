@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/sim"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/sim"
 )
 
 // SimSeed is the result of SeedSimWorld.
@@ -21,7 +21,7 @@ type SimSeed struct {
 	Bots map[string]discord.User
 }
 
-// SeedSimWorld fills a simulator world from a repository (codi dev --sim): an "owner"
+// SeedSimWorld fills a simulator world from a repository (cicord dev --sim): an "owner"
 // user owning every server (created with its discordId), every bot (with its
 // applicationId) invited with Administrator to its servers, and a few extra users.
 func SeedSimWorld(w *sim.World, repo *config.Repo, extraUsers ...string) (*SimSeed, error) {
@@ -81,12 +81,12 @@ func SeedSimWorld(w *sim.World, repo *config.Repo, extraUsers ...string) (*SimSe
 	return seed, nil
 }
 
-// Simulator annotations on a Server resource (codi dev --sim only).
+// Simulator annotations on a Server resource (cicord dev --sim only).
 const (
 	// AnnotationSimBoosts is the number of boosts of the simulated server ("14" = level 3).
-	AnnotationSimBoosts = "sim.codi.dev/boosts"
+	AnnotationSimBoosts = "sim.cicord.dev/boosts"
 	// AnnotationSimFeatures adds feature flags to the simulated server ("PARTNERED,VERIFIED").
-	AnnotationSimFeatures = "sim.codi.dev/features"
+	AnnotationSimFeatures = "sim.cicord.dev/features"
 )
 
 func seedSimServer(w *sim.World, srv *config.Server) error {

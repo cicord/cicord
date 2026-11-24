@@ -1,9 +1,9 @@
 ---
 title: Your first change
-description: Edit the YAML, preview it with codi plan, ship it with a push or a sync, and see admin console edits come back as commits.
+description: Edit the YAML, preview it with cicord plan, ship it with a push or a sync, and see admin console edits come back as commits.
 ---
 
-The everyday loop with CODI is the GitOps loop: **edit, plan, merge, the runtime applies**.
+The everyday loop with Cicord is the GitOps loop: **edit, plan, merge, the runtime applies**.
 This page walks through it once.
 
 ## 1. Edit the YAML
@@ -27,16 +27,16 @@ spec:
       category: community
 ```
 
-Check it offline. `codi validate` runs the JSON Schemas and the semantic checks (references
+Check it offline. `cicord validate` runs the JSON Schemas and the semantic checks (references
 resolve, keys are unique, plugin configs match their schemas, capabilities are granted):
 
 ```sh
-codi validate
+cicord validate
 ```
 
-## 2. Preview the change with `codi plan`
+## 2. Preview the change with `cicord plan`
 
-`codi plan` computes the diff between the repository and the live servers. Nothing is
+`cicord plan` computes the diff between the repository and the live servers. Nothing is
 applied.
 
 ```text
@@ -53,17 +53,17 @@ Plan: 1 to create, 1 to update, 0 to delete.
 
 The symbols are `+` create, `~` update, `-` delete, `>` reorder, `=` adopt (an existing
 resource with the same name), `#` stop managing (left in Discord) and `!` blocked, with the
-reason. Blocked operations never fail the plan: they explain what CODI refuses to do and
+reason. Blocked operations never fail the plan: they explain what Cicord refuses to do and
 why, for example a deletion under `deletionProtection` or a banner that needs a boost level
 the server does not have. See [Reconciliation](../../concepts/reconciliation/).
 
 There are two ways to plan:
 
-- **Through the runtime** (recommended, and what CI does): `codi plan --remote` uploads the
+- **Through the runtime** (recommended, and what CI does): `cicord plan --remote` uploads the
   repository to your runtime, which plans it with its own state and bots. It needs
-  `CODI_RUNTIME_URL` and `CODI_RUNTIME_TOKEN`.
-- **Locally**: `codi plan` without `--remote` uses the bot tokens from your environment
-  (`token.secretRef`) and the local state database `.codi/state.db`.
+  `CICORD_RUNTIME_URL` and `CICORD_RUNTIME_TOKEN`.
+- **Locally**: `cicord plan` without `--remote` uses the bot tokens from your environment
+  (`token.secretRef`) and the local state database `.cicord/state.db`.
 
 ## 3. Ship it
 
@@ -71,19 +71,19 @@ How the change reaches Discord depends on where the runtime reads the repository
 
 - **GitHub or another git remote** (`spec.source.provider: github` or `git`): merge to the
   tracked branch. The runtime polls every minute, or immediately with a GitHub webhook on
-  `<public-url>/hooks/github`. To trigger a fetch by hand: `codi sync`.
-- **Managed by CODI** (`provider: embedded`): changes are made through the admin console,
+  `<public-url>/hooks/github`. To trigger a fetch by hand: `cicord sync`.
+- **Managed by Cicord** (`provider: embedded`): changes are made through the admin console,
   which commits to the embedded repository.
-- **A local directory** (`codi serve --local`, or `codi dev`): saving the file is enough;
+- **A local directory** (`cicord serve --local`, or `cicord dev`): saving the file is enough;
   every change becomes a new revision.
 
 Wait until the runtime has applied a specific commit:
 
 ```sh
-codi status --wait --revision $(git rev-parse HEAD) --timeout 10m
+cicord status --wait --revision $(git rev-parse HEAD) --timeout 10m
 ```
 
-`codi status` shows the active revision and every server's sync and health:
+`cicord status` shows the active revision and every server's sync and health:
 
 ```text
 Revision 3f1c2ab  "Add the Events role" by alice, 2026-11-23T03:53:17Z
@@ -95,15 +95,15 @@ Servers (1)
 ## 4. Edits from the admin console come back as commits
 
 Everyone with access to the admin console (`<public-url>/admin/`) edits **the same files**.
-When a moderator changes a plugin setting or an admin edits a role, CODI patches the YAML
-(comments and key order are kept) and, depending on `codi.yaml` `spec.writeBack`:
+When a moderator changes a plugin setting or an admin edits a role, Cicord patches the YAML
+(comments and key order are kept) and, depending on `cicord.yaml` `spec.writeBack`:
 
 - **commits** it on the tracked branch, then activates its own commit immediately, or
 - opens a **pull request**, and the change waits for review like any other.
 
-The repository written by `codi init` commits plugin settings (`bots/**`) directly and opens
-pull requests for structural changes (`servers/**`). Commits are authored by `codi[bot]`,
-with the Discord user who made the change in a `Codi-Actor` trailer. Pull them like any
+The repository written by `cicord init` commits plugin settings (`bots/**`) directly and opens
+pull requests for structural changes (`servers/**`). Commits are authored by `cicord[bot]`,
+with the Discord user who made the change in a `Cicord-Actor` trailer. Pull them like any
 other commit:
 
 ```sh
@@ -115,20 +115,20 @@ See [Write-back](../../concepts/write-back/) for the policies.
 
 ## Run it in CI
 
-`codi init` writes `.github/workflows/codi.yml`. On every pull request it runs
-`codi validate` and posts `codi plan --remote --comment` on the pull request; on every push
-to `main` it runs `codi status --wait` for the merged commit. Configure two repository
+`cicord init` writes `.github/workflows/cicord.yml`. On every pull request it runs
+`cicord validate` and posts `cicord plan --remote --comment` on the pull request; on every push
+to `main` it runs `cicord status --wait` for the merged commit. Configure two repository
 settings:
 
 | Setting | Value |
 |---|---|
-| `secrets.CODI_RUNTIME_TOKEN` | The runtime's bearer token (`CODI_RUNTIME_TOKEN` of `codi serve`). |
-| `vars.CODI_RUNTIME_URL` | The runtime's `https://` URL. |
+| `secrets.CICORD_RUNTIME_TOKEN` | The runtime's bearer token (`CICORD_RUNTIME_TOKEN` of `cicord serve`). |
+| `vars.CICORD_RUNTIME_URL` | The runtime's `https://` URL. |
 
-The URL is a repository variable on purpose: it is never read from `codi.yaml`, so a pull
+The URL is a repository variable on purpose: it is never read from `cicord.yaml`, so a pull
 request cannot choose where the token is sent.
 
-```yaml title=".github/workflows/codi.yml (excerpt)"
+```yaml title=".github/workflows/cicord.yml (excerpt)"
   plan:
     if: github.event_name == 'pull_request'
     needs: validate
@@ -141,11 +141,11 @@ request cannot choose where the token is sent.
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - run: go install github.com/npjonath/codi/cmd/codi@latest
-      - run: codi plan --remote --comment
+      - run: go install github.com/npjonath/cicord/cmd/cicord@latest
+      - run: cicord plan --remote --comment
         env:
-          CODI_RUNTIME_URL: ${{ vars.CODI_RUNTIME_URL }}
-          CODI_RUNTIME_TOKEN: ${{ secrets.CODI_RUNTIME_TOKEN }}
+          CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}
+          CICORD_RUNTIME_TOKEN: ${{ secrets.CICORD_RUNTIME_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
 ```
 

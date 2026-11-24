@@ -15,7 +15,7 @@
     "skipLibCheck": true,
     "types": ["node"],
     "paths": {
-      "@codi/sdk": ["../../spec/sdk/codi-sdk.d.ts"]
+      "@cicord/sdk": ["../../spec/sdk/cicord-sdk.d.ts"]
     }
   },
   "include": ["src", "test"]

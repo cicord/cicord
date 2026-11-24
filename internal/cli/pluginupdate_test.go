@@ -10,10 +10,10 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
-const updManifest = `apiVersion: codi.dev/v1alpha1
+const updManifest = `apiVersion: cicord.dev/v1alpha1
 kind: Plugin
 metadata:
   name: hello
@@ -47,7 +47,7 @@ func tagRelease(t *testing.T, dir string, files map[string]string, tag string) {
 }
 
 func TestPluginUpdate(t *testing.T) {
-	t.Setenv("CODI_CACHE_DIR", t.TempDir())
+	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
 	plugin := commitRepo(t, map[string]string{"plugin.yaml": updManifest, "src/index.ts": "export default {};\n"}, "v1.0.0")
 	reg := commitRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: " + plugin + "\n"})
 	dir := t.TempDir()
@@ -76,7 +76,7 @@ func TestPluginUpdate(t *testing.T) {
 	}
 	lock, _ := registry.ReadLock(dir)
 	if lock.Plugins["acme/hello"].Version != "1.1.0" {
-		t.Errorf("codi.lock = %+v", lock.Plugins)
+		t.Errorf("cicord.lock = %+v", lock.Plugins)
 	}
 	bot, _ := os.ReadFile(filepath.Join(dir, "bots", "bot", "bot.yaml"))
 	if !strings.Contains(string(bot), "storage.kv") || !strings.Contains(string(bot), "version: ^1.0.0") {

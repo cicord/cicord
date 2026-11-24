@@ -1,5 +1,5 @@
-import type { Message, MessagePayload, SelectMenu } from "@codi/sdk";
-import { createTestContext, runCommand, runComponent } from "@codi/sdk/testing";
+import type { Message, MessagePayload, SelectMenu } from "@cicord/sdk";
+import { createTestContext, runCommand, runComponent } from "@cicord/sdk/testing";
 import { describe, expect, test } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";

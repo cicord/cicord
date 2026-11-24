@@ -3,7 +3,7 @@ package sim
 import (
 	"context"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // Client is a discord.Client acting as one user. Bot sessions embed it; UserClient

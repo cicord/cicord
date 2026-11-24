@@ -17,13 +17,13 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
-// `codi plugin publish` (ADR-0011): run by a plugin author in the plugin's repository. It
-// validates the plugin like `codi plugin build`, checks that plugin.yaml's version is a
+// `cicord plugin publish` (ADR-0011): run by a plugin author in the plugin's repository. It
+// validates the plugin like `cicord plugin build`, checks that plugin.yaml's version is a
 // new release, tags it v<version> (pushed with --push) and produces the registry index
 // entry, written to a local registry checkout with --registry.
 //
@@ -47,7 +47,7 @@ func newPluginPublishCmd() *cobra.Command {
 		Long: `Release the plugin whose repository is [plugin-repo] (default: the current directory;
 plugin.yaml at the root of a git repository):
 
-  1. validate it like ` + "`codi plugin build`" + ` (bundle, inspect, manifest checks);
+  1. validate it like ` + "`cicord plugin build`" + ` (bundle, inspect, manifest checks);
   2. check the working tree is clean (the tag must point at what was validated) and
      that metadata.version is a semver greater than every existing v* tag;
   3. create the annotated tag v<version> on HEAD (--push also pushes it to --remote);
@@ -57,12 +57,12 @@ plugin.yaml at the root of a git repository):
 The repo URL of the entry comes from --repo or the --remote URL (ssh URLs become https).
 URLs with credentials are refused. publish never sets "verified": registry maintainers
 do. A registry whose index is signed (index.yaml.sig) must be signed again by its
-maintainers after the change (` + "`codi registry sign`" + `).
+maintainers after the change (` + "`cicord registry sign`" + `).
 
 --dry-run validates and prints what would be done, changing nothing.`,
-		Example: `  codi plugin publish --dry-run
-  codi plugin publish --push --registry ../codi-registry --publisher acme
-  codi plugin publish ./my-plugin --repo https://github.com/acme/codi-xp.git`,
+		Example: `  cicord plugin publish --dry-run
+  cicord plugin publish --push --registry ../cicord-registry --publisher acme
+  cicord plugin publish ./my-plugin --repo https://github.com/acme/cicord-xp.git`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -294,7 +294,7 @@ func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOpt
 		}
 		fmt.Fprintf(w, "✓ %s %s in %s\n", plan.verbPast, name, plan.file)
 		if plan.signed {
-			fmt.Fprintf(w, "! %s is now stale: the registry maintainers must sign the index again\n  (codi registry sign %s --key …)\n",
+			fmt.Fprintf(w, "! %s is now stale: the registry maintainers must sign the index again\n  (cicord registry sign %s --key …)\n",
 				filepath.Join(o.registryRef, registry.SignatureFile), o.registryRef)
 		}
 		fmt.Fprintf(w, "Next: commit index.yaml in %s and open a pull request to the registry.\n", o.registryRef)
@@ -302,7 +302,7 @@ func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOpt
 		fmt.Fprintln(w, "Registry index entry (plugins: in the registry's index.yaml):")
 		writeIndented(w, snippet.Bytes())
 		if o.registryRef != "" {
-			fmt.Fprintf(w, "To publish it in %s: clone the registry, run\n  codi plugin publish --registry <checkout> (or edit index.yaml with the entry above),\nthen commit and open a pull request.\n", registry.Redact(o.registryRef))
+			fmt.Fprintf(w, "To publish it in %s: clone the registry, run\n  cicord plugin publish --registry <checkout> (or edit index.yaml with the entry above),\nthen commit and open a pull request.\n", registry.Redact(o.registryRef))
 		}
 	}
 	return nil

@@ -22,7 +22,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 
-	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/cicord/internal/config"
 )
 
 const (
@@ -60,7 +60,7 @@ type Writer interface {
 // ErrConflict is returned when an edit cannot be applied on the latest branch head.
 var ErrConflict = errors.New("writeback: conflict")
 
-// ModeFor picks the write mode for a set of changed paths from codi.yaml policies:
+// ModeFor picks the write mode for a set of changed paths from cicord.yaml policies:
 // first matching policy per path, strictest mode across paths, defaultMode otherwise.
 func ModeFor(wb *config.WriteBack, paths []string) string {
 	def := ModePullRequest
@@ -120,19 +120,19 @@ func trailers(req Request) string {
 	b.WriteString(strings.TrimSpace(req.Message))
 	b.WriteString("\n\n")
 	if req.Actor != "" {
-		fmt.Fprintf(&b, "Codi-Actor: %s\n", req.Actor)
+		fmt.Fprintf(&b, "Cicord-Actor: %s\n", req.Actor)
 	}
 	src := req.Source
 	if src == "" {
 		src = "api"
 	}
-	fmt.Fprintf(&b, "Codi-Source: %s\n", src)
+	fmt.Fprintf(&b, "Cicord-Source: %s\n", src)
 	return b.String()
 }
 
 // ───────────────────────────────────────────────────────────── local directory (dev)
 
-// DirWriter writes files straight into a working directory (`codi dev`). There is no
+// DirWriter writes files straight into a working directory (`cicord dev`). There is no
 // commit; the local source picks the change up like any edit.
 type DirWriter struct {
 	Root string
@@ -188,11 +188,11 @@ func safeJoin(root, rel string) (string, error) {
 type GitOptions struct {
 	URL     string // remote URL
 	Branch  string // target branch (default main)
-	Path    string // sub-directory containing codi.yaml
+	Path    string // sub-directory containing cicord.yaml
 	WorkDir string // working clone location
 	Token   string // HTTPS token (also used for the GitHub API)
-	Author  string // default "codi[bot]"
-	Email   string // default "codi[bot]@users.noreply.github.com"
+	Author  string // default "cicord[bot]"
+	Email   string // default "cicord[bot]@users.noreply.github.com"
 	// GitHubRepo "owner/name" enables pull requests through the GitHub API.
 	GitHubRepo string
 	// GitHubAPI overrides https://api.github.com (tests).
@@ -214,10 +214,10 @@ func NewGitWriter(opts GitOptions) *GitWriter {
 		opts.Path = "."
 	}
 	if opts.Author == "" {
-		opts.Author = "codi[bot]"
+		opts.Author = "cicord[bot]"
 	}
 	if opts.Email == "" {
-		opts.Email = "codi[bot]@users.noreply.github.com"
+		opts.Email = "cicord[bot]@users.noreply.github.com"
 	}
 	if opts.GitHubAPI == "" {
 		opts.GitHubAPI = "https://api.github.com"
@@ -273,7 +273,7 @@ func (w *GitWriter) Write(ctx context.Context, req Request) (Result, error) {
 	}
 	branch := w.opts.Branch
 	if req.Mode == ModePullRequest {
-		branch = fmt.Sprintf("codi/change-%d", time.Now().UnixNano())
+		branch = fmt.Sprintf("cicord/change-%d", time.Now().UnixNano())
 	}
 	if err := wt.Checkout(&git.CheckoutOptions{Hash: head.Hash(), Branch: plumbing.NewBranchReferenceName(branch), Force: true, Create: !w.branchExists(r, branch)}); err != nil {
 		// existing local branch: reset it to the remote head
@@ -363,7 +363,7 @@ func (w *GitWriter) branchExists(r *git.Repository, branch string) bool {
 
 func (w *GitWriter) openPR(ctx context.Context, branch string, req Request) (string, error) {
 	title := strings.SplitN(strings.TrimSpace(req.Message), "\n", 2)[0]
-	body := "Change proposed from the CODI admin UI.\n\n" + strings.TrimSpace(strings.TrimPrefix(trailers(req), strings.TrimSpace(req.Message)))
+	body := "Change proposed from the Cicord admin UI.\n\n" + strings.TrimSpace(strings.TrimPrefix(trailers(req), strings.TrimSpace(req.Message)))
 	payload, _ := json.Marshal(map[string]string{"title": title, "head": branch, "base": w.opts.Branch, "body": body})
 	u := fmt.Sprintf("%s/repos/%s/pulls", strings.TrimRight(w.opts.GitHubAPI, "/"), url.PathEscape(w.opts.GitHubRepo))
 	u = strings.Replace(u, "%2F", "/", 1)

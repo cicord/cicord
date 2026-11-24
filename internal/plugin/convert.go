@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // ───────────────────────────────────────────────────────────── Go → JS
@@ -464,7 +464,7 @@ type payloadDTO struct {
 
 // ───────────────────────────────────────────────────────────── JS → Go: messages
 
-// messageInput mirrors MessagePayload / ReplyInput of codi-sdk.d.ts.
+// messageInput mirrors MessagePayload / ReplyInput of cicord-sdk.d.ts.
 type messageInput struct {
 	Content         *string     `json:"content"`
 	Embeds          []embedIn   `json:"embeds"`
@@ -697,7 +697,7 @@ func (i *Instance) convertRow(r rowIn) (discord.Component, error) {
 	return row, nil
 }
 
-// modalInput mirrors Modal of codi-sdk.d.ts.
+// modalInput mirrors Modal of cicord-sdk.d.ts.
 type modalInput struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`

@@ -8,15 +8,15 @@ import (
 )
 
 // sdkPackage is the npm name of the plugin SDK.
-const sdkPackage = "@codi/sdk"
+const sdkPackage = "@cicord/sdk"
 
-// errNoSDKTarball means the binary embeds no @codi/sdk tarball (built without `make ui`).
-var errNoSDKTarball = errors.New("this codi binary embeds no @codi/sdk package (build it with `make ui build`)")
+// errNoSDKTarball means the binary embeds no @cicord/sdk tarball (built without `make ui`).
+var errNoSDKTarball = errors.New("this cicord binary embeds no @cicord/sdk package (build it with `make ui build`)")
 
 // scaffoldPluginTests writes the unit test setup of a new plugin: package.json (test
-// script: node --test), test/<name>.test.ts using @codi/sdk/testing, .gitignore, and
-// the embedded @codi/sdk tarball in vendor/ (a file: dependency: no npm publication
-// needed, works outside the CODI repository), or "^<version>" of the npm registry with
+// script: node --test), test/<name>.test.ts using @cicord/sdk/testing, .gitignore, and
+// the embedded @cicord/sdk tarball in vendor/ (a file: dependency: no npm publication
+// needed, works outside the Cicord repository), or "^<version>" of the npm registry with
 // fromNPM. It returns the written files.
 func scaffoldPluginTests(dir, name string, force, fromNPM bool) ([]string, error) {
 	kit, err := portalKit()

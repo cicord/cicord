@@ -1,12 +1,12 @@
 import {
-  CodiApiError,
+  CicordApiError,
   type OnboardingAnswers,
   type OnboardingCompleteRequest,
   type OnboardingCompleteResponse,
   type OnboardingOption,
   type OnboardingStep,
   type OnboardingSteps,
-} from "@codi/client";
+} from "@cicord/client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePluginMutation, usePluginQuery, usePortalPlugin, type PluginRef } from "./hooks.ts";
 
@@ -193,7 +193,7 @@ export function useOnboarding(options: UseOnboardingOptions = {}): OnboardingFlo
       onCompleteRef.current?.(response);
       return response;
     } catch (error) {
-      if (error instanceof CodiApiError && error.diagnostics.length > 0) {
+      if (error instanceof CicordApiError && error.diagnostics.length > 0) {
         const byStep: Record<string, string> = {};
         for (const d of error.diagnostics) {
           const id = /^\/answers\/([^/]+)/.exec(d.path ?? "")?.[1];
@@ -229,7 +229,7 @@ export function useOnboarding(options: UseOnboardingOptions = {}): OnboardingFlo
       found.status === "error" ? "error" : found.status === "success" ? "unavailable" : "loading";
   } else if (query.status === "error") {
     status =
-      query.error instanceof CodiApiError && query.error.code === "unauthenticated"
+      query.error instanceof CicordApiError && query.error.code === "unauthenticated"
         ? "unauthenticated"
         : "error";
   } else if (!query.data) status = "loading";
@@ -239,7 +239,11 @@ export function useOnboarding(options: UseOnboardingOptions = {}): OnboardingFlo
 
   const stepErrors = useMemo(() => {
     const out = { ...serverErrors };
-    if (mutation.error instanceof CodiApiError && mutation.error.diagnostics.length === 0 && step) {
+    if (
+      mutation.error instanceof CicordApiError &&
+      mutation.error.diagnostics.length === 0 &&
+      step
+    ) {
       out[step.id] ??= mutation.error.message;
     }
     return out;

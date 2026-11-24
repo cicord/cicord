@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 func memberJoin(id string) discord.MemberJoinEvent {
@@ -28,7 +28,7 @@ func contentOf(r discord.InteractionResponse) string {
 
 func TestTypedCommandOptions(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   commands: {
     opts: command({
@@ -105,7 +105,7 @@ export default definePlugin({
 
 func TestAutoDefer(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export default definePlugin({
   commands: {
@@ -184,7 +184,7 @@ func resetCalls(h *harness) *fakeDiscord {
 
 func TestInteractionErrors(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export default definePlugin({
   commands: {
@@ -250,7 +250,7 @@ export default definePlugin({
 
 func TestCapabilityDenied(t *testing.T) {
 	h := start(t, `
-import { CapabilityError, command, definePlugin } from "@codi/sdk";
+import { CapabilityError, command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   events: {
     async memberJoin(ctx, member) {
@@ -300,7 +300,7 @@ export default definePlugin({
 
 func TestSyncBudgetInterruptAndRecovery(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 let n = 0;
 export default definePlugin({
   events: {
@@ -338,7 +338,7 @@ export default definePlugin({
 
 func TestHandlerTimeoutCutsLaterEffects(t *testing.T) {
 	h := start(t, `
-import { definePlugin } from "@codi/sdk";
+import { definePlugin } from "@cicord/sdk";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export default definePlugin({
   events: {
@@ -390,7 +390,7 @@ export default definePlugin({
 
 func TestHandlersInterleaveAtAwaits(t *testing.T) {
 	h := start(t, `
-import { definePlugin } from "@codi/sdk";
+import { definePlugin } from "@cicord/sdk";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export default definePlugin({
   events: {
@@ -422,7 +422,7 @@ export default definePlugin({
 
 func TestComponentsAndModals(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   commands: {
     poll: command({ description: "x", async run(ctx, it) {
@@ -541,7 +541,7 @@ export default definePlugin({
 
 func TestMessageInputValidation(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   commands: {
     bad: command({ description: "x", async run(ctx, it) {
@@ -586,7 +586,7 @@ export default definePlugin({
 
 func TestEntitiesAndServer(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   events: {
     async messageCreate(ctx, msg) {
@@ -684,14 +684,14 @@ export default definePlugin({
 
 	// messageCreate
 	resetCalls(h)
-	msg := discord.Message{ID: "800", ChannelID: "100", ServerID: "10", Content: "ping", Author: discord.User{ID: "1", Username: "codi"},
+	msg := discord.Message{ID: "800", ChannelID: "100", ServerID: "10", Content: "ping", Author: discord.User{ID: "1", Username: "cicord"},
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
 	if err := h.inst.HandleEvent(context.Background(), discord.MessageCreateEvent{Message: msg}); err != nil {
 		t.Fatal(err)
 	}
 	sends := h.dc.Calls("SendMessage")
 	if len(sends) != 2 || sends[0].Args[1].(discord.MessageCreate).ReplyTo != "800" ||
-		sends[0].Args[1].(discord.MessageCreate).Content != "pong ping from codi in general" {
+		sends[0].Args[1].(discord.MessageCreate).Content != "pong ping from cicord in general" {
 		t.Fatalf("reply: %+v", sends)
 	}
 	if !strings.HasPrefix(sends[1].Args[1].(discord.MessageCreate).Content, "in thread thread") {
@@ -735,7 +735,7 @@ export default definePlugin({
 
 func TestOwnedChannels(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   commands: {
     ticket: command({ description: "x", async run(ctx, it) {
@@ -786,7 +786,7 @@ export default definePlugin({
 
 func TestOwnedChannelIsRecorded(t *testing.T) {
 	h := start(t, `
-import { definePlugin } from "@codi/sdk";
+import { definePlugin } from "@cicord/sdk";
 export default definePlugin({
   events: { async memberJoin(ctx) { await ctx.server.createChannel({ name: "x", type: "voice" }); } },
 });`, nil)
@@ -802,7 +802,7 @@ export default definePlugin({
 
 func TestKVSchedulerEventsPortal(t *testing.T) {
 	h := start(t, `
-import { command, definePlugin } from "@codi/sdk";
+import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
   commands: {
     kv: command({ description: "x", async run(ctx, it) {
@@ -916,13 +916,13 @@ export default definePlugin({
 
 func TestRoutesWithParams(t *testing.T) {
 	h := start(t, `
-import { definePlugin } from "@codi/sdk";
+import { definePlugin } from "@cicord/sdk";
 export default definePlugin({
   routes: {
     "GET /answers/:id": { access: "member", handler: (ctx, req) => ({ id: req.params.id, q: req.query.sort ?? null, viewer: req.viewer?.user.id ?? null }) },
     "GET /answers/top": { access: "public", handler: () => [1, 2, 3] },
     "POST /answers/:id": { access: "member", async handler(ctx, req) {
-      return { status: 201, body: { created: req.params.id, body: req.body }, headers: { "x-codi": "1" } };
+      return { status: 201, body: { created: req.params.id, body: req.body }, headers: { "x-cicord": "1" } };
     } },
     "DELETE /answers/:id": { access: "admin", handler() {} },
     "GET /fail": { access: "public", handler() { throw new Error("nope"); } },
@@ -940,7 +940,7 @@ export default definePlugin({
 		t.Fatalf("GET static: %+v %v", r, err)
 	}
 	r, err = h.inst.HandleRoute(ctx, "POST", "/answers/9", RouteRequest{Body: json.RawMessage(`{"text":"hi"}`)})
-	if err != nil || r.Status != 201 || string(r.Body) != `{"created":"9","body":{"text":"hi"}}` || r.Headers["x-codi"] != "1" {
+	if err != nil || r.Status != 201 || string(r.Body) != `{"created":"9","body":{"text":"hi"}}` || r.Headers["x-cicord"] != "1" {
 		t.Fatalf("POST: %+v %v", r, err)
 	}
 	r, err = h.inst.HandleRoute(ctx, "DELETE", "/answers/9", RouteRequest{})
@@ -961,7 +961,7 @@ export default definePlugin({
 
 func TestLifecycle(t *testing.T) {
 	h := start(t, `
-import { definePlugin } from "@codi/sdk";
+import { definePlugin } from "@cicord/sdk";
 let started = false;
 export default definePlugin({
   async onStart(ctx) { await ctx.kv.set("started", true); started = true; },
@@ -987,7 +987,7 @@ export default definePlugin({
 
 func TestStartErrors(t *testing.T) {
 	code := bundleSource(t, `
-import { definePlugin } from "@codi/sdk";
+import { definePlugin } from "@cicord/sdk";
 export default definePlugin({ async onStart() { throw new Error("cannot start"); } });`)
 	def, err := Inspect(code)
 	if err != nil {
@@ -1003,7 +1003,7 @@ export default definePlugin({ async onStart() { throw new Error("cannot start");
 	}
 
 	// nil definition: extracted at Start.
-	code = bundleSource(t, `import { definePlugin } from "@codi/sdk"; export default definePlugin({ events: { memberLeave() {} } });`)
+	code = bundleSource(t, `import { definePlugin } from "@cicord/sdk"; export default definePlugin({ events: { memberLeave() {} } });`)
 	inst2, err := NewInstance(code, nil, testEnv(newFakeDiscord()))
 	if err != nil {
 		t.Fatal(err)
@@ -1026,7 +1026,7 @@ export default definePlugin({ async onStart() { throw new Error("cannot start");
 
 func TestUnhandledRejectionAndTimersAndConsole(t *testing.T) {
 	h := start(t, `
-import { definePlugin } from "@codi/sdk";
+import { definePlugin } from "@cicord/sdk";
 export default definePlugin({
   events: {
     async memberJoin(ctx) {
@@ -1067,7 +1067,7 @@ export default definePlugin({
 // bot), except for its own messages, messages mentioning the bot and DMs.
 func TestMessageContentGating(t *testing.T) {
 	h := start(t, `
-import { definePlugin } from "@codi/sdk";
+import { definePlugin } from "@cicord/sdk";
 export default definePlugin({
   events: {
     async messageCreate(ctx, msg) {

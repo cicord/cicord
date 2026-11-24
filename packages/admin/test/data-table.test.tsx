@@ -1,5 +1,5 @@
-import { CodiApiError, createCodiClient, type Page } from "@codi/client";
-import { CodiProvider } from "@codi/react";
+import { CicordApiError, createCicordClient, type Page } from "@cicord/client";
+import { CicordProvider } from "@cicord/react";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -77,9 +77,9 @@ function server(items: Item[] = ITEMS) {
 
 function setup(search = "", srv = server(), extra: { empty?: boolean } = {}) {
   window.history.replaceState(null, "", `${BASE}items${search}`);
-  const client = createCodiClient({ fetch: async () => new Response("{}") });
+  const client = createCicordClient({ fetch: async () => new Response("{}") });
   render(
-    <CodiProvider client={client}>
+    <CicordProvider client={client}>
       <DataTable<Item>
         label="Items"
         columns={columns}
@@ -103,7 +103,7 @@ function setup(search = "", srv = server(), extra: { empty?: boolean } = {}) {
         ]}
         empty={<EmptyState title={extra.empty ? "Nothing here yet" : "Empty"} />}
       />
-    </CodiProvider>,
+    </CicordProvider>,
   );
   return { srv, user: userEvent.setup() };
 }
@@ -305,7 +305,7 @@ describe("DataTable", () => {
     cleanup();
 
     const srv = server();
-    srv.fail(new CodiApiError({ code: "unavailable", status: 503, message: "runtime is busy" }));
+    srv.fail(new CicordApiError({ code: "unavailable", status: 503, message: "runtime is busy" }));
     const { user } = setup("", srv);
     expect(await screen.findByText("Could not load this list")).toBeTruthy();
     srv.fail(null);

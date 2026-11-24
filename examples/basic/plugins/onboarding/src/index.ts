@@ -1,4 +1,4 @@
-import { command, definePlugin, type RouteResponse } from "@codi/sdk";
+import { command, definePlugin, type RouteResponse } from "@cicord/sdk";
 import {
   answersRecord,
   completionKey,
@@ -10,7 +10,7 @@ import {
   type CompletionRecord,
 } from "./onboarding.ts";
 
-/** Error responses use the runtime API error shape, so `CodiApiError` parses them. */
+/** Error responses use the runtime API error shape, so `CicordApiError` parses them. */
 function fail(
   status: number,
   code: string,

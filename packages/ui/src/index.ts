@@ -1,12 +1,12 @@
 export {
   ThemeProvider,
   themeVariables,
-  useCodiTheme,
+  useCicordTheme,
   useResolvedMode,
   DEFAULT_ACCENT,
   DEFAULT_PRIMARY,
 } from "./theme.tsx";
-export type { CodiTheme, ResolvedMode, ThemeProviderProps } from "./theme.tsx";
+export type { CicordTheme, ResolvedMode, ThemeProviderProps } from "./theme.tsx";
 export {
   Avatar,
   Button,

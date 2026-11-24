@@ -10,10 +10,10 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/codi/internal/config"
+	"github.com/npjonath/cicord/internal/config"
 )
 
-// Private registries: a registry of codi.yaml may name a secret (secretRef) holding an
+// Private registries: a registry of cicord.yaml may name a secret (secretRef) holding an
 // access token. The token is attached to the context for the registry's host only, so it
 // is sent to that host over https and never to the other hosts an index may list.
 
@@ -68,9 +68,9 @@ func WithRegistryTokens(ctx context.Context, regs []config.Registry, secret func
 // SecretRefFor is the secret name of a registry's token (config.RegistryTokenRef).
 func SecretRefFor(name string) string { return config.RegistryTokenRef(name) }
 
-// projectRegistries reads spec.registries of codi.yaml in root (nil on any error).
+// projectRegistries reads spec.registries of cicord.yaml in root (nil on any error).
 func projectRegistries(root string) []config.Registry {
-	data, err := os.ReadFile(filepath.Join(root, "codi.yaml"))
+	data, err := os.ReadFile(filepath.Join(root, "cicord.yaml"))
 	if err != nil {
 		return nil
 	}

@@ -13,7 +13,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 // Definition is the static part of a plugin, extracted from `definePlugin({...})` by Inspect.
@@ -37,7 +37,7 @@ type CommandDef struct {
 	Description string
 	// Ephemeral: replies are ephemeral by default and auto-defer is ephemeral.
 	Ephemeral bool
-	// Permissions are CODI permission names (default member permissions).
+	// Permissions are Cicord permission names (default member permissions).
 	Permissions []string
 	// Options in Discord order: required options first, then declaration order.
 	Options []discord.CommandOption
@@ -109,7 +109,7 @@ var eventIntents = map[string][]string{
 	"reactionRemove": {"ServerMessageReactions"},
 }
 
-// EventNames lists the SDK event handler names (EventHandlers in codi-sdk.d.ts).
+// EventNames lists the SDK event handler names (EventHandlers in cicord-sdk.d.ts).
 func EventNames() []string {
 	out := make([]string, 0, len(eventIntents))
 	for n := range eventIntents {
@@ -120,7 +120,7 @@ func EventNames() []string {
 }
 
 // EventIntents returns the gateway intents a handler for event needs (the @intent tags of
-// codi-sdk.d.ts), nil for unknown events. MessageContent is optional (it only fills
+// cicord-sdk.d.ts), nil for unknown events. MessageContent is optional (it only fills
 // message.content) and therefore not included.
 func EventIntents(event string) []string { return slices.Clone(eventIntents[event]) }
 

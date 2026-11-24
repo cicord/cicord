@@ -1,6 +1,6 @@
 # Setup wizard (admin onboarding)
 
-Getting from "nothing" to "a server CODI can sync" took ~10 manual steps during the first
+Getting from "nothing" to "a server Cicord can sync" took ~10 manual steps during the first
 real test: create an application, copy IDs, reset the token, intents, invite with the right
 permissions, move the bot role, env vars, repo, first sync, first plugin. The setup wizard
 guides a newcomer through all of it in the admin UI and **verifies each step
@@ -16,9 +16,9 @@ activation), `packages/admin/src/setup` (UI), `packages/admin/src/pages/Diagnost
 
 | Start | Result |
 |---|---|
-| `codi.yaml` in the directory | Normal boot. Setup mode is never entered; `codi dev --setup` fails. |
-| No `codi.yaml`, and the setup state of the data dir says *activated* (`codi serve`, embedded or GitHub repository) | Boots from the repository the wizard created. If the wizard was not finished, a new setup link is printed so it resumes. |
-| No `codi.yaml`, no setup state, but the data dir has a sync history or a `repo.git` | **Refused**: the data dir belongs to an existing deployment, so the wizard must not rewrite its resource map. Run `codi serve` in its repository, or use another `--data-dir`. |
+| `cicord.yaml` in the directory | Normal boot. Setup mode is never entered; `cicord dev --setup` fails. |
+| No `cicord.yaml`, and the setup state of the data dir says *activated* (`cicord serve`, embedded or GitHub repository) | Boots from the repository the wizard created. If the wizard was not finished, a new setup link is printed so it resumes. |
+| No `cicord.yaml`, no setup state, but the data dir has a sync history or a `repo.git` | **Refused**: the data dir belongs to an existing deployment, so the wizard must not rewrite its resource map. Run `cicord serve` in its repository, or use another `--data-dir`. |
 | Otherwise | **Setup mode** |
 
 In setup mode the runtime serves only these:
@@ -33,7 +33,7 @@ Every other `/api/*` and `/auth/*` path answers `503 setup_required`, and `/` re
 The runtime prints a **one-time setup link** in the logs, Jupyter style:
 
 ```
-CODI is not set up yet: setup mode on http://127.0.0.1:7420
+Cicord is not set up yet: setup mode on http://127.0.0.1:7420
   open the setup wizard: http://127.0.0.1:7420/admin/setup?token=…
 ```
 
@@ -41,14 +41,14 @@ The UI exchanges the token for a setup session (`POST /api/v1/setup/session`), t
 it from the address bar and history (`history.replaceState`). A restart prints a new link.
 
 The wizard state (step, answers, never secret values) is stored in the state store, KV
-scope `codi:setup`. The wizard therefore **resumes after a restart**: the same data dir and
+scope `cicord:setup`. The wizard therefore **resumes after a restart**: the same data dir and
 a new link continue where you left off.
 
-- `codi serve [dir]`: data dir `--data-dir` (default `.codi-data`). Repository choices:
-  **Managed by CODI** (default) and **GitHub**.
-- `codi dev [dir]`: data dir `<dir>/.codi/dev`. Repository choices: **This folder** (the
-  files are written into `dir`, hot reload) and **Managed by CODI**.
-- `codi dev --sim --setup [dir]`: setup mode against the **Discord simulator**. The world
+- `cicord serve [dir]`: data dir `--data-dir` (default `.cicord-data`). Repository choices:
+  **Managed by Cicord** (default) and **GitHub**.
+- `cicord dev [dir]`: data dir `<dir>/.cicord/dev`. Repository choices: **This folder** (the
+  files are written into `dir`, hot reload) and **Managed by Cicord**.
+- `cicord dev --sim --setup [dir]`: setup mode against the **Discord simulator**. The world
   contains:
   - an `owner` user;
   - a server "Pixel Pals" that already has roles (Admin, Moderator, Member), a category,
@@ -56,8 +56,8 @@ a new link continue where you left off.
 
   Buttons marked *Simulate* stand in for discord.com: create a bot, turn the privileged
   intents on, authorize the invite (optionally with the bot role at the bottom), drag the
-  bot role to the top, send a message. The store is in memory, as with `codi dev --sim`.
-  Once the files are written, `codi dev --sim dir` runs that repository normally.
+  bot role to the top, send a message. The store is in memory, as with `cicord dev --sim`.
+  Once the files are written, `cicord dev --sim dir` runs that repository normally.
 
 ### Activation without restart
 
@@ -76,12 +76,12 @@ configuration, the CLI does the following, then the wizard continues on the full
     left the wizard unfinished);
   - only its SHA-256 is kept in memory, compared in constant time;
   - consumed by the first successful exchange;
-  - exchanged by `POST` (CSRF rules apply: `X-Codi-Request`), never in a GET API call.
+  - exchanged by `POST` (CSRF rules apply: `X-Cicord-Request`), never in a GET API call.
 - **Setup session**:
   - stored in the session store (`UserID "setup"`, method `setup`, 24 h);
-  - sent as its own cookie `codi_setup` (HttpOnly, `SameSite=Strict`, Secure behind
+  - sent as its own cookie `cicord_setup` (HttpOnly, `SameSite=Strict`, Secure behind
     HTTPS);
-  - never accepted as a `codi_session` cookie.
+  - never accepted as a `cicord_session` cookie.
 
   Until the wizard completes, the setup session is an **admin principal** on the whole API,
   like the runtime bearer token. It takes precedence over a Discord login made in the same
@@ -94,21 +94,21 @@ configuration, the CLI does the following, then the wizard continues on the full
 - **Secret store** (`internal/secrets`):
   - **Encryption.** AES-256-GCM with a random nonce per write. The secret name is the
     additional authenticated data, so a ciphertext moved to another name fails to decrypt.
-  - **Key.** From `CODI_SECRET_KEY`, the base64 or hex encoding of exactly 32 bytes
+  - **Key.** From `CICORD_SECRET_KEY`, the base64 or hex encoding of exactly 32 bytes
     (`openssl rand -base64 32`). Otherwise from `<data dir>/secret.key`, generated with
     mode 0600. A sentinel ciphertext makes a wrong key fail at startup.
-  - **Storage.** Ciphertexts live in KV scope `codi:secrets`.
+  - **Storage.** Ciphertexts live in KV scope `cicord:secrets`.
   - **Rotation.** `Set` rotates a value. `RotateKey` re-encrypts everything under a new
-    key. `Delete` removes a secret. After setup, `codi secret ls | set NAME | rm NAME |
+    key. `Delete` removes a secret. After setup, `cicord secret ls | set NAME | rm NAME |
     rotate-key --data-dir <dir>` does the same from a terminal; values are read from
     stdin, never from arguments. A changed bot token is used from the next restart.
   - **API.** It never returns a value; secrets are listed by name and dates only.
-  - **Resolution.** The runtime resolves `token.secretRef`, `CODI_GIT_TOKEN` and the OAuth
+  - **Resolution.** The runtime resolves `token.secretRef`, `CICORD_GIT_TOKEN` and the OAuth
     client secret **environment first, then the store**, so an environment variable always
     overrides a stored secret.
   - **What the wizard stores.** The bot token as `DISCORD_TOKEN_<BOT>` (the `secretRef` of
-    the generated `bot.yaml`), the GitHub token as `CODI_GIT_TOKEN`, and the OAuth client
-    secret as `CODI_DISCORD_CLIENT_SECRET`.
+    the generated `bot.yaml`), the GitHub token as `CICORD_GIT_TOKEN`, and the OAuth client
+    secret as `CICORD_DISCORD_CLIENT_SECRET`.
   - **Tests.** They assert that the bot token and the setup token never appear in an API
     response, in the logs or in the repository.
 
@@ -143,17 +143,17 @@ Each step is validated by the runtime before moving on.
        disallowed intents is closed with 4014;
      - it spends no identify quota;
      - it leaves no second gateway session behind when the runtime connects;
-     - it cannot miss a join that happened while CODI was stopped.
+     - it cannot miss a join that happened while Cicord was stopped.
 
      So the Discord contract needed no new event.
    - **Checks** (with Re-check): the bot is a member; its permissions are Administrator
-     or the list CODI needs; and its **highest role is above every role CODI will
-     manage**. On failure the wizard says, for example: drag the role "CODI" above "Admin"
+     or the list Cicord needs; and its **highest role is above every role Cicord will
+     manage**. On failure the wizard says, for example: drag the role "Cicord" above "Admin"
      (the highest role in the way) in Server Settings → Roles. Moving on is refused while
      a check fails.
-4. **Repository**: **Managed by CODI** is a bare repository at `<data dir>/repo.git`,
+4. **Repository**: **Managed by Cicord** is a bare repository at `<data dir>/repo.git`,
    where every change is a commit. **GitHub** takes an HTTPS URL, a branch and a token:
-   - the remote is checked first (reachable with the token, no `codi.yaml` yet);
+   - the remote is checked first (reachable with the token, no `cicord.yaml` yet);
    - an empty repository is initialized;
    - an existing branch (README…) gets the setup commit on top.
 
@@ -161,7 +161,7 @@ Each step is validated by the runtime before moving on.
 
    1. reads the server (`reconcile.Fetch`) and runs the importer;
    2. generates the repository files:
-      - `codi.yaml`, whose write-back policy depends on the repository: everything is
+      - `cicord.yaml`, whose write-back policy depends on the repository: everything is
         committed for embedded / local / git; on GitHub, `bots/**` and `plugins/**` are
         committed and `servers/**` opens a pull request;
       - `servers/<key>.yaml`;
@@ -200,7 +200,7 @@ Each step is validated by the runtime before moving on.
    | commands | Slash command registration result (recorded by the runtime) |
    | events | A member's message received through the gateway since the step started: the user is asked to send one |
    | plan | The plan is empty |
-   | writeback | A no-op write-back succeeds: clone/fetch with the credentials, no commit. For `codi dev`, the working directory is only checked for write access |
+   | writeback | A no-op write-back succeeds: clone/fetch with the credentials, no commit. For `cicord dev`, the working directory is only checked for write access |
 
    The slower results (token and application lookup, plan, write-back probe) are cached for
    15 s per server, so polling stays cheap for Discord and git. The live checks (member,
@@ -222,7 +222,7 @@ Each step is validated by the runtime before moving on.
         every declared capability granted, to `bots/<bot>/bot.yaml`;
      4. the wizard waits for the revision and shows the instance health, then suggests the
         slash command to try (`/poll`, `/rank`…).
-8. **Done**: a summary, links to the admin console, the portal and the CLI (`codi plan
+8. **Done**: a summary, links to the admin console, the portal and the CLI (`cicord plan
    --remote`), and **Finish**, which completes the setup.
 
 ## Diagnostics
@@ -241,7 +241,7 @@ For the runtime side of the checks, `internal/runtime/diagnostics.go` records:
 `internal/catalog` reads the embedded plugins. Embed patterns are explicit (`plugin.yaml`,
 `config.schema.json`, `tsconfig.json`, `src/*.ts`), so `node_modules` or build output can
 never end up in the binary. `tsconfig.json` is made portable (its `paths` entry pointing to
-the CODI repository is dropped).
+the Cicord repository is dropped).
 
 `GET /api/v1/catalog` lists the plugins for admins. This is the seam where registries
 (`spec.registries`, the Store page) will add sources.
@@ -249,16 +249,16 @@ the CODI repository is dropped).
 ## Known gaps
 
 - After a restart, the persisted boot uses the public URL the wizard ran on
-  (`--public-url` / `CODI_PUBLIC_URL` override it).
+  (`--public-url` / `CICORD_PUBLIC_URL` override it).
 - If the first activation fails, **Import** can be clicked again: it reuses the running
   runtime, which keeps following the repository.
-- In `codi dev`, a restart between the first commit and the activation resumes the
+- In `cicord dev`, a restart between the first commit and the activation resumes the
   wizard as activated, since the runtime now runs the files.
 
 - GitHub authentication is a personal access token (GitHub App later); no webhook setup
   instructions yet (polling every minute).
 - The catalog lists the official plugins only; versions follow the binary.
-- `codi serve` restarted in a directory that still has no `codi.yaml` boots from the
+- `cicord serve` restarted in a directory that still has no `cicord.yaml` boots from the
   persisted embedded / GitHub repository. Moving that runtime elsewhere means copying the
   data dir (it holds the repository, the state and `secret.key`).
 - The wizard manages one server and one bot. Add more by editing the repository.

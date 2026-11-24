@@ -5,10 +5,10 @@ description: Reference of bots/<key>/bot.yaml - application ID, token secretRef,
 
 A **Bot** file, `bots/<key>/bot.yaml`, is one Discord application: one token, one identity.
 It lists the servers the bot joins and the plugins it runs there. Schema:
-[`spec/schemas/bot.schema.json`](https://github.com/npjonath/codi/blob/main/spec/schemas/bot.schema.json).
+[`spec/schemas/bot.schema.json`](https://github.com/npjonath/cicord/blob/main/spec/schemas/bot.schema.json).
 
 ```yaml title="bots/moderator/bot.yaml"
-apiVersion: codi.dev/v1alpha1
+apiVersion: cicord.dev/v1alpha1
 kind: Bot
 metadata:
   name: moderator
@@ -62,7 +62,7 @@ declares `automod`; `ServerExpressions` for emojis, stickers and sounds).
 The **privileged** intents (`ServerMembers`, `ServerPresences`, `MessageContent`) must also be
 enabled in the Discord developer portal (Bot → Privileged Gateway Intents). The runtime reads
 the application's flags when the bot connects; when one is missing it does not open the
-gateway and the bot status names the toggle to turn on. `codi validate` warns about every
+gateway and the bot status names the toggle to turn on. `cicord validate` warns about every
 privileged intent in use.
 
 Intent names follow the same *server* vocabulary as permissions: `Servers`, `ServerMembers`,
@@ -83,7 +83,7 @@ separate on each server.
 |---|---|---|
 | `name` | key, **required** | Instance key, unique within the bot. The same plugin can run twice under two names with different configs. |
 | `source` | string, **required** | A **local** path relative to this `bot.yaml` (`./plugins/x`, `../../plugins/x`), or a **registry** reference `<registry>/<plugin>`. |
-| `version` | semver range | **Required** for registry plugins (and locked in `codi.lock`), **forbidden** for local ones. |
+| `version` | semver range | **Required** for registry plugins (and locked in `cicord.lock`), **forbidden** for local ones. |
 | `servers` | list of server keys (≥ 1) | Restrict the instance to some of the bot's servers. Default: all of them. |
 | `grants` | list of capabilities | Must cover **every** capability the plugin's manifest requests. |
 | `config` | object | The plugin's configuration, validated against its `config.schema.json`. |
@@ -92,8 +92,8 @@ separate on each server.
 ```yaml title="A registry plugin"
 plugins:
   - name: xp
-    source: acme/xp          # registry "acme" of codi.yaml, plugin "xp"
-    version: ^1.2.0          # locked in codi.lock by `codi plugin add`
+    source: acme/xp          # registry "acme" of cicord.yaml, plugin "xp"
+    version: ^1.2.0          # locked in cicord.lock by `cicord plugin add`
     grants: [discord.messages.send, storage.kv]
 ```
 
@@ -108,7 +108,7 @@ in [Writing a plugin](../../plugins/writing/#capabilities-and-grants).
 
 The effective config of an instance on a server is `config`, merged with
 `overrides.<server>.config` (JSON merge patch: `null` removes a field), then the schema's
-`default`s. It is validated **per server**; fields marked `x-codi-ref` must name a key that
+`default`s. It is validated **per server**; fields marked `x-cicord-ref` must name a key that
 exists on every server the instance runs on.
 
 From the admin console, a moderator or admin edits either the base `config` or the server's
@@ -116,7 +116,7 @@ override; the change is written back as the minimal patch.
 
 ## Validation
 
-`codi validate` fails when a capability is not granted, a config does not match its schema
+`cicord validate` fails when a capability is not granted, a config does not match its schema
 (after overrides, per server), a reference does not resolve, a registry plugin is missing
-from `codi.lock`, a command name is defined twice on the same bot and server, or a handler
+from `cicord.lock`, a command name is defined twice on the same bot and server, or a handler
 needs an intent its manifest does not declare.

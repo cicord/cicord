@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 func init() {
@@ -24,7 +24,7 @@ func init() {
 	pluginSubcommands = append(pluginSubcommands, newPluginAddCmd)
 }
 
-// yamlMapPlugin is the bot.yaml entry written by `codi plugin add`.
+// yamlMapPlugin is the bot.yaml entry written by `cicord plugin add`.
 type yamlMapPlugin struct {
 	Name    string   `yaml:"name"`
 	Source  string   `yaml:"source"`
@@ -36,9 +36,9 @@ func newPluginAddCmd() *cobra.Command {
 	var repoDir, bot, name string
 	cmd := &cobra.Command{
 		Use:   "add <registry>/<plugin>[@<range>]",
-		Short: "Add a registry plugin to a bot and lock it in codi.lock",
-		Example: `  codi plugin add acme/hello --bot moderator
-  codi plugin add acme/xp@^1.2.0 --bot moderator --name xp`,
+		Short: "Add a registry plugin to a bot and lock it in cicord.lock",
+		Example: `  cicord plugin add acme/hello --bot moderator
+  cicord plugin add acme/xp@^1.2.0 --bot moderator --name xp`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			source, rng, _ := strings.Cut(args[0], "@")

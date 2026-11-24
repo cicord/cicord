@@ -14,7 +14,7 @@ import (
 	"github.com/disgoorg/disgo/rest"
 	"github.com/gorilla/websocket"
 
-	"github.com/npjonath/codi/internal/discord"
+	"github.com/npjonath/cicord/internal/discord"
 )
 
 func testSession() *session {
@@ -40,7 +40,7 @@ func one(t *testing.T, evs []discord.Event) discord.Event {
 
 func TestTranslateReady(t *testing.T) {
 	s := testSession()
-	ev := one(t, mustTranslate(t, s, "READY", `{"v":10,"user":{"id":"600","username":"codi","bot":true},
+	ev := one(t, mustTranslate(t, s, "READY", `{"v":10,"user":{"id":"600","username":"cicord","bot":true},
 	  "guilds":[{"id":"1","unavailable":true},{"id":"2","unavailable":true}],"session_id":"x","application":{"id":"600"}}`))
 	r, ok := ev.(discord.ReadyEvent)
 	if !ok || r.User.ID != "600" || !r.User.Bot || !reflect.DeepEqual(r.ServerIDs, []string{"1", "2"}) {

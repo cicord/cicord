@@ -1,8 +1,8 @@
-// Package setup implements CODI's setup wizard (docs/onboarding-wizard.md): the guided
+// Package setup implements Cicord's setup wizard (docs/onboarding-wizard.md): the guided
 // path from nothing to a synchronized Discord server with a first plugin.
 //
 // The wizard is a small state machine persisted in the state store (KV scope
-// "codi:setup"), so it resumes after a restart. Every step is validated by the runtime
+// "cicord:setup"), so it resumes after a restart. Every step is validated by the runtime
 // before moving on: the bot token is checked against Discord, the server membership,
 // permissions and role hierarchy are checked live, the imported configuration is planned
 // (it must be empty: everything is adopted) before the runtime activates it, and the
@@ -31,17 +31,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/importer"
-	"github.com/npjonath/codi/internal/reconcile"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/secrets"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/version"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/importer"
+	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/secrets"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/version"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // Steps, in order.
@@ -60,10 +60,10 @@ const (
 var Steps = []string{StepWelcome, StepDiscord, StepServer, StepRepository, StepLogin, StepVerify, StepPlugin, StepDone}
 
 // OAuthSecretName is the secret holding the Discord OAuth2 client secret.
-const OAuthSecretName = "CODI_DISCORD_CLIENT_SECRET"
+const OAuthSecretName = "CICORD_DISCORD_CLIENT_SECRET"
 
 const (
-	stateScope = "codi:setup"
+	stateScope = "cicord:setup"
 	stateKey   = "state"
 	// SessionMethod marks setup sessions in the session store.
 	SessionMethod = "setup"
@@ -199,13 +199,13 @@ type Options struct {
 	// Providers are the repository providers offered, the first one is the default.
 	Providers []string
 	DataDir   string
-	// Dir is the directory `codi dev` watches (local provider).
+	// Dir is the directory `cicord dev` watches (local provider).
 	Dir       string
 	PublicURL string
 	// Activate starts the runtime on a new repository (no process restart) and swaps the
 	// HTTP handler to the full API.
 	Activate func(ctx context.Context, repo RepoConfig) (*Activation, error)
-	// Sim is the simulated Discord of `codi dev --sim --setup`.
+	// Sim is the simulated Discord of `cicord dev --sim --setup`.
 	Sim *SimEnv
 	// Download fetches the server's files from the Discord CDN during the import
 	// (default: the simulator's CDN with Sim, HTTP otherwise).
@@ -295,7 +295,7 @@ func (w *Wizard) activation() *Activation {
 // Simulator reports whether the wizard runs against the simulator.
 func (w *Wizard) Simulator() bool { return w.opts.Sim != nil }
 
-// SimEnv returns the simulator environment (nil outside `codi dev --sim --setup`).
+// SimEnv returns the simulator environment (nil outside `cicord dev --sim --setup`).
 func (w *Wizard) SimEnv() *SimEnv { return w.opts.Sim }
 
 // Catalog returns the plugin catalog.
@@ -342,7 +342,7 @@ func (w *Wizard) Exchange(ctx context.Context, token string) (state.Session, err
 	w.mu.Unlock()
 	if !ok {
 		return state.Session{}, errorf(http.StatusUnauthorized, "unauthenticated",
-			"Use the link printed in the CODI logs when it started (each link works once). Restart CODI to get a new one.",
+			"Use the link printed in the Cicord logs when it started (each link works once). Restart Cicord to get a new one.",
 			"This setup link is invalid or was already used.")
 	}
 	data, _ := json.Marshal(map[string]any{"method": SessionMethod, "username": "setup"})
@@ -801,7 +801,7 @@ type RepoRequest struct {
 }
 
 // ChooseRepo validates and records the repository choice. The git token is stored in
-// the secret store (CODI_GIT_TOKEN).
+// the secret store (CICORD_GIT_TOKEN).
 func (w *Wizard) ChooseRepo(ctx context.Context, req RepoRequest) (View, error) {
 	if !slices.Contains(w.opts.Providers, req.Provider) {
 		return View{}, errorf(http.StatusBadRequest, "invalid", "", "this runtime offers: %s", strings.Join(w.opts.Providers, ", "))
@@ -814,8 +814,8 @@ func (w *Wizard) ChooseRepo(ctx context.Context, req RepoRequest) (View, error) 
 	switch req.Provider {
 	case ProviderLocal:
 		cfg.Dir = w.opts.Dir
-		if _, err := os.Stat(filepath.Join(cfg.Dir, "codi.yaml")); err == nil {
-			return View{}, errorf(http.StatusConflict, "conflict", "Remove it or run `codi dev` in an empty folder.", "%s already contains a codi.yaml.", cfg.Dir)
+		if _, err := os.Stat(filepath.Join(cfg.Dir, "cicord.yaml")); err == nil {
+			return View{}, errorf(http.StatusConflict, "conflict", "Remove it or run `cicord dev` in an empty folder.", "%s already contains a cicord.yaml.", cfg.Dir)
 		}
 	case ProviderEmbedded:
 		cfg.Dir = filepath.Join(w.opts.DataDir, "repo.git")
@@ -839,7 +839,7 @@ func (w *Wizard) ChooseRepo(ctx context.Context, req RepoRequest) (View, error) 
 				"Create a fine-grained personal access token on GitHub (Settings → Developer settings → Personal access tokens) with “Contents: Read and write” on this repository.",
 				"A GitHub token is required.")
 		}
-		empty, hasCodi, err := CheckRemote(ctx, cfg.URL, branch, token)
+		empty, hasCicord, err := CheckRemote(ctx, cfg.URL, branch, token)
 		if err != nil {
 			msg := err.Error()
 			e := &Error{Status: http.StatusUnprocessableEntity, Code: "invalid", Details: msg}
@@ -856,9 +856,9 @@ func (w *Wizard) ChooseRepo(ctx context.Context, req RepoRequest) (View, error) 
 			}
 			return View{}, e
 		}
-		if hasCodi {
-			return View{}, errorf(http.StatusConflict, "conflict", "Pick an empty repository, or run `codi serve` with this repository's codi.yaml.",
-				"This repository already contains a CODI configuration.")
+		if hasCicord {
+			return View{}, errorf(http.StatusConflict, "conflict", "Pick an empty repository, or run `cicord serve` with this repository's cicord.yaml.",
+				"This repository already contains a Cicord configuration.")
 		}
 		_ = empty
 		if strings.TrimSpace(req.Token) != "" {
@@ -891,7 +891,7 @@ type ImportResult struct {
 	Warnings     []string `json:"warnings,omitempty"`
 }
 
-// Import reads the chosen server, generates codi.yaml / servers/<key>.yaml /
+// Import reads the chosen server, generates cicord.yaml / servers/<key>.yaml /
 // bots/<bot>/bot.yaml, plans it (it must be empty: everything adopted), creates the
 // repository with a first commit and activates the runtime without a restart.
 func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error) {
@@ -943,7 +943,7 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 			files[p] = data
 		}
 		res.Files = catalog.SortedPaths(files)
-		tmp, err := os.MkdirTemp("", "codi-import-*")
+		tmp, err := os.MkdirTemp("", "cicord-import-*")
 		if err != nil {
 			return ImportResult{}, err
 		}
@@ -981,7 +981,7 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 		if s.Repo.TokenRef != "" {
 			token, _ = w.secret(s.Repo.TokenRef)
 		}
-		msg := fmt.Sprintf("Set up CODI for %s\n\nImported %d role(s) and %d channel(s) from Discord.", s.Server.Name, len(snap.Roles), len(snap.Channels))
+		msg := fmt.Sprintf("Set up Cicord for %s\n\nImported %d role(s) and %d channel(s) from Discord.", s.Server.Name, len(snap.Roles), len(snap.Channels))
 		if _, err := InitRepository(ctx, *s.Repo, token, files, msg); err != nil {
 			return ImportResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not create the repository.",
 				Hint: "For GitHub, check that the token has “Contents: Read and write” access; then try again.", Details: err.Error()}
@@ -1110,7 +1110,7 @@ func (w *Wizard) redirectURL() string {
 	return strings.TrimRight(w.opts.PublicURL, "/") + "/auth/callback"
 }
 
-// checkRedirect fails when the application does not list CODI's callback among its
+// checkRedirect fails when the application does not list Cicord's callback among its
 // OAuth2 redirects: Discord would answer "invalid redirect_uri" at the first login.
 // It is skipped when the redirects cannot be read (simulator, probe error).
 func (w *Wizard) checkRedirect(ctx context.Context, bot *BotState) error {
@@ -1127,7 +1127,7 @@ func (w *Wizard) checkRedirect(ctx context.Context, bot *BotState) error {
 		return nil
 	}
 	return &Error{Status: http.StatusUnprocessableEntity, Code: "redirect_missing",
-		Message: "Discord does not know CODI's login address yet.",
+		Message: "Discord does not know Cicord's login address yet.",
 		Hint:    "In the Developer Portal open OAuth2 → Redirects, add " + want + " exactly as written, save, then try again.",
 		Link:    PortalOAuthURL(bot.ApplicationID)}
 }
@@ -1206,7 +1206,7 @@ func (w *Wizard) InstallPlugin(ctx context.Context, req InstallRequest) (Install
 	}
 	inst := Installer{Runtime: act.Runtime, Writer: act.Writer, Catalog: w.opts.Catalog, Probe: w.opts.Probe,
 		Secrets: secrets.Resolver(w.opts.Secrets, w.opts.Env), Timeout: w.opts.ActivationTimeout}
-	res, err := inst.Install(ctx, s.Server.Key, s.Bot.Key, req, "setup", "codi setup")
+	res, err := inst.Install(ctx, s.Server.Key, s.Bot.Key, req, "setup", "cicord setup")
 	if err != nil {
 		return InstallResult{}, View{}, err
 	}
@@ -1254,7 +1254,7 @@ func (w *Wizard) SimCreateBot(name string) (string, error) {
 		return "", errorf(http.StatusNotFound, "not_found", "", "not running against the simulator")
 	}
 	if name == "" {
-		name = "CODI"
+		name = "Cicord"
 	}
 	tok, _ := w.opts.Sim.CreateBot(name)
 	return tok, nil
@@ -1329,5 +1329,5 @@ func (w *Wizard) SimSendMessage(ctx context.Context) error {
 	if s.Server == nil {
 		return errorf(http.StatusConflict, "conflict", "", "Pick the server first.")
 	}
-	return w.opts.Sim.SendMessage(s.Server.ID, "hello CODI 👋")
+	return w.opts.Sim.SendMessage(s.Server.ID, "hello Cicord 👋")
 }

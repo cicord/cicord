@@ -7,15 +7,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/version"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/version"
 )
 
 func newValidateCmd() *cobra.Command {
 	var output string
 	cmd := &cobra.Command{
 		Use:   "validate [dir]",
-		Short: "Validate a CODI repository (schemas + semantic checks), offline",
+		Short: "Validate a Cicord repository (schemas + semantic checks), offline",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."

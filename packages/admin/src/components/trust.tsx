@@ -1,5 +1,5 @@
 /** Where a plugin comes from and what it may do: trust badges and capability chips. */
-import type { PluginTrust } from "@codi/client";
+import type { PluginTrust } from "@cicord/client";
 import { FolderGit2, ShieldAlert, ShieldCheck, TriangleAlert } from "lucide-react";
 import { useTranslation } from "../i18n/index.ts";
 import { cn } from "../lib/utils.ts";
@@ -7,7 +7,7 @@ import { Mono } from "./common.tsx";
 import { Badge } from "./ui/badge.tsx";
 import { Tip } from "./ui/tooltip.tsx";
 
-/** Official (CODI or the official registry), Unofficial (any other registry), Local (the repo). */
+/** Official (Cicord or the official registry), Unofficial (any other registry), Local (the repo). */
 export function TrustBadge({ trust, className }: { trust: PluginTrust; className?: string }) {
   const { t } = useTranslation();
   if (trust === "official")

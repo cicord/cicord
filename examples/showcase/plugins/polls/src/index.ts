@@ -5,7 +5,7 @@ import {
   type ComponentInteraction,
   type Context,
   type Json,
-} from "@codi/sdk";
+} from "@cicord/sdk";
 import {
   MAX_CHOICES,
   closedEvent,
@@ -208,7 +208,7 @@ export default definePlugin({
     },
   },
 
-  // Checked against the portal contract in routes.ts (copied into portals by `codi portal typegen`).
+  // Checked against the portal contract in routes.ts (copied into portals by `cicord portal typegen`).
   routes: defineRoutes<Routes>({
     /** Results of a poll (public: polls are posted in public channels). */
     "GET /polls/:id": {

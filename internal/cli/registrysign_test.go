@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/registry"
+	"github.com/npjonath/cicord/internal/registry"
 )
 
 func TestRegistryKeygenSignVerify(t *testing.T) {
-	const regURL = "https://github.com/codi-dev/registry"
+	const regURL = "https://github.com/cicord-dev/registry"
 	t.Setenv(registry.DevOfficialRegistryEnv, "")
 	dir := t.TempDir()
 	keyFile := filepath.Join(dir, "keys", "registry.key")

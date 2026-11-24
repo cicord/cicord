@@ -1,8 +1,8 @@
 /**
- * JSON Schema (2020-12) subset used by plugin `config.schema.json` files, plus the CODI
- * extensions (spec/README.md §6): `x-codi-ref`, `x-codi-widget`, `x-codi-access`.
+ * JSON Schema (2020-12) subset used by plugin `config.schema.json` files, plus the Cicord
+ * extensions (spec/README.md §6): `x-cicord-ref`, `x-cicord-widget`, `x-cicord-access`.
  */
-import type { Json } from "@codi/client";
+import type { Json } from "@cicord/client";
 import { jsonText } from "./values.ts";
 
 export type RefKind = "channel" | "category" | "role";
@@ -38,9 +38,9 @@ export interface JsonSchema {
   oneOf?: JsonSchema[];
   anyOf?: JsonSchema[];
   readOnly?: boolean;
-  "x-codi-ref"?: RefKind;
-  "x-codi-widget"?: Widget;
-  "x-codi-access"?: Access;
+  "x-cicord-ref"?: RefKind;
+  "x-cicord-widget"?: Widget;
+  "x-cicord-access"?: Access;
   [key: string]: unknown;
 }
 
@@ -84,17 +84,17 @@ export function primaryType(schema: JsonSchema): string | undefined {
 }
 
 /**
- * Item schema of an array. `x-codi-ref` on the array itself (a list of resource keys, as in
- * `{"type": "array", "items": {"type": "string"}, "x-codi-ref": "role"}`) applies to its items.
+ * Item schema of an array. `x-cicord-ref` on the array itself (a list of resource keys, as in
+ * `{"type": "array", "items": {"type": "string"}, "x-cicord-ref": "role"}`) applies to its items.
  */
 export function itemSchemaOf(schema: JsonSchema): JsonSchema {
   const items = schema.items ?? {};
-  const ref = schema["x-codi-ref"];
-  return ref && !items["x-codi-ref"] && !items.$ref ? { ...items, "x-codi-ref": ref } : items;
+  const ref = schema["x-cicord-ref"];
+  return ref && !items["x-cicord-ref"] && !items.$ref ? { ...items, "x-cicord-ref": ref } : items;
 }
 
 export function fieldKind(schema: JsonSchema): FieldKind {
-  if (schema["x-codi-ref"] && primaryType(schema) !== "array") return "ref";
+  if (schema["x-cicord-ref"] && primaryType(schema) !== "array") return "ref";
   if (Array.isArray(schema.enum) && schema.enum.length > 0) return "enum";
   if (schema.const !== undefined) return "enum";
   if (schema.oneOf || schema.anyOf) {
@@ -201,11 +201,11 @@ export function initialValue(schema: JsonSchema, root: JsonSchema = schema): Jso
   }
 }
 
-/** Top-level fields a role may edit, from `x-codi-access` (mirrors the runtime's rule). */
+/** Top-level fields a role may edit, from `x-cicord-access` (mirrors the runtime's rule). */
 export function editableFor(schema: JsonSchema, role: "admin" | "moderator" | "member"): string[] {
   const out: string[] = [];
   for (const [key, prop] of Object.entries(schema.properties ?? {})) {
-    const access = prop["x-codi-access"] ?? "admin";
+    const access = prop["x-cicord-access"] ?? "admin";
     if (role === "admin" || (role === "moderator" && access === "moderator")) out.push(key);
   }
   return out.sort();

@@ -10,9 +10,9 @@ question is how a developer uses it interactively, and how to keep a local dev r
 which lets anyone sign in as anyone, from becoming an attack surface.
 
 ## Decision
-- **`codi dev [dir] --sim`** runs the full runtime (reconciler, bot hosts, plugins, HTTP
+- **`cicord dev [dir] --sim`** runs the full runtime (reconciler, bot hosts, plugins, HTTP
   API, admin UI and portal) on a local working directory, with Discord replaced by an
-  in-process `sim.World`. Without `--sim`, `codi dev` uses real Discord with the tokens read
+  in-process `sim.World`. Without `--sim`, `cicord dev` uses real Discord with the tokens read
   from the environment (`token.secretRef`). Both modes hot reload: every saved file is a new
   revision, and admin UI edits are written back to the files (`writeback.DirWriter`).
 - **Seeding from YAML** (`api.SeedSimWorld`, run once at startup from the loaded
@@ -25,8 +25,8 @@ which lets anyone sign in as anyone, from becoming an attack surface.
   - extra users `alice`, `bob` and `charlie`, not members of any server, to test joins;
   - servers start empty (only @everyone): the first sync creates roles, categories and
     channels from the YAML, like on a fresh real server.
-- The simulator's IDs are new on every run, so the state DB of `codi dev --sim` is in memory
-  (`:memory:` SQLite); `codi dev` without `--sim` keeps `<repo>/.codi/dev/codi.db`.
+- The simulator's IDs are new on every run, so the state DB of `cicord dev --sim` is in memory
+  (`:memory:` SQLite); `cicord dev` without `--sim` keeps `<repo>/.cicord/dev/cicord.db`.
 - **Admin Simulator panel**: the HTTP API exposes the world under `/api/v1/sim/*`
   (spec/api.md §8: state, users, join/leave, messages, DMs, slash commands, components,
   modals, and an SSE `change` stream). The admin UI's Simulator panel uses it to pick an
@@ -46,19 +46,19 @@ which lets anyone sign in as anyone, from becoming an attack surface.
   allowed only with the simulator (the user must exist in the simulated world) or with the
   runtime token (`Authorization: Bearer`); against real Discord without the token it
   answers `403`, because impersonating real users is not acceptable.
-- The general rules still apply: CSRF header `X-Codi-Request` and Origin check on unsafe
+- The general rules still apply: CSRF header `X-Cicord-Request` and Origin check on unsafe
   methods, simulator endpoints included (they need no authentication otherwise).
-- `codi dev` prints the runtime token (generated per run unless `CODI_RUNTIME_TOKEN` is
+- `cicord dev` prints the runtime token (generated per run unless `CICORD_RUNTIME_TOKEN` is
   set) and relaxes `http.fetch` address checks so plugins can call local services
-  (spec/README.md §6); `codi serve` never does either.
+  (spec/README.md §6); `cicord serve` never does either.
 
 ## Consequences
-- A new contributor can run `codi init` then `codi dev --sim` and exercise a bot end to end
+- A new contributor can run `cicord init` then `cicord dev --sim` and exercise a bot end to end
   with no Discord account; the same code paths run in production.
 - The simulator is only as faithful as ADR-0012's implementation: behaviour it does not
   model (some error cases, rate limits, privileged intent approval) must still be checked
   against a real test server before going live.
-- Seeding happens once: a server or bot added to the YAML while `codi dev --sim` runs is not
+- Seeding happens once: a server or bot added to the YAML while `cicord dev --sim` runs is not
   in the world until the process is restarted.
 - The dev runtime must not be exposed beyond loopback; the Host check makes an accidental
   `--listen 0.0.0.0` answer only to local names (or the configured public URL).

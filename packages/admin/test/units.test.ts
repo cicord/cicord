@@ -1,4 +1,4 @@
-import { CodiApiError, type SyncRecord } from "@codi/client";
+import { CicordApiError, type SyncRecord } from "@cicord/client";
 import { describe, expect, test } from "vite-plus/test";
 import en from "../src/i18n/en.json";
 import { formatRelative, i18n } from "../src/i18n/index.ts";
@@ -58,18 +58,18 @@ describe("error mapping", () => {
 
   test("API errors map to distinct, friendly messages", () => {
     const network = describeError(
-      new CodiApiError({ code: "network", status: 0, message: "fetch failed" }),
+      new CicordApiError({ code: "network", status: 0, message: "fetch failed" }),
     );
     expect(network.kind).toBe("network");
     expect(network.title).toBe("Can't reach the runtime");
 
     expect(
       describeError(
-        new CodiApiError({ code: "unauthenticated", status: 401, message: "login required" }),
+        new CicordApiError({ code: "unauthenticated", status: 401, message: "login required" }),
       ).title,
     ).toBe("Your session expired");
     const forbidden = describeError(
-      new CodiApiError({
+      new CicordApiError({
         code: "forbidden",
         status: 403,
         message: "requires the admin role on server ma-commu",
@@ -80,10 +80,10 @@ describe("error mapping", () => {
     expect(forbidden.hint).toMatch(/spec.access/);
 
     expect(
-      describeError(new CodiApiError({ code: "conflict", status: 409, message: "changed" })).hint,
+      describeError(new CicordApiError({ code: "conflict", status: 409, message: "changed" })).hint,
     ).toMatch(/Reload/);
     const invalid = describeError(
-      new CodiApiError({
+      new CicordApiError({
         code: "invalid",
         status: 422,
         message: "the configuration is invalid",
@@ -97,7 +97,7 @@ describe("error mapping", () => {
 
     // A plan / sync failure explained by the runtime.
     const sync = describeError(
-      new CodiApiError({
+      new CicordApiError({
         code: "unavailable",
         status: 503,
         message: "Announcement and stage channels need the Community feature",
@@ -113,15 +113,15 @@ describe("error mapping", () => {
 
     // An older runtime sending the raw text: no JSON in the main text.
     const old = describeError(
-      new CodiApiError({ code: "unavailable", status: 503, message: `sync: ${RAW}` }),
+      new CicordApiError({ code: "unavailable", status: 503, message: `sync: ${RAW}` }),
     );
     expect(old.message).not.toMatch(/[{}]/);
     expect(old.details).toBe(`sync: ${RAW}`);
 
     const internal = describeError(
-      new CodiApiError({ code: "internal", status: 500, message: "internal error" }),
+      new CicordApiError({ code: "internal", status: 500, message: "internal error" }),
     );
-    expect(internal.message).toMatch(/bug in CODI/);
+    expect(internal.message).toMatch(/bug in Cicord/);
     expect(describeError(new Error("boom")).message).toBe("Boom");
   });
 });

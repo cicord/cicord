@@ -327,7 +327,7 @@ func (e *egress) do(ctx context.Context, method string, u *url.URL, headers map[
 		hdr.Set(k, v)
 	}
 	if hdr.Get("User-Agent") == "" {
-		hdr.Set("User-Agent", "codi-plugin/1")
+		hdr.Set("User-Agent", "cicord-plugin/1")
 	}
 	for hop := 0; ; hop++ {
 		if err := e.checkURL(u); err != nil {

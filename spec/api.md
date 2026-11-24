@@ -1,8 +1,8 @@
-# CODI runtime HTTP API — v1
+# Cicord runtime HTTP API — v1
 
-Served by `codi serve` / `codi dev`. JSON over HTTP, UTF-8. This document is the contract
+Served by `cicord serve` / `cicord dev`. JSON over HTTP, UTF-8. This document is the contract
 between the runtime (`internal/api`), the admin UI (`packages/admin`), the portal SDK
-(`@codi/client`, `@codi/react`) and the CLI. `@codi/client` (`packages/client/src/types.ts`)
+(`@cicord/client`, `@cicord/react`) and the CLI. `@cicord/client` (`packages/client/src/types.ts`)
 mirrors every shape below.
 
 - Base path: `/api/v1`. Static UIs: `/admin/` (admin UI), `/` (community portal).
@@ -62,19 +62,19 @@ mirrors every shape below.
 - Optional fields are omitted when empty (marked `?` below); lists are always present
   (`[]`, never `null`).
 - Every response carries `X-Content-Type-Options: nosniff` and
-  `Referrer-Policy: same-origin` (portal URLs may carry `codi_token`); JSON responses are
+  `Referrer-Policy: same-origin` (portal URLs may carry `cicord_token`); JSON responses are
   `Cache-Control: no-store`; the admin UI is served with `X-Frame-Options: DENY`.
 - CORS: same-origin by default (every response carries `Vary: Origin`). Two lists of
   external portal origins are allowed:
-  - operator origins: `--cors-origin` (`CODI_CORS_ORIGINS`) — with
+  - operator origins: `--cors-origin` (`CICORD_CORS_ORIGINS`) — with
     credentials (`Access-Control-Allow-Credentials: true`), for cookie sessions;
-  - repository origins: codi.yaml `spec.portal.allowedOrigins` of the active revision —
+  - repository origins: cicord.yaml `spec.portal.allowedOrigins` of the active revision —
     **without** credentials, for token mode only (§1), so that a merged pull request can
     never open cookie sessions to a new site.
 
   Preflights (`OPTIONS` with `Access-Control-Request-Method`) answer `204`; for an allowed
   origin they allow the methods `GET, POST, PUT, PATCH, DELETE, OPTIONS`, the headers
-  `Content-Type`, `Authorization`, `X-Codi-Request` and `Last-Event-ID`, max age 600 s.
+  `Content-Type`, `Authorization`, `X-Cicord-Request` and `Last-Event-ID`, max age 600 s.
 - **Data tables** (lists marked *paged*): `?q=<words>&sort=<key>&order=asc|desc&offset=<n>&limit=<n>`.
   `q` keeps items containing every word (case-insensitive); `sort` must be one of the keys
   listed for the endpoint (`400 invalid` otherwise); `limit` is capped at 200. The
@@ -83,19 +83,19 @@ mirrors every shape below.
 - Limits: JSON bodies ≤ 1 MiB (`413 invalid`), `POST /api/v1/plan` uploads ≤ 32 MiB,
   GitHub webhook payloads ≤ 25 MiB; handlers time out after 60 s (`503 unavailable`),
   except the SSE stream.
-- **Dev-mode Host check** (`codi dev` only): to defeat DNS rebinding, the runtime only
+- **Dev-mode Host check** (`cicord dev` only): to defeat DNS rebinding, the runtime only
   answers requests whose `Host` is `localhost`, `*.localhost`, `127.0.0.1`, `::1` or the host
-  of `--public-url`; anything else → `421 forbidden` ("unexpected Host header"). `codi serve`
+  of `--public-url`; anything else → `421 forbidden` ("unexpected Host header"). `cicord serve`
   does not restrict `Host`.
 
 ## 1. Authentication
 
-Browser clients use a session cookie `codi_session` (HttpOnly, SameSite=Lax, path `/`,
+Browser clients use a session cookie `cicord_session` (HttpOnly, SameSite=Lax, path `/`,
 Secure when the request is TLS or `--public-url` is `https://`), or — for sites embedding
 the portal SDK on another origin — a **session token** (token mode, below). Machine clients
 (CLI, CI) use `Authorization: Bearer <token>` where the token is the runtime token
-(`CODI_RUNTIME_TOKEN`, compared in constant time); a bearer token acts as `admin` on every
-server. `Authorization: Bearer codi_st_…` is a session token. Any other `Authorization`
+(`CICORD_RUNTIME_TOKEN`, compared in constant time); a bearer token acts as `admin` on every
+server. `Authorization: Bearer cicord_st_…` is a session token. Any other `Authorization`
 value, or an unknown / expired session token → `401 unauthenticated`, even when a valid
 cookie is present. An unknown or expired cookie is simply anonymous.
 
@@ -103,21 +103,21 @@ cookie is present. An unknown or expired cookie is simply anonymous.
 |---|---|---|
 | GET | `/auth/login?redirect=<path>[&mode=token]` | Redirects (`302`) to Discord OAuth2 (scope `identify`, `prompt=none`). |
 | GET | `/auth/callback` | OAuth2 callback; creates the session, redirects (`302`) to `redirect`. |
-| POST | `/auth/link` | Body `{"token": "<signed link token>"}`. Exchanges a token produced by `ctx.portal.link()` (query parameter `codi_token` on the portal URL) for a session. Returns `Me`. |
+| POST | `/auth/link` | Body `{"token": "<signed link token>"}`. Exchanges a token produced by `ctx.portal.link()` (query parameter `cicord_token` on the portal URL) for a session. Returns `Me`. |
 | POST | `/auth/dev-login` | **Dev mode only.** Body `{"userId": "<id>"}`. Creates a session for that user. Returns `Me`. |
-| POST | `/auth/token` | Token mode. Body `{"code": "<one-time code>"}`. Redeems the `codi_code` of a token-mode login for a `TokenSession`. |
-| POST | `/auth/logout` | Deletes the session and clears the cookie; with `Authorization: Bearer codi_st_…`, revokes that token instead. `204`. |
+| POST | `/auth/token` | Token mode. Body `{"code": "<one-time code>"}`. Redeems the `cicord_code` of a token-mode login for a `TokenSession`. |
+| POST | `/auth/logout` | Deletes the session and clears the cookie; with `Authorization: Bearer cicord_st_…`, revokes that token instead. `204`. |
 
 - **OAuth2**: `redirect` must be a local path (`/x`, not `//x` nor `/\x`) or an absolute URL
   on an allowed CORS origin; anything else falls back to `/`. The redirect URI sent to
   Discord is `<public URL>/auth/callback` (the public URL is `--public-url`, otherwise
   derived from the request's scheme and `Host`) and must be registered in the Discord
   application. The `state` parameter is random, single-use (10 min, stored in the runtime
-  DB) and bound to the browser by the `codi_oauth_state` cookie (HttpOnly, Lax, path
+  DB) and bound to the browser by the `cicord_oauth_state` cookie (HttpOnly, Lax, path
   `/auth/`); a missing or mismatching cookie, or an expired state → `400 invalid`. A
   Discord error or a failed code exchange → `401 unauthenticated`. The OAuth2 client ID is
-  `CODI_DISCORD_CLIENT_ID`, by default the application ID of the first bot (by key);
-  without a client ID or `CODI_DISCORD_CLIENT_SECRET`, `/auth/login` answers
+  `CICORD_DISCORD_CLIENT_ID`, by default the application ID of the first bot (by key);
+  without a client ID or `CICORD_DISCORD_CLIENT_SECRET`, `/auth/login` answers
   `503 unavailable`.
 - **Sessions** last 7 days. Session IDs are random (256 bits) and stored in the runtime DB.
   A new login replaces the browser's previous session.
@@ -128,7 +128,7 @@ cookie is present. An unknown or expired cookie is simply anonymous.
   invalid or expired token; `400 invalid` for an anonymous link (`ctx.portal.link(path)`
   without a member), which cannot sign anyone in; `404` when the token's server is no
   longer in the repository; `503` before the first revision. Tokens are not single-use.
-- **Dev login**: `404` outside dev mode (`codi dev`). Impersonating arbitrary users is only
+- **Dev login**: `404` outside dev mode (`cicord dev`). Impersonating arbitrary users is only
   acceptable against the simulator, so it also requires **`--sim` or the runtime token**
   (`Authorization: Bearer …`), otherwise `403 forbidden`. With the simulator the user must
   exist in the simulated world (`404` otherwise); without it the profile is looked up through
@@ -136,38 +136,38 @@ cookie is present. An unknown or expired cookie is simply anonymous.
 
 ### Token mode (embedded portals)
 A site on another origin (a fan site with its own design) cannot use the SameSite=Lax
-cookie. It authenticates with a bearer **session token** instead; `@codi/client` does it
+cookie. It authenticates with a bearer **session token** instead; `@cicord/client` does it
 when created with `auth: "token"`.
 
-- **Allowed origins**: the embedding site's origin must be in codi.yaml
+- **Allowed origins**: the embedding site's origin must be in cicord.yaml
   `spec.portal.allowedOrigins` (token mode only) or `--cors-origin`.
 - **OAuth**: `/auth/login?mode=token&redirect=<URL>` where `redirect` is a local path or an
   absolute URL on an allowed origin (otherwise `400 invalid`: unlike cookie mode, there is
   no silent fallback to `/`). After Discord, `/auth/callback` sets no session cookie and
-  redirects to `redirect` with `codi_code=<code>` added to its query. The code is single-use,
+  redirects to `redirect` with `cicord_code=<code>` added to its query. The code is single-use,
   valid 60 s, and bound to the redirect's origin: `POST /auth/token {"code"}` must come from
   that origin (`Origin` header; a local redirect binds it to the runtime's own origin),
   otherwise `403 forbidden` (the code is burnt). Unknown or expired code → `401`.
 - **Portal links** and **dev login**: `POST /auth/link {"token", "mode": "token"}` and
   `POST /auth/dev-login {"userId", "mode": "token"}` return a `TokenSession` instead of
   setting a cookie. `mode` is `"cookie"` (default) or `"token"` (anything else → `400`).
-- `TokenSession = {"token": "codi_st_…", "expiresAt": "<RFC 3339>", "me": Me}`. Tokens
+- `TokenSession = {"token": "cicord_st_…", "expiresAt": "<RFC 3339>", "me": Me}`. Tokens
   last 24 h (link tokens: as long as the link session, at most 24 h) and are stored by the
   runtime like sessions (revoked by `/auth/logout`).
 - **Scope**: on the portal endpoints (§6, plugin routes included) a token session has the
   user's full role on the server; everywhere else it is **at most `member`** (like link
   sessions), so a token kept by a third-party site never reaches the admin endpoints. A
-  token is only accepted in the `Authorization` header, never as the `codi_session`
+  token is only accepted in the `Authorization` header, never as the `cicord_session`
   cookie; a cookie session ID is never accepted as a bearer token.
-- Requests carrying `Authorization` need no `X-Codi-Request` header (CSRF, below), but the
+- Requests carrying `Authorization` need no `X-Cicord-Request` header (CSRF, below), but the
   `Origin` check still applies: unsafe requests must come from an allowed origin.
 
 ### CSRF
 Every request with an unsafe method (anything but `GET`, `HEAD`, `OPTIONS`), the `/auth/*`
-endpoints included, must carry the header **`X-Codi-Request: 1`** (any non-empty value)
-unless it has an `Authorization` header (browsers never add one on their own). `@codi/client`
+endpoints included, must carry the header **`X-Cicord-Request: 1`** (any non-empty value)
+unless it has an `Authorization` header (browsers never add one on their own). `@cicord/client`
 always sends it. Otherwise:
-`403 {"error": {"code": "forbidden", "message": "missing X-Codi-Request header (CSRF protection)"}}`.
+`403 {"error": {"code": "forbidden", "message": "missing X-Cicord-Request header (CSRF protection)"}}`.
 
 In addition, an unsafe request carrying an `Origin` header must come from the runtime's
 own origin or an allowed CORS origin, otherwise `403 forbidden`. The runtime's own origin
@@ -287,7 +287,7 @@ sync is recorded in the audit log (`sync.apply`, details `{changes}`).
 with the raw image bytes as body (any `Content-Type`; the bytes decide). Accepted: PNG,
 JPEG, GIF (animated kept, not for `splash`) and WebP, at most 8 MiB; SVG and anything else
 → `415 unsupported_media_type`, larger → `413 too_large`. The image is not re-encoded. One
-write-back (ADR-0004, mode from `codi.yaml` policies over both paths) writes the file at
+write-back (ADR-0004, mode from `cicord.yaml` policies over both paths) writes the file at
 `<server YAML dir>/assets/<server>-<kind>.<ext>` and sets `spec.profile.<kind>:
 ./assets/<server>-<kind>.<ext>`; `revision` (optional) → `409 conflict` when the active
 revision differs. Uploading the declared file again is a no-op. Commit mode waits for the
@@ -369,11 +369,11 @@ declared in YAML (has a key); unmanaged resources have `key: ""`.
   "schema": { /* the plugin's config.schema.json as written */ },
   "baseConfig": { "channel": "general" },                   // spec.plugins[].config as written
   "override": { "message": "…" },                           // overrides.<server>.config, or null
-  "editable": ["message"],                                  // fields this user may edit (x-codi-access)
+  "editable": ["message"],                                  // fields this user may edit (x-cicord-access)
   "commands": [ { "name": "welcome-preview", "description": "…" } ],
   "routes": ["GET /steps", "POST /complete"],                // portal routes (§6)
   "health": "Healthy", "message": "",
-  "source": "codi",       // "codi" (official catalog), a registry name, or "local" (written in the repo)
+  "source": "cicord",       // "cicord" (official catalog), a registry name, or "local" (written in the repo)
   "trust": "official",    // official | unofficial | local
   "update"?: PluginUpdate // a newer version is available (§11)
 } ], "total": 1, "offset": 0, "limit": 1, "sort": "name", "order": "asc" }
@@ -391,20 +391,20 @@ from the server:
 - An instance that also runs on other servers only loses this one (`servers` list, and
   its `overrides.<server>` go); `removed: false`.
 - Otherwise it is deleted from bot.yaml (`removed: true`). When no other instance uses the
-  plugin, its `codi.lock` entry (registry plugin) or its `plugins/<name>/` directory
+  plugin, its `cicord.lock` entry (registry plugin) or its `plugins/<name>/` directory
   (copied by the Store or the wizard) goes too, listed in `cleaned`. Plugins written in
   the repository elsewhere are never deleted. Plugin data (KV) is kept.
 - Validated on a copy of the active revision first (`422 invalid` when something depends
   on it). Mode, activation wait and errors as a config `PUT`. Audit `plugin.uninstall`.
 
 ```json
-{ "removed": true, "cleaned": ["codi.lock: acme/xp"], "mode": "commit", "revision"?: "…", "pullRequestUrl"?: "…" }
+{ "removed": true, "cleaned": ["cicord.lock: acme/xp"], "mode": "commit", "revision"?: "…", "pullRequestUrl"?: "…" }
 ```
 
 - `schema` is the schema file's JSON with its key order preserved (`{"type": "object"}` when
   the plugin has none). `baseConfig` and `override` are written values without defaults.
 - `editable`: admins may edit every top-level property; moderators only those marked
-  `x-codi-access: moderator` (default `admin`). Sorted.
+  `x-cicord-access: moderator` (default `admin`). Sorted.
 
 `PUT /api/v1/servers/{server}/plugins/{bot}/{instance}/config` (moderator, field-restricted)
 
@@ -424,14 +424,14 @@ Request: `{"config": {...}, "scope": "server" | "base", "revision": "<active rev
   (`"you may not change: a, b"`). `scope: "base"` changes every server the instance runs
   on: the caller must be at least moderator on each of them where the effective config
   changes, and the field restriction applies per server.
-- The config is validated (schema + `x-codi-ref`, the same rules as `codi validate`) on
+- The config is validated (schema + `x-cicord-ref`, the same rules as `cicord validate`) on
   every affected server before anything is written → `422` with
   `{"error": {"code": "invalid", ..., "diagnostics": [Diagnostic]}}`.
 - `revision` (optional) must be the active revision ID, otherwise `409 conflict`
   (reload and retry). A write-back conflict (the branch moved and the patch no longer
   applies) is also `409`.
 - An unchanged config writes nothing and returns `{"mode": "commit", "revision": <active>}`.
-- `mode` comes from `codi.yaml` `writeBack.policies` for the bot file.
+- `mode` comes from `cicord.yaml` `writeBack.policies` for the bot file.
   `writeBack.enabled: false` → `403`; no writer configured → `503`; a failed write-back →
   `503`. Write-backs are serialized.
 - In `commit` mode the runtime is triggered at once and the response waits (≤ 20 s) for
@@ -441,7 +441,7 @@ Request: `{"config": {...}, "scope": "server" | "base", "revision": "<active rev
   `lastError`).
 - Every write is audited (`config.update`, target `<bot>/<instance>`, details
   `{scope, fields, mode, revision, pullRequestUrl}`). Commits carry the trailers
-  `Codi-Actor: discord:<id> (<name>)` and `Codi-Source: admin-ui`.
+  `Cicord-Actor: discord:<id> (<name>)` and `Cicord-Source: admin-ui`.
 
 Response `200`:
 ```json
@@ -507,16 +507,16 @@ Plugin routes:
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | POST | `/api/v1/sync` | bearer | Fetch the source now and sync (used by CI / webhooks without GitHub). `202 {"status": "accepted"}`. |
-| POST | `/api/v1/plan` | bearer | Body: a `.tar.gz` of a repository. Validates it and returns `{"valid": bool, "diagnostics": [Diagnostic], "plans": [Plan]}` against live Discord, without applying (`codi plan --remote`). |
-| POST | `/hooks/github` | HMAC | GitHub webhook (`X-Hub-Signature-256` verified with `CODI_WEBHOOK_SECRET`). `push` on the tracked branch triggers a sync. |
+| POST | `/api/v1/plan` | bearer | Body: a `.tar.gz` of a repository. Validates it and returns `{"valid": bool, "diagnostics": [Diagnostic], "plans": [Plan]}` against live Discord, without applying (`cicord plan --remote`). |
+| POST | `/hooks/github` | HMAC | GitHub webhook (`X-Hub-Signature-256` verified with `CICORD_WEBHOOK_SECRET`). `push` on the tracked branch triggers a sync. |
 | GET | `/healthz` | none | `200 ok` (text) when the process is up. |
 | GET | `/readyz` | none | `200 ready` once a revision is active, `503 no active revision` otherwise (text). |
 
-- Without `CODI_RUNTIME_TOKEN` the bearer endpoints answer `401` ("machine endpoints are
+- Without `CICORD_RUNTIME_TOKEN` the bearer endpoints answer `401` ("machine endpoints are
   disabled"); a missing or wrong token → `401`.
 - Plan archive: `Content-Type` `application/gzip`, `application/x-gzip`,
   `application/x-tar+gzip`, `application/octet-stream` or none, otherwise
-  `415 invalid`. `codi.yaml` at the root or inside a single top-level directory. Only regular
+  `415 invalid`. `cicord.yaml` at the root or inside a single top-level directory. Only regular
   files and directories; absolute paths, `..`, backslashes, symlinks, hard links and special
   files → `400 invalid`. At most 5000 files, 16 MiB per file and 64 MiB extracted; a body over
   32 MiB → `413`. An invalid repository is `200` with `valid: false`, its diagnostics and
@@ -524,14 +524,14 @@ Plugin routes:
 - Webhook: no secret configured or a bad signature → `401`; `ping` → `200 {"status": "pong"}`;
   `push` on `refs/heads/<tracked branch>` → `202 {"status": "accepted"}`; other branches and
   events → `200 {"status": "ignored", "reason": "…"}`; an unparsable push payload → `400`.
-  The tracked branch is `codi.yaml` `spec.source.branch`, default `main`.
+  The tracked branch is `cicord.yaml` `spec.source.branch`, default `main`.
 
-## 8. Simulator (`codi dev --sim` only)
+## 8. Simulator (`cicord dev --sim` only)
 
 Lets the admin UI's **Simulator** panel and tests play the role of Discord users. These
 endpoints need no authentication (dev only, behind the dev-mode Host check) but follow
 the CSRF rule of §1. Without the simulator they answer `404` ("the simulator is not
-enabled"). `codi dev --sim` seeds the world from the repository: every server (its
+enabled"). `cicord dev --sim` seeds the world from the repository: every server (its
 `discordId`, named after `profile.name` or its key) owned by a user `owner`, every bot (its
 `applicationId`, named after `profile.username` or its key) invited with `Administrator`,
 and the users `alice`, `bob` and `charlie`, who are not members.
@@ -542,7 +542,7 @@ and the users `alice`, `bob` and `charlie`, who are not members.
 | POST | `/api/v1/sim/users` | `{"username"}` (1–32 characters) → `201 User` |
 | POST | `/api/v1/sim/servers/{id}/members` | `{"userId"}` — the user joins the server (`memberJoin`). `204`. |
 | DELETE | `/api/v1/sim/servers/{id}/members/{userId}` | The user leaves. `204`. |
-| POST | `/api/v1/sim/servers/{id}/boosts` | `{"count": n}` — sets the number of boosts (boost level 2/7/14 → 1/2/3 and the features it unlocks) → `{"id","boostLevel","boostCount","features"}`. Seeding also honors the server annotations `sim.codi.dev/boosts: "<n>"` and `sim.codi.dev/features: "A,B"`. |
+| POST | `/api/v1/sim/servers/{id}/boosts` | `{"count": n}` — sets the number of boosts (boost level 2/7/14 → 1/2/3 and the features it unlocks) → `{"id","boostLevel","boostCount","features"}`. Seeding also honors the server annotations `sim.cicord.dev/boosts: "<n>"` and `sim.cicord.dev/features: "A,B"`. |
 | GET | `/api/v1/sim/channels/{id}/messages?limit=50` | `{"items": [Message]}` the last `limit` (≤ 500) messages, oldest first. |
 | GET | `/api/v1/sim/users/{id}/dms?limit=50` | `{"items": [Message]}` DMs received by the user from bots, oldest first. |
 | POST | `/api/v1/sim/messages` | `{"userId","channelId","content"}` → `201 Message` |
@@ -598,14 +598,14 @@ and the users `alice`, `bob` and `charlie`, who are not members.
   under `assets/` are `Cache-Control: public, max-age=31536000, immutable`, other files
   `no-cache` (revalidated with `Last-Modified`); a missing file with an extension (other than
   `.html`) is a plain `404`. Content types come from the file extension.
-- **Custom portal**: when codi.yaml `spec.portal.path` of the **active revision** points to a
+- **Custom portal**: when cicord.yaml `spec.portal.path` of the **active revision** points to a
   directory of that revision containing `index.html` (a committed build, docs/portal.md), it
   is served at `/` instead of the embedded default portal, with the same rules and an
-  `X-Codi-Portal: repository` header. The directory is resolved on every request, so a new
+  `X-Cicord-Portal: repository` header. The directory is resolved on every request, so a new
   revision swaps the files without a restart; when it is missing (not built yet) the
   default portal is served. Files are opened through an `os.Root` confined to that
   directory: `..` and symbolic links leading outside it are refused, and a portal path
-  reached through a symbolic link is ignored (`codi validate` reports it).
+  reached through a symbolic link is ignored (`cicord validate` reports it).
 - `/api/*`, `/auth/*`, `/hooks/*`, `/admin/*`, `/healthz` and `/readyz` are never shadowed
   by the portal: unknown paths there are JSON `404 not_found`.
 - Methods other than `GET` / `HEAD` on a static UI → `405 invalid`. A UI that was not built
@@ -617,7 +617,7 @@ Design and security: [docs/onboarding-wizard.md](../docs/onboarding-wizard.md).
 
 ### Setup mode
 
-`codi serve` / `codi dev` started in a directory without `codi.yaml` (and without a
+`cicord serve` / `cicord dev` started in a directory without `cicord.yaml` (and without a
 repository already created by the wizard) serve only these:
 
 - the admin UI;
@@ -634,10 +634,10 @@ Every other `/api/*` and `/auth/*` path → `503 setup_required` (`message`, `hi
   only for a valid setup session. Without the wizard (normal runtime) →
   `{"active": false, "completed": true, "authenticated": false}`.
 - `POST /api/v1/setup/session` `{"token"}` → the same shape, and sets the cookie
-  `codi_setup` (HttpOnly, `SameSite=Strict`, Secure behind HTTPS, 24 h).
+  `cicord_setup` (HttpOnly, `SameSite=Strict`, Secure behind HTTPS, 24 h).
   - The token is consumed: a reused or wrong token → `401 unauthenticated`. After
     completion → `410 gone`.
-  - The usual CSRF rule applies (`X-Codi-Request`).
+  - The usual CSRF rule applies (`X-Cicord-Request`).
 - Every other `/api/v1/setup/*` endpoint needs the setup session: otherwise `401
   unauthenticated` with a `hint`. After completion → `410 gone`.
 - Until completion the setup session is an **admin** on every server for the rest of the
@@ -703,14 +703,14 @@ Notes:
   `permissions`, `hierarchy`.
 - `POST /repo`: `providers` in `SetupView` lists the choices of this runtime (`serve`:
   embedded, github; `dev`: local, embedded). For `github`, the remote is checked with the
-  token, which is stored encrypted as `CODI_GIT_TOKEN`.
+  token, which is stored encrypted as `CICORD_GIT_TOKEN`.
 - `POST /import` imports the server and computes a preflight plan before anything changes.
   If the plan is not empty, it answers `needsConfirm: true` with the plan; call again with
   `confirm: true` to go on. Otherwise it writes the first commit and activates the runtime
   **without restart**, then answers with the runtime's first plan (`changes: []` when
   everything was adopted). Repeating the call after activation returns the same result.
 - `POST /oauth` checks the OAuth2 client secret with Discord and stores it
-  (`CODI_DISCORD_CLIENT_SECRET`).
+  (`CICORD_DISCORD_CLIENT_SECRET`).
 - `POST /oauth/skip` skips admin login.
 - `GET /oauth/test` reports whether this browser has a Discord login session after "Test
   login" (`/auth/login` in another tab).
@@ -722,7 +722,7 @@ Notes:
   `bots/<bot>/bot.yaml`.
 - `POST /finish` completes the setup and revokes the setup sessions.
 
-Simulator only (`codi dev --sim --setup`, else `404`): these endpoints stand in for
+Simulator only (`cicord dev --sim --setup`, else `404`): these endpoints stand in for
 discord.com.
 
 | Endpoint | Body | Result |
@@ -779,35 +779,35 @@ checks by `id`, and `message` / `hint` are written for people.
 
 The Store lists the plugins of every **source** and installs them through write-back
 (ADR-0011, apt/Homebrew-style sources). There are two kinds of sources:
-- **`codi`**: the official plugins bundled in the binary (the catalog of §10). Trust
+- **`cicord`**: the official plugins bundled in the binary (the catalog of §10). Trust
   `official`. Installing copies the plugin sources to `plugins/<name>/` (a local plugin).
-- **Registries** declared in `codi.yaml spec.registries` (`{name, url}`): git repositories
+- **Registries** declared in `cicord.yaml spec.registries` (`{name, url}`): git repositories
   with an `index.yaml`. Trust is **computed, never declared**: `official` only for the
-  official registry URL (none exists yet), otherwise `unofficial`. The name `codi` is
-  reserved. Installing writes a `codi.lock` entry and a bot.yaml instance with
+  official registry URL (none exists yet), otherwise `unofficial`. The name `cicord` is
+  reserved. Installing writes a `cicord.lock` entry and a bot.yaml instance with
   `source: <registry>/<plugin>`, in one write-back.
 
 **Official registry** (once it exists; ADR-0011 update 2026-11-23): its `index.yaml` must
 carry a valid, current signature by an official key (`index.yaml.sig`: bound to the
-registry URL, a serial and an expiry). It is implicit: source `codi` lists the union of the
+registry URL, a serial and an expiry). It is implicit: source `cicord` lists the union of the
 bundled plugins and its plugins (a plugin in both comes from the registry only when its
 index `version` is a semver greater than the bundled one), with `url` and `signature` set.
 An official URL whose signature is missing, invalid, expired, for another registry or older
 than one already seen has `signature: "invalid"`, an `error`, and no plugins from it
-(`codi` keeps its bundled plugins). `verified` is only `true` from a verified official
-index. A `codi` plugin from the registry has a `repo`, and its `StoreDetail` a
-`commit`/`integrity`; installing it locks `codi/<name>` in `codi.lock`.
+(`cicord` keeps its bundled plugins). `verified` is only `true` from a verified official
+index. A `cicord` plugin from the registry has a `repo`, and its `StoreDetail` a
+`commit`/`integrity`; installing it locks `cicord/<name>` in `cicord.lock`.
 
 Who: browsing and installing need the `admin` role on a server (bearer: everywhere).
-Adding or removing a source changes `codi.yaml` (the whole project): bearer, or `admin` on
+Adding or removing a source changes `cicord.yaml` (the whole project): bearer, or `admin` on
 **every** server the runtime manages.
 
 The runtime caches registry indexes and refreshes them in the background (10 s after start,
 then every 30 min) and on demand. A registry that cannot be fetched is listed with an
 `error` and no plugins; the others still work.
 
-**Private registries**: a registry may have a `secretRef` (codi.yaml), always
-`CODI_REGISTRY_<NAME>_TOKEN` for its own name, naming the secret that holds an access token
+**Private registries**: a registry may have a `secretRef` (cicord.yaml), always
+`CICORD_REGISTRY_<NAME>_TOKEN` for its own name, naming the secret that holds an access token
 (environment variable or the runtime's secret store). The token is
 sent, as HTTP basic auth over https, to the registry's host only (its index and the plugin
 repositories on the same host), never to other hosts. It is never returned by the API.
@@ -816,12 +816,12 @@ repositories on the same host), never to other hosts. It is never returned by th
 
 ```json
 // Source
-{ "name": "codi", "kind": "bundled|git", "url"?: "https://…", "trust": "official|unofficial",
+{ "name": "cicord", "kind": "bundled|git", "url"?: "https://…", "trust": "official|unofficial",
   "fetchedAt"?: "…", "error"?: Error, "private": false, "credentials"?: "ok|missing",
   "signature"?: "verified|invalid",                // official URLs only (see above)
   "pluginCount": 6, "plugins": [StorePlugin] }     // plugins omitted with ?summary=1
 // StorePlugin (browse; from the catalog or the registry index)
-{ "source": "codi", "name": "welcome", "displayName": "Welcome", "description": "…",
+{ "source": "cicord", "name": "welcome", "displayName": "Welcome", "description": "…",
   "keywords": [], "version"?: "0.1.0", "publisher"?: "…", "verified": false, "repo"?: "https://…",
   "trust": "official|unofficial",
   "installed": [{ "server", "bot", "instance" }],         // instances using this source/plugin
@@ -841,8 +841,8 @@ only done for `official` sources before installation.
 
 **Updates.** A plugin version is shared by every instance using it, so an update changes
 all of them at once:
-- `kind: "registry"`: the `codi.lock` version of `<registry>/<plugin>` (including
-  `codi/<plugin>` locked from the official registry) is not the highest release tag of the
+- `kind: "registry"`: the `cicord.lock` version of `<registry>/<plugin>` (including
+  `cicord/<plugin>` locked from the official registry) is not the highest release tag of the
   plugin repository, **any major version** (prereleases ignored, like resolving `*`). The
   lookup lists the repository's tags only (no clone), with the registry's token and the
   public-only rule like every Store fetch, and is cached with the index TTL: the background
@@ -858,7 +858,7 @@ all of them at once:
 
 | Method | Path | Role | Result |
 |---|---|---|---|
-| GET | `/api/v1/store[?summary=1]` | admin of a server | `{"sources": [Source]}`, `codi` first, then registries in `codi.yaml` order |
+| GET | `/api/v1/store[?summary=1]` | admin of a server | `{"sources": [Source]}`, `cicord` first, then registries in `cicord.yaml` order |
 | GET | `/api/v1/store/plugins` | admin of a server | *paged* `{"items": [StorePlugin], …}` across sources; sort `name` (default), `source`, `trust`, `version`, `publisher`, `installed`; filters `source`, `trust`, `installed=true\|false`, `updates=true\|false`; default limit 50 |
 | POST | `/api/v1/store/refresh` | admin of a server | refetches every registry index → as `GET /store` |
 | GET | `/api/v1/store/{source}/{plugin}` | admin of a server | `StoreDetail` for the latest version (`404` unknown source or plugin, `502 registry_unavailable`) |
@@ -880,7 +880,7 @@ all of them at once:
 - Registry plugins: `version`, `commit` and `integrity` are the values of the reviewed
   `StoreDetail` and are required. If the latest version now resolves differently →
   `409 changed` (review again): the installed code is always the reviewed code.
-- `codi` plugins: send `version`/`commit`/`integrity` when the reviewed `StoreDetail` has a
+- `cicord` plugins: send `version`/`commit`/`integrity` when the reviewed `StoreDetail` has a
   `commit` (it comes from the official registry), none for a bundled plugin. When the
   origin changed since the review (bundled ↔ registry) → `409 changed`. No
   `confirmUnofficial` is needed.
@@ -912,11 +912,11 @@ It never evaluates the new version's code (its config schema and `plugin.yaml` o
 ```
 - `instances` has one entry per instance and server. `diagnostics`: the instance's
   current config (base ⊕ server override, defaults of the **new** schema) validated
-  against the new config schema and `x-codi-ref` — an incompatible settings change shows
+  against the new config schema and `x-cicord-ref` — an incompatible settings change shows
   up here before anything is written (`configValid: false`).
 - `newRange` is written when the new version is outside the instance's `version` range
   (`^<new>`); `grantsAdded`/`grantsRemoved` make the grants what the new version requests.
-- `repoChanged`: the registry index now points to another repository than `codi.lock`.
+- `repoChanged`: the registry index now points to another repository than `cicord.lock`.
 - `missingAdmin`: servers running the plugin where the caller is not admin. Their
   instances are **not** detailed (no config diagnostics, grants, names, and they are left
   out of `detail.installed`): `restricted` only gives how many instances run there.
@@ -928,14 +928,14 @@ It never evaluates the new version's code (its config schema and `plugin.yaml` o
 ```
 - Needs the `admin` role on **every** server where an instance of the plugin runs (bearer:
   everywhere) → `403 forbidden` naming the missing servers. Write-back disabled → `403`.
-- Registry plugins (`codi/<plugin>` locked from the official registry included): `version`,
+- Registry plugins (`cicord/<plugin>` locked from the official registry included): `version`,
   `commit` and `integrity` of the reviewed `detail` are required (`400`); when the latest
   version now resolves differently → `409 changed`. Bundled copies: `version` (and
   optionally `integrity`) of the reviewed `detail`. `unofficial` sources need
   `confirmUnofficial: true` (`409 confirmation_required`). Already the latest →
   `409 up_to_date`. A modified bundled copy without `force: true` → `409 modified`
   (`details` lists the changed and deleted files).
-- One write-back: the `codi.lock` entry (refused when it changed meanwhile), every
+- One write-back: the `cicord.lock` entry (refused when it changed meanwhile), every
   instance's `version` range when needed and `grants`; for bundled copies, the files of
   `plugins/<name>/` (files the new version no longer ships are deleted). Privileged intents
   are checked for every bot running it (`409 intents`); the change is validated on a copy
@@ -950,28 +950,28 @@ It never evaluates the new version's code (its config schema and `plugin.yaml` o
   "message"?: "…", "instances": [{ "server", "bot", "instance", "health", "message"? }] }
 ```
 
-The CLI equivalent is `codi plugin update [<registry>/<plugin>] [--to <range>] [--force]`:
-without argument it lists the available updates; with a plugin it updates `codi.lock`,
+The CLI equivalent is `cicord plugin update [<registry>/<plugin>] [--to <range>] [--force]`:
+without argument it lists the available updates; with a plugin it updates `cicord.lock`,
 the ranges and grants of `bot.yaml` (or `plugins/<name>/`) locally and prints the
 capability diff.
 
-`POST /registries` request: `{"name": "acme", "url": "https://github.com/acme/codi-plugins.git", "token"?: "…"}`
+`POST /registries` request: `{"name": "acme", "url": "https://github.com/acme/cicord-plugins.git", "token"?: "…"}`
 - `token` makes it a private registry: stored in the secret store as
-  `CODI_REGISTRY_<NAME>_TOKEN`, `secretRef` written to codi.yaml (`503` when the runtime has
+  `CICORD_REGISTRY_<NAME>_TOKEN`, `secretRef` written to cicord.yaml (`503` when the runtime has
   no secret store). URLs with credentials (`https://user:pass@…`) → `400`.
-- `name`: `^[a-z0-9][a-z0-9-]{0,31}$`, not `codi`, unique; `url`: `https://` only and
+- `name`: `^[a-z0-9][a-z0-9-]{0,31}$`, not `cicord`, unique; `url`: `https://` only and
   unique (the CLI also accepts `file://` and local paths) → `400 invalid`.
 - The index is fetched first; unreachable or invalid → `422 invalid` (nothing written).
-- Writes `codi.yaml` (`spec.registries`), audit `registry.add`.
+- Writes `cicord.yaml` (`spec.registries`), audit `registry.add`.
 
-`DELETE /registries/{name}`: unknown → `404`; used by `codi.lock` or a bot plugin →
+`DELETE /registries/{name}`: unknown → `404`; used by `cicord.lock` or a bot plugin →
 `409 in_use` (`details` lists them). Its stored token is deleted. Audit `registry.remove`.
 
 `PUT /registries/{name}/token` `{"token"}` checks the index with the new token first
-(`422 invalid` when it cannot be read), stores it, and writes `secretRef` to codi.yaml when
+(`422 invalid` when it cannot be read), stores it, and writes `secretRef` to cicord.yaml when
 it was not there (otherwise nothing is committed: `{"mode": "commit"}`).
-`DELETE /registries/{name}/token` removes `secretRef` from codi.yaml and deletes the token.
-Both only ever touch `CODI_REGISTRY_<NAME>_TOKEN` of that registry. Audit `registry.token`.
+`DELETE /registries/{name}/token` removes `secretRef` from cicord.yaml and deletes the token.
+Both only ever touch `CICORD_REGISTRY_<NAME>_TOKEN` of that registry. Audit `registry.token`.
 
 ```json
 // WriteResult
@@ -983,16 +983,16 @@ Both only ever touch `CODI_REGISTRY_<NAME>_TOKEN` of that registry. Audit `regis
 ```yaml
 plugins:
   xp:
-    repo: https://github.com/acme/codi-xp.git    # plugin repository, semver tags v1.2.0
+    repo: https://github.com/acme/cicord-xp.git    # plugin repository, semver tags v1.2.0
     displayName: XP & levels                     # optional
     description: Levels and a portal leaderboard
     keywords: [xp, levels]
     publisher: acme
     verified: false                              # only honoured from the signed official index
-    version: 1.2.0                               # optional: latest release (codi plugin publish)
+    version: 1.2.0                               # optional: latest release (cicord plugin publish)
     commit: 3f1c…                                # optional: its tag's commit (a moved tag is refused)
 ```
 
 The official registry also has `index.yaml.sig`, the signature envelope (`format`,
 `registry`, `serial`, `expires`, `index-sha256`, then `ed25519 <key-id> <base64>` lines;
-`codi registry sign`, docs/plugins.md §9).
+`cicord registry sign`, docs/plugins.md §9).

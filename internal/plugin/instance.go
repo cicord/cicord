@@ -16,8 +16,8 @@ import (
 
 	"github.com/grafana/sobek"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 // Env is everything an instance may touch. It is provided by the bot host.
@@ -42,7 +42,7 @@ type Env struct {
 	// NetworkAllow is plugin.yaml spec.network.allow.
 	NetworkAllow []string
 	// AllowPrivateNetworks disables the egress address checks and allows plain http
-	// (tests and `codi dev` only).
+	// (tests and `cicord dev` only).
 	AllowPrivateNetworks bool
 	// MessageContent reports that the plugin declares the MessageContent intent in
 	// plugin.yaml. Without it, message content and attachments are blanked in every
@@ -67,7 +67,7 @@ type Env struct {
 	HTTPClient *http.Client // optional override for http.fetch (tests); egress name checks still apply
 }
 
-// Resolver maps CODI keys to Discord IDs for the instance's server and exposes the cached
+// Resolver maps Cicord keys to Discord IDs for the instance's server and exposes the cached
 // channels and roles. Implementations must be safe for concurrent use.
 type Resolver interface {
 	ID(kind state.ResourceKind, key string) (string, bool)
@@ -764,7 +764,7 @@ func (i *Instance) DispatchInteraction(ctx context.Context, it discord.Interacti
 
 // HandleInteraction runs the handler of a command (localID = command name), component or
 // modal (localID = local id from ParseCustomID) and waits for it. Interaction responses
-// follow codi-sdk.d.ts: auto-defer after Limits.AutoDeferAfter, generic ephemeral error
+// follow cicord-sdk.d.ts: auto-defer after Limits.AutoDeferAfter, generic ephemeral error
 // reply when the handler fails before answering.
 func (i *Instance) HandleInteraction(ctx context.Context, it discord.Interaction, kind, localID string) error {
 	return <-i.DispatchInteraction(ctx, it, kind, localID)

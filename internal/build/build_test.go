@@ -52,8 +52,8 @@ func TestBundleWelcomeExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(res.Code, `__require("@codi/sdk")`) {
-		t.Fatalf("@codi/sdk must stay external (tsconfig paths must not inline the .d.ts):\n%s", res.Code)
+	if !strings.Contains(res.Code, `__require("@cicord/sdk")`) {
+		t.Fatalf("@cicord/sdk must stay external (tsconfig paths must not inline the .d.ts):\n%s", res.Code)
 	}
 	if !strings.Contains(res.Code, "var "+GlobalName+" = ") {
 		t.Fatal("bundle does not assign the global name")
@@ -130,7 +130,7 @@ export async function features(): Promise<Record<string, unknown>> {
 }
 export default features;
 `,
-		"src/data.json": `{"name": "codi"}`,
+		"src/data.json": `{"name": "cicord"}`,
 	})
 	res, err := Bundle(dir, "src/index.ts")
 	if err != nil {
@@ -158,7 +158,7 @@ export default features;
 	got := p.Result().ToObject(rt).Export().(map[string]any)
 	want := map[string]any{
 		"optional": "none", "nullishAssign": int64(5), "template": "c:3", "replaceAll": "a+b+c",
-		"asyncGen": "0,1,2", "rest": "b,c", "enumValue": "blue", "json": "codi", "at": int64(3),
+		"asyncGen": "0,1,2", "rest": "b,c", "enumValue": "blue", "json": "cicord", "at": int64(3),
 		"hasOwn": true, "bigint": "1024", "regex": "2024", "created": int64(1),
 	}
 	for k, w := range want {

@@ -6,7 +6,7 @@
  * The runtime explains Discord / reconcile errors itself (`error` objects, spec/api.md);
  * `explainRaw` is the fallback for older runtimes and free-form messages.
  */
-import { CodiApiError, type HumanError } from "@codi/client";
+import { CicordApiError, type HumanError } from "@cicord/client";
 import { i18n } from "../i18n/index.ts";
 
 /** Strips a trailing JSON blob, "HTTP 400 50035:" noise and Go error prefixes. */
@@ -80,10 +80,10 @@ export interface DescribedError {
   details?: string;
 }
 
-/** Maps any thrown value (CodiApiError or not) to text for a toast or an inline message. */
+/** Maps any thrown value (CicordApiError or not) to text for a toast or an inline message. */
 export function describeError(error: unknown): DescribedError {
   const t = i18n.t.bind(i18n);
-  if (!(error instanceof CodiApiError)) {
+  if (!(error instanceof CicordApiError)) {
     const raw = error instanceof Error ? error.message : String(error);
     return {
       kind: "other",

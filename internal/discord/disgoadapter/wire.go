@@ -1,10 +1,10 @@
 package disgoadapter
 
-// Wire types mirror the Discord API v10 JSON objects (only the fields CODI uses).
+// Wire types mirror the Discord API v10 JSON objects (only the fields Cicord uses).
 //
 // The adapter decodes every REST response and every gateway dispatch payload into
 // these flat structs instead of disgo's typed models: it keeps one mapping layer
-// (wire ↔ CODI) shared by REST and gateway, preserves option order in interactions,
+// (wire ↔ Cicord) shared by REST and gateway, preserves option order in interactions,
 // and lets request bodies express JSON null where the contract needs it (clearing a
 // system channel, removing a category, lifting a timeout). disgo is still used for
 // the transport: rest.Client (endpoints, auth, rate limiting) and gateway.Gateway
@@ -317,7 +317,7 @@ type wireSelectOption struct {
 	Default     bool       `json:"default,omitempty"`
 }
 
-// wireComponent is the union of all component shapes CODI uses. Fields are
+// wireComponent is the union of all component shapes Cicord uses. Fields are
 // omitted when empty so a button does not carry select fields, etc.
 type wireComponent struct {
 	Type        int                `json:"type"`

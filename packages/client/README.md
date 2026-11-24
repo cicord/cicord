@@ -1,18 +1,18 @@
-# @codi/client
+# @cicord/client
 
 Typed, framework-agnostic client for the HTTP API v1 of the
-[CODI](https://github.com/npjonath/codi) runtime: sign-in (cookie or token mode), the
+[Cicord](https://github.com/npjonath/cicord) runtime: sign-in (cookie or token mode), the
 community portal endpoints, plugin routes, and the admin API. Works in browsers, Node.js
 and workers (only `fetch` is needed).
 
 ```sh
-npm install @codi/client
+npm install @cicord/client
 ```
 
 ```ts
-import { createCodiClient } from "@codi/client";
+import { createCicordClient } from "@cicord/client";
 
-const client = createCodiClient({ baseUrl: "https://codi.example.org" }); // "" = same origin
+const client = createCicordClient({ baseUrl: "https://cicord.example.org" }); // "" = same origin
 const me = await client.meOrNull();
 if (!me) client.auth.login(location.href);
 
@@ -21,8 +21,8 @@ const member = await client.portal.me(server.key); // roles, access level…
 ```
 
 **Plugin routes.** Plugins expose JSON routes to portals. Find the instance by plugin name
-in `PortalServer.plugins`, then call its routes, typed by the `src/codi-routes.d.ts` that
-`codi portal typegen` generates from the plugins of your repository:
+in `PortalServer.plugins`, then call its routes, typed by the `src/cicord-routes.d.ts` that
+`cicord portal typegen` generates from the plugins of your repository:
 
 ```ts
 const levels = server.plugins.find((p) => p.plugin === "levels");
@@ -34,11 +34,11 @@ if (levels) {
 }
 ```
 
-**Embedding on another site.** `createCodiClient({ baseUrl, auth: "token" })` keeps a
-portal-scoped bearer session instead of the cookie (codi.yaml `spec.portal.allowedOrigins`).
+**Embedding on another site.** `createCicordClient({ baseUrl, auth: "token" })` keeps a
+portal-scoped bearer session instead of the cookie (cicord.yaml `spec.portal.allowedOrigins`).
 
-Every non-2xx response rejects with `CodiApiError` (`code`, `status`, `message`). See
-[docs/portal.md](https://github.com/npjonath/codi/blob/main/docs/portal.md) and the API
-reference [spec/api.md](https://github.com/npjonath/codi/blob/main/spec/api.md).
+Every non-2xx response rejects with `CicordApiError` (`code`, `status`, `message`). See
+[docs/portal.md](https://github.com/npjonath/cicord/blob/main/docs/portal.md) and the API
+reference [spec/api.md](https://github.com/npjonath/cicord/blob/main/spec/api.md).
 
 ESM only, with TypeScript declarations. License: Apache-2.0.

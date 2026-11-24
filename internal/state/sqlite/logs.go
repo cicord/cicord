@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/npjonath/codi/internal/state"
+	"github.com/npjonath/cicord/internal/state"
 )
 
 const (

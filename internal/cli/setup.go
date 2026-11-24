@@ -14,28 +14,28 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/npjonath/codi/internal/api"
-	"github.com/npjonath/codi/internal/auth"
-	"github.com/npjonath/codi/internal/catalog"
-	"github.com/npjonath/codi/internal/config"
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/discord/disgoadapter"
-	"github.com/npjonath/codi/internal/registry"
-	"github.com/npjonath/codi/internal/runtime"
-	"github.com/npjonath/codi/internal/secrets"
-	"github.com/npjonath/codi/internal/setup"
-	"github.com/npjonath/codi/internal/sim"
-	"github.com/npjonath/codi/internal/source"
-	"github.com/npjonath/codi/internal/state"
-	"github.com/npjonath/codi/internal/state/sqlite"
-	"github.com/npjonath/codi/internal/webui"
-	"github.com/npjonath/codi/internal/writeback"
+	"github.com/npjonath/cicord/internal/api"
+	"github.com/npjonath/cicord/internal/auth"
+	"github.com/npjonath/cicord/internal/catalog"
+	"github.com/npjonath/cicord/internal/config"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/discord/disgoadapter"
+	"github.com/npjonath/cicord/internal/registry"
+	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/npjonath/cicord/internal/secrets"
+	"github.com/npjonath/cicord/internal/setup"
+	"github.com/npjonath/cicord/internal/sim"
+	"github.com/npjonath/cicord/internal/source"
+	"github.com/npjonath/cicord/internal/state"
+	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/npjonath/cicord/internal/webui"
+	"github.com/npjonath/cicord/internal/writeback"
 )
 
 // Setup mode (docs/onboarding-wizard.md). Boot decision:
 //
-//	codi.yaml in the directory                     → normal boot (never setup mode)
-//	no codi.yaml, setup state "activated"           → boot from the repository the wizard created
+//	cicord.yaml in the directory                     → normal boot (never setup mode)
+//	no cicord.yaml, setup state "activated"           → boot from the repository the wizard created
 //	                                                  (serve: embedded / GitHub), wizard resumable
 //	otherwise                                       → setup mode (wizard, resumable)
 
@@ -119,7 +119,7 @@ func waitReady(ctx context.Context, rt *runtime.Runtime, timeout time.Duration) 
 	}
 }
 
-// openSecrets opens the secret store of a data dir (key: CODI_SECRET_KEY or
+// openSecrets opens the secret store of a data dir (key: CICORD_SECRET_KEY or
 // <data dir>/secret.key). ephemeral uses a random in-memory key (simulator).
 func openSecrets(ctx context.Context, store state.Store, dataDir string, ephemeral bool) (*secrets.Store, error) {
 	var key []byte
@@ -212,8 +212,8 @@ func (e *runtimeEnv) apiOptions(rt *runtime.Runtime, w writeback.Writer, branch 
 	cat := catalog.Official()
 	return api.Options{
 		Runtime: rt, Writer: w, Mode: e.mode, Sim: e.world, RuntimeToken: e.runtimeTok,
-		WebhookSecret: os.Getenv("CODI_WEBHOOK_SECRET"), Branch: branch,
-		OAuth: api.OAuth{ClientID: os.Getenv("CODI_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CODI_DISCORD_CLIENT_SECRET"),
+		WebhookSecret: os.Getenv("CICORD_WEBHOOK_SECRET"), Branch: branch,
+		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(e.secrets, nil)},
 		PublicURL: e.public, CORSOrigins: e.cors, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: e.log,
 		Stopping: e.stopping, Setup: wz, Checker: e.checker(rt, w), Catalog: cat,
@@ -275,9 +275,9 @@ func runSetup(ctx context.Context, ss setupStart) error {
 		AdminUI: webui.Admin(), Logger: e.log, Stopping: e.stopping, Setup: wz, Catalog: catalog.Official()}))
 	token := wz.IssueToken()
 	url := setup.SetupURL(e.public, token)
-	fmt.Fprintf(ss.stdout, "CODI is not set up yet: setup mode on %s\n", e.public)
+	fmt.Fprintf(ss.stdout, "Cicord is not set up yet: setup mode on %s\n", e.public)
 	fmt.Fprintf(ss.stdout, "  open the setup wizard: %s\n", url)
-	fmt.Fprintf(ss.stdout, "  (this link works once; restart CODI to get a new one)\n  data: %s\n", e.dataDir)
+	fmt.Fprintf(ss.stdout, "  (this link works once; restart Cicord to get a new one)\n  data: %s\n", e.dataDir)
 	if ss.sim != nil {
 		fmt.Fprintf(ss.stdout, "  Discord simulator: the wizard creates a simulated bot and server for you\n")
 	}
@@ -319,13 +319,13 @@ func defaultConnector(log *slog.Logger) discord.Connector {
 	return disgoadapter.NewConnector(disgoadapter.WithLogger(log))
 }
 
-// serveDiscord returns the Discord connector and probe of `codi serve` setup mode
+// serveDiscord returns the Discord connector and probe of `cicord serve` setup mode
 // (tests replace it with the simulator).
 var serveDiscord = func(log *slog.Logger) (discord.Connector, setup.Probe) {
 	return defaultConnector(log), defaultProbe()
 }
 
-// runServeSetup is `codi serve` in a directory without codi.yaml.
+// runServeSetup is `cicord serve` in a directory without cicord.yaml.
 func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absDir string, f serverFlags) error {
 	dataDir, err := filepath.Abs(f.dataDir)
 	if err != nil {
@@ -334,7 +334,7 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
 	}
-	store, err := sqlite.Open(filepath.Join(dataDir, "codi.db"))
+	store, err := sqlite.Open(filepath.Join(dataDir, "cicord.db"))
 	if err != nil {
 		return err
 	}
@@ -349,7 +349,7 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 		return err
 	}
 	public := publicURLFor(f.publicURL, ln)
-	runtimeTok := os.Getenv("CODI_RUNTIME_TOKEN")
+	runtimeTok := os.Getenv("CICORD_RUNTIME_TOKEN")
 	e := &runtimeEnv{log: log, mode: "serve", dataDir: dataDir, dir: absDir, public: public, cors: f.corsOrigins, store: store,
 		secrets: sec, resolve: secrets.Resolver(sec, nil), stopping: make(chan struct{}), runtimeTok: runtimeTok}
 	e.connector, e.probe = serveDiscord(log)
@@ -360,8 +360,8 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 	}
 	if !found {
 		if why := dataDirInUse(ctx, store, dataDir); why != "" {
-			return fmt.Errorf("%s has no codi.yaml, but the data dir %s belongs to an existing deployment (%s): "+
-				"run codi serve in the configuration repository, or use another --data-dir to set up a new one", absDir, dataDir, why)
+			return fmt.Errorf("%s has no cicord.yaml, but the data dir %s belongs to an existing deployment (%s): "+
+				"run cicord serve in the configuration repository, or use another --data-dir to set up a new one", absDir, dataDir, why)
 		}
 	}
 	if st.Activated && st.Repo != nil && st.Repo.Provider != setup.ProviderLocal {
@@ -385,9 +385,9 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 			}
 		}
 		if runtimeTok == "" {
-			log.Warn("CODI_RUNTIME_TOKEN is not set: machine endpoints (codi plan --remote, /api/v1/sync) are disabled")
+			log.Warn("CICORD_RUNTIME_TOKEN is not set: machine endpoints (cicord plan --remote, /api/v1/sync) are disabled")
 		}
-		fmt.Fprintf(stdout, "CODI runtime listening on %s\n  admin UI: %s/admin/\n  configuration: %s repository (set up by the wizard)\n  data: %s\n",
+		fmt.Fprintf(stdout, "Cicord runtime listening on %s\n  admin UI: %s/admin/\n  configuration: %s repository (set up by the wizard)\n  data: %s\n",
 			public, public, st.Repo.Provider, dataDir)
 		return runHTTP(ctx, log, ln, api.New(e.apiOptions(rt, w, branch, wz)), rt, e.stopping)
 	}
@@ -397,7 +397,7 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 	return runSetup(ctx, setupStart{env: e, ln: ln, stdout: stdout, providers: []string{setup.ProviderEmbedded, setup.ProviderGitHub}})
 }
 
-// runDevSetup is `codi dev` in a directory without codi.yaml (--sim: simulated Discord).
+// runDevSetup is `cicord dev` in a directory without cicord.yaml (--sim: simulated Discord).
 func runDevSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absDir string, f serverFlags, useSim bool) error {
 	if err := os.MkdirAll(f.dataDir, 0o700); err != nil {
 		return err
@@ -409,7 +409,7 @@ func runDevSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absDir
 	if useSim {
 		store, err = sqlite.Open(":memory:") // the simulator lives as long as the process
 	} else {
-		store, err = sqlite.Open(filepath.Join(f.dataDir, "codi.db"))
+		store, err = sqlite.Open(filepath.Join(f.dataDir, "cicord.db"))
 	}
 	if err != nil {
 		return err
@@ -419,7 +419,7 @@ func runDevSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absDir
 	if !useSim {
 		if _, found, err := setup.LoadState(ctx, store); err == nil && !found {
 			if why := dataDirInUse(ctx, store, f.dataDir); why != "" {
-				return fmt.Errorf("%s has no codi.yaml, but the data dir %s belongs to an existing deployment (%s)", absDir, f.dataDir, why)
+				return fmt.Errorf("%s has no cicord.yaml, but the data dir %s belongs to an existing deployment (%s)", absDir, f.dataDir, why)
 			}
 		}
 	}
@@ -432,7 +432,7 @@ func runDevSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absDir
 		return err
 	}
 	public := publicURLFor(f.publicURL, ln)
-	tok := os.Getenv("CODI_RUNTIME_TOKEN")
+	tok := os.Getenv("CICORD_RUNTIME_TOKEN")
 	if tok == "" {
 		tok = auth.RandomID(24)
 	}

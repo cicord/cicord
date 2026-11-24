@@ -56,7 +56,7 @@ func LocalPathError(root, rel string) error {
 
 var errSymlink = errors.New("symbolic link")
 
-// checkPortal validates codi.yaml spec.portal.path and the portal images of servers.
+// checkPortal validates cicord.yaml spec.portal.path and the portal images of servers.
 //
 // Problems that would make the runtime serve something unsafe or wrong are errors; a
 // portal or image that is not there yet is a warning, so that a missing portal build never
@@ -65,7 +65,7 @@ var errSymlink = errors.New("symbolic link")
 func (l *loader) checkPortal(repo *Repo) {
 	if p := repo.Project; p != nil && p.Spec.Portal != nil && p.Spec.Portal.Path != "" {
 		const ptr = "/spec/portal/path"
-		file := "codi.yaml"
+		file := "cicord.yaml"
 		line := 0
 		if doc := l.docs[file]; doc != nil {
 			line = doc.lineOf(ptr)
@@ -77,7 +77,7 @@ func (l *loader) checkPortal(repo *Repo) {
 		case errors.Is(err, errSymlink):
 			l.sink.errorf(file, line, ptr, "the portal path %q goes through a symbolic link: commit the files themselves", p.Spec.Portal.Path)
 		case errors.Is(err, fs.ErrNotExist):
-			l.sink.warnf(file, line, ptr, "the portal path %q does not exist: build the portal (codi portal build) and commit its output; until then the runtime serves the default portal", p.Spec.Portal.Path)
+			l.sink.warnf(file, line, ptr, "the portal path %q does not exist: build the portal (cicord portal build) and commit its output; until then the runtime serves the default portal", p.Spec.Portal.Path)
 		case err != nil:
 			l.sink.errorf(file, line, ptr, "%v", err)
 		default:

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/codi/internal/discord"
-	"github.com/npjonath/codi/internal/importer"
-	"github.com/npjonath/codi/internal/sim"
+	"github.com/npjonath/cicord/internal/discord"
+	"github.com/npjonath/cicord/internal/importer"
+	"github.com/npjonath/cicord/internal/sim"
 )
 
 // run executes the CLI and returns the exit code and outputs.
@@ -22,7 +22,7 @@ func run(t *testing.T, args ...string) (int, string, string) {
 	var out, errb bytes.Buffer
 	code := ExecuteContext(context.Background(), args, &out, &errb)
 	if testing.Verbose() {
-		t.Logf("codi %s → %d\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), code, out.String(), errb.String())
+		t.Logf("cicord %s → %d\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), code, out.String(), errb.String())
 	}
 	return code, out.String(), errb.String()
 }

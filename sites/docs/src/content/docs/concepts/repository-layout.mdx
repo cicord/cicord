@@ -1,39 +1,39 @@
 ---
 title: Repository layout
-description: What goes where in a CODI repository - codi.yaml, servers/, bots/, plugins/ and codi.lock - and how keys tie them together.
+description: What goes where in a Cicord repository - cicord.yaml, servers/, bots/, plugins/ and cicord.lock - and how keys tie them together.
 ---
 
 import { FileTree } from "@astrojs/starlight/components";
 
-A CODI repository is plain YAML plus, optionally, the TypeScript sources of your own plugins.
+A Cicord repository is plain YAML plus, optionally, the TypeScript sources of your own plugins.
 
 <FileTree>
 
-- codi.yaml the Project: engine, source, registries, write-back, portal
-- codi.lock generated: pinned registry plugins (commit + content hash)
+- cicord.yaml the Project: engine, source, registries, write-back, portal
+- cicord.lock generated: pinned registry plugins (commit + content hash)
 - servers/
   - ma-commu.yaml one Server per file, named after its key
   - assets/
-    - ma-commu/ icons, banners, emojis, stickers, sounds (written by `codi import`)
+    - ma-commu/ icons, banners, emojis, stickers, sounds (written by `cicord import`)
 - bots/
   - moderator/
     - bot.yaml one Bot per directory: token reference, servers, plugin instances
 - plugins/
   - welcome/ a local plugin: plugin.yaml, config.schema.json, src/
   - onboarding/
-- portal/ optional: a custom community portal (`codi portal init`)
+- portal/ optional: a custom community portal (`cicord portal init`)
 - .github/
   - workflows/
-    - codi.yml CI: validate, plan on pull requests, wait for the sync
+    - cicord.yml CI: validate, plan on pull requests, wait for the sync
 - .gitignore
 - README.md
 
 </FileTree>
 
-`codi init` writes `codi.yaml`, one server, one bot, the CI workflow, a `README.md` and a
+`cicord init` writes `cicord.yaml`, one server, one bot, the CI workflow, a `README.md` and a
 `.gitignore`. The complete example repository
-[`examples/basic`](https://github.com/npjonath/codi/tree/main/examples/basic) adds two
-plugins, and [`examples/showcase`](https://github.com/npjonath/codi/tree/main/examples/showcase)
+[`examples/basic`](https://github.com/npjonath/cicord/tree/main/examples/basic) adds two
+plugins, and [`examples/showcase`](https://github.com/npjonath/cicord/tree/main/examples/showcase)
 runs seven more.
 
 ## Resources
@@ -41,7 +41,7 @@ runs seven more.
 Every file holds one resource, Kubernetes style:
 
 ```yaml
-apiVersion: codi.dev/v1alpha1 # the format version
+apiVersion: cicord.dev/v1alpha1 # the format version
 kind: Server # Project, Server, Bot or Plugin
 metadata:
   name: ma-commu # the key
@@ -51,11 +51,11 @@ spec:
 
 | File                         | Kind        | Reference                                                          |
 | ---------------------------- | ----------- | ------------------------------------------------------------------ |
-| `codi.yaml`                  | `Project`   | [Project](../../configuration/project/)                            |
+| `cicord.yaml`                | `Project`   | [Project](../../configuration/project/)                            |
 | `servers/<key>.yaml`         | `Server`    | [Server](../../configuration/server/)                              |
 | `bots/<key>/bot.yaml`        | `Bot`       | [Bot](../../configuration/bot/)                                    |
 | `plugins/<name>/plugin.yaml` | `Plugin`    | [Writing a plugin](../../plugins/writing/#the-manifest-pluginyaml) |
-| `codi.lock`                  | (generated) | [Plugins overview](../../plugins/overview/#codilock)               |
+| `cicord.lock`                | (generated) | [Plugins overview](../../plugins/overview/#cicordlock)             |
 
 `metadata.name` is the resource **key**. It must match the file name (`servers/<key>.yaml`)
 or the directory name (`bots/<key>/`). `metadata` can also carry `labels` and
@@ -75,15 +75,15 @@ channels:
 
 - References between resources always use keys: a channel's `category`, the role
   `hierarchy`, `access` roles, permission overwrite targets, a bot's `servers`, and plugin
-  config fields marked `x-codi-ref`.
+  config fields marked `x-cicord-ref`.
 - The runtime maps each key to a Discord ID in its database (the **resource map**), so a new
   display name is an update in Discord.
 - Changing a key keeps the Discord resource as long as the display name and the kind stay
-  the same: the old key is removed, the new one adopts the resource. `codi mv` renames a key
+  the same: the old key is removed, the new one adopts the resource. `cicord mv` renames a key
   and every reference to it in one step. Changing the key **and** the display name in the
   same commit is a deletion plus a creation.
 
-`codi validate` checks every reference; a key that does not resolve fails validation.
+`cicord validate` checks every reference; a key that does not resolve fails validation.
 
 ## Configuration in git, data in the database
 

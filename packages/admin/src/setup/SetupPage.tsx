@@ -4,8 +4,8 @@
  * (/admin/setup?token=…), exchanged for a setup session; the step lives on the runtime,
  * so the wizard resumes where it was after a reload or a restart.
  */
-import { CodiApiError } from "@codi/client";
-import { useCodi } from "@codi/react";
+import { CicordApiError } from "@cicord/client";
+import { useCicord } from "@cicord/react";
 import { Check, CheckCircle2, KeyRound, Loader2, Moon, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Badge } from "../components/ui/badge.tsx";
@@ -40,7 +40,7 @@ function Frame({ children, simulator }: { children: React.ReactNode; simulator?:
     <div className="min-h-svh bg-background">
       <header className="flex h-(--header-h) items-center gap-2 border-b px-4 md:px-6">
         <BrandMark size={22} />
-        <span className="text-[16px] font-semibold tracking-tight">codi</span>
+        <span className="text-[16px] font-semibold tracking-tight">cicord</span>
         <span className="text-[14px] text-subtle-foreground">{t("setup.brand")}</span>
         {simulator ? (
           <Badge tone="violet" className="ml-2">
@@ -161,7 +161,7 @@ function AccessCard({
 
 export function SetupPage() {
   const { t } = useTranslation();
-  const { client } = useCodi();
+  const { client } = useCicord();
   const api = useMemo(() => setupApi(client), [client]);
   const { search } = useLocation();
   const [status, setStatus] = useState<SetupStatus | null>(null);
@@ -249,7 +249,7 @@ export function SetupPage() {
           onToken={(tok) => void exchange(tok)}
           pending={pending}
           error={
-            error && !(error instanceof CodiApiError && error.code === "setup_required")
+            error && !(error instanceof CicordApiError && error.code === "setup_required")
               ? error
               : null
           }
