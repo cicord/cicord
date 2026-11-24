@@ -220,12 +220,21 @@ func (e *runtimeEnv) checker(rt *runtime.Runtime, w writeback.Writer) *setup.Che
 	return &setup.Checker{Runtime: rt, Probe: e.probe, Secrets: e.resolve, Writer: w}
 }
 
+// secret is a machine secret: the environment first, then the encrypted secret store.
+func (e *runtimeEnv) secret(name string) string {
+	if e.resolve == nil {
+		return ""
+	}
+	v, _ := e.resolve(name)
+	return v
+}
+
 // apiOptions are the full API options for a running runtime.
 func (e *runtimeEnv) apiOptions(rt *runtime.Runtime, w writeback.Writer, branch string, wz *setup.Wizard) api.Options {
 	cat := catalog.Official()
 	return api.Options{
 		Runtime: rt, Writer: w, Mode: e.mode, Sim: e.world, RuntimeToken: e.runtimeTok,
-		WebhookSecret: os.Getenv("CICORD_WEBHOOK_SECRET"), Branch: branch,
+		WebhookSecret: e.secret("CICORD_WEBHOOK_SECRET"), Branch: branch,
 		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(e.secrets, nil)},
 		PublicURL: e.public, AdminURL: e.admin, CORSOrigins: e.cors, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: e.log,
@@ -367,9 +376,10 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 		_ = ln.Close()
 		return err
 	}
-	runtimeTok := os.Getenv("CICORD_RUNTIME_TOKEN")
+	resolve := secrets.Resolver(sec, nil)
+	runtimeTok, _ := resolve("CICORD_RUNTIME_TOKEN")
 	e := &runtimeEnv{log: log, mode: "serve", dataDir: dataDir, dir: absDir, public: public, admin: f.adminURL, cors: f.corsOrigins, store: store,
-		secrets: sec, resolve: secrets.Resolver(sec, nil), stopping: make(chan struct{}), runtimeTok: runtimeTok, appKeyFile: f.githubAppKeyFile}
+		secrets: sec, resolve: resolve, stopping: make(chan struct{}), runtimeTok: runtimeTok, appKeyFile: f.githubAppKeyFile}
 	e.connector, e.probe = serveDiscord(log)
 
 	st, found, err := setup.LoadState(ctx, store)

@@ -301,7 +301,12 @@ Environment:
   CICORD_LINK_SECRET            portal link signing key (default: generated in the data dir)
   CICORD_DISCORD_CLIENT_SECRET  Discord OAuth2 client secret (admin UI / portal login)
   CICORD_DISCORD_CLIENT_ID      OAuth2 client ID (default: the first bot's application ID)
-  CICORD_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store and plugin downloads reach private networks`,
+  CICORD_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store and plugin downloads reach private networks
+
+Bot tokens, CICORD_GIT_TOKEN, the GitHub App secrets, CICORD_RUNTIME_TOKEN,
+CICORD_WEBHOOK_SECRET and CICORD_DISCORD_CLIENT_SECRET can instead be kept in the encrypted
+secret store (cicord secret set NAME, or the setup wizard); the environment takes precedence.
+The runtime token and the webhook secret are read at startup: restart after changing them.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -474,14 +479,16 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		CommitStatus: commitStatusHook(log, ghRepo, tokens, console),
 	})
 	stopping := make(chan struct{})
-	runtimeToken := os.Getenv("CICORD_RUNTIME_TOKEN")
+	// Machine secrets: the environment first, then the encrypted secret store (cicord secret set).
+	runtimeToken, _ := resolve("CICORD_RUNTIME_TOKEN")
+	webhookSecret, _ := resolve("CICORD_WEBHOOK_SECRET")
 	if runtimeToken == "" {
 		log.Warn("CICORD_RUNTIME_TOKEN is not set: machine endpoints (cicord plan --remote, /api/v1/sync) are disabled")
 	}
 	cat := catalog.Official()
 	h := api.New(api.Options{
 		Runtime: rt, Writer: writer, Mode: "serve", RuntimeToken: runtimeToken,
-		WebhookSecret: os.Getenv("CICORD_WEBHOOK_SECRET"), Branch: branch,
+		WebhookSecret: webhookSecret, Branch: branch,
 		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
 		PublicURL: public, AdminURL: f.adminURL, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
