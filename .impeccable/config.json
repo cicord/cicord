@@ -1,0 +1,15 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": ["packages/admin/src/styles/legacy/simulator.css"],
+        "createdAt": "2026-11-24T16:54:40.718Z",
+        "reason": "Claude: the simulator reproduces Discord's message embeds, whose color is a left bar (MessageView.tsx sets borderLeftColor from the embed color)"
+      }
+    ]
+  }
+}

@@ -12,14 +12,18 @@
     <title>Night Raid — fan site</title>
     <style>
       :root {
-        --ink: #14110f;
-        --paper: #f6f1e7;
-        --card: #fffdf8;
-        --line: #e2d8c5;
-        --muted: #6f655a;
-        --brand: #d1452b;
-        --brand-ink: #fff;
-        color-scheme: light;
+        /* Night Raid: a night-sky navy with a moonlight amber, deliberately unlike Cicord's
+           own black and blurple, so the embed reads as someone else's site. */
+        --ink: #e8ecf7;
+        --paper: #0b1020;
+        --card: #121a30;
+        --line: #26304d;
+        --muted: #a3adc8;
+        --brand: #f5b84a;
+        --brand-ink: #1b1305;
+        --code: #080c18;
+        --error: #ff8f80;
+        color-scheme: dark;
       }
       * {
         box-sizing: border-box;
@@ -139,12 +143,30 @@
         list-style: none;
       }
       .chips li {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         padding: 2px 10px;
-        border: 1px solid var(--chip, var(--line));
-        border-left-width: 6px;
+        border: 1px solid var(--line);
         font:
           600 0.85rem system-ui,
           sans-serif;
+      }
+      /* The role's Discord color as a leading dot. */
+      .chips li::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--chip, var(--muted));
+      }
+      ::selection {
+        background: var(--brand);
+        color: var(--brand-ink);
+      }
+      :focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 2px;
       }
       ol.board {
         margin: 0;
@@ -163,11 +185,11 @@
         max-height: 260px;
         margin: 0;
         padding: 12px;
-        background: #f1eadb;
+        background: var(--code);
         font-size: 0.8rem;
       }
       .error {
-        color: #a3261a;
+        color: var(--error);
       }
       footer {
         max-width: 960px;
@@ -281,7 +303,7 @@
               ? `<ul class="chips" aria-label="Roles">${
                   member.member.roles
                     .map(
-                      (r) => `<li style="--chip:${esc(r.color || "#e2d8c5")}">${esc(r.name)}</li>`,
+                      (r) => `<li style="--chip:${esc(r.color || "#a3adc8")}">${esc(r.name)}</li>`,
                     )
                     .join("") || "<li>No roles yet</li>"
                 }</ul>`

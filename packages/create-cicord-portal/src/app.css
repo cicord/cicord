@@ -500,7 +500,7 @@ a {
   margin: clamp(24px, 8vh, 80px) auto 0;
 }
 .done__card {
-  animation: card-in 0.5s var(--cicord-ease-spring) both;
+  animation: card-in 0.5s var(--cicord-ease-out) both;
 }
 @keyframes card-in {
   from {

@@ -25,7 +25,10 @@
   --cicord-radius-xl: 24px;
 
   --cicord-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --cicord-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Entrances: exponential ease-out (quint), settling without overshoot. */
+  --cicord-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Deprecated alias kept for portals that used it: it no longer overshoots. */
+  --cicord-ease-spring: var(--cicord-ease-out);
 }
 
 /* Dark is the default palette (Discord-like). */
@@ -300,7 +303,7 @@ html.cicord-root {
   background: var(--cicord-role);
 }
 .cicord-role-chip.is-fresh {
-  animation: cicord-chip-in 0.45s var(--cicord-ease-spring) both;
+  animation: cicord-chip-in 0.45s var(--cicord-ease-out) both;
 }
 .cicord-role-chip.is-fresh .cicord-role-chip__dot {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--cicord-role) 30%, transparent);
@@ -508,8 +511,7 @@ html.cicord-root {
   align-items: center;
   gap: 12px 16px;
   padding: 14px 16px;
-  border: 1px solid color-mix(in oklab, var(--cicord-notice) 35%, var(--cicord-line));
-  border-left-width: 4px;
+  border: 1px solid color-mix(in oklab, var(--cicord-notice) 45%, var(--cicord-line));
   border-radius: var(--cicord-radius-md);
   background: color-mix(in oklab, var(--cicord-notice) 8%, var(--cicord-surface));
 }
