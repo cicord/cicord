@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://cicord.dev/docs/
+    about: Guides, configuration reference, plugin API and self-hosting.
+  - name: Questions and ideas
+    url: https://github.com/npjonath/cicord/discussions
+    about: Ask a question or discuss an idea before opening an issue.
+  - name: Report a security vulnerability
+    url: https://github.com/npjonath/cicord/security/advisories/new
+    about: Please report security issues privately, never in a public issue.

@@ -1,0 +1,16 @@
+# Gitleaks configuration: the default rules, plus the placeholder Discord IDs used by the
+# examples, tests and docs (they look like client IDs but identify nothing).
+# Run locally with `gitleaks git .` (whole history) or through the pre-commit hook (make hooks).
+title = "cicord"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholder Discord snowflakes in examples, tests and docs"
+regexTarget = "secret"
+regexes = [
+  '''^112233445566778899$''',
+  '''^112233445566778800$''',
+  '''^223344556677889900$''',
+]

@@ -39,8 +39,14 @@ pnpm exec vp test examples/showcase/plugins/polls   # one plugin's unit tests
 
 On every push to `main` and every pull request:
 
-- **Go**: `go vet`, `go test -race`, a static build, and `cicord validate examples/basic`.
-- **JS**: `pnpm install --frozen-lockfile`, `pnpm -r build`, `pnpm -r test`.
+- **Go**: `gofmt -l` (must be empty), `go vet`, `go test -race`, a static build, and
+  `cicord validate` on both examples.
+- **JS**: `pnpm install --frozen-lockfile`, `pnpm run check` (builds every package and site,
+  then format, lint, types and the example plugins) and `pnpm test`.
+- **Docker**: the container image is built (not pushed) and smoke-tested.
+
+Pushes to `main` that touch the sites also deploy https://cicord.dev (`sites.yml`).
+Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitHub Actions.
 
 ## How things are tested
 

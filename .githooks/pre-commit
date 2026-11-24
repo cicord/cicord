@@ -1,0 +1,8 @@
+#!/bin/sh
+# Refuses a commit whose staged changes contain a secret (token, key, password…).
+# Enable once per clone with `make hooks`. CI scans the whole history too (ci.yml, job gitleaks).
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed (https://github.com/gitleaks/gitleaks#installing); secrets are not checked locally." >&2
+  exit 0
+fi
+exec gitleaks git --pre-commit --staged --redact --no-banner --verbose

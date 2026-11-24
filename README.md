@@ -1,5 +1,11 @@
 # Cicord — CI/CD for Discord
 
+[![CI](https://github.com/npjonath/cicord/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/npjonath/cicord/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-cicord.dev-blueviolet.svg)](https://cicord.dev/docs/)
+[![Go](https://img.shields.io/badge/go-1.27-00ADD8.svg?logo=go&logoColor=white)](go.mod)
+[![Status: pre-release](https://img.shields.io/badge/status-v1alpha1%20pre--release-orange.svg)](#project-status)
+
 **GitOps for Discord.** Declare your Discord servers and bots in a git repository; the Cicord
 runtime reconciles them continuously, runs your bots on a shared engine, and extends them
 with sandboxed TypeScript plugins.
@@ -258,4 +264,15 @@ Next: the official registry and npm publication (owner decisions), production ha
 Websites: the landing page (`sites/landing`) and the documentation (`sites/docs`) are Astro
 sites, deployed together by `.github/workflows/sites.yml`.
 
-License: see [ADR-0013](docs/adr/0013-licensing.md).
+## Contributing
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). Report security issues privately as described in
+[SECURITY.md](SECURITY.md).
+
+## License
+
+Cicord is licensed under the [Apache License 2.0](LICENSE): the runtime, the CLI, the admin
+console, the SDKs, the official plugins and the sites. See [NOTICE](NOTICE) and
+[ADR-0013](docs/adr/0013-licensing.md). Cicord is an independent project, not affiliated with
+Discord.

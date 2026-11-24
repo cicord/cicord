@@ -3,7 +3,7 @@ GO ?= go
 VERSION ?= 0.1.0
 LDFLAGS := -s -w -X github.com/npjonath/cicord/internal/version.Version=$(VERSION) -X github.com/npjonath/cicord/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
-.PHONY: all build ui test test-go test-js vet check clean
+.PHONY: all build ui test test-go test-js vet check clean hooks
 
 all: ui build
 
@@ -32,3 +32,7 @@ check: vet test
 
 clean:
 	rm -rf bin
+
+## hooks: use the repository git hooks (.githooks: gitleaks on staged changes before each commit)
+hooks:
+	git config core.hooksPath .githooks

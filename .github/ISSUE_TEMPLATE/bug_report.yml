@@ -1,0 +1,64 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Remove tokens, secrets and private server data from everything you paste.
+        Security issues go to a [private advisory](https://github.com/npjonath/cicord/security/advisories/new), not here.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Runtime / reconciler
+        - Plugin host or SDK (@cicord/sdk)
+        - Admin console
+        - Portal (@cicord/client, @cicord/react, @cicord/ui, create-cicord-portal)
+        - CLI
+        - Plugin Store / registries
+        - Simulator (cicord dev --sim)
+        - Documentation or website
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The smallest configuration (cicord.yaml, server or bot YAML, plugin code) and commands that show the problem.
+      placeholder: |
+        1. cicord init demo
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `cicord version` (or the commit you built).
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run Cicord?
+      options:
+        - Binary built from source
+        - Docker image
+        - cicord dev (local)
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant runtime or CLI output.
+      render: text
