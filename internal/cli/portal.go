@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -415,14 +416,14 @@ was there before (the committed build is out of date).`,
 			if len(args) == 1 {
 				dir = args[0]
 			}
-			return portalBuild(cmd.OutOrStdout(), cmd.ErrOrStderr(), dir, check)
+			return portalBuild(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), dir, check)
 		},
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "fail when the build output changes (CI)")
 	return cmd
 }
 
-func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
+func portalBuild(ctx context.Context, stdout, stderr io.Writer, dir string, check bool) error {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return err
@@ -474,7 +475,7 @@ func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
 	before, _ := hashTree(out)
 	run := func(args ...string) error {
 		fmt.Fprintf(stdout, "$ %s %s   (in %s)\n", pm, strings.Join(args, " "), relOr(root, src))
-		c := exec.Command(pm, args...)
+		c := exec.CommandContext(ctx, pm, args...) //nolint:gosec // G204: pm is "pnpm" or "npm" (packageManager), args are fixed by portalBuild
 		c.Dir, c.Stdout, c.Stderr = src, stdout, stderr
 		return c.Run()
 	}
@@ -556,7 +557,7 @@ func hashTree(dir string) (string, error) {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // G122: hashes the user's own build output, not a tree shared with an untrusted writer
 		if err != nil {
 			return err
 		}

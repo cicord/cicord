@@ -35,7 +35,7 @@ const (
 )
 
 // GitTokenSecret is the secret name of the git token (same as the environment variable).
-const GitTokenSecret = "CICORD_GIT_TOKEN"
+const GitTokenSecret = "CICORD_GIT_TOKEN" //nolint:gosec // G101: the name of a secret, not its value
 
 // RepoConfig is where the configuration lives (persisted in the setup state so that a
 // restart without cicord.yaml boots from it).
@@ -78,7 +78,8 @@ type RepoFiles struct {
 
 func engineRange() string {
 	var major, minor int
-	fmt.Sscanf(version.Version, "%d.%d", &major, &minor)
+	// A development version that does not start with "major.minor" gives 0.0.
+	_, _ = fmt.Sscanf(version.Version, "%d.%d", &major, &minor)
 	if major == 0 {
 		return fmt.Sprintf(">=0.%d.0 <0.%d.0", minor, minor+1)
 	}
@@ -356,9 +357,14 @@ func InitRepository(ctx context.Context, cfg RepoConfig, token string, files map
 			r, err = git.PlainCloneContext(ctx, work, false, &git.CloneOptions{URL: cfg.URL, Auth: auth,
 				ReferenceName: plumbing.NewBranchReferenceName(branch), SingleBranch: true})
 			if err != nil {
-				_ = os.RemoveAll(work)
-				_ = os.MkdirAll(work, 0o700)
-				r = nil // the branch does not exist yet: start it from scratch
+				// The branch does not exist yet: start it from scratch in a clean directory.
+				if err := os.RemoveAll(work); err != nil {
+					return "", err
+				}
+				if err := os.MkdirAll(work, 0o700); err != nil {
+					return "", err
+				}
+				r = nil
 			}
 		}
 		if r == nil {

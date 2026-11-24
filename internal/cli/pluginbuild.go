@@ -147,7 +147,7 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 	def, err := plugin.Inspect(res.Code)
 	if err != nil {
 		r.Errors = append(r.Errors, "inspect: "+err.Error())
-		return r, nil
+		return r, nil //nolint:nilerr // the failure is reported in r.Errors, like the build errors above
 	}
 	r.def = def
 	for _, c := range def.Commands {
@@ -389,7 +389,7 @@ of date), for CI.`,
 			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(out, []byte(content), 0o644); err != nil {
+			if err := os.WriteFile(out, []byte(content), 0o644); err != nil { //nolint:gosec // G703: output path chosen by the user running the CLI
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", out)
@@ -836,7 +836,7 @@ func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs 
 		inst["config"] = cfg
 	}
 	bot := map[string]any{"apiVersion": config.APIVersion, "kind": "Bot", "metadata": map[string]any{"name": "test"},
-		"spec": map[string]any{"applicationId": testAppID, "token": map[string]any{"secretRef": "CICORD_PLUGIN_TEST_TOKEN"},
+		"spec": map[string]any{"applicationId": testAppID, "token": map[string]any{"secretRef": "CICORD_PLUGIN_TEST_TOKEN"}, //nolint:gosec // G101: the name of a secret, not its value
 			"profile": map[string]any{"username": "test-bot"}, "servers": []string{"test"}, "plugins": []any{inst}}}
 	for rel, v := range map[string]any{"cicord.yaml": project, "servers/test.yaml": server, "bots/test/bot.yaml": bot} {
 		if err := write(rel, v); err != nil {

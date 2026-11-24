@@ -598,7 +598,7 @@ func buildCommand(c describedCmd) (CommandDef, []error) {
 			optional = append(optional, opt)
 		}
 	}
-	cmd.Options = append(required, optional...)
+	cmd.Options = slices.Concat(required, optional)
 	return cmd, errs
 }
 

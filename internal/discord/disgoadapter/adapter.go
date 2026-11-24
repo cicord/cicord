@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -192,6 +193,9 @@ func (s *session) do(ctx context.Context, op string, ep *rest.CompiledEndpoint, 
 func (s *session) Open(ctx context.Context, intents discord.Intents, handler func(discord.Event)) error {
 	if handler == nil {
 		return fmt.Errorf("discord open: %w: nil handler", discord.ErrBadRequest)
+	}
+	if intents > math.MaxInt64 {
+		return fmt.Errorf("discord open: %w: invalid intents %#x", discord.ErrBadRequest, uint64(intents))
 	}
 	s.mu.Lock()
 	if s.closed {

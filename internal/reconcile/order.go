@@ -3,7 +3,6 @@ package reconcile
 import (
 	"cmp"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode"
 
@@ -193,5 +192,3 @@ func sortedKeys[V any](m map[string]V) []string {
 	slices.Sort(out)
 	return out
 }
-
-func itoa(i int) string { return strconv.Itoa(i) }

@@ -64,7 +64,7 @@ func sniffImage(b []byte) (format string, w, h int, err error) {
 		bytes.HasPrefix(b, []byte("GIF87a")), bytes.HasPrefix(b, []byte("GIF89a")):
 		cfg, f, err := image.DecodeConfig(bytes.NewReader(b))
 		if err != nil {
-			return "", 0, 0, fmt.Errorf("the image is corrupt or truncated: %v", err)
+			return "", 0, 0, fmt.Errorf("the image is corrupt or truncated: %w", err)
 		}
 		return f, cfg.Width, cfg.Height, nil
 	case len(b) >= 12 && string(b[0:4]) == "RIFF" && string(b[8:12]) == "WEBP":

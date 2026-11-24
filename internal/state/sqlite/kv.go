@@ -12,10 +12,7 @@ import (
 	"github.com/npjonath/cicord/internal/state"
 )
 
-const (
-	defaultKVListLimit = 100
-	maxKVListLimit     = 1000
-)
+const defaultKVListLimit = 100
 
 // kvSpace is the KV space of one scope.
 //
@@ -88,7 +85,7 @@ func (k kvSpace) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (k kvSpace) Increment(ctx context.Context, key string, by float64) (float64, error) {
+func (k kvSpace) Increment(ctx context.Context, key string, by float64) (_ float64, err error) {
 	if key == "" {
 		return 0, errors.New("state/sqlite: kv increment: empty key")
 	}
@@ -102,7 +99,7 @@ func (k kvSpace) Increment(ctx context.Context, key string, by float64) (float64
 	if err != nil {
 		return 0, fmt.Errorf("state/sqlite: kv increment: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback(tx, &err)
 
 	now := k.s.now().UnixNano()
 	var raw string
@@ -153,7 +150,7 @@ func (k kvSpace) Increment(ctx context.Context, key string, by float64) (float64
 // order), strictly after cursor. limit <= 0 means 100; it is capped at 1000.
 // The returned cursor is the last returned key, or "" when nothing remains.
 func (k kvSpace) List(ctx context.Context, prefix string, limit int, cursor string) ([]state.KVItem, string, error) {
-	limit = clampLimit(limit, defaultKVListLimit, maxKVListLimit)
+	limit = clampLimit(limit, defaultKVListLimit)
 
 	// Prefix match as a byte range [prefix, prefixEnd) rather than LIKE, which
 	// treats % and _ as wildcards and folds ASCII case.

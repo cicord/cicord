@@ -326,7 +326,7 @@ func (s *server) handleSimMessages(w http.ResponseWriter, r *http.Request) {
 		notFoundHandler(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": toMessages(lastN(s.opts.Sim.Messages(id), queryInt(r, "limit", 50, 500)))})
+	writeJSON(w, http.StatusOK, map[string]any{"items": toMessages(lastN(s.opts.Sim.Messages(id), queryLimit(r)))})
 }
 
 func (s *server) handleSimDMs(w http.ResponseWriter, r *http.Request) {
@@ -340,7 +340,7 @@ func (s *server) handleSimDMs(w http.ResponseWriter, r *http.Request) {
 		all = append(all, s.opts.Sim.DMs(uid, b.ID)...)
 	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].CreatedAt.Before(all[j].CreatedAt) })
-	writeJSON(w, http.StatusOK, map[string]any{"items": toMessages(lastN(all, queryInt(r, "limit", 50, 500)))})
+	writeJSON(w, http.StatusOK, map[string]any{"items": toMessages(lastN(all, queryLimit(r)))})
 }
 
 func (s *server) handleSimSend(w http.ResponseWriter, r *http.Request) {

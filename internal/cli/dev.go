@@ -155,7 +155,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 		probe = defaultProbe()
 	}
 
-	ln, err := net.Listen("tcp", f.listen)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", f.listen)
 	if err != nil {
 		return err
 	}

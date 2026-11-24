@@ -10,10 +10,7 @@ import (
 	"github.com/npjonath/cicord/internal/state"
 )
 
-const (
-	defaultDueLimit = 100
-	maxDueLimit     = 1000
-)
+const defaultDueLimit = 100
 
 // ErrTaskIDConflict is returned by Schedule when the task ID is already used by
 // a task of another scope. Task IDs are global (Complete takes only an ID), so
@@ -66,7 +63,7 @@ func (q taskQueue) Cancel(ctx context.Context, scope, id string) error {
 // Due returns tasks with RunAt <= now, oldest first (ties by ID). limit <= 0
 // means 100; it is capped at 1000.
 func (q taskQueue) Due(ctx context.Context, now time.Time, limit int) ([]state.Task, error) {
-	limit = clampLimit(limit, defaultDueLimit, maxDueLimit)
+	limit = clampLimit(limit, defaultDueLimit)
 	var cutoff int64
 	switch {
 	case now.Before(minTime):

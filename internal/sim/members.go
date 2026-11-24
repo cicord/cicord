@@ -195,7 +195,7 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 		}
 	}
 	*m = next
-	w.record(a, "UpdateMember", serverID, userID, reason, nil)
+	w.recordOK(a, "UpdateMember", serverID, userID, reason)
 	w.emit(discord.MemberUpdateEvent{Member: cloneMember(*m), Previous: &prev})
 	return cloneMember(*m), nil
 }
@@ -232,7 +232,7 @@ func (w *World) memberRole(a actor, add bool, serverID, userID, roleID, reason s
 	if err := w.requireAbove(a, s, r.Position, "role "+r.Name); err != nil {
 		return fail(err)
 	}
-	w.record(a, method, serverID, userID, reason, nil)
+	w.recordOK(a, method, serverID, userID, reason)
 	if m.HasRole(roleID) == add {
 		return nil // already in the desired state: Discord returns 204 without an event
 	}
@@ -266,7 +266,7 @@ func (w *World) kickMember(a actor, serverID, userID, reason string) error {
 	if err := w.requireMemberAbove(a, s, userID); err != nil {
 		return fail(err)
 	}
-	w.record(a, "KickMember", serverID, userID, reason, nil)
+	w.recordOK(a, "KickMember", serverID, userID, reason)
 	w.dropMember(s, userID)
 	return nil
 }
@@ -294,7 +294,7 @@ func (w *World) banMember(a actor, serverID, userID string, deleteSeconds int, r
 		}
 	}
 	deleteSeconds = min(max(deleteSeconds, 0), 604800) // clamped, like the disgo adapter
-	w.record(a, "BanMember", serverID, userID, reason, nil)
+	w.recordOK(a, "BanMember", serverID, userID, reason)
 	s.bans[userID] = true
 	if s.members[userID] != nil {
 		w.dropMember(s, userID)
@@ -364,7 +364,7 @@ func (w *World) updateSelf(a actor, p discord.SelfParams) (discord.User, error) 
 			m.User = u.user
 		}
 	}
-	w.record(a, "UpdateSelf", "", a.userID, "", nil)
+	w.recordOK(a, "UpdateSelf", "", a.userID, "")
 	return u.user, nil
 }
 

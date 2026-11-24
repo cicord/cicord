@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -138,7 +139,7 @@ func TestWidgetREST(t *testing.T) {
 	if err != nil || w.Enabled {
 		t.Fatalf("update = %+v, %v", w, err)
 	}
-	if req := f.last(); req.Method != "PATCH" || !reflect.DeepEqual(req.Body, map[string]any{"enabled": false, "channel_id": nil}) || req.Reason != "r" {
+	if req := f.last(); req.Method != http.MethodPatch || !reflect.DeepEqual(req.Body, map[string]any{"enabled": false, "channel_id": nil}) || req.Reason != "r" {
 		t.Errorf("request = %+v", req)
 	}
 }
@@ -223,7 +224,7 @@ func TestOnboardingREST(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := f.last()
-	if req.Method != "PUT" {
+	if req.Method != http.MethodPut {
 		t.Fatalf("method = %s", req.Method)
 	}
 	prompts := req.Body.(map[string]any)["prompts"].([]any)

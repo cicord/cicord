@@ -67,7 +67,7 @@ func checkSerial(ctx context.Context, verify func() (Envelope, error)) error {
 	key := OfficialSerialKey
 	min, err := serials.Highest(ctx, key)
 	if err != nil {
-		return fmt.Errorf("%w (cannot read the last serial seen: %v)", ErrBadSignature, err)
+		return fmt.Errorf("%w (cannot read the last serial seen: %w)", ErrBadSignature, err)
 	}
 	if env.Serial < min {
 		return fmt.Errorf("%w (serial %d is older than serial %d already seen for the official registry: refusing an older index)",

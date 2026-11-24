@@ -536,12 +536,10 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	}
 	var best *semver.Version
 	var bestHash plumbing.Hash
-	_ = tags.ForEach(func(ref *plumbing.Reference) error {
-		v, err := semver.NewVersion(ref.Name().Short())
-		if err != nil || !c.Check(v) {
-			return nil
-		}
-		if best == nil || v.GreaterThan(best) {
+	err = tags.ForEach(func(ref *plumbing.Reference) error {
+		// Tags that are not semantic versions are skipped.
+		v, verr := semver.NewVersion(ref.Name().Short())
+		if verr == nil && c.Check(v) && (best == nil || v.GreaterThan(best)) {
 			h := ref.Hash()
 			if tag, err := repo.TagObject(h); err == nil { // annotated tag
 				h = tag.Target
@@ -550,6 +548,9 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("list the tags of %s: %w", ie.Repo, err)
+	}
 	if best == nil {
 		return nil, fmt.Errorf("no version of %s matches %q", source, versionRange)
 	}

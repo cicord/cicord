@@ -350,7 +350,7 @@ func archiveRepo(dir string) ([]byte, int, error) {
 		if total > archiveMaxContents {
 			return fmt.Errorf("the repository is larger than %d MiB", archiveMaxContents>>20)
 		}
-		f, err := os.Open(p)
+		f, err := os.Open(p) //nolint:gosec // G122: archives the user's own repository; a file changed meanwhile is caught by the size check below
 		if err != nil {
 			return err
 		}

@@ -319,8 +319,11 @@ func editProject(root string, edit func([]byte) ([]byte, error)) error {
 		return err
 	}
 	if _, ds := config.Load(root, config.LoadOptions{}); ds.HasErrors() {
-		_ = os.WriteFile(p, cur, 0o644)
-		return errors.New("cicord.yaml would become invalid: " + ds.Err().Error())
+		invalid := errors.New("cicord.yaml would become invalid: " + ds.Err().Error())
+		if err := os.WriteFile(p, cur, 0o644); err != nil { //nolint:gosec // G703: cicord.yaml of the repository the user runs the CLI in
+			return errors.Join(invalid, fmt.Errorf("restore %s: %w", p, err))
+		}
+		return invalid
 	}
 	return nil
 }

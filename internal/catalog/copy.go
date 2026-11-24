@@ -30,41 +30,50 @@ var released = map[string]map[string][]string{
 	"welcome": {"0.1.0": {
 		"sha256-Vc5USPwpH2u+lnQSZpc7phHFxtp6xb5jmy/BFXbVPJ8=",
 		"sha256-IhSR6HcCZguQ2/K/IBs/QDYn80hXjSlOw9ylu8ySBT0=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-Qu8O4XciIsmOm++fjfDAgTVtduweA/ZZ0+tiv8jPG1c=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"onboarding": {"0.1.0": {
 		"sha256-MKVQjq2L+jA2skWMdzZCUozF1n3y59TwnxOVjEPuqNg=",
 		"sha256-LS5IHZLOt50r8S/bK9NvuqPLHf/xuzGchTXQMDRx/0A=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-KRr1yFLgezY7ukj+ajgG+IpGRNRjM0eWd07vyK1r3A8=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"tickets": {"0.1.0": {
 		"sha256-L5+NgFlgHE/P0n5n8GyrW+DumWbmKl+n5jRpVWNrOP8=",
 		"sha256-UzOujz9ctRAfYIJ3JtqJCqRC3A6lgzhX35cCk0eW3Ao=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-/cNsyw6flhPR1uZWzMn9E8jhud2cSnwSbEfR/7x5J5Y=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"polls": {"0.1.0": {
 		"sha256-J2By/eEG8diCTxf6xekJyQyBzyn+qX9wskGmRmVptBs=",
 		"sha256-innGAtvVzpodj1AtwyVMX5tTMbc4AM0WSw8g/khOXoA=", // route contract (src/routes.ts)
 		"sha256-5F37/61i51+mE/n9ViqJwZdGiBpxquwWt/xEIYp1nes=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-dxKi3tKzTsaGZpeLiiC9fex04g9EZ7qcrgg3gXNvl/Y=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"levels": {"0.1.0": {
 		"sha256-FrdXmmfH7j5m0hN6XwwyttgOVU1cBvNlLmXW4vZrBO0=",
 		"sha256-Phlqcqh1igaLpy2gCf7Jd/uSblJxNSU+G8b1JpchAUY=", // route contract (src/routes.ts)
 		"sha256-bkc96UvDhOJ0R1Kq3oZHn7jS4adb3meFfvi2WIaPTvk=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-KKOyIRgrLuUFfztVK/QkgqRC0jzGA6iDMus5eAblp8Y=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"moderation": {"0.1.0": {
 		"sha256-JYpd9sY6f38cc9ZI3APfJX6LYab0MGuBUcURYXyjx2A=",
 		"sha256-ciiRRkOU3+n/3+Cs1xlgz4LV4QsiA/1uVlhvo/G7RJ0=", // publishes moderation.case
 		"sha256-D1hAQQTYTdf9hUkDmK6Xph51WWwD9gsmZPN6PYN4jFM=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-FxEiSXHt/uierLV2QinTEQyoAKklCyw+9PZNs8V+V8c=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"reaction-roles": {"0.1.0": {
 		"sha256-QdfT6KQQqvWVZqz8jX1DVgDkm37ZCkG5BVzECErUDCw=",
 		"sha256-LYyxabLe8FGcnQMgyAmsAnMbyPYicoJDvZSG7KHeiNY=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-Gs1W7MLFa0O9He5W6DMMOBInDtQQ01Ihel0V8qxXj/Q=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"audit-log": {"0.1.0": {
 		"sha256-CqUKC4C6sA9vNJBI0tClq77TpE8X7PgJGsq0Jyz1YjQ=",
 		"sha256-/DS7OjfqTtK3XZ58P7BVQ0CUMV1c2mfCBOp8Jb6Bo8M=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-5jcvRwAWq2fFzlElZFvsy8l0tVCXZkH4lHYYb75BDf4=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"announcements": {"0.1.0": {
 		"sha256-2FUTA2TWaOuUgM7FFhDbaYT41VFR1QW5LLJdXNWDuJk=",
 		"sha256-NozhyJgHRpaiIgOR/UK4XR/sbuUX2DBrz5oIF6OnWo0=", // rename to Cicord (@cicord/sdk imports)
+		"sha256-DrtE6XadcqWmQCFnNizgQoMsgjJIlGo6l/yFJjpv8Zo=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 }
 
@@ -189,7 +198,7 @@ func ReadDir(dir string) (map[string][]byte, error) {
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // G122: reads a plugin directory of the user repository, not a tree shared with an untrusted writer
 		if err != nil {
 			return err
 		}

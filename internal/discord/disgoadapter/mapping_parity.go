@@ -192,7 +192,10 @@ const discordEpochMs = 1420070400000
 func newSnowflake() string {
 	idGen.mu.Lock()
 	defer idGen.mu.Unlock()
-	id := uint64(time.Now().UnixMilli()-discordEpochMs) << 22
+	var id uint64
+	if ms := time.Now().UnixMilli() - discordEpochMs; ms > 0 { // 0 for a clock before the Discord epoch
+		id = uint64(ms) << 22
+	}
 	if id <= idGen.last {
 		id = idGen.last + 1
 	}

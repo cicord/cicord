@@ -33,7 +33,7 @@ func TestSetupModeHandler(t *testing.T) {
 	defer ts.Close()
 
 	post := func(path, body string, hdr map[string]string) *http.Response {
-		req, _ := http.NewRequest("POST", ts.URL+path, strings.NewReader(body))
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		for k, v := range hdr {
 			req.Header.Set(k, v)
@@ -50,7 +50,7 @@ func TestSetupModeHandler(t *testing.T) {
 	}
 	res := post("/api/v1/setup/session", `{"token":"`+tok+`"}`, map[string]string{"X-Cicord-Request": "1"})
 	body, _ := io.ReadAll(res.Body)
-	if res.StatusCode != 200 || strings.Contains(string(body), tok) {
+	if res.StatusCode != http.StatusOK || strings.Contains(string(body), tok) {
 		t.Fatalf("exchange = %d %s", res.StatusCode, body)
 	}
 	var c *http.Cookie
@@ -66,12 +66,13 @@ func TestSetupModeHandler(t *testing.T) {
 	for _, p := range []string{"/api/v1/status", "/api/v1/me", "/auth/login"} {
 		r, _ := http.Get(ts.URL + p)
 		b, _ := io.ReadAll(r.Body)
-		if r.StatusCode != 503 || !strings.Contains(string(b), "setup_required") {
+		if r.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(b), "setup_required") {
 			t.Fatalf("%s = %d %s", p, r.StatusCode, b)
 		}
 	}
 	// A setup session ID is not accepted as a Discord session cookie.
-	req, _ := http.NewRequest("GET", ts.URL+"/api/v1/setup/status", nil)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/setup/status", nil)
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-httponly.cookie-missing-httponly, go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- request cookie: only Name and Value are sent
 	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: c.Value})
 	r, _ := http.DefaultClient.Do(req)
 	b, _ := io.ReadAll(r.Body)
@@ -95,7 +96,7 @@ func TestSetupOAuthTestSeesDiscordSession(t *testing.T) {
 	ts := httptest.NewServer(NewSetup(Options{Store: store, Setup: wz}))
 	defer ts.Close()
 	get := func(cookies ...*http.Cookie) string {
-		req, _ := http.NewRequest("GET", ts.URL+"/api/v1/setup/oauth/test", nil)
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/setup/oauth/test", nil)
 		for _, c := range cookies {
 			req.AddCookie(c)
 		}
@@ -106,13 +107,16 @@ func TestSetupOAuthTestSeesDiscordSession(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return string(b)
 	}
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-httponly.cookie-missing-httponly, go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- request cookie: only Name and Value are sent
 	setupC := &http.Cookie{Name: setupCookie, Value: sess.ID}
 	if b := get(setupC); !strings.Contains(b, `"ok":false`) {
 		t.Fatalf("no Discord login yet: %s", b)
 	}
 	_ = store.Sessions().Put(t.Context(), state.Session{ID: "discord-sess", UserID: "42",
 		Data: []byte(`{"username":"jo","method":"oauth"}`), ExpiresAt: time.Now().Add(time.Hour)})
-	if b := get(setupC, &http.Cookie{Name: sessionCookie, Value: "discord-sess"}); !strings.Contains(b, `"ok":true`) || !strings.Contains(b, `"username":"jo"`) {
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-httponly.cookie-missing-httponly, go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- request cookie: only Name and Value are sent
+	discordC := &http.Cookie{Name: sessionCookie, Value: "discord-sess"}
+	if b := get(setupC, discordC); !strings.Contains(b, `"ok":true`) || !strings.Contains(b, `"username":"jo"`) {
 		t.Fatalf("after login: %s", b)
 	}
 }

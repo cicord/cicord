@@ -393,7 +393,6 @@ func (h *botHost) handle(ev discord.Event) {
 		if !i.plugin.def.HasEvent(name) {
 			continue
 		}
-		i := i
 		done := i.inst.DispatchEvent(context.Background(), ev)
 		go func() {
 			err := <-done

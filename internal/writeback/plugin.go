@@ -81,7 +81,7 @@ func dropEmptyOverrides(doc []byte, base []PathElem) ([]byte, error) {
 		} `yaml:"spec"`
 	}
 	if err := yamlUnmarshal(doc, &probe); err != nil {
-		return doc, nil
+		return doc, nil //nolint:nilerr // best-effort cleanup: a document the probe cannot read keeps its overrides as written
 	}
 	name := base[len(base)-1].MatchValue
 	for _, p := range probe.Spec.Plugins {

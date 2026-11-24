@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -91,7 +92,7 @@ func newEgressClient(allowPrivate bool) *http.Client {
 			}
 			host, _, err := net.SplitHostPort(address)
 			if err != nil {
-				return fmt.Errorf("%w: %v", ErrEgressDenied, err)
+				return fmt.Errorf("%w: %w", ErrEgressDenied, err)
 			}
 			ip, err := netip.ParseAddr(host)
 			if err != nil {
@@ -101,9 +102,13 @@ func newEgressClient(allowPrivate bool) *http.Client {
 		},
 	}
 	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
+		host, portStr, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, err
+		}
+		port, err := strconv.ParseUint(portStr, 10, 16)
+		if err != nil {
+			return nil, fmt.Errorf("invalid port in dial address %q: %w", addr, err)
 		}
 		var ips []netip.Addr
 		if ip, err := netip.ParseAddr(host); err == nil {
@@ -126,7 +131,7 @@ func newEgressClient(allowPrivate bool) *http.Client {
 		}
 		var lastErr error
 		for _, ip := range ips {
-			conn, err := dialer.DialContext(ctx, network, netip.AddrPortFrom(ip.Unmap(), mustPort(port)).String())
+			conn, err := dialer.DialContext(ctx, network, netip.AddrPortFrom(ip.Unmap(), uint16(port)).String())
 			if err == nil {
 				return conn, nil
 			}
@@ -147,14 +152,6 @@ func newEgressClient(allowPrivate bool) *http.Client {
 		},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-}
-
-func mustPort(p string) uint16 {
-	var n uint16
-	for _, c := range p {
-		n = n*10 + uint16(c-'0')
-	}
-	return n
 }
 
 var nonPublicPrefixes = func() []netip.Prefix {

@@ -256,13 +256,15 @@ type syncRecordDTO struct {
 	Error *reconcile.HumanError `json:"error,omitempty"`
 }
 
-func queryInt(r *http.Request, name string, def, max int) int {
-	v, err := strconv.Atoi(r.URL.Query().Get(name))
+// queryLimit reads the "limit" query parameter: 50 by default, at most 500.
+func queryLimit(r *http.Request) int {
+	const defLimit, maxLimit = 50, 500
+	v, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil || v <= 0 {
-		return def
+		return defLimit
 	}
-	if v > max {
-		return max
+	if v > maxLimit {
+		return maxLimit
 	}
 	return v
 }
@@ -286,7 +288,7 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "you are not an admin or moderator of any server"))
 		return
 	}
-	limit := queryInt(r, "limit", 50, 500)
+	limit := queryLimit(r)
 	// Over-fetch: visibility filtering happens after the query.
 	recs, err := s.store.Syncs().List(r.Context(), r.URL.Query().Get("target"), min(limit*5, 1000))
 	if err != nil {
@@ -541,7 +543,7 @@ func (s *server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
-	entries, err := s.store.Audit().List(r.Context(), state.AuditFilter{Server: key, Before: before, Limit: queryInt(r, "limit", 50, 500)})
+	entries, err := s.store.Audit().List(r.Context(), state.AuditFilter{Server: key, Before: before, Limit: queryLimit(r)})
 	if err != nil {
 		s.fail(w, err)
 		return

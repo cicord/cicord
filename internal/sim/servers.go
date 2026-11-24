@@ -132,7 +132,7 @@ func (w *World) updateServer(a actor, serverID string, p discord.ServerParams) (
 	if err != nil {
 		return discord.Server{}, w.record(a, "UpdateServer", serverID, serverID, "", err)
 	}
-	w.record(a, "UpdateServer", serverID, serverID, "", nil)
+	w.recordOK(a, "UpdateServer", serverID, serverID, "")
 	w.emit(discord.ServerUpdateEvent{Server: cloneServer(s.info)})
 	return cloneServer(s.info), nil
 }
@@ -536,7 +536,7 @@ func (w *World) createRole(a actor, serverID string, p discord.RoleParams, reaso
 	s.roles[r.ID] = r
 	// New roles are created at position 1, just above @everyone.
 	w.layoutRoles(s, map[string]int{r.ID: 1}, []string{r.ID})
-	w.record(a, "CreateRole", serverID, r.ID, reason, nil)
+	w.recordOK(a, "CreateRole", serverID, r.ID, reason)
 	w.emit(discord.RoleCreateEvent{ServerID: serverID, Role: *r})
 	w.emitRoleChanges(s, snap, r.ID)
 	return *r, nil
@@ -577,7 +577,7 @@ func (w *World) updateRole(a actor, serverID, roleID string, p discord.RoleParam
 	if p.Icon != nil && len(*p.Icon) > 0 {
 		w.cdnPut(r.IconURL, *p.Icon)
 	}
-	w.record(a, "UpdateRole", serverID, roleID, reason, nil)
+	w.recordOK(a, "UpdateRole", serverID, roleID, reason)
 	w.emit(discord.RoleUpdateEvent{ServerID: serverID, Role: *r})
 	return *r, nil
 }
@@ -606,7 +606,7 @@ func (w *World) deleteRole(a actor, serverID, roleID, reason string) error {
 	if err := w.requireAbove(a, s, r.Position, "role "+r.Name); err != nil {
 		return fail(err)
 	}
-	w.record(a, "DeleteRole", serverID, roleID, reason, nil)
+	w.recordOK(a, "DeleteRole", serverID, roleID, reason)
 	w.removeRole(s, roleID)
 	return nil
 }
@@ -628,7 +628,7 @@ func (w *World) removeRole(s *serverState, roleID string) {
 		n := len(c.ch.Overwrites)
 		kept := c.ch.Overwrites[:0:0]
 		for _, ow := range c.ch.Overwrites {
-			if !(ow.Type == discord.OverwriteRole && ow.ID == roleID) {
+			if ow.Type != discord.OverwriteRole || ow.ID != roleID {
 				kept = append(kept, ow)
 			}
 		}
@@ -672,7 +672,7 @@ func (w *World) setRolePositions(a actor, serverID string, positions []discord.R
 	}
 	snap := snapshotRoles(s)
 	w.layoutRoles(s, requested, order)
-	w.record(a, "SetRolePositions", serverID, "", "", nil)
+	w.recordOK(a, "SetRolePositions", serverID, "", "")
 	w.emitRoleChanges(s, snap, "")
 	return nil
 }
@@ -1190,7 +1190,7 @@ func (w *World) createChannel(a actor, serverID string, p discord.ChannelParams,
 		req = map[string]int{ch.ID: *p.Position}
 	}
 	w.layoutChannels(s, req, []string{ch.ID})
-	w.record(a, "CreateChannel", serverID, ch.ID, reason, nil)
+	w.recordOK(a, "CreateChannel", serverID, ch.ID, reason)
 	w.emit(discord.ChannelCreateEvent{Channel: c.ch})
 	w.emitChannelChanges(s, snap, ch.ID)
 	return cloneChannel(c.ch), nil
@@ -1254,7 +1254,7 @@ func (w *World) updateChannel(a actor, channelID string, p discord.ChannelParams
 	if !isThread(ch.Type) {
 		w.layoutChannels(s, req, []string{ch.ID})
 	}
-	w.record(a, "UpdateChannel", serverID, channelID, reason, nil)
+	w.recordOK(a, "UpdateChannel", serverID, channelID, reason)
 	w.emit(discord.ChannelUpdateEvent{Channel: c.ch})
 	w.emitChannelChanges(s, snap, ch.ID)
 	return cloneChannel(c.ch), nil
@@ -1280,7 +1280,7 @@ func (w *World) deleteChannel(a actor, channelID, reason string) error {
 	if err := w.requireChannel(a, c, need); err != nil {
 		return fail(err)
 	}
-	w.record(a, "DeleteChannel", serverID, channelID, reason, nil)
+	w.recordOK(a, "DeleteChannel", serverID, channelID, reason)
 	w.removeChannel(w.servers[serverID], c)
 	return nil
 }
@@ -1375,7 +1375,7 @@ func (w *World) setChannelPositions(a actor, serverID string, positions []discor
 		order = append(order, cp.ID)
 	}
 	w.layoutChannels(s, requested, order)
-	w.record(a, "SetChannelPositions", serverID, "", "", nil)
+	w.recordOK(a, "SetChannelPositions", serverID, "", "")
 	w.emitChannelChanges(s, snap, "")
 	return nil
 }
@@ -1481,7 +1481,7 @@ func (w *World) createThread(a actor, channelID string, p discord.ThreadParams) 
 	s := w.servers[serverID]
 	w.channels[ch.ID] = &channelState{ch: ch}
 	s.channelIDs = append(s.channelIDs, ch.ID)
-	w.record(a, "CreateThread", serverID, ch.ID, "", nil)
+	w.recordOK(a, "CreateThread", serverID, ch.ID, "")
 	w.emit(discord.ChannelCreateEvent{Channel: ch})
 	return ch, nil
 }

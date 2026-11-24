@@ -136,7 +136,6 @@ type messageState struct {
 	reactions    []*reaction
 	ephemeral    bool
 	ephemeralFor string // user who can see the ephemeral message
-	deleted      bool
 }
 
 // Call is one mutating call recorded in the call log.
@@ -188,7 +187,7 @@ func (w *World) newID() string {
 	if ms < 100_000_000_000 { // keep IDs realistic (18+ digits) with odd clocks
 		ms = 100_000_000_000
 	}
-	id := uint64(ms) << 22
+	id := uint64(ms) << 22 //nolint:gosec // G115: ms is clamped to >= 100_000_000_000 above, never negative
 	if id <= w.lastID {
 		id = w.lastID + 1
 	}
@@ -234,12 +233,21 @@ func badRequest(format string, args ...any) error {
 
 // record appends a call to the log and returns err unchanged. Caller holds w.mu.
 func (w *World) record(a actor, method, serverID, targetID, reason string, err error) error {
+	w.logCall(a, method, serverID, targetID, reason, err)
+	return err
+}
+
+// recordOK appends a successful call to the log. Caller holds w.mu.
+func (w *World) recordOK(a actor, method, serverID, targetID, reason string) {
+	w.logCall(a, method, serverID, targetID, reason, nil)
+}
+
+func (w *World) logCall(a actor, method, serverID, targetID, reason string, err error) {
 	w.calls = append(w.calls, Call{
 		Seq: len(w.calls) + 1, ActorID: a.userID, Method: method, ServerID: serverID,
 		TargetID: targetID, Reason: reason, Err: err, At: w.now(),
 	})
 	w.changed()
-	return err
 }
 
 // Calls returns the mutating calls made by actorID (a bot or human user ID), in

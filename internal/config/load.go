@@ -170,7 +170,7 @@ func (l *loader) load(dir string) *Repo {
 	// servers/*.yaml
 	for _, f := range l.glob(filepath.Join(abs, "servers"), func(e fs.DirEntry) (string, bool) {
 		n := e.Name()
-		if e.IsDir() || !(strings.HasSuffix(n, ".yaml") || strings.HasSuffix(n, ".yml")) {
+		if e.IsDir() || (!strings.HasSuffix(n, ".yaml") && !strings.HasSuffix(n, ".yml")) {
 			return "", false
 		}
 		return filepath.Join(abs, "servers", n), true

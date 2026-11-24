@@ -41,7 +41,7 @@ func githubFromEnv(pr int) (*prComment, error) {
 		if p == "" {
 			return nil, errNotPullRequest
 		}
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // G703: GITHUB_EVENT_PATH is set by the GitHub Actions runner
 		if err != nil {
 			return nil, fmt.Errorf("read GITHUB_EVENT_PATH: %w", err)
 		}

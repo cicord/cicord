@@ -85,7 +85,7 @@ type gen struct {
 const maxDepth = 32
 
 // resolve follows a local $ref.
-func (g *gen) resolve(s map[string]any, depth int) map[string]any {
+func (g *gen) resolve(s map[string]any) map[string]any {
 	for i := 0; i < 8 && s != nil; i++ {
 		ref, ok := s["$ref"].(string)
 		if !ok {
@@ -144,7 +144,7 @@ func (g *gen) materializes(s map[string]any, depth int) bool {
 		if sub == nil {
 			continue
 		}
-		sub = g.resolve(sub, depth)
+		sub = g.resolve(sub)
 		if _, ok := sub["default"]; ok || g.materializes(sub, depth+1) {
 			filled[k] = true
 		}
@@ -184,7 +184,7 @@ func propName(k string) string {
 
 // objectBody renders the property lines of an object schema (each ending in "\n").
 func (g *gen) objectBody(s map[string]any, indent string, defaultsApply bool, depth int) string {
-	s = g.resolve(s, depth)
+	s = g.resolve(s)
 	keys, props := propsOf(s)
 	required := map[string]bool{}
 	if req, ok := s["required"].([]any); ok {
@@ -200,7 +200,7 @@ func (g *gen) objectBody(s map[string]any, indent string, defaultsApply bool, de
 		if sub == nil {
 			sub = map[string]any{}
 		}
-		rs := g.resolve(sub, depth)
+		rs := g.resolve(sub)
 		_, hasDefault := rs["default"]
 		optional := !required[k]
 		if optional && defaultsApply && (hasDefault || g.materializes(rs, depth)) {
@@ -317,7 +317,7 @@ func (g *gen) typeOf(s map[string]any, indent string, defaultsApply bool, depth 
 	if depth > maxDepth {
 		return "unknown"
 	}
-	s = g.resolve(s, depth)
+	s = g.resolve(s)
 	if c, ok := s["const"]; ok {
 		return literal(c)
 	}

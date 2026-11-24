@@ -196,7 +196,7 @@ func (f *localFlags) reconcilers(ctx context.Context, repo *config.Repo, b *bots
 			out = append(out, serverReconciler{key: key, err: err})
 			continue
 		}
-		var res state.ResourceMap = store.Resources()
+		res := store.Resources()
 		if readOnly {
 			res = readOnlyResources{res}
 		}

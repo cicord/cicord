@@ -301,7 +301,7 @@ func TestMapError(t *testing.T) {
 		}
 	}
 	// 5xx: no sentinel, but the rest error stays in the chain and the text is safe.
-	e500 := mapError("Op", &rest.Error{Response: &http.Response{StatusCode: 502}, RsBody: []byte("bad gateway")})
+	e500 := mapError("Op", &rest.Error{Response: &http.Response{StatusCode: http.StatusBadGateway}, RsBody: []byte("bad gateway")})
 	for _, s := range []error{discord.ErrNotFound, discord.ErrForbidden, discord.ErrBadRequest, discord.ErrInvalidToken} {
 		if errors.Is(e500, s) {
 			t.Errorf("502 should not map to %v", s)

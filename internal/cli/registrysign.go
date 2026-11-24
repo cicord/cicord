@@ -182,10 +182,10 @@ The index is checked first: plugin names, https:// repositories without credenti
 			}
 			switch {
 			case serial == 0:
-				serial = max(uint64(time.Now().Unix()), prev+1)
+				serial = max(unixSerial(time.Now()), prev+1)
 			case serial <= prev:
 				return fmt.Errorf("--serial %d must be greater than the current serial %d", serial, prev)
-			case serial > uint64(time.Now().Add(366*24*time.Hour).Unix()):
+			case serial > unixSerial(time.Now().Add(366*24*time.Hour)):
 				// Runtimes remember the highest serial: a huge one would block every later signature.
 				return fmt.Errorf("--serial %d is far above the current Unix time: runtimes would refuse every later signature", serial)
 			}
@@ -209,7 +209,7 @@ The index is checked first: plugin names, https:// repositories without credenti
 					return fmt.Errorf("self-check failed: %w", err)
 				}
 			}
-			if err := os.WriteFile(sigPath, sig, 0o644); err != nil {
+			if err := os.WriteFile(sigPath, sig, 0o644); err != nil { //nolint:gosec // G703: signature next to the index the user passed on the command line
 				return err
 			}
 			signed, _ := registry.ParseEnvelope(sig)
@@ -287,4 +287,13 @@ repository.`,
 	cmd.Flags().StringArrayVar(&pubs, "public-key", nil, "trusted public key (base64; default: the official keys of this build)")
 	cmd.Flags().StringVar(&registryURL, "registry-url", "", "registry URL the signature must name")
 	return cmd
+}
+
+// unixSerial returns t in Unix seconds as a signature serial (0 before 1970).
+func unixSerial(t time.Time) uint64 {
+	s := t.Unix()
+	if s < 0 {
+		return 0
+	}
+	return uint64(s)
 }

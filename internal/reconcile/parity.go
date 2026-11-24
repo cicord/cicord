@@ -1082,7 +1082,7 @@ type exprWant struct {
 	emoji string   // sound
 }
 
-func (p *planner) planExpressions() error {
+func (p *planner) planExpressions() {
 	srv := p.in.Live.Server
 	if p.in.Live.HasEmojis {
 		live := map[string]discord.Emoji{}
@@ -1177,7 +1177,6 @@ func (p *planner) planExpressions() error {
 			p.planExpr(state.KindSound, KindSound, key, "sound "+quote(spec.Name), spec.Sound, w, ok, fields, &n, discord.SoundboardLimit(srv.PremiumTier), "soundboard sounds")
 		}
 	}
-	return nil
 }
 
 func (p *planner) exprFile(name string) exprWant {

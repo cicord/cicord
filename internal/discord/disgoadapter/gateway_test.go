@@ -43,6 +43,7 @@ func newFakeGateway(t *testing.T, script func(send func(t string, d string), clo
 	f := &fakeGateway{identify: make(chan map[string]any, 1), ops: make(chan gwMsg, 16)}
 	up := websocket.Upgrader{}
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// nosemgrep: go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check -- fake Discord gateway on a loopback test server
 		c, err := up.Upgrade(w, r, nil)
 		if err != nil {
 			return

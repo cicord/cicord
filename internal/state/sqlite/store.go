@@ -145,12 +145,12 @@ func Open(path string, opts ...Option) (*Store, error) {
 
 		// Establish WAL mode and the schema through the writer before any reader
 		// connection exists.
-		if err := w.Ping(); err != nil {
+		if err := w.PingContext(context.Background()); err != nil {
 			w.Close()
 			return nil, fmt.Errorf("state/sqlite: open %s: %w", path, err)
 		}
 		var mode string
-		if err := w.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+		if err := w.QueryRowContext(context.Background(), "PRAGMA journal_mode").Scan(&mode); err != nil {
 			w.Close()
 			return nil, fmt.Errorf("state/sqlite: journal mode: %w", err)
 		}
@@ -307,12 +307,12 @@ func (s *Store) migrate(ctx context.Context) error {
 // applyMigration applies m in its own transaction unless it is already
 // recorded. The check runs inside the (IMMEDIATE) transaction so two processes
 // opening the same file concurrently cannot both apply it.
-func (s *Store) applyMigration(ctx context.Context, m migration) error {
+func (s *Store) applyMigration(ctx context.Context, m migration) (err error) {
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("state/sqlite: migration %s: %w", m.name, err)
 	}
-	defer tx.Rollback()
+	defer rollback(tx, &err)
 
 	var n int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&n); err != nil {
@@ -385,10 +385,21 @@ func notFound(format string, args ...any) error {
 	return fmt.Errorf("%w: "+format, append([]any{state.ErrNotFound}, args...)...)
 }
 
-// clampLimit returns def for n <= 0 and caps n at maxN.
-func clampLimit(n, def, maxN int) int {
+// maxListLimit caps the page size of every list query.
+const maxListLimit = 1000
+
+// clampLimit returns def for n <= 0 and caps n at maxListLimit.
+func clampLimit(n, def int) int {
 	if n <= 0 {
 		return def
 	}
-	return min(n, maxN)
+	return min(n, maxListLimit)
+}
+
+// rollback rolls tx back when it was not committed, joining a rollback failure
+// into *err. Use it as `defer rollback(tx, &err)` with a named error result.
+func rollback(tx *sql.Tx, err *error) {
+	if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+		*err = errors.Join(*err, fmt.Errorf("state/sqlite: rollback: %w", rbErr))
+	}
 }

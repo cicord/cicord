@@ -418,7 +418,7 @@ func TestKVListLimits(t *testing.T) {
 	}
 	items, next, err = kv.List(c, "", 5000, "")
 	must(t, err)
-	if len(items) != maxKVListLimit || next != "k00999" {
+	if len(items) != maxListLimit || next != "k00999" {
 		t.Errorf("max limit: %d items, next %q", len(items), next)
 	}
 	items, next, err = kv.List(c, "", 5000, next)

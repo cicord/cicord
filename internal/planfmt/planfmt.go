@@ -322,7 +322,7 @@ func htmlEscape(s string) string {
 }
 
 // sanitizeFence keeps a line from closing a code fence early.
-func sanitizeFence(s string) string { return strings.ReplaceAll(s, "```", "`​``") }
+func sanitizeFence(s string) string { return strings.ReplaceAll(s, "```", "`\u200b``") }
 
 // ───────────────────────────────────────────────────────────── fields
 

@@ -32,7 +32,7 @@ import (
 
 const (
 	// tokenPrefix distinguishes session tokens from the runtime token.
-	tokenPrefix = "cicord_st_"
+	tokenPrefix = "cicord_st_" //nolint:gosec // G101: a public token prefix, not a credential
 	// authCodeTTL bounds the one-time code of the OAuth token flow.
 	authCodeTTL = 60 * time.Second
 )
@@ -117,11 +117,7 @@ func (s *server) createTokenSession(ctx context.Context, u discord.User, d sessi
 		return tokenSessionDTO{}, err
 	}
 	id := &identity{sessionID: sess.ID, user: u, data: d}
-	me, err := s.me(ctx, id)
-	if err != nil {
-		return tokenSessionDTO{}, err
-	}
-	return tokenSessionDTO{Token: sess.ID, ExpiresAt: sess.ExpiresAt, Me: me}, nil
+	return tokenSessionDTO{Token: sess.ID, ExpiresAt: sess.ExpiresAt, Me: s.me(ctx, id)}, nil
 }
 
 // authCode is the one-time code of the OAuth token flow (KV "api:authcode").

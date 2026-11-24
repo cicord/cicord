@@ -11,9 +11,7 @@ import (
 
 const (
 	defaultAuditLimit = 50
-	maxAuditLimit     = 1000
 	defaultSyncLimit  = 50
-	maxSyncLimit      = 1000
 )
 
 // ───────────────────────────────────────────────────────────── audit
@@ -59,7 +57,7 @@ func (a auditLog) List(ctx context.Context, f state.AuditFilter) ([]state.AuditE
 		args = append(args, f.Before)
 	}
 	q += ` ORDER BY id DESC LIMIT ?`
-	args = append(args, clampLimit(f.Limit, defaultAuditLimit, maxAuditLimit))
+	args = append(args, clampLimit(f.Limit, defaultAuditLimit))
 
 	rows, err := a.s.r.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -122,7 +120,7 @@ func (l syncLog) List(ctx context.Context, target string, limit int) ([]state.Sy
 		args = append(args, target)
 	}
 	q += ` ORDER BY id DESC LIMIT ?`
-	args = append(args, clampLimit(limit, defaultSyncLimit, maxSyncLimit))
+	args = append(args, clampLimit(limit, defaultSyncLimit))
 
 	rows, err := l.s.r.QueryContext(ctx, q, args...)
 	if err != nil {

@@ -139,7 +139,7 @@ func TestSyncExample(t *testing.T) {
 	// roles: hierarchy below the bot's role
 	admin, modo, member := e.role("Admin"), e.role("Modo"), e.role("Membre")
 	botRole := e.role("cicord")
-	if !(botRole.Position > admin.Position && admin.Position > modo.Position && modo.Position > member.Position) {
+	if botRole.Position <= admin.Position || admin.Position <= modo.Position || modo.Position <= member.Position {
 		t.Errorf("positions bot=%d admin=%d modo=%d member=%d", botRole.Position, admin.Position, modo.Position, member.Position)
 	}
 	if admin.Color != 0xe74c3c || !admin.Hoist || admin.Permissions != discord.MustPermissions("Administrator") {
@@ -147,7 +147,7 @@ func TestSyncExample(t *testing.T) {
 	}
 	// channels
 	info, community, staff := e.channel("Infos"), e.channel("Communauté"), e.channel("Staff")
-	if !(info.Position < community.Position && community.Position < staff.Position) {
+	if info.Position >= community.Position || community.Position >= staff.Position {
 		t.Errorf("category positions %d %d %d", info.Position, community.Position, staff.Position)
 	}
 	rules, ann, general, voice, staffChat := e.channel("règlement"), e.channel("annonces"), e.channel("général"), e.channel("Vocal"), e.channel("staff")
@@ -689,12 +689,12 @@ func TestReorderRepair(t *testing.T) {
 	if _, _, err := r.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	admin, modo := e.role("Admin"), e.role("Modo")
+	modo := e.role("Modo")
 	// an unmanaged role placed between Admin and Modo keeps its place
 	booster, _ := e.w.AdminCreateRole(e.srv.ID, discord.RoleParams{Name: new("Booster")})
 	e.w.AdminSetRolePositions(e.srv.ID, []discord.RolePosition{{ID: booster.ID, Position: modo.Position + 1}})
 	// someone swaps Admin and Modo, and the two channels of "Infos"
-	admin, modo = e.role("Admin"), e.role("Modo")
+	admin, modo := e.role("Admin"), e.role("Modo")
 	e.w.AdminSetRolePositions(e.srv.ID, []discord.RolePosition{{ID: admin.ID, Position: modo.Position}, {ID: modo.ID, Position: admin.Position}})
 	rules, ann := e.channel("règlement"), e.channel("annonces")
 	e.w.AdminSetChannelPositions(e.srv.ID, []discord.ChannelPosition{{ID: rules.ID, Position: ann.Position}, {ID: ann.ID, Position: rules.Position}})
@@ -716,7 +716,7 @@ func TestReorderRepair(t *testing.T) {
 	}
 	e.mustEmptyPlan(r)
 	a, b, m := e.role("Admin"), e.role("Booster"), e.role("Modo")
-	if !(a.Position > b.Position && b.Position > m.Position) {
+	if a.Position <= b.Position || b.Position <= m.Position {
 		t.Errorf("positions admin=%d booster=%d modo=%d", a.Position, b.Position, m.Position)
 	}
 	if e.channel("règlement").Position > e.channel("annonces").Position {

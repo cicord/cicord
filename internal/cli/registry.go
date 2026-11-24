@@ -90,7 +90,7 @@ func newPluginAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := os.WriteFile(botFile, out, 0o644); err != nil {
+			if err := os.WriteFile(botFile, out, 0o644); err != nil { //nolint:gosec // G703: bot file of the repository the user runs the CLI in
 				return err
 			}
 			w := cmd.OutOrStdout()

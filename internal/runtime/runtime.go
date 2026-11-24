@@ -362,9 +362,11 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 			Server: srv, RepoRoot: rev.Dir, Client: host.session, Resources: r.opts.Store.Resources(),
 			KV: r.opts.Store.KV("reconcile:" + key), BotUserID: host.session.Self().ID,
 			Logger: log.With("server", key), Reason: "cicord " + rev.ID, Context: context.Background(),
-			OnSync: func(p reconcile.Plan, res reconcile.Result, err error) { r.afterSelfHeal(rt, p, res, err) },
+			OnSync: func(_ reconcile.Plan, res reconcile.Result, err error) { r.afterSelfHeal(rt, res, err) },
 		})
-		r.syncServer(ctx, rev, rt)
+		if _, _, err := r.syncServer(ctx, rev, rt); err != nil {
+			log.Warn("server sync failed", "server", key, "err", err)
+		}
 	}
 
 	// 3. plugin instances
@@ -403,15 +405,17 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	r.sched.reset(next)
 
 	if old != nil {
-		go stopActive(old, log)
+		// The old revision is stopped in the background and must finish even when the
+		// activation context ends.
+		go stopActive(context.WithoutCancel(ctx), old, log)
 	}
 	r.record(ctx, state.SyncRecord{Revision: rev.ID, Target: "revision", Status: "succeeded", Message: rev.Message})
 	log.Info("revision active", "servers", len(next.servers), "instances", len(next.instances))
 	return nil
 }
 
-func stopActive(a *active, log *slog.Logger) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func stopActive(ctx context.Context, a *active, log *slog.Logger) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for _, s := range a.servers {
 		if s.rec != nil {
@@ -455,7 +459,7 @@ func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serve
 	return plan, res, err
 }
 
-func (r *Runtime) afterSelfHeal(rt *serverRT, p reconcile.Plan, res reconcile.Result, err error) {
+func (r *Runtime) afterSelfHeal(rt *serverRT, res reconcile.Result, err error) {
 	if len(res.Applied) == 0 && err == nil {
 		return
 	}
@@ -472,7 +476,9 @@ func (r *Runtime) afterSelfHeal(rt *serverRT, p reconcile.Plan, res reconcile.Re
 	}
 	r.record(context.Background(), state.SyncRecord{Revision: rev, Target: "server:" + rt.key, Status: status, Message: msg})
 	if host := r.bot(rt.bot); host != nil {
-		_ = rt.cache.Refresh(context.Background(), host.session, r.opts.Store.Resources())
+		if err := rt.cache.Refresh(context.Background(), host.session, r.opts.Store.Resources()); err != nil {
+			r.log.Warn("refresh server cache", "server", rt.key, "err", err)
+		}
 	}
 }
 
@@ -485,7 +491,9 @@ func (r *Runtime) resyncServers(ctx context.Context) {
 	}
 	for _, key := range sortedKeys(a.servers) {
 		if rt := a.servers[key]; rt.rec != nil {
-			r.syncServer(ctx, a.rev, rt)
+			if _, _, err := r.syncServer(ctx, a.rev, rt); err != nil {
+				r.log.Warn("server sync failed", "server", key, "err", err)
+			}
 		}
 	}
 }
@@ -532,8 +540,10 @@ func (r *Runtime) PlanServer(ctx context.Context, key string) (reconcile.Plan, e
 // PlanDir validates a repository directory and plans every server against live
 // Discord, without applying (cicord plan --remote).
 func (r *Runtime) PlanDir(ctx context.Context, dir string) (config.Diagnostics, []reconcile.Plan, error) {
-	repo, _, ds, err := r.LoadAndBuild(dir)
-	if err != nil {
+	// An invalid repository is not a planning failure: its errors are returned as
+	// diagnostics (LoadAndBuild's error is ds.Err()).
+	repo, _, ds, _ := r.LoadAndBuild(dir)
+	if ds.HasErrors() || repo == nil {
 		return ds, nil, nil
 	}
 	var plans []reconcile.Plan
@@ -573,7 +583,7 @@ func (r *Runtime) shutdown() {
 	r.bots = map[string]*botHost{}
 	r.mu.Unlock()
 	if a != nil {
-		stopActive(a, r.log)
+		stopActive(context.Background(), a, r.log)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

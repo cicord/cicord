@@ -154,7 +154,7 @@ func (w *DirWriter) Write(ctx context.Context, req Request) (Result, error) {
 		}
 		next, err := edit(cur)
 		if err != nil {
-			return Result{}, fmt.Errorf("%w: %s: %v", ErrConflict, rel, err)
+			return Result{}, fmt.Errorf("%w: %s: %w", ErrConflict, rel, err)
 		}
 		out[p] = next
 	}
@@ -238,7 +238,7 @@ func (w *GitWriter) auth() *githttp.BasicAuth {
 func (w *GitWriter) clone(ctx context.Context) (*git.Repository, error) {
 	r, err := git.PlainOpen(w.opts.WorkDir)
 	if errors.Is(err, git.ErrRepositoryNotExists) {
-		var a *githttp.BasicAuth = w.auth()
+		a := w.auth()
 		co := &git.CloneOptions{URL: w.opts.URL, ReferenceName: plumbing.NewBranchReferenceName(w.opts.Branch), SingleBranch: true}
 		if a != nil {
 			co.Auth = a
@@ -296,7 +296,7 @@ func (w *GitWriter) Write(ctx context.Context, req Request) (Result, error) {
 		}
 		next, err := edit(cur)
 		if err != nil {
-			return Result{}, fmt.Errorf("%w: %s: %v", ErrConflict, rel, err)
+			return Result{}, fmt.Errorf("%w: %s: %w", ErrConflict, rel, err)
 		}
 		inRepo, _ := filepath.Rel(w.opts.WorkDir, p)
 		if next == nil {

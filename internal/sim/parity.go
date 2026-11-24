@@ -118,7 +118,7 @@ func (w *World) updateWidget(a actor, serverID string, ws discord.ServerWidget, 
 		return discord.ServerWidget{}, w.record(a, "UpdateServerWidget", serverID, serverID, reason, err)
 	}
 	s.widget = ws
-	w.record(a, "UpdateServerWidget", serverID, serverID, reason, nil)
+	w.recordOK(a, "UpdateServerWidget", serverID, serverID, reason)
 	return ws, nil
 }
 
@@ -291,7 +291,7 @@ func (w *World) createAutoMod(a actor, serverID string, r discord.AutoModRule, r
 	r = cloneAutoMod(r)
 	r.ID = w.newID()
 	s.automod[r.ID] = &r
-	w.record(a, "CreateAutoModRule", serverID, r.ID, reason, nil)
+	w.recordOK(a, "CreateAutoModRule", serverID, r.ID, reason)
 	w.emit(discord.AutoModRuleCreateEvent{ServerID: serverID, Rule: cloneAutoMod(r)})
 	return cloneAutoMod(r), nil
 }
@@ -323,7 +323,7 @@ func (w *World) updateAutoMod(a actor, serverID, ruleID string, r discord.AutoMo
 	r = cloneAutoMod(r)
 	r.ID = ruleID
 	s.automod[ruleID] = &r
-	w.record(a, "UpdateAutoModRule", serverID, ruleID, reason, nil)
+	w.recordOK(a, "UpdateAutoModRule", serverID, ruleID, reason)
 	w.emit(discord.AutoModRuleUpdateEvent{ServerID: serverID, Rule: cloneAutoMod(r)})
 	return cloneAutoMod(r), nil
 }
@@ -347,7 +347,7 @@ func (w *World) deleteAutoMod(a actor, serverID, ruleID, reason string) error {
 	}
 	old := cloneAutoMod(*s.automod[ruleID])
 	delete(s.automod, ruleID)
-	w.record(a, "DeleteAutoModRule", serverID, ruleID, reason, nil)
+	w.recordOK(a, "DeleteAutoModRule", serverID, ruleID, reason)
 	w.emit(discord.AutoModRuleDeleteEvent{ServerID: serverID, Rule: old})
 	return nil
 }
@@ -488,7 +488,7 @@ func (w *World) updateOnboarding(a actor, serverID string, o discord.Onboarding,
 	s.onboarding = o
 	had := s.info.HasFeature(discord.FeatureGuildOnboarding)
 	w.setFeature(s, discord.FeatureGuildOnboarding, o.Enabled)
-	w.record(a, "UpdateOnboarding", serverID, serverID, reason, nil)
+	w.recordOK(a, "UpdateOnboarding", serverID, serverID, reason)
 	if had != o.Enabled {
 		w.emit(discord.ServerUpdateEvent{Server: cloneServer(s.info)})
 	}
@@ -545,7 +545,7 @@ func (w *World) updateWelcome(a actor, serverID string, ws discord.WelcomeScreen
 	s.welcome = cloneWelcome(ws)
 	had := s.info.HasFeature(discord.FeatureWelcomeScreenEnabled)
 	w.setFeature(s, discord.FeatureWelcomeScreenEnabled, ws.Enabled)
-	w.record(a, "UpdateWelcomeScreen", serverID, serverID, reason, nil)
+	w.recordOK(a, "UpdateWelcomeScreen", serverID, serverID, reason)
 	if had != ws.Enabled {
 		w.emit(discord.ServerUpdateEvent{Server: cloneServer(s.info)})
 	}
@@ -680,7 +680,7 @@ func (w *World) createEmoji(a actor, serverID string, p discord.EmojiParams, rea
 	e.ID = w.newID()
 	s.emojis[e.ID] = &e
 	w.cdnPut(e.ImageURL(), p.Image)
-	w.record(a, "CreateEmoji", serverID, e.ID, reason, nil)
+	w.recordOK(a, "CreateEmoji", serverID, e.ID, reason)
 	w.emit(discord.EmojisUpdateEvent{ServerID: serverID, Emojis: sortedEmojis(s)})
 	return cloneEmoji(e), nil
 }
@@ -719,7 +719,7 @@ func (w *World) updateEmoji(a actor, serverID, emojiID string, p discord.EmojiPa
 	if p.RoleIDs != nil {
 		e.RoleIDs = append([]string{}, *p.RoleIDs...)
 	}
-	w.record(a, "UpdateEmoji", serverID, emojiID, reason, nil)
+	w.recordOK(a, "UpdateEmoji", serverID, emojiID, reason)
 	w.emit(discord.EmojisUpdateEvent{ServerID: serverID, Emojis: sortedEmojis(s)})
 	return cloneEmoji(*e), nil
 }
@@ -738,7 +738,7 @@ func (w *World) deleteEmoji(a actor, serverID, emojiID, reason string) error {
 		return w.record(a, "DeleteEmoji", serverID, emojiID, reason, err)
 	}
 	delete(s.emojis, emojiID)
-	w.record(a, "DeleteEmoji", serverID, emojiID, reason, nil)
+	w.recordOK(a, "DeleteEmoji", serverID, emojiID, reason)
 	w.emit(discord.EmojisUpdateEvent{ServerID: serverID, Emojis: sortedEmojis(s)})
 	return nil
 }
@@ -816,7 +816,7 @@ func (w *World) createSticker(a actor, serverID string, p discord.StickerParams,
 	st := discord.Sticker{ID: w.newID(), Name: p.Name, Description: p.Description, Tags: p.Tags, Format: f}
 	s.stickers[st.ID] = &st
 	w.cdnPut(st.FileURL(), p.File)
-	w.record(a, "CreateSticker", serverID, st.ID, reason, nil)
+	w.recordOK(a, "CreateSticker", serverID, st.ID, reason)
 	w.emit(discord.StickersUpdateEvent{ServerID: serverID, Stickers: sortedStickers(s)})
 	return st, nil
 }
@@ -842,7 +842,7 @@ func (w *World) updateSticker(a actor, serverID, stickerID string, p discord.Sti
 		return fail(err)
 	}
 	st.Name, st.Description, st.Tags = p.Name, p.Description, p.Tags
-	w.record(a, "UpdateSticker", serverID, stickerID, reason, nil)
+	w.recordOK(a, "UpdateSticker", serverID, stickerID, reason)
 	w.emit(discord.StickersUpdateEvent{ServerID: serverID, Stickers: sortedStickers(s)})
 	return *st, nil
 }
@@ -861,7 +861,7 @@ func (w *World) deleteSticker(a actor, serverID, stickerID, reason string) error
 		return w.record(a, "DeleteSticker", serverID, stickerID, reason, err)
 	}
 	delete(s.stickers, stickerID)
-	w.record(a, "DeleteSticker", serverID, stickerID, reason, nil)
+	w.recordOK(a, "DeleteSticker", serverID, stickerID, reason)
 	w.emit(discord.StickersUpdateEvent{ServerID: serverID, Stickers: sortedStickers(s)})
 	return nil
 }
@@ -929,7 +929,7 @@ func (w *World) createSound(a actor, serverID string, p discord.SoundParams, rea
 	x := discord.SoundboardSound{ID: w.newID(), Name: p.Name, Volume: p.Volume, Emoji: p.Emoji}
 	s.sounds[x.ID] = &x
 	w.cdnPut(x.FileURL(), p.Sound)
-	w.record(a, "CreateSoundboardSound", serverID, x.ID, reason, nil)
+	w.recordOK(a, "CreateSoundboardSound", serverID, x.ID, reason)
 	w.emit(discord.SoundCreateEvent{ServerID: serverID, Sound: x})
 	return x, nil
 }
@@ -955,7 +955,7 @@ func (w *World) updateSound(a actor, serverID, soundID string, p discord.SoundPa
 		return fail(err)
 	}
 	x.Name, x.Volume, x.Emoji = p.Name, p.Volume, p.Emoji
-	w.record(a, "UpdateSoundboardSound", serverID, soundID, reason, nil)
+	w.recordOK(a, "UpdateSoundboardSound", serverID, soundID, reason)
 	w.emit(discord.SoundUpdateEvent{ServerID: serverID, Sound: *x})
 	return *x, nil
 }
@@ -974,7 +974,7 @@ func (w *World) deleteSound(a actor, serverID, soundID, reason string) error {
 		return w.record(a, "DeleteSoundboardSound", serverID, soundID, reason, err)
 	}
 	delete(s.sounds, soundID)
-	w.record(a, "DeleteSoundboardSound", serverID, soundID, reason, nil)
+	w.recordOK(a, "DeleteSoundboardSound", serverID, soundID, reason)
 	w.emit(discord.SoundDeleteEvent{ServerID: serverID, SoundID: soundID})
 	return nil
 }
@@ -1066,15 +1066,13 @@ func cloneEmoji(e discord.Emoji) discord.Emoji {
 
 // ───────────────────────────────────────────────────────────── inspection
 
-func (w *World) inspect(serverID string, fn func(s *serverState)) bool {
+// inspect runs fn on the server under w.mu; an unknown server is a no-op.
+func (w *World) inspect(serverID string, fn func(s *serverState)) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	s := w.servers[serverID]
-	if s == nil {
-		return false
+	if s := w.servers[serverID]; s != nil {
+		fn(s)
 	}
-	fn(s)
-	return true
 }
 
 // Widget returns the widget settings of a server.

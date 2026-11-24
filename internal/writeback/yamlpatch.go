@@ -81,7 +81,7 @@ func unescapeAstral(b []byte) []byte {
 			return m
 		}
 		v, err := strconv.ParseUint(string(m[2:]), 16, 32)
-		if err != nil {
+		if err != nil || v > unicode.MaxRune {
 			return m
 		}
 		r := rune(v)

@@ -185,11 +185,11 @@ func copyRepoTree(src, dst string) error {
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // G122: copies the user's own repository, not a tree shared with an untrusted writer
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(filepath.Join(dst, rel), data, 0o644)
+		return os.WriteFile(filepath.Join(dst, rel), data, 0o644) //nolint:gosec // G703: dst/rel come from walking src, under a destination the code chose
 	})
 }
 
@@ -203,8 +203,8 @@ func checkLocalDataDir(repoDir, dataDir string, explicit bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rel, err := filepath.Rel(repoDir, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+	rel, inside := relInside(repoDir, abs)
+	if !inside {
 		return abs, nil // outside the repository
 	}
 	if first := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]; first == ".cicord" {
@@ -215,6 +215,15 @@ func checkLocalDataDir(repoDir, dataDir string, explicit bool) (string, error) {
 	}
 	return "", fmt.Errorf("--data-dir %s is inside the watched repository %s: use a path under %s or outside the repository",
 		dataDir, repoDir, filepath.Join(repoDir, ".cicord"))
+}
+
+// relInside returns p relative to root, and whether p is root or below it.
+func relInside(root, p string) (string, bool) {
+	rel, err := filepath.Rel(root, p)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", false
+	}
+	return rel, true
 }
 
 // runHTTP serves h on ln and runs the runtime until ctx ends, then shuts both down.
@@ -238,6 +247,7 @@ func runHTTP(ctx context.Context, log *slog.Logger, ln net.Listener, h http.Hand
 	go func() { srvErr <- srv.Serve(ln) }()
 
 	var err error
+	rtStopped := false
 	select {
 	case <-ctx.Done():
 	case err = <-srvErr:
@@ -245,16 +255,22 @@ func runHTTP(ctx context.Context, log *slog.Logger, ln net.Listener, h http.Hand
 			err = nil
 		}
 	case err = <-rtDone:
+		rtStopped = true
 	}
 	log.Info("shutting down")
 	sctx, scancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer scancel()
 	_ = srv.Shutdown(sctx)
 	cancel()
-	select {
-	case <-rtDone:
-	case <-time.After(15 * time.Second):
-		log.Warn("runtime did not stop in time")
+	if !rtStopped {
+		select {
+		case rerr := <-rtDone:
+			if err == nil {
+				err = rerr
+			}
+		case <-time.After(15 * time.Second):
+			log.Warn("runtime did not stop in time")
+		}
 	}
 	return err
 }
@@ -401,7 +417,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		return err
 	}
 
-	ln, err := net.Listen("tcp", f.listen)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", f.listen)
 	if err != nil {
 		return err
 	}

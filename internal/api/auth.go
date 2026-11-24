@@ -86,7 +86,13 @@ func (s *server) identify(r *http.Request) (*identity, error) {
 		return id, nil
 	}
 	c, err := r.Cookie(sessionCookie)
-	if err != nil || c.Value == "" {
+	if errors.Is(err, http.ErrNoCookie) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if c.Value == "" {
 		return nil, nil
 	}
 	sess, err := s.store.Sessions().Get(r.Context(), c.Value)
@@ -136,7 +142,8 @@ func (s *server) createSession(w http.ResponseWriter, r *http.Request, u discord
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
 		_ = s.store.Sessions().Delete(r.Context(), c.Value)
 	}
-	http.SetCookie(w, &http.Cookie{
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is s.secureCookies(r): set whenever the request or the public URL is HTTPS
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is s.secureCookies(r), set whenever the request or the public URL is HTTPS
 		Name: sessionCookie, Value: sess.ID, Path: "/", Expires: sess.ExpiresAt, MaxAge: int(ttl.Seconds()),
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.secureCookies(r),
 	})
@@ -331,10 +338,10 @@ type meDTO struct {
 	Servers []meServer `json:"servers"`
 }
 
-func (s *server) me(ctx context.Context, id *identity) (meDTO, error) {
+func (s *server) me(ctx context.Context, id *identity) meDTO {
 	out := meDTO{User: toUser(id.user), Servers: []meServer{}}
 	if s.rt == nil {
-		return out, nil
+		return out
 	}
 	for _, key := range s.rt.ServerKeys() {
 		r, _, err := s.roleIn(ctx, id, key, false)
@@ -347,7 +354,7 @@ func (s *server) me(ctx context.Context, id *identity) (meDTO, error) {
 		}
 		out.Servers = append(out.Servers, meServer{Key: key, Name: s.serverName(key), Role: r.String()})
 	}
-	return out, nil
+	return out
 }
 
 func (s *server) serverName(key string) string {
@@ -366,12 +373,7 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	me, err := s.me(r.Context(), id)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, me)
+	writeJSON(w, http.StatusOK, s.me(r.Context(), id))
 }
 
 // ───────────────────────────────────────────────────────────── link / dev / logout
@@ -439,12 +441,7 @@ func (s *server) handleLink(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	me, err := s.me(r.Context(), id)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, me)
+	writeJSON(w, http.StatusOK, s.me(r.Context(), id))
 }
 
 func (s *server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
@@ -503,12 +500,7 @@ func (s *server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	me, err := s.me(r.Context(), id)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, me)
+	writeJSON(w, http.StatusOK, s.me(r.Context(), id))
 }
 
 func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -529,7 +521,8 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is s.secureCookies(r): set whenever the request or the public URL is HTTPS
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, //nolint:gosec // G124: Secure is s.secureCookies(r), set whenever the request or the public URL is HTTPS
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.secureCookies(r)})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -642,7 +635,8 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	// The state is bound to this browser: the callback requires the same value in a
 	// cookie (SameSite=Lax so that it survives the top-level redirect back from Discord).
-	http.SetCookie(w, &http.Cookie{Name: oauthCookie, Value: st, Path: "/auth/", MaxAge: 600,
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is s.secureCookies(r): set whenever the request or the public URL is HTTPS
+	http.SetCookie(w, &http.Cookie{Name: oauthCookie, Value: st, Path: "/auth/", MaxAge: 600, //nolint:gosec // G124: Secure is s.secureCookies(r), set whenever the request or the public URL is HTTPS
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.secureCookies(r)})
 	q := url.Values{}
 	q.Set("response_type", "code")
@@ -662,7 +656,9 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "invalid OAuth state"))
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: oauthCookie, Value: "", Path: "/auth/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is s.secureCookies(r): set whenever the request or the public URL is HTTPS
+	http.SetCookie(w, &http.Cookie{Name: oauthCookie, Value: "", Path: "/auth/", MaxAge: -1, //nolint:gosec // G124: Secure is s.secureCookies(r), set whenever the request or the public URL is HTTPS
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.secureCookies(r)})
 	kv := s.store.KV("api:oauth")
 	raw, err := kv.Get(r.Context(), st)
 	if err != nil {
@@ -693,6 +689,7 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err)
 			return
 		}
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- issueAuthCode only returns a target allowed by s.tokenRedirect (else "/")
 		http.Redirect(w, r, target, http.StatusFound)
 		return
 	}

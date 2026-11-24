@@ -282,7 +282,7 @@ func (w *World) sendMessage(a actor, channelID string, m discord.MessageCreate) 
 	}
 	m.Flags &^= discord.MessageFlagEphemeral | msgFlagLoading
 	ms := w.newMessage(c, w.users[a.userID].user, m, "")
-	w.record(a, "SendMessage", serverID, ms.msg.ID, "", nil)
+	w.recordOK(a, "SendMessage", serverID, ms.msg.ID, "")
 	return cloneMessage(ms.msg), nil
 }
 
@@ -320,7 +320,7 @@ func (w *World) editMessageCall(a actor, channelID, messageID string, m discord.
 		return fail(err)
 	}
 	w.editMessage(ms, m)
-	w.record(a, "EditMessage", serverID, messageID, "", nil)
+	w.recordOK(a, "EditMessage", serverID, messageID, "")
 	return cloneMessage(ms.msg), nil
 }
 
@@ -344,7 +344,7 @@ func (w *World) deleteMessage(a actor, channelID, messageID, reason string) erro
 	if err := w.requireChannel(a, c, need); err != nil {
 		return fail(err)
 	}
-	w.record(a, "DeleteMessage", serverID, messageID, reason, nil)
+	w.recordOK(a, "DeleteMessage", serverID, messageID, reason)
 	w.removeMessage(c, ms)
 	return nil
 }
@@ -537,7 +537,7 @@ func (w *World) createDM(a actor, userID string) (discord.Channel, error) {
 	if err != nil {
 		return discord.Channel{}, w.record(a, "CreateDM", "", userID, "", err)
 	}
-	w.record(a, "CreateDM", "", c.ch.ID, "", nil)
+	w.recordOK(a, "CreateDM", "", c.ch.ID, "")
 	return cloneChannel(c.ch), nil
 }
 

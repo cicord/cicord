@@ -85,7 +85,7 @@ maintainers after the change (` + "`cicord registry sign`" + `).
 
 // gitCmd runs git in dir and returns its trimmed stdout.
 func gitCmd(ctx context.Context, dir string, args ...string) (string, error) {
-	c := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	c := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...) //nolint:gosec // G204: runs git with arguments built by the publish command
 	var out, errb bytes.Buffer
 	c.Stdout, c.Stderr = &out, &errb
 	if err := c.Run(); err != nil {
@@ -289,7 +289,7 @@ func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOpt
 			writeIndented(w, snippet.Bytes())
 			break
 		}
-		if err := os.WriteFile(plan.file, plan.content, 0o644); err != nil {
+		if err := os.WriteFile(plan.file, plan.content, 0o644); err != nil { //nolint:gosec // G703: index file of the registry checkout the user passed with --registry
 			return err
 		}
 		fmt.Fprintf(w, "✓ %s %s in %s\n", plan.verbPast, name, plan.file)

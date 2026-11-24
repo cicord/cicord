@@ -72,13 +72,14 @@ func (l *lateRuntime) Run(ctx context.Context) error {
 	l.mu.Lock()
 	done, closers := l.done, l.closers
 	l.mu.Unlock()
+	var err error
 	if done != nil {
-		<-done
+		err = <-done
 	}
 	for _, c := range closers {
 		c()
 	}
-	return nil
+	return err
 }
 
 // start runs rt until the server stops; close is called after it stopped.
@@ -290,7 +291,7 @@ func runSetup(ctx context.Context, ss setupStart) error {
 // the Verify / First plugin steps); nil otherwise.
 func resumeWizard(ctx context.Context, e *runtimeEnv, stdout io.Writer) (*setup.Wizard, error) {
 	st, found, err := setup.LoadState(ctx, e.store)
-	if err != nil || !found || !(st.Activated || st.RepoInitialized) || st.Completed {
+	if err != nil || !found || (!st.Activated && !st.RepoInitialized) || st.Completed {
 		return nil, err
 	}
 	wz := setup.New(setup.Options{Mode: e.mode, Store: e.store, Secrets: e.secrets, Connector: e.connector, Probe: e.probe,
@@ -344,7 +345,7 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 	if err != nil {
 		return err
 	}
-	ln, err := net.Listen("tcp", f.listen)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", f.listen)
 	if err != nil {
 		return err
 	}
@@ -427,7 +428,7 @@ func runDevSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absDir
 	if err != nil {
 		return err
 	}
-	ln, err := net.Listen("tcp", f.listen)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", f.listen)
 	if err != nil {
 		return err
 	}

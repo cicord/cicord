@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"net/url"
 	"testing"
 	"time"
@@ -25,15 +26,15 @@ func TestLinks(t *testing.T) {
 	}
 	// tampering
 	tok := u.Query().Get("cicord_token")
-	if _, err := s.Verify(tok[:len(tok)-2] + "xx"); err != ErrInvalidToken {
+	if _, err := s.Verify(tok[:len(tok)-2] + "xx"); !errors.Is(err, ErrInvalidToken) {
 		t.Errorf("tampered token: %v", err)
 	}
-	if _, err := NewSigner([]byte("other")).Verify(tok); err != ErrInvalidToken {
+	if _, err := NewSigner([]byte("other")).Verify(tok); !errors.Is(err, ErrInvalidToken) {
 		t.Errorf("wrong key: %v", err)
 	}
 	// expiry
 	now = now.Add(6 * time.Minute)
-	if _, err := s.Verify(tok); err != ErrExpiredToken {
+	if _, err := s.Verify(tok); !errors.Is(err, ErrExpiredToken) {
 		t.Errorf("expired: %v", err)
 	}
 	if _, err := l.Link("//evil.com", "", 0); err == nil {

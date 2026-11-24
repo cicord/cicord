@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
-	"sync/atomic"
-	"time"
 
 	"github.com/npjonath/cicord/internal/discord"
 	"github.com/npjonath/cicord/internal/state"
@@ -243,16 +240,6 @@ func (a *applier) expression(ctx context.Context, c Change) error {
 		_, err = cl.UpdateSoundboardSound(ctx, a.serverID, c.ID, discord.SoundParams{Name: w.name, Volume: w.vol, Emoji: w.emoji}, a.reason())
 	}
 	return err
-}
-
-var onboardingSeq atomic.Int64
-
-// newSnowflake returns a fresh client-side snowflake (Discord accepts client generated
-// IDs for new onboarding prompts and options, like its own client).
-func newSnowflake() string {
-	const epoch = 1420070400000
-	ms := time.Now().UnixMilli() - epoch
-	return strconv.FormatInt(ms<<22|(onboardingSeq.Add(1)&0xFFF), 10)
 }
 
 // onboarding replaces the onboarding, keeping the IDs of live prompts and options

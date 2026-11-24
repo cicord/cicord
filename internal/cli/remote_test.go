@@ -175,7 +175,7 @@ func (g *fakeGitHub) handler(t *testing.T) http.Handler {
 		defer g.mu.Unlock()
 		g.auth = append(g.auth, r.Header.Get("Authorization"))
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/repos/o/r/issues/7/comments":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/o/r/issues/7/comments":
 			page := 1
 			fmt.Sscanf(r.URL.Query().Get("page"), "%d", &page)
 			lo, hi := (page-1)*100, page*100
@@ -184,7 +184,7 @@ func (g *fakeGitHub) handler(t *testing.T) http.Handler {
 				out = append(out, g.comments[i])
 			}
 			json.NewEncoder(w).Encode(out)
-		case r.Method == "POST" && r.URL.Path == "/repos/o/r/issues/7/comments":
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/o/r/issues/7/comments":
 			var body struct{ Body string }
 			json.NewDecoder(r.Body).Decode(&body)
 			g.nextID++
@@ -192,9 +192,9 @@ func (g *fakeGitHub) handler(t *testing.T) http.Handler {
 			c.User.Type = "Bot"
 			g.comments = append(g.comments, c)
 			g.posts++
-			w.WriteHeader(201)
+			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(c)
-		case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/repos/o/r/issues/comments/"):
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/repos/o/r/issues/comments/"):
 			var body struct{ Body string }
 			json.NewDecoder(r.Body).Decode(&body)
 			for i := range g.comments {
@@ -205,10 +205,10 @@ func (g *fakeGitHub) handler(t *testing.T) http.Handler {
 					return
 				}
 			}
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		default:
 			t.Errorf("unexpected GitHub call %s %s", r.Method, r.URL)
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	})
 }
@@ -219,7 +219,7 @@ func TestPlanComment(t *testing.T) {
 	valid.Store(true)
 	rts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/plan" || r.Header.Get("Authorization") != "Bearer "+runtimeToken {
-			w.WriteHeader(401)
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		io.Copy(io.Discard, r.Body)
@@ -309,7 +309,7 @@ func (f *fakeStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if r.Header.Get("Authorization") != "Bearer "+runtimeToken {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		io.WriteString(w, `{"error": {"code": "unauthenticated", "message": "bad token"}}`)
 		return
 	}
@@ -324,12 +324,12 @@ func (f *fakeStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		io.WriteString(w, f.history)
-	case r.URL.Path == "/api/v1/sync" && r.Method == "POST":
+	case r.URL.Path == "/api/v1/sync" && r.Method == http.MethodPost:
 		f.syncs++
-		w.WriteHeader(202)
+		w.WriteHeader(http.StatusAccepted)
 		io.WriteString(w, `{"status": "accepted"}`)
 	default:
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
@@ -502,6 +502,7 @@ func TestRuntimeURLSecurity(t *testing.T) {
 
 	// a redirect to another origin is not followed (the token stays home)
 	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- the test plays the attacker: the CLI must refuse this cross-origin redirect
 		http.Redirect(w, r, attacker.URL+r.URL.Path, http.StatusTemporaryRedirect)
 	}))
 	defer redirector.Close()
@@ -512,6 +513,7 @@ func TestRuntimeURLSecurity(t *testing.T) {
 	// 127.0.0.1 vs localhost: different origins too
 	local := strings.Replace(attacker.URL, "127.0.0.1", "localhost", 1)
 	redirector2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- the test plays the attacker: the CLI must refuse this cross-origin redirect
 		http.Redirect(w, r, local+r.URL.Path, http.StatusFound)
 	}))
 	defer redirector2.Close()

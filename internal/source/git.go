@@ -91,7 +91,7 @@ func (g *Git) auth() transport.AuthMethod {
 
 func (g *Git) mirrorDir() string { return filepath.Join(g.opts.CacheDir, "mirror.git") }
 
-func (g *Git) open(ctx context.Context) (*git.Repository, error) {
+func (g *Git) open() (*git.Repository, error) {
 	if g.repo != nil {
 		return g.repo, nil
 	}
@@ -113,7 +113,7 @@ func (g *Git) open(ctx context.Context) (*git.Repository, error) {
 func (g *Git) Fetch(ctx context.Context) (Revision, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	r, err := g.open(ctx)
+	r, err := g.open()
 	if err != nil {
 		return Revision{}, err
 	}
@@ -133,7 +133,7 @@ func (g *Git) Fetch(ctx context.Context) (Revision, error) {
 func (g *Git) Snapshot(sha string) (Revision, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	r, err := g.open(context.Background())
+	r, err := g.open()
 	if err != nil {
 		return Revision{}, err
 	}
@@ -163,7 +163,7 @@ func (g *Git) snapshot(r *git.Repository, h plumbing.Hash) (Revision, error) {
 	if err != nil {
 		return Revision{}, err
 	}
-	tmp, err := os.MkdirTemp(filepath.Join(g.opts.CacheDir), ".tmp-")
+	tmp, err := os.MkdirTemp(g.opts.CacheDir, ".tmp-")
 	if err != nil {
 		return Revision{}, err
 	}

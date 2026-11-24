@@ -60,7 +60,7 @@ const (
 var Steps = []string{StepWelcome, StepDiscord, StepServer, StepRepository, StepLogin, StepVerify, StepPlugin, StepDone}
 
 // OAuthSecretName is the secret holding the Discord OAuth2 client secret.
-const OAuthSecretName = "CICORD_DISCORD_CLIENT_SECRET"
+const OAuthSecretName = "CICORD_DISCORD_CLIENT_SECRET" //nolint:gosec // G101: the name of a secret, not its value
 
 const (
 	stateScope = "cicord:setup"
@@ -1119,7 +1119,11 @@ func (w *Wizard) checkRedirect(ctx context.Context, bot *BotState) error {
 		return nil
 	}
 	id, err := w.opts.Probe.Identify(ctx, tok)
-	if err != nil || id.RedirectURIs == nil {
+	if err != nil {
+		w.log.Debug("redirect check skipped: cannot read the application", "err", err)
+		return nil
+	}
+	if id.RedirectURIs == nil {
 		return nil
 	}
 	want := w.redirectURL()

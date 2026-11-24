@@ -27,7 +27,8 @@ var keyRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 // engineRange returns the default engine constraint for new repos/plugins: the current minor.
 func engineRange() string {
 	var major, minor int
-	fmt.Sscanf(version.Version, "%d.%d", &major, &minor)
+	// A development version that does not start with "major.minor" gives 0.0.
+	_, _ = fmt.Sscanf(version.Version, "%d.%d", &major, &minor)
 	if major == 0 {
 		return fmt.Sprintf(">=0.%d.0 <0.%d.0", minor, minor+1)
 	}

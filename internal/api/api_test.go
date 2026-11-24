@@ -668,7 +668,7 @@ func TestSimCommandsAndEvents(t *testing.T) {
 	// SSE: an initial event, then one after a change.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", e.ts.URL+"/api/v1/sim/events", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, e.ts.URL+"/api/v1/sim/events", nil)
 	res2, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -898,13 +898,13 @@ func TestOAuthLogin(t *testing.T) {
 		case "/oauth2/token":
 			_ = r.ParseForm()
 			if r.Form.Get("code") != "good-code" || r.Form.Get("client_secret") != "shh" || r.Form.Get("client_id") != "42" {
-				http.Error(w, "bad", 400)
+				http.Error(w, "bad", http.StatusBadRequest)
 				return
 			}
 			_, _ = w.Write([]byte(`{"access_token":"at","token_type":"Bearer"}`))
 		case "/users/@me":
 			if r.Header.Get("Authorization") != "Bearer at" {
-				http.Error(w, "no", 401)
+				http.Error(w, "no", http.StatusUnauthorized)
 				return
 			}
 			_, _ = w.Write([]byte(`{"id":"777","username":"zed","global_name":"Zed"}`))
@@ -931,7 +931,7 @@ func TestOAuthLogin(t *testing.T) {
 	}
 	res.Body.Close()
 	loc, _ := url.Parse(res.Header.Get("Location"))
-	if res.StatusCode != 302 || loc.Query().Get("scope") != "identify" || loc.Query().Get("client_id") != "42" {
+	if res.StatusCode != http.StatusFound || loc.Query().Get("scope") != "identify" || loc.Query().Get("client_id") != "42" {
 		t.Fatalf("login redirect = %d %s", res.StatusCode, loc)
 	}
 	state := loc.Query().Get("state")
@@ -939,7 +939,7 @@ func TestOAuthLogin(t *testing.T) {
 	// Wrong state (CSRF) is refused.
 	res, _ = hc.Get(ts.URL + "/auth/callback?code=good-code&state=forged")
 	res.Body.Close()
-	if res.StatusCode != 400 {
+	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("forged state = %d", res.StatusCode)
 	}
 	res, err = hc.Get(ts.URL + "/auth/callback?code=good-code&state=" + url.QueryEscape(state))
@@ -947,19 +947,19 @@ func TestOAuthLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	if res.StatusCode != 302 || res.Header.Get("Location") != "/" {
+	if res.StatusCode != http.StatusFound || res.Header.Get("Location") != "/" {
 		t.Fatalf("callback = %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
 	res, _ = hc.Get(ts.URL + "/api/v1/me")
 	body, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || !strings.Contains(string(body), `"id":"777"`) {
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), `"id":"777"`) {
 		t.Fatalf("me after oauth = %d %s", res.StatusCode, body)
 	}
 	// The state is single-use.
 	res, _ = hc.Get(ts.URL + "/auth/callback?code=good-code&state=" + url.QueryEscape(state))
 	res.Body.Close()
-	if res.StatusCode != 400 {
+	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("replayed state = %d", res.StatusCode)
 	}
 }

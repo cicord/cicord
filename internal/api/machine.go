@@ -151,10 +151,11 @@ func extractTarGz(r io.Reader, dst string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o644)
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 			if err != nil {
 				return err
 			}
+			// nosemgrep: go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb -- bounded by maxArchiveFileBytes, maxArchiveTotal and maxArchiveFiles above
 			n, err := io.Copy(f, io.LimitReader(tr, h.Size+1))
 			cerr := f.Close()
 			if err != nil {

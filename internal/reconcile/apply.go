@@ -330,7 +330,7 @@ func (a *applier) channelParams(cs *chanSpec, send map[string]bool) (discord.Cha
 		p.ParentID = &pid
 	}
 	opt := func(field string, v *int, dst **int, skipZero bool) {
-		if v != nil && (send[field] || all && !(skipZero && *v == 0)) {
+		if v != nil && (send[field] || all && (!skipZero || *v != 0)) {
 			x := *v
 			*dst = &x
 		}

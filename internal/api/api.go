@@ -256,17 +256,13 @@ func (s *server) routes() {
 
 // ───────────────────────────────────────────────────────────── middleware
 
-type ctxKey int
-
-const longRunningKey ctxKey = 1
-
 func (s *server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
 		defer func() {
 			if v := recover(); v != nil {
-				if v == http.ErrAbortHandler {
+				if err, ok := v.(error); ok && errors.Is(err, http.ErrAbortHandler) {
 					panic(v)
 				}
 				s.log.Error("api panic", "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))

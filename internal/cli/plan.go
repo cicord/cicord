@@ -78,7 +78,7 @@ Exit codes: 0 success, 1 error or invalid configuration, 2 changes pending (only
 			return runPlan(cmd, dir, &o)
 		},
 	}
-	o.remoteFlags.register(cmd, false)
+	o.register(cmd, false)
 	o.local.register(cmd)
 	o.local.registerServers(cmd)
 	f := cmd.Flags()
@@ -116,7 +116,7 @@ func runPlan(cmd *cobra.Command, dir string, o *planOpts) error {
 		where = "the runtime"
 	} else {
 		var err error
-		res, failed, err = localPlan(ctx, stderr, dir, &o.local)
+		res, failed, err = localPlan(ctx, dir, &o.local)
 		if err != nil {
 			return err
 		}
@@ -179,7 +179,7 @@ func remotePlan(ctx context.Context, stderr io.Writer, base, dir string) (planfm
 
 // localPlan validates dir and plans every (selected) server against Discord. failed
 // reports servers that could not be planned (their plan carries a blocked entry).
-func localPlan(ctx context.Context, stderr io.Writer, dir string, lf *localFlags) (planfmt.Result, error, error) {
+func localPlan(ctx context.Context, dir string, lf *localFlags) (planfmt.Result, error, error) {
 	res := planfmt.Result{Diagnostics: []config.Diagnostic{}, Plans: []planfmt.Plan{}}
 	repo, ds := loadRepo(dir)
 	if ds != nil {

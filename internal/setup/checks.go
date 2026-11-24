@@ -439,15 +439,17 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 		}
 		// commands
 		cmd := Check{ID: CheckCommands}
-		if cs, ok := rt.CommandSyncStatus(botKey, serverID); !ok {
+		cs, ok := rt.CommandSyncStatus(botKey, serverID)
+		switch {
+		case !ok:
 			cmd.Status, cmd.Message = StatusPending, "Slash commands have not been registered yet."
-		} else if cs.Err != "" {
+		case cs.Err != "":
 			cmd.Status = StatusFail
 			cmd.Message = "Discord refused the slash commands: " + cs.Err
 			cmd.Hint = "Invite the bot again with the link from the Server step (it includes the applications.commands scope)."
-		} else if cs.Commands == 0 {
+		case cs.Commands == 0:
 			cmd.Status, cmd.Message = StatusOK, "Slash commands are registered (none yet: install a plugin to add some)."
-		} else {
+		default:
 			cmd.Status, cmd.Message = StatusOK, fmt.Sprintf("%d slash command(s) registered.", cs.Commands)
 		}
 		cmd.Data = map[string]any{}

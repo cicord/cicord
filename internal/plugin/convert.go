@@ -353,9 +353,10 @@ func (i *Instance) interactionDTO(x *interaction, localID string) interactionDTO
 		d.Member = &md
 	}
 	if it.ChannelID != "" {
-		if it.ServerID == i.env.ServerID {
+		switch it.ServerID {
+		case i.env.ServerID:
 			i.markServerChannel(it.ChannelID)
-		} else if it.ServerID == "" {
+		case "":
 			i.markDMChannel(it.ChannelID)
 		}
 		ch := i.channelDTO(it.ChannelID)
@@ -657,7 +658,7 @@ func (i *Instance) convertRow(r rowIn) (discord.Component, error) {
 			}
 			id, err := EncodeCustomID(i.env.InstanceName, c.ID)
 			if err != nil {
-				return row, fmt.Errorf("components[%d]: %v", k, err)
+				return row, fmt.Errorf("components[%d]: %w", k, err)
 			}
 			if c.Label == "" && c.Emoji == "" {
 				return row, fmt.Errorf("components[%d]: a button needs a label or an emoji", k)
@@ -677,7 +678,7 @@ func (i *Instance) convertRow(r rowIn) (discord.Component, error) {
 			}
 			id, err := EncodeCustomID(i.env.InstanceName, c.ID)
 			if err != nil {
-				return row, fmt.Errorf("components[%d]: %v", k, err)
+				return row, fmt.Errorf("components[%d]: %w", k, err)
 			}
 			if len(c.Options) == 0 || len(c.Options) > 25 {
 				return row, fmt.Errorf("components[%d]: a select menu needs 1 to 25 options", k)

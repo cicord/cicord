@@ -64,7 +64,7 @@ func (l *Local) Dir() string { return l.dir }
 func (l *Local) watchTree() error {
 	return filepath.WalkDir(l.dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return filepath.SkipDir // unreadable directory: not watched (WalkDir only reports errors on directories)
 		}
 		if d.IsDir() {
 			if ignoredNames[d.Name()] && p != l.dir {
@@ -80,7 +80,7 @@ func (l *Local) watchTree() error {
 func (l *Local) watchDir(dir string) {
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return filepath.SkipDir // unreadable or already removed directory: not watched
 		}
 		if d.IsDir() {
 			if isIgnoredPath(l.dir, p) {
@@ -117,7 +117,12 @@ func (l *Local) loop() {
 				timer.Stop()
 			}
 			timer = time.AfterFunc(150*time.Millisecond, func() { notify(l.changes) })
-		case <-l.watcher.Errors:
+		case _, ok := <-l.watcher.Errors:
+			// Watching is best-effort (no logger here): a watcher error only means some
+			// change may be noticed late, at the next event or Trigger.
+			if !ok {
+				return
+			}
 		}
 	}
 }
@@ -221,7 +226,7 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) //nolint:gosec // G302: snapshot of a repository file (git-tracked content, never a secret), same rule as the G306 exclusion
 	if err != nil {
 		return err
 	}

@@ -81,7 +81,6 @@ func (s *scheduler) runCron(ctx context.Context, now time.Time) {
 	}
 	s.mu.Unlock()
 	for _, j := range due {
-		j := j
 		go func() {
 			c, cancel := context.WithTimeout(ctx, time.Minute)
 			defer cancel()
@@ -120,7 +119,6 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 			continue
 		}
 		_ = s.r.opts.Store.Tasks().Complete(ctx, t.ID) // at-most-once delivery
-		t := t
 		go func() {
 			c, cancel := context.WithTimeout(ctx, time.Minute)
 			defer cancel()

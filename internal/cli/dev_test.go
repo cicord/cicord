@@ -86,7 +86,7 @@ func TestDevSimSmoke(t *testing.T) {
 	}
 
 	get := func(path string) (int, []byte) {
-		req, _ := http.NewRequest("GET", base+path, nil)
+		req, _ := http.NewRequest(http.MethodGet, base+path, nil)
 		req.Header.Set("Authorization", "Bearer smoke-token")
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {

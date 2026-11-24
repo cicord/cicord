@@ -59,7 +59,7 @@ func (f *fakeDiscord) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 	if h == nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		_, _ = io.WriteString(w, `{"code":0,"message":"404: Not Found"}`)
 		return
 	}
@@ -147,7 +147,7 @@ func TestCreateChannelRequest(t *testing.T) {
 	req := f.last()
 	want := map[string]any{"name": "announcements", "type": 5.0, "parent_id": "4", "topic": "news",
 		"permission_overwrites": []any{map[string]any{"id": "1", "type": 0.0, "allow": "0", "deny": "2048"}}}
-	if req.Method != "POST" || req.URI != "/guilds/1/channels" || !reflect.DeepEqual(req.Body, want) {
+	if req.Method != http.MethodPost || req.URI != "/guilds/1/channels" || !reflect.DeepEqual(req.Body, want) {
 		t.Errorf("request = %+v", req)
 	}
 	if req.Reason != "cicord apply rev abc" {
@@ -179,7 +179,7 @@ func TestDeferredEphemeralResponse(t *testing.T) {
 
 func TestReactionEmojiIsEscaped(t *testing.T) {
 	f := newFakeDiscord(t)
-	ok := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }
+	ok := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
 	f.handle("PUT /channels/10/messages/100/reactions/👍/@me", ok)
 	f.handle("DELETE /channels/10/messages/100/reactions/party:55/@me", ok)
 	s := f.connect(t)
@@ -296,7 +296,7 @@ func TestRateLimitIsRetried(t *testing.T) {
 			w.Header().Set("X-RateLimit-Limit", "1")
 			w.Header().Set("X-RateLimit-Remaining", "0")
 			w.Header().Set("X-RateLimit-Reset-After", "1")
-			w.WriteHeader(429)
+			w.WriteHeader(http.StatusTooManyRequests)
 			_, _ = io.WriteString(w, `{"message":"You are being rate limited.","retry_after":1,"global":false}`)
 			return
 		}

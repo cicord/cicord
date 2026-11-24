@@ -208,7 +208,8 @@ func (s *server) handleSetupSession(w http.ResponseWriter, r *http.Request) {
 		s.failSetup(w, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: setupCookie, Value: sess.ID, Path: "/", Expires: sess.ExpiresAt,
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is s.secureCookies(r): set whenever the request or the public URL is HTTPS
+	http.SetCookie(w, &http.Cookie{Name: setupCookie, Value: sess.ID, Path: "/", Expires: sess.ExpiresAt, //nolint:gosec // G124: Secure is s.secureCookies(r), set whenever the request or the public URL is HTTPS
 		MaxAge: int(time.Until(sess.ExpiresAt).Seconds()), HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.secureCookies(r)})
 	v, err := wz.Status(r.Context())
 	if err != nil {
@@ -385,8 +386,7 @@ func (s *server) handleSetupOAuthTest(w http.ResponseWriter, r *http.Request, wz
 				out["ok"] = true
 				out["user"] = toUser(id.user)
 				if s.rt != nil {
-					me, _ := s.me(r.Context(), id)
-					out["servers"] = me.Servers
+					out["servers"] = s.me(r.Context(), id).Servers
 				}
 				_, _ = wz.LoginTested(r.Context(), id.user.DisplayName())
 			}
@@ -436,7 +436,9 @@ func (s *server) handleSetupFinish(w http.ResponseWriter, r *http.Request, wz *s
 		s.failSetup(w, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: setupCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is s.secureCookies(r): set whenever the request or the public URL is HTTPS
+	http.SetCookie(w, &http.Cookie{Name: setupCookie, Value: "", Path: "/", MaxAge: -1, //nolint:gosec // G124: Secure is s.secureCookies(r), set whenever the request or the public URL is HTTPS
+		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.secureCookies(r)})
 	writeJSON(w, http.StatusOK, v)
 }
 

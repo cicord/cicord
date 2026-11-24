@@ -735,7 +735,7 @@ func unescapeAstral(b []byte) []byte {
 			return m
 		}
 		v, err := strconv.ParseUint(string(m[2:]), 16, 32)
-		if err != nil {
+		if err != nil || v > unicode.MaxRune {
 			return m
 		}
 		r := rune(v)
@@ -765,7 +765,7 @@ func KeyPattern(s string) bool {
 	}
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
 			return false
 		}
 	}

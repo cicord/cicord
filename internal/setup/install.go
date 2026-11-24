@@ -507,11 +507,11 @@ func copyDir(src, dst string) error {
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		data, err := os.ReadFile(p)
+		data, err := os.ReadFile(p) //nolint:gosec // G122: copies a revision snapshot from the runtime data dir, not a tree shared with an untrusted writer
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(filepath.Join(dst, rel), data, 0o644)
+		return os.WriteFile(filepath.Join(dst, rel), data, 0o644) //nolint:gosec // G703: dst/rel come from walking src, under a destination the code chose
 	})
 }
 

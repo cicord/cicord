@@ -355,7 +355,7 @@ func (w *World) editOriginalResponse(a actor, applicationID, token string, m dis
 	w.editMessage(ms, m)
 	st.loading, st.edited = false, true
 	w.notify(st)
-	w.record(a, "EditOriginalResponse", ms.msg.ServerID, ms.msg.ID, "", nil)
+	w.recordOK(a, "EditOriginalResponse", ms.msg.ServerID, ms.msg.ID, "")
 	return cloneMessage(ms.msg), nil
 }
 
@@ -400,7 +400,7 @@ func (w *World) createFollowup(a actor, applicationID, token string, m discord.M
 	}
 	st.followupIDs = append(st.followupIDs, ms.msg.ID)
 	w.notify(st)
-	w.record(a, "CreateFollowup", ms.msg.ServerID, ms.msg.ID, "", nil)
+	w.recordOK(a, "CreateFollowup", ms.msg.ServerID, ms.msg.ID, "")
 	return cloneMessage(ms.msg), nil
 }
 
@@ -664,7 +664,7 @@ func (w *World) convertOption(s *serverState, def discord.CommandOption, v any, 
 		return id, nil
 	case discord.OptionMentionable:
 		id, ok := idOf(v)
-		if !ok || !(w.resolveUser(s, id, r) || w.resolveRole(s, id, r)) {
+		if !ok || (!w.resolveUser(s, id, r) && !w.resolveRole(s, id, r)) {
 			return nil, fmt.Errorf("unknown user or role %v", v)
 		}
 		return id, nil

@@ -134,9 +134,7 @@ func computePlan(in planInput) (Plan, error) {
 	}
 	p.resolveParity()
 	p.planCommunityState()
-	if err := p.planServer(); err != nil {
-		return Plan{}, err
-	}
+	p.planServer()
 	if err := p.planEveryone(); err != nil {
 		return Plan{}, err
 	}
@@ -155,9 +153,7 @@ func computePlan(in planInput) (Plan, error) {
 	if err := p.planAutoMod(); err != nil {
 		return Plan{}, err
 	}
-	if err := p.planExpressions(); err != nil {
-		return Plan{}, err
-	}
+	p.planExpressions()
 	p.planOrphans()
 
 	plan := Plan{Server: p.serverKey, Changes: []Change{}, Blocked: p.blocked}
@@ -285,7 +281,7 @@ func (p *planner) pick(cands []string) string {
 
 // ───────────────────────────────────────────────────────────── server
 
-func (p *planner) planServer() error {
+func (p *planner) planServer() {
 	pr := p.sp.Profile
 	if pr == nil {
 		pr = &config.ServerProfile{}
@@ -343,7 +339,7 @@ func (p *planner) planServer() error {
 	p.serverImage(fields, "banner", pr.Banner, live.BannerURL, discord.FeatureBanner, &ss.banner, &ss.bannerHash)
 	p.serverImage(fields, "splash", pr.Splash, live.SplashURL, discord.FeatureInviteSplash, &ss.splash, &ss.splashHash)
 	if len(fields) == 0 {
-		return nil
+		return
 	}
 	name := pr.Name
 	if name == "" {
@@ -355,7 +351,6 @@ func (p *planner) planServer() error {
 		Fields:  fields,
 		op:      &op{phase: phaseServer, server: ss},
 	})
-	return nil
 }
 
 func (p *planner) planServerRefs() {
@@ -403,7 +398,7 @@ func (p *planner) planServerRefs() {
 	if p.communityAfter != p.communityLive {
 		var feats []string
 		for _, f := range live.Features {
-			if discord.IsMutableFeature(f) && f != discord.FeatureCommunity && !(f == discord.FeatureDiscoverable && !p.communityAfter) {
+			if discord.IsMutableFeature(f) && f != discord.FeatureCommunity && (f != discord.FeatureDiscoverable || p.communityAfter) {
 				feats = append(feats, f)
 			}
 		}
@@ -939,7 +934,7 @@ func (p *planner) planChannel(rk state.ResourceKind, kind, key string, cs *chanS
 		live := p.chansByID[p.ids[rk][key]]
 		if live.Type != cs.typ {
 			reason := fmt.Sprintf("type change: %s → %s requires recreating the channel (needs prune: true and deletionProtection: false)", live.Type, cs.typ)
-			if !(p.prune && !p.protect) {
+			if !p.prune || p.protect {
 				p.blockFields(ActionUpdate, kind, key, live.ID, reason,
 					map[string]FieldChange{"type": {From: live.Type.String(), To: cs.typ.String()}})
 				return

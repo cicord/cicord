@@ -215,7 +215,7 @@ func TestOpenPortalDirConfinement(t *testing.T) {
 	}
 	defer d.Close()
 	for _, p := range []string{"/leak.txt", "/assets/secret.txt", "/../notes.txt", "/../../notes.txt", "/%2e%2e/notes.txt"} {
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.URL.Path = p
 		if u, err := url.PathUnescape(p); err == nil {
 			req.URL.Path = u
@@ -344,14 +344,14 @@ func TestOAuthTokenMode(t *testing.T) {
 	}
 
 	// Token mode refuses redirects to other origins instead of silently using "/".
-	if res := get(ts.URL + "/auth/login?mode=token&redirect=" + url.QueryEscape("https://evil.example/cb")); res.StatusCode != 400 {
+	if res := get(ts.URL + "/auth/login?mode=token&redirect=" + url.QueryEscape("https://evil.example/cb")); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("evil redirect = %d", res.StatusCode)
 	}
 	res := get(ts.URL + "/auth/login?mode=token&redirect=" + url.QueryEscape(fan+"/cb?x=1"))
 	loc, _ := url.Parse(res.Header.Get("Location"))
 	res = get(ts.URL + "/auth/callback?code=good&state=" + url.QueryEscape(loc.Query().Get("state")))
 	back, _ := url.Parse(res.Header.Get("Location"))
-	if res.StatusCode != 302 || back.Host != "fan.example" || back.Path != "/cb" || back.Query().Get("x") != "1" || back.Query().Get("cicord_code") == "" {
+	if res.StatusCode != http.StatusFound || back.Host != "fan.example" || back.Path != "/cb" || back.Query().Get("x") != "1" || back.Query().Get("cicord_code") == "" {
 		t.Fatalf("callback = %d %s", res.StatusCode, back)
 	}
 	if len(res.Header.Values("Set-Cookie")) > 1 { // only the cleared OAuth state cookie
@@ -359,7 +359,7 @@ func TestOAuthTokenMode(t *testing.T) {
 	}
 	code := back.Query().Get("cicord_code")
 	redeem := func(origin string) (int, string) {
-		req, _ := http.NewRequest("POST", ts.URL+"/auth/token", strings.NewReader(`{"code":"`+code+`"}`))
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/auth/token", strings.NewReader(`{"code":"`+code+`"}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Cicord-Request", "1")
 		req.Header.Set("Origin", origin)
