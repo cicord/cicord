@@ -43,6 +43,7 @@
     },
     "pages": {
       "overview": "Overview",
+      "analytics": "Analytics",
       "resources": "Roles & channels",
       "serverSettings": "Server settings",
       "plugins": "Plugins",
@@ -1756,6 +1757,208 @@
       "query": "Nothing matches “{{query}}” with these filters. Try another word or clear the search.",
       "text": "Nothing matches these filters.",
       "clear": "Clear search and filters"
+    }
+  },
+  "analytics": {
+    "title": "Analytics",
+    "description": "Activity of {{server}}: hourly aggregates only, never message content or per-member data.",
+    "period": {
+      "label": "Period",
+      "short": {
+        "7d": "7d",
+        "30d": "30d",
+        "90d": "90d",
+        "365d": "1y"
+      },
+      "long": {
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "90d": "Last 90 days",
+        "365d": "Last 365 days"
+      },
+      "previous": {
+        "7d": "previous 7 days",
+        "30d": "previous 30 days",
+        "90d": "previous 90 days",
+        "365d": "previous year"
+      }
+    },
+    "meta": {
+      "since": "Collected since {{date}}",
+      "retention_one": "Kept {{count}} day",
+      "retention_other": "Kept {{count}} days",
+      "utc": "Times in UTC"
+    },
+    "noStore": {
+      "title": "This runtime does not record analytics",
+      "text": "The runtime runs without an analytics store, so there is nothing to show yet. See the analytics guide to set one up."
+    },
+    "empty": {
+      "title": "No activity recorded yet",
+      "text": "Cicord records hourly aggregates as soon as the bot is connected to the server. The first numbers appear within the hour; daily active members after midnight UTC."
+    },
+    "disabled": {
+      "title": "Analytics are off for this server",
+      "text": "Nothing is collected. To turn analytics on, set this in the server's YAML, then sync:"
+    },
+    "paused": {
+      "title": "Collection is paused",
+      "text": "Analytics are off for this server: the numbers below stop at the last recorded hour. To resume, set this in the server's YAML:"
+    },
+    "missing": {
+      "title_one": "One group of metrics is not collected",
+      "title_other": "{{count}} groups of metrics are not collected",
+      "fix": "Fix:"
+    },
+    "notCollected": "Not collected",
+    "other": "Other",
+    "deleted": "deleted",
+    "kpi": {
+      "label": "Headline numbers",
+      "membersTotal": "Members",
+      "membersJoined": "Joins",
+      "membersLeft": "Leaves",
+      "membersNet": "Net growth",
+      "membersActive": "Active members / day",
+      "messagesSent": "Messages",
+      "voiceSeconds": "Voice time",
+      "membersOnline": "Online (average)",
+      "reactionsAdded": "Reactions",
+      "commandsUsed": "Commands",
+      "moderationActions": "Moderation actions"
+    },
+    "delta": {
+      "none": "No previous period",
+      "new": "New, none in the {{vs}}",
+      "vs": "vs {{value}}",
+      "label": "Compared with the {{vs}}"
+    },
+    "chart": {
+      "showTable": "Table",
+      "hideTable": "Hide table",
+      "roledescription": "chart",
+      "keys": "Use the left and right arrow keys to read the values",
+      "gridKeys": "Use the arrow keys to read the values",
+      "date": "Date",
+      "inProgress": "in progress"
+    },
+    "sections": {
+      "members": "Members",
+      "messages": "Messages",
+      "voice": "Voice",
+      "engagement": "Engagement",
+      "presence": "Presence"
+    },
+    "members": {
+      "title": "Members over time",
+      "description": "Member count, then joins, leaves and net growth per period.",
+      "total": "Members",
+      "joined": "Joins",
+      "left": "Leaves",
+      "net": "Net growth",
+      "flow": "Joins and leaves",
+      "online": "Online",
+      "onlineTitle": "Online members",
+      "onlineDescription": "Discord's approximate count of members online, idle or do not disturb."
+    },
+    "active": {
+      "title": "Daily active members",
+      "description": "Distinct members who chatted, reacted, used a command or joined voice.",
+      "all": "All activity",
+      "chat": "Chat",
+      "voice": "Voice"
+    },
+    "messages": {
+      "title": "Messages by channel",
+      "description": "Messages sent by members (bots excluded): top channels and the rest.",
+      "details": "Message details",
+      "replies": "Replies",
+      "attachments": "Attachments",
+      "threads": "Threads created",
+      "polls": "Polls"
+    },
+    "heatmap": {
+      "title": "When members chat",
+      "description": "Messages per weekday and hour, in UTC, over the period.",
+      "day": "Day",
+      "value": "{{value}} messages",
+      "fewer": "Fewer",
+      "more": "More"
+    },
+    "voice": {
+      "title": "Voice time",
+      "hours": "Voice time",
+      "sessions": "Voice sessions",
+      "peak": "Peak concurrent in voice",
+      "total": "{{value}} in total",
+      "streaming": "{{value}} streaming or on camera",
+      "stage": "{{value}} on stage",
+      "byChannel": "Voice time by channel",
+      "byChannelDescription": "Member-hours spent in each voice channel.",
+      "peakDescription": "Most members in voice at the same time.",
+      "sessionsDescription": "{{value}} joins of a voice channel."
+    },
+    "rankings": {
+      "empty": "Nothing recorded over this period.",
+      "channels": "Top channels",
+      "emojis": "Top reactions",
+      "invites": "Top invites",
+      "invitesDescription": "Joins per invite link (vanity URL included).",
+      "commands": "Top commands",
+      "roles": "Roles added",
+      "ages": "Account age of new members",
+      "agesDescription": "Age of the Discord account when it joined.",
+      "moderation": "Moderation actions",
+      "automod": "AutoMod triggers",
+      "vsPrevious": "Change vs the previous period"
+    },
+    "ages": {
+      "day": "Under a day",
+      "week": "Under a week",
+      "month": "Under a month",
+      "year": "Under a year",
+      "older": "A year or more"
+    },
+    "actions": {
+      "ban": "Bans",
+      "unban": "Unbans",
+      "kick": "Kicks",
+      "timeout": "Timeouts",
+      "untimeout": "Timeouts lifted",
+      "prune": "Prunes",
+      "message_delete": "Messages deleted",
+      "role_update": "Role updates"
+    },
+    "presence": {
+      "off": {
+        "title": "Detailed presence is off",
+        "text": "Only Discord's approximate online count is recorded. Statuses, platforms and games need the privileged Presence intent.",
+        "fix": "Set spec.analytics.presence: true in the server's YAML, enable Presence Intent for the bot in the Discord Developer Portal and add ServerPresences to the bot's intents.",
+        "docs": "Analytics guide"
+      },
+      "status": "Statuses",
+      "platform": "Platforms",
+      "activities": "Top activities",
+      "shareDescription": "Share of the online members sampled over the period.",
+      "activitiesDescription": "Peak members doing it at the same time over the period.",
+      "statuses": {
+        "online": "Online",
+        "idle": "Idle",
+        "dnd": "Do not disturb"
+      },
+      "platforms": {
+        "desktop": "Desktop",
+        "mobile": "Mobile",
+        "web": "Web"
+      },
+      "activityTypes": {
+        "playing": "playing",
+        "listening": "listening",
+        "watching": "watching",
+        "streaming": "streaming",
+        "competing": "competing",
+        "custom": "status"
+      }
     }
   }
 }

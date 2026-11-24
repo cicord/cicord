@@ -8,6 +8,11 @@ import {
 } from "./sse.ts";
 import type {
   AddRegistryRequest,
+  AnalyticsCatalog,
+  AnalyticsPeriod,
+  AnalyticsSeries,
+  AnalyticsSeriesParams,
+  AnalyticsSummary,
   AuditEntry,
   AuditQuery,
   InstallResult,
@@ -236,6 +241,12 @@ function pageQuery(params: PageParams = {}): Query {
     offset: params.offset,
     limit: params.limit,
   };
+}
+
+/** A Date as RFC 3339 UTC without milliseconds (strings pass through). */
+function rfc3339(value: Date | string | undefined): string | undefined {
+  if (value === undefined || typeof value === "string") return value;
+  return value.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 function withQuery(url: string, query?: Query): string {
@@ -724,6 +735,52 @@ export class CicordClient {
     /** URL of the image declared in `spec.profile.<kind>` (moderator), for previews. */
     serverAssetUrl: (server: string, kind: ServerAssetKind): string =>
       this.url(`${this.apiPath}/servers/${seg(server)}/assets/${seg(kind)}`),
+  };
+
+  // ─────────────────────────────────────────────────────────── analytics
+
+  /**
+   * Server activity analytics (moderator and admin of the server). Times are UTC. Every call
+   * rejects with `analytics_disabled` (404) when the runtime has no analytics store.
+   */
+  readonly analytics = {
+    /**
+     * `GET /servers/{server}/analytics/summary?period=`: headline numbers compared with the
+     * previous period, rankings and the weekday × hour heatmap.
+     */
+    summary: (
+      server: string,
+      period: AnalyticsPeriod = "30d",
+      options?: CallOptions,
+    ): Promise<AnalyticsSummary> =>
+      this.#api<AnalyticsSummary>("GET", `/servers/${seg(server)}/analytics/summary`, {
+        query: { period },
+        ...options,
+      }),
+    /**
+     * `GET /servers/{server}/analytics/series?metrics=&from=&to=&step=[&dim=][&top=]`. Rejects
+     * with `invalid` (400) for an unknown metric or step, more than 400 days or more than 2000
+     * points per series.
+     */
+    series: (
+      server: string,
+      params: AnalyticsSeriesParams,
+      options?: CallOptions,
+    ): Promise<AnalyticsSeries> =>
+      this.#api<AnalyticsSeries>("GET", `/servers/${seg(server)}/analytics/series`, {
+        query: {
+          metrics: params.metrics.join(","),
+          from: rfc3339(params.from),
+          to: rfc3339(params.to),
+          step: params.step,
+          dim: params.dim,
+          top: params.top,
+        },
+        ...options,
+      }),
+    /** `GET /servers/{server}/analytics/catalog`: every metric and whether it is collected. */
+    catalog: (server: string, options?: CallOptions): Promise<AnalyticsCatalog> =>
+      this.#api<AnalyticsCatalog>("GET", `/servers/${seg(server)}/analytics/catalog`, options),
   };
 
   // ─────────────────────────────────────────────────────────── store (§11)

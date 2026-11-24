@@ -1,5 +1,9 @@
 /** Data hooks of the admin console, on top of @cicord/react's query cache. */
 import type {
+  AnalyticsPeriod,
+  AnalyticsSeries,
+  AnalyticsSeriesParams,
+  AnalyticsSummary,
   AuditEntry,
   PluginInstance,
   Message,
@@ -25,6 +29,12 @@ export const keys = {
   resources: (key: string) => ["admin", "server", key, "resources"] as const,
   plan: (key: string) => ["admin", "server", key, "plan"] as const,
   audit: (key: string, before: string) => ["admin", "server", key, "audit", before] as const,
+  /** Prefix of every analytics query of a server (refresh). */
+  analytics: (key: string) => ["admin", "server", key, "analytics"] as const,
+  analyticsSummary: (key: string, period: AnalyticsPeriod) =>
+    ["admin", "server", key, "analytics", "summary", period] as const,
+  analyticsSeries: (key: string, params: AnalyticsSeriesParams) =>
+    ["admin", "server", key, "analytics", "series", JSON.stringify(params)] as const,
   /** Prefix of every plugin query of a server (list, pages, single instances). */
   plugins: (key: string) => ["admin", "server", key, "plugins"] as const,
   pluginsAll: (key: string) => ["admin", "server", key, "plugins", "all"] as const,
@@ -87,6 +97,28 @@ export function useAudit(key: string, before: string): QueryResult<AuditEntry[]>
     client.admin.audit(key, before ? { before, limit: AUDIT_PAGE } : { limit: AUDIT_PAGE }, {
       signal,
     }),
+  );
+}
+
+/** `GET /servers/{server}/analytics/summary?period=` (moderator). */
+export function useAnalyticsSummary(
+  key: string,
+  period: AnalyticsPeriod,
+): QueryResult<AnalyticsSummary> {
+  const { client } = useCicord();
+  return useCicordQuery(keys.analyticsSummary(key, period), (signal) =>
+    client.analytics.summary(key, period, { signal }),
+  );
+}
+
+/** `GET /servers/{server}/analytics/series` (moderator); null params: not yet. */
+export function useAnalyticsSeries(
+  key: string,
+  params: AnalyticsSeriesParams | null,
+): QueryResult<AnalyticsSeries> {
+  const { client } = useCicord();
+  return useCicordQuery(params ? keys.analyticsSeries(key, params) : null, (signal) =>
+    client.analytics.series(key, params!, { signal }),
   );
 }
 
