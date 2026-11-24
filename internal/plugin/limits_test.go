@@ -300,7 +300,12 @@ export default definePlugin({
   routes: {
     "GET /huge": { access: "public", handler() { return "h".repeat(8e6); } },
   },
-});`, nil)
+});`, func(e *Env) {
+		// Building several 8 MB strings in one turn takes longer than the default 50 ms
+		// budget under -race on CI runners; only the size of what leaves the VM is under
+		// test here (the budgets have their own tests).
+		e.Limits.SyncBudget = 10 * time.Second
+	})
 	if err := h.command("log", nil, discord.Resolved{}); err != nil {
 		t.Fatal(err)
 	}
