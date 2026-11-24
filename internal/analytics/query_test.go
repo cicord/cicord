@@ -17,14 +17,14 @@ import (
 	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
-// now is Tuesday 2026-11-24 15:30 UTC.
-var now = time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC)
+// qNow is Tuesday 2026-11-24 15:30 UTC.
+var qNow = time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC)
 
-func day(n int) time.Time { return time.Date(2026, 11, 24+n, 0, 0, 0, 0, time.UTC) }
+func qDay(n int) time.Time { return time.Date(2026, 11, 24+n, 0, 0, 0, 0, time.UTC) }
 
-func newStore(t *testing.T) state.Store {
+func qStore(t *testing.T) state.Store {
 	t.Helper()
-	s, err := sqlite.Open(":memory:", sqlite.WithClock(func() time.Time { return now }))
+	s, err := sqlite.Open(":memory:", sqlite.WithClock(func() time.Time { return qNow }))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,22 +32,22 @@ func newStore(t *testing.T) state.Store {
 	return s
 }
 
-func rec(t *testing.T, a state.Analytics, kind state.AnalyticsKind, metric, dim string, bucket time.Time, v float64) {
+func qRec(t *testing.T, a state.Analytics, kind state.AnalyticsKind, metric, dim string, bucket time.Time, v float64) {
 	t.Helper()
 	if err := a.Record(t.Context(), kind, state.AnalyticsPoint{Server: "main", Metric: metric, Dim: dim, Bucket: bucket, Value: v}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func counter(t *testing.T, a state.Analytics, metric, dim string, bucket time.Time, v float64) {
+func qCounter(t *testing.T, a state.Analytics, metric, dim string, bucket time.Time, v float64) {
 	t.Helper()
-	rec(t, a, state.AnalyticsCounter, metric, dim, bucket, v)
+	qRec(t, a, state.AnalyticsCounter, metric, dim, bucket, v)
 }
 
-func parse(t *testing.T, q string) analytics.SeriesRequest {
+func qParse(t *testing.T, q string) analytics.SeriesRequest {
 	t.Helper()
 	v, _ := url.ParseQuery(q)
-	req, err := analytics.ParseSeriesRequest("main", v, now)
+	req, err := analytics.ParseSeriesRequest("main", v, qNow)
 	if err != nil {
 		t.Fatalf("ParseSeriesRequest(%s): %v", q, err)
 	}
@@ -55,26 +55,26 @@ func parse(t *testing.T, q string) analytics.SeriesRequest {
 }
 
 func TestParseSeriesRequest(t *testing.T) {
-	req := parse(t, "metrics=messages.sent,members.joined,messages.sent")
+	req := qParse(t, "metrics=messages.sent,members.joined,messages.sent")
 	if !slices.Equal(req.Metrics, []string{"messages.sent", "members.joined"}) || req.Step != "day" || req.Top != 8 || req.Dim != nil {
 		t.Errorf("defaults = %+v", req)
 	}
-	// to = now (aligned up to the next day), from = to - 7 days (aligned down).
-	if !req.From.Equal(day(-7)) || !req.To.Equal(day(1)) {
+	// to = qNow (aligned up to the next day), from = to - 7 days (aligned down).
+	if !req.From.Equal(qDay(-7)) || !req.To.Equal(qDay(1)) {
 		t.Errorf("default range = %v .. %v", req.From, req.To)
 	}
 	// Weeks start on Monday 00:00 UTC.
-	req = parse(t, "metrics=messages.sent&step=week&from=2026-11-04T12:00:00Z&to=2026-11-24T15:30:00%2B01:00")
-	if !req.From.Equal(time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)) || !req.To.Equal(day(6)) {
+	req = qParse(t, "metrics=messages.sent&step=week&from=2026-11-04T12:00:00Z&to=2026-11-24T15:30:00%2B01:00")
+	if !req.From.Equal(time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)) || !req.To.Equal(qDay(6)) {
 		t.Errorf("week range = %v .. %v", req.From, req.To)
 	}
-	req = parse(t, "metrics=messages.sent&step=hour&from=2026-11-24T10:15:00Z&to=2026-11-24T12:00:00Z&dim=123&top=3")
-	if !req.From.Equal(day(0).Add(10*time.Hour)) || !req.To.Equal(day(0).Add(12*time.Hour)) || req.Dim == nil || *req.Dim != "123" || req.Top != 3 {
+	req = qParse(t, "metrics=messages.sent&step=hour&from=2026-11-24T10:15:00Z&to=2026-11-24T12:00:00Z&dim=123&top=3")
+	if !req.From.Equal(qDay(0).Add(10*time.Hour)) || !req.To.Equal(qDay(0).Add(12*time.Hour)) || req.Dim == nil || *req.Dim != "123" || req.Top != 3 {
 		t.Errorf("hour request = %+v", req)
 	}
 	// Exactly 400 days and 2000 points are accepted.
-	parse(t, "metrics=messages.sent&from=2025-10-20T00:00:00Z&to=2026-11-24T00:00:00Z")
-	parse(t, "metrics=messages.sent&step=hour&from=2026-09-02T16:00:00Z&to=2026-11-24T08:00:00Z")
+	qParse(t, "metrics=messages.sent&from=2025-10-20T00:00:00Z&to=2026-11-24T00:00:00Z")
+	qParse(t, "metrics=messages.sent&step=hour&from=2026-09-02T16:00:00Z&to=2026-11-24T08:00:00Z")
 
 	for q, want := range map[string]string{
 		"":                                     "metrics is required",
@@ -89,18 +89,18 @@ func TestParseSeriesRequest(t *testing.T) {
 		"metrics=messages.sent&top=0":                                             "top must be",
 		"metrics=messages.sent&top=51":                                            "top must be",
 		"metrics=messages.sent&top=x":                                             "top must be",
-		"metrics=" + strings.Join(catalogNames()[:21], ","):                       "at most 20 metrics",
+		"metrics=" + strings.Join(qCatalogNames()[:21], ","):                      "at most 20 metrics",
 	} {
 		v, _ := url.ParseQuery(q)
-		_, err := analytics.ParseSeriesRequest("main", v, now)
+		_, err := analytics.ParseSeriesRequest("main", v, qNow)
 		var re *analytics.RequestError
-		if !asRequestError(err, &re) || !strings.Contains(re.Message, want) {
+		if !qAsRequestError(err, &re) || !strings.Contains(re.Message, want) {
 			t.Errorf("%q: err = %v, want a RequestError containing %q", q, err, want)
 		}
 	}
 }
 
-func catalogNames() []string {
+func qCatalogNames() []string {
 	var out []string
 	for _, m := range analytics.Catalog {
 		out = append(out, m.Name)
@@ -108,9 +108,9 @@ func catalogNames() []string {
 	return out
 }
 
-func asRequestError(err error, re **analytics.RequestError) bool { return errors.As(err, re) }
+func qAsRequestError(err error, re **analytics.RequestError) bool { return errors.As(err, re) }
 
-func points(s analytics.Serie) []float64 {
+func qPoints(s analytics.Serie) []float64 {
 	out := make([]float64, len(s.Points))
 	for i, p := range s.Points {
 		out[i] = p[1]
@@ -118,7 +118,7 @@ func points(s analytics.Serie) []float64 {
 	return out
 }
 
-func starts(s analytics.Serie) []time.Time {
+func qStarts(s analytics.Serie) []time.Time {
 	out := make([]time.Time, len(s.Points))
 	for i, p := range s.Points {
 		out[i] = time.Unix(int64(p[0]), 0).UTC()
@@ -126,7 +126,7 @@ func starts(s analytics.Serie) []time.Time {
 	return out
 }
 
-func find(t *testing.T, ss []analytics.Serie, metric, dim string) analytics.Serie {
+func qFind(t *testing.T, ss []analytics.Serie, metric, dim string) analytics.Serie {
 	t.Helper()
 	for _, s := range ss {
 		if s.Metric == metric && s.Dim == dim {
@@ -138,95 +138,95 @@ func find(t *testing.T, ss []analytics.Serie, metric, dim string) analytics.Seri
 }
 
 func TestSeriesKinds(t *testing.T) {
-	st := newStore(t)
+	st := qStore(t)
 	a := st.Analytics()
-	r := &analytics.Reader{Store: a, Now: func() time.Time { return now }}
+	r := &analytics.Reader{Store: a, Now: func() time.Time { return qNow }}
 	// Counter: 1 + 2 on day -2, 4 on day -1 (two hours), none on day 0.
-	counter(t, a, analytics.MembersJoined, "", day(-2).Add(3*time.Hour), 1)
-	counter(t, a, analytics.MembersJoined, "", day(-2).Add(20*time.Hour), 2)
-	counter(t, a, analytics.MembersJoined, "", day(-1).Add(1*time.Hour), 4)
+	qCounter(t, a, analytics.MembersJoined, "", qDay(-2).Add(3*time.Hour), 1)
+	qCounter(t, a, analytics.MembersJoined, "", qDay(-2).Add(20*time.Hour), 2)
+	qCounter(t, a, analytics.MembersJoined, "", qDay(-1).Add(1*time.Hour), 4)
 	// Gauge last: the day's latest sample; gauge max: the day's peak.
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", day(-2).Add(1*time.Hour), 100)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", day(-2).Add(23*time.Hour), 103)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", day(-1).Add(5*time.Hour), 99)
-	rec(t, a, state.AnalyticsGaugeMax, analytics.VoicePeak, "", day(-2).Add(2*time.Hour), 7)
-	rec(t, a, state.AnalyticsGaugeMax, analytics.VoicePeak, "", day(-2).Add(9*time.Hour), 3)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", qDay(-2).Add(1*time.Hour), 100)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", qDay(-2).Add(23*time.Hour), 103)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", qDay(-1).Add(5*time.Hour), 99)
+	qRec(t, a, state.AnalyticsGaugeMax, analytics.VoicePeak, "", qDay(-2).Add(2*time.Hour), 7)
+	qRec(t, a, state.AnalyticsGaugeMax, analytics.VoicePeak, "", qDay(-2).Add(9*time.Hour), 3)
 	// Daily distinct: day -2 and -1 rolled up; today live from the active set.
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersActive, "", day(-2), 10)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersActive, "", day(-1), 20)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersActive, "", qDay(-2), 10)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersActive, "", qDay(-1), 20)
 	for _, tok := range []string{"a", "b", "c"} {
 		if err := a.MarkActive(t.Context(), "main", analytics.ActiveSetAll, "2026-11-24", tok); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	res, err := r.Series(t.Context(), parse(t, "metrics=members.joined,members.total,voice.peak,members.active&from=2026-11-22T00:00:00Z&to=2026-11-25T00:00:00Z"), analytics.Status{Enabled: true})
+	res, err := r.Series(t.Context(), qParse(t, "metrics=members.joined,members.total,voice.peak,members.active&from=2026-11-22T00:00:00Z&to=2026-11-25T00:00:00Z"), analytics.Status{Enabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Step != "day" || !res.From.Equal(day(-2)) || !res.To.Equal(day(1)) || len(res.Series) != 4 {
+	if res.Step != "day" || !res.From.Equal(qDay(-2)) || !res.To.Equal(qDay(1)) || len(res.Series) != 4 {
 		t.Fatalf("series = %+v", res)
 	}
-	joined := find(t, res.Series, analytics.MembersJoined, "")
-	if got := points(joined); !slices.Equal(got, []float64{3, 4, 0}) {
+	joined := qFind(t, res.Series, analytics.MembersJoined, "")
+	if got := qPoints(joined); !slices.Equal(got, []float64{3, 4, 0}) {
 		t.Errorf("counter per day (zero-filled) = %v", got)
 	}
-	if got := starts(joined); !slices.Equal(got, []time.Time{day(-2), day(-1), day(0)}) {
+	if got := qStarts(joined); !slices.Equal(got, []time.Time{qDay(-2), qDay(-1), qDay(0)}) {
 		t.Errorf("counter buckets = %v", got)
 	}
-	if got := points(find(t, res.Series, analytics.MembersTotal, "")); !slices.Equal(got, []float64{103, 99}) {
+	if got := qPoints(qFind(t, res.Series, analytics.MembersTotal, "")); !slices.Equal(got, []float64{103, 99}) {
 		t.Errorf("gauge last per day (sparse) = %v", got)
 	}
-	if got := points(find(t, res.Series, analytics.VoicePeak, "")); !slices.Equal(got, []float64{7}) {
+	if got := qPoints(qFind(t, res.Series, analytics.VoicePeak, "")); !slices.Equal(got, []float64{7}) {
 		t.Errorf("gauge max per day = %v", got)
 	}
-	if got := points(find(t, res.Series, analytics.MembersActive, "")); !slices.Equal(got, []float64{10, 20, 3}) {
+	if got := qPoints(qFind(t, res.Series, analytics.MembersActive, "")); !slices.Equal(got, []float64{10, 20, 3}) {
 		t.Errorf("daily distinct per day (today live) = %v", got)
 	}
-	if res.Status.Since == nil || !res.Status.Since.Equal(day(-2)) || res.Status.Missing == nil || res.Labels == nil {
+	if res.Status.Since == nil || !res.Status.Since.Equal(qDay(-2)) || res.Status.Missing == nil || res.Labels == nil {
 		t.Errorf("status = %+v, labels = %v", res.Status, res.Labels)
 	}
 
 	// Weeks: counters summed, daily distinct averaged over the days with data.
-	res, err = r.Series(t.Context(), parse(t, "metrics=members.joined,members.active&step=week&from=2026-11-17T00:00:00Z&to=2026-11-25T00:00:00Z"), analytics.Status{})
+	res, err = r.Series(t.Context(), qParse(t, "metrics=members.joined,members.active&step=week&from=2026-11-17T00:00:00Z&to=2026-11-25T00:00:00Z"), analytics.Status{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Weeks of 2026-11-16 (Sunday 22: 3 joins, 10 active) and 2026-11-23 (Monday 23:
 	// 4 joins, 20 active; today 3 active).
-	if got := points(find(t, res.Series, analytics.MembersJoined, "")); !slices.Equal(got, []float64{3, 4}) {
+	if got := qPoints(qFind(t, res.Series, analytics.MembersJoined, "")); !slices.Equal(got, []float64{3, 4}) {
 		t.Errorf("counter per week = %v", got)
 	}
-	if got := points(find(t, res.Series, analytics.MembersActive, "")); !slices.Equal(got, []float64{10, 11.5}) {
+	if got := qPoints(qFind(t, res.Series, analytics.MembersActive, "")); !slices.Equal(got, []float64{10, 11.5}) {
 		t.Errorf("daily distinct per week = %v", got)
 	}
 
 	// Hours.
-	res, err = r.Series(t.Context(), parse(t, "metrics=members.joined&step=hour&from=2026-11-23T00:00:00Z&to=2026-11-23T03:00:00Z"), analytics.Status{})
+	res, err = r.Series(t.Context(), qParse(t, "metrics=members.joined&step=hour&from=2026-11-23T00:00:00Z&to=2026-11-23T03:00:00Z"), analytics.Status{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := points(res.Series[0]); !slices.Equal(got, []float64{0, 4, 0}) {
+	if got := qPoints(res.Series[0]); !slices.Equal(got, []float64{0, 4, 0}) {
 		t.Errorf("counter per hour = %v", got)
 	}
 }
 
 func TestSeriesTopDimensions(t *testing.T) {
-	st := newStore(t)
+	st := qStore(t)
 	a := st.Analytics()
 	ctx := t.Context()
-	must(t, st.Resources().Put(ctx, state.Resource{Server: "main", Kind: state.KindChannel, Key: "general", ID: "111", Owner: state.OwnerGit}))
+	qMust(t, st.Resources().Put(ctx, state.Resource{Server: "main", Kind: state.KindChannel, Key: "general", ID: "111", Owner: state.OwnerGit}))
 	spec := &config.ServerSpec{Channels: map[string]config.Channel{"general": {Name: "général", Type: "text"}}}
-	r := &analytics.Reader{Store: a, Now: func() time.Time { return now },
+	r := &analytics.Reader{Store: a, Now: func() time.Time { return qNow },
 		Labeler: analytics.ResourceLabeler{Resources: st.Resources(), Spec: func(string) *config.ServerSpec { return spec }}}
 	// Channels 111 (10+5), 222 (8), 333 (2), 444 (1).
-	counter(t, a, analytics.MessagesSent, "111", day(-1).Add(time.Hour), 10)
-	counter(t, a, analytics.MessagesSent, "111", day(0).Add(time.Hour), 5)
-	counter(t, a, analytics.MessagesSent, "222", day(-1).Add(2*time.Hour), 8)
-	counter(t, a, analytics.MessagesSent, "333", day(0).Add(2*time.Hour), 2)
-	counter(t, a, analytics.MessagesSent, "444", day(0).Add(3*time.Hour), 1)
+	qCounter(t, a, analytics.MessagesSent, "111", qDay(-1).Add(time.Hour), 10)
+	qCounter(t, a, analytics.MessagesSent, "111", qDay(0).Add(time.Hour), 5)
+	qCounter(t, a, analytics.MessagesSent, "222", qDay(-1).Add(2*time.Hour), 8)
+	qCounter(t, a, analytics.MessagesSent, "333", qDay(0).Add(2*time.Hour), 2)
+	qCounter(t, a, analytics.MessagesSent, "444", qDay(0).Add(3*time.Hour), 1)
 
-	res, err := r.Series(ctx, parse(t, "metrics=messages.sent&from=2026-11-23T00:00:00Z&to=2026-11-25T00:00:00Z&top=2"), analytics.Status{})
+	res, err := r.Series(ctx, qParse(t, "metrics=messages.sent&from=2026-11-23T00:00:00Z&to=2026-11-25T00:00:00Z&top=2"), analytics.Status{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestSeriesTopDimensions(t *testing.T) {
 		t.Fatalf("series dims = %q", dims)
 	}
 	for dim, want := range map[string][]float64{"": {18, 8}, "111": {10, 5}, "222": {8, 0}, "other": {0, 3}} {
-		if got := points(find(t, res.Series, analytics.MessagesSent, dim)); !slices.Equal(got, want) {
+		if got := qPoints(qFind(t, res.Series, analytics.MessagesSent, dim)); !slices.Equal(got, want) {
 			t.Errorf("%q = %v, want %v", dim, got, want)
 		}
 	}
@@ -252,7 +252,7 @@ func TestSeriesTopDimensions(t *testing.T) {
 		t.Errorf("labels = %v", res.Labels)
 	}
 	// No "other" when every dimension fits.
-	res, err = r.Series(ctx, parse(t, "metrics=messages.sent&from=2026-11-23T00:00:00Z&to=2026-11-25T00:00:00Z"), analytics.Status{})
+	res, err = r.Series(ctx, qParse(t, "metrics=messages.sent&from=2026-11-23T00:00:00Z&to=2026-11-25T00:00:00Z"), analytics.Status{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,23 +260,23 @@ func TestSeriesTopDimensions(t *testing.T) {
 		t.Errorf("without others: %+v", res.Series)
 	}
 	// One dimension.
-	res, err = r.Series(ctx, parse(t, "metrics=messages.sent,members.joined&dim=222&from=2026-11-23T00:00:00Z&to=2026-11-25T00:00:00Z"), analytics.Status{})
+	res, err = r.Series(ctx, qParse(t, "metrics=messages.sent,members.joined&dim=222&from=2026-11-23T00:00:00Z&to=2026-11-25T00:00:00Z"), analytics.Status{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Series) != 2 || res.Series[0].Dim != "222" || !slices.Equal(points(res.Series[0]), []float64{8, 0}) || res.Series[1].Dim != "" {
+	if len(res.Series) != 2 || res.Series[0].Dim != "222" || !slices.Equal(qPoints(res.Series[0]), []float64{8, 0}) || res.Series[1].Dim != "" {
 		t.Errorf("dim=222: %+v", res.Series)
 	}
 }
 
-func must(t *testing.T, err error) {
+func qMust(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func kpi(t *testing.T, s analytics.Summary, metric string) analytics.KPI {
+func qKPI(t *testing.T, s analytics.Summary, metric string) analytics.KPI {
 	t.Helper()
 	for _, k := range s.KPIs {
 		if k.Metric == metric {
@@ -288,15 +288,15 @@ func kpi(t *testing.T, s analytics.Summary, metric string) analytics.KPI {
 }
 
 func TestSummary(t *testing.T) {
-	st := newStore(t)
+	st := qStore(t)
 	a := st.Analytics()
-	r := &analytics.Reader{Store: a, Now: func() time.Time { return now }}
+	r := &analytics.Reader{Store: a, Now: func() time.Time { return qNow }}
 	ctx := t.Context()
 
 	// Nothing recorded: zero values, previous null, every list present.
 	empty, err := r.Summary(ctx, "main", "", analytics.Status{Enabled: true})
-	must(t, err)
-	if empty.Period != "7d" || !empty.From.Equal(day(-6)) || !empty.To.Equal(day(1)) || len(empty.KPIs) != len(analytics.SummaryKPIs) {
+	qMust(t, err)
+	if empty.Period != "7d" || !empty.From.Equal(qDay(-6)) || !empty.To.Equal(qDay(1)) || len(empty.KPIs) != len(analytics.SummaryKPIs) {
 		t.Fatalf("empty summary = %+v", empty)
 	}
 	data, _ := json.Marshal(empty)
@@ -310,29 +310,29 @@ func TestSummary(t *testing.T) {
 	}
 
 	// The previous 7d period starts on day -13: collection started then.
-	counter(t, a, analytics.MembersJoined, "", day(-13).Add(time.Hour), 4)
-	counter(t, a, analytics.MembersLeft, "", day(-10), 1)
-	counter(t, a, analytics.MembersJoined, "", day(-6), 5)
-	counter(t, a, analytics.MembersJoined, "", day(0).Add(9*time.Hour), 2)
-	counter(t, a, analytics.MembersLeft, "", day(-1), 3)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", day(-8), 90)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", day(-3), 95)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", day(0).Add(14*time.Hour), 100)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersOnline, "", day(-2).Add(time.Hour), 10)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersOnline, "", day(-2).Add(2*time.Hour), 20)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersActive, "", day(-2), 6)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersActive, "", day(-1), 12)
-	must(t, a.MarkActive(ctx, "main", analytics.ActiveSetAll, "2026-11-24", "tok"))
+	qCounter(t, a, analytics.MembersJoined, "", qDay(-13).Add(time.Hour), 4)
+	qCounter(t, a, analytics.MembersLeft, "", qDay(-10), 1)
+	qCounter(t, a, analytics.MembersJoined, "", qDay(-6), 5)
+	qCounter(t, a, analytics.MembersJoined, "", qDay(0).Add(9*time.Hour), 2)
+	qCounter(t, a, analytics.MembersLeft, "", qDay(-1), 3)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", qDay(-8), 90)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", qDay(-3), 95)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersTotal, "", qDay(0).Add(14*time.Hour), 100)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersOnline, "", qDay(-2).Add(time.Hour), 10)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersOnline, "", qDay(-2).Add(2*time.Hour), 20)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersActive, "", qDay(-2), 6)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersActive, "", qDay(-1), 12)
+	qMust(t, a.MarkActive(ctx, "main", analytics.ActiveSetAll, "2026-11-24", "tok"))
 	// Messages: Monday 2026-11-23 10:00 in two channels, Sunday 2026-11-22 23:00.
-	counter(t, a, analytics.MessagesSent, "111", day(-1).Add(10*time.Hour), 7)
-	counter(t, a, analytics.MessagesSent, "222", day(-1).Add(10*time.Hour), 3)
-	counter(t, a, analytics.MessagesSent, "222", day(-2).Add(23*time.Hour), 1)
-	counter(t, a, analytics.MessagesSent, "222", day(-9), 6) // previous period
-	counter(t, a, analytics.ReactionsAdded, "pepe:123456", day(-1), 2)
-	rec(t, a, state.AnalyticsGaugeLast, analytics.PresenceActivity, "playing:Minecraft", day(-1), 4)
+	qCounter(t, a, analytics.MessagesSent, "111", qDay(-1).Add(10*time.Hour), 7)
+	qCounter(t, a, analytics.MessagesSent, "222", qDay(-1).Add(10*time.Hour), 3)
+	qCounter(t, a, analytics.MessagesSent, "222", qDay(-2).Add(23*time.Hour), 1)
+	qCounter(t, a, analytics.MessagesSent, "222", qDay(-9), 6) // previous period
+	qCounter(t, a, analytics.ReactionsAdded, "pepe:123456", qDay(-1), 2)
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.PresenceActivity, "playing:Minecraft", qDay(-1), 4)
 
 	s, err := r.Summary(ctx, "main", "7d", analytics.Status{Enabled: true})
-	must(t, err)
+	qMust(t, err)
 	var order []string
 	for _, k := range s.KPIs {
 		order = append(order, k.Metric)
@@ -342,7 +342,7 @@ func TestSummary(t *testing.T) {
 	}
 	check := func(metric string, value float64, previous any) {
 		t.Helper()
-		k := kpi(t, s, metric)
+		k := qKPI(t, s, metric)
 		if k.Value != value {
 			t.Errorf("%s = %v, want %v", metric, k.Value, value)
 		}
@@ -366,14 +366,14 @@ func TestSummary(t *testing.T) {
 	check(analytics.MembersOnline, 15, nil)
 	check(analytics.CommandsUsed, 0, 0.0)
 
-	joined := kpi(t, s, analytics.MembersJoined)
-	if got := points(analytics.Serie{Points: joined.Spark}); !slices.Equal(got, []float64{5, 0, 0, 0, 0, 0, 2}) {
+	joined := qKPI(t, s, analytics.MembersJoined)
+	if got := qPoints(analytics.Serie{Points: joined.Spark}); !slices.Equal(got, []float64{5, 0, 0, 0, 0, 0, 2}) {
 		t.Errorf("joined spark = %v", got)
 	}
-	if got := points(analytics.Serie{Points: kpi(t, s, analytics.MembersTotal).Spark}); !slices.Equal(got, []float64{95, 100}) {
+	if got := qPoints(analytics.Serie{Points: qKPI(t, s, analytics.MembersTotal).Spark}); !slices.Equal(got, []float64{95, 100}) {
 		t.Errorf("total spark (sparse) = %v", got)
 	}
-	if got := points(analytics.Serie{Points: kpi(t, s, analytics.MembersNet).Spark}); !slices.Equal(got, []float64{5, 0, 0, 0, 0, -3, 2}) {
+	if got := qPoints(analytics.Serie{Points: qKPI(t, s, analytics.MembersNet).Spark}); !slices.Equal(got, []float64{5, 0, 0, 0, 0, -3, 2}) {
 		t.Errorf("net spark = %v", got)
 	}
 	if s.Heatmap[0][10] != 10 || s.Heatmap[6][23] != 1 {
@@ -405,15 +405,15 @@ func TestSummary(t *testing.T) {
 	// Presence adds the activities; the previous period is not covered when
 	// collection started after its first day.
 	s, err = r.Summary(ctx, "main", "7d", analytics.Status{Enabled: true, Presence: true})
-	must(t, err)
+	qMust(t, err)
 	if acts := s.Rankings[analytics.PresenceActivity]; len(acts) != 1 || acts[0].Dim != "playing:Minecraft" || s.Labels["playing:Minecraft"].Kind != "label" {
 		t.Errorf("activities = %+v", acts)
 	}
-	_, err = a.Purge(ctx, "main", day(-12))
-	must(t, err)
+	_, err = a.Purge(ctx, "main", qDay(-12))
+	qMust(t, err)
 	s, err = r.Summary(ctx, "main", "7d", analytics.Status{})
-	must(t, err)
-	if kpi(t, s, analytics.MembersJoined).Previous != nil || s.Rankings[analytics.MessagesSent][0].Previous != nil {
+	qMust(t, err)
+	if qKPI(t, s, analytics.MembersJoined).Previous != nil || s.Rankings[analytics.MessagesSent][0].Previous != nil {
 		t.Error("previous values without coverage")
 	}
 	if _, err := r.Summary(ctx, "main", "1y", analytics.Status{}); err == nil {
@@ -421,48 +421,48 @@ func TestSummary(t *testing.T) {
 	}
 }
 
-// noTotals hides state.AnalyticsTotals: the reader sums Query points itself.
-type noTotals struct{ state.Analytics }
+// qNoTotals hides state.AnalyticsTotals: the reader sums Query points itself.
+type qNoTotals struct{ state.Analytics }
 
 func TestFallbackWithoutTotalsMatches(t *testing.T) {
-	st := newStore(t)
+	st := qStore(t)
 	a := st.Analytics()
 	for i, ch := range []string{"1", "2", "3", "4", "5"} {
 		for h := range 30 {
-			counter(t, a, analytics.MessagesSent, ch, day(-h/5).Add(time.Duration(h*3%24)*time.Hour), float64(i+h))
+			qCounter(t, a, analytics.MessagesSent, ch, qDay(-h/5).Add(time.Duration(h*3%24)*time.Hour), float64(i+h))
 		}
-		rec(t, a, state.AnalyticsGaugeLast, analytics.PresenceStatus, ch, day(-1).Add(time.Duration(i)*time.Hour), float64(i))
+		qRec(t, a, state.AnalyticsGaugeLast, analytics.PresenceStatus, ch, qDay(-1).Add(time.Duration(i)*time.Hour), float64(i))
 	}
-	rec(t, a, state.AnalyticsGaugeLast, analytics.MembersOnline, "", day(-3), 12)
-	clock := func() time.Time { return now }
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersOnline, "", qDay(-3), 12)
+	clock := func() time.Time { return qNow }
 	with := &analytics.Reader{Store: a, Now: clock}
-	without := &analytics.Reader{Store: noTotals{a}, Now: clock}
+	without := &analytics.Reader{Store: qNoTotals{a}, Now: clock}
 	if _, ok := without.Store.(state.AnalyticsTotals); ok {
-		t.Fatal("noTotals implements AnalyticsTotals")
+		t.Fatal("qNoTotals implements AnalyticsTotals")
 	}
-	req := parse(t, "metrics=messages.sent,presence.status,members.online&step=hour&from=2026-11-18T00:00:00Z&to=2026-11-25T00:00:00Z&top=2")
+	req := qParse(t, "metrics=messages.sent,presence.status,members.online&step=hour&from=2026-11-18T00:00:00Z&to=2026-11-25T00:00:00Z&top=2")
 	s1, err := with.Series(t.Context(), req, analytics.Status{})
-	must(t, err)
+	qMust(t, err)
 	s2, err := without.Series(t.Context(), req, analytics.Status{})
-	must(t, err)
+	qMust(t, err)
 	if !reflect.DeepEqual(s1, s2) {
 		t.Errorf("series differ without Totals:\n%+v\n%+v", s1, s2)
 	}
 	m1, err := with.Summary(t.Context(), "main", "30d", analytics.Status{Presence: true})
-	must(t, err)
+	qMust(t, err)
 	m2, err := without.Summary(t.Context(), "main", "30d", analytics.Status{Presence: true})
-	must(t, err)
+	qMust(t, err)
 	if !reflect.DeepEqual(m1, m2) {
 		t.Errorf("summaries differ without Totals:\n%+v\n%+v", m1, m2)
 	}
 }
 
 func TestCatalog(t *testing.T) {
-	st := newStore(t)
+	st := qStore(t)
 	r := &analytics.Reader{Store: st.Analytics()}
 	res, err := r.Catalog(t.Context(), "main", analytics.Status{Enabled: true,
 		Missing: []analytics.Missing{{Metrics: []string{analytics.ModerationActions}, Reason: "no ViewAuditLog", Fix: "grant it"}}})
-	must(t, err)
+	qMust(t, err)
 	if len(res.Metrics) != len(analytics.Catalog) {
 		t.Fatalf("%d entries", len(res.Metrics))
 	}
@@ -473,7 +473,7 @@ func TestCatalog(t *testing.T) {
 		}
 	}
 	res, err = r.Catalog(t.Context(), "main", analytics.Status{})
-	must(t, err)
+	qMust(t, err)
 	for _, e := range res.Metrics {
 		if e.Collected {
 			t.Errorf("%s collected while disabled", e.Name)
@@ -481,9 +481,9 @@ func TestCatalog(t *testing.T) {
 	}
 }
 
-type mapLabeler map[string]analytics.Label
+type qMapLabeler map[string]analytics.Label
 
-func (m mapLabeler) Labels(_ context.Context, _ string, dims []analytics.DimRef) map[string]analytics.Label {
+func (m qMapLabeler) Labels(_ context.Context, _ string, dims []analytics.DimRef) map[string]analytics.Label {
 	out := map[string]analytics.Label{}
 	for _, d := range dims {
 		if l, ok := m[d.Value]; ok {
@@ -519,7 +519,7 @@ func TestLabels(t *testing.T) {
 		}
 	}
 
-	st := newStore(t)
+	st := qStore(t)
 	ctx := t.Context()
 	for _, r := range []state.Resource{
 		{Server: "main", Kind: state.KindChannel, Key: "voice", ID: "1"},
@@ -530,7 +530,7 @@ func TestLabels(t *testing.T) {
 		{Server: "main", Kind: state.KindRole, Key: "undeclared", ID: "6"},
 	} {
 		r.Owner = state.OwnerGit
-		must(t, st.Resources().Put(ctx, r))
+		qMust(t, st.Resources().Put(ctx, r))
 	}
 	spec := &config.ServerSpec{
 		Channels: map[string]config.Channel{"voice": {Name: "Lounge", Type: "voice"}},
@@ -539,7 +539,7 @@ func TestLabels(t *testing.T) {
 		AutoMod:  map[string]config.AutoModSpec{"spam": {Name: "No spam"}},
 	}
 	rl := analytics.ResourceLabeler{Resources: st.Resources(), Spec: func(string) *config.ServerSpec { return spec }}
-	live := mapLabeler{"1": {Name: "live-lounge", Kind: "voice"}}
+	live := qMapLabeler{"1": {Name: "live-lounge", Kind: "voice"}}
 	got := analytics.ResolveLabels(ctx, analytics.Labelers{live, nil, rl}, "main", []analytics.DimRef{
 		{Kind: "channel", Value: "1"}, {Kind: "role", Value: "2"}, {Kind: "role", Value: "3"},
 		{Kind: "emoji", Value: "pepe:4"}, {Kind: "rule", Value: "5"}, {Kind: "role", Value: "6"},

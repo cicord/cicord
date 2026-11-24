@@ -168,8 +168,8 @@ spec:
 
 - `enabled: false` stops collection for the server. Points already recorded stay until
   retention removes them, and the dashboard still shows them.
-- `retention` is a number of days, `<n>d`. Older points are deleted. An invalid value falls
-  back to `400d`.
+- `retention` is a number of days, from `1d` to `9999d` (`cicord validate` rejects other
+  values). Older points are deleted.
 - `presence: true` aggregates statuses, platforms and activities, with the `ServerPresences`
   intent.
 

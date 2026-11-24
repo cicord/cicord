@@ -70,7 +70,8 @@ that matches nothing is shown as `deleted`, with the ID as its name.
 The period is made of whole UTC days and ends with today: `from` is 00:00 UTC, `period` days
 before tomorrow, and `to` is tomorrow 00:00 UTC. Each value is compared with the **previous
 period** of the same length, just before. `previous` is `null` when that period is not
-covered: collection started after its first day.
+covered: collection started after its first day. The previous period of `365d` reaches
+730 days back, so with the default retention of 400 days its `previous` values stay `null`.
 
 ```json
 {
