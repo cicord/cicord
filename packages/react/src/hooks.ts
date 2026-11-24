@@ -55,13 +55,13 @@ export function useCicordQuery<T>(
   const subscribe = useCallback(
     (listener: () => void) =>
       keyRef.current ? cache.subscribe(keyRef.current, listener) : () => {},
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hash is the stable serialization of the key; keyRef always holds the current key
     [cache, hash],
   );
   const getSnapshot = useCallback(
     (): QueryState<T> | undefined =>
       keyRef.current ? cache.getState<T>(keyRef.current) : undefined,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hash is the stable serialization of the key; keyRef always holds the current key
     [cache, hash],
   );
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -362,7 +362,7 @@ export function usePluginMutation<TBody = Json, TResult = Json>(
         throw error;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- depends on the identity of the plugin instance (bot, instance), not on the ref object callers recreate each render
     [client, cache, server, ref?.bot, ref?.instance, path],
   );
 
@@ -513,7 +513,7 @@ export function useRouteMutation<
         throw error;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- depends on the identity of the plugin instance (bot, instance), not on the ref object callers recreate each render
     [client, cache, server, instance?.bot, instance?.instance, plugin, route],
   );
 

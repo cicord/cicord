@@ -60,7 +60,7 @@ export function LoginPage() {
       const owner = sim.servers[0]?.ownerId;
       if (owner) void login(owner);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot auto-login guarded by autoLogin; login is not referentially stable
   }, [config.mock, search, sim]);
 
   const submit = (e: FormEvent) => {

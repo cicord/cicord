@@ -64,6 +64,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      actions: read # deploy-pages reads the artifact of the build job
       pages: write
       id-token: write
     environment:

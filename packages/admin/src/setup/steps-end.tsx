@@ -558,7 +558,7 @@ function PluginReview({
     const e = a.error;
     if (e instanceof CicordApiError && e.diagnostics.length)
       setServerErrors(mapDiagnostics(e.diagnostics, collectPointers(schema, draft)).byField);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- maps the diagnostics of a new error only; schema and draft are read at that moment, re-running on edits would resurrect fixed errors
   }, [a.error]);
   if (done)
     return (

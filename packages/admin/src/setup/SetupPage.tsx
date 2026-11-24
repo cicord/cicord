@@ -201,7 +201,7 @@ export function SetupPage() {
         .then(setStatus)
         .catch((e: unknown) => setError(e));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- status is fetched once on mount; later refreshes go through the wizard actions
   }, []);
 
   if (search.get("login") === "done")

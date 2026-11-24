@@ -190,7 +190,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
         defaultLimit,
         filters,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- value-stable keys: sortKeys.join() and JSON.stringify(filters) stand for arrays and objects recreated on every render
     [searchKey, sortKeys.join(), defaultSort, defaultOrder, defaultLimit, JSON.stringify(filters)],
   );
 
@@ -225,7 +225,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
     if (value === query.q) return undefined;
     const id = window.setTimeout(() => update({ q: value || null, page: null }, true), debounce);
     return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced on the typed text only: query and update are read when the timer fires, listing them would restart the debounce on every navigation
   }, [text, debounce]);
 
   // ── data: keep the previous page on screen while the next one loads
@@ -241,7 +241,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   useEffect(() => {
     if (result.data && result.data.items.length === 0 && result.data.total > 0 && current > 1)
       update({ page: pages > 1 ? pages : null }, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- update is recreated on every render; the check only needs to run when the result or the page count changes
   }, [result.data, current, pages]);
 
   const filtered = query.q !== "" || Object.keys(query.filters).length > 0;

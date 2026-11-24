@@ -96,7 +96,7 @@ export function Picker(props: PickerProps) {
       setQuery("");
     }
     // only when opening
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resets the query only when the picker opens, not when the value or options change
   }, [open]);
 
   const choose = (option: PickerOption | undefined) => {

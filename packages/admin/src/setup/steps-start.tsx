@@ -368,7 +368,7 @@ export function ServerStep({ view, api, onView }: StepProps) {
   // Resumed on this step (reload, restart): check the selected server right away.
   useEffect(() => {
     if (view.server && !result) void recheck();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once when the wizard resumes on this step
   }, []);
   const checks: Check[] | undefined = result?.checks;
   const selectedId = view.server?.id;
