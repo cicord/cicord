@@ -40,9 +40,12 @@ func withOfficial(t *testing.T) {
 func TestOfficialWithoutKey(t *testing.T) {
 	withOfficial(t)
 	registry.OfficialKeys = nil
+	if registry.HasOfficialKeys() {
+		t.Skip("this test binary embeds a development official key (-ldflags -X …devOfficialKey)")
+	}
 	s := &Service{Catalog: testCatalog(), Fetch: func(context.Context, string) (*registry.Index, error) {
-		t.Fatal("the official index is fetched although nothing could verify it")
-		return nil, nil
+		t.Error("the official index is fetched although nothing could verify it")
+		return nil, errors.New("unexpected fetch")
 	}}
 	srcs, err := s.Sources(context.Background(), nil, true)
 	if err != nil || len(srcs) != 1 {
