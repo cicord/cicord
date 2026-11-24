@@ -112,7 +112,8 @@ lockVersion: 1
 plugins:
   cicord/welcome:
     version: 1.2.3
-    repo: https://github.com/cicord-plugins/welcome
+    repo: https://github.com/cicord/cicord-plugins
+    path: plugins/welcome
     commit: 4f0c2d9e8b1a7c6d5e4f3a2b1c0d9e8f7a6b5c4d
     integrity: sha256-Vb3nQ0x2...
     capabilities: [discord.messages.send, discord.members.read, storage.kv]

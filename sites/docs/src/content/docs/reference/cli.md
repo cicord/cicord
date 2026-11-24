@@ -456,26 +456,28 @@ cicord plugin update cicord/welcome
 
 ### `cicord plugin publish`
 
-Release a plugin from its repository (`plugin.yaml` at the root of a git repository): validate it like `cicord plugin build`, check the working tree is clean and that `metadata.version` is a semver greater than every `v*` tag, create the annotated tag `v<version>` (pushed with `--push`), then print the registry index entry or, with `--registry <dir>`, write it to a local registry checkout. Never sets `verified`. See [Publishing](../../plugins/publishing/).
+Release a plugin from its git repository: validate it like `cicord plugin build`, check the working tree is clean and that `metadata.version` is a semver greater than every earlier release tag, create the annotated tag `v<version>` (pushed with `--push`), then print the registry index entry or, with `--registry <dir>`, write it to a local registry checkout. Never sets `verified`. In a repository with several plugins (the plugin directory is not the repository root, or `--path` names it), the tag is `<name>/v<version>`, only the plugin directory must be clean, and the entry gets `path`. See [Publishing](../../plugins/publishing/).
 
 ```text
-cicord plugin publish [plugin-repo] [flags]
+cicord plugin publish [plugin-dir] [flags]
 ```
 
 | Flag | Description |
 |---|---|
 | `--dry-run` | validate and print what would be done, change nothing |
+| `--path` `string` | plugin directory relative to the repository root, for repositories with several plugins (default: [plugin-dir] relative to the root) |
 | `--publisher` `string` | publisher name for the index entry (default: the existing entry's) |
 | `--push` | push the tag to --remote |
 | `--registry` `string` | local checkout of a registry to update (an https URL only prints the steps) |
 | `--remote` `string` | git remote to push to and to read the repo URL from (default "origin") |
-| `--replace-repo` | allow changing the repo of an existing index entry |
+| `--replace-repo` | allow changing the repo or path of an existing index entry |
 | `--repo` `string` | repository URL for the index entry (default: the --remote URL) |
 
 ```sh
 cicord plugin publish --dry-run
 cicord plugin publish --push --registry ../cicord-registry --publisher acme
 cicord plugin publish ./my-plugin --repo https://github.com/acme/cicord-xp.git
+cicord plugin publish plugins/polls --registry . --push   # monorepo: tag polls/v<version>
 ```
 
 ## Registries
