@@ -4,7 +4,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-cicord.dev-blueviolet.svg)](https://cicord.dev/docs/)
 [![Go](https://img.shields.io/badge/go-1.27-00ADD8.svg?logo=go&logoColor=white)](go.mod)
-[![Status: pre-release](https://img.shields.io/badge/status-v1alpha1%20pre--release-orange.svg)](#project-status)
+[![Status: pre-release](https://img.shields.io/badge/status-v1alpha1_pre--release-orange.svg)](#project-status)
 
 **GitOps for Discord.** Declare your Discord servers and bots in a git repository; the Cicord
 runtime reconciles them continuously, runs your bots on a shared engine, and extends them

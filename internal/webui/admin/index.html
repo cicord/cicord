@@ -1,13 +1,27 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cicord admin</title>
-</head>
-<body>
-<h1>Cicord admin UI</h1>
-<p>This binary was built without the admin UI. Build it with <code>pnpm --filter @cicord/admin build</code>, then run <code>scripts/sync-ui.sh</code> and rebuild <code>cicord</code>.</p>
-<p>The API is available under <a href="/api/v1/status">/api/v1</a>.</p>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="icon" type="image/svg+xml" href="/admin/favicon.svg" />
+    <title>Cicord admin</title>
+    <script>
+      // Apply the saved / system theme before the first paint (no flash).
+      try {
+        var p = localStorage.getItem("cicord-admin:theme");
+        var dark =
+          p === "dark" || (p !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.add(dark ? "dark" : "light");
+      } catch (e) {
+        document.documentElement.classList.add("dark");
+      }
+    </script>
+    <script type="module" crossorigin src="/admin/assets/index-BKQbeSSQ.js"></script>
+    <link rel="stylesheet" crossorigin href="/admin/assets/index-Bq2_Yjcp.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
