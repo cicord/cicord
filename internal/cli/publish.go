@@ -175,6 +175,17 @@ func publishedVersions(ctx context.Context, dir, remote, prefix string) ([]*semv
 	return vs, tags, nil
 }
 
+// notOlderTag returns an earlier release that ver does not follow by semver precedence (a
+// release follows its pre-releases, rc.10 follows rc.2, build metadata is ignored), or nil.
+func notOlderTag(ver *semver.Version, earlier []*semver.Version) *semver.Version {
+	for _, v := range earlier {
+		if !ver.GreaterThan(v) {
+			return v
+		}
+	}
+	return nil
+}
+
 func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOptions) error {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -242,10 +253,8 @@ func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOpt
 	if tags[tag] {
 		return fmt.Errorf("tag %s already exists: bump metadata.version in plugin.yaml", tag)
 	}
-	for _, v := range versions {
-		if !ver.GreaterThan(v) {
-			return fmt.Errorf("version %s is not greater than the existing tag %s%s: bump metadata.version in plugin.yaml", ver, prefix, v.Original())
-		}
+	if v := notOlderTag(ver, versions); v != nil {
+		return fmt.Errorf("version %s is not greater than the existing tag %s%s: bump metadata.version in plugin.yaml", ver, prefix, v.Original())
 	}
 	where := "local tags"
 	if o.push {

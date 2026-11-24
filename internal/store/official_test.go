@@ -212,6 +212,8 @@ func TestRemoteWins(t *testing.T) {
 	}{
 		{"0.1.0", "0.2.0", true, true}, {"0.1.0", "0.1.0", true, false}, {"0.1.0", "", true, false},
 		{"0.1.0", "junk", true, false}, {"", "", false, true}, {"0.2.0", "0.1.9", true, false},
+		{"0.2.0-rc.1", "0.2.0", true, true}, {"0.2.0", "0.2.0-rc.2", true, false},
+		{"0.2.0-rc.2", "0.2.0-rc.10", true, true}, {"0.2.0", "0.2.0+build.1", true, false},
 	} {
 		if got := remoteWins(c.bundled, c.has, registry.IndexEntry{Version: c.remote}); got != c.want {
 			t.Errorf("remoteWins(%+v) = %v", c, got)

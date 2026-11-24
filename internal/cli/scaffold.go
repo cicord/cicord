@@ -25,15 +25,7 @@ var templates embed.FS
 var keyRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 // engineRange returns the default engine constraint for new repos/plugins: the current minor.
-func engineRange() string {
-	var major, minor int
-	// A development version that does not start with "major.minor" gives 0.0.
-	_, _ = fmt.Sscanf(version.Version, "%d.%d", &major, &minor)
-	if major == 0 {
-		return fmt.Sprintf(">=0.%d.0 <0.%d.0", minor, minor+1)
-	}
-	return fmt.Sprintf(">=%d.0.0 <%d.0.0", major, major+1)
-}
+func engineRange() string { return version.EngineRange(version.Version) }
 
 // renderTree renders every *.tmpl under templates/<sub> into dst. rename maps template
 // paths (relative to sub, without .tmpl) to output paths.

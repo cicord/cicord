@@ -39,7 +39,10 @@ hand, the steps are: run the backup service, set the new `CICORD_IMAGE` in `.env
 - **`engine` ranges.** Your `cicord.yaml` declares `spec.engine` (for example
   `">=0.1.0 <0.2.0"`), and each plugin declares its own. A runtime refuses a revision whose
   range excludes its version. Widen the range in the same change as the upgrade if the new
-  version is compatible.
+  version is compatible. A pre-release is checked by semver precedence: `0.2.0-rc.1` comes
+  before `0.2.0`, so it satisfies `>=0.1.0 <0.2.0` and not `>=0.2.0` (write `>=0.2.0-0` to
+  admit the `0.2` release candidates); see
+  [Pre-releases](../../project/releasing/#pre-releases).
 - **`apiVersion`.** Every file uses `cicord.dev/v1alpha1`. A breaking change of the format is
   meant to bump it.
 - **Official plugins.** Copies of the official plugins in `plugins/<name>/` are not changed by

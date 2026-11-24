@@ -77,7 +77,11 @@ tag="$(printf '%s' "$json" | jq -r '.tag_name // empty')"
 new="${tag#v}"
 echo "$new" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { log "latest release '$tag' is not a version: skipped"; exit 0; }
 [ "$new" != "$cur" ] || { log "up to date ($cur)"; exit 0; }
-[ "$(printf '%s\n%s\n' "$cur" "$new" | sort -V | tail -1)" = "$new" ] || { log "running $cur, newer than the latest release $new"; exit 0; }
+# $new is x.y.z; a pre-release precedes its release (0.2.0-rc.1 < 0.2.0), which sort -V
+# gets wrong, so the comparison uses the x.y.z of $cur.
+curcore="${cur%%-*}"
+[ "$curcore" = "$new" ] || [ "$(printf '%s\n%s\n' "$curcore" "$new" | sort -V | tail -1)" = "$new" ] ||
+  { log "running $cur, newer than the latest release $new"; exit 0; }
 
 cmaj="${cur%%.*}"; cmin="$(echo "$cur" | cut -d. -f2)"
 nmaj="${new%%.*}"; nmin="$(echo "$new" | cut -d. -f2)"
