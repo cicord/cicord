@@ -15,4 +15,5 @@ export const links = {
   plugins: url("docs/plugins/overview/"),
   deploy: url("docs/self-hosting/deploy/"),
   github: "https://github.com/cicord/cicord",
+  discord: "https://discord.gg/qTt5S2Fe4m",
 } as const;

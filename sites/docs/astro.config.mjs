@@ -19,7 +19,10 @@ export default defineConfig({
         "GitOps for Discord: declare servers and bots in git, reconcile them continuously, extend them with sandboxed TypeScript plugins.",
       logo: { src: "./src/assets/logo.svg", alt: "Cicord" },
       favicon: "/favicon.svg",
-      social: [{ icon: "github", label: "GitHub", href: repo }],
+      social: [
+        { icon: "github", label: "GitHub", href: repo },
+        { icon: "discord", label: "Discord", href: "https://discord.gg/qTt5S2Fe4m" },
+      ],
       editLink: { baseUrl: `${repo}/edit/main/sites/docs/` },
       customCss: ["./src/styles/theme.css"],
       lastUpdated: false,
