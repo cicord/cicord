@@ -168,7 +168,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 		Signer: auth.NewSigner(key), PortalURL: public, Mode: "dev", Simulator: useSim,
 		// Plugins may reach local test services only against the simulator: with real
 		// Discord tokens the normal egress rules apply.
-		AllowPrivateNetworks: useSim, Logger: log,
+		AllowPrivateNetworks: useSim, Logger: log, Analytics: store.Analytics(),
 	})
 	token := os.Getenv("CICORD_RUNTIME_TOKEN")
 	generated := false
@@ -193,6 +193,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	cat := catalog.Official()
 	h := api.New(api.Options{
 		Runtime: rt, Writer: writer, Mode: "dev", Sim: world,
+		Analytics: store.Analytics(), AnalyticsStatus: rt.AnalyticsStatus,
 		RuntimeToken: token, WebhookSecret: os.Getenv("CICORD_WEBHOOK_SECRET"),
 		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},

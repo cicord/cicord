@@ -211,7 +211,7 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, e.resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: e.public, Mode: e.mode, Simulator: e.world != nil,
 		AllowPrivateNetworks: e.world != nil, Logger: e.log, CommitStatus: commitStatusHook(e.log, ghRepo, tokens, e.console()),
-		Metrics: e.metrics,
+		Metrics: e.metrics, Analytics: e.store.Analytics(),
 	})
 	return rt, writer, src, branch, nil
 }
@@ -237,6 +237,7 @@ func (e *runtimeEnv) apiOptions(rt *runtime.Runtime, w writeback.Writer, branch 
 	cat := catalog.Official()
 	return api.Options{
 		Runtime: rt, Writer: w, Mode: e.mode, Sim: e.world, RuntimeToken: e.runtimeTok,
+		Analytics: e.store.Analytics(), AnalyticsStatus: rt.AnalyticsStatus,
 		WebhookSecret: e.secret("CICORD_WEBHOOK_SECRET"), Branch: branch,
 		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(e.secrets, nil)},

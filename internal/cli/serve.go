@@ -483,6 +483,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
 		CommitStatus: commitStatusHook(log, ghRepo, tokens, console), Metrics: reg,
+		Analytics: store.Analytics(),
 	})
 	stopping := make(chan struct{})
 	// Machine secrets: the environment first, then the encrypted secret store (cicord secret set).
@@ -494,6 +495,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	cat := catalog.Official()
 	h := api.New(api.Options{
 		Runtime: rt, Writer: writer, Mode: "serve", RuntimeToken: runtimeToken,
+		Analytics: store.Analytics(), AnalyticsStatus: rt.AnalyticsStatus,
 		WebhookSecret: webhookSecret, Branch: branch,
 		OAuth: api.OAuth{ClientID: os.Getenv("CICORD_DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("CICORD_DISCORD_CLIENT_SECRET"),
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
