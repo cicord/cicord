@@ -112,7 +112,8 @@ jobs:
           # Dependencies first: @cicord/react depends on @cicord/client.
           for p in sdk client react ui; do
             name="@cicord/$p"
-            tgz="out/cicord-$p-$VERSION.tgz"
+            # "./": without it npm reads out/<file> as a GitHub owner/repo shorthand.
+            tgz="./out/cicord-$p-$VERSION.tgz"
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then
               echo "$name@$VERSION is already published: skipped"
               continue
