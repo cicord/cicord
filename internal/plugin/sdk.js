@@ -33,17 +33,22 @@
     return e;
   }
 
+  // Error descriptions and log lines are cut here, inside the VM, so that a plugin cannot
+  // push large strings onto the host (which also enforces caps).
+  const MAX_ERROR_TEXT = 16384, MAX_LOG_MESSAGE = 4096, MAX_LOG_FIELDS = 16384;
+  const cut = (s, n) => (s.length > n ? s.slice(0, n) + "…" : s);
+
   function errInfo(e) {
     try {
       if (e instanceof Error) {
         return JSON.stringify({
-          name: String(e.name || "Error"),
-          message: String(e.message),
-          stack: typeof e.stack === "string" ? e.stack : "",
-          capability: e instanceof CapabilityError ? e.capability : undefined,
+          name: cut(String(e.name || "Error"), 200),
+          message: cut(String(e.message), MAX_ERROR_TEXT),
+          stack: typeof e.stack === "string" ? cut(e.stack, MAX_ERROR_TEXT) : "",
+          capability: e instanceof CapabilityError ? cut(String(e.capability), 200) : undefined,
         });
       }
-      return JSON.stringify({ name: "Error", message: "non-Error value thrown: " + safeString(e) });
+      return JSON.stringify({ name: "Error", message: "non-Error value thrown: " + cut(safeString(e), MAX_ERROR_TEXT) });
     } catch (_) {
       return JSON.stringify({ name: "Error", message: "unserializable error" });
     }
@@ -108,7 +113,10 @@
   });
   function takeRejections() {
     const out = [];
-    for (const r of rejections.values()) out.push(errInfo(r));
+    for (const r of rejections.values()) {
+      if (out.length === 20) break;
+      out.push(errInfo(r));
+    }
     rejections.clear();
     return JSON.stringify(out);
   }
@@ -330,7 +338,10 @@
   }
 
   const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
-  const hlog = (level, message, fields) => hraw(K_LOG, message, fields, LEVELS[level]);
+  const hlog = (level, message, fields) => {
+    const f = fields && fields.length > MAX_LOG_FIELDS ? JSON.stringify({ fields: `[${fields.length} bytes: dropped]` }) : fields;
+    return hraw(K_LOG, cut(message, MAX_LOG_MESSAGE), f, LEVELS[level]);
+  };
 
   function logFn(level) {
     return (message, fields) => {
@@ -570,10 +581,13 @@
       const r = h[1].call(h[0], ctx, ...args(kind, name, d));
       Promise.resolve(r).then(
         (v) => {
-          if (kind !== "route") return ok();
           let s;
-          try { s = JSON.stringify(routeOut(v)); } catch (e) { return fail(e); }
-          ok(s);
+          try {
+            if (kind === "route") s = JSON.stringify(routeOut(v));
+            ok(s);
+          } catch (e) {
+            fail(e);
+          }
         },
         fail,
       );

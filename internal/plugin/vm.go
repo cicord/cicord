@@ -43,6 +43,10 @@ const (
 	maxRouteResponse = 4 << 20
 	// maxHandlerResult caps what a handler settles with (routes are the only users).
 	maxHandlerResult = maxRouteResponse + 1024
+	// maxHostString caps each string a host call copies out of the VM (qjs.Config).
+	maxHostString = maxHandlerResult + 64<<10
+	// maxErrorText caps the message and the stack of a ScriptError.
+	maxErrorText = 16 << 10
 )
 
 // host is what the prelude calls into. Inspect uses a host that refuses everything.
@@ -112,7 +116,7 @@ func newVM(ctx context.Context, h host, memory int64) (*vm, error) {
 	if err != nil {
 		return nil, err
 	}
-	q, err := qjs.New(ctx, qjs.Config{MemoryLimit: memory}, hostFn)
+	q, err := qjs.New(ctx, qjs.Config{MemoryLimit: memory, MaxHostString: maxHostString}, hostFn)
 	if err != nil {
 		return nil, fmt.Errorf("plugin: create VM: %w", err)
 	}
@@ -203,9 +207,17 @@ func parseScriptError(js string) *ScriptError {
 		Name, Message, Stack, Capability string
 	}
 	if err := json.Unmarshal([]byte(js), &info); err != nil {
-		return &ScriptError{Name: "Error", Message: js}
+		return &ScriptError{Name: "Error", Message: truncate(js, maxErrorText)}
 	}
-	return &ScriptError{Name: info.Name, Message: info.Message, Stack: info.Stack, Capability: info.Capability}
+	return &ScriptError{Name: truncate(info.Name, 200), Message: truncate(info.Message, maxErrorText),
+		Stack: truncate(info.Stack, maxErrorText), Capability: truncate(info.Capability, 200)}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "") + "…"
 }
 
 // scriptError converts an errInfo JSON into a *ScriptError with TypeScript positions.

@@ -193,3 +193,36 @@ func TestKillAfterClose(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// TestLinearMemoryIsFreed: the mapping backing a VM is released when it is closed and when
+// it dies (trap, kill, out of memory).
+func TestLinearMemoryIsFreed(t *testing.T) {
+	v := newTestVM(t, Config{}, nil)
+	m := v.mem
+	v.Close()
+	if !m.freed {
+		t.Fatal("not freed on Close")
+	}
+	v = newTestVM(t, Config{}, nil)
+	m = v.mem
+	v.Kill()
+	if _, _, err := v.Call(context.Background(), "run", "for(;;){}"); !errors.Is(err, ErrKilled) {
+		t.Fatalf("err = %v", err)
+	}
+	if !m.freed {
+		t.Fatal("not freed after a kill")
+	}
+}
+
+func TestHostStringCap(t *testing.T) {
+	called := false
+	v := newTestVM(t, Config{MaxHostString: 1 << 20}, func(int32, string, string, float64) Reply {
+		called = true
+		return Reply{Undefined: true}
+	})
+	_, _, err := v.Call(context.Background(), "host", "op", strings.Repeat("x", 2<<20))
+	var ex *Exception
+	if !errors.As(err, &ex) || !strings.Contains(ex.Info, "host call argument") || called {
+		t.Fatalf("err = %v, host called = %v", err, called)
+	}
+}

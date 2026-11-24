@@ -57,12 +57,16 @@ func TestMemoryLimitCrashesInstance(t *testing.T) {
 			if !errors.Is(h.inst.Err(), ErrCrashed) {
 				t.Fatalf("Err = %v", h.inst.Err())
 			}
-			// The user got the generic error, later calls fail fast.
+			// The user got the generic error, later calls fail fast with it too (no
+			// "interaction failed" on Discord while the instance restarts).
 			if r := h.responses(); len(r) != 1 || contentOf(r[0]) != GenericErrorMessage {
 				t.Fatalf("responses = %+v", r)
 			}
 			if err := h.command("ok", nil, discord.Resolved{}); !errors.Is(err, ErrCrashed) {
 				t.Fatalf("after crash: %v", err)
+			}
+			if r := h.responses(); len(r) != 2 || contentOf(r[1]) != GenericErrorMessage {
+				t.Fatalf("responses after crash = %+v", r)
 			}
 			h.logged("plugin instance crashed")
 		})
@@ -235,7 +239,8 @@ export default definePlugin({
 	if got := reply("list"); got != "4 big:3" {
 		t.Errorf("list: %q", got)
 	}
-	if _, err := h.inst.HandleRoute(context.Background(), "GET", "/big", RouteRequest{}); err == nil || !strings.Contains(err.Error(), "more than") {
+	// Refused by the VM boundary (host call argument cap) before the route response cap.
+	if _, err := h.inst.HandleRoute(context.Background(), "GET", "/big", RouteRequest{}); err == nil || !strings.Contains(err.Error(), "bytes") {
 		t.Errorf("route: %v", err)
 	}
 }
@@ -274,4 +279,44 @@ export default definePlugin({
 		})
 	}
 	wg.Wait()
+}
+
+// TestLargeStringsStayInTheVM: huge log lines, log fields, error messages and handler
+// results are cut or refused at the VM boundary, never copied whole to the Go heap.
+func TestLargeStringsStayInTheVM(t *testing.T) {
+	h := start(t, `
+import { command, definePlugin } from "@cicord/sdk";
+export default definePlugin({
+  commands: {
+    log: command({ description: "x", async run(ctx, it) {
+      ctx.log.info("m".repeat(8e6));
+      ctx.log.info("fields", { f: "f".repeat(8e6) });
+      console.log("c".repeat(8e6));
+      await it.reply("logged");
+    } }),
+    throw: command({ description: "x", run() { throw new Error("e".repeat(8e6)); } }),
+    reject: command({ description: "x", async run() { await null; throw new Error("r".repeat(8e6)); } }),
+  },
+  routes: {
+    "GET /huge": { access: "public", handler() { return "h".repeat(8e6); } },
+  },
+});`, nil)
+	if err := h.command("log", nil, discord.Resolved{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range h.logs.Messages() {
+		if len(m) > 8192 {
+			t.Fatalf("log message of %d bytes", len(m))
+		}
+	}
+	for _, cmd := range []string{"throw", "reject"} {
+		err := h.command(cmd, nil, discord.Resolved{})
+		var se *ScriptError
+		if !errors.As(err, &se) || len(se.Message) > 20000 || len(err.Error()) > 64<<10 {
+			t.Fatalf("%s: %d bytes: %.200v", cmd, len(fmt.Sprint(err)), err)
+		}
+	}
+	if _, err := h.inst.HandleRoute(context.Background(), "GET", "/huge", RouteRequest{}); err == nil || len(err.Error()) > 64<<10 {
+		t.Fatalf("route: %.200v", err)
+	}
 }

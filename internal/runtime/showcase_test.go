@@ -923,12 +923,12 @@ func TestShowcaseModeration(t *testing.T) {
 	})
 }
 
-// A plugin that exhausts its memory limit crashes its instance only: the instance is
-// reported Degraded, restarted with backoff, and serves again; the process and the other
-// plugins are unaffected.
+// A plugin that exhausts its memory limit, or ignores its CPU budget until the hard stop,
+// crashes its instance only: the instance is reported Degraded, restarted with backoff, and
+// serves again; the process and the other plugins are unaffected.
 func TestShowcaseProbeCrashRestarts(t *testing.T) {
 	oldMin := restartMin
-	restartMin = 50 * time.Millisecond
+	restartMin = 50 * time.Millisecond // copied by New
 	t.Cleanup(func() { restartMin = oldMin })
 	s := startShowcase(t, showcaseOpts{probe: true, limits: plugin.Limits{Memory: 16 << 20}})
 	w := s.world
@@ -944,18 +944,20 @@ func TestShowcaseProbeCrashRestarts(t *testing.T) {
 		t.Fatal("no probe instance")
 		return InstanceInfo{}
 	}
-	st := wait(t, w.InvokeCommand(alice.ID, s.serverID, general.ID, s.appID, "probe-oom", nil))
-	if replyText(st) != plugin.GenericErrorMessage {
-		t.Errorf("probe-oom = %+v", st)
-	}
-	s.waitFor("probe degraded", func() bool {
-		in := probe()
-		return in.Health == HealthDegraded && strings.Contains(in.Message, "memory limit")
-	})
-	s.waitFor("probe restarted", func() bool { return probe().Health == HealthHealthy })
-	st = wait(t, w.InvokeCommand(alice.ID, s.serverID, general.ID, s.appID, "probe-ping", nil))
-	if replyText(st) != "pong" {
-		t.Errorf("probe-ping after the restart = %+v", st)
+	for cmd, reason := range map[string]string{"probe-oom": "memory limit", "probe-kill": "killed"} {
+		st := wait(t, w.InvokeCommand(alice.ID, s.serverID, general.ID, s.appID, cmd, nil))
+		if replyText(st) != plugin.GenericErrorMessage {
+			t.Errorf("%s = %+v", cmd, st)
+		}
+		s.waitFor(cmd+": probe degraded", func() bool {
+			in := probe()
+			return in.Health == HealthDegraded && strings.Contains(in.Message, reason)
+		})
+		s.waitFor(cmd+": probe restarted", func() bool { return probe().Health == HealthHealthy })
+		st = wait(t, w.InvokeCommand(alice.ID, s.serverID, general.ID, s.appID, "probe-ping", nil))
+		if replyText(st) != "pong" {
+			t.Errorf("probe-ping after %s = %+v", cmd, st)
+		}
 	}
 	if !strings.Contains(s.logs.String(), "plugin instance restarted") {
 		t.Error("the restart is not logged")

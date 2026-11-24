@@ -45,6 +45,13 @@ export default definePlugin({
         for (;;) hog.push(new ArrayBuffer(4 * 1024 * 1024));
       },
     }),
+    "probe-kill": command({
+      description: "ignores the CPU budget inside native calls (hard stop)",
+      run() {
+        const s = "ab".repeat(1e6);
+        for (let i = 0; i < 1e6; i++) s.indexOf("zz");
+      },
+    }),
     "probe-ping": command({
       description: "pong",
       async run(_ctx, it) {

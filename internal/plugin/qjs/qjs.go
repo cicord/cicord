@@ -119,7 +119,18 @@ type Config struct {
 	// StackLimit caps the JS stack in bytes (at most 1 MiB minus a margin). Default
 	// DefaultStackLimit.
 	StackLimit int
+	// MaxHostString caps each string argument of a host.raw call: a longer one is not
+	// copied out of the guest and the call throws a RangeError. Default
+	// DefaultMaxHostString.
+	MaxHostString int
 }
+
+// DefaultMaxHostString is the default Config.MaxHostString.
+const DefaultMaxHostString = 8 << 20
+
+// maxErrorInfo caps the error description read back from the guest (larger ones are
+// replaced by a fixed message).
+const maxErrorInfo = 256 << 10
 
 // Answers of the interrupt import (csrc/cicord.c).
 const (
@@ -199,14 +210,15 @@ type VM struct {
 	fnCompile, fnPreludeBC, fnEvalBC                                  api.Function
 	outAddr                                                           uint32
 
-	state    atomic.Int32 // stateRun, stateStop (Interrupt) or stateKill
-	pending  []byte       // host result waiting for host_take
-	args     []byte       // call arguments waiting for args_take
-	flags    uint32
-	mem      *linearMemory
-	killAddr uint32 // &cicord_kill in linear memory
-	jobErr   error
-	dead     error
+	state         atomic.Int32 // stateRun, stateStop (Interrupt) or stateKill
+	pending       []byte       // host result waiting for host_take
+	args          []byte       // call arguments waiting for args_take
+	flags         uint32
+	maxHostString uint32
+	mem           *linearMemory
+	killAddr      uint32 // &cicord_kill in linear memory
+	jobErr        error
+	dead          error
 }
 
 // New instantiates a VM.
@@ -223,11 +235,14 @@ func New(ctx context.Context, cfg Config, host HostFunc) (*VM, error) {
 	if cfg.StackLimit > linkStack-128<<10 {
 		cfg.StackLimit = linkStack - 128<<10
 	}
+	if cfg.MaxHostString <= 0 || cfg.MaxHostString > 1<<30 {
+		cfg.MaxHostString = DefaultMaxHostString
+	}
 	s, err := sharedFor(ctx, pagesFor(cfg.MemoryLimit))
 	if err != nil {
 		return nil, err
 	}
-	v := &VM{host: host}
+	v := &VM{host: host, maxHostString: uint32(cfg.MaxHostString)} //nolint:gosec // in (0, 1 GiB]
 	mcfg := wazero.NewModuleConfig().
 		WithName("").
 		WithStartFunctions("_initialize").
@@ -297,10 +312,7 @@ func (v *VM) ctx(ctx context.Context) context.Context { return context.WithValue
 
 // Close releases the VM. It is idempotent.
 func (v *VM) Close() {
-	if v.mod != nil {
-		_ = v.mod.Close(context.Background())
-		v.mod = nil
-	}
+	v.closeModule()
 	if v.dead == nil {
 		v.dead = ErrClosed
 	}
@@ -408,6 +420,9 @@ func (v *VM) closeModule() {
 		_ = v.mod.Close(context.Background())
 		v.mod = nil
 	}
+	if v.mem != nil {
+		v.mem.Free() // wazero frees it on Close too; Free is idempotent
+	}
 }
 
 // out reads the shim's output string.
@@ -448,6 +463,14 @@ func (v *VM) TakeJobError() error {
 	return err
 }
 
+// errorInfo bounds an error description read from the guest.
+func errorInfo(s string) string {
+	if len(s) > maxErrorInfo {
+		return `{"name":"Error","message":"error description too large to report"}`
+	}
+	return s
+}
+
 // status converts a result code into (string result, defined, error).
 func (v *VM) status(code int) (string, bool, error) {
 	switch code {
@@ -456,7 +479,7 @@ func (v *VM) status(code int) (string, bool, error) {
 	case cqString:
 		return v.out(), true, nil
 	case cqException:
-		return "", false, &Exception{Info: v.out()}
+		return "", false, &Exception{Info: errorInfo(v.out())}
 	case cqInterrupted:
 		return "", false, ErrInterrupted
 	default:
@@ -599,7 +622,7 @@ func (v *VM) invoke(ctx context.Context, drain bool, fn string, args []string) (
 		return "", false, err
 	}
 	if v.flags&fJobErr != 0 {
-		v.jobErr = &Exception{Info: v.jobOut()}
+		v.jobErr = &Exception{Info: errorInfo(v.jobOut())}
 	}
 	return v.status(code)
 }
@@ -616,7 +639,7 @@ func (v *VM) RunJobs(ctx context.Context) error {
 		return err
 	}
 	if code == cqException {
-		return &Exception{Info: v.jobOut()}
+		return &Exception{Info: errorInfo(v.jobOut())}
 	}
 	_, _, err = v.status(code)
 	return err
@@ -642,14 +665,21 @@ func readString(m api.Module, ptr, n uint32) string {
 
 func hostCall(ctx context.Context, m api.Module, stack []uint64) {
 	v := vmOf(ctx)
-	kind := api.DecodeI32(stack[0])
-	a := readString(m, api.DecodeU32(stack[1]), api.DecodeU32(stack[2]))
-	b := readString(m, api.DecodeU32(stack[3]), api.DecodeU32(stack[4]))
-	n := api.DecodeF64(stack[5])
 	if v == nil {
 		stack[0] = api.EncodeI32(-1)
 		return
 	}
+	kind := api.DecodeI32(stack[0])
+	alen, blen := api.DecodeU32(stack[2]), api.DecodeU32(stack[4])
+	if longest := max(alen, blen); longest > v.maxHostString {
+		// Not copied: a plugin must not be able to move its whole heap onto the Go heap.
+		v.pending = fmt.Appendf(nil, `{"name":"RangeError","message":"host call argument of %d bytes (max %d)"}`, longest, v.maxHostString)
+		stack[0] = api.EncodeI32(int32(-len(v.pending) - 2)) //nolint:gosec // short message
+		return
+	}
+	a := readString(m, api.DecodeU32(stack[1]), alen)
+	b := readString(m, api.DecodeU32(stack[3]), blen)
+	n := api.DecodeF64(stack[5])
 	r := v.host(kind, a, b, n)
 	switch {
 	case r.Error != "":

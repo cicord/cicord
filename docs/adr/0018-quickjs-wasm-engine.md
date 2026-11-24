@@ -99,7 +99,11 @@ its supervisors.
 **Host-side quotas** (independent of the engine): handler calls waiting for an instance
 (`Limits.QueueLength`, 1024, `ErrBusy` beyond), pending async host calls (256), host call
 arguments (2 MiB, checked before `json.Unmarshal`), log fields (16 KiB), `kv.list` page
-(4 MiB: the page is cut short and its cursor continues), route response (4 MiB).
+(4 MiB: the page is cut short and its cursor continues), route response (4 MiB). Strings
+are also bounded where they leave the VM, so a plugin cannot move its heap onto the Go
+heap: a host call argument longer than 4.2 MiB is refused before it is copied, and error
+messages, stacks (16 KiB each) and log lines (4 KiB) are cut by the prelude and again by
+the host.
 
 **Bundles** target ES2023 syntax (QuickJS-ng runs all of it, async generators included).
 Stack traces are mapped to the TypeScript sources by a small source map decoder in the
