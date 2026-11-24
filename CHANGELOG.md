@@ -17,6 +17,31 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
   paths that need them.
 - The Verify / Diagnostics permission check uses what the server configuration and the
   plugin grants need, instead of a fixed list.
+- Automatic runtime updates for the single-server install (`deploy/vps/scripts/06-auto-update.sh`):
+  patch releases by default, each one checked against its signed build provenance, with a
+  backup before and a rollback if the new version is not healthy.
+- The release notes give the container image's digest.
+- `make release VERSION=x.y.z` prepares a release commit (versions and changelog).
+
+### Fixed
+
+- Buttons and select menus failed with "The application did not respond": Discord now sends
+  a numeric component id in button interactions, which made the whole event undecodable.
+- Code scanning findings: uploaded archives are extracted through an `os.Root` (no write
+  outside the destination), one strict check for local login redirects, 24-bit color
+  parsing, no backtracking regexes in `@cicord/client` and the `@cicord/ui` Markdown, and
+  the embed example no longer shows errors to the browser.
+- The default portal's page shell is in English (it said "Portail communautaire" until the
+  app loaded).
+- `deploy/vps/.env.example` was missing from the repository (ignored by `.gitignore`).
+
+### Changed
+
+- The documentation has a single home, [cicord.dev/docs](https://cicord.dev/docs/): the
+  Markdown guides, the HTTP API and configuration specs, the architecture document, the
+  design decisions and the release process moved there from the repository.
+- The single-server install runs `CICORD_IMAGE`, a release pinned by digest, instead of a
+  locally tagged image (`CICORD_IMAGE_TAG`).
 
 ## [0.1.0] - 2026-11-24
 
