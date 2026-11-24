@@ -28,12 +28,21 @@ function setup(config: Record<string, unknown> = {}) {
     config: { managerRoles: ["mod"], ...config },
     grants,
     plugin: { name: "polls" },
-    roles: { mod: { name: "Moderator" }, events: { name: "Events" } },
+    server: { id: "server-1" },
+    roles: {
+      mod: { name: "Moderator" },
+      events: { name: "Events", mentionable: true },
+      staff: { name: "Staff" },
+      admins: { name: "Admins", permissions: ["Administrator"] },
+      managers: { name: "Server managers", permissions: ["ManageServer"] },
+    },
     channels: { polls: { name: "polls" }, general: { name: "general" } },
     members: [
       { id: "1", username: "alice" },
       { id: "2", username: "bob" },
       { id: "3", username: "mia", roles: ["mod"] },
+      { id: "4", username: "ada", roles: ["admins"] },
+      { id: "5", username: "sam", roles: ["managers"] },
     ],
   });
 }
@@ -77,11 +86,9 @@ describe("/poll", () => {
       options: { question: "?", choices: "only one" },
     });
     expect(bad.replies[0]).toContain("2 to 10 different choices");
-    const { payload } = await start(t, {
-      thread: true,
-      ping: { id: "role-events", name: "Events", mention: "<@&role-events>" },
-    });
+    const { payload } = await start(t, { thread: true, ping: t.ctx.server.role("events") });
     expect(payload.content).toBe("<@&role-events> — new poll by <@1>");
+    expect(payload.allowedMentions).toEqual({ users: [], roles: ["role-events"], everyone: false });
     expect(t.scheduled[0]?.delayMs).toBe(24 * 3_600_000);
     expect(t.threads).toEqual([
       {
@@ -91,6 +98,53 @@ describe("/poll", () => {
         fromMessage: t.sent[0]!.id,
       },
     ]);
+  });
+
+  test("ping: anyone may ping a member or a mentionable role, only managers other roles", async () => {
+    const poll = (t: Harness, user: string, ping: unknown) =>
+      runCommand(plugin, t, "poll", {
+        user,
+        channel: "polls",
+        options: { question: "Q?", choices: "a | b", ping },
+      });
+    const t = setup();
+    const staff = t.ctx.server.role("staff");
+
+    // A non-manager cannot ping a role that is not mentionable (nor @everyone): nothing is posted.
+    const refused = await poll(t, "1", staff);
+    expect(refused.replies).toEqual([
+      {
+        content:
+          "You cannot ping the role @Staff: only poll managers may ping a role that is not mentionable.",
+        ephemeral: true,
+      },
+    ]);
+    const everyone = { id: "server-1", name: "@everyone", mention: "@everyone", position: 0 };
+    expect((await poll(t, "1", everyone)).replies[0]).toMatchObject({ ephemeral: true });
+    expect(t.sent).toEqual([]);
+    expect(t.scheduled).toEqual([]);
+
+    // A member ping notifies that member only.
+    await poll(t, "1", t.member("2")!.user);
+    expect(t.sent.at(-1)?.allowedMentions).toEqual({ users: ["2"], roles: [], everyone: false });
+
+    // Managers (managerRoles, Administrator, ManageServer) may ping any role: exactly that one.
+    for (const manager of ["3", "4", "5"]) {
+      const r = await poll(t, manager, staff);
+      expect(r.replies[0]).toMatch(/^Poll #\d+ posted/);
+      expect(t.sent.at(-1)?.allowedMentions).toEqual({
+        users: [],
+        roles: ["role-staff"],
+        everyone: false,
+      });
+    }
+    // @everyone by a manager: shown, never notified (as before).
+    await poll(t, "3", everyone);
+    expect(t.sent.at(-1)?.allowedMentions).toEqual({ users: [], roles: [], everyone: false });
+
+    // Without a ping, the poll notifies nobody.
+    await poll(t, "2", undefined);
+    expect(t.sent.at(-1)?.allowedMentions).toEqual({ users: [], roles: [], everyone: false });
   });
 
   test("can be limited to some channels", async () => {

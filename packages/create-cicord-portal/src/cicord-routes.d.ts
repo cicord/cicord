@@ -5,8 +5,8 @@
 //
 //   announcements 0.1.0 (../../plugins/announcements): 1 route(s), untyped (no spec.routes.types)
 //   levels 0.1.0 (../../plugins/levels): 2 route(s), typed
-//   moderation 0.1.0 (../../plugins/moderation): 2 route(s), untyped (no spec.routes.types)
-//   polls 0.1.0 (../../plugins/polls): 1 route(s), typed
+//   moderation 0.1.1 (../../plugins/moderation): 2 route(s), untyped (no spec.routes.types)
+//   polls 0.1.1 (../../plugins/polls): 1 route(s), typed
 //   tickets 0.1.0 (../../plugins/tickets): 2 route(s), untyped (no spec.routes.types)
 
 import type { RouteEntry } from "@cicord/client";

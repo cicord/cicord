@@ -585,17 +585,30 @@ func TestShowcasePolls(t *testing.T) {
 	pollsCh := s.channel("polls")
 	member := s.role("Member")
 
-	// /poll with string, number, boolean, string choices and mentionable options.
+	// Only poll managers may ping a role that is not mentionable (Member is not): the
+	// bot could, so the plugin refuses it for anyone else, before posting anything.
 	st := wait(t, w.InvokeCommand(alice.ID, s.serverID, pollsCh.ID, s.appID, "poll", map[string]any{
+		"question": "Game night?", "choices": "Friday | Saturday", "ping": member.ID,
+	}))
+	if !st.Ephemeral || !strings.Contains(replyText(st), "only poll managers may ping a role that is not mentionable") {
+		t.Fatalf("/poll pinging a non-mentionable role = %+v (%s)", st, replyText(st))
+	}
+
+	// /poll with string, number, boolean, string choices and mentionable (a member) options.
+	st = wait(t, w.InvokeCommand(alice.ID, s.serverID, pollsCh.ID, s.appID, "poll", map[string]any{
 		"question": "Game night?", "choices": "Friday | Saturday | Sunday", "hours": 2.5,
-		"multiple": false, "ping": member.ID, "thread": true,
+		"multiple": false, "ping": bob.ID, "thread": true,
 	}))
 	if !st.Ephemeral || !strings.Contains(replyText(st), "Poll #1 posted. It closes in 2.5 h.") {
 		t.Fatalf("/poll = %+v (%s)", st, replyText(st))
 	}
 	poll := pollMessage(s, pollsCh.ID, "1")
-	if !strings.HasPrefix(poll.Content, "<@&"+member.ID+">") {
+	if !strings.HasPrefix(poll.Content, "<@"+bob.ID+"> — new poll by <@"+alice.ID+">") {
 		t.Errorf("ping = %q", poll.Content)
+	}
+	// allowedMentions: only the pinged member is notified, not the author named in the text.
+	if m, _ := w.MessageMentions(poll.ID); !reflect.DeepEqual(m, sim.Mentions{UserIDs: []string{bob.ID}}) {
+		t.Errorf("poll #1 notified %+v", m)
 	}
 	threads := w.Threads(s.serverID)
 	if len(threads) != 1 || threads[0].Name != "Poll: Game night?" {
@@ -692,6 +705,21 @@ func TestShowcasePolls(t *testing.T) {
 		func(st sim.InteractionState) bool { return replyText(st) != "" })
 	if !st.Ephemeral || !strings.Contains(replyText(st), "Friday** 🏆") {
 		t.Errorf("/polls results = %+v", st.Message)
+	}
+
+	// A poll manager (managerRoles: [mod]) may ping the role: exactly that role is notified.
+	st = wait(t, w.InvokeCommand(mia.ID, s.serverID, pollsCh.ID, s.appID, "poll", map[string]any{
+		"question": "Movie night?", "choices": "Yes | No", "ping": member.ID,
+	}))
+	if !strings.Contains(replyText(st), "Poll #4 posted") {
+		t.Fatalf("/poll by a manager = %+v (%s)", st, replyText(st))
+	}
+	poll4 := pollMessage(s, pollsCh.ID, "4")
+	if !strings.HasPrefix(poll4.Content, "<@&"+member.ID+">") {
+		t.Errorf("manager ping = %q", poll4.Content)
+	}
+	if m, _ := w.MessageMentions(poll4.ID); !reflect.DeepEqual(m, sim.Mentions{RoleIDs: []string{member.ID}}) {
+		t.Errorf("poll #4 notified %+v", m)
 	}
 }
 
@@ -848,8 +876,18 @@ func TestShowcaseModeration(t *testing.T) {
 	if h := w.InvokeCommand(troll.ID, s.serverID, general.ID, s.appID, "warn", map[string]any{"member": mia.ID, "reason": "x"}); h.Err() == nil {
 		t.Fatal("a member could use /warn")
 	}
+	// Discord only checks the bot's role hierarchy: the plugin refuses a moderator acting on
+	// staff (spec.access admins/moderators) or on a member ranked at or above them.
+	boss := s.member("boss", "Admin")
+	st := wait(t, w.InvokeCommand(mia.ID, s.serverID, general.ID, s.appID, "kick", map[string]any{"member": boss.ID}))
+	if !st.Ephemeral || !strings.Contains(replyText(st), "is staff (admin access): only an admin can moderate them.") {
+		t.Fatalf("/kick of an admin by a moderator = %+v (%s)", st, replyText(st))
+	}
+	if _, ok := w.Member(s.serverID, boss.ID); !ok {
+		t.Fatal("the admin was kicked by a moderator")
+	}
 	// /warn with an attachment option: case in the audit log, DM to the member, webhook.
-	st := wait(t, w.InvokeCommand(mia.ID, s.serverID, general.ID, s.appID, "warn", map[string]any{
+	st = wait(t, w.InvokeCommand(mia.ID, s.serverID, general.ID, s.appID, "warn", map[string]any{
 		"member": troll.ID, "reason": "spam", "evidence": "proof.png",
 	}))
 	if !st.Ephemeral || !strings.Contains(replyText(st), "was warned (case #1). Active warnings: 1.") {

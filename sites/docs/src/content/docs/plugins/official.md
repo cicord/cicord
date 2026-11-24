@@ -97,7 +97,9 @@ discussion thread. Publishes `polls.closed` for other plugins (levels gives vote
 audit-log can log it).
 
 - **Commands**: `/poll question choices [hours] [multiple] [style] [ping] [thread]`; choices
-  are separated by `|` (2 to 10).
+  are separated by `|` (2 to 10). `ping` notifies exactly the picked member or role (never
+  the author, never `@everyone`); a role that is not mentionable can only be pinged by a poll
+  manager.
 - **Portal routes**: `GET /polls/:id` (public), with a typed route contract.
 - **Capabilities**: `discord.messages.send`, `discord.messages.read`,
   `discord.channels.read`, `discord.threads.manage`, `storage.kv`, `scheduler`,
@@ -108,7 +110,7 @@ audit-log can log it).
 | `defaultHours` *(moderator)* | `24` | How long a poll stays open when `/poll` does not say. |
 | `maxHours` *(moderator)* | `168` | Longest poll allowed. |
 | `channels` *(moderator)* | `[]` | Channels where `/poll` may be used (empty: everywhere). |
-| `managerRoles` | `[]` | Roles that may close any poll (its author always can). |
+| `managerRoles` | `[]` | Poll managers: they may close any poll (its author always can) and ping any role with `/poll ping` (others only mentionable roles). Members with Administrator or Manage Server are managers too. |
 | `confirmVotes` | `true` | Tell voters privately what they voted for. |
 | `color` | `#5865f2` | Embed color. |
 
@@ -147,7 +149,11 @@ case is published as `moderation.case` for the audit-log plugin.
 
 - **Commands**: `/warn member reason [evidence]`, `/warnings member` (Moderate Members);
   `/timeout member duration [reason]` (Moderate Members); `/kick member [reason]` (Kick
-  Members); `/ban member [reason] [delete_messages]` (Ban Members).
+  Members); `/ban member [reason] [delete_messages]` (Ban Members). Discord only checks the
+  bot's role hierarchy, so the plugin checks the moderator's: the owner may act on anyone,
+  nobody on the owner; members with the moderator or admin access level (`spec.access`) can
+  only be sanctioned by an admin; and the moderator's highest role must be strictly above
+  the member's. What cannot be verified is refused (ephemeral answer).
 - **Portal routes**: `GET /warnings/:userId` (moderators), `DELETE /warnings/:userId`
   (admins).
 - **Capabilities**: `discord.messages.send`, `discord.messages.manage`,

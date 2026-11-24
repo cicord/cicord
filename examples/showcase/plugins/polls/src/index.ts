@@ -3,12 +3,15 @@ import {
   definePlugin,
   defineRoutes,
   subcommand,
+  type AllowedMentions,
   type AutocompleteInteraction,
   type ComponentInteraction,
   type Context,
   type FocusedOption,
   type Json,
   type Member,
+  type Role,
+  type User,
 } from "@cicord/sdk";
 import {
   MAX_CHOICES,
@@ -73,8 +76,38 @@ async function openPoll(
   return poll;
 }
 
+/**
+ * Poll managers: the managerRoles, and members with Administrator or ManageServer
+ * (server-level permissions; missing on an older engine, then only managerRoles count).
+ */
 const isManager = (ctx: Context, member: Member | undefined): boolean =>
-  ctx.config.managerRoles.some((r) => member?.hasRole(r));
+  member !== undefined &&
+  (ctx.config.managerRoles.some((r) => member.hasRole(r)) ||
+    (member.permissions ?? []).some((p) => p === "Administrator" || p === "ManageServer"));
+
+const isRole = (target: User | Role): target is Role => !("username" in target);
+
+/**
+ * Who the `ping` option may notify, or why it is refused. Anyone may ping a member or a
+ * mentionable role; only a manager may ping a role that is not mentionable (the bot could,
+ * so the plugin must not do it for anyone). Exactly that member or role is allowed to be
+ * notified, nobody else (not even the author's mention in the text). @everyone never pings.
+ */
+function pingMentions(
+  ctx: Context,
+  member: Member | undefined,
+  ping: User | Role | undefined,
+): { allowed: AllowedMentions } | { refused: string } {
+  const none: AllowedMentions = { users: [], roles: [], everyone: false };
+  if (!ping) return { allowed: none };
+  if (!isRole(ping)) return { allowed: { ...none, users: [ping.id] } };
+  const everyone = ping.id === ctx.server.id;
+  if (!isManager(ctx, member) && (everyone || ping.mentionable !== true))
+    return {
+      refused: `You cannot ping ${everyone ? "@everyone" : `the role @${ping.name}`}: only poll managers may ping a role that is not mentionable.`,
+    };
+  return { allowed: everyone ? none : { ...none, roles: [ping.id] } };
+}
 
 /** Autocomplete of the `poll` option: open polls (`/polls close`) or every poll. */
 function pollOption(onlyOpen: boolean) {
@@ -151,6 +184,11 @@ export default definePlugin({
           );
           return;
         }
+        const ping = pingMentions(ctx, interaction.member, o.ping);
+        if ("refused" in ping) {
+          await interaction.reply({ content: ping.refused, ephemeral: true });
+          return;
+        }
         const hours = Math.min(o.hours ?? ctx.config.defaultHours, ctx.config.maxHours);
         const now = Date.now();
         const poll: Poll = {
@@ -171,7 +209,7 @@ export default definePlugin({
           ...(o.ping
             ? { content: `${o.ping.mention} — new poll by ${interaction.user.mention}` }
             : {}),
-          allowedMentions: { users: true, roles: true, everyone: false },
+          allowedMentions: ping.allowed,
         });
         poll.messageId = message.id;
         poll.taskId = (await ctx.schedule.after(hours * HOUR, "close", { id: poll.id })).id;

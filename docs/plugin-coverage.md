@@ -48,9 +48,10 @@ lists the precise steps.
 | `user` option | levels `/rank member`, moderation `/warn` `/kick` … | rt/Levels, rt/Moderation | to verify on real Discord |
 | `channel` option | tickets `/ticket-panel channel` | rt/Tickets | to verify on real Discord |
 | `role` option | levels `/top role` | rt/Levels | to verify on real Discord |
-| `mentionable` option | polls `ping` (role) | rt/Polls | to verify on real Discord |
+| `mentionable` option | polls `ping` (member, or role: a non-mentionable role only by a poll manager, i.e. managerRoles, Administrator or ManageServer) | rt/Polls; polls unit tests | to verify on real Discord |
 | `attachment` option | moderation `/warn evidence` (image in the case embed) | rt/Moderation | to verify on real Discord |
 | `permissions` (default member permissions) | tickets `/ticket-panel` (ManageChannels), moderation (ModerateMembers, KickMembers, BanMembers) | rt/Tickets, rt/Moderation (a member is refused) | to verify on real Discord |
+| Invoker's role hierarchy (Discord only checks the bot's): owner passes, owner target refused, staff (spec.access) only by an admin, highest role strictly above the target's, unverifiable refused | moderation `/warn` `/timeout` `/kick` `/ban` | moderation unit tests; rt/Moderation (a moderator cannot kick an admin) | to verify on real Discord |
 | `ephemeral: true` default (reply without flag is ephemeral) | levels `/rank`, tickets, polls, moderation | rt/Levels, rt/AutoDefer, rt/Tickets | to verify on real Discord |
 | Subcommands (`subcommand()`, `interaction.subcommand`, ephemeral on the command) | polls `/polls close`, `/polls results` | rt/Polls; polls unit tests; `internal/plugin` TestSubcommandDispatch | to verify on real Discord |
 | Subcommand groups (`interaction.group`) | — | `internal/plugin` TestSubcommandDispatch, `internal/sim` TestInvokeSubcommand, sdk tests | to verify on real Discord |
@@ -101,6 +102,8 @@ lists the precise steps.
 |---|---|---|---|
 | `server.channel(key / {id})`, `server.role()` | all | rt/* | to verify on real Discord |
 | `server.member()` | moderation, levels | rt/Moderation, rt/Levels | to verify on real Discord |
+| `role.position` / `role.mentionable`, `server.ownerId`, `member.permissions` (server-level, no channel overwrites), `member.access` | moderation (hierarchy), polls (ping) | `internal/plugin` TestMemberPermissionsAccessAndRolePositions, TestOwnerAndAdminAccess; `disgoadapter` TestRoleAndServerFromJSON; sdk permissions tests | to verify on real Discord |
+| `allowedMentions` id lists (`roles: [id]`, `users: [id]`, `repliedUser`; ≤ 100 snowflakes, a type never both parsed and listed) | polls `ping` (only the pinged member or role) | rt/Polls (`sim` MessageMentions); `internal/plugin` TestAllowedMentionIDLists; `internal/sim` TestAllowedMentionsResolution; `disgoadapter` TestAllowedMentionsToWire; `internal/discord` TestAllowedMentionsValidate | to verify on real Discord |
 | `server.createChannel` (category, topic, overwrites `@everyone` / role key / `member:<id>`) | tickets | rt/Tickets (visibility per member) | to verify on real Discord |
 | Plugin-owned channel never pruned (`prune: true`) and overwrites kept by `SyncServer` | tickets | rt/Tickets | to verify on real Discord |
 | `server.deleteChannel` (ownership record removed) | tickets close | rt/Tickets | to verify on real Discord |
@@ -261,7 +264,11 @@ steps.
    lands in #ticket-log (message count, participants), the channel is deleted. Repeat with
    a bot **without Administrator** (the `member:<bot>` overwrite must keep its access).
 3. **Polls**: `/poll question:"Game night?" choices:"Fri | Sat | Sun" hours:0.05 ping:@Member
-   thread:True` in #polls: message with 3 buttons + Close, @Member pinged, thread created.
+   thread:True` in #polls as a Moderator (a poll manager): message with 3 buttons + Close,
+   @Member pinged (and only @Member: the author named in the text gets no notification),
+   thread created. From the member account, `ping:@Member` (not mentionable) is refused
+   ephemerally and nothing is posted; `ping:@Events` (make it mentionable) and
+   `ping:@someone` work.
    Vote from two accounts (results update live, private "Your vote" follow-up, clicking
    again removes it). Wait 3 minutes: the poll closes itself (buttons removed, 🏆). Start
    another with `style:Select menu multiple:True`, vote with the select, close it with
@@ -278,7 +285,11 @@ steps.
    `/timeout … duration:Remove the timeout`, `/kick` (DM received before the kick, "left"
    logged), `/ban delete_messages:True`. Change a nickname/role: logged. Post 6 messages in
    5 s from a non-staff account: timed out 5 min, last message deleted. Set
-   `webhook.url` to a real Slack or Discord webhook: every case is mirrored.
+   `webhook.url` to a real Slack or Discord webhook: every case is mirrored. Role
+   hierarchy: as a Moderator, `/kick` an Admin or a Support member (staff), the owner, and a
+   member whose highest role is at or above Moderator: each is refused ephemerally and
+   nothing happens; as an Admin, `/timeout` a Moderator works; as the owner (even without
+   roles) `/kick` an Admin works.
 6. **Portal routes**: with the portal, `GET …/levels/leaderboard` anonymously,
    `…/levels/me` as a member, `…/tickets/tickets` and `…/moderation/warnings/<id>` as a
    moderator, `DELETE …/moderation/warnings/<id>` as an admin (403 for a moderator).
