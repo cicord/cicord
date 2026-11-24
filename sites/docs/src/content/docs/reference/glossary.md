@@ -16,7 +16,7 @@ description: The vocabulary of Cicord, from adoption to write-back.
 - **Instance (plugin instance)**: A plugin running for one (bot, server) pair, with its own config, storage and schedules. An entry of `bot.yaml` `spec.plugins` produces one instance per server.
 - **Intent**: A Discord gateway intent, in Cicord naming (`ServerMembers`, `MessageContent`…). Privileged intents must be enabled in the Discord developer portal.
 - **Key**: The stable identifier of a resource (`general`), separate from its display name. Keys are used for references and never change.
-- **Official / unofficial**: The trust level of a plugin source, computed from its URL. Source `cicord` (the bundled plugins) is official; registries are unofficial.
+- **Official / unofficial**: The trust level of a plugin source, computed from its URL. Source `cicord` (the bundled plugins and the signed official registry, github.com/cicord/cicord-plugins) is official; other registries are unofficial.
 - **Plan**: The ordered list of changes (`create`, `update`, `delete`, `adopt`, `reorder`, `unmanage`) between the YAML and Discord. Shown by `cicord plan`.
 - **Plugin**: A TypeScript module with a static manifest (`plugin.yaml`), run sandboxed by the runtime.
 - **Plugin-owned resource**: A channel created at run time by a plugin (`ctx.server.createChannel`). The reconciler never touches or prunes it.

@@ -14,6 +14,9 @@ export const links = {
   quickStart: url("docs/getting-started/quick-start/"),
   plugins: url("docs/plugins/overview/"),
   deploy: url("docs/self-hosting/deploy/"),
+  productionVps: url("docs/self-hosting/production-vps/"),
+  officialPlugins: "https://github.com/cicord/cicord-plugins",
+  communityConfig: "https://github.com/cicord/cicord-community",
   github: "https://github.com/cicord/cicord",
   discord: "https://discord.gg/qTt5S2Fe4m",
 } as const;

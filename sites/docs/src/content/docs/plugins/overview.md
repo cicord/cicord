@@ -14,7 +14,7 @@ Plugins are installed from **sources**, like apt sources or Homebrew taps:
 
 | Source | What it is | Trust |
 |---|---|---|
-| **`cicord`** | The [official plugins](../official/) bundled with the binary: welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log, announcements. Always available, no configuration. | `official` |
+| **`cicord`** | The [official plugins](../official/): welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log, announcements. Published in the signed official registry [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins), and bundled with the binary for offline and first installs. Always available, no configuration. | `official` |
 | **Registries** | Git repositories with an `index.yaml`, declared in `cicord.yaml` `spec.registries`. Community collections, your organization's private plugins, your own development registry. | `unofficial` |
 | **Local plugins** | A directory of your repository (`plugins/<name>/`), referenced by path. | `local` |
 
@@ -22,11 +22,11 @@ Trust is **computed from the URL, never declared**: a registry can't call itself
 admin console labels unofficial sources everywhere and asks for an explicit confirmation,
 restating the capabilities and network access being granted, before installing from them.
 
-:::note[Official registry]
-A signed official registry is designed and implemented (its plugins would join source `cicord`
-automatically), but its repository and signing key do not exist yet. Until then, `cicord` is
-the plugins bundled in your binary. See [Publishing](../publishing/#the-official-registry).
-:::
+Source `cicord` merges the plugins bundled in your binary with the
+[official registry](../publishing/#the-official-registry), whose index is only used when its
+signature verifies against the keys built into the binary. When a plugin is in both, the
+registry version is used only if it is newer than the bundled one; when the registry cannot
+be reached or verified, `cicord` lists the bundled plugins.
 
 ## The Store
 
@@ -58,15 +58,24 @@ cicord plugin add acme/xp --bot moderator
 
 `cicord plugin add <registry>/<plugin>[@<range>]` adds an instance to the bot (`--name` sets the
 instance key, default the plugin name) and locks the version in `cicord.lock`. It works with
-the registries declared in `cicord.yaml`; the bundled official plugins are installed from the
-setup wizard or the Store (`cicord plugin add cicord/<name>` needs the official registry, which does
-not exist yet).
+the registries declared in `cicord.yaml` and with the official registry:
 
-Installing a **bundled** official plugin from the Store or the setup wizard copies its sources
-to `plugins/<name>/` and adds a local instance; installing from a registry adds
-`source: <registry>/<plugin>` with a `version` range and a `cicord.lock` entry. Either way, the
-change is one [write-back](../../concepts/write-back/) commit or pull request, and every
-capability the plugin requests is granted, as reviewed.
+```sh
+cicord plugin add cicord/welcome --bot moderator   # from github.com/cicord/cicord-plugins
+```
+
+There are two ways an official plugin lands in your repository:
+
+- **From the official registry**: `cicord plugin add cicord/<name>`, or the Store when the
+  registry has a newer version than the one bundled in your binary. The bot
+  gets `source: cicord/<name>` with a `version` range, and `cicord.lock` pins the commit and
+  content hash, like any registry plugin.
+- **A copy of the bundled plugin**: the Store otherwise, and the setup wizard always, copy the
+  sources bundled in the binary to `plugins/<name>/` and add a local instance.
+
+Installing from any registry adds `source: <registry>/<plugin>` with a `version` range and a
+`cicord.lock` entry. Either way, the change is one [write-back](../../concepts/write-back/)
+commit or pull request, and every capability the plugin requests is granted, as reviewed.
 
 ## Updating
 
@@ -88,12 +97,13 @@ plugin runs.
 cicord plugin update                       # list available updates
 cicord plugin update acme/xp               # update to the latest version, print the capability diff
 cicord plugin update acme/xp --to ^2.0.0   # or to a range (written to every instance)
-cicord plugin update cicord/welcome          # a copy of an official plugin, from this binary
+cicord plugin update cicord/welcome        # an official plugin
 ```
 
 Copies of official plugins in `plugins/<name>/` update from the binary: a newer Cicord may bundle
 a newer version. A copy you changed is not overwritten unless you force it (admin console
-checkbox, or `--force`).
+checkbox, or `--force`). An official plugin locked from the official registry
+(`cicord/<name>` in `cicord.lock`) updates from the registry, like any registry plugin.
 
 ## Uninstalling
 

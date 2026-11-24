@@ -301,7 +301,7 @@ cicord version [flags]
 
 ## Secrets
 
-Manage the encrypted secret store of a data directory (bot tokens, `CICORD_DISCORD_CLIENT_SECRET`, `CICORD_GIT_TOKEN`, the `CICORD_GITHUB_APP_*` secrets, registry tokens). Environment variables always take precedence over stored secrets. Values are read from stdin and never printed; the runtime picks a changed bot token up on its next restart. Every `cicord secret` command takes `--data-dir` (default `.cicord-data`, where `secret.key` lives) and, for a runtime on PostgreSQL, `--database-url` (default `CICORD_DATABASE_URL`). See [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
+Manage the encrypted secret store of a data directory (bot tokens, `CICORD_DISCORD_CLIENT_SECRET`, `CICORD_GIT_TOKEN`, the `CICORD_GITHUB_APP_*` secrets, `CICORD_WEBHOOK_SECRET`, `CICORD_RUNTIME_TOKEN`, registry tokens). Environment variables always take precedence over stored secrets. Values are read from stdin and never printed; the runtime picks a changed bot token, webhook secret or runtime token up on its next restart. Every `cicord secret` command takes `--data-dir` (default `.cicord-data`, where `secret.key` lives) and, for a runtime on PostgreSQL, `--database-url` (default `CICORD_DATABASE_URL`). See [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
 
 ### `cicord secret ls`
 
@@ -442,7 +442,7 @@ cicord plugin test plugins/onboarding --config plugins/onboarding/test/config.ya
 
 ### `cicord plugin add`
 
-Add a registry plugin to a bot and lock it in `cicord.lock`.
+Add a registry plugin to a bot and lock it in `cicord.lock`. The registry is one declared in `cicord.yaml` `spec.registries`, or `cicord`, the [official registry](../../plugins/publishing/#the-official-registry). The bot gets `source`, a `version` range (`^<version>` without `@<range>`) and `grants` set to the capabilities the plugin requests; review them before committing.
 
 ```text
 cicord plugin add <registry>/<plugin>[@<range>] [flags]
@@ -455,16 +455,14 @@ cicord plugin add <registry>/<plugin>[@<range>] [flags]
 | `--name` `string` | instance name (default: plugin name) |
 
 ```sh
-cicord plugin add acme/xp --bot moderator
+cicord plugin add acme/hello --bot moderator
 cicord plugin add acme/xp@^1.2.0 --bot moderator --name xp
+cicord plugin add cicord/welcome --bot moderator     # from github.com/cicord/cicord-plugins
 ```
-
-The `--help` examples use the `cicord/` prefix, which only resolves once the official registry
-exists; today the bundled official plugins are installed from the setup wizard or the Store.
 
 ### `cicord plugin update`
 
-Without argument, list the plugins with a newer version: registry plugins (`cicord.lock`) and copies of the official plugins (`plugins/<name>/`). With a plugin, update every instance using it: the lock entry, each instance's version range when the new version is outside it, and the grants (set to what the new version requests). Copies of official plugins (`cicord/<name>`) are rewritten from the plugins bundled in this binary. Review the printed capability changes before committing.
+Without argument, list the plugins with a newer version: registry plugins (`cicord.lock`) and copies of the official plugins (`plugins/<name>/`). With a plugin, update every instance using it: the lock entry, each instance's version range when the new version is outside it, and the grants (set to what the new version requests). Copies of official plugins (`cicord/<name>` instances using `plugins/<name>/`) are rewritten from the plugins bundled in this binary; a locally modified copy only with `--force`. An official plugin locked in `cicord.lock` (installed from the official registry) updates from the registry like any registry plugin. Review the printed capability changes before committing.
 
 ```text
 cicord plugin update [<registry>/<plugin>] [flags]
@@ -511,7 +509,7 @@ cicord plugin publish plugins/polls --registry . --push   # monorepo: tag polls/
 
 ## Registries
 
-Plugin sources work like apt sources or Homebrew taps. The official plugins (source `cicord`) are always available; other registries are git repositories with an `index.yaml`, declared in `cicord.yaml` `spec.registries`, and are unofficial. Every `cicord registry` command takes `--dir` (the repository root, default `.`).
+Plugin sources work like apt sources or Homebrew taps. The official plugins (source `cicord`: the copies bundled with the binary plus the signed index of [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins)) are always available; other registries are git repositories with an `index.yaml`, declared in `cicord.yaml` `spec.registries`, and are unofficial. Every `cicord registry` command takes `--dir` (the repository root, default `.`).
 
 ### `cicord registry list`
 

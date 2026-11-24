@@ -317,7 +317,9 @@ const official = [
       <div class="feature__copy">
         <h2 id="f-store" class="section__title">A Store where you see what you grant</h2>
         <p>
-          The official plugins ship with the binary:
+          The official plugins are published in a signed registry,
+          <a href={links.officialPlugins}>cicord-plugins</a>, and ship with the binary for offline
+          installs:
           <span class="inline-list"
             >{official.map((p, i) => <><code>{p}</code>{i < official.length - 1 ? ", " : "."}</>)}</span
           >
@@ -447,9 +449,36 @@ const official = [
             <p>
               One static Go binary holds the reconciler, the bot gateways, the plugin host, the API,
               the admin console and the portal. No database server, no Node.js, no git binary: just
-              a data directory. A container image is described too.
+              a data directory, with SQLite, or PostgreSQL if you prefer. The release pipeline
+              builds binaries and a multi-arch container image with signed build provenance.
             </p>
             <p><a href={links.deploy}>Self-hosting guide</a></p>
+          </dd>
+        </div>
+        <div class="more__item">
+          <dt>Self-host it on one server</dt>
+          <dd>
+            <p>
+              A step-by-step production install on a single VPS: SSH and the admin console
+              reachable only from your Tailscale tailnet, Caddy serving the public portal over
+              HTTPS, a firewall, automatic updates and reboots, a GitHub App with short-lived tokens,
+              secrets stored encrypted by the runtime, and daily backups that keep the key apart.
+            </p>
+            <p><a href={links.productionVps}>Production on a VPS</a></p>
+          </dd>
+        </div>
+        <div class="more__item">
+          <dt>A real server, in the open</dt>
+          <dd>
+            <p>
+              The official Cicord community server is managed with Cicord. Its configuration is a
+              public repository: roles, channels, permissions, AutoMod, onboarding and the bot's
+              plugins, changed through pull requests.
+            </p>
+            <p>
+              <a href={links.communityConfig}>cicord/cicord-community</a> ·
+              <a href={links.discord}>Join the server</a>
+            </p>
           </dd>
         </div>
       </dl>
@@ -461,16 +490,17 @@ const official = [
       <div class="start__copy">
         <h2 id="start-title" class="section__title">Get started in five minutes</h2>
         <p>
-          Build the binary from source, then either connect a real server with the setup wizard or
-          try everything offline against the simulator.
+          Install <code>cicord</code> (a release binary or the container image, see the
+          <a href={links.install}>installation guide</a>, or from source as below), then either connect a real server with the setup wizard or try everything
+          offline against the simulator.
         </p>
         <aside class="notice" aria-labeledby="status-title">
           <h3 id="status-title">Status: pre-release</h3>
           <p>
             Cicord is at <code>v1alpha1</code>. The runtime, the reconciler, the plugin host, the
             simulator, the admin console and the portal SDK work end to end, but file formats and
-            APIs may still change and there are no published releases yet. Expect rough edges, and
-            report them on GitHub.
+            APIs may still change between <code>0.x</code> releases. Expect rough edges, and report
+            them on GitHub.
           </p>
         </aside>
         <p class="start__links">

@@ -29,6 +29,10 @@ before moving to a newer one.
 5. Check `GET /readyz` and `cicord status`: the revision should be active and every server
    `Synced` and `Healthy`.
 
+On a server installed with [Production on a VPS](../production-vps/#9-updates), the same
+steps are: run the backup service, get the new image, set `CICORD_IMAGE_TAG` in `.env` and run
+`docker compose up -d` again.
+
 ## What to watch for
 
 - **`engine` ranges.** Your `cicord.yaml` declares `spec.engine` (for example
@@ -37,10 +41,13 @@ before moving to a newer one.
   version is compatible.
 - **`apiVersion`.** Every file uses `cicord.dev/v1alpha1`. A breaking change of the format is
   meant to bump it.
-- **Bundled plugins.** Copies of the official plugins in `plugins/<name>/` are not changed by
+- **Official plugins.** Copies of the official plugins in `plugins/<name>/` are not changed by
   an upgrade. A newer binary may bundle newer versions: the admin console shows "Update
   available", and `cicord plugin update` lists them. A copy you modified is only overwritten when
-  you force it.
+  you force it. Official plugins installed from the
+  [official registry](../../plugins/publishing/#the-official-registry) (`cicord/<name>` in
+  `cicord.lock`) update like any registry plugin, independently of the binary; check their
+  `engine` range.
 - **Vendored SDK packages.** Plugins scaffolded by `cicord plugin new` and portals scaffolded by
   `cicord portal init` vendor the `@cicord/*` tarballs of the binary that created them. Re-run the
   scaffolding in a scratch directory to pick up the new tarballs, or switch to npm once the
@@ -50,6 +57,4 @@ before moving to a newer one.
 
 ## Planned
 
-Release binaries (GoReleaser), a published container image, npm publication of the `@cicord/*`
-packages and a `go install` that embeds the web UIs are planned, together with a decision on
-the runtime license. See [Status and roadmap](../../project/status/).
+A `go install` that embeds the web UIs. See [Status and roadmap](../../project/status/).

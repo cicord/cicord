@@ -1,12 +1,15 @@
 ---
 title: Official plugins
-description: The nine plugins bundled in the cicord binary - welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log and announcements - with their commands, capabilities and settings.
+description: The nine official plugins, published in the signed cicord-plugins registry - welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log and announcements - with their commands, capabilities and settings.
 ---
 
-Nine official plugins are bundled in the `cicord` binary (source `cicord`). Install them from the
-setup wizard or the admin console's Store, which copy the plugin into `plugins/<name>/` of your
-repository and add an instance to the bot; or copy a plugin directory yourself and reference it
-from `bot.yaml`.
+Nine official plugins are published in the signed official registry
+[cicord/cicord-plugins](https://github.com/cicord/cicord-plugins) (source `cicord`, tags
+`<name>/vX.Y.Z`). Install one with `cicord plugin add cicord/<name> --bot <bot>`, which locks
+its exact commit and integrity in `cicord.lock`. Copies are also bundled in the `cicord` binary
+for offline and first installs: the setup wizard always installs the bundled copy into
+`plugins/<name>/`, and the admin console's Store does too unless the registry has a newer
+version.
 They are also complete examples of the SDK: their sources live in
 [`examples/basic/plugins`](https://github.com/cicord/cicord/tree/main/examples/basic/plugins)
 and [`examples/showcase/plugins`](https://github.com/cicord/cicord/tree/main/examples/showcase/plugins).

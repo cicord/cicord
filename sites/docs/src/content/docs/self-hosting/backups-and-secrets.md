@@ -20,6 +20,11 @@ a PostgreSQL database with `--database-url` / `CICORD_DATABASE_URL` (see
 The rest of the data directory (`source/`, `writeback/`, `snapshots/`, `cache/`) is rebuilt
 automatically.
 
+On a server installed with [Production on a VPS](../production-vps/#8-secrets-and-backups),
+[`deploy/vps/scripts/05-backup.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/05-backup.sh)
+installs a daily systemd timer that does the online SQLite copy below, adds `repo.git` and the
+write-back clone, and leaves the keys out.
+
 **Keep the key apart from the backups.** The database backups hold the secrets encrypted; the
 key (`secret.key` or `CICORD_SECRET_KEY`) decrypts them. Store the key once, in a password
 manager or a vault, and leave it out of the routine backups: a stolen backup then reveals no
@@ -96,6 +101,8 @@ manage environment variables:
 | GitHub App private key (PEM) | `CICORD_GITHUB_APP_PRIVATE_KEY` |
 | GitHub App installation ID | `CICORD_GITHUB_APP_INSTALLATION_ID` (discovered by the wizard) |
 | OAuth client secret | `CICORD_DISCORD_CLIENT_SECRET` |
+| GitHub webhook secret | `CICORD_WEBHOOK_SECRET` (`cicord secret set`) |
+| Runtime token of the CLI and CI | `CICORD_RUNTIME_TOKEN` (`cicord secret set`) |
 | Private registry token | `CICORD_REGISTRY_<NAME>_TOKEN` (also from the Store) |
 
 - **Encryption**: AES-256-GCM with a random nonce per write; the secret's name is
@@ -104,8 +111,9 @@ manage environment variables:
   `openssl rand -base64 32`), otherwise `<data dir>/secret.key`, generated with mode 0600. A
   wrong key fails at startup.
 - **Resolution**: the runtime reads `token.secretRef`, `CICORD_GIT_TOKEN`, the
-  `CICORD_GITHUB_APP_*` secrets and the OAuth client secret from the **environment first, then
-  the store**. An environment variable always overrides a stored secret. A configured GitHub
+  `CICORD_GITHUB_APP_*` secrets, the OAuth client secret, `CICORD_WEBHOOK_SECRET` and
+  `CICORD_RUNTIME_TOKEN` from the **environment first, then the store** (the last two at
+  startup). An environment variable always overrides a stored secret. A configured GitHub
   App takes precedence over `CICORD_GIT_TOKEN` (see
   [GitHub access](../deploy/#github-access-token-or-github-app)).
 - The API never returns a secret value; secrets are listed by name and date only.
@@ -151,7 +159,7 @@ provider: paste it straight into `cicord secret set`.
 | `CICORD_DISCORD_CLIENT_SECRET` | Developer Portal → **OAuth2 → Reset Secret** | `cicord secret set CICORD_DISCORD_CLIENT_SECRET` |
 | `CICORD_GITHUB_APP_PRIVATE_KEY` | GitHub App settings → **Private keys → Generate a private key**, then **delete the old key** | `cicord secret set CICORD_GITHUB_APP_PRIVATE_KEY < new.pem` |
 | `CICORD_GIT_TOKEN` (token instead of an App) | GitHub → Settings → Developer settings → the token → **Regenerate**, or revoke it | `cicord secret set CICORD_GIT_TOKEN` |
-| `CICORD_WEBHOOK_SECRET` | a new random value (`openssl rand -hex 32`), set in the GitHub App (or repository) webhook settings too | `cicord secret set CICORD_WEBHOOK_SECRET` |
-| `CICORD_RUNTIME_TOKEN` (CI) | a new random value | update the CI secret and the runtime |
+| `CICORD_WEBHOOK_SECRET` | a new random value (`openssl rand -hex 32`), set in the GitHub App (or repository) webhook settings too | `cicord secret set CICORD_WEBHOOK_SECRET`, restart the runtime |
+| `CICORD_RUNTIME_TOKEN` (CI) | a new random value | update the CI secret, `cicord secret set CICORD_RUNTIME_TOKEN`, restart the runtime |
 | the store's key (`secret.key`) | `cicord secret rotate-key` re-encrypts every secret with a new key | store the new key in the password manager, delete the old copy |
 | `link.key` | delete the file (or change `CICORD_LINK_SECRET`) and restart | portal links already sent stop working |

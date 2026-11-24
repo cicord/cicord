@@ -55,7 +55,9 @@ one-time link to the setup wizard.
 5. **Repository.** Choose where the configuration lives:
    - **Managed by Cicord**: a git repository inside the data directory. No git knowledge
      needed; every change is still a commit.
-   - **GitHub**: an HTTPS repository URL, a branch and a token.
+   - **GitHub**: an HTTPS repository URL, a branch, and a token or a
+     [GitHub App](../../self-hosting/deploy/#github-access-token-or-github-app) (its App ID and
+     private key; the installation is discovered).
    - With `cicord dev`, **This folder** writes the files into the current directory.
 
    **Import and activate** reads the server as it is, writes `cicord.yaml`,
@@ -64,8 +66,10 @@ one-time link to the setup wizard.
    writes the first commit and activates it without a restart.
 
 6. **Admin login** (optional). Add the redirect URL `<public-url>/auth/callback` in the
-   application's OAuth2 settings and paste the client secret, so that you can sign in to
-   the admin console with Discord. **Test login** checks the round trip.
+   application's OAuth2 settings (and `<admin-url>/auth/callback` when the admin console has
+   its own [`--admin-url`](../../self-hosting/security/#admin-on-a-private-network-portal-public))
+   and paste the client secret, so that you can sign in to the admin console with Discord.
+   **Test login** checks the round trip.
 
 7. **Verify.** A checklist runs until everything is green: token, intents, membership,
    permissions, role hierarchy, slash commands, live events (send a message in the server
@@ -76,7 +80,7 @@ one-time link to the setup wizard.
    suggests a slash command to try (`/poll`, `/rank`…).
 
 9. **Done.** Click **Finish**. The setup endpoints are closed and the admin console is at
-   `<public-url>/admin/`.
+   `<public-url>/admin/` (`<admin-url>/admin/` with `--admin-url`).
 
 </Steps>
 

@@ -36,6 +36,15 @@ A Cicord repository is plain YAML plus, optionally, the TypeScript sources of yo
 plugins, and [`examples/showcase`](https://github.com/cicord/cicord/tree/main/examples/showcase)
 runs seven more.
 
+:::tip[A real-world example]
+The configuration of the official Cicord community server is public:
+[github.com/cicord/cicord-community](https://github.com/cicord/cicord-community). It was
+created by the setup wizard and follows a GitHub repository with write-back policies
+(`bots/**` committed directly, `servers/**` through pull requests), and its bot installs
+official plugins from the official registry, pinned in `cicord.lock`. Its runtime is installed
+as described in [Production on a VPS](../../self-hosting/production-vps/).
+:::
+
 ## Resources
 
 Every file holds one resource, Kubernetes style:

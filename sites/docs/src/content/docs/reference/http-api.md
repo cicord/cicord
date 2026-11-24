@@ -52,15 +52,20 @@ hand-written calls.
 | Endpoint | Purpose |
 |---|---|
 | `GET /auth/login?redirect=<path>[&mode=token]` | Redirect to Discord OAuth2 (scope `identify`). |
-| `GET /auth/callback` | OAuth2 callback. Register `<public-url>/auth/callback` in the Discord application. |
+| `GET /auth/callback` | OAuth2 callback. Register `<public-url>/auth/callback` in the Discord application, and `<admin-url>/auth/callback` with `--admin-url`. |
 | `POST /auth/link` | Exchange a `ctx.portal.link()` token (`cicord_token`) for a session scoped to one server. |
 | `POST /auth/token` | Token mode: redeem the one-time `cicord_code` for a 24-hour session token. |
 | `POST /auth/dev-login` | Dev mode only: sign in as any user (needs `--sim` or the runtime token). |
 | `POST /auth/logout` | End the session (or revoke the bearer session token). |
 
 **CSRF**: every unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) needs `X-Cicord-Request: 1`
-unless it has an `Authorization` header, and an `Origin` that is the public URL or an allowed
-CORS origin. `/hooks/*` is exempt (HMAC).
+unless it has an `Authorization` header, and an `Origin` that is the public URL, the admin URL
+(`--admin-url`) or an allowed CORS origin. `/hooks/*` is exempt (HMAC).
+
+**Admin host**: with `--admin-url`, the admin console and every admin endpoint answer `404` on
+any other `Host`. Only the portal, `/auth/*`, `/api/v1/me`, `/api/v1/portal/**`,
+`/api/v1/plan`, `/api/v1/sync`, `/hooks/*`, `/healthz` and `/readyz` answer on every host (see
+[Admin on a private network](../../self-hosting/security/#admin-on-a-private-network-portal-public)).
 
 **Roles**: per server, `admin` (owner or `spec.access.admins`), `moderator`, `member` or none,
 resolved from the user's live Discord roles. See [Access and roles](../../concepts/access-and-roles/).
@@ -119,7 +124,7 @@ resolved from the user's live Discord roles. See [Access and roles](../../concep
 | Method | Path | Role | Result |
 |---|---|---|---|
 | GET | `/api/v1/catalog` | admin | The official plugins bundled in the binary. |
-| GET | `/api/v1/store` | admin | Every source (`cicord` first, then registries) with its plugins. |
+| GET | `/api/v1/store` | admin | Every source (`cicord` first: the bundled plugins and the signed official registry; then the registries of `cicord.yaml`) with its plugins. |
 | GET | `/api/v1/store/plugins` | admin | Plugins across sources (paged, filterable by source, trust, installed, updates). |
 | POST | `/api/v1/store/refresh` | admin | Refetch every registry index. |
 | GET | `/api/v1/store/{source}/{plugin}` | admin | What the latest version requests (capabilities, intents, network, schema, commands). |

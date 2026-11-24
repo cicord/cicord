@@ -37,7 +37,8 @@ Host cicord
 ## 1. Base system — `scripts/01-base.sh`
 
 ```sh
-scp deploy/vps/scripts/01-base.sh ubuntu@<server>:/tmp/ && ssh ubuntu@<server> 'sudo sh /tmp/01-base.sh cicord'
+scp -r deploy/vps/scripts ubuntu@<server>:   # into the home directory: /tmp is emptied by the reboot below
+ssh ubuntu@<server> 'sudo sh scripts/01-base.sh cicord'
 ssh ubuntu@<server> 'sudo systemctl reboot'   # a new kernel was installed
 ```
 
@@ -53,7 +54,7 @@ ssh ubuntu@<server> 'sudo systemctl reboot'   # a new kernel was installed
 ## 2. Tailscale — `scripts/02-tailscale.sh`
 
 ```sh
-ssh ubuntu@<server> 'sudo sh /tmp/02-tailscale.sh cicord'   # prints a login URL: open it
+ssh ubuntu@<server> 'sudo sh scripts/02-tailscale.sh cicord'   # prints a login URL: open it
 ```
 
 - official Tailscale apt repository, `tailscale up --hostname=cicord --ssh=false`;
@@ -68,7 +69,7 @@ ssh ubuntu@<server> 'sudo sh /tmp/02-tailscale.sh cicord'   # prints a login URL
 Run it **over the tailnet** (after it, SSH is not reachable from the internet):
 
 ```sh
-ssh ubuntu@<tailscale IP> 'sudo sh /tmp/03-ssh-firewall.sh ubuntu'
+ssh ubuntu@<tailscale IP> 'sudo sh scripts/03-ssh-firewall.sh ubuntu'
 ```
 
 - `sshd_config.d/10-cicord.conf`: no root, no passwords, public key only, `AllowUsers ubuntu`,
@@ -82,7 +83,7 @@ ssh ubuntu@<tailscale IP> 'sudo sh /tmp/03-ssh-firewall.sh ubuntu'
 ## 4. Docker — `scripts/04-docker.sh`
 
 ```sh
-ssh cicord 'sudo sh /tmp/04-docker.sh'
+ssh cicord 'sudo sh scripts/04-docker.sh'
 ```
 
 - Docker Engine and the compose plugin from Docker's official repository (distribution
@@ -118,7 +119,10 @@ Caddy obtains the TLS certificate on its first start (ports 80 and 443 must reac
    - **Privileged Gateway Intents**: enable **Server Members Intent** (member events,
      onboarding, moderation) and **Message Content Intent** (levels, moderation of message
      content). Presence Intent is not used;
-   - leave **Public Bot** off if only you should be able to invite it.
+   - make the bot **private** (only the application owner can add it to a server): first
+     **Installation** tab → **Install Link** = **None** (Discord refuses a private bot with a
+     default install link), then **Bot** tab → **Public Bot** off. Cicord's setup wizard builds
+     its own invite link, so nothing is lost.
 4. **OAuth2** tab:
    - **Client ID**: shown; **Client Secret**: **Reset Secret** shows it once — it goes into the
      setup wizard (Discord login step), never into a file;
@@ -231,8 +235,13 @@ The GitHub webhook secret (the value typed in the GitHub App settings, step 5) i
 workstation, the value being pasted into the prompt (stdin), never on a command line:
 
 ```sh
-ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_WEBHOOK_SECRET --data-dir /data'
+read -rs S && printf '%s\n' "$S" | ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_WEBHOOK_SECRET --data-dir /data'; unset S
+ssh cicord 'sudo docker restart cicord'   # the webhook secret is read at startup
 ```
+
+(`read -rs` keeps the value off the screen: without a terminal, `ssh` would echo what is
+pasted.) Check: in the GitHub App settings → Advanced → Recent Deliveries, redeliver the last
+push; it must come back green.
 
 What the encryption protects: a copy of the database alone (a backup, a dump) reveals no
 secret. What it does not: root on the server can read the key and the database — the runtime

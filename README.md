@@ -55,6 +55,10 @@ gh attestation verify oci://ghcr.io/cicord/cicord:0.1.0 --repo cicord/cicord
 ```
 
 Running it for real (volumes, environment, reverse proxy) is in [docs/deploy.md](docs/deploy.md).
+A complete, hardened install on one server (Docker, Caddy for the public portal, the admin
+console on a Tailscale tailnet only, automatic updates, daily backups) is in
+[`deploy/vps/`](deploy/vps/) and the tutorial
+[Production on a VPS](https://cicord.dev/docs/self-hosting/production-vps/).
 
 **`go install`** — `go install github.com/cicord/cicord/cmd/cicord@latest` builds the
 command line tool **without** the embedded UIs (the admin console and the portal are
@@ -236,7 +240,9 @@ JS checks. For a Cicord configuration repository, run `cicord validate` on pull 
 | `cicord dev [--sim] [--setup]` | Local runtime with hot reload, real Discord or the simulator; setup wizard in a directory without `cicord.yaml`. |
 | `cicord serve` | Production runtime (setup wizard when there is no `cicord.yaml` yet). |
 | `cicord secret ls / set / rm / rotate-key` | Manage the encrypted secrets of a data dir (bot tokens, OAuth / git secrets; values read from stdin). |
-| `cicord plugin new / sdk-types / add` | Scaffold a plugin, write SDK types for editors, add a registry plugin (`cicord.lock`). |
+| `cicord plugin new / sdk-types / add` | Scaffold a plugin, write SDK types for editors, add a registry plugin (`cicord.lock`), e.g. `cicord plugin add cicord/welcome`. |
+| `cicord registry` | Plugin sources: `list / add / remove / update / search`, and `keygen / sign / verify` for signed indexes. |
+| `cicord healthcheck` | Exit 0 when a runtime answers `/healthz` (container health checks). |
 | `cicord plan [--remote --comment]` | Diff with Discord (locally, or through the runtime; PR comment in GitHub Actions). |
 | `cicord apply / status [--wait] / sync` | Apply locally; runtime status (CI waits for a revision); trigger a sync. |
 | `cicord import / adopt / mv` | Generate YAML from an existing server; rebuild the resource map; rename a key everywhere. |
@@ -249,6 +255,7 @@ JS checks. For a Cicord configuration repository, run `cicord validate` on pull 
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Components, sync lifecycle, CI/CD flow, UIs, security, roadmap |
 | [docs/plugins.md](docs/plugins.md) | Plugin author guide |
 | [docs/deploy.md](docs/deploy.md) | Self-hosting: data, Docker, reverse proxy, security checklist |
+| [deploy/vps/](deploy/vps/) | A hardened single-server deployment: scripts, Compose, Caddy, install log |
 | [docs/adr/](docs/adr/README.md) | Architecture decisions |
 | [spec/](spec/README.md) | Config format semantics, reconcile rules, plugin capabilities, SDK semantics |
 | [spec/api.md](spec/api.md) | Runtime HTTP API v1 |
@@ -286,22 +293,28 @@ Done:
 - Bot host over disgo; plugin host (QuickJS-ng on WebAssembly, hard memory and CPU limits) with capabilities, KV storage, commands, components,
   modals, schedules, tasks, cross-plugin events and typed portal routes.
 - SQLite or PostgreSQL state (one conformance suite for both), git write-back (commits and
-  GitHub pull requests), HTTP API v1.
+  GitHub pull requests), GitHub access with a token or a GitHub App (short-lived installation
+  tokens) and `cicord/sync` commit statuses, HTTP API v1.
+- Self-hosting: a separate private admin URL (admin console and admin API answer only there),
+  `cicord healthcheck`, and a hardened single-server deployment ([`deploy/vps/`](deploy/vps/)).
 - Admin console (data tables, per-plugin pages, Store, simulator panel), setup wizard
   (imports an existing server with its files, empty first plan).
-- Plugin Store: bundled official plugins (9), git registries (private ones with tokens),
-  computed trust, permission review, install / update / uninstall, signed official index,
-  `cicord plugin publish`.
-- Portal SDK (`@cicord/client`, `@cicord/react`, `@cicord/ui`, `create-cicord-portal`), on
-  npm with provenance.
+- Plugin Store: the 9 official plugins, bundled and from the signed official registry
+  [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins), git registries (private
+  ones with tokens, monorepos), computed trust, permission review, install / update /
+  uninstall, `cicord plugin publish`, `cicord registry keygen / sign / verify`.
+- Portal SDK (`@cicord/client`, `@cicord/react`, `@cicord/ui`, `create-cicord-portal`), published
+  to npm with provenance by the release workflow.
 - Release pipeline: reproducible cross-platform binaries, multi-arch image, SBOMs and build
   provenance attestations, npm trusted publishing.
-- CLI: `init`, `validate`, `plan`, `apply`, `status`, `sync`, `import`, `adopt`, `mv`,
-  `dev`, `serve`, `secret`, `registry`, `plugin` (new / build / typegen / test / add /
-  update / publish), `portal`.
+- CLI: `init`, `validate`, `plan`, `apply`, `status`, `sync`, `healthcheck`, `import`,
+  `adopt`, `mv`, `dev`, `serve`, `secret`, `registry`, `plugin` (new / build / typegen / test /
+  add / update / publish), `portal`.
 
-Next: the official registry (owner decision), production hardening
-(metrics), then the hosted offering. See [TODO.md](TODO.md) and the
+A real-world configuration: the official community server's repository,
+[cicord/cicord-community](https://github.com/cicord/cicord-community).
+
+Next: the first release (v0.1.0), production hardening (metrics), then the hosted offering. See [TODO.md](TODO.md) and the
 [roadmap](ARCHITECTURE.md#12-roadmap).
 
 Websites: the landing page (`sites/landing`) and the documentation (`sites/docs`) are Astro

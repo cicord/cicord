@@ -142,11 +142,14 @@ tags `<name>/v<semver>`) and a **signed** `index.yaml` at its root. Its plugins 
 `cicord`, without any `cicord.yaml` entry, and only it can mark publishers as `verified`.
 Community plugins are submitted there by pull request (see its `CONTRIBUTING.md`).
 
-:::caution[Not live yet]
-The production signing key is not embedded in current builds yet. Such a build cannot verify
-the official index, so it does not fetch it: source `cicord` lists the plugins bundled in your
-binary, with a notice. The bundled copies stay in every build, for offline and first installs.
-:::
+The official plugins (welcome, onboarding, tickets, polls, levels, moderation,
+reaction-roles, audit-log, announcements) live there, each released with its own tags
+(`welcome/v0.1.0`). Install one from it with `cicord plugin add cicord/<name>`, which locks it
+in `cicord.lock` like any registry plugin. Copies of the same plugins are also bundled in every
+binary, for offline and first installs: the setup wizard installs the bundled copy, and so
+does the Store unless the registry has a newer version (below). The binary embeds the registry's public
+signing key; `cicord registry list` shows the source as `(bundled with cicord) + <url> (signed
+index)`.
 
 `index.yaml.sig`, next to the index, is a signature envelope followed by one ed25519
 signature per signing key:

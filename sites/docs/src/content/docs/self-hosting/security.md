@@ -3,6 +3,10 @@ title: Security checklist
 description: What to check before exposing a Cicord runtime, and what the runtime enforces on its own.
 ---
 
+For a complete install that applies this page (firewall, SSH and the admin console on a
+Tailscale tailnet, Caddy for the public portal, backups), follow
+[Production on a VPS](../production-vps/).
+
 ## Checklist
 
 - [ ] **Never expose `cicord dev`** (dev login, simulator, working-tree edits). In dev mode the
@@ -21,15 +25,22 @@ description: What to check before exposing a Cicord runtime, and what the runtim
 - [ ] Scope **`CICORD_GIT_TOKEN`** to the configuration repository (a fine-grained token), or
       use a **GitHub App** installed on that repository only, and keep its private key out of
       the repository.
-- [ ] Keep bot tokens and secrets in an env file or the encrypted secret store, **never in the
-      repository**.
+- [ ] Keep bot tokens and secrets in the encrypted secret store (setup wizard,
+      `cicord secret set` on stdin) or in an env file readable by the runtime only, **never in
+      the repository**.
+- [ ] Keep a copy of the secret store's key (`secret.key` or `CICORD_SECRET_KEY`) in a
+      password manager, **apart from the backups** of the database
+      ([Backups and secrets](../backups-and-secrets/#what-to-back-up)).
 - [ ] Only list trusted origins in **`--cors-origin`**: they can make credentialed calls.
-- [ ] **Protect the data directory** (`0700`, owned by the runtime user) and back it up: it
-      holds sessions, plugin data, the secret store and its key.
+- [ ] **Protect the data directory** (`0700`, owned by the runtime user; the container image
+      creates `/data` that way) and back it up: it holds sessions, plugin data, the secret
+      store and its key.
 - [ ] Review **`spec.access`** (admins and moderators) of each server, and use `writeBack`
       policies with `pullRequest` for structural changes.
 - [ ] Review what each plugin is **granted** in `bot.yaml`, and treat plugins from unofficial
       registries as third-party code.
+- [ ] Harden the **Discord side** too: a private bot, 2FA for moderation, least-privilege
+      roles ([below](#discord-server-hardening)).
 
 ## What the runtime enforces
 
@@ -146,6 +157,58 @@ Requirements:
 - The `Host` check is **defense in depth**: the header is chosen by the client. The actual
   boundary is the network: the admin hostname only resolves and routes inside the VPN, and
   the listener is not reachable from the internet.
+
+## Discord server hardening
+
+Cicord secures what it runs; the Discord server and application need a few settings of their
+own. They are made in Discord, not in YAML, except where noted.
+
+**The bot's permissions.** The setup wizard invites the bot with the **Administrator**
+permission (`permissions=8`), the configuration Cicord is tested with: the reconciler manages
+roles, channels, permission overwrites and server settings, and the bot must see every channel
+it manages. What it implies:
+
+- the bot bypasses every channel overwrite and can do anything on the server except what only
+  the owner can (deleting the server, transferring it). Plugins are still limited by their
+  grants, but **a leaked bot token is full control of the server**: keep it in the secret
+  store, and [rotate it](../backups-and-secrets/#rotating-a-leaked-credential) at once if it
+  may have leaked;
+- its role must stay **above every role Cicord manages** (the wizard and the Diagnostics page
+  check it). Members whose highest role is below the bot's cannot edit the bot's role.
+
+The wizard's permission check also accepts a role without Administrator that has View
+Channels, Manage Roles, Manage Channels, Manage Server, Send Messages, Embed Links, Read Message
+History, Add Reactions, Manage Messages and Moderate Members. Some plugins need more (the
+moderation plugin's `/kick` and `/ban` need Kick Members and Ban Members), and channels the bot
+cannot see cannot be managed. Running without Administrator is possible, but it is not the
+tested default.
+
+**A private bot.** In the [Developer Portal](https://discord.com/developers/applications), so
+that nobody else can add your bot to a server: **Installation → Install Link: None** first,
+then **Bot → Public Bot** off (Discord refuses a private bot that still has an install link).
+As its owner, you can still invite it with the wizard's link.
+
+**Privileged intents.** Turn on only the ones your plugins declare (Server Members, Message
+Content); Cicord never uses the Presence intent.
+
+**2FA for moderation.** In Server Settings → **Safety Setup**, turn on the requirement of
+two-factor authentication for moderation actions, so that a stolen password alone cannot ban
+members or delete channels. Discord applies it to bots through their owner: the account that
+owns the application (or the team owner) must have 2FA enabled, or the bot's moderation calls
+fail. Cicord does not manage this setting.
+
+**Least privilege for roles.** Give human roles only the permissions they use:
+
+- no Administrator on staff roles; keep Manage Roles, Manage Server, Manage Webhooks and Ban
+  Members to the few people who need them;
+- in Cicord, `spec.access` decides who is a Cicord admin or moderator
+  ([Access and roles](../../concepts/access-and-roles/)): map it to small roles, and protect
+  `servers/**` with a `pullRequest` [write-back policy](../../concepts/write-back/) so that
+  permission changes are reviewed;
+- never offer a role that carries permissions in a self-assignable panel (reaction-roles,
+  onboarding);
+- `profile.verificationLevel` and `profile.explicitContentFilter` are declared in YAML
+  ([Server](../../configuration/server/#profile)); AutoMod rules too.
 
 :::note
 A security review of the plugin sandbox (escapes), YAML fuzzing and link token reuse is on the

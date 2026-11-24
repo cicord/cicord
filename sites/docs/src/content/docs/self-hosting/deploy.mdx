@@ -12,6 +12,13 @@ server, no Node.js and no `git` binary to install: git is implemented in Go and 
 pure Go driver. If you prefer, a [PostgreSQL database](#state-store-sqlite-or-postgresql)
 can hold the runtime state instead of SQLite.
 
+:::tip[A complete, hardened install]
+[Production on a VPS](../production-vps/) walks through a whole install on one Ubuntu server:
+firewall and SSH over Tailscale, automatic updates, Docker, Caddy for the public portal, the
+admin console on the tailnet only, a GitHub App, the setup wizard and daily backups. This page
+is the reference for each piece.
+:::
+
 :::danger[Never deploy `cicord dev`]
 `cicord dev` is for local development only: it lets anyone who can reach it sign in as any user
 (`/auth/dev-login`) and edits the working tree. Always run `cicord serve` on a server.
@@ -35,8 +42,10 @@ cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--publ
 - **`--public-url`** (env `CICORD_PUBLIC_URL`) is the URL browsers use, for example
   `https://cicord.example.org`. **Set it for every non-local deployment**: it is the OAuth
   redirect base, the base of portal links, the origin of the CSRF check, and an `https://`
-  value turns on `Secure` cookies. Without it, the runtime assumes `http://<listen>`, and
-  browser `POST`/`PUT` requests from any other origin are rejected with `403`.
+  value turns on `Secure` cookies. Without it, the runtime uses `spec.runtime.url` of
+  `cicord.yaml`, then (for a configuration created by the setup wizard) the URL the wizard ran
+  on, then `http://<listen>`; browser `POST`/`PUT` requests from any other origin are rejected
+  with `403`.
 - **`--admin-url`** (env `CICORD_ADMIN_URL`): the URL of the admin console when it lives on a
   separate, private hostname, for example `https://cicord.example.ts.net` on a Tailscale
   tailnet, while the portal stays public on `--public-url`. It must be `https://host[:port]`
@@ -81,9 +90,11 @@ and prints a one-time link to the setup wizard.
 | `CICORD_ALLOW_PRIVATE_REGISTRIES`          | `true` lets the Store and plugin downloads reach private networks.                                                                                                               |
 | `CICORD_REGISTRY_<NAME>_TOKEN`             | Access token of a private registry (see [Publishing](../../plugins/publishing/#private-registries)).                                                                             |
 
-Bot tokens, `CICORD_GIT_TOKEN`, the `CICORD_GITHUB_APP_*` secrets, the OAuth client secret and registry tokens can also live in the
+Bot tokens, `CICORD_GIT_TOKEN`, the `CICORD_GITHUB_APP_*` secrets, the OAuth client secret,
+`CICORD_WEBHOOK_SECRET`, `CICORD_RUNTIME_TOKEN` and registry tokens can also live in the
 encrypted secret store (the setup wizard writes them there, `cicord secret set` too). The
-environment always wins. See [Backups and secrets](../backups-and-secrets/).
+environment always wins. The webhook secret and the runtime token are read at startup:
+restart the runtime after changing them. See [Backups and secrets](../backups-and-secrets/).
 
 In the Discord developer portal, add `<public-url>/auth/callback` as an OAuth2 redirect URL of
 the application used for login, and also `<admin-url>/auth/callback` when `--admin-url` is set.
@@ -93,7 +104,7 @@ the application used for login, and also `<admin-url>/auth/callback` when `--adm
 | Path                                             | Content                                                                                                                        | Back up?           |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
 | `cicord.db` (+ `cicord.db-wal`, `cicord.db-shm`) | SQLite (WAL mode): resource map, plugin storage, sessions, audit log, sync history, encrypted secrets. Absent with PostgreSQL. | **Yes**            |
-| `secret.key`                                     | Key of the secret store (when `CICORD_SECRET_KEY` is not set).                                                                 | **Yes**            |
+| `secret.key`                                     | Key of the secret store (when `CICORD_SECRET_KEY` is not set). Keep one copy **apart** from the routine backups.               | **Yes, apart**     |
 | `link.key`                                       | Portal link signing key (when `CICORD_LINK_SECRET` is not set). Losing it invalidates outstanding links.                       | Yes                |
 | `repo.git`                                       | Bare repository of the `embedded` provider: this **is** your configuration.                                                    | **Yes**            |
 | `source/`                                        | Clone of the git source.                                                                                                       | No (fetched again) |
@@ -397,6 +408,7 @@ webhook, `cicord sync` (with `CICORD_RUNTIME_TOKEN`) asks the runtime to fetch n
 
 ## Next
 
+- Follow the complete install of [Production on a VPS](../production-vps/).
 - Go through the [security checklist](../security/).
 - Set up [backups](../backups-and-secrets/).
 - Wire your repository's CI: [Your first change](../../getting-started/first-change/#run-it-in-ci).
