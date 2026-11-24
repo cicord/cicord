@@ -3,7 +3,8 @@
 # index.yaml can be signed and points at real plugin directories.
 #
 # Pull requests (community submissions included) run without any secret: never switch this
-# workflow to pull_request_target.
+# workflow to pull_request_target. Actions are pinned to full commit SHAs (required by the
+# repository settings), like in github.com/cicord/cicord.
 name: plugins
 on:
   pull_request:
@@ -21,7 +22,7 @@ jobs:
     outputs:
       plugins: ${{ steps.list.outputs.plugins }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: list
@@ -36,15 +37,15 @@ jobs:
       matrix:
         plugin: ${{ fromJSON(needs.list.outputs.plugins) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-cicord
         with:
           version: ${{ vars.CICORD_VERSION || 'main' }}
           token: ${{ secrets.CICORD_SOURCE_TOKEN || github.token }}
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -57,7 +58,7 @@ jobs:
   index:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-cicord

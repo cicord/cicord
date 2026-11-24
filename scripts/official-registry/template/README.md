@@ -92,9 +92,11 @@ entry; the sign workflow then signs the new index. Set `verified: true` by hand 
 publisher.
 
 Repository settings: the `CICORD_REGISTRY_SIGNING_KEY` secret (in the `registry-signing`
-environment, restricted to `main`), the `CICORD_VERSION` variable (the Cicord ref the CI
-builds), `CICORD_SOURCE_TOKEN` while github.com/cicord/cicord is private, and branch
-protection on `main` that lets the workflow push `index.yaml.sig`.
+environment, restricted to `main`), the `CICORD_VERSION` variable (the Cicord release tag
+the CI builds; the sign workflow refuses to run without one), `CICORD_SOURCE_TOKEN` while
+github.com/cicord/cicord is private, the `@cicord/maintainers` team of `.github/CODEOWNERS`,
+and branch protection on `main` (required reviews) that lets the sign workflow push
+`index.yaml.sig`.
 
 ## License
 

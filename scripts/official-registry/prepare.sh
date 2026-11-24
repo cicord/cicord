@@ -92,6 +92,9 @@ echo "• installing the dev dependencies (pnpm-lock.yaml)"
 cicord_rev="$(cd "$root" && git rev-parse --short HEAD)"
 cd "$out"
 git init -q -b main
+# The remote the owner pushes to (nothing is pushed here); set before the first commit so
+# that git configuration keyed on it (e.g. includeIf hasconfig:remote.*.url) applies.
+git remote add origin "$registry_url.git"
 git add -A
 git commit -q -m "feat: import the official Cicord plugins
 
