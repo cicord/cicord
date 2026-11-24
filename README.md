@@ -1,5 +1,6 @@
 # Cicord — CI/CD for Discord
 
+[![Discord: join the community](docs/badges/discord.svg)](https://discord.gg/qTt5S2Fe4m)
 [![CI](https://github.com/cicord/cicord/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cicord/cicord/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-cicord.dev-blueviolet.svg)](https://cicord.dev/docs/)
@@ -307,6 +308,8 @@ Websites: the landing page (`sites/landing`) and the documentation (`sites/docs`
 sites, deployed together by `.github/workflows/sites.yml`.
 
 ## Contributing
+
+Questions, ideas or a plugin to show? [Join the Cicord community on Discord](https://discord.gg/qTt5S2Fe4m).
 
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues privately as described in
