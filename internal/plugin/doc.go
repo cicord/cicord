@@ -1,6 +1,7 @@
 // Package plugin is Cicord's plugin host: it runs plugin bundles (built by internal/build) in
-// Sobek VMs and implements the @cicord/sdk contract (spec/sdk/cicord-sdk.d.ts, spec/README.md §6
-// and §8) on top of the discord and state contracts.
+// QuickJS-ng VMs compiled to WebAssembly (internal/plugin/qjs, ADR-0018) and implements the
+// @cicord/sdk contract (spec/sdk/cicord-sdk.d.ts, spec/README.md §6 and §8) on top of the
+// discord and state contracts.
 //
 // # Lifecycle
 //
@@ -21,19 +22,37 @@
 //
 // # Execution model
 //
-// One Sobek runtime and one event-loop goroutine per instance. Handlers start in call order
-// and interleave at await points (Node-like). Host calls that do I/O run on other goroutines
-// and settle their promise back on the loop. The handler that issued a host call is tracked
-// across awaits with Sobek's AsyncContextTracker, so every call is bounded by its own
-// handler's context: when a handler times out (Limits.HandlerTimeout), its later host calls
-// fail and its pending ones are cancelled. A handler that returns without awaiting some work
-// keeps that work alive until its deadline.
+// One QuickJS VM (its own wasm instance and linear memory) and one event-loop goroutine
+// per instance. Handlers start in call order and interleave at await points (Node-like).
+// Host calls that do I/O run on other goroutines and settle their promise back on the
+// loop. Every turn of the loop is entered by Go for a known invocation (a handler call,
+// the settlement of one of its host calls, one of its timers), and the code that runs in
+// it, microtasks included, is charged to that invocation: its context bounds every host
+// call made, so when a handler times out (Limits.HandlerTimeout), its later host calls
+// fail and its pending ones are cancelled. A handler that returns without awaiting some
+// work keeps that work alive until its deadline. (A continuation of handler B that waits
+// on a promise settled by handler A runs in A's turn and is charged to A.)
 //
-// Each turn of the loop (a handler's synchronous part, or the continuations run when a
-// host call settles) is bounded by Limits.SyncBudget: a runaway turn is interrupted, the
-// running handler is aborted with ErrBudgetExceeded and the VM keeps serving other
-// handlers. Sobek drops the microtasks queued during an interrupted turn; handlers that were
-// waiting on them end with ErrHandlerTimeout.
+// Each turn is bounded by Limits.SyncBudget: a runaway turn is interrupted, its invocation
+// aborted with ErrBudgetExceeded and the VM keeps serving other handlers. Microtasks still
+// queued then run in a second turn charged to the same invocation; if that one overruns
+// too, the instance crashes. Code that does not reach an interrupt check (a long native
+// builtin) is killed hardStopGrace after the budget, which crashes the instance.
+//
+// # Crashes
+//
+// An instance crashes when its VM is discarded: Limits.Memory reached (even if plugin code
+// catches the error), hard stop, engine trap. Every pending and later call fails with an
+// error wrapping ErrCrashed, Done is closed and Err reports the cause; the bot host
+// (internal/runtime) restarts the instance with backoff. The Go process is never affected.
+//
+// # Host-side quotas
+//
+// Independently of the engine, an instance is bounded by: Limits.QueueLength handler calls
+// waiting for its loop (ErrBusy beyond), maxInFlight pending async host calls,
+// maxHostArgs bytes of arguments per host call (checked before decoding), maxLogFields
+// bytes of log fields, maxKVListBytes per kv.list page and maxRouteResponse bytes per
+// route response.
 //
 // # Interactions
 //

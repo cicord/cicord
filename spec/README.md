@@ -301,16 +301,24 @@ plugins:
 Contract: [`sdk/cicord-sdk.d.ts`](sdk/cicord-sdk.d.ts). A plugin default-exports `definePlugin({...})`.
 Implemented by `internal/plugin` (the package documentation is the detailed reference).
 
-- **Isolation**: one Sobek VM and one event loop per plugin instance (bot × server, ADR-0010).
-  Handlers start in arrival order and interleave at `await` points (Node-like).
+- **Isolation**: one VM (QuickJS-ng compiled to WebAssembly, run by wazero; ADR-0018) and one
+  event loop per plugin instance (bot × server, ADR-0010). Handlers start in arrival order
+  and interleave at `await` points (Node-like). A crashed instance (memory limit, hard stop,
+  engine trap) is discarded and restarted by the bot host with exponential backoff (1 s to
+  5 min); meanwhile its calls fail.
 - **Budgets** (defaults):
   | Limit | Default | Effect |
   |---|---|---|
-  | sync budget | 50 ms | One turn of synchronous JS (a handler's synchronous part, or the continuations run when a host call settles). A runaway turn (`while(true)`) is interrupted and its handler aborted; the VM keeps serving other handlers. |
+  | sync budget | 50 ms | One turn of synchronous JS (a handler's synchronous part, or the continuations run when a host call settles, microtasks included). A runaway turn (`while(true)`) is interrupted and its handler aborted; the VM keeps serving other handlers. Microtasks still queued run in a second turn charged to the same handler; if it overruns too, the instance crashes. |
+  | hard stop | budget + max(budget, 500 ms) | Code still running then (a long native builtin that does not check for interrupts) is killed: the instance crashes. |
   | startup budget | 2 s | Replaces the sync budget while the module is evaluated. |
+  | memory | 64 MiB | JS heap per instance (its WebAssembly memory is capped a fixed margin above). Reaching it crashes the instance, even if plugin code catches the error. |
+  | queue | 1024 | Handler calls waiting for the instance's loop; beyond, calls fail (busy). |
+  | pending host calls | 256 | Async SDK calls of one instance not settled yet; beyond, calls reject. |
   | handler timeout | 10 s | Each handler, wall clock, awaits included. Afterwards its pending host calls are cancelled and new ones fail. |
   | `onStop` | 3 s | Bound of `onStop`. |
   | `http.fetch` | 10 s / 5 MiB | Default timeout and response cap. |
+  | host data | 2 MiB / 16 KiB / 4 MiB / 4 MiB | SDK call arguments (checked before decoding), `ctx.log` fields (dropped beyond), `kv.list` page (cut short, the cursor continues), route response. |
 - **Interactions**: an interaction not answered after **2 s** is deferred automatically
   (ephemeral when the command has `ephemeral: true`; components get a silent deferred
   update); a later `reply()` edits the deferred response. Rules:
