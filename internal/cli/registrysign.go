@@ -112,6 +112,8 @@ func checkIndexForSigning(data []byte) (*registry.Index, error) {
 			problems = append(problems, fmt.Sprintf("%s: the repo URL contains credentials", n))
 		case !registry.IsRemoteURL(e.Repo):
 			problems = append(problems, fmt.Sprintf("%s: the repo must be an https:// URL", n))
+		case registry.CheckPluginPath(e.Path) != nil:
+			problems = append(problems, fmt.Sprintf("%s: %v", n, registry.CheckPluginPath(e.Path)))
 		}
 	}
 	if len(problems) > 0 {

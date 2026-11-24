@@ -12,15 +12,57 @@ import (
 	"github.com/cicord/cicord/internal/registry"
 )
 
+// TestMain keeps the tests off the network: none may fetch the real official registry
+// (tests that need an official registry set registry.OfficialURLs themselves).
+func TestMain(m *testing.M) {
+	registry.OfficialURLs = nil
+	os.Exit(m.Run())
+}
+
 const officialURL = "https://registry.cicord.example/official.git"
 
-// withOfficial makes officialURL the official registry for the test (not parallel).
+// withOfficial makes officialURL the official registry for the test (not parallel), with
+// an official key (the fake Fetch functions decide what is signed).
 func withOfficial(t *testing.T) {
 	t.Helper()
 	t.Setenv(registry.DevOfficialRegistryEnv, "")
-	old := registry.OfficialURLs
-	t.Cleanup(func() { registry.OfficialURLs = old })
-	registry.OfficialURLs = []string{officialURL}
+	oldURLs, oldKeys := registry.OfficialURLs, registry.OfficialKeys
+	t.Cleanup(func() { registry.OfficialURLs, registry.OfficialKeys = oldURLs, oldKeys })
+	pub, _, err := registry.GenerateSigningKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry.OfficialURLs, registry.OfficialKeys = []string{officialURL}, []string{registry.EncodePublicKey(pub)}
+}
+
+// A build without an official key never fetches the official index: source "cicord" lists
+// the bundled plugins with an explanation, no "invalid signature" badge.
+func TestOfficialWithoutKey(t *testing.T) {
+	withOfficial(t)
+	registry.OfficialKeys = nil
+	s := &Service{Catalog: testCatalog(), Fetch: func(context.Context, string) (*registry.Index, error) {
+		t.Fatal("the official index is fetched although nothing could verify it")
+		return nil, nil
+	}}
+	srcs, err := s.Sources(context.Background(), nil, true)
+	if err != nil || len(srcs) != 1 {
+		t.Fatalf("sources = %+v, %v", srcs, err)
+	}
+	c := srcs[0]
+	if c.URL != officialURL || c.Signature != "" || c.Error == nil || !strings.Contains(c.Error.Message, "no official registry key") || len(c.Plugins) != 2 {
+		t.Errorf("cicord = %+v (error %+v)", c, c.Error)
+	}
+	// Bundled plugins still install; a plugin only the remote registry has is unavailable.
+	if _, remote, err := s.OfficialRemote(context.Background(), "welcome"); remote || err != nil {
+		t.Errorf("OfficialRemote(welcome) = %v, %v", remote, err)
+	}
+	var unavailable *UnavailableError
+	if _, _, err := s.OfficialRemote(context.Background(), "xp"); !errors.As(err, &unavailable) || !errors.Is(err, registry.ErrNoOfficialKey) {
+		t.Errorf("OfficialRemote(xp) = %v", err)
+	}
+	if d, err := s.Detail(context.Background(), nil, config.OfficialRegistryName, "welcome"); err != nil || d.Resolution != nil {
+		t.Errorf("bundled detail = %+v, %v", d, err)
+	}
 }
 
 func testCatalog() *catalog.Catalog {

@@ -14,6 +14,16 @@ import (
 	"github.com/cicord/cicord/internal/config"
 )
 
+// defaultOfficialURLs is OfficialURLs as built, before TestMain resets it.
+var defaultOfficialURLs = OfficialURLs
+
+// TestMain keeps the tests off the network: none may fetch the real official registry
+// (tests that need an official registry set OfficialURLs and OfficialKeys themselves).
+func TestMain(m *testing.M) {
+	OfficialURLs = nil
+	os.Exit(m.Run())
+}
+
 func initRepo(t *testing.T, files map[string]string, tags ...string) string {
 	t.Helper()
 	dir := t.TempDir()

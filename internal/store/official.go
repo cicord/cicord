@@ -102,6 +102,9 @@ func signatureOf(url string, c cached) string {
 	if c.err == nil && c.idx != nil && c.idx.SignedBy != "" {
 		return SignatureVerified
 	}
+	if errors.Is(c.err, registry.ErrNoOfficialKey) {
+		return "" // nothing was read: not an invalid signature (Source.Error explains)
+	}
 	if errors.Is(c.err, registry.ErrBadSignature) {
 		return SignatureInvalid
 	}

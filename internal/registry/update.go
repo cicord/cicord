@@ -11,11 +11,12 @@ import (
 // cicord.lock version is the highest release tag of its repository, any major version.
 
 // LatestVersion returns the highest release tag of a plugin repository listed by the
-// registry at registryURL, without cloning it (tags only). Prereleases are ignored, like
+// registry at registryURL, without cloning it (tags only). tagPrefix is the plugin's
+// IndexEntry.TagPrefix ("<name>/" in a monorepo). Prereleases are ignored, like
 // ResolveLatest with the range "*", so the version it reports is the one an update
 // resolves. The repository is checked like ResolveLatest does: an https registry only
 // lists https repositories, and public-only contexts refuse non-public hosts.
-func LatestVersion(ctx context.Context, registryURL, repoURL string) (string, error) {
+func LatestVersion(ctx context.Context, registryURL, repoURL, tagPrefix string) (string, error) {
 	if err := CheckRepoURL(registryURL, repoURL); err != nil {
 		return "", err
 	}
@@ -28,23 +29,24 @@ func LatestVersion(ctx context.Context, registryURL, repoURL string) (string, er
 	if err != nil {
 		return "", err
 	}
-	v := HighestVersion(tags, "*")
+	v := HighestVersion(tags, tagPrefix, "*")
 	if v == "" {
-		return "", fmt.Errorf("%s has no release tag", Redact(repoURL))
+		return "", fmt.Errorf("%s has no release tag %s", Redact(repoURL), ReleaseTag(tagPrefix, "<version>"))
 	}
 	return v, nil
 }
 
-// HighestVersion is the highest semver tag satisfying rng ("" when none).
-func HighestVersion(tags []string, rng string) string {
+// HighestVersion is the highest release tag with prefix (TagPrefix) satisfying rng, as a
+// version ("" when none).
+func HighestVersion(tags []string, prefix, rng string) string {
 	c, err := semver.NewConstraint(rng)
 	if err != nil {
 		return ""
 	}
 	var best *semver.Version
 	for _, t := range tags {
-		v, err := semver.NewVersion(t)
-		if err != nil || !c.Check(v) {
+		v, ok := tagVersion(t, prefix)
+		if !ok || !c.Check(v) {
 			continue
 		}
 		if best == nil || v.GreaterThan(best) {

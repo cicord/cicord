@@ -133,7 +133,7 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 			fmt.Fprintf(cmd.ErrOrStderr(), "%s: no longer listed by its registry\n", src)
 			continue
 		}
-		latest, err := registry.LatestVersion(ctx, reg.URL, ie.Repo)
+		latest, err := registry.LatestVersion(ctx, reg.URL, ie.Repo, ie.TagPrefix(name))
 		if err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s\n", src, registry.Redact(err.Error()))
 			continue
@@ -254,7 +254,11 @@ func printUpdatePlan(w io.Writer, plan *setup.UpdatePlan, trust string) {
 	spec := plan.Spec
 	fmt.Fprintf(w, "%s: %s → %s (%s)\n", spec.Source, plan.Current.Version, spec.Version, trust)
 	if plan.RepoChanged {
-		fmt.Fprintf(w, "  ! the registry now points to another repository: %s\n", registry.Redact(spec.Lock.Repo))
+		where := registry.Redact(spec.Lock.Repo)
+		if spec.Lock.Path != "" {
+			where += " (" + spec.Lock.Path + ")"
+		}
+		fmt.Fprintf(w, "  ! the registry now points to another repository: %s\n", where)
 	}
 	d := plan.Diff
 	if d.Capabilities.Empty() && d.Intents.Empty() && d.Network.Empty() {

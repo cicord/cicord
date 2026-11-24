@@ -57,9 +57,17 @@ const (
 // OfficialKeys are the public keys (base64 of the 32-byte ed25519 key, as printed by
 // `cicord registry keygen`) whose signatures make an index official.
 //
-// TODO(owner): embed the production key once the official registry repository and its
-// signing key exist. While empty, no index can verify, so an official URL (if any) is
-// an error source.
+// TODO(owner): embed the production public key. Generate the key pair offline, outside
+// any repository:
+//
+//	cicord registry keygen --out ~/cicord-registry-signing.key
+//
+// then paste the printed public key (base64, 44 characters; never the private key) here,
+// store the private key file's content as the CICORD_REGISTRY_SIGNING_KEY secret of
+// github.com/cicord/cicord-plugins, and keep an offline backup (docs/plugins.md §9).
+//
+// While empty, no official index can verify: FetchIndex fails with ErrNoOfficialKey
+// without network access, and the official source lists the bundled plugins only.
 var OfficialKeys = []string{}
 
 // devOfficialKey is an extra trusted key for development builds only, set at build time:
@@ -79,6 +87,10 @@ const DevOfficialRegistryEnv = "CICORD_DEV_OFFICIAL_REGISTRY"
 // ErrBadSignature: an official index without a valid, current signature by an official key.
 var ErrBadSignature = errors.New("the official registry index is not validly signed by an official key")
 
+// ErrNoOfficialKey: this build embeds no official public key, so no official index can be
+// verified (it is not even fetched). It is an ErrBadSignature (fail closed).
+var ErrNoOfficialKey = fmt.Errorf("%w: this build embeds no official public key", ErrBadSignature)
+
 var devWarnOnce sync.Once
 
 // officialURLs is OfficialURLs, or the development override.
@@ -94,6 +106,10 @@ func officialURLs() []string {
 	}
 	return OfficialURLs
 }
+
+// HasOfficialKeys reports whether this build trusts at least one official key (OfficialKeys
+// or the development key).
+func HasOfficialKeys() bool { return len(officialKeys()) > 0 }
 
 // officialKeys is OfficialKeys plus the development key.
 func officialKeys() []string {

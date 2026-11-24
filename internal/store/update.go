@@ -96,8 +96,8 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 		return out
 	}
 	type job struct {
-		key, repoURL, current string
-		reg                   config.Registry
+		key, repoURL, prefix, current string
+		reg                           config.Registry
 	}
 	var jobs []job
 	for _, r := range regs {
@@ -122,7 +122,7 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 			if !ok || !ok2 {
 				continue
 			}
-			jobs = append(jobs, job{key: key, repoURL: ie.Repo, current: le.Version, reg: r})
+			jobs = append(jobs, job{key: key, repoURL: ie.Repo, prefix: ie.TagPrefix(name), current: le.Version, reg: r})
 		}
 	}
 	var mu sync.Mutex
@@ -131,7 +131,7 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			latest := s.latest(ctx, j.reg, j.repoURL, mode)
+			latest := s.latest(ctx, j.reg, j.repoURL, j.prefix, mode)
 			if level := registry.UpdateLevel(j.current, latest); level != "" {
 				mu.Lock()
 				out[j.key] = UpdateInfo{Kind: UpdateRegistry, Current: j.current, Latest: latest, Level: level}
@@ -143,9 +143,15 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 	return out
 }
 
+// latestKey is the cache key of the latest version of a plugin: its repository and tag
+// prefix (the plugins of a monorepo share the repository, not the tags).
+func latestKey(repoURL, tagPrefix string) string {
+	return config.NormalizeRegistryURL(repoURL) + "#" + tagPrefix
+}
+
 // latest returns the highest release of a plugin repository ("" when unknown).
-func (s *Service) latest(ctx context.Context, reg config.Registry, repoURL string, mode FetchMode) string {
-	key := config.NormalizeRegistryURL(repoURL)
+func (s *Service) latest(ctx context.Context, reg config.Registry, repoURL, tagPrefix string, mode FetchMode) string {
+	key := latestKey(repoURL, tagPrefix)
 	s.mu.Lock()
 	c, ok := s.tags[key]
 	s.mu.Unlock()
@@ -165,7 +171,7 @@ func (s *Service) latest(ctx context.Context, reg config.Registry, repoURL strin
 	}
 	fctx, cancel := context.WithTimeout(s.withToken(s.guard(ctx), reg), t)
 	defer cancel()
-	v, err := f(fctx, reg.URL, repoURL)
+	v, err := f(fctx, reg.URL, repoURL, tagPrefix)
 	c = cachedLatest{version: v, err: err, at: s.now()}
 	s.mu.Lock()
 	if s.tags == nil {

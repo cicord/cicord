@@ -134,9 +134,10 @@ type Service struct {
 	// PublicOnly makes https fetches refuse non-public addresses (registry.WithPublicOnly):
 	// set when the Store serves admin UI users, who must not reach the runtime's network.
 	PublicOnly bool
-	// Latest returns the highest release of a plugin repository listed by a registry
-	// (default registry.LatestVersion: tags only, no clone). Cached like indexes.
-	Latest func(ctx context.Context, registryURL, repoURL string) (string, error)
+	// Latest returns the highest release of a plugin repository listed by a registry, for
+	// the tag prefix of the plugin (IndexEntry.TagPrefix; default registry.LatestVersion:
+	// tags only, no clone). Cached like indexes.
+	Latest func(ctx context.Context, registryURL, repoURL, tagPrefix string) (string, error)
 
 	mu    sync.Mutex
 	cache map[string]cached // by normalized URL
@@ -207,8 +208,15 @@ func (s *Service) index(ctx context.Context, r config.Registry, force bool) cach
 	if ok && !force && s.now().Sub(c.at) < s.ttl() {
 		return c
 	}
-	idx, err := s.fetch(ctx, url)
-	idx, err = checkSigned(url, idx, err)
+	var idx *registry.Index
+	var err error
+	if registry.Trust(url) == registry.TrustOfficial && !registry.HasOfficialKeys() {
+		// Nothing could verify it (also when Fetch is replaced): do not fetch it at all.
+		err = fmt.Errorf("%s: %w", registry.Redact(url), registry.ErrNoOfficialKey)
+	} else {
+		idx, err = s.fetch(ctx, url)
+		idx, err = checkSigned(url, idx, err)
+	}
 	c = cached{idx: idx, err: err, at: s.now()}
 	s.mu.Lock()
 	if s.cache == nil {
@@ -467,7 +475,7 @@ func (s *Service) RegistryDetail(ctx context.Context, repo *config.Repo, reg con
 	if s.tags == nil {
 		s.tags = map[string]cachedLatest{}
 	}
-	s.tags[config.NormalizeRegistryURL(ie.Repo)] = cachedLatest{version: d.Version, at: s.now()}
+	s.tags[latestKey(ie.Repo, ie.TagPrefix(name))] = cachedLatest{version: d.Version, at: s.now()}
 	s.mu.Unlock()
 	if repo != nil && len(d.Installed) > 0 {
 		if l, err := registry.ReadLock(repo.Root); err == nil {
@@ -533,6 +541,9 @@ func ExplainFetch(err error) *SourceError {
 	msg := registry.Redact(err.Error())
 	e := &SourceError{Message: "This source could not be read.", Details: msg}
 	switch {
+	case errors.Is(err, registry.ErrNoOfficialKey):
+		e.Message = "This build of Cicord embeds no official registry key yet, so the official registry index cannot be verified: only the official plugins bundled in the binary are listed."
+		e.Hint = "Nothing to fix on your side: a later Cicord release enables the official registry."
 	case errors.Is(err, registry.ErrBadSignature):
 		e.Message = "The official registry index has no valid, current signature (missing, invalid, expired or older than one already seen): its plugins are not listed."
 		e.Hint = "This is never ignored. Try again later; if it persists, report it to the Cicord maintainers."

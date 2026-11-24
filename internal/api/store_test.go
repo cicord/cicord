@@ -100,6 +100,13 @@ func startStoreRepoWith(t *testing.T, prepare func(dir string)) (*env, string) {
 	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
 	plugin := gitRepo(t, map[string]string{"plugin.yaml": helloManifest, "src/index.ts": helloSource}, "v1.0.0")
 	reg := gitRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: " + plugin + "\n    publisher: acme\n    verified: true\n    keywords: [greetings]\n"})
+	return startWithRegistry(t, reg, prepare), plugin
+}
+
+// startWithRegistry deploys examples/basic with the unofficial registry "acme" at reg
+// (CICORD_CACHE_DIR must be set) and plugin write-backs in commit mode.
+func startWithRegistry(t *testing.T, reg string, prepare func(dir string)) *env {
+	t.Helper()
 	cache := registry.DefaultCacheDir()
 	return startFull(t, func(dir string) {
 		p := filepath.Join(dir, "cicord.yaml")
@@ -117,7 +124,7 @@ func startStoreRepoWith(t *testing.T, prepare func(dir string)) (*env, string) {
 		}
 	}, func(o *runtime.Options) {
 		o.Resolver = func(root string) config.PluginResolver { return registry.NewResolver(root, cache) }
-	}, nil), plugin
+	}, nil)
 }
 
 type storeSourcesDTO struct {

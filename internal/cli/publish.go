@@ -27,6 +27,10 @@ import (
 // new release, tags it v<version> (pushed with --push) and produces the registry index
 // entry, written to a local registry checkout with --registry.
 //
+// A plugin in a subdirectory of its repository (a monorepo such as the official registry,
+// plugins/<name>/) is released with the tag <name>/v<version> and an index entry with
+// `path`; only that directory has to be committed and is checked for changes.
+//
 // It uses the git command line (the author's credentials, ssh and signing configuration).
 
 func init() {
@@ -37,22 +41,32 @@ type publishOptions struct {
 	push, dryRun, replaceRepo bool
 	remote, registryRef       string
 	repoURL, publisher        string
+	// path is the plugin directory relative to the repository root (monorepos).
+	path string
 }
 
 func newPluginPublishCmd() *cobra.Command {
 	var o publishOptions
 	cmd := &cobra.Command{
-		Use:   "publish [plugin-repo]",
+		Use:   "publish [plugin-dir]",
 		Short: "Release a plugin: validate, tag v<version>, write its registry index entry",
-		Long: `Release the plugin whose repository is [plugin-repo] (default: the current directory;
-plugin.yaml at the root of a git repository):
+		Long: `Release the plugin in [plugin-dir] (default: the current directory), a directory of a git
+repository with plugin.yaml:
 
   1. validate it like ` + "`cicord plugin build`" + ` (bundle, inspect, manifest checks);
   2. check the working tree is clean (the tag must point at what was validated) and
-     that metadata.version is a semver greater than every existing v* tag;
+     that metadata.version is a semver greater than every earlier release tag;
   3. create the annotated tag v<version> on HEAD (--push also pushes it to --remote);
   4. print the registry index entry, or with --registry <dir> write it to the
      index.yaml of a local registry checkout (then commit there and open a pull request).
+
+Monorepos: when the plugin directory is not the root of its repository (or --path names
+it, relative to the root), several plugins share the repository. The release tag is then
+<name>/v<version> (<name> is metadata.name), only that directory must be clean, and the
+index entry gets "path: <dir>": installs download and hash that directory only. A
+registry that is also the repository of its plugins (like the official registry,
+plugins/<name>/ + index.yaml at the root) publishes with --registry pointing at that
+same checkout; the index change does not dirty the plugin directories.
 
 The repo URL of the entry comes from --repo or the --remote URL (ssh URLs become https).
 URLs with credentials are refused. publish never sets "verified": registry maintainers
@@ -62,7 +76,8 @@ maintainers after the change (` + "`cicord registry sign`" + `).
 --dry-run validates and prints what would be done, changing nothing.`,
 		Example: `  cicord plugin publish --dry-run
   cicord plugin publish --push --registry ../cicord-registry --publisher acme
-  cicord plugin publish ./my-plugin --repo https://github.com/acme/cicord-xp.git`,
+  cicord plugin publish ./my-plugin --repo https://github.com/acme/cicord-xp.git
+  cicord plugin publish plugins/polls --registry . --push   # monorepo: tag polls/v<version>`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -79,7 +94,8 @@ maintainers after the change (` + "`cicord registry sign`" + `).
 	f.StringVar(&o.registryRef, "registry", "", "local checkout of a registry to update (an https URL only prints the steps)")
 	f.StringVar(&o.repoURL, "repo", "", "repository URL for the index entry (default: the --remote URL)")
 	f.StringVar(&o.publisher, "publisher", "", "publisher name for the index entry (default: the existing entry's)")
-	f.BoolVar(&o.replaceRepo, "replace-repo", false, "allow changing the repo of an existing index entry")
+	f.BoolVar(&o.replaceRepo, "replace-repo", false, "allow changing the repo or path of an existing index entry")
+	f.StringVar(&o.path, "path", "", "plugin directory relative to the repository root, for repositories with several plugins (default: [plugin-dir] relative to the root)")
 	return cmd
 }
 
@@ -123,9 +139,10 @@ func publicRepoURL(raw string) (string, error) {
 	return s, nil
 }
 
-// publishedVersions lists the semver tags of a repository (local tags, plus the remote's
-// with remote != "").
-func publishedVersions(ctx context.Context, dir, remote string) ([]*semver.Version, map[string]bool, error) {
+// publishedVersions lists the release tags with prefix (registry.IndexEntry.TagPrefix) of a
+// repository (local tags, plus the remote's with remote != ""), as versions; tags is every
+// tag name.
+func publishedVersions(ctx context.Context, dir, remote, prefix string) ([]*semver.Version, map[string]bool, error) {
 	out, err := gitCmd(ctx, dir, "tag", "--list")
 	if err != nil {
 		return nil, nil, err
@@ -147,7 +164,11 @@ func publishedVersions(ctx context.Context, dir, remote string) ([]*semver.Versi
 	var vs []*semver.Version
 	for _, n := range names {
 		tags[n] = true
-		if v, err := semver.NewVersion(n); err == nil {
+		rest, ok := strings.CutPrefix(n, prefix)
+		if !ok || strings.Contains(rest, "/") {
+			continue // a tag of another plugin of the repository
+		}
+		if v, err := semver.NewVersion(rest); err == nil {
 			vs = append(vs, v)
 		}
 	}
@@ -163,9 +184,11 @@ func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOpt
 	if err != nil {
 		return fmt.Errorf("%s is not in a git repository: %w", dir, err)
 	}
-	if a, b := evalPath(abs), evalPath(top); a != b {
-		return fmt.Errorf("plugin.yaml must be at the root of its git repository (%s), not in %s", top, abs)
+	sub, err := pluginSubdir(evalPath(top), evalPath(abs), o.path)
+	if err != nil {
+		return err
 	}
+	abs = filepath.Join(evalPath(top), filepath.FromSlash(sub))
 
 	// 1. Manifest and build.
 	m, err := readManifest(abs)
@@ -193,29 +216,35 @@ func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOpt
 		fmt.Fprintf(errw, "warning: %s\n", x)
 	}
 
-	// 2. Clean tree, new version.
-	status, err := gitCmd(ctx, abs, "status", "--porcelain")
+	// 2. Clean tree (the plugin directory in a monorepo), new version.
+	status, err := gitCmd(ctx, abs, "status", "--porcelain", "--", ".")
 	if err != nil {
 		return err
 	}
 	if status != "" {
 		return fmt.Errorf("the working tree has uncommitted changes: commit them first, so that the tag points at what was validated\n%s", status)
 	}
+	if sub != "" {
+		if tracked, err := gitCmd(ctx, abs, "ls-tree", "--name-only", "HEAD", "--", "plugin.yaml"); err != nil || tracked == "" {
+			return fmt.Errorf("%s/plugin.yaml is not committed: commit the plugin directory first", sub)
+		}
+	}
+	prefix := registry.IndexEntry{Path: sub}.TagPrefix(name)
 	remoteForTags := ""
 	if o.push {
 		remoteForTags = o.remote
 	}
-	versions, tags, err := publishedVersions(ctx, abs, remoteForTags)
+	versions, tags, err := publishedVersions(ctx, abs, remoteForTags, prefix)
 	if err != nil {
 		return err
 	}
-	tag := "v" + ver.String()
+	tag := registry.ReleaseTag(prefix, ver.String())
 	if tags[tag] {
 		return fmt.Errorf("tag %s already exists: bump metadata.version in plugin.yaml", tag)
 	}
 	for _, v := range versions {
 		if !ver.GreaterThan(v) {
-			return fmt.Errorf("version %s is not greater than the existing tag %s: bump metadata.version in plugin.yaml", ver, v.Original())
+			return fmt.Errorf("version %s is not greater than the existing tag %s%s: bump metadata.version in plugin.yaml", ver, prefix, v.Original())
 		}
 	}
 	where := "local tags"
@@ -241,7 +270,7 @@ func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOpt
 	if !registry.IsRemoteURL(repoURL) {
 		fmt.Fprintf(errw, "warning: %s is not an https:// URL: https registries (and the admin UI) cannot install from it\n", repoURL)
 	}
-	entry := registry.IndexEntry{Repo: repoURL, DisplayName: m.Metadata.DisplayName, Description: m.Metadata.Description,
+	entry := registry.IndexEntry{Repo: repoURL, Path: sub, DisplayName: m.Metadata.DisplayName, Description: m.Metadata.Description,
 		Keywords: m.Metadata.Keywords, Publisher: o.publisher, Version: ver.String(), Commit: commit}
 
 	var plan *indexPlan
@@ -308,6 +337,25 @@ func runPublish(ctx context.Context, w, errw io.Writer, dir string, o publishOpt
 	return nil
 }
 
+// pluginSubdir is the plugin directory relative to the repository root top ("" = the root):
+// flag (--path, relative to top) or else dir, which must be inside top.
+func pluginSubdir(top, dir, flag string) (string, error) {
+	sub := filepath.ToSlash(strings.TrimSpace(flag))
+	if flag == "" {
+		rel, err := filepath.Rel(top, dir)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("%s is not inside its git repository %s", dir, top)
+		}
+		if sub = filepath.ToSlash(rel); sub == "." {
+			sub = ""
+		}
+	}
+	if err := registry.CheckPluginPath(sub); err != nil {
+		return "", err
+	}
+	return sub, nil
+}
+
 func shortCommit(s string) string {
 	if len(s) > 12 {
 		return s[:12]
@@ -370,6 +418,10 @@ func planIndexUpdate(dir, name string, entry registry.IndexEntry, replaceRepo bo
 			return nil, fmt.Errorf("%s already lists %s with the repository %s (not %s): use --replace-repo if it moved",
 				file, name, registry.Redact(old.Repo), entry.Repo)
 		}
+		if old.Path != entry.Path && !replaceRepo {
+			return nil, fmt.Errorf("%s already lists %s in the directory %q of its repository (not %q): use --replace-repo if it moved",
+				file, name, old.Path, entry.Path)
+		}
 		for k, v := range raw.Plugins[name] {
 			value[k] = v // keep keys publish does not manage
 		}
@@ -386,6 +438,7 @@ func planIndexUpdate(dir, name string, entry registry.IndexEntry, replaceRepo bo
 		}
 	}
 	set("repo", entry.Repo)
+	set("path", entry.Path)
 	set("displayName", entry.DisplayName)
 	set("description", entry.Description)
 	set("publisher", entry.Publisher)

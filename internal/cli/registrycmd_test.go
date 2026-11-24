@@ -10,7 +10,16 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
+
+	"github.com/cicord/cicord/internal/registry"
 )
+
+// TestMain keeps the tests off the network: none may fetch the real official registry
+// (tests that need an official registry set registry.OfficialURLs themselves).
+func TestMain(m *testing.M) {
+	registry.OfficialURLs = nil
+	os.Exit(m.Run())
+}
 
 func commitRepo(t *testing.T, files map[string]string, tags ...string) string {
 	t.Helper()
