@@ -457,8 +457,10 @@ type wireResolved struct {
 }
 
 type wireInteractionData struct {
-	// Application command
-	ID       string                  `json:"id"`
+	// Application command: the command's snowflake (a string). Component interactions send
+	// the clicked component's numeric id here instead (Discord's component "id" field), so
+	// the field accepts both: a number must not make the whole interaction undecodable.
+	ID       flexID                  `json:"id"`
 	Name     string                  `json:"name"`
 	Options  []wireInteractionOption `json:"options"`
 	Resolved *wireResolved           `json:"resolved"`
@@ -467,6 +469,30 @@ type wireInteractionData struct {
 	ComponentType int             `json:"component_type"`
 	Values        []string        `json:"values"`
 	Components    []wireComponent `json:"components"`
+}
+
+// flexID is an id Discord sends as a string (snowflakes) or as a number (component ids).
+type flexID string
+
+func (f *flexID) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		*f = ""
+		return nil
+	}
+	if len(b) > 0 && b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*f = flexID(s)
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err != nil {
+		return err
+	}
+	*f = flexID(n.String())
+	return nil
 }
 
 type wireInteraction struct {

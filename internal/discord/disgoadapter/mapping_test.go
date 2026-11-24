@@ -576,6 +576,28 @@ func TestInteractionComponentFromWire(t *testing.T) {
 	if btn.Values == nil || len(btn.Values) != 0 || btn.ComponentType != discord.ComponentButton {
 		t.Errorf("button values = %#v", btn.Values)
 	}
+	// Discord sends the clicked component's numeric id as data.id (and in the message's
+	// components): a button click must still decode.
+	numeric := decodeInteraction(t, `{"id":"1","type":3,"token":"t",
+	  "message":{"id":"100","channel_id":"10","author":{"id":"9","username":"bot","bot":true},
+	    "components":[{"type":1,"id":1,"components":[{"type":2,"id":2,"custom_id":"rr:opt-in:0","style":2,"label":"Changelog ping"}]}]},
+	  "data":{"id":2,"custom_id":"rr:opt-in:0","component_type":2}}`)
+	if numeric.CustomID != "rr:opt-in:0" || numeric.ComponentType != discord.ComponentButton {
+		t.Errorf("button with a numeric data.id = %+v", numeric)
+	}
+}
+
+func TestFlexID(t *testing.T) {
+	for raw, want := range map[string]flexID{`"123456789012345678"`: "123456789012345678", `7`: "7", `null`: ""} {
+		var f flexID
+		if err := json.Unmarshal([]byte(raw), &f); err != nil || f != want {
+			t.Errorf("flexID(%s) = %q, %v", raw, f, err)
+		}
+	}
+	var f flexID
+	if err := json.Unmarshal([]byte(`{}`), &f); err == nil {
+		t.Error("flexID accepted an object")
+	}
 }
 
 func TestInteractionModalFromWire(t *testing.T) {
