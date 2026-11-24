@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/version"
 )
 
 // Repo is a loaded Cicord repository.
@@ -251,7 +252,7 @@ func (l *loader) checkEngine(doc *document, rng string) {
 	if l.opts.EngineVersion == "" || rng == "" {
 		return
 	}
-	c, err := semver.NewConstraint(rng)
+	c, err := version.EngineConstraint(rng)
 	if err != nil {
 		l.sink.errorf(doc.file, doc.lineOf("/spec/engine"), "/spec/engine", "invalid semver range %q: %v", rng, err)
 		return
@@ -607,7 +608,7 @@ func (l *loader) checkEngineFor(doc *document, rng string) {
 	if err != nil {
 		return
 	}
-	c, err := semver.NewConstraint(rng)
+	c, err := version.EngineConstraint(rng)
 	if err != nil {
 		l.sink.errorf(doc.file, doc.lineOf("/spec/engine"), "/spec/engine", "invalid semver range %q", rng)
 		return

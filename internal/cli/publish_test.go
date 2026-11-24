@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Masterminds/semver/v3"
+
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/registry"
 )
@@ -151,6 +153,35 @@ func TestPluginPublish(t *testing.T) {
 	code, out, _ = run(t, "plugin", "publish", plugin, "--repo", "https://example.org/welcome.git")
 	if code != 0 || !strings.Contains(out, "repo: https://example.org/welcome.git") || !strings.Contains(out, "version: 0.3.0") {
 		t.Errorf("print = %d\n%s", code, out)
+	}
+}
+
+// The new version must be greater than every earlier release tag by semver 2.0 precedence:
+// a release follows its pre-releases, rc.10 follows rc.2, build metadata does not count.
+func TestOlderTag(t *testing.T) {
+	vs := func(s ...string) []*semver.Version {
+		var out []*semver.Version
+		for _, x := range s {
+			out = append(out, semver.MustParse(x))
+		}
+		return out
+	}
+	for _, c := range []struct {
+		ver      string
+		earlier  []*semver.Version
+		conflict string
+	}{
+		{"1.0.0", vs("0.9.0", "1.0.0-rc.1", "1.0.0-rc.2"), ""},
+		{"1.0.0-rc.10", vs("1.0.0-rc.2", "1.0.0-rc.9"), ""},
+		{"1.0.0-rc.2", vs("1.0.0-rc.10"), "1.0.0-rc.10"},
+		{"1.0.0-rc.3", vs("1.0.0"), "1.0.0"},
+		{"1.0.0+build.2", vs("1.0.0+build.1"), "1.0.0+build.1"},
+		{"1.1.0-rc.1", vs("1.0.0"), ""},
+	} {
+		got := notOlderTag(semver.MustParse(c.ver), c.earlier)
+		if (got == nil && c.conflict != "") || (got != nil && got.Original() != c.conflict) {
+			t.Errorf("notOlderTag(%s) = %v, want %q", c.ver, got, c.conflict)
+		}
 	}
 }
 

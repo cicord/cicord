@@ -106,6 +106,39 @@ func edit(t *testing.T, file, old, new string) {
 	}
 }
 
+// A pre-release engine is checked by semver precedence (0.2.0-rc.1 sorts between 0.1.x and
+// 0.2.0): it satisfies the example's ">=0.1.0 <0.2.0" project range and the plugins'
+// ">=0.1.0", and not a range starting at the release it precedes.
+func TestEnginePrerelease(t *testing.T) {
+	engineErrors := func(dir, engine string) []string {
+		_, ds := Load(dir, LoadOptions{EngineVersion: engine})
+		var out []string
+		for _, d := range ds.Errors() {
+			if strings.Contains(d.String(), "requires Cicord") {
+				out = append(out, d.String())
+			}
+		}
+		return out
+	}
+	for _, v := range []string{"0.2.0-rc.1", "0.1.1-rc.2", "0.1.1+build.5"} {
+		if errs := engineErrors(exampleDir(t), v); len(errs) > 0 {
+			t.Errorf("engine %s: %v", v, errs)
+		}
+	}
+	dir := copyExample(t)
+	edit(t, filepath.Join(dir, "cicord.yaml"), `engine: ">=0.1.0 <0.2.0"`, `engine: ">=0.2.0 <0.3.0"`)
+	edit(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), `engine: ">=0.1.0"`, `engine: ">=0.2.0"`)
+	errs := strings.Join(engineErrors(dir, "0.2.0-rc.1"), "\n")
+	for _, want := range []string{"this repository requires Cicord >=0.2.0 <0.3.0, running 0.2.0-rc.1", "plugin requires Cicord >=0.2.0, running 0.2.0-rc.1"} {
+		if !strings.Contains(errs, want) {
+			t.Errorf("no %q in:\n%s", want, errs)
+		}
+	}
+	if errs := engineErrors(dir, "0.2.0"); len(errs) > 0 {
+		t.Errorf("engine 0.2.0: %v", errs)
+	}
+}
+
 func TestLoadErrors(t *testing.T) {
 	cases := []struct {
 		name  string
