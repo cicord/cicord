@@ -78,7 +78,8 @@ type World struct {
 	sessions     map[*Session]struct{} // opened, not closed
 	calls        []Call
 	subs         map[int]chan struct{}
-	cdn          map[string][]byte // CDN URL → file (uploaded images, expression files)
+	cdn          map[string][]byte          // CDN URL → file (uploaded images, expression files)
+	analytics    map[string]*serverActivity // server ID → voice, presences, invites, events (analytics.go)
 	subSeq       int
 
 	idleMu   sync.Mutex
@@ -594,6 +595,9 @@ func cloneMessage(m discord.Message) discord.Message {
 		m.Attachments = append([]discord.Attachment{}, m.Attachments...)
 	}
 	m.EditedAt = cloneTime(m.EditedAt)
+	if m.StickerIDs != nil {
+		m.StickerIDs = append([]string{}, m.StickerIDs...)
+	}
 	return m
 }
 

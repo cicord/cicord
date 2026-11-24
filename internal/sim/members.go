@@ -16,30 +16,29 @@ const maxTimeout = 28 * 24 * time.Hour
 func (w *World) AddMember(serverID, userID string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	_, err := w.addMember(serverID, userID)
-	return err
+	return w.addMember(serverID, userID)
 }
 
-func (w *World) addMember(serverID, userID string) (*discord.Member, error) {
+func (w *World) addMember(serverID, userID string) error {
 	s, err := w.server(serverID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	u := w.users[userID]
 	if u == nil {
-		return nil, notFound("unknown user %s", userID)
+		return notFound("unknown user %s", userID)
 	}
 	if m := s.members[userID]; m != nil {
-		return m, nil
+		return nil
 	}
 	if s.bans[userID] {
-		return nil, forbidden("user %s is banned from server %s", userID, serverID)
+		return forbidden("user %s is banned from server %s", userID, serverID)
 	}
 	m := &discord.Member{ServerID: serverID, User: u.user, RoleIDs: []string{}, JoinedAt: w.now()}
 	s.members[userID] = m
 	s.memberOrder = append(s.memberOrder, userID)
 	w.emit(discord.MemberJoinEvent{Member: cloneMember(*m)})
-	return m, nil
+	return nil
 }
 
 // RemoveMember makes userID leave serverID (emits MemberLeaveEvent). When a bot leaves,
@@ -117,6 +116,7 @@ func (w *World) AddBotToServer(serverID, botUserID string, perms discord.Permiss
 	s.members[botUserID] = m
 	s.memberOrder = append(s.memberOrder, botUserID)
 	w.emitToBot(botUserID, discord.ServerJoinEvent{Server: cloneServer(s.info)})
+	w.emitToBot(botUserID, w.serverAvailable(serverID))
 	w.emit(discord.MemberJoinEvent{Member: cloneMember(*m)})
 	return role, nil
 }
@@ -202,6 +202,7 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 	*m = next
 	w.recordOK(a, "UpdateMember", serverID, userID, reason)
 	w.emit(discord.MemberUpdateEvent{Member: cloneMember(*m), Previous: &prev})
+	w.auditMemberUpdate(serverID, a.userID, prev, next)
 	return cloneMember(*m), nil
 }
 
@@ -248,6 +249,7 @@ func (w *World) memberRole(a actor, add bool, serverID, userID, roleID, reason s
 		m.RoleIDs = removeString(m.RoleIDs, roleID)
 	}
 	w.emit(discord.MemberUpdateEvent{Member: cloneMember(*m), Previous: &prev})
+	w.auditLog(serverID, a.userID, discord.AuditMemberRoleUpdate, userID)
 	return nil
 }
 
@@ -273,6 +275,7 @@ func (w *World) kickMember(a actor, serverID, userID, reason string) error {
 	}
 	w.recordOK(a, "KickMember", serverID, userID, reason)
 	w.dropMember(s, userID)
+	w.auditLog(serverID, a.userID, discord.AuditMemberKick, userID)
 	return nil
 }
 
@@ -304,6 +307,7 @@ func (w *World) banMember(a actor, serverID, userID string, deleteSeconds int, r
 	if s.members[userID] != nil {
 		w.dropMember(s, userID)
 	}
+	w.auditLog(serverID, a.userID, discord.AuditMemberBanAdd, userID)
 	if deleteSeconds > 0 {
 		cutoff := w.now().Add(-time.Duration(deleteSeconds) * time.Second)
 		for _, cid := range s.channelIDs {
@@ -407,6 +411,7 @@ func (w *World) UnbanMember(serverID, userID string) error {
 	}
 	delete(s.bans, userID)
 	w.changed()
+	w.auditLog(serverID, s.info.OwnerID, discord.AuditMemberBanRemove, userID)
 	return nil
 }
 

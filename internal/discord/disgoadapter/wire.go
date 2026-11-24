@@ -34,6 +34,7 @@ type wireMember struct {
 	Roles                      []string   `json:"roles"`
 	JoinedAt                   *time.Time `json:"joined_at"`
 	CommunicationDisabledUntil *time.Time `json:"communication_disabled_until"`
+	Flags                      int        `json:"flags"`
 	// GuildID is only present in some gateway payloads (GUILD_MEMBER_ADD / UPDATE).
 	GuildID string `json:"guild_id,omitempty"`
 }
@@ -363,6 +364,21 @@ type wireMessage struct {
 	Flags           int              `json:"flags"`
 	Timestamp       time.Time        `json:"timestamp"`
 	EditedTimestamp *time.Time       `json:"edited_timestamp"`
+	// Received only.
+	Type             int                    `json:"type"`
+	WebhookID        string                 `json:"webhook_id,omitempty"`
+	MessageReference *wireReceivedReference `json:"message_reference,omitempty"`
+	StickerItems     []wireStickerItem      `json:"sticker_items,omitempty"`
+	Poll             *struct{}              `json:"poll,omitempty"`
+}
+
+type wireReceivedReference struct {
+	Type      int    `json:"type"` // 0 default (reply), 1 forward
+	MessageID string `json:"message_id"`
+}
+
+type wireStickerItem struct {
+	ID string `json:"id"`
 }
 
 type wireAllowedMentions struct {

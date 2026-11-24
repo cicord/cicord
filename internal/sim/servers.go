@@ -1482,6 +1482,6 @@ func (w *World) createThread(a actor, channelID string, p discord.ThreadParams) 
 	w.channels[ch.ID] = &channelState{ch: ch}
 	s.channelIDs = append(s.channelIDs, ch.ID)
 	w.recordOK(a, "CreateThread", serverID, ch.ID, "")
-	w.emit(discord.ChannelCreateEvent{Channel: ch})
+	w.emit(discord.ChannelCreateEvent{Channel: ch, NewThread: true})
 	return ch, nil
 }
