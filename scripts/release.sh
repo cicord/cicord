@@ -1,31 +1,59 @@
 #!/usr/bin/env bash
 # Prepares the release commit of a new version (https://cicord.dev/docs/project/releasing/):
 #
-#   make release VERSION=<x.y.z>     (or scripts/release.sh <x.y.z>)
+#   make release VERSION=<version>     (or scripts/release.sh <version>)
 #
-# 1. sets <x.y.z> wherever the version is written (engine version, Makefile, Dockerfile,
+# <version> is x.y.z, or x.y.z-rc.N for a pre-release (GitHub prerelease, npm dist-tag next).
+#
+# 1. sets <version> wherever the version is written (engine version, Makefile, Dockerfile,
 #    the packages' package.json);
-# 2. turns the CHANGELOG's [Unreleased] section into "## [<x.y.z>] - <today>" (it must not be
-#    empty), with a fresh empty [Unreleased] above it and the compare links at the bottom;
-# 3. commits "chore(release): v<x.y.z>" and lists the other files that still mention the
+# 2. for x.y.z, turns the CHANGELOG's [Unreleased] section into "## [x.y.z] - <today>" (it
+#    must not be empty), with a fresh empty [Unreleased] above it and the compare links at
+#    the bottom (from the previous release of the CHANGELOG, never from a pre-release). A
+#    pre-release only checks that [Unreleased] is not empty and leaves it as is: its entries
+#    go into the x.y.z section when x.y.z is released;
+# 3. commits "chore(release): v<version>" and lists the other files that still mention the
 #    previous version (install examples…) for review.
 #
-# It never pushes nor tags: push the commit, wait for CI, then tag v<x.y.z> as the release
+# It never pushes nor tags: push the commit, wait for CI, then tag v<version> as the release
 # page describes.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-new="${1:?usage: scripts/release.sh <x.y.z>}"
+# x.y.z or x.y.z-rc.N, numbers without leading zeros (semver; and no octal in $(( ))).
+version_re='^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})(-rc\.(0|[1-9][0-9]{0,8}))?$'
+
+# version_gt A B: whether A > B by semver precedence (A and B match version_re). A release
+# follows its pre-releases (x.y.z-rc.N < x.y.z) and rc numbers compare as numbers (rc.10 >
+# rc.2); `sort -V` gets the first one wrong.
+version_gt() {
+  local a b i
+  [[ "$1" =~ $version_re ]] || return 1
+  a=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[5]:-1000000000}")
+  [[ "$2" =~ $version_re ]] || return 1
+  b=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[5]:-1000000000}")
+  for i in 0 1 2 3; do
+    if ((a[i] != b[i])); then
+      ((a[i] > b[i]))
+      return
+    fi
+  done
+  return 1
+}
+
+new="${1:?usage: scripts/release.sh <x.y.z|x.y.z-rc.N>}"
 new="${new#v}"
-[[ "$new" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "release: '$new' is not a version x.y.z" >&2; exit 1; }
+[[ "$new" =~ $version_re ]] || { echo "release: '$new' is not a version x.y.z or x.y.z-rc.N" >&2; exit 1; }
+pre=false
+if [[ "$new" == *-* ]]; then pre=true; fi
 
 [[ "$(git branch --show-current)" == main ]] || { echo "release: run it on main" >&2; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || { echo "release: the working tree is not clean" >&2; exit 1; }
 
 old="$(sed -n 's/^var Version = "\(.*\)"$/\1/p' internal/version/version.go)"
 [[ -n "$old" ]] || { echo "release: no Version in internal/version/version.go" >&2; exit 1; }
-newest="$(printf '%s\n%s\n' "$old" "$new" | sort -V | tail -1)"
-[[ "$new" != "$old" && "$newest" == "$new" ]] || { echo "release: $new is not greater than $old" >&2; exit 1; }
+[[ "$old" =~ $version_re ]] || { echo "release: the current version '$old' is not x.y.z or x.y.z-rc.N" >&2; exit 1; }
+version_gt "$new" "$old" || { echo "release: $new is not greater than $old" >&2; exit 1; }
 if git rev-parse -q --verify "refs/tags/v$new" >/dev/null; then
   echo "release: the tag v$new already exists" >&2; exit 1
 fi
@@ -33,6 +61,9 @@ fi
 # The [Unreleased] section: everything between its heading and the next "## [".
 unreleased="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep -v '^[[:space:]]*$' || true)"
 [[ -n "$unreleased" ]] || { echo "release: CHANGELOG.md has nothing under [Unreleased]" >&2; exit 1; }
+# The previous release of the CHANGELOG (pre-releases have no section): the compare base.
+prev="$(sed -n 's|^\[Unreleased\]: https://github.com/cicord/cicord/compare/v\(.*\)\.\.\.HEAD$|\1|p' CHANGELOG.md)"
+[[ -n "$prev" ]] || { echo "release: no [Unreleased] compare link at the bottom of CHANGELOG.md" >&2; exit 1; }
 
 # Portable in-place edit (GNU and BSD sed differ on -i).
 edit() { local f="$1"; shift; sed "$@" "$f" >"$f.tmp" && mv "$f.tmp" "$f"; }
@@ -47,23 +78,25 @@ for p in sdk client react ui admin create-cicord-portal; do
     '!done && index($0, old) { sub(old, new); done = 1 } { print }' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
 done
 
-today="$(date -u +%Y-%m-%d)"
-awk -v v="$new" -v d="$today" -v old="$old" '
-  /^## \[Unreleased\]/ { print; print ""; print "## [" v "] - " d; next }
-  /^\[Unreleased\]: / {
-    print "[Unreleased]: https://github.com/cicord/cicord/compare/v" v "...HEAD"
-    print "[" v "]: https://github.com/cicord/cicord/compare/v" old "...v" v
-    next
-  }
-  { print }
-' CHANGELOG.md >CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
+if [[ "$pre" == false ]]; then
+  today="$(date -u +%Y-%m-%d)"
+  awk -v v="$new" -v d="$today" -v prev="$prev" '
+    /^## \[Unreleased\]/ { print; print ""; print "## [" v "] - " d; next }
+    /^\[Unreleased\]: / {
+      print "[Unreleased]: https://github.com/cicord/cicord/compare/v" v "...HEAD"
+      print "[" v "]: https://github.com/cicord/cicord/compare/v" prev "...v" v
+      next
+    }
+    { print }
+  ' CHANGELOG.md >CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
+fi
 
 # Every spot must have changed: a mismatch means the file layout moved.
 for f in internal/version/version.go Makefile Dockerfile; do
-  grep -q "$new" "$f" || { echo "release: $f was not updated, check it" >&2; exit 1; }
+  grep -qF "$new" "$f" || { echo "release: $f was not updated, check it" >&2; exit 1; }
 done
 for p in sdk client react ui admin create-cicord-portal; do
-  grep -q "\"version\": \"$new\"" "packages/$p/package.json" || { echo "release: packages/$p/package.json was not updated" >&2; exit 1; }
+  grep -qF "\"version\": \"$new\"" "packages/$p/package.json" || { echo "release: packages/$p/package.json was not updated" >&2; exit 1; }
 done
 
 git add internal/version/version.go Makefile Dockerfile CHANGELOG.md packages/*/package.json
@@ -83,3 +116,11 @@ Next:
   2. git tag -a v$new -m "Cicord $new" && git push origin v$new
   3. approve the npm environment once the release run is green.
 EOF
+if [[ "$pre" == true ]]; then
+  cat <<EOF
+
+v$new is a pre-release: a GitHub prerelease (not "Latest"), the npm dist-tag next, and
+only the image tags :$new and :sha-<commit>. CHANGELOG.md is unchanged: its [Unreleased]
+entries go into the release of ${new%%-*}.
+EOF
+fi
