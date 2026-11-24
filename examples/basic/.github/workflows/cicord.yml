@@ -23,7 +23,7 @@ jobs:
         with:
           go-version: stable
       # Until binary releases exist.
-      - run: go install github.com/npjonath/cicord/cmd/cicord@latest
+      - run: go install github.com/cicord/cicord/cmd/cicord@latest
       - run: cicord validate
 
   plan:
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      - run: go install github.com/npjonath/cicord/cmd/cicord@latest
+      - run: go install github.com/cicord/cicord/cmd/cicord@latest
       - run: cicord plan --remote --comment
         env:
           CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      - run: go install github.com/npjonath/cicord/cmd/cicord@latest
+      - run: go install github.com/cicord/cicord/cmd/cicord@latest
       # The runtime pulls the merged commit (webhook or polling); wait for it to be applied.
       - run: cicord status --wait --revision ${{ github.sha }} --timeout 10m
         env:

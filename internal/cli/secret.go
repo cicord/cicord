@@ -16,8 +16,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/secrets"
-	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/cicord/cicord/internal/secrets"
+	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
 func init() {

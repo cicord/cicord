@@ -17,9 +17,9 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
-	"github.com/npjonath/cicord/internal/writeback"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/writeback"
 )
 
 // `cicord plugin publish` (ADR-0011): run by a plugin author in the plugin's repository. It

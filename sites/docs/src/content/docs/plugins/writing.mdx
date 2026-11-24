@@ -109,7 +109,7 @@ export default definePlugin({
 
 The manifest is **static and reviewable**. Everything dynamic (commands, handlers, routes)
 comes from the code, and the builder checks that both agree. Schema:
-[`spec/schemas/plugin.schema.json`](https://github.com/npjonath/cicord/blob/main/spec/schemas/plugin.schema.json).
+[`spec/schemas/plugin.schema.json`](https://github.com/cicord/cicord/blob/main/spec/schemas/plugin.schema.json).
 
 ```yaml title="plugins/welcome/plugin.yaml"
 apiVersion: cicord.dev/v1alpha1
@@ -294,7 +294,7 @@ tsc --noEmit -p plugins/hello
 ```
 
 The normative SDK contract is
-[`spec/sdk/cicord-sdk.d.ts`](https://github.com/npjonath/cicord/blob/main/spec/sdk/cicord-sdk.d.ts);
+[`spec/sdk/cicord-sdk.d.ts`](https://github.com/cicord/cicord/blob/main/spec/sdk/cicord-sdk.d.ts);
 `cicord plugin sdk-types <dir>` rewrites the local copy.
 
 Next: the [plugin API](../api/).

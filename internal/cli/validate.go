@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/version"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/version"
 )
 
 func newValidateCmd() *cobra.Command {

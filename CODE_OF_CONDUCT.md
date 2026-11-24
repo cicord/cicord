@@ -11,7 +11,7 @@ publishing someone's private information are not acceptable.
 ## Reporting
 
 Report unacceptable behavior to the maintainers privately, through a
-[private security advisory](https://github.com/npjonath/cicord/security/advisories/new)
+[private security advisory](https://github.com/cicord/cicord/security/advisories/new)
 (it reaches only the maintainers; mention that it is a code of conduct report). Every report is
 reviewed promptly and kept confidential. Maintainers apply the enforcement guidelines of the
 Contributor Covenant (correction, warning, temporary ban, permanent ban).

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/cicord/internal/api"
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/api"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/sim"
 )
 
 func TestPluginBuild(t *testing.T) {
@@ -94,7 +94,7 @@ func TestInitWorkflow(t *testing.T) {
 	}
 	wf := readFile(t, filepath.Join(dir, ".github", "workflows", "cicord.yml"))
 	for _, want := range []string{
-		"go install github.com/npjonath/cicord/cmd/cicord@latest", "cicord validate", "cicord plan --remote --comment",
+		"go install github.com/cicord/cicord/cmd/cicord@latest", "cicord validate", "cicord plan --remote --comment",
 		"cicord status --wait --revision ${{ github.sha }}", "CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}",
 		"CICORD_RUNTIME_TOKEN: ${{ secrets.CICORD_RUNTIME_TOKEN }}", "pull-requests: write", "contents: read",
 	} {

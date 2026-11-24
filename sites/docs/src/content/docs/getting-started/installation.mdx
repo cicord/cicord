@@ -40,7 +40,7 @@ in Go and SQLite is a pure Go driver.
 1. Clone the repository and enter it:
 
    ```sh
-   git clone https://github.com/npjonath/cicord.git
+   git clone https://github.com/cicord/cicord.git
    cd cicord
    ```
 
@@ -81,7 +81,7 @@ The root `Dockerfile` mirrors `make all`: it builds the UIs with Node 26 and pnp
 1. Clone the repository:
 
    ```sh
-   git clone https://github.com/npjonath/cicord.git
+   git clone https://github.com/cicord/cicord.git
    cd cicord
    ```
 
@@ -141,7 +141,7 @@ The path is relative to the file; point it at your checkout of Cicord.
 
 The workflow written by `cicord init` (`.github/workflows/cicord.yml`) only needs the CLI
 (`cicord validate`, `cicord plan --remote`, `cicord status --wait`). Until release binaries exist
-it installs it with `go install github.com/npjonath/cicord/cmd/cicord@latest`, which builds the
+it installs it with `go install github.com/cicord/cicord/cmd/cicord@latest`, which builds the
 command line tool **without** the embedded UIs. That is fine for CI, not for running the
 runtime. See [Your first change](../first-change/#run-it-in-ci).
 

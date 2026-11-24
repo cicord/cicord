@@ -4,7 +4,7 @@ description: definePlugin and the ctx object - events, slash commands, interacti
 ---
 
 A plugin default-exports `definePlugin({...})` from `@cicord/sdk`. The normative contract is
-[`spec/sdk/cicord-sdk.d.ts`](https://github.com/npjonath/cicord/blob/main/spec/sdk/cicord-sdk.d.ts);
+[`spec/sdk/cicord-sdk.d.ts`](https://github.com/cicord/cicord/blob/main/spec/sdk/cicord-sdk.d.ts);
 this page is a guided tour.
 
 ```ts

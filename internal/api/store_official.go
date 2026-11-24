@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
-	"github.com/npjonath/cicord/internal/setup"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/setup"
 )
 
 // officialOrigin tells an install of source "cicord" whether the plugin comes from the

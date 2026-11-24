@@ -310,7 +310,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </main>
       <footer className="portal-footer">
         <span>
-          {t.poweredBy(server.name)} <a href="https://github.com/cicord-dev">Cicord</a>
+          {t.poweredBy(server.name)} <a href="https://github.com/cicord">Cicord</a>
         </span>
       </footer>
       {config.mock ? <p className="portal-mock-badge">{t.demoMode}</p> : null}

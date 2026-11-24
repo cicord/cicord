@@ -15,7 +15,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 // Repo is a loaded Cicord repository.

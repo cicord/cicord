@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/npjonath/cicord/internal/config"
+	"github.com/cicord/cicord/internal/config"
 )
 
 func TestTrustAndURLs(t *testing.T) {
@@ -16,13 +16,13 @@ func TestTrustAndURLs(t *testing.T) {
 	}
 	old := OfficialURLs
 	t.Cleanup(func() { OfficialURLs = old })
-	OfficialURLs = []string{"https://github.com/cicord-dev/registry"}
-	for _, u := range []string{"https://github.com/cicord-dev/registry", "HTTPS://GitHub.com/cicord-dev/registry.git", "https://github.com/cicord-dev/registry/"} {
+	OfficialURLs = []string{"https://github.com/cicord/cicord-plugins"}
+	for _, u := range []string{"https://github.com/cicord/cicord-plugins", "HTTPS://GitHub.com/cicord/cicord-plugins.git", "https://github.com/cicord/cicord-plugins/"} {
 		if Trust(u) != TrustOfficial {
 			t.Errorf("Trust(%q) is not official", u)
 		}
 	}
-	if Trust("https://github.com/cicord-dev/registry-fork") != TrustUnofficial {
+	if Trust("https://github.com/cicord/cicord-plugins-fork") != TrustUnofficial {
 		t.Error("a similar URL must not be official")
 	}
 	if config.NormalizeRegistryURL("https://Example.org/A/b.git/") != "https://example.org/A/b" {

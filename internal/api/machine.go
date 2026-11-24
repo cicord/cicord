@@ -15,8 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/reconcile"
 )
 
 // Limits of an uploaded repository archive (POST /api/v1/plan).

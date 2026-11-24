@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
-	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/runtime"
 )
 
 // TestStoreImplicitOfficialRegistry: with an official registry URL (a signed local

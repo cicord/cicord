@@ -9,12 +9,12 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/runtime"
-	"github.com/npjonath/cicord/internal/sim"
-	"github.com/npjonath/cicord/internal/source"
-	"github.com/npjonath/cicord/internal/state/sqlite"
-	"github.com/npjonath/cicord/internal/writeback"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/source"
+	"github.com/cicord/cicord/internal/state/sqlite"
+	"github.com/cicord/cicord/internal/writeback"
 )
 
 // TestShowcaseRouteAccess drives the plugin routes of examples/showcase through the HTTP

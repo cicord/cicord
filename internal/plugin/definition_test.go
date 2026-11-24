@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 const fullPlugin = `

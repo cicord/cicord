@@ -27,10 +27,10 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/disgo/rest"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
-const userAgent = "DiscordBot (https://github.com/npjonath/cicord, 0)"
+const userAgent = "DiscordBot (https://github.com/cicord/cicord, 0)"
 
 // Option configures a Connector.
 type Option func(*config)

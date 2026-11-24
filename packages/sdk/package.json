@@ -10,14 +10,14 @@
     "plugin",
     "sdk"
   ],
-  "homepage": "https://github.com/npjonath/cicord/tree/main/packages/sdk#readme",
+  "homepage": "https://github.com/cicord/cicord/tree/main/packages/sdk#readme",
   "bugs": {
-    "url": "https://github.com/npjonath/cicord/issues"
+    "url": "https://github.com/cicord/cicord/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/npjonath/cicord.git",
+    "url": "git+https://github.com/cicord/cicord.git",
     "directory": "packages/sdk"
   },
   "files": [

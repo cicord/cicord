@@ -1,6 +1,6 @@
 # @cicord/ui
 
-Styled React components for [Cicord](https://github.com/npjonath/cicord) community portals,
+Styled React components for [Cicord](https://github.com/cicord/cicord) community portals,
 driven by the server's theme (`spec.portal.theme` in `servers/<server>.yaml`: primary and
 accent colors, light/dark mode, with a contrast check). Optional: portals can use
 [`@cicord/react`](https://www.npmjs.com/package/@cicord/react) alone with their own design.
@@ -23,7 +23,7 @@ import { Avatar, Button, Markdown, MemberCard, ThemeProvider } from "@cicord/ui"
 Components include `ThemeProvider`, `Button`, `Notice`, `Spinner`, `Avatar`, `MemberCard`,
 `ProgressBar`, `Markdown` (a safe Markdown subset rendered as React elements: raw HTML
 shows as text, only http(s) links) and `LinkIcon`. The reference portal
-([create-cicord-portal](https://github.com/npjonath/cicord/tree/main/packages/create-cicord-portal))
+([create-cicord-portal](https://github.com/cicord/cicord/tree/main/packages/create-cicord-portal))
 uses all of them.
 
 Peer dependency: React 18.3 or 19. ESM only, with TypeScript declarations and one

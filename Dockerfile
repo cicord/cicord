@@ -47,7 +47,7 @@ ARG COMMIT=dev
 RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod \
     --mount=type=cache,id=cicord-gobuild,target=/root/.cache/go-build \
     go build -trimpath \
-      -ldflags "-s -w -X github.com/npjonath/cicord/internal/version.Version=${VERSION} -X github.com/npjonath/cicord/internal/version.Commit=${COMMIT}" \
+      -ldflags "-s -w -X github.com/cicord/cicord/internal/version.Version=${VERSION} -X github.com/cicord/cicord/internal/version.Commit=${COMMIT}" \
       -o /out/cicord ./cmd/cicord \
  && mkdir -p /out/data /out/repo
 
@@ -55,7 +55,7 @@ RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod \
 FROM gcr.io/distroless/static-debian13:nonroot
 LABEL org.opencontainers.image.title="cicord" \
       org.opencontainers.image.description="GitOps for Discord: declarative servers and bots, TypeScript plugins" \
-      org.opencontainers.image.source="https://github.com/npjonath/cicord" \
+      org.opencontainers.image.source="https://github.com/cicord/cicord" \
       org.opencontainers.image.url="https://cicord.dev" \
       org.opencontainers.image.documentation="https://cicord.dev/docs/" \
       org.opencontainers.image.licenses="Apache-2.0"

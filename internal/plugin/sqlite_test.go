@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
 // TestWithSQLiteStore runs the storage-backed SDK calls against the real state store.

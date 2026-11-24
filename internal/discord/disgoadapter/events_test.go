@@ -14,7 +14,7 @@ import (
 	"github.com/disgoorg/disgo/rest"
 	"github.com/gorilla/websocket"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 func testSession() *session {

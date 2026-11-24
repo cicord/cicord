@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/cicord/internal/config"
+	"github.com/cicord/cicord/internal/config"
 )
 
 // Signed official index (ADR-0011, "Update (2026-11-23)").
@@ -29,7 +29,7 @@ import (
 //
 //	# Signatures of index.yaml (cicord registry sign). Do not edit.
 //	format: cicord-registry-signature-v1
-//	registry: https://github.com/cicord-dev/registry
+//	registry: https://github.com/cicord/cicord-plugins
 //	serial: 1764000000
 //	expires: 2026-12-23T00:00:00Z
 //	index-sha256: 9f86d081…
@@ -64,7 +64,7 @@ var OfficialKeys = []string{}
 
 // devOfficialKey is an extra trusted key for development builds only, set at build time:
 //
-//	go build -ldflags "-X github.com/npjonath/cicord/internal/registry.devOfficialKey=<base64>"
+//	go build -ldflags "-X github.com/cicord/cicord/internal/registry.devOfficialKey=<base64>"
 //
 // Release builds never set it. It is also what makes a build a development build for
 // DevOfficialRegistryEnv. It cannot be changed by cicord.yaml, the API or the environment.

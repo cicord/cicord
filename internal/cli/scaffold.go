@@ -15,8 +15,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/version"
-	"github.com/npjonath/cicord/spec"
+	"github.com/cicord/cicord/internal/version"
+	"github.com/cicord/cicord/spec"
 )
 
 //go:embed all:templates

@@ -1,6 +1,6 @@
 # @cicord/react
 
-React bindings for [Cicord](https://github.com/npjonath/cicord) community portals: a provider,
+React bindings for [Cicord](https://github.com/cicord/cicord) community portals: a provider,
 cached data hooks and headless components, on top of
 [`@cicord/client`](https://www.npmjs.com/package/@cicord/client).
 
@@ -42,7 +42,7 @@ Hooks: `useMe`, `useSession`, `useLogout`, `useLinkTokenLogin`, `usePortalServer
 `usePortalServer`, `useMember`, `useRoles`, `usePortalPlugin`, `useRouteQuery`,
 `useRouteMutation`, `usePluginQuery`, `usePluginMutation`, `useCicordQuery`. Component:
 `<OnboardingFlow>` (headless onboarding of the `onboarding` plugin). See
-[docs/portal.md](https://github.com/npjonath/cicord/blob/main/docs/portal.md).
+[docs/portal.md](https://github.com/cicord/cicord/blob/main/docs/portal.md).
 
 Peer dependency: React 18.3 or 19. ESM only, with TypeScript declarations. License:
 Apache-2.0.

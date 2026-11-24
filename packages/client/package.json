@@ -9,14 +9,14 @@
     "discord",
     "gitops"
   ],
-  "homepage": "https://github.com/npjonath/cicord/tree/main/packages/client#readme",
+  "homepage": "https://github.com/cicord/cicord/tree/main/packages/client#readme",
   "bugs": {
-    "url": "https://github.com/npjonath/cicord/issues"
+    "url": "https://github.com/cicord/cicord/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/npjonath/cicord.git",
+    "url": "git+https://github.com/cicord/cicord.git",
     "directory": "packages/client"
   },
   "files": [

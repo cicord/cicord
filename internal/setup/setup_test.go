@@ -13,7 +13,7 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 // fakeDiscord is a minimal Discord REST API for the probe.

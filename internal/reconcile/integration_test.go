@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/sim"
-	"github.com/npjonath/cicord/internal/state"
-	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
 // env is a simulated server managed by a bot, plus a state store.

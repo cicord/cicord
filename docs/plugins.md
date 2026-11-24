@@ -846,7 +846,7 @@ by one ed25519 signature per signing key:
 ```
 # Signatures of index.yaml (cicord registry sign). Do not edit.
 format: cicord-registry-signature-v1
-registry: https://github.com/cicord-dev/registry   # normalized URL of the registry
+registry: https://github.com/cicord/cicord-plugins   # normalized URL of the registry
 serial: 1764000000                               # increases with every signature
 expires: 2026-12-23T00:00:00Z                    # the signature is refused after this
 index-sha256: 9f86d081…                          # SHA-256 of the exact bytes of index.yaml
@@ -907,7 +907,7 @@ error. Until the official registry repository and its key exist (the URL and key
 this build are empty), `cicord` is the bundled plugins only.
 
 **Development.** A development build embeds a test key at build time
-(`-ldflags "-X github.com/npjonath/cicord/internal/registry.devOfficialKey=<base64>"`); only
+(`-ldflags "-X github.com/cicord/cicord/internal/registry.devOfficialKey=<base64>"`); only
 such a build honours `CICORD_DEV_OFFICIAL_REGISTRY=<url>`, which points the official registry
 at another URL (its index must be signed for that URL). Release builds ignore the variable:
 nothing in the environment, `cicord.yaml` or the admin UI can change what is official.

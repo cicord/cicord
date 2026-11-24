@@ -69,6 +69,6 @@ them from the `cicord` binary.
 
 :::note[Inside Discord?]
 Running the portal inside the Discord client as an Activity is a proposed option
-([ADR-0016](https://github.com/npjonath/cicord/blob/main/docs/adr/0016-portal-as-discord-activity.md)),
+([ADR-0016](https://github.com/cicord/cicord/blob/main/docs/adr/0016-portal-as-discord-activity.md)),
 not implemented.
 :::

@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/cicord/internal/catalog"
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/registry"
-	"github.com/npjonath/cicord/internal/runtime"
-	"github.com/npjonath/cicord/internal/writeback"
+	"github.com/cicord/cicord/internal/catalog"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/writeback"
 )
 
 // Installer installs plugins into the active repository through write-back, from the

@@ -16,9 +16,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/state"
-	"github.com/npjonath/cicord/internal/writeback"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/writeback"
 )
 
 // Server images editable from the admin UI (spec/api.md §4, "Server assets"): the file

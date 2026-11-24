@@ -25,7 +25,7 @@ react, ui). Versions already on npm are skipped, so a failed run can be re-run. 
    `scripts/sync-ui.sh` and of the workflow.
 2. **The repository must be public** (npm provenance is only generated for public source
    repositories) and the `repository.url` of the four package.json files must be the
-   GitHub repository the workflow runs in (`github.com/npjonath/cicord`).
+   GitHub repository the workflow runs in (`github.com/cicord/cicord`).
 3. **Token.** On npmjs.com → Access Tokens → Generate New Token → Granular Access Token:
    read and write on the packages of the `cicord` organization (for the very first publish,
    "all packages" of the organization, since the packages do not exist yet), with 2FA

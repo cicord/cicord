@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/npjonath/cicord/internal/cli"
+	"github.com/cicord/cicord/internal/cli"
 )
 
 func main() {

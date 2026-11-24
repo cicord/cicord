@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/sim"
 )
 
 // ───────────────────────────────────────────────────────────── DTOs

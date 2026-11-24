@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/version"
+	"github.com/cicord/cicord/internal/version"
 )
 
 // exitError carries a process exit code without printing an extra message.

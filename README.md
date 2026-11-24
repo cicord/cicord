@@ -1,6 +1,6 @@
 # Cicord — CI/CD for Discord
 
-[![CI](https://github.com/npjonath/cicord/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/npjonath/cicord/actions/workflows/ci.yml)
+[![CI](https://github.com/cicord/cicord/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cicord/cicord/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-cicord.dev-blueviolet.svg)](https://cicord.dev/docs/)
 [![Go](https://img.shields.io/badge/go-1.27-00ADD8.svg?logo=go&logoColor=white)](go.mod)

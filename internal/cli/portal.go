@@ -22,9 +22,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/typegen"
-	"github.com/npjonath/cicord/internal/webui"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/typegen"
+	"github.com/cicord/cicord/internal/webui"
 )
 
 func init() {
@@ -359,7 +359,7 @@ jobs:
         with:
           go-version: stable
       # Until binary releases exist.
-      - run: go install github.com/npjonath/cicord/cmd/cicord@latest
+      - run: go install github.com/cicord/cicord/cmd/cicord@latest
       - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
         working-directory: .
         run: cicord portal typegen --check --out [[.Dir]]/src/cicord-routes.d.ts

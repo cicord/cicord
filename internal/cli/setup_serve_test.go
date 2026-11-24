@@ -14,11 +14,11 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/setup"
-	"github.com/npjonath/cicord/internal/sim"
-	"github.com/npjonath/cicord/internal/state"
-	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/setup"
+	"github.com/cicord/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
 type cicordProc struct {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/disgoorg/disgo/rest"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 // checkIDs rejects IDs that are not snowflakes before they are spliced into a URL.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 var commandNameRe = regexp.MustCompile(`^[-_\p{L}\p{N}]{1,32}$`)

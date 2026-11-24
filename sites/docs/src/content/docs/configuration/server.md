@@ -4,7 +4,7 @@ description: Reference of servers/<key>.yaml - profile, roles, categories, chann
 ---
 
 A **Server** file, `servers/<key>.yaml`, is the desired state of one Discord server. Schema:
-[`spec/schemas/server.schema.json`](https://github.com/npjonath/cicord/blob/main/spec/schemas/server.schema.json).
+[`spec/schemas/server.schema.json`](https://github.com/cicord/cicord/blob/main/spec/schemas/server.schema.json).
 How it is applied is described in [Reconciliation](../../concepts/reconciliation/).
 
 ```yaml title="servers/ma-commu.yaml"

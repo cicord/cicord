@@ -5,7 +5,7 @@ are all welcome.
 
 ## Before you start
 
-- **Questions and ideas**: open a [discussion](https://github.com/npjonath/cicord/discussions)
+- **Questions and ideas**: open a [discussion](https://github.com/cicord/cicord/discussions)
   or a feature request issue.
 - **Bugs**: open a bug report with the steps to reproduce, the version (`cicord version`) and
   the relevant logs (remove tokens and secrets first).

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/setup"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/setup"
 )
 
 // Setup wizard endpoints (spec/api.md §10), the plugin catalog and Diagnostics.

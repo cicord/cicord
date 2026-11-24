@@ -3,10 +3,10 @@ package importer
 import (
 	"sort"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/reconcile"
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/state"
 )
 
 // encode turns a config value into a YAML node (struct field order, omitempty honored).

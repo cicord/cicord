@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/cicord/internal/catalog"
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/catalog"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
 )
 
 // Update kinds.

@@ -34,7 +34,7 @@ depends on it; the in-process **simulator** implements the same interfaces and b
 
 ## Decisions
 
-The [ADRs](https://github.com/npjonath/cicord/tree/main/docs/adr) record each decision. In short:
+The [ADRs](https://github.com/cicord/cicord/tree/main/docs/adr) record each decision. In short:
 
 | ADR | Decision | Status |
 |---|---|---|

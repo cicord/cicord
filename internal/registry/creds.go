@@ -10,7 +10,7 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/cicord/internal/config"
+	"github.com/cicord/cicord/internal/config"
 )
 
 // Private registries: a registry of cicord.yaml may name a secret (secretRef) holding an

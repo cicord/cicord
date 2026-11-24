@@ -13,12 +13,12 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
-	"github.com/npjonath/cicord/internal/runtime"
-	"github.com/npjonath/cicord/internal/secrets"
-	"github.com/npjonath/cicord/internal/state/sqlite"
-	"github.com/npjonath/cicord/internal/store"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/secrets"
+	"github.com/cicord/cicord/internal/state/sqlite"
+	"github.com/cicord/cicord/internal/store"
 )
 
 func gitRepo(t *testing.T, files map[string]string, tags ...string) string {

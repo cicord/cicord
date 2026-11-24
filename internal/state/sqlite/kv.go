@@ -9,7 +9,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state"
 )
 
 const defaultKVListLimit = 100

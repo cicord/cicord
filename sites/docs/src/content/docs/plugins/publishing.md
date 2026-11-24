@@ -130,7 +130,7 @@ signature per signing key:
 ```text title="index.yaml.sig"
 # Signatures of index.yaml (cicord registry sign). Do not edit.
 format: cicord-registry-signature-v1
-registry: https://github.com/cicord-dev/registry   # normalized URL of the registry
+registry: https://github.com/cicord/cicord-plugins   # normalized URL of the registry
 serial: 1764000000                               # increases with every signature
 expires: 2026-12-23T00:00:00Z                    # the signature is refused after this
 index-sha256: 9f86d081…                          # SHA-256 of the exact bytes of index.yaml

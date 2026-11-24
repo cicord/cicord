@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state"
 )
 
 func TestOpenRejectsEmptyPath(t *testing.T) {

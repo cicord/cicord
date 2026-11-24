@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/cicord/internal/config"
+	"github.com/cicord/cicord/internal/config"
 )
 
 // TestDefaultsConformance checks that typegen and config.ApplyDefaults agree: every field

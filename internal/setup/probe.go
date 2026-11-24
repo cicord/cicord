@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 // Application flags: see the discord package (aliases kept for the setup API).
@@ -108,7 +108,7 @@ func (p *HTTPProbe) get(ctx context.Context, token, path string, out any) error 
 			return err
 		}
 		req.Header.Set("Authorization", "Bot "+token)
-		req.Header.Set("User-Agent", "DiscordBot (https://github.com/npjonath/cicord, 0)")
+		req.Header.Set("User-Agent", "DiscordBot (https://github.com/cicord/cicord, 0)")
 		resp, err := p.client().Do(req)
 		if err != nil {
 			return fmt.Errorf("discord %s: %w", path, err)

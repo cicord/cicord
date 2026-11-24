@@ -4,7 +4,7 @@ description: Reference of cicord.yaml - engine, source, runtime, registries, wri
 ---
 
 `cicord.yaml` at the root of the repository holds the **Project**: settings that apply to the
-whole repository. Schema: [`spec/schemas/project.schema.json`](https://github.com/npjonath/cicord/blob/main/spec/schemas/project.schema.json).
+whole repository. Schema: [`spec/schemas/project.schema.json`](https://github.com/cicord/cicord/blob/main/spec/schemas/project.schema.json).
 
 ```yaml title="cicord.yaml"
 apiVersion: cicord.dev/v1alpha1

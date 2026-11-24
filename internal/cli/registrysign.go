@@ -13,7 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/registry"
 )
 
 // Maintainer tooling of the signed official index (ADR-0011): `cicord registry keygen`,
@@ -147,7 +147,7 @@ Repeat --key to sign with several keys (key rotation: sign with the old and the 
 until every runtime trusts the new one).
 
 The index is checked first: plugin names, https:// repositories without credentials.`,
-		Example: `  cicord registry sign . --key ~/.config/cicord/registry.key --registry-url https://github.com/cicord-dev/registry
+		Example: `  cicord registry sign . --key ~/.config/cicord/registry.key --registry-url https://github.com/cicord/cicord-plugins
   CICORD_REGISTRY_SIGNING_KEY=… cicord registry sign . --key env:CICORD_REGISTRY_SIGNING_KEY`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

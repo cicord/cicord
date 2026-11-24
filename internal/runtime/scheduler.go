@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/cicord/internal/plugin"
+	"github.com/cicord/cicord/internal/plugin"
 )
 
 // scheduler runs one-shot tasks (persisted in the store) and cron schedules of the active

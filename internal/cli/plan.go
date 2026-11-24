@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/planfmt"
-	"github.com/npjonath/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/planfmt"
+	"github.com/cicord/cicord/internal/reconcile"
 )
 
 func init() {

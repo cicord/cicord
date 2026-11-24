@@ -13,8 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/planfmt"
-	"github.com/npjonath/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/planfmt"
+	"github.com/cicord/cicord/internal/runtime"
 )
 
 func init() {

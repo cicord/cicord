@@ -8,7 +8,7 @@ release.
 ## Reporting a vulnerability
 
 Please **do not open a public issue**. Report it privately through GitHub:
-[**Report a vulnerability**](https://github.com/npjonath/cicord/security/advisories/new)
+[**Report a vulnerability**](https://github.com/cicord/cicord/security/advisories/new)
 (Security tab → Advisories → Report a vulnerability).
 
 Include what you can: the affected component (runtime, plugin host, API, admin console,

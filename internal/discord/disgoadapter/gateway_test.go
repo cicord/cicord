@@ -16,7 +16,7 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/gorilla/websocket"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 func withoutGatewayCompression() Option {

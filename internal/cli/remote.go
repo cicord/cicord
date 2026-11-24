@@ -22,8 +22,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/discord/disgoadapter"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord/disgoadapter"
 )
 
 // ───────────────────────────────────────────────────────────── test seams

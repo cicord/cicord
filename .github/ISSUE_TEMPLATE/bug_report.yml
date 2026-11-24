@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for the report! Remove tokens, secrets and private server data from everything you paste.
-        Security issues go to a [private advisory](https://github.com/npjonath/cicord/security/advisories/new), not here.
+        Security issues go to a [private advisory](https://github.com/cicord/cicord/security/advisories/new), not here.
   - type: dropdown
     id: component
     attributes:

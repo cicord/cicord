@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state"
 )
 
 type resourceMap struct{ s *Store }

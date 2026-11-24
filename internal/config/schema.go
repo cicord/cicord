@@ -14,7 +14,7 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	"github.com/npjonath/cicord/spec"
+	"github.com/cicord/cicord/spec"
 )
 
 var printer = message.NewPrinter(language.English)

@@ -584,7 +584,7 @@ cicord registry sign <registry-dir> --key <file|env:NAME> [flags]
 | `--dir` `string` | repository root (default ".") (inherited) |
 
 ```sh
-cicord registry sign . --key ~/.config/cicord/registry.key --registry-url https://github.com/cicord-dev/registry
+cicord registry sign . --key ~/.config/cicord/registry.key --registry-url https://github.com/cicord/cicord-plugins
 CICORD_REGISTRY_SIGNING_KEY=… cicord registry sign . --key env:CICORD_REGISTRY_SIGNING_KEY
 ```
 

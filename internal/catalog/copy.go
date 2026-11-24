@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
 )
 
 // Updating bundled plugins: the Store copies a catalog plugin to plugins/<name>/ of the

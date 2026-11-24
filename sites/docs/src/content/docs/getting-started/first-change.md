@@ -141,7 +141,7 @@ request cannot choose where the token is sent.
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      - run: go install github.com/npjonath/cicord/cmd/cicord@latest
+      - run: go install github.com/cicord/cicord/cmd/cicord@latest
       - run: cicord plan --remote --comment
         env:
           CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}

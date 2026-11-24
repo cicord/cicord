@@ -15,8 +15,8 @@ import (
 
 	"github.com/grafana/sobek"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/state"
 )
 
 // Capabilities (spec/README.md §6).

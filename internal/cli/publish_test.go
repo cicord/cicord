@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
 )
 
 // gitTest runs git in dir with an isolated configuration (no user signing settings).

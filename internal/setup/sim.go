@@ -10,8 +10,8 @@ import (
 	"image/png"
 	"sync"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/sim"
 )
 
 // SimEnv is the simulated Discord of `cicord dev --sim --setup`: a world with an owner, a

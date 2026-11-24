@@ -11,10 +11,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/reconcile"
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/state"
 )
 
 // Downloader fetches a CDN URL. When max > 0, a file larger than max bytes is an error
@@ -34,7 +34,7 @@ func HTTPDownloader(c *http.Client) Downloader {
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("User-Agent", "DiscordBot (https://github.com/npjonath/cicord, 0)")
+		req.Header.Set("User-Agent", "DiscordBot (https://github.com/cicord/cicord, 0)")
 		resp, err := c.Do(req)
 		if err != nil {
 			return nil, err

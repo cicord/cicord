@@ -9,7 +9,7 @@ import (
 	"github.com/disgoorg/disgo/rest"
 	"github.com/gorilla/websocket"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 // Gateway close codes (https://discord.com/developers/docs/topics/opcodes-and-status-codes).

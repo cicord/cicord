@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
 )
 
 func repoWith(regs ...config.Registry) *config.Repo {

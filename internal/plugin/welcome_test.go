@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/build"
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/build"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 // welcomeGrants are the grants of examples/basic/bots/moderator/bot.yaml.

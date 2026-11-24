@@ -61,7 +61,7 @@ Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitH
 - `examples/showcase` is the end-to-end fixture: its seven plugins are driven through the real
   runtime on the simulator (`internal/runtime/showcase_test.go`), their portal routes through
   the HTTP API, and `cicord plugin build`, `typegen --check` and `cicord plugin test` run on each.
-  [`docs/plugin-coverage.md`](https://github.com/npjonath/cicord/blob/main/docs/plugin-coverage.md)
+  [`docs/plugin-coverage.md`](https://github.com/cicord/cicord/blob/main/docs/plugin-coverage.md)
   maps every SDK feature to the test that exercises it.
 - The real Discord adapter (disgo) is tested against an HTTP fake of the REST API and gateway.
 - Plugin unit tests use `@cicord/sdk/testing`.

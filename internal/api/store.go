@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
-	"github.com/npjonath/cicord/internal/setup"
-	"github.com/npjonath/cicord/internal/state"
-	"github.com/npjonath/cicord/internal/store"
-	"github.com/npjonath/cicord/internal/writeback"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/setup"
+	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/store"
+	"github.com/cicord/cicord/internal/writeback"
 )
 
 // Store endpoints (spec/api.md §11).

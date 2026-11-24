@@ -5,7 +5,7 @@ description: Overview of the runtime's HTTP API v1 - authentication, roles, CSRF
 
 The runtime serves a JSON HTTP API used by the admin console, the portal SDK and the CLI. This
 page is an overview. The normative contract, with every shape, is
-[`spec/api.md`](https://github.com/npjonath/cicord/blob/main/spec/api.md);
+[`spec/api.md`](https://github.com/cicord/cicord/blob/main/spec/api.md);
 `@cicord/client` mirrors it in TypeScript.
 
 :::caution

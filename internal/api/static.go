@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/cicord/internal/config"
+	"github.com/cicord/cicord/internal/config"
 )
 
 // reservedPrefixes are never shadowed by a static UI: unknown paths there are JSON 404s.

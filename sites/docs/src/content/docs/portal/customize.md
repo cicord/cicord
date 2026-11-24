@@ -65,7 +65,7 @@ spec:
 - **`locale`**: the interface language of the reference portal, `en` or `fr`. Without it the
   browser language is used when supported, else English.
 
-[`examples/basic/servers/ma-commu.yaml`](https://github.com/npjonath/cicord/blob/main/examples/basic/servers/ma-commu.yaml)
+[`examples/basic/servers/ma-commu.yaml`](https://github.com/cicord/cicord/blob/main/examples/basic/servers/ma-commu.yaml)
 uses every option. The full field list is in the [Server reference](../../configuration/server/#portal).
 
 ## Several servers

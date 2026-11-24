@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 // Snapshot is the live state of a server.

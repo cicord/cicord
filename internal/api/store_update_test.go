@@ -10,8 +10,8 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/cicord/internal/catalog"
-	"github.com/npjonath/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/catalog"
+	"github.com/cicord/cicord/internal/registry"
 )
 
 // release commits files to a plugin repository and tags the commit.

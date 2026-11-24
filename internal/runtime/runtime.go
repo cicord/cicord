@@ -20,15 +20,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/cicord/internal/auth"
-	"github.com/npjonath/cicord/internal/build"
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/plugin"
-	"github.com/npjonath/cicord/internal/reconcile"
-	"github.com/npjonath/cicord/internal/source"
-	"github.com/npjonath/cicord/internal/state"
-	"github.com/npjonath/cicord/internal/version"
+	"github.com/cicord/cicord/internal/auth"
+	"github.com/cicord/cicord/internal/build"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/plugin"
+	"github.com/cicord/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/source"
+	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/version"
 )
 
 type Options struct {

@@ -19,11 +19,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/npjonath/cicord/examples"
-	"github.com/npjonath/cicord/internal/build"
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/plugin"
+	"github.com/cicord/cicord/examples"
+	"github.com/cicord/cicord/internal/build"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/plugin"
 )
 
 // Command is a slash command a plugin registers.

@@ -1,6 +1,6 @@
 # @cicord/sdk
 
-Authoring types and test helpers for [Cicord](https://github.com/npjonath/cicord) plugins.
+Authoring types and test helpers for [Cicord](https://github.com/cicord/cicord) plugins.
 Cicord manages Discord servers and bots with GitOps; plugins are small TypeScript modules
 that the Cicord runtime bundles and runs in a sandbox (no Node.js APIs: every side effect
 goes through `ctx`).
@@ -33,7 +33,7 @@ export default definePlugin({
 test). Exports: `definePlugin`, `command`, `defineRoutes` (portal routes checked against a
 route contract) and `CapabilityError`, plus every type of the plugin API (`Context`,
 `Member`, `Message`, `RouteRequest`…). The types are the normative contract
-[`spec/sdk/cicord-sdk.d.ts`](https://github.com/npjonath/cicord/blob/main/spec/sdk/cicord-sdk.d.ts).
+[`spec/sdk/cicord-sdk.d.ts`](https://github.com/cicord/cicord/blob/main/spec/sdk/cicord-sdk.d.ts).
 
 ## Test it: `@cicord/sdk/testing`
 
@@ -54,6 +54,6 @@ test("/hello", async () => {
 
 `createTestContext` records messages, role changes, KV writes, scheduled tasks, HTTP
 requests…; `runCommand`, `runComponent`, `submitModal` and `callRoute` drive the handlers.
-See [docs/plugins.md §8](https://github.com/npjonath/cicord/blob/main/docs/plugins.md).
+See [docs/plugins.md §8](https://github.com/cicord/cicord/blob/main/docs/plugins.md).
 
 ESM only, with TypeScript declarations. License: Apache-2.0.

@@ -21,16 +21,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/cicord/internal/catalog"
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
-	"github.com/npjonath/cicord/internal/runtime"
-	"github.com/npjonath/cicord/internal/secrets"
-	"github.com/npjonath/cicord/internal/setup"
-	"github.com/npjonath/cicord/internal/sim"
-	"github.com/npjonath/cicord/internal/state"
-	"github.com/npjonath/cicord/internal/store"
-	"github.com/npjonath/cicord/internal/writeback"
+	"github.com/cicord/cicord/internal/catalog"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/secrets"
+	"github.com/cicord/cicord/internal/setup"
+	"github.com/cicord/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/store"
+	"github.com/cicord/cicord/internal/writeback"
 )
 
 // OAuth configures the Discord OAuth2 authorization-code flow (scope identify).

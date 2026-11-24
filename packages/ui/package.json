@@ -10,14 +10,14 @@
     "react",
     "ui"
   ],
-  "homepage": "https://github.com/npjonath/cicord/tree/main/packages/ui#readme",
+  "homepage": "https://github.com/cicord/cicord/tree/main/packages/ui#readme",
   "bugs": {
-    "url": "https://github.com/npjonath/cicord/issues"
+    "url": "https://github.com/cicord/cicord/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/npjonath/cicord.git",
+    "url": "git+https://github.com/cicord/cicord.git",
     "directory": "packages/ui"
   },
   "files": [

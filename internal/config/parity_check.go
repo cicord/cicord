@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 // RulesChannelKey is community.rulesChannel, else the deprecated profile.rulesChannel.

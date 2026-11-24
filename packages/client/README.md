@@ -1,7 +1,7 @@
 # @cicord/client
 
 Typed, framework-agnostic client for the HTTP API v1 of the
-[Cicord](https://github.com/npjonath/cicord) runtime: sign-in (cookie or token mode), the
+[Cicord](https://github.com/cicord/cicord) runtime: sign-in (cookie or token mode), the
 community portal endpoints, plugin routes, and the admin API. Works in browsers, Node.js
 and workers (only `fetch` is needed).
 
@@ -38,7 +38,7 @@ if (levels) {
 portal-scoped bearer session instead of the cookie (cicord.yaml `spec.portal.allowedOrigins`).
 
 Every non-2xx response rejects with `CicordApiError` (`code`, `status`, `message`). See
-[docs/portal.md](https://github.com/npjonath/cicord/blob/main/docs/portal.md) and the API
-reference [spec/api.md](https://github.com/npjonath/cicord/blob/main/spec/api.md).
+[docs/portal.md](https://github.com/cicord/cicord/blob/main/docs/portal.md) and the API
+reference [spec/api.md](https://github.com/cicord/cicord/blob/main/spec/api.md).
 
 ESM only, with TypeScript declarations. License: Apache-2.0.

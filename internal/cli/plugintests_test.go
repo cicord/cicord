@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/cicord/internal/webui"
+	"github.com/cicord/cicord/internal/webui"
 )
 
 func TestPluginNewTestSetup(t *testing.T) {

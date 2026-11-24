@@ -12,7 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/npjonath/cicord/internal/webui"
+	"github.com/cicord/cicord/internal/webui"
 )
 
 func fakeTgz(t *testing.T, manifest string) []byte {

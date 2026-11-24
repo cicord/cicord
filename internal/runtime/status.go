@@ -3,7 +3,7 @@ package runtime
 import (
 	"time"
 
-	"github.com/npjonath/cicord/internal/source"
+	"github.com/cicord/cicord/internal/source"
 )
 
 // Sync and health values (ArgoCD style, spec/api.md §3).

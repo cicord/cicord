@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/build"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/build"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/state"
 )
 
 // ───────────────────────────────────────────────────────────── fake Discord client

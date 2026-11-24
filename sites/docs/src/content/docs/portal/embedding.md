@@ -70,7 +70,7 @@ bots to open the external site, set `cicord.yaml` `spec.portal.url`: it becomes 
 
 ## Example
 
-[`examples/embed`](https://github.com/npjonath/cicord/tree/main/examples/embed) is a plain HTML
+[`examples/embed`](https://github.com/cicord/cicord/tree/main/examples/embed) is a plain HTML
 page (no framework, no build) on its own origin, with its own design, that signs in (Discord,
 or the simulator's users), shows the member's roles and the public `levels` leaderboard:
 

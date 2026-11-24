@@ -11,7 +11,7 @@ import (
 
 	"github.com/grafana/sobek"
 
-	"github.com/npjonath/cicord/internal/build"
+	"github.com/cicord/cicord/internal/build"
 )
 
 //go:embed sdk.js

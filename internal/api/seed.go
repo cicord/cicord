@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/sim"
 )
 
 // SimSeed is the result of SeedSimWorld.

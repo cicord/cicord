@@ -18,6 +18,6 @@ You may use, modify and redistribute Cicord, including commercially and to host 
 under the terms of the license; it comes with an explicit patent grant. Contributions are
 accepted under the same license.
 
-The full text is in [`LICENSE`](https://github.com/npjonath/cicord/blob/main/LICENSE), and the
-decision in [ADR-0013](https://github.com/npjonath/cicord/blob/main/docs/adr/0013-licensing.md).
+The full text is in [`LICENSE`](https://github.com/cicord/cicord/blob/main/LICENSE), and the
+decision in [ADR-0013](https://github.com/cicord/cicord/blob/main/docs/adr/0013-licensing.md).
 Cicord is an independent project, not affiliated with Discord.

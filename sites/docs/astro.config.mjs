@@ -6,7 +6,7 @@ import { defineConfig } from "astro/config";
 const prefix = (process.env.BASE_PATH ?? "/").split("/").filter(Boolean).join("/");
 const landing = prefix ? `/${prefix}/` : "/";
 const site = process.env.SITE_URL ?? "http://localhost:4321";
-const repo = "https://github.com/npjonath/cicord";
+const repo = "https://github.com/cicord/cicord";
 
 export default defineConfig({
   site,

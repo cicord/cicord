@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/npjonath/cicord/internal/api"
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/runtime"
-	"github.com/npjonath/cicord/internal/sim"
-	"github.com/npjonath/cicord/internal/source"
-	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/cicord/cicord/internal/api"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/source"
+	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
 const runtimeToken = "test-runtime-token"

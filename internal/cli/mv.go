@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/importer"
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/importer"
+	"github.com/cicord/cicord/internal/state"
 )
 
 func init() {

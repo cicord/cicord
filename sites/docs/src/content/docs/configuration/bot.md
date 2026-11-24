@@ -5,7 +5,7 @@ description: Reference of bots/<key>/bot.yaml - application ID, token secretRef,
 
 A **Bot** file, `bots/<key>/bot.yaml`, is one Discord application: one token, one identity.
 It lists the servers the bot joins and the plugins it runs there. Schema:
-[`spec/schemas/bot.schema.json`](https://github.com/npjonath/cicord/blob/main/spec/schemas/bot.schema.json).
+[`spec/schemas/bot.schema.json`](https://github.com/cicord/cicord/blob/main/spec/schemas/bot.schema.json).
 
 ```yaml title="bots/moderator/bot.yaml"
 apiVersion: cicord.dev/v1alpha1

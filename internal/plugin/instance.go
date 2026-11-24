@@ -16,8 +16,8 @@ import (
 
 	"github.com/grafana/sobek"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/state"
 )
 
 // Env is everything an instance may touch. It is provided by the bot host.

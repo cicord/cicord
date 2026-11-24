@@ -5,7 +5,7 @@ description: What works today, what is next, and what is waiting on the project 
 
 Cicord is **v1alpha1, pre-release**. There is no public release yet: the project's rule is no
 release until the product is complete. This page summarizes the project's living tracker,
-[`TODO.md`](https://github.com/npjonath/cicord/blob/main/TODO.md). No dates are promised.
+[`TODO.md`](https://github.com/cicord/cicord/blob/main/TODO.md). No dates are promised.
 
 ## What works today
 
@@ -66,7 +66,7 @@ These steps need decisions or accounts from the project owner:
 
 - **npm publication** of `@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui`: create the
   npm organization, the publish token and a public repository, then run the prepared release
-  workflow ([`RELEASING.md`](https://github.com/npjonath/cicord/blob/main/RELEASING.md)).
+  workflow ([`RELEASING.md`](https://github.com/cicord/cicord/blob/main/RELEASING.md)).
 - **The official plugin registry**: create its repository and production signing key, embed
   them in the binary and schedule the re-signing job.
 - **The runtime license** (see [License](../license/)).

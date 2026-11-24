@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/npjonath/cicord/internal/writeback"
+	"github.com/cicord/cicord/internal/writeback"
 )
 
 func pngBytes(t *testing.T, w, h int) []byte {

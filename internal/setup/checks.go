@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/reconcile"
-	"github.com/npjonath/cicord/internal/runtime"
-	"github.com/npjonath/cicord/internal/writeback"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/writeback"
 )
 
 // Check statuses.

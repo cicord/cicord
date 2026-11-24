@@ -29,7 +29,7 @@ import (
 	"github.com/go-git/go-git/v5/storage/memory"
 	"gopkg.in/yaml.v3"
 
-	"github.com/npjonath/cicord/internal/config"
+	"github.com/cicord/cicord/internal/config"
 )
 
 const LockFile = "cicord.lock"

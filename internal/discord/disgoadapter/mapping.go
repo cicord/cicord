@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 const cdnBase = "https://cdn.discordapp.com"

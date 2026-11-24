@@ -14,5 +14,5 @@ export const links = {
   quickStart: url("docs/getting-started/quick-start/"),
   plugins: url("docs/plugins/overview/"),
   deploy: url("docs/self-hosting/deploy/"),
-  github: "https://github.com/npjonath/cicord",
+  github: "https://github.com/cicord/cicord",
 } as const;

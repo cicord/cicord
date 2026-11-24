@@ -15,7 +15,7 @@ import (
 
 	discordapi "github.com/disgoorg/disgo/discord"
 
-	"github.com/npjonath/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/discord"
 )
 
 func readAll(r io.Reader) ([]byte, error) { return io.ReadAll(r) }

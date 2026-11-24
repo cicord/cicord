@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/npjonath/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state"
 )
 
 // Anti-rollback: the highest signature serial seen for the official registry. Trust on

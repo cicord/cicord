@@ -1,4 +1,4 @@
-module github.com/npjonath/cicord
+module github.com/cicord/cicord
 
 go 1.27.4
 

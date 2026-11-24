@@ -8,8 +8,8 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 
-	"github.com/npjonath/cicord/internal/config"
-	"github.com/npjonath/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/registry"
 )
 
 // The implicit official registry (ADR-0011, "Update (2026-11-23)").

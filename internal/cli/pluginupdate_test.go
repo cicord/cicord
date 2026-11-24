@@ -10,7 +10,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/npjonath/cicord/internal/registry"
+	"github.com/cicord/cicord/internal/registry"
 )
 
 const updManifest = `apiVersion: cicord.dev/v1alpha1

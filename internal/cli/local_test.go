@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/npjonath/cicord/internal/discord"
-	"github.com/npjonath/cicord/internal/sim"
-	"github.com/npjonath/cicord/internal/state"
-	"github.com/npjonath/cicord/internal/state/sqlite"
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/sim"
+	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
 type simServer struct {
