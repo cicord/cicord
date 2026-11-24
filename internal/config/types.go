@@ -2,7 +2,10 @@
 // plugins) into typed structures. See https://cicord.dev/docs/configuration/server/ for the semantics.
 package config
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 const APIVersion = "cicord.dev/v1alpha1"
 
@@ -130,6 +133,7 @@ type ServerSpec struct {
 	Channels   map[string]Channel  `yaml:"channels,omitempty" json:"channels,omitempty"`
 	Access     *Access             `yaml:"access,omitempty" json:"access,omitempty"`
 	Portal     *ServerPortal       `yaml:"portal,omitempty" json:"portal,omitempty"`
+	Analytics  *AnalyticsSpec      `yaml:"analytics,omitempty" json:"analytics,omitempty"`
 
 	// Discord parity (https://cicord.dev/docs/reference/discord-parity/). Every block is managed only when present.
 	AFK           *AFKSpec                  `yaml:"afk,omitempty" json:"afk,omitempty"`
@@ -141,6 +145,38 @@ type ServerSpec struct {
 	Emojis        map[string]EmojiSpec      `yaml:"emojis,omitempty" json:"emojis,omitempty"`
 	Stickers      map[string]StickerSpec    `yaml:"stickers,omitempty" json:"stickers,omitempty"`
 	Soundboard    map[string]SoundboardSpec `yaml:"soundboard,omitempty" json:"soundboard,omitempty"`
+}
+
+// AnalyticsSpec is spec.analytics: activity analytics of the server (internal/analytics).
+// Analytics are collected when the block is absent.
+type AnalyticsSpec struct {
+	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	// Retention in days, "<n>d" (default 400d).
+	Retention string `yaml:"retention,omitempty" json:"retention,omitempty"`
+	// Presence also aggregates member presences (privileged ServerPresences intent).
+	Presence bool `yaml:"presence,omitempty" json:"presence,omitempty"`
+}
+
+// DefaultAnalyticsRetentionDays is the retention when spec.analytics.retention is unset.
+const DefaultAnalyticsRetentionDays = 400
+
+// AnalyticsSettings returns whether analytics are collected for the server, how many
+// days points are kept and whether presences are aggregated.
+func (s *ServerSpec) AnalyticsSettings() (enabled bool, retentionDays int, presence bool) {
+	enabled, retentionDays = true, DefaultAnalyticsRetentionDays
+	if s == nil || s.Analytics == nil {
+		return enabled, retentionDays, false
+	}
+	a := s.Analytics
+	if a.Enabled != nil {
+		enabled = *a.Enabled
+	}
+	if n, ok := strings.CutSuffix(a.Retention, "d"); ok {
+		if d, err := strconv.Atoi(n); err == nil && d > 0 {
+			retentionDays = d
+		}
+	}
+	return enabled, retentionDays, a.Presence
 }
 
 type ServerProfile struct {

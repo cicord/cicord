@@ -45,6 +45,7 @@
         },
         "access": { "$ref": "#/$defs/access" },
         "portal": { "$ref": "#/$defs/portal" },
+        "analytics": { "$ref": "#/$defs/analytics" },
         "afk": { "$ref": "#/$defs/afk" },
         "widget": { "$ref": "#/$defs/widget" },
         "community": { "$ref": "#/$defs/community" },
@@ -316,6 +317,25 @@
       "properties": {
         "admins": { "$ref": "#/$defs/principals" },
         "moderators": { "$ref": "#/$defs/principals" }
+      },
+      "additionalProperties": false
+    },
+    "analytics": {
+      "description": "Activity analytics of this server (https://cicord.dev/docs/self-hosting/analytics/): hourly aggregates only, never message content nor per-member data. Collected by default; enabled: false turns it off.",
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true, "description": "Collect analytics for this server." },
+        "retention": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,3}d$",
+          "default": "400d",
+          "description": "How long aggregates are kept, in days (e.g. 90d). Older points are purged daily."
+        },
+        "presence": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also aggregate member presences (statuses, platforms, activities such as games played). Needs the privileged Presence intent: enable it in the Discord developer portal and add ServerPresences to the bot's intents."
+        }
       },
       "additionalProperties": false
     },
