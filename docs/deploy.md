@@ -242,9 +242,14 @@ PostgreSQL:
 The root `Dockerfile` builds the UIs (Node 26, pnpm from `packageManager`), builds `cicord`
 with `CGO_ENABLED=0`, and ships it on `gcr.io/distroless/static-debian13:nonroot`
 (uid/gid 65532, no shell). Defaults: `cicord serve /repo --data-dir /data --listen :7420`,
-volume `/data`, port `7420`.
+volume `/data`, port `7420`, and a `HEALTHCHECK` running `cicord healthcheck` (GET
+`http://127.0.0.1:7420/healthz`). Each release publishes it as the multi-arch image
+`ghcr.io/cicord/cicord:<version>` (linux/amd64, linux/arm64, with SBOM and provenance
+attestations; RELEASING.md). Pull it and give it the short name used below, or build it:
 
 ```sh
+docker pull ghcr.io/cicord/cicord:0.1.0 && docker tag ghcr.io/cicord/cicord:0.1.0 cicord
+# or
 docker build -t cicord --build-arg VERSION=0.1.0 --build-arg COMMIT=$(git rev-parse --short HEAD) .
 ```
 
@@ -275,7 +280,7 @@ Compose:
 ```yaml
 services:
   cicord:
-    image: cicord:latest        # or build: .
+    image: ghcr.io/cicord/cicord:0.1.0   # or build: .
     restart: unless-stopped
     command: ["serve", "/repo", "--data-dir", "/data", "--listen", ":7420",
               "--public-url", "https://cicord.example.org"]

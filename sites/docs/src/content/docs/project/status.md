@@ -1,10 +1,13 @@
 ---
 title: Status and roadmap
-description: What works today, what is next, and what is waiting on the project owner before a first public release.
+description: What works today, what is next, and what is waiting on the project owner.
 ---
 
-Cicord is **v1alpha1, pre-release**. There is no public release yet: the project's rule is no
-release until the product is complete. This page summarizes the project's living tracker,
+Cicord is **v1alpha1, pre-release**: `0.x` releases (binaries, the container image
+`ghcr.io/cicord/cicord` and the `@cicord/*` npm packages, see
+[Installation](../../getting-started/installation/) and the
+[changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md)) may still change formats
+and APIs. This page summarizes the project's living tracker,
 [`TODO.md`](https://github.com/cicord/cicord/blob/main/TODO.md). No dates are promised.
 
 ## What works today
@@ -66,18 +69,21 @@ release until the product is complete. This page summarizes the project's living
 
 These steps need decisions or accounts from the project owner:
 
-- **npm publication** of `@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui`: create the
-  npm organization, the publish token and a public repository, then run the prepared release
-  workflow ([`RELEASING.md`](https://github.com/cicord/cicord/blob/main/RELEASING.md)).
+- **First npm publication** of `@cicord/sdk`, `@cicord/client`, `@cicord/react` and
+  `@cicord/ui`: create the npm organization, publish each package once and configure npm
+  trusted publishing for the release workflow
+  ([`RELEASING.md`](https://github.com/cicord/cicord/blob/main/RELEASING.md#one-time-setup-owner)).
 - **The official plugin registry**: create its repository and production signing key, embed
   them in the binary and schedule the re-signing job.
 - **The runtime license** (see [License](../license/)).
 
-## Release, later
+## Releases
 
-- Release binaries (GoReleaser) and a published Docker image.
-- `go install` with the embedded web UIs.
-- npm packages for the SDKs.
+- Done: release binaries for Linux, macOS and Windows (GoReleaser, reproducible, with SBOMs
+  and build provenance attestations), the multi-arch image `ghcr.io/cicord/cicord`, npm
+  packages published with provenance (trusted publishing). See
+  [`RELEASING.md`](https://github.com/cicord/cicord/blob/main/RELEASING.md).
+- Later: `go install` with the embedded web UIs.
 
 ## Further out
 

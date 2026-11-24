@@ -5,14 +5,18 @@ description: How to upgrade a Cicord runtime while it is pre-release, and what c
 
 :::caution[Pre-release: expect breaking changes]
 Cicord is **v1alpha1**. File formats, the HTTP API and the plugin SDK may still change between
-commits, and there are no tagged releases or upgrade notes yet. Pin the commit you deploy and
-read the git log before moving to a newer one.
+`0.x` releases. Pin the version you deploy (a release binary or `ghcr.io/cicord/cicord:<version>`,
+not `latest`) and read the [changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md)
+before moving to a newer one.
 :::
 
-## Upgrading a runtime built from source
+## Upgrading a runtime
 
 1. Back up the data directory (see [Backups and secrets](../backups-and-secrets/)).
-2. Update your checkout and rebuild: `git pull && make all` (or `docker build` again).
+2. Get the new version: download the release binary (and verify it, see
+   [Installation](../../getting-started/installation/#verify-a-download)), pull
+   `ghcr.io/cicord/cicord:<version>`, or update your checkout and rebuild
+   (`git pull && make all`, or `docker build` again).
 3. Validate your configuration repository with the new binary **before** restarting the
    runtime:
 

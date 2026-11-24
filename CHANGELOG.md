@@ -1,0 +1,84 @@
+# Changelog
+
+All notable changes to Cicord. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the API is
+`v1alpha1`: minor versions may break formats and APIs). Release process: [RELEASING.md](RELEASING.md).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-11-24
+
+First public release (pre-release, API `cicord.dev/v1alpha1`).
+
+### Runtime
+
+- One static `cicord` binary: command line tool and runtime (`cicord serve`), with the admin
+  console, the default community portal and the portal kit embedded.
+- Configuration from a git repository (GitHub, any git remote, or an embedded repository)
+  or a local directory, validated by JSON Schemas and semantic checks; revisions with hot
+  swap.
+- Server reconciler: plan, apply, drift detection and self-heal, adoption, deletion
+  protection, key renames (`cicord mv`), and parity with most Discord server settings
+  (Community, AutoMod, native onboarding, welcome screen, role icons and gradients, forums,
+  emojis, stickers, soundboard), with boost and Community gating explained in plans.
+- N bots across M servers on one engine; privileged intents checked against the live
+  application.
+- Git write-back (commits or GitHub pull requests), GitHub App authentication and
+  `cicord/sync` commit statuses.
+- SQLite or PostgreSQL state, held to one conformance suite.
+- Discord simulator (`cicord dev --sim`) for offline development.
+- CLI: `init`, `validate`, `plan` (local and remote, pull request comments), `apply`,
+  `status`, `sync`, `import` (with the server's files), `adopt`, `mv`, `dev`, `serve`,
+  `secret`, `registry`, `plugin`, `portal`, `healthcheck`.
+
+### Plugins and SDK
+
+- TypeScript plugins in a sandbox (QuickJS-ng on WebAssembly) with hard memory and CPU
+  limits, capabilities, KV storage, crash restarts with backoff.
+- `@cicord/sdk`: slash commands (subcommands, groups, autocomplete, string length limits),
+  components, modals, schedules, tasks, cross-plugin events, `channel.message(id)`,
+  `serverJoin`/`serverLeave`, plugin-owned channels, typed portal routes; unit testing with
+  `@cicord/sdk/testing`.
+- Developer loop: `cicord plugin new`, `build`, `typegen`, `test`, hot reload on the
+  simulator.
+- Plugin Store: bundled official plugins (9), git registries (private ones with tokens),
+  computed trust, permission review, install, update and uninstall, signed official index,
+  `cicord plugin publish`.
+
+### Admin console
+
+- Status, plans, history, audit log, generated plugin settings, per-plugin pages, the
+  Store, diagnostics and the simulator panel; light and dark themes.
+- Setup wizard: from an empty directory to a synced server (token, intents, invite,
+  repository, import with an empty first plan, OAuth, verification, first plugin).
+- Served on its own admin URL when configured (the admin console only on the admin host).
+
+### Community portal
+
+- `@cicord/client`, `@cicord/react`, `@cicord/ui`: runtime API client, React bindings and
+  themed components; typed plugin routes (`client.routes`, `useRouteQuery`).
+- Reference portal (`create-cicord-portal`, forked with `cicord portal init`), no-code
+  customization from YAML, custom portals served from the repository, embedding in
+  third-party sites (token mode).
+
+### Security
+
+- Plugin network allow-list hardened against SSRF; registry and plugin downloads only reach
+  public addresses (rebinding, redirects and special-purpose ranges refused).
+- Signed official plugin index bound to its URL, serial and expiry, with anti-rollback.
+- Encrypted secret store; registry credentials scoped to their host and redacted.
+- Dev login restricted to the simulator or the runtime token; DNS rebinding checks.
+- CI: gitleaks, golangci-lint, govulncheck, semgrep, oxlint, Knip; actions pinned to
+  commit SHAs.
+
+### Deploy and release
+
+- Distroless, non-root container image with a `HEALTHCHECK`; single-server deployment
+  guide (Docker, Caddy, Tailscale).
+- Release pipeline: reproducible binaries for linux/darwin (amd64, arm64) and
+  windows/amd64 with SHA-256 checksums, SPDX SBOMs and build provenance attestations; the
+  multi-arch image `ghcr.io/cicord/cicord` with SBOM, provenance and an attestation in the
+  registry; `@cicord/*` on npm through trusted publishing with provenance.
+
+[Unreleased]: https://github.com/cicord/cicord/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/cicord/cicord/releases/tag/v0.1.0

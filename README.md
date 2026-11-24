@@ -24,13 +24,48 @@ git push ──▶ cicord serve ──▶ Discord
 
 ## Getting started
 
-### Prerequisites
+### Install
+
+**Release binaries** (linux and macOS on amd64/arm64, windows/amd64) are on the
+[GitHub Releases](https://github.com/cicord/cicord/releases) page: one static `cicord` with
+the admin UI, the default portal and the portal kit embedded. Download an archive and
+`checksums.txt`, check both, and put `cicord` on your `PATH`:
+
+```sh
+VERSION=0.1.0 OS=linux ARCH=amd64     # OS: linux | darwin, ARCH: amd64 | arm64
+gh release download "v$VERSION" --repo cicord/cicord \
+  --pattern "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" --pattern checksums.txt
+sha256sum --ignore-missing -c checksums.txt          # macOS: shasum -a 256 --ignore-missing -c checksums.txt
+gh attestation verify "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" --repo cicord/cicord
+tar -xzf "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" cicord && sudo install cicord /usr/local/bin/
+cicord version                                       # cicord 0.1.0 (<commit>)
+```
+
+`gh attestation verify` checks the signed build provenance: the archive was built by this
+repository's release workflow from the tagged commit. Each archive also has an SPDX SBOM
+(`<archive>.sbom.json`). See [RELEASING.md](RELEASING.md#verifying-a-release).
+
+**Container image** (linux/amd64, linux/arm64; distroless, non-root, with SBOM and
+provenance attestations): `ghcr.io/cicord/cicord:0.1.0` (also `:0.1` and `:latest`).
+
+```sh
+docker run --rm ghcr.io/cicord/cicord:0.1.0 version
+gh attestation verify oci://ghcr.io/cicord/cicord:0.1.0 --repo cicord/cicord
+```
+
+Running it for real (volumes, environment, reverse proxy) is in [docs/deploy.md](docs/deploy.md).
+
+**`go install`** — `go install github.com/cicord/cicord/cmd/cicord@latest` builds the
+command line tool **without** the embedded UIs (the admin console and the portal are
+placeholders, `cicord portal init` has no kit, `cicord version` shows the commit `dev`).
+It is enough for CI (`cicord validate`, `cicord plan --remote`), not for running the runtime:
+use a release binary, the image, or build from source.
+
+### Build from source
 
 - **Go 1.27** to build the `cicord` binary (a single static binary, `CGO_ENABLED=0`).
 - **Node 26 + pnpm** only to build the embedded UIs (admin UI, default portal). Plugins
   are bundled by the runtime itself: running Cicord needs no Node.js.
-
-### Build
 
 ```sh
 make all     # pnpm install + build the JS packages, copy the UIs into internal/webui, build bin/cicord
@@ -38,7 +73,9 @@ make build   # Go binary only (embeds whatever UI build is in internal/webui; pl
 make test    # go test -race ./... and the JS tests
 ```
 
-A container image is described in [docs/deploy.md](docs/deploy.md) (`docker build .`).
+`make build VERSION=0.1.0` sets the version printed by `cicord version` (the commit comes
+from git). `docker build .` builds the same image as the release (see
+[docs/deploy.md](docs/deploy.md)).
 
 ### Set up with the wizard (recommended)
 
@@ -236,8 +273,9 @@ spec:
 
 ## Project status
 
-**v1alpha1, pre-release.** No binaries or npm packages are published yet: build from source
-(`make all`) or build the container image (`docker build .`).
+**v1alpha1, pre-release.** Releases (binaries, the image `ghcr.io/cicord/cicord` and the
+`@cicord/*` npm packages) are published from tags `v*` ([RELEASING.md](RELEASING.md),
+[CHANGELOG.md](CHANGELOG.md)); formats and APIs may still change between `0.x` versions.
 
 Done:
 - Config loader/validator; local and git sources (GitHub, plain git, embedded repo) with
@@ -253,13 +291,15 @@ Done:
 - Plugin Store: bundled official plugins (9), git registries (private ones with tokens),
   computed trust, permission review, install / update / uninstall, signed official index,
   `cicord plugin publish`.
-- Portal SDK (`@cicord/client`, `@cicord/react`, `@cicord/ui`, `create-cicord-portal`), npm
-  publication prepared.
+- Portal SDK (`@cicord/client`, `@cicord/react`, `@cicord/ui`, `create-cicord-portal`), on
+  npm with provenance.
+- Release pipeline: reproducible cross-platform binaries, multi-arch image, SBOMs and build
+  provenance attestations, npm trusted publishing.
 - CLI: `init`, `validate`, `plan`, `apply`, `status`, `sync`, `import`, `adopt`, `mv`,
   `dev`, `serve`, `secret`, `registry`, `plugin` (new / build / typegen / test / add /
   update / publish), `portal`.
 
-Next: the official registry and npm publication (owner decisions), production hardening
+Next: the official registry (owner decision), production hardening
 (metrics), then the hosted offering. See [TODO.md](TODO.md) and the
 [roadmap](ARCHITECTURE.md#12-roadmap).
 

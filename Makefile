@@ -9,7 +9,7 @@ all: ui build
 
 ## build: the single `cicord` binary (embeds the admin UI, the default portal and the portal kit of `cicord portal init`)
 build:
-	CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o bin/cicord ./cmd/cicord
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/cicord ./cmd/cicord
 
 ## ui: build the JS workspace; copy the admin UI, the portal and the portal kit (@cicord/* tarballs + template) into the Go embed dirs
 ui:

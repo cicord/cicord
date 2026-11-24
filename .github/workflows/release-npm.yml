@@ -1,29 +1,33 @@
 # Publishes @cicord/sdk, @cicord/client, @cicord/react and @cicord/ui on npm (RELEASING.md).
 #
-# - Manual run (Actions → release-npm → Run workflow): a dry run by default (packs and
-#   runs `npm publish --dry-run`); untick "dry-run" to publish.
-# - Tag push `npm-v<version>` (e.g. npm-v0.1.0): publishes; the tag must equal the version
-#   of the four package.json files.
+# - Tag push `v<version>` (e.g. v0.1.0, the same tag as release.yml): publishes; the four
+#   package.json versions must equal the tag version. A version with a -suffix
+#   (0.2.0-rc.1) is published under the dist-tag `next`, so `latest` never moves to it.
+# - Manual run (Actions → release-npm → Run workflow): a dry run by default (packs and runs
+#   `npm publish --dry-run`); untick "dry-run" to publish the package.json version.
+#
+# npm trusted publishing (OIDC): no npm token anywhere. npm exchanges the job's GitHub OIDC
+# token (`id-token: write`) for a short-lived publish credential, if the package has this
+# repository, this workflow file and the environment `npm` as its trusted publisher on
+# npmjs.com; provenance (a signed build attestation) is then generated automatically.
 #
 # The packages are packed with `pnpm pack`, which rewrites the workspace:/catalog:
-# specifiers to real versions, then the tarballs are published with npm provenance
-# (signed build attestation, needs `id-token: write`). Versions already on npm are
-# skipped, so a failed run can be re-run. Needs the repository secret NPM_TOKEN (an npm
-# automation or granular token with publish rights on the @cicord scope).
+# specifiers to real versions (`npm publish` from a package directory would publish
+# `workspace:*` verbatim), then each tarball is published with npm. Versions already on npm
+# are skipped, so a failed run can be re-run. create-cicord-portal and @cicord/admin are not
+# published.
 name: release-npm
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       dry-run:
         description: Pack and run npm publish --dry-run only
         type: boolean
         default: true
-  push:
-    tags: ["npm-v*"]
 
-permissions:
-  contents: read
-  id-token: write # npm provenance
+permissions: {}
 
 concurrency:
   group: release-npm
@@ -33,14 +37,28 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC) and provenance
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      # No registry-url: it would write an .npmrc auth line with a placeholder token;
+      # trusted publishing needs none (the default registry is registry.npmjs.org).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
-          cache: pnpm
-          registry-url: https://registry.npmjs.org
+      - name: npm >= 11.5.1 (trusted publishing)
+        run: |
+          set -euo pipefail
+          v="$(npm --version)"
+          if [ "$(printf '%s\n' 11.5.1 "$v" | sort -V | head -n 1)" != "11.5.1" ]; then
+            echo "npm $v is too old for trusted publishing: installing npm 11.20.0"
+            npm install -g npm@11.20.0
+          fi
+          npm --version
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --filter "./packages/*" build
       - run: pnpm -r --filter "./packages/*" test
@@ -58,11 +76,14 @@ jobs:
             fi
             v=$pv
           done
-          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "npm-v$v" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not match the package version $v (expected npm-v$v)"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$v" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match the package version $v (expected v$v): bump packages/{sdk,client,react,ui}/package.json first"
             exit 1
           fi
+          tag=latest
+          if [[ "$v" == *-* ]]; then tag=next; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "dist-tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Pack
         run: |
@@ -83,9 +104,9 @@ jobs:
 
       - name: Publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
           VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: ${{ steps.version.outputs.dist-tag }}
         run: |
           set -euo pipefail
           # Dependencies first: @cicord/react depends on @cicord/client.
@@ -97,8 +118,8 @@ jobs:
               continue
             fi
             if [ "$DRY_RUN" = "true" ]; then
-              npm publish "$tgz" --access public --dry-run
+              npm publish "$tgz" --access public --tag "$DIST_TAG" --dry-run
             else
-              npm publish "$tgz" --access public --provenance
+              npm publish "$tgz" --access public --tag "$DIST_TAG"
             fi
           done

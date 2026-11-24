@@ -172,15 +172,20 @@ volumes:
 
 ## Docker
 
-The image is built locally from the repository (no image is published yet; see
-[Installation](../../getting-started/installation/)):
+Each release publishes the multi-arch image `ghcr.io/cicord/cicord:<version>` (linux/amd64,
+linux/arm64; how to verify it: [Installation](../../getting-started/installation/#verify-a-download)).
+Pull it and give it the short name used below, or build the same image from the repository:
 
 ```sh
+docker pull ghcr.io/cicord/cicord:0.1.0 && docker tag ghcr.io/cicord/cicord:0.1.0 cicord
+# or
 docker build -t cicord --build-arg VERSION=0.1.0 --build-arg COMMIT=$(git rev-parse --short HEAD) .
 ```
 
 It runs `cicord serve /repo --data-dir /data --listen :7420` as user 65532 on a distroless
-image, with a volume on `/data` and port `7420`. `/repo` must contain at least `cicord.yaml`.
+image, with a volume on `/data` and port `7420`, and a `HEALTHCHECK` (`cicord healthcheck`,
+which probes `http://127.0.0.1:7420/healthz`; override it if you change `--listen`).
+`/repo` must contain at least `cicord.yaml`.
 
 <Tabs syncKey="docker">
 <TabItem label="docker run">
@@ -205,7 +210,7 @@ add flags. The entrypoint is `cicord`, so `docker run --rm cicord validate /repo
 ```yaml title="compose.yaml"
 services:
   cicord:
-    image: cicord:latest # or build: .
+    image: ghcr.io/cicord/cicord:0.1.0 # or build: .
     restart: unless-stopped
     command:
       [

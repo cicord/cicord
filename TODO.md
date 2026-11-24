@@ -1,7 +1,7 @@
 # Cicord — TODO
 
 Living tracker of what is left. Updated as work lands (`[x]` = done, with the commit or PR).
-No public release until the product is complete.
+Releases: `0.x` pre-releases from tags `v*` (RELEASING.md, CHANGELOG.md); first one v0.1.0.
 
 ## Now — plugins & community portal
 - [x] Verify every SDK feature end to end on the simulator (events, commands with every option
@@ -27,7 +27,8 @@ No public release until the product is complete.
   - [x] typed plugin routes: route contracts (`spec.routes.types`, `defineRoutes`), `cicord portal typegen`, `client.routes`, `useRouteQuery` (levels, polls)
   - [ ] route contracts for tickets, moderation, announcements
   - [x] npm publication prepared (package metadata, release workflow, `--from-npm`), RELEASING.md
-  - [ ] **Owner:** create the npm org `cicord`, NPM_TOKEN secret, public repo, then run the release workflow (RELEASING.md)
+  - [x] Public repo; npm release workflow on trusted publishing (OIDC, no token, provenance)
+  - [ ] **Owner:** create the npm org `cicord`, first publish of each package, trusted publisher + "disallow tokens" per package, environment `npm` (RELEASING.md "One-time setup")
 - [ ] Real Discord: test member join (needs a second account)
 - [x] Admin console redesign: shadcn/ui + Tailwind v4, collapsible sidebar with server switcher,
       ⌘K palette, true-black dark + light themes, i18n (`src/i18n/en.json`, typed keys), one
@@ -110,9 +111,14 @@ No public release until the product is complete.
 - [ ] Portal as a Discord Activity (ADR-0016, verify constraints first)
 - [ ] Admin UI i18n
 
-## Release (later)
-- [ ] GoReleaser binaries, Docker image (ghcr.io), npm publication of `@cicord/*`
+## Release
+- [x] GoReleaser binaries (linux/darwin amd64+arm64, windows/amd64; reproducible, UIs embedded), checksums, SPDX SBOMs, build provenance attestations, GitHub Release with generated notes (.github/workflows/release.yml)
+- [x] Multi-arch image ghcr.io/cicord/cicord (cross-compiled, BuildKit SBOM + provenance, attestation pushed to the registry), Dockerfile HEALTHCHECK and version labels
+- [x] npm publication of `@cicord/*` from the same tag (trusted publishing, `next` dist-tag for pre-releases)
+- [x] Sites deployed to cicord.dev on every push to main
+- [ ] **Owner:** tag ruleset for `v*`, public ghcr package, npm one-time setup (RELEASING.md), then tag v0.1.0
 - [ ] `go install` with embedded UIs (commit built assets or release-only builds)
+- [ ] `cicord init` CI workflow: download the release binary instead of `go install`
 
 ## Done (recent)
 - [x] License: Apache-2.0 for everything (ADR-0013, 2026-11-24)

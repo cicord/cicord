@@ -1,0 +1,300 @@
+name: release
+# Releases Cicord from a tag `v<version>` (v0.1.0, v0.2.0-rc.1): RELEASING.md.
+#
+#   build    cicord binaries (GoReleaser, .goreleaser.yaml) for linux/darwin amd64+arm64 and
+#            windows/amd64 with the admin UI, the default portal and the portal kit embedded;
+#            archives with LICENSE, NOTICE, README.md; checksums.txt; one SPDX SBOM per archive
+#   image    multi-arch ghcr.io/cicord/cicord (linux/amd64, linux/arm64; scripts/release-image.sh)
+#            (image-dry-run: the same build, not pushed, on a dry run)
+#            with buildx SBOM + max provenance, and a GitHub build provenance attestation
+#            pushed to the registry
+#   release  build provenance attestations for every file of checksums.txt, then the GitHub
+#            Release with generated notes (pre-release when the tag has a -suffix)
+#
+# Run workflow (Actions → release → Run workflow) is a dry run: it builds the binaries
+# (snapshot version) and the multi-arch image, publishes nothing and uploads the archives as
+# a workflow artifact. The npm packages have their own workflow on the same tag
+# (release-npm.yml).
+#
+# Least privilege: the jobs that run the build (pnpm install, go build, docker build) only
+# read the repository, except `image` (tag runs only), which must push; only `release` can
+# write releases.
+# Actions are pinned to commit SHAs (tag in the comment); goreleaser and syft are pinned
+# release binaries with verified checksums. No caches are restored in this workflow.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GORELEASER_VERSION: 2.20.3
+  GORELEASER_SHA256: a36d5d7d07a5e538e052cef2a9f93f1cd4af493cf5a3712b9177c1ebe360f0e7
+  SYFT_VERSION: 1.57.2
+  SYFT_SHA256: ad92bd3ec1b94a3df01d4d0aec199afa9c42b72e86da436ff5f837914d32706b
+  BUILDKIT_IMAGE: moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      dry-run: ${{ steps.meta.outputs.dry-run }}
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - id: meta
+        name: Version from the tag
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "push" ] || [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            # Dry run: a placeholder version for the image tags (nothing is pushed).
+            { echo "dry-run=true"; echo "version=0.0.0-dryrun"; echo "prerelease=true"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! [[ "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$ ]]; then
+            echo "::error::tag $GITHUB_REF_NAME is not v<major>.<minor>.<patch>[-<suffix>]"
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then prerelease=true; fi
+          { echo "dry-run=false"; echo "version=$version"; echo "prerelease=$prerelease"; } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # GoReleaser reads the tag and the commit date
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Install goreleaser and syft (pinned releases, checksums verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -sSfL -o "$RUNNER_TEMP/goreleaser.tgz" \
+            "https://github.com/goreleaser/goreleaser/releases/download/v${GORELEASER_VERSION}/goreleaser_Linux_x86_64.tar.gz"
+          echo "${GORELEASER_SHA256}  $RUNNER_TEMP/goreleaser.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/goreleaser.tgz" -C "$RUNNER_TEMP/bin" goreleaser
+          curl -sSfL -o "$RUNNER_TEMP/syft.tgz" \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  $RUNNER_TEMP/syft.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/syft.tgz" -C "$RUNNER_TEMP/bin" syft
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      # Once, for every target: the embedded files are platform independent (make ui).
+      - name: Build the web UIs and the portal kit
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm -r --filter "./packages/*" build
+          ./scripts/sync-ui.sh
+          # sync-ui.sh skips silently what it cannot build: a release must embed everything.
+          test -d internal/webui/admin/assets
+          test -d internal/webui/portal/assets
+          test -f internal/webui/kit/template/package.json
+          ls internal/webui/kit/packages/cicord-{sdk,client,react,ui}-*.tgz
+      # sync-ui.sh replaces the placeholder index.html files of internal/webui, so the tree is
+      # dirty and GoReleaser's git validation is skipped (--skip=validate); this step makes sure
+      # nothing else changed.
+      - name: Only the embedded UIs differ from the tag
+        run: |
+          set -euo pipefail
+          other="$(git status --porcelain --untracked-files=all | grep -v -E '^.. internal/webui/' || true)"
+          if [ -n "$other" ]; then
+            echo "::error::the build changed files outside internal/webui:"
+            echo "$other"
+            exit 1
+          fi
+
+      - name: The engine version of the sources is the tag
+        if: needs.meta.outputs.dry-run != 'true'
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          # The default of internal/version is what `go install` builds report and check
+          # plugins against (the release binaries set it with -ldflags).
+          if ! grep -qF "var Version = \"$VERSION\"" internal/version/version.go; then
+            echo "::error::internal/version/version.go is not $VERSION: bump it (RELEASING.md) before tagging"
+            exit 1
+          fi
+
+      - name: GoReleaser (build, archive, checksums, SBOMs)
+        env:
+          DRY_RUN: ${{ needs.meta.outputs.dry-run }}
+        run: |
+          set -euo pipefail
+          goreleaser check
+          if [ "$DRY_RUN" = "true" ]; then
+            goreleaser release --clean --snapshot --skip=publish
+          else
+            # The pushed tag, even if another tag points at the same commit.
+            GORELEASER_CURRENT_TAG="$GITHUB_REF_NAME" goreleaser release --clean --skip=publish,validate
+          fi
+          ls -l dist
+
+      - name: Smoke test (cicord version)
+        env:
+          DRY_RUN: ${{ needs.meta.outputs.dry-run }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          got="$(dist/cicord_linux_amd64_v1/cicord version)"
+          echo "$got"
+          if [ "$DRY_RUN" != "true" ] && [ "$got" != "cicord $VERSION ($(git rev-parse --short HEAD))" ]; then
+            echo "::error::expected cicord $VERSION ($(git rev-parse --short HEAD))"
+            exit 1
+          fi
+          (cd dist && sha256sum -c checksums.txt)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dist
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sbom.json
+            dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  # Dry run of the image: the same build, read-only, nothing pushed.
+  image-dry-run:
+    needs: meta
+    if: needs.meta.outputs.dry-run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up buildx
+        run: docker buildx create --name cicord --driver docker-container --driver-opt "image=$BUILDKIT_IMAGE" --bootstrap --use
+      - name: Build linux/amd64 + linux/arm64 (not pushed)
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}" PUSH=false ./scripts/release-image.sh
+
+  image:
+    needs: meta
+    if: needs.meta.outputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io
+      id-token: write # Sigstore certificate of the attestation
+      attestations: write
+      artifact-metadata: write # storage record of the attested image
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The docker driver of the runner cannot export multi-platform images with
+      # attestations; a docker-container builder on a pinned BuildKit can. The Dockerfile
+      # cross-compiles (FROM --platform=$BUILDPLATFORM), so arm64 needs no QEMU.
+      - name: Set up buildx
+        run: docker buildx create --name cicord --driver docker-container --driver-opt "image=$BUILDKIT_IMAGE" --bootstrap --use
+      - name: Log in to ghcr.io
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push linux/amd64 + linux/arm64
+        id: image
+        run: |
+          set -euo pipefail
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}" PUSH=true ./scripts/release-image.sh
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - name: Summary
+        env:
+          NAME: ${{ steps.image.outputs.name }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          {
+            echo "### Container image"
+            echo
+            echo "\`$NAME:$VERSION\` (\`$NAME@$DIGEST\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          docker buildx imagetools inspect "$NAME@$DIGEST"
+
+  release:
+    needs: [meta, build, image]
+    if: needs.meta.outputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # Sigstore certificate of the attestations
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: dist
+      - name: Verify the checksums
+        run: cd dist && sha256sum -c checksums.txt
+      # Before the release exists: every downloadable file is attested when it appears.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          cat > notes.md <<EOF
+          ## Install
+
+          Download the archive for your platform below, then verify it:
+
+          \`\`\`sh
+          sha256sum --ignore-missing -c checksums.txt
+          gh attestation verify cicord_${VERSION}_linux_amd64.tar.gz --repo ${GITHUB_REPOSITORY}
+          \`\`\`
+
+          Container image (linux/amd64, linux/arm64):
+
+          \`\`\`sh
+          docker pull ${image}:${VERSION}
+          gh attestation verify oci://${image}:${VERSION} --repo ${GITHUB_REPOSITORY}
+          \`\`\`
+
+          npm packages: \`@cicord/sdk\`, \`@cicord/client\`, \`@cicord/react\`, \`@cicord/ui\` ${VERSION}.
+          See https://cicord.dev/docs/getting-started/installation/.
+
+          EOF
+          flags=(--verify-tag --generate-notes --title "Cicord ${VERSION}" --notes-file notes.md)
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease --latest=false)
+          else
+            flags+=(--latest)
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "${flags[@]}" \
+            dist/*.tar.gz dist/*.zip dist/*.sbom.json dist/checksums.txt
