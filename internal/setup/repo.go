@@ -187,7 +187,7 @@ func (in RepoFiles) Generate() (map[string][]byte, error) {
 		return nil, err
 	}
 	return map[string][]byte{
-		"cicord.yaml":                         []byte(projText),
+		"cicord.yaml":                       []byte(projText),
 		"servers/" + in.ServerKey + ".yaml": in.ServerYAML,
 		"bots/" + in.BotKey + "/bot.yaml":   bot.Bytes(),
 		".gitignore":                        []byte(".cicord/\n*.db\n*.db-*\n.env\nnode_modules/\n"),

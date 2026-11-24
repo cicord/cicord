@@ -19,6 +19,7 @@ const grants = [
   "storage.kv",
   "http.fetch",
   "portal.routes",
+  "events.publish",
 ];
 
 function setup(config: Record<string, unknown> = {}, fetch?: TestContextOptions["fetch"]) {

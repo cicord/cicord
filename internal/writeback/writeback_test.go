@@ -89,7 +89,7 @@ func TestModeFor(t *testing.T) {
 	cases := map[string]string{
 		"bots/moderator/bot.yaml": "commit",
 		"servers/a.yaml":          "pullRequest",
-		"cicord.yaml":               "pullRequest",
+		"cicord.yaml":             "pullRequest",
 	}
 	for p, want := range cases {
 		if got := ModeFor(wb, []string{p}); got != want {

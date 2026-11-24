@@ -118,7 +118,7 @@ func minimalKit(t *testing.T) fstest.MapFS {
 		"template/package.json": {Data: []byte(`{"name":"portal","private":true,"version":"0.0.0","type":"module",
 			"scripts":{"build":"vp build"},
 			"dependencies":{"@cicord/client":"^0.1.0","@cicord/react":"^0.1.0","@cicord/ui":"^0.1.0"}}`)},
-		"template/src/main.tsx":         {Data: []byte("// main")},
+		"template/src/main.tsx":           {Data: []byte("// main")},
 		"template/src/cicord-routes.d.ts": {Data: []byte("// template types of the monorepo examples")},
 	}
 }

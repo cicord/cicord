@@ -13,7 +13,7 @@ func TestDevHostAllowList(t *testing.T) {
 		"127.0.0.1:7420":        http.StatusOK,
 		"localhost:7420":        http.StatusOK,
 		"[::1]:7420":            http.StatusOK,
-		"cicord.example.com":      http.StatusOK,
+		"cicord.example.com":    http.StatusOK,
 		"evil.example.net:7420": http.StatusMisdirectedRequest, // DNS rebinding
 		"127.0.0.1.nip.io:7420": http.StatusMisdirectedRequest,
 	} {
