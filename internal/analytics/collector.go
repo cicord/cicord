@@ -363,9 +363,21 @@ func (c *Collector) sampleDue(ctx context.Context) {
 	}
 }
 
+// colDimensioned holds the catalog metrics that have a dimension: they are written
+// per dimension only, never with a "" total (the reader computes totals).
+var colDimensioned = func() map[string]bool {
+	m := map[string]bool{}
+	for _, x := range Catalog {
+		if x.Dim != "" {
+			m[x.Name] = true
+		}
+	}
+	return m
+}()
+
 // count adds to a counter of a server. Caller holds c.mu.
 func (c *Collector) count(s *collected, metric, dim string, at time.Time, v float64) {
-	if v == 0 {
+	if v == 0 || dim == "" && colDimensioned[metric] {
 		return
 	}
 	if !c.buf.add(state.AnalyticsCounter, s.cfg.Key, metric, dim, at, v) {
@@ -375,6 +387,9 @@ func (c *Collector) count(s *collected, metric, dim string, at time.Time, v floa
 
 // gauge records a gauge of a server. Caller holds c.mu.
 func (c *Collector) gauge(s *collected, kind state.AnalyticsKind, metric, dim string, at time.Time, v float64) {
+	if dim == "" && colDimensioned[metric] {
+		return
+	}
 	c.buf.add(kind, s.cfg.Key, metric, dim, at, v)
 }
 

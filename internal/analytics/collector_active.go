@@ -210,7 +210,7 @@ func (c *Collector) daily(ctx context.Context) {
 	sort.Slice(enabled, func(i, j int) bool { return enabled[i].Key < enabled[j].Key })
 
 	if c.rolledUp != today && !oldPending && c.opts.KV != nil {
-		if err := c.rollup(ctx, today, enabled); err != nil {
+		if err := c.rollupDays(ctx, today, enabled); err != nil {
 			c.log.Warn("analytics: daily rollup", "err", err)
 		} else {
 			c.rolledUp = today
@@ -233,9 +233,9 @@ func (c *Collector) daily(ctx context.Context) {
 	}
 }
 
-// rollup writes the distinct counts of the days after the last rolled-up day and
+// rollupDays writes the distinct counts of the days after the last rolled-up day and
 // before today, then deletes their tokens and keys. Caller holds tickMu.
-func (c *Collector) rollup(ctx context.Context, today string, servers []CollectorServer) error {
+func (c *Collector) rollupDays(ctx context.Context, today string, servers []CollectorServer) error {
 	todayT, _ := time.Parse(time.DateOnly, today)
 	yesterday := todayT.AddDate(0, 0, -1)
 	from := yesterday

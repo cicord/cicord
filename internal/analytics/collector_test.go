@@ -522,3 +522,18 @@ func TestAccountAgeBuckets(t *testing.T) {
 		t.Error("invalid id bucket")
 	}
 }
+
+func TestDimensionedMetricsNeverGetAnEmptyDim(t *testing.T) {
+	f := newCollectorFixture(t)
+	f.c.Handle("alpha", discord.ChannelCreateEvent{Channel: discord.Channel{ID: "20", ServerID: "1"}, NewThread: true}) // no parent
+	f.c.Handle("alpha", discord.MessageDeleteEvent{ServerID: "1", ID: "9"})                                             // no channel
+	f.c.Flush(ctx)
+	for _, m := range Catalog {
+		if m.Dim == "" {
+			continue
+		}
+		if _, ok := f.store.dims("main", m.Name)[""]; ok {
+			t.Errorf("%s has a \"\" dimension row", m.Name)
+		}
+	}
+}
