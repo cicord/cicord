@@ -201,7 +201,8 @@ then **Bot → Public Bot** off (Discord refuses a private bot that still has an
 As its owner, you can still invite it with the wizard's link.
 
 **Privileged intents.** Turn on only the ones your plugins declare (Server Members, Message
-Content); Cicord never uses the Presence intent.
+Content). Presence is only used by [server analytics](../analytics/) with
+`spec.analytics.presence: true`; leave it off otherwise.
 
 **2FA for moderation.** In Server Settings → **Safety Setup**, turn on the requirement of
 two-factor authentication for moderation actions, so that a stolen password alone cannot ban

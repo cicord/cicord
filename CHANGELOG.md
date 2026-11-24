@@ -8,6 +8,14 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ### Added
 
+- Server activity analytics: the runtime keeps hourly aggregates per server (members,
+  joins and leaves, active members, messages per channel, voice time, reactions, invites,
+  moderation actions, AutoMod, commands, and opt-in presence) in the state database, SQLite
+  or PostgreSQL. Only counts are stored: no message content, no member IDs, and distinct
+  members are counted with daily tokens that are deleted after the day. Configure it with
+  `spec.analytics` (`enabled`, `retention`, default `400d`, `presence`). Moderators and admins
+  read it through `GET /api/v1/servers/{server}/analytics/summary`, `…/series` and
+  `…/catalog`. See [Server analytics](https://cicord.dev/docs/self-hosting/analytics/).
 - Prometheus metrics: `cicord serve --metrics-listen 127.0.0.1:9420` (or
   `CICORD_METRICS_LISTEN`) serves `GET /metrics` on a dedicated listener, off by default and
   without authentication (bind it to a loopback address). They cover the build, the active

@@ -1,6 +1,6 @@
 ---
 title: Server
-description: Reference of servers/<key>.yaml - profile, roles, categories, channels, permissions, Community, AutoMod, onboarding, welcome screen, emojis, stickers, soundboard, access and portal.
+description: Reference of servers/<key>.yaml - profile, roles, categories, channels, permissions, Community, AutoMod, onboarding, welcome screen, emojis, stickers, soundboard, access, portal and analytics.
 ---
 
 A **Server** file, `servers/<key>.yaml`, is the desired state of one Discord server. Schema:
@@ -68,6 +68,7 @@ Keys (`admin`, `general`…) match `^[a-z][a-z0-9-]{0,62}$` and never change; di
 | `emojis`, `stickers`, `soundboard` | maps | Expressions, from files in the repository. |
 | `access` | object | Who can use the admin console for this server. |
 | `portal` | object | The server's community portal. |
+| `analytics` | object | Activity analytics of the server (on by default). |
 
 ## References
 
@@ -417,6 +418,26 @@ Declaring `portal` publishes the server on the community portal.
 | `locale` | `en` \| `fr` | browser language | Interface language of the default portal. |
 
 Details and examples: [Customize from YAML](../../portal/customize/).
+
+## `analytics`
+
+Activity analytics of the server: aggregated counts of members, messages, voice, reactions,
+invites, moderation and commands, shown on the server's analytics dashboard in the admin
+console. They are collected when the block is absent. What is collected, the privacy
+guarantees and the intents each group needs: [Server analytics](../../self-hosting/analytics/).
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | `false` stops collection for this server. Points already recorded stay until retention removes them. |
+| `retention` | `<n>d` | `400d` | How long points are kept, in days. |
+| `presence` | boolean | `false` | Also aggregate member statuses, platforms and activities. Needs the privileged `ServerPresences` intent. Without it, only Discord's approximate online count is sampled. |
+
+```yaml
+spec:
+  analytics:
+    retention: 90d
+    presence: true
+```
 
 ## Annotations for the simulator
 

@@ -77,6 +77,7 @@ func Run(t *testing.T, b Backend) {
 		{"PersistsAcrossHandles", testPersistsAcrossHandles},
 		{"EmptyResults", testEmptyResults},
 	}
+	tests = append(tests, analyticsTests...)
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cicord/cicord/internal/analytics"
 	"github.com/cicord/cicord/internal/catalog"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/metrics"
@@ -112,6 +113,14 @@ type Options struct {
 	// PluginStore lists and describes Store plugins (default: Catalog + the registries of
 	// the active cicord.yaml, cached in registry.DefaultCacheDir()).
 	PluginStore *store.Service
+	// Analytics is the server activity analytics store (nil: the analytics endpoints
+	// answer 404 analytics_disabled).
+	Analytics state.Analytics
+	// AnalyticsStatus reports the collection status of a server, normally
+	// (*runtime.Runtime).AnalyticsStatus. Nil: Enabled, RetentionDays and Presence come
+	// from the server configuration and Missing is empty. Since is always read from
+	// Analytics.
+	AnalyticsStatus func(server string) analytics.Status
 	// Metrics receives the HTTP and webhook metrics (nil: a private registry). The API
 	// never serves it: /metrics answers 404 here (cicord serve --metrics-listen).
 	Metrics *metrics.Registry
@@ -227,6 +236,9 @@ func (s *server) routes() {
 	h("PUT /api/v1/servers/{server}/plugins/{bot}/{instance}/config", s.handleConfigPut)
 	h("GET /api/v1/servers/{server}/assets/{kind}", s.handleAssetGet)
 	h("PUT /api/v1/servers/{server}/assets/{kind}", s.handleAssetPut)
+	h("GET /api/v1/servers/{server}/analytics/summary", s.handleAnalyticsSummary)
+	h("GET /api/v1/servers/{server}/analytics/series", s.handleAnalyticsSeries)
+	h("GET /api/v1/servers/{server}/analytics/catalog", s.handleAnalyticsCatalog)
 
 	// §6 portal
 	h("GET /api/v1/portal/servers", s.handlePortalServers)

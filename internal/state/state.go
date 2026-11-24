@@ -5,7 +5,7 @@
 //
 // Configuration lives in git; everything here is runtime state or community data:
 // the resource map (YAML key ↔ Discord ID), plugin KV storage, scheduled tasks,
-// the audit log, sync history and API sessions. See ADR-0003 and ADR-0004.
+// the audit log, sync history, API sessions and activity analytics. See ADR-0003 and ADR-0004.
 package state
 
 import (
@@ -45,6 +45,9 @@ type Store interface {
 	Audit() AuditLog
 	Syncs() SyncLog
 	Sessions() SessionStore
+	// Analytics returns the server activity analytics (hourly aggregates and daily
+	// distinct-member tokens, analytics.go).
+	Analytics() Analytics
 	// Sweep deletes expired KV entries and sessions and returns how many rows it
 	// removed. Expired rows are already invisible to readers (and removed lazily
 	// when read); the runtime calls Sweep periodically to reclaim the rest.

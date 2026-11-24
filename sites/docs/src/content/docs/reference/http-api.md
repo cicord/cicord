@@ -24,6 +24,7 @@ hand-written calls.
 | [Simulator](simulator/) | `/api/v1/sim/*`, only with `cicord dev --sim`. |
 | [Setup wizard](setup/) | Setup mode, the wizard endpoints, the catalog and diagnostics. |
 | [Store](store/) | Plugin sources, browsing, installing, updating, registries, the registry index. |
+| [Analytics](analytics/) | Server activity analytics: the dashboard summary, time series, the metric catalog. |
 
 ## Conventions
 
@@ -61,6 +62,7 @@ Clients must accept unknown codes.
 | `too_large`, `unsupported_media_type` | 413 / 415: [server image uploads](servers/#server-images) |
 | `changed`, `confirmation_required`, `in_use`, `up_to_date`, `modified` | 409: [Store](store/) |
 | `not_installed` | 404: [Store update review](store/#updating-a-plugin) of a plugin that is not installed |
+| `analytics_disabled` | 404: [analytics](analytics/#errors) on a runtime without an analytics store |
 | `registry_unavailable` | 502: [Store](store/), a registry could not be fetched |
 
 ### The error object
@@ -168,6 +170,9 @@ Roles are per server: see [Roles](authentication/#roles).
 | GET | `/api/v1/servers/{server}/audit` | moderator | [Audit log](servers/#audit-log), newest first. |
 | PUT, GET | `/api/v1/servers/{server}/assets/{icon\|banner\|splash}` | admin (GET: moderator) | [Upload or read the server icon, banner or splash](servers/#server-images). |
 | GET | `/api/v1/servers/{server}/diagnostics` | admin | [The setup wizard's checklist](setup/#catalog-and-diagnostics), on demand. |
+| GET | `/api/v1/servers/{server}/analytics/summary` | moderator | [KPIs, rankings and heatmap of a period](analytics/#summary). |
+| GET | `/api/v1/servers/{server}/analytics/series` | moderator | [Time series of metrics](analytics/#series) by hour, day or week. |
+| GET | `/api/v1/servers/{server}/analytics/catalog` | moderator | [Every metric and whether it is collected](analytics/#catalog). |
 
 ### Plugin instances
 
