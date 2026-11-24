@@ -407,7 +407,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		}
 		irt.current.Store(inst)
 		irt.health = HealthHealthy
-		go r.supervise(host, srt, irt)
+		go r.supervise(host, srt, irt) //nolint:gosec // outlives the activation request; ends when the revision is retired (irt.quit)
 	}
 
 	// 4. swap routing, sync commands, profiles

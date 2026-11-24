@@ -303,14 +303,14 @@ type inspectHost struct{}
 
 var errInspecting = errors.New("SDK calls are not available while the module is evaluated (use them inside handlers)")
 
-func (inspectHost) call(string, string) (string, bool, error)       { return "", false, errInspecting }
-func (inspectHost) callAsync(string, string) (int64, error)         { return 0, errInspecting }
-func (inspectHost) log(string, string, string)                      {}
-func (inspectHost) setTimer(float64, bool) (int64, error)           { return 0, errInspecting }
-func (inspectHost) clearTimer(int64)                                {}
-func (inspectHost) done(uint64, bool, string)                       {}
-func (inspectHost) pauseBudget()                                    {}
-func (inspectHost) resumeBudget()                                   {}
+func (inspectHost) call(string, string) (string, bool, error) { return "", false, errInspecting }
+func (inspectHost) callAsync(string, string) (int64, error)   { return 0, errInspecting }
+func (inspectHost) log(string, string, string)                {}
+func (inspectHost) setTimer(float64, bool) (int64, error)     { return 0, errInspecting }
+func (inspectHost) clearTimer(int64)                          {}
+func (inspectHost) done(uint64, bool, string)                 {}
+func (inspectHost) pauseBudget()                              {}
+func (inspectHost) resumeBudget()                             {}
 
 // Inspect loads the bundle (see internal/build) in a throwaway VM, evaluates
 // `definePlugin(...)` and extracts the static definition. It validates command names,
