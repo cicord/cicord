@@ -57,19 +57,15 @@ const (
 // OfficialKeys are the public keys (base64 of the 32-byte ed25519 key, as printed by
 // `cicord registry keygen`) whose signatures make an index official.
 //
-// TODO(owner): embed the production public key. Generate the key pair offline, outside
-// any repository:
-//
-//	cicord registry keygen --out ~/cicord-registry-signing.key
-//
-// then paste the printed public key (base64, 44 characters; never the private key) here,
-// store the private key file's content as the CICORD_REGISTRY_SIGNING_KEY secret of the
-// registry-signing environment of github.com/cicord/cicord-plugins, commit the public key
-// to its keys/official.pub, and keep an offline backup (docs/plugins.md §9).
-//
-// While empty, no official index can verify: FetchIndex fails with ErrNoOfficialKey
-// without network access, and the official source lists the bundled plugins only.
-var OfficialKeys = []string{}
+// The production key (key ID 10d3620231e083f8) was generated offline on 2026-11-24 with
+// `cicord registry keygen`. Its private key is the CICORD_REGISTRY_SIGNING_KEY secret of
+// the registry-signing environment of github.com/cicord/cicord-plugins (main only), plus
+// the owner's offline backup; the same public key is committed to keys/official.pub
+// there. Rotation: append the new key, sign with both, then drop the old one
+// (docs/plugins.md §9).
+var OfficialKeys = []string{
+	"Bh4S59nb78rYbOfOaaoiVyclxXwhuyx5T7rAx9IrxbU=", // 10d3620231e083f8
+}
 
 // devOfficialKey is an extra trusted key for development builds only, set at build time:
 //

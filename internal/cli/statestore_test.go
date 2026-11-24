@@ -23,13 +23,6 @@ import (
 	"github.com/cicord/cicord/internal/state/sqlite"
 )
 
-func TestMain(m *testing.M) {
-	// The CLI tests open runtime state stores: a developer's CICORD_DATABASE_URL
-	// must never point them at a real database.
-	_ = os.Unsetenv(databaseURLEnv)
-	os.Exit(m.Run())
-}
-
 func TestDatabaseURLPrecedence(t *testing.T) {
 	t.Setenv(databaseURLEnv, " postgres://env@h/db ")
 	if got := databaseURL(""); got != "postgres://env@h/db" {

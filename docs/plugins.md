@@ -955,9 +955,9 @@ workflows, and `index.yaml` written by `cicord plugin publish`, with local tags
    `cicord registry keygen --out ~/cicord-registry-signing.key`. Keep an offline backup of
    the private key file.
 2. **Embed the public key** (the base64 line printed by `keygen`) in
-   `internal/registry/sign.go` `OfficialKeys` (the `TODO(owner)` there) and release Cicord;
-   commit the same public key to `keys/official.pub` in cicord-plugins (its CI verifies with
-   it).
+   `internal/registry/sign.go` `OfficialKeys` and release Cicord; commit the same public key
+   to `keys/official.pub` in cicord-plugins (its CI verifies with it). Done for the current
+   production key, key ID `10d3620231e083f8`.
 3. **Secret**: in cicord-plugins, create the `registry-signing` environment (deployments
    from `main` only) and store the content of the private key file as its
    `CICORD_REGISTRY_SIGNING_KEY` secret (the sign workflow reads it with
