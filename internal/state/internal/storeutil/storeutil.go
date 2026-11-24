@@ -196,3 +196,124 @@ func Latest(ms []Migration) int {
 	}
 	return ms[len(ms)-1].Version
 }
+
+// ───────────────────────────────────────────────────────────── analytics
+
+// AnalyticsRow is a validated analytics point: Bucket is unix seconds of the
+// start of a UTC hour.
+type AnalyticsRow struct {
+	Server, Metric, Dim string
+	Bucket              int64
+	Value               float64
+}
+
+// CheckAnalyticsKind validates the merge kind of Analytics.Record.
+func CheckAnalyticsKind(k state.AnalyticsKind) error {
+	switch k {
+	case state.AnalyticsCounter, state.AnalyticsGaugeMax, state.AnalyticsGaugeLast:
+		return nil
+	}
+	return fmt.Errorf("unknown analytics kind %q", k)
+}
+
+// AnalyticsRows validates the points of Analytics.Record and converts them to
+// rows: a zero Bucket is now(), buckets are truncated to the UTC hour, values
+// must be finite. Rows are sorted by (server, metric, dim, bucket), stably so that
+// points of the same row keep their order (a "last" merge keeps the last point):
+// every writer locks rows in the same order, which rules out deadlocks between
+// concurrent Records.
+func AnalyticsRows(kind state.AnalyticsKind, points []state.AnalyticsPoint, now func() time.Time) ([]AnalyticsRow, error) {
+	if err := CheckAnalyticsKind(kind); err != nil {
+		return nil, err
+	}
+	rows := make([]AnalyticsRow, 0, len(points))
+	for _, p := range points {
+		switch {
+		case p.Server == "":
+			return nil, errors.New("analytics point: empty server")
+		case p.Metric == "":
+			return nil, errors.New("analytics point: empty metric")
+		case math.IsNaN(p.Value) || math.IsInf(p.Value, 0):
+			return nil, fmt.Errorf("analytics point %s: invalid value %v", p.Metric, p.Value)
+		}
+		b := OrNow(p.Bucket, now)
+		if _, err := ToNanos("analytics bucket", b); err != nil {
+			return nil, err
+		}
+		rows = append(rows, AnalyticsRow{Server: p.Server, Metric: p.Metric, Dim: p.Dim,
+			Bucket: b.UTC().Truncate(time.Hour).Unix(), Value: p.Value})
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Server != b.Server {
+			return a.Server < b.Server
+		}
+		if a.Metric != b.Metric {
+			return a.Metric < b.Metric
+		}
+		if a.Dim != b.Dim {
+			return a.Dim < b.Dim
+		}
+		return a.Bucket < b.Bucket
+	})
+	return rows, nil
+}
+
+// ceilUnix returns the smallest unix second s with time.Unix(s, 0) >= t.
+func ceilUnix(t time.Time) int64 {
+	s := t.Unix()
+	if t.Nanosecond() > 0 {
+		s++
+	}
+	return s
+}
+
+// AnalyticsRange converts the [from, to) range of an analytics read to bucket
+// bounds in unix seconds (lo <= bucket < hi). A zero from has no lower bound and
+// a zero to no upper bound.
+func AnalyticsRange(from, to time.Time) (lo, hi int64) {
+	lo, hi = math.MinInt64, math.MaxInt64
+	if !from.IsZero() {
+		lo = ceilUnix(from)
+	}
+	if !to.IsZero() {
+		hi = ceilUnix(to)
+	}
+	return lo, hi
+}
+
+// AnalyticsBefore converts the before of Analytics.Purge to unix seconds: buckets
+// strictly before it are deleted.
+func AnalyticsBefore(before time.Time) int64 { return ceilUnix(before) }
+
+// FromUnix converts unix seconds back to a UTC time.
+func FromUnix(s int64) time.Time { return time.Unix(s, 0).UTC() }
+
+// CheckDay validates a "YYYY-MM-DD" day of the active-member sets (days compare as
+// strings, so the format must be exact).
+func CheckDay(day string) error {
+	if len(day) != len("2006-01-02") {
+		return fmt.Errorf("invalid day %q (want YYYY-MM-DD)", day)
+	}
+	if _, err := time.Parse("2006-01-02", day); err != nil {
+		return fmt.Errorf("invalid day %q (want YYYY-MM-DD)", day)
+	}
+	return nil
+}
+
+// CheckActive validates the arguments of Analytics.MarkActive.
+func CheckActive(server, set, day, token string) error {
+	switch {
+	case server == "":
+		return errors.New("empty server")
+	case set == "":
+		return errors.New("empty set")
+	case token == "":
+		return errors.New("empty token")
+	}
+	return CheckDay(day)
+}
+
+// AnalyticsDimsLimit is the limit of Analytics.Dims: <= 0 means 100, capped at
+// state.MaxListLimit.
+func AnalyticsDimsLimit(n int) int { return ClampLimit(n, 100) }
