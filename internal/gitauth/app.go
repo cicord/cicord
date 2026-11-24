@@ -96,8 +96,10 @@ func NewGitHubApp(cfg AppConfig) (*GitHubApp, error) {
 	if repo != "" && strings.Count(repo, "/") != 1 {
 		return nil, fmt.Errorf("repository %q is not owner/name", repo)
 	}
-	if inst == 0 && repo == "" {
-		return nil, fmt.Errorf("%s is required when the repository is not on github.com", AppInstallationIDSecret)
+	// Installation tokens are always scoped to the configuration repository, and only
+	// sent to github.com: an App cannot be used for a repository hosted elsewhere.
+	if repo == "" {
+		return nil, errors.New("a GitHub App can only be used with a repository on github.com (https://github.com/owner/name)")
 	}
 	key, err := ParsePrivateKey(cfg.PrivateKey)
 	if err != nil {
@@ -168,12 +170,10 @@ func (a *GitHubApp) Token(ctx context.Context) (string, error) {
 	if err := a.discover(ctx); err != nil {
 		return "", err
 	}
-	var body io.Reader
-	if a.repo != "" {
-		_, name, _ := strings.Cut(a.repo, "/")
-		payload, _ := json.Marshal(map[string][]string{"repositories": {name}})
-		body = bytes.NewReader(payload)
-	}
+	// Always scoped to the configuration repository (NewGitHubApp requires it).
+	_, name, _ := strings.Cut(a.repo, "/")
+	payload, _ := json.Marshal(map[string][]string{"repositories": {name}})
+	body := bytes.NewReader(payload)
 	var out struct {
 		Token     string    `json:"token"`
 		ExpiresAt time.Time `json:"expires_at"`

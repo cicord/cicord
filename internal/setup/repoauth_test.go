@@ -49,11 +49,16 @@ func TestChooseRepoGitHubApp(t *testing.T) {
 	w, sec := repoWizard(t, nil, gh.URL)
 	req := RepoRequest{Provider: ProviderGitHub, URL: remote, Branch: "main", Auth: gitauth.MethodApp, AppID: gh.AppID, PrivateKey: string(gh.KeyPEM)}
 
-	// Not on github.com: the installation cannot be discovered.
+	// Not on github.com: an App is refused (its tokens only go to github.com), even with
+	// an installation ID.
+	req.InstallationID = "77"
 	_, err := w.ChooseRepo(ctx, req)
-	if e := wizardErr(t, err); !strings.Contains(e.Message, "not valid") || !strings.Contains(e.Hint, "installation ID") {
-		t.Fatalf("no installation: %+v", e)
+	if e := wizardErr(t, err); !strings.Contains(e.Message, "only be used with a repository on github.com") {
+		t.Fatalf("not github.com: %+v", e)
 	}
+	// From here on, the local repository stands for github.com/acme/community.
+	githubRepoOf = func(string) string { return gh.Repo }
+	t.Cleanup(func() { githubRepoOf = GitHubRepo })
 	// Wrong installation.
 	req.InstallationID = "78"
 	_, err = w.ChooseRepo(ctx, req)

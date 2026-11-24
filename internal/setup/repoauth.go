@@ -100,14 +100,21 @@ func (w *Wizard) appCredentials(ctx context.Context, req RepoRequest, remote str
 			"Create a GitHub App (Settings → Developer settings → GitHub Apps), install it on the repository, then enter its App ID and paste the private key (.pem) it generated.",
 			"The GitHub App ID and private key are required.")
 	}
+	// Installation tokens are scoped to the repository and only sent to github.com:
+	// an App is refused for a repository hosted anywhere else.
+	repo := githubRepoOf(remote)
+	if repo == "" {
+		return repoCreds{}, errorf(http.StatusUnprocessableEntity, "invalid",
+			"Use a repository URL of the form https://github.com/owner/name, or choose a personal access token for another git host.",
+			"A GitHub App can only be used with a repository on github.com.")
+	}
+	if err := w.deploymentAppMatches(appID, inst); err != nil {
+		return repoCreds{}, err
+	}
 	app, err := gitauth.NewGitHubApp(gitauth.AppConfig{AppID: appID, InstallationID: inst, PrivateKey: []byte(key),
-		Repo: GitHubRepo(remote), API: w.opts.GitHubAPI, HTTPClient: w.opts.HTTPClient})
+		Repo: repo, API: w.opts.GitHubAPI, HTTPClient: w.opts.HTTPClient})
 	if err != nil {
-		hint := ""
-		if GitHubRepo(remote) == "" {
-			hint = "For a repository that is not on github.com, enter the installation ID (the number at the end of the installation's settings URL)."
-		}
-		return repoCreds{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid", Message: "The GitHub App settings are not valid: " + err.Error(), Hint: hint}
+		return repoCreds{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid", Message: "The GitHub App settings are not valid: " + err.Error()}
 	}
 	if _, err := app.Token(ctx); err != nil {
 		e := &Error{Status: http.StatusUnprocessableEntity, Code: "invalid", Details: err.Error()}
@@ -134,6 +141,27 @@ func (w *Wizard) appCredentials(ctx context.Context, req RepoRequest, remote str
 	}
 	c.tokens = app
 	return c, nil
+}
+
+// githubRepoOf is the owner/name of a github.com remote ("" otherwise). Tests replace it
+// to let a local repository stand for a GitHub one.
+var githubRepoOf = GitHubRepo
+
+// deploymentAppMatches refuses an App ID or installation ID typed in the form that
+// differs from the one the deployment provides (environment): the runtime would use the
+// deployment's after a restart, so a different value could never be the one in effect.
+func (w *Wizard) deploymentAppMatches(appID, inst string) error {
+	for _, c := range []struct{ name, form string }{{gitauth.AppIDSecret, appID}, {gitauth.AppInstallationIDSecret, inst}} {
+		if c.form == "" {
+			continue
+		}
+		if v, ok := w.opts.Env(c.name); ok && strings.TrimSpace(v) != "" && strings.TrimSpace(v) != c.form {
+			return errorf(http.StatusConflict, "conflict",
+				"Leave the field empty to use the runtime's value, or change "+c.name+" in the runtime's configuration.",
+				"%s differs from the value the runtime is configured with.", c.name)
+		}
+	}
+	return nil
 }
 
 // storeCredentials writes the validated credentials to the secret store.
@@ -170,7 +198,7 @@ func RepoTokens(repo RepoConfig, lookup func(string) (string, bool), o gitauth.O
 	if repo.Provider != ProviderGitHub {
 		return nil, gitauth.MethodNone, nil
 	}
-	o.Lookup, o.TokenSecret, o.Repo = lookup, repo.TokenRef, GitHubRepo(repo.URL)
+	o.Lookup, o.TokenSecret, o.Repo = lookup, repo.TokenRef, githubRepoOf(repo.URL)
 	ts, method, err := gitauth.Resolve(o)
 	if err == nil && repo.Auth == gitauth.MethodApp && method != gitauth.MethodApp {
 		err = errors.New("the repository was set up with a GitHub App, but its secrets are missing (" + strings.Join(gitauth.AppSecrets, ", ") + ")")

@@ -171,7 +171,7 @@ func (c *clock) add(d time.Duration) {
 func TestGitHubAppTokenAndRefresh(t *testing.T) {
 	clk := &clock{t: time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)}
 	f := newFakeGitHub(t, clk.now)
-	app, err := NewGitHubApp(AppConfig{AppID: "4242", InstallationID: "77", PrivateKey: pkcs1PEM(t), API: f.srv.URL, Now: clk.now})
+	app, err := NewGitHubApp(AppConfig{AppID: "4242", InstallationID: "77", PrivateKey: pkcs1PEM(t), Repo: "acme/community", API: f.srv.URL, Now: clk.now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,8 +183,8 @@ func TestGitHubAppTokenAndRefresh(t *testing.T) {
 	if f.lookups.Load() != 0 {
 		t.Fatal("a configured installation must not be looked up")
 	}
-	if b, _ := f.lastBody.Load().(string); b != "" {
-		t.Fatalf("no repository scope without a repository, got %q", b)
+	if b, _ := f.lastBody.Load().(string); b != `{"repositories":["community"]}` {
+		t.Fatalf("token scope = %q (always the configuration repository)", b)
 	}
 	clk.add(54 * time.Minute) // 6 minutes left: cached
 	if tok, _ := app.Token(ctx); tok != "inst-token-1" {
@@ -225,7 +225,7 @@ func TestGitHubAppDiscoveryAndScope(t *testing.T) {
 	if _, err := other.Token(ctx); !errors.Is(err, ErrNotInstalled) || !strings.Contains(err.Error(), "acme/elsewhere") {
 		t.Fatalf("not installed: %v", err)
 	}
-	wrong, _ := NewGitHubApp(AppConfig{AppID: "4242", InstallationID: "78", PrivateKey: pkcs8PEM(t), API: f.srv.URL, Now: clk.now})
+	wrong, _ := NewGitHubApp(AppConfig{AppID: "4242", InstallationID: "78", PrivateKey: pkcs8PEM(t), Repo: "acme/community", API: f.srv.URL, Now: clk.now})
 	if _, err := wrong.Token(ctx); !errors.Is(err, ErrNotInstalled) {
 		t.Fatalf("unknown installation: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestGitHubAppRejectedJWT(t *testing.T) {
 		_, _ = io.WriteString(w, `{"message":"Bad credentials"}`)
 	}))
 	defer srv.Close()
-	app, err := NewGitHubApp(AppConfig{AppID: "1", InstallationID: "77", PrivateKey: pkcs1PEM(t), API: srv.URL})
+	app, err := NewGitHubApp(AppConfig{AppID: "1", InstallationID: "77", PrivateKey: pkcs1PEM(t), Repo: "acme/community", API: srv.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,9 +356,9 @@ func TestResolve(t *testing.T) {
 			t.Errorf("%v: %v", keys(vals), err)
 		}
 	}
-	// No repository on github.com: the installation ID is required.
-	if _, _, err := Resolve(Options{Lookup: env(map[string]string{AppIDSecret: "4242", AppPrivateKeySecret: k})}); err == nil ||
-		!strings.Contains(err.Error(), AppInstallationIDSecret) {
+	// No repository on github.com: an App is refused, even with an installation ID.
+	if _, _, err := Resolve(Options{Lookup: env(map[string]string{AppIDSecret: "4242", AppPrivateKeySecret: k, AppInstallationIDSecret: "77"})}); err == nil ||
+		!strings.Contains(err.Error(), "github.com") {
 		t.Errorf("no repo: %v", err)
 	}
 	// The key file takes precedence over the secret.
@@ -526,5 +526,17 @@ func TestCommitStatusesAsync(t *testing.T) {
 			t.Fatalf("states = %v", got)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestGitHubAppNeedsGitHubRepository: an App is never built without the github.com
+// repository its tokens are scoped to (a token for every repository of the installation,
+// sent to another git host, would leak far more than the configuration repository).
+func TestGitHubAppNeedsGitHubRepository(t *testing.T) {
+	for _, repo := range []string{"", "  ", "/"} {
+		if _, err := NewGitHubApp(AppConfig{AppID: "4242", InstallationID: "77", PrivateKey: pkcs8PEM(t), Repo: repo}); err == nil ||
+			!strings.Contains(err.Error(), "github.com") {
+			t.Errorf("repo %q: err = %v", repo, err)
+		}
 	}
 }

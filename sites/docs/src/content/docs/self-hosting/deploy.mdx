@@ -286,7 +286,9 @@ commit statuses) uses one of these credentials:
   as `<app-name>[bot]`. The runtime only holds the App's private key; it mints installation
   tokens that expire after an hour, restricted to the configuration repository, and renews
   them before they expire. When the App is configured, it takes precedence over
-  `CICORD_GIT_TOKEN`.
+  `CICORD_GIT_TOKEN`. The App can only be used with a repository on github.com
+  (`https://github.com/owner/name`): its tokens are never sent to another host. For a
+  repository hosted elsewhere, use a token.
 
 Repository permissions, the same for a fine-grained token and for the App:
 
