@@ -20,7 +20,7 @@ repository layout) is in the documentation:
 [Contributing](https://cicord.dev/docs/project/contributing/)
 ([source](sites/docs/src/content/docs/project/contributing.md)).
 
-In short, with Go 1.27, Node 24 and pnpm:
+In short, with Go 1.27, Node 26 and pnpm:
 
 ```sh
 make all          # JS packages + embedded UIs + bin/cicord

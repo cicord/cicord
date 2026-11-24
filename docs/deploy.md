@@ -77,8 +77,8 @@ dir and per set of bot tokens.
 
 ## 3. Docker
 
-The root `Dockerfile` builds the UIs (Node 24, pnpm from `packageManager`), builds `cicord`
-with `CGO_ENABLED=0`, and ships it on `gcr.io/distroless/static-debian12:nonroot`
+The root `Dockerfile` builds the UIs (Node 26, pnpm from `packageManager`), builds `cicord`
+with `CGO_ENABLED=0`, and ships it on `gcr.io/distroless/static-debian13:nonroot`
 (uid/gid 65532, no shell). Defaults: `cicord serve /repo --data-dir /data --listen :7420`,
 volume `/data`, port `7420`.
 

@@ -5,7 +5,7 @@ description: Build Cicord from source, run the Go and JavaScript tests, and find
 
 ## Prerequisites
 
-Go 1.27, Node 24 and pnpm (the version is pinned by `packageManager` in the root
+Go 1.27, Node 26 and pnpm (the version is pinned by `packageManager` in the root
 `package.json`). See [Installation](../../getting-started/installation/).
 
 ## Make targets

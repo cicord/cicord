@@ -18,8 +18,8 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       # Until binary releases exist.
@@ -34,8 +34,8 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - run: go install github.com/npjonath/cicord/cmd/cicord@latest
@@ -54,7 +54,7 @@ jobs:
       group: cicord-status
       cancel-in-progress: true
     steps:
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - run: go install github.com/npjonath/cicord/cmd/cicord@latest

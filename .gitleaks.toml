@@ -9,8 +9,4 @@ useDefault = true
 [[allowlists]]
 description = "Placeholder Discord snowflakes in examples, tests and docs"
 regexTarget = "secret"
-regexes = [
-  '''^112233445566778899$''',
-  '''^112233445566778800$''',
-  '''^223344556677889900$''',
-]
+regexes = ['''^112233445566778899$''', '''^112233445566778800$''', '''^223344556677889900$''']

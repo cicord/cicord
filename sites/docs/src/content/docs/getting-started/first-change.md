@@ -137,8 +137,8 @@ request cannot choose where the token is sent.
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - run: go install github.com/npjonath/cicord/cmd/cicord@latest

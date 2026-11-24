@@ -23,7 +23,7 @@ npm packages and no `go install` path that includes the web UIs yet. Today you e
 | Tool               | Needed for                                                                                                                                                   |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Go 1.27**        | Building the `cicord` binary (`CGO_ENABLED=0`, a static binary).                                                                                             |
-| **Node 24 + pnpm** | Building the embedded web UIs (admin console, default portal) and the portal kit. The pnpm version is pinned by `packageManager` in the root `package.json`. |
+| **Node 26 + pnpm** | Building the embedded web UIs (admin console, default portal) and the portal kit. The pnpm version is pinned by `packageManager` in the root `package.json`. |
 | **git**            | Cloning the repository.                                                                                                                                      |
 
 Node.js is only a **build-time** dependency of the UIs. Running Cicord needs no Node.js:
@@ -72,8 +72,8 @@ without their unit-test setup. Use `make all` unless you only work on Go code.
 </TabItem>
 <TabItem label="Docker (built locally)">
 
-The root `Dockerfile` mirrors `make all`: it builds the UIs with Node 24 and pnpm, builds
-`cicord` with `CGO_ENABLED=0`, and ships it on `gcr.io/distroless/static-debian12:nonroot`
+The root `Dockerfile` mirrors `make all`: it builds the UIs with Node 26 and pnpm, builds
+`cicord` with `CGO_ENABLED=0`, and ships it on `gcr.io/distroless/static-debian13:nonroot`
 (user 65532, no shell).
 
 <Steps>

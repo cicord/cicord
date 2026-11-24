@@ -4,7 +4,7 @@ export default defineConfig({
   pack: {
     entry: ["src/index.ts"],
     format: ["esm"],
-    dts: { tsgo: true },
+    dts: { generator: "tsgo" },
     sourcemap: true,
   },
   test: {

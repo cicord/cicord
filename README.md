@@ -27,7 +27,7 @@ git push ──▶ cicord serve ──▶ Discord
 ### Prerequisites
 
 - **Go 1.27** to build the `cicord` binary (a single static binary, `CGO_ENABLED=0`).
-- **Node 24 + pnpm** only to build the embedded UIs (admin UI, default portal). Plugins
+- **Node 26 + pnpm** only to build the embedded UIs (admin UI, default portal). Plugins
   are bundled by the runtime itself: running Cicord needs no Node.js.
 
 ### Build

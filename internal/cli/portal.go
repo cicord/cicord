@@ -353,8 +353,8 @@ jobs:
       run:
         working-directory: [[.Dir]]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       # Until binary releases exist.
@@ -362,12 +362,12 @@ jobs:
       - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
         working-directory: .
         run: cicord portal typegen --check --out [[.Dir]]/src/cicord-routes.d.ts
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           cache: pnpm
           cache-dependency-path: [[.Dir]]/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
@@ -454,7 +454,7 @@ func portalBuild(stdout, stderr io.Writer, dir string, check bool) error {
 	}
 	pm := packageManager(src)
 	if pm == "" {
-		return errors.New("neither pnpm nor npm is installed: install Node.js 24 and pnpm (corepack enable)")
+		return errors.New("neither pnpm nor npm is installed: install Node.js 26 and pnpm (npm install -g pnpm)")
 	}
 	if usesCicordClient(src) {
 		// The types of the plugin routes follow the plugins of the revision.
