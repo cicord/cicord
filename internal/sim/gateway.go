@@ -112,6 +112,11 @@ func (s *Session) Open(ctx context.Context, intents discord.Intents, handler fun
 	}
 	sort.Strings(ids)
 	s.enqueue(discord.ReadyEvent{User: w.users[s.bot.userID].user, ServerIDs: ids})
+	for _, id := range ids { // the GUILD_CREATE of each server
+		if out, ok := w.filterFor(s, w.serverAvailable(id)); ok {
+			s.enqueue(out)
+		}
+	}
 	go s.dispatch()
 	return nil
 }
@@ -364,7 +369,7 @@ func (w *World) filterFor(s *Session, ev discord.Event) (discord.Event, bool) {
 		}
 		return discord.ReactionRemoveEvent{ReactionEvent: re}, true
 	case discord.ChannelCreateEvent:
-		return discord.ChannelCreateEvent{Channel: cloneChannel(e.Channel)}, has(intentServers)
+		return discord.ChannelCreateEvent{Channel: cloneChannel(e.Channel), NewThread: e.NewThread}, has(intentServers)
 	case discord.ChannelUpdateEvent:
 		return discord.ChannelUpdateEvent{Channel: cloneChannel(e.Channel)}, has(intentServers)
 	case discord.ChannelDeleteEvent:
@@ -388,7 +393,7 @@ func (w *World) filterFor(s *Session, ev discord.Event) (discord.Event, bool) {
 	case discord.SoundCreateEvent, discord.SoundUpdateEvent, discord.SoundDeleteEvent:
 		return e, has(intentExpressions)
 	}
-	return nil, false
+	return w.filterAnalytics(s, ev)
 }
 
 // redact applies Discord's message-content gating for viewer botID. Caller holds w.mu.
@@ -401,6 +406,7 @@ func (w *World) redact(m discord.Message, botID string, contentIntent bool) disc
 	m.Embeds = nil
 	m.Components = nil
 	m.Attachments = nil
+	m.Poll = false
 	return m
 }
 

@@ -198,6 +198,7 @@ func (w *World) newMessage(c *channelState, author discord.User, m discord.Messa
 		Components: cloneComponents(m.Components),
 		Flags:      m.Flags,
 		CreatedAt:  w.now(),
+		ReplyToID:  m.ReplyTo,
 	}
 	if s := w.servers[c.ch.ServerID]; s != nil {
 		if mem := s.members[author.ID]; mem != nil {
@@ -416,7 +417,11 @@ func (w *World) deleteMessage(a actor, channelID, messageID, reason string) erro
 		return fail(err)
 	}
 	w.recordOK(a, "DeleteMessage", serverID, messageID, reason)
+	author := ms.msg.Author.ID
 	w.removeMessage(c, ms)
+	if author != a.userID && serverID != "" {
+		w.auditLog(serverID, a.userID, discord.AuditMessageDelete, author)
+	}
 	return nil
 }
 
