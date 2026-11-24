@@ -14,6 +14,10 @@ Part of the [HTTP API reference](../). These endpoints are used by `cicord sync`
 | GET | `/healthz` | none | `200 ok` (text) when the process is up. |
 | GET | `/readyz` | none | `200 ready` once a revision is active, `503 no active revision` otherwise (text; `503 setup mode` in setup mode). |
 
+`/metrics` is not part of the API: it answers `404` on every host. The Prometheus metrics are
+served on a separate listener, `cicord serve --metrics-listen` (see
+[Monitoring](../../../self-hosting/monitoring/)).
+
 ## Bearer authentication
 
 The bearer endpoints need the runtime token, `Authorization: Bearer <CICORD_RUNTIME_TOKEN>`.

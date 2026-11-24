@@ -72,6 +72,9 @@ type Env struct {
 	Logger     *slog.Logger // nil: discarded
 	Limits     Limits
 	HTTPClient *http.Client // optional override for http.fetch (tests); egress name checks still apply
+	// OnHandler, when set, receives the outcome of every handler call (metrics). It is
+	// called from the goroutine delivering the result and must not block.
+	OnHandler func(HandlerResult)
 }
 
 // Access lists who holds the moderator and admin access levels of the server
@@ -812,15 +815,40 @@ func (i *Instance) checkState(kind string) error {
 	return ErrNotStarted
 }
 
+// HandlerResult is the outcome of one handler call (Env.OnHandler).
+type HandlerResult struct {
+	// Kind is the handler kind: start, stop, event, command, autocomplete, component, modal,
+	// route, schedule, task or subscription.
+	Kind string
+	// Duration runs from the call to its result, including the wait in the instance queue.
+	Duration time.Duration
+	// Queued is false when the call was refused before reaching the queue (ErrBusy, a
+	// crashed instance): Duration then measures nothing.
+	Queued bool
+	Err    error
+}
+
+// observe reports a handler result to Env.OnHandler. Calls that ran no plugin code because
+// there is no handler or the instance is not serving (stopped, not started) are not
+// reported.
+func (i *Instance) observe(kind string, start time.Time, queued bool, err error) {
+	if i.env.OnHandler == nil || errors.Is(err, ErrNoHandler) || errors.Is(err, ErrStopped) || errors.Is(err, ErrNotStarted) {
+		return
+	}
+	i.env.OnHandler(HandlerResult{Kind: kind, Duration: time.Since(start), Queued: queued, Err: err})
+}
+
 // dispatch queues a handler call. The returned channel receives exactly one result: when
 // the handler's promise settles, its budget is exceeded, it times out, ctx is cancelled or
 // the instance stops. Calls are queued in call order.
 func (i *Instance) dispatch(caller context.Context, kind, name string, data any, inter *interaction) <-chan invResult {
 	out := make(chan invResult, 1)
+	start, queued := time.Now(), false
 	finish := func(r invResult) {
 		if inter != nil {
 			inter.finish(r.err)
 		}
+		i.observe(kind, start, queued, r.err)
 		out <- r
 	}
 	if err := i.checkState(kind); err != nil {
@@ -848,6 +876,7 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		return out
 	}
 	inv, stopCaller := i.newInvocation(caller, kind, name, timeout)
+	queued = true
 
 	i.queued.Add(1)
 	posted := i.post(func() {

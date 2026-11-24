@@ -206,9 +206,12 @@ cicord serve [dir] [flags]
 | `--listen` `string` | HTTP listen address (default ":7420") |
 | `--local` | serve the directory as-is, ignoring spec.source (no git) |
 | `--log-level` `string` | log level: debug \| info \| warn \| error (default "info") |
+| `--metrics-listen` `string` | serve Prometheus metrics on GET /metrics of this address, without authentication, e.g. 127.0.0.1:9420 (default: disabled; env CICORD_METRICS_LISTEN) |
 | `--public-url` `string` | public URL of the runtime (OAuth redirects, portal links); default http://&lt;listen&gt; |
 
 `--public-url` (env `CICORD_PUBLIC_URL`) is the URL people reach: OAuth redirects, portal links sent by the bots, the CSRF origin check. Without it, `serve` uses `spec.runtime.url` of `cicord.yaml`, then the URL the setup wizard ran on, then `http://localhost:<port>`. `--admin-url` (env `CICORD_ADMIN_URL`, `https://host[:port]` without a path; `http` only on a loopback host) serves the admin console on a second hostname: a request whose `Host` is that hostname logs in with `<admin-url>/auth/callback`, every other host with `<public-url>/auth/callback`, and the admin UI, the admin API and the setup wizard answer 404 on every host but the admin one. The setup link, the startup banner and the GitHub commit status link use the admin URL; portal links keep the public URL. See [Admin on a private network, portal public](../../self-hosting/security/#admin-on-a-private-network-portal-public).
+
+`--metrics-listen` (env `CICORD_METRICS_LISTEN`) opens a second listener that only answers `GET /metrics` (Prometheus text format), without authentication: bind it to a loopback address such as `127.0.0.1:9420`. It is off by default, and the API listener answers `404` on `/metrics`. See [Monitoring](../../self-hosting/monitoring/).
 
 ### `cicord dev`
 

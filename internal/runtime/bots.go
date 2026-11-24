@@ -302,8 +302,9 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 			r.publish(in.Bot, srt.cfg.Spec.DiscordID, topic, payload)
 			return nil
 		},
-		Logger: r.log.With("bot", in.Bot, "instance", in.Name, "server", in.Server),
-		Limits: r.opts.PluginLimits,
+		Logger:    r.log.With("bot", in.Bot, "instance", in.Name, "server", in.Server),
+		Limits:    r.opts.PluginLimits,
+		OnHandler: r.metrics.onHandler(in),
 	}
 	inst, err := plugin.NewInstance(irt.plugin.code, irt.plugin.def, env)
 	if err != nil {

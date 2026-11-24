@@ -25,6 +25,7 @@ import (
 	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/metrics"
 	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/reconcile"
 	"github.com/cicord/cicord/internal/source"
@@ -60,7 +61,9 @@ type Options struct {
 	// server) or CommitFailure (rejected, or a server failed). It is called synchronously
 	// and in order; it must bound its own duration and never fail the sync. Nil disables it.
 	CommitStatus func(ctx context.Context, sha, state, description string)
-	Logger       *slog.Logger
+	// Metrics receives the runtime metrics (nil: a private registry, never exposed).
+	Metrics *metrics.Registry
+	Logger  *slog.Logger
 }
 
 // Commit status states (Options.CommitStatus).
@@ -91,15 +94,17 @@ type Runtime struct {
 	diag  diagnostics
 
 	restart restartPolicy
+	metrics *runtimeMetrics
 }
 
 // active is an activated revision.
 type active struct {
-	rev       source.Revision
-	repo      *config.Repo
-	builds    map[string]*builtPlugin // by LoadedPlugin.Key
-	servers   map[string]*serverRT    // by server key
-	instances []*instanceRT
+	rev         source.Revision
+	activatedAt time.Time
+	repo        *config.Repo
+	builds      map[string]*builtPlugin // by LoadedPlugin.Key
+	servers     map[string]*serverRT    // by server key
+	instances   []*instanceRT
 }
 
 type builtPlugin struct {
@@ -115,10 +120,11 @@ type serverRT struct {
 	rec   *reconcile.Reconciler
 	bot   string // reconciling bot key ("" = none)
 
-	mu       sync.Mutex
-	health   string
-	message  string
-	lastSync *time.Time
+	mu         sync.Mutex
+	health     string
+	message    string
+	lastSync   *time.Time
+	lastSyncOK bool // the last full sync succeeded
 }
 
 type instanceRT struct {
@@ -177,9 +183,13 @@ func New(opts Options) *Runtime {
 	if opts.Signer == nil {
 		opts.Signer = auth.NewSigner(auth.RandomKey())
 	}
+	if opts.Metrics == nil {
+		opts.Metrics = metrics.NewRegistry()
+	}
 	r := &Runtime{opts: opts, log: opts.Logger, bots: map[string]*botHost{}, wake: make(chan struct{}, 1),
 		restart: restartPolicy{min: restartMin, max: restartMax, stable: restartStable}}
 	r.sched = newScheduler(r)
+	r.metrics = newRuntimeMetrics(opts.Metrics, r)
 	return r
 }
 
@@ -220,6 +230,7 @@ func (r *Runtime) Trigger() {
 func (r *Runtime) tryFetchAndSync(ctx context.Context) {
 	rev, err := r.opts.Source.Fetch(ctx)
 	if err != nil {
+		r.metrics.fetchErrors.Inc()
 		r.setErr(fmt.Sprintf("fetch: %v", err))
 		r.log.Error("fetch failed", "err", err)
 		return
@@ -357,9 +368,10 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		r.record(ctx, state.SyncRecord{Revision: rev.ID, Target: "revision", Status: "rejected", Message: firstLine(err.Error()), Details: details})
 		r.setErr(err.Error())
 		r.commitStatus(ctx, rev, CommitFailure, "Rejected: "+firstLine(err.Error()))
+		r.metrics.activations.Inc("rejected")
 		return &RejectedError{Revision: rev.ID, Diagnostics: ds}
 	}
-	next := &active{rev: rev, repo: repo, builds: builds, servers: map[string]*serverRT{}}
+	next := &active{rev: rev, activatedAt: time.Now(), repo: repo, builds: builds, servers: map[string]*serverRT{}}
 
 	// 1. bot sessions
 	r.connectBots(ctx, repo)
@@ -446,6 +458,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		go stopActive(context.WithoutCancel(ctx), old, log)
 	}
 	r.record(ctx, state.SyncRecord{Revision: rev.ID, Target: "revision", Status: "succeeded", Message: rev.Message})
+	r.metrics.activations.Inc("activated")
 	log.Info("revision active", "servers", len(next.servers), "instances", len(next.instances))
 	switch {
 	case len(serverFailures) == 1:
@@ -497,6 +510,7 @@ func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serve
 	now := time.Now().UTC()
 	rt.mu.Lock()
 	rt.lastSync = &now
+	rt.lastSyncOK = err == nil
 	switch {
 	case err != nil:
 		rt.health, rt.message = HealthDegraded, err.Error()
@@ -510,6 +524,8 @@ func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serve
 	if err != nil {
 		status, msg = "failed", err.Error()
 	}
+	r.metrics.syncs.Inc(rt.key, status)
+	r.metrics.reconciled(rt.key, "sync", res)
 	details, _ := json.Marshal(map[string]any{"plan": plan, "applied": len(res.Applied), "failed": len(res.Failed)})
 	r.record(ctx, state.SyncRecord{Revision: rev.ID, Target: "server:" + rt.key, Status: status, Message: firstLine(msg), Details: details})
 	if host := r.bot(rt.bot); host != nil {
@@ -521,6 +537,7 @@ func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serve
 }
 
 func (r *Runtime) afterSelfHeal(rt *serverRT, res reconcile.Result, err error) {
+	r.metrics.reconciled(rt.key, "self_heal", res)
 	if len(res.Applied) == 0 && err == nil {
 		return
 	}
@@ -933,6 +950,8 @@ func (r *Runtime) supervise(host *botHost, srt *serverRT, irt *instanceRT) {
 		if !errors.Is(cause, plugin.ErrCrashed) {
 			return // stopped
 		}
+		labels := instanceLabelValues(irt.cfg)
+		r.metrics.crashes.Inc(labels...)
 		_ = inst.Stop(context.Background())
 		if time.Since(upSince) >= p.stable {
 			delay = p.min
@@ -950,6 +969,7 @@ func (r *Runtime) supervise(host *botHost, srt *serverRT, irt *instanceRT) {
 			next, err := r.startInstance(ctx, host, srt, irt)
 			cancel()
 			if err != nil {
+				r.metrics.restarts.Inc(append(labels, "failed")...)
 				cause = fmt.Errorf("restart failed: %w", err)
 				continue
 			}
@@ -957,6 +977,7 @@ func (r *Runtime) supervise(host *botHost, srt *serverRT, irt *instanceRT) {
 				_ = next.Stop(context.Background())
 				return
 			}
+			r.metrics.restarts.Inc(append(labels, "succeeded")...)
 			break
 		}
 		upSince = time.Now()

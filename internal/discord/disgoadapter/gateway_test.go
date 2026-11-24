@@ -137,6 +137,10 @@ func TestGatewayEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close(context.Background()) }()
+	gs := s.(discord.GatewayStatusReader)
+	if gs.GatewayConnected() {
+		t.Error("GatewayConnected before Open")
+	}
 	if err := s.SetPresence(context.Background(), discord.Presence{Status: "idle"}); err != nil {
 		t.Fatal(err)
 	}
@@ -161,6 +165,9 @@ func TestGatewayEndToEnd(t *testing.T) {
 	cancel() // the connection must outlive Open's context
 	if err != nil {
 		t.Fatalf("open: %v", err)
+	}
+	if !gs.GatewayConnected() {
+		t.Error("GatewayConnected is false after Open (READY)")
 	}
 	id := <-fg.identify
 	if id["token"] != "test-token" || id["intents"] != float64(intents) {

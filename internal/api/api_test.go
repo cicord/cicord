@@ -25,6 +25,7 @@ import (
 
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/metrics"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/sim"
 	"github.com/cicord/cicord/internal/source"
@@ -695,7 +696,8 @@ func TestSimCommandsAndEvents(t *testing.T) {
 }
 
 func TestGitHubWebhook(t *testing.T) {
-	e := start(t)
+	reg := metrics.NewRegistry()
+	e := startWith(t, func(o *Options) { o.Metrics = reg })
 	c := e.client()
 	c.noCSRF = true
 	sign := func(body []byte, secret string) string {
@@ -720,6 +722,19 @@ func TestGitHubWebhook(t *testing.T) {
 	ping := []byte(`{"zen":"hi"}`)
 	if r := c.do("POST", "/hooks/github", ping, "X-GitHub-Event", "ping", "X-Hub-Signature-256", sign(ping, testSecret)); r.status != 200 {
 		t.Fatalf("ping = %d", r.status)
+	}
+	var out strings.Builder
+	_ = reg.Write(&out)
+	for _, want := range []string{
+		`cicord_webhook_deliveries_total{result="accepted"} 1`,
+		`cicord_webhook_deliveries_total{result="ignored"} 2`,
+		`cicord_webhook_deliveries_total{result="rejected"} 2`,
+		`cicord_http_requests_total{route="POST /hooks/github",status="4xx"} 2`,
+		`cicord_http_requests_total{route="POST /hooks/github",status="2xx"} 3`,
+	} {
+		if !strings.Contains(out.String(), want+"\n") {
+			t.Errorf("metrics: missing %q in\n%s", want, out.String())
+		}
 	}
 	// Machine endpoints require the bearer token.
 	c.noCSRF = false

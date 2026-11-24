@@ -21,6 +21,7 @@ import (
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/discord/disgoadapter"
 	"github.com/cicord/cicord/internal/gitauth"
+	"github.com/cicord/cicord/internal/metrics"
 	"github.com/cicord/cicord/internal/registry"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/secrets"
@@ -150,7 +151,8 @@ type runtimeEnv struct {
 	world      *sim.World
 	stopping   chan struct{}
 	runtimeTok string
-	appKeyFile string // --github-app-key-file
+	appKeyFile string            // --github-app-key-file
+	metrics    *metrics.Registry // --metrics-listen (nil: the metrics are not served)
 }
 
 // build creates the source, writer and runtime for a repository chosen in the wizard.
@@ -209,6 +211,7 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, e.resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: e.public, Mode: e.mode, Simulator: e.world != nil,
 		AllowPrivateNetworks: e.world != nil, Logger: e.log, CommitStatus: commitStatusHook(e.log, ghRepo, tokens, e.console()),
+		Metrics: e.metrics,
 	})
 	return rt, writer, src, branch, nil
 }
@@ -240,6 +243,7 @@ func (e *runtimeEnv) apiOptions(rt *runtime.Runtime, w writeback.Writer, branch 
 		PublicURL: e.public, AdminURL: e.admin, CORSOrigins: e.cors, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: e.log,
 		Stopping: e.stopping, Setup: wz, Checker: e.checker(rt, w), Catalog: cat,
 		SecretStore: e.secrets, Secret: e.resolve, PluginStore: runtimePluginStore(cat, e.resolve, e.stopping, rt.Repo),
+		Metrics: e.metrics,
 	}
 }
 
@@ -381,6 +385,17 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 	e := &runtimeEnv{log: log, mode: "serve", dataDir: dataDir, dir: absDir, public: public, admin: f.adminURL, cors: f.corsOrigins, store: store,
 		secrets: sec, resolve: resolve, stopping: make(chan struct{}), runtimeTok: runtimeTok, appKeyFile: f.githubAppKeyFile}
 	e.connector, e.probe = serveDiscord(log)
+	// Metrics: the build, Go and process metrics at once, the runtime and API ones once a
+	// configuration is active (the wizard's, or the one it created on an earlier start).
+	if f.metricsListen != "" {
+		e.metrics = newMetricsRegistry()
+	}
+	stopMetrics, err := startMetrics(ctx, log, f.metricsListen, e.metrics)
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
+	defer stopMetrics()
 
 	st, found, err := setup.LoadState(ctx, store)
 	if err != nil {
