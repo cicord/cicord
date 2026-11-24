@@ -54,7 +54,7 @@ Plugins add what their **granted** capabilities use:
 | Grant | The bot needs |
 | --- | --- |
 | `discord.messages.read` | View Channel, Read Message History |
-| `discord.messages.send` | View Channel, Send Messages, Embed Links, Attach Files |
+| `discord.messages.send` | View Channel, Send Messages, Embed Links |
 | `discord.messages.manage` | View Channel, Manage Messages |
 | `discord.reactions.manage` | View Channel, Add Reactions, Read Message History |
 | `discord.members.manage` | Manage Nicknames |
@@ -76,8 +76,9 @@ portal, `http.fetch`) need no permission on the server.
   checks a default list (server management plus what the official plugins use).
 - **Before every plan and sync.** When the bot is not Administrator, Cicord checks what the
   plan is about to send before applying anything. If a permission is missing, nothing is
-  applied and `cicord plan`, `cicord apply`, the admin _Sync_ page and the server status show
-  an error such as:
+  applied. `cicord plan` and the admin _Plan_ page name the missing permissions; `cicord
+  apply`, the admin _Sync_ page and the server status also show which YAML paths need them,
+  for example:
 
   ```text
   reconcile ma-commu: preflight: the bot lacks permissions this sync needs: BanMembers

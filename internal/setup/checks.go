@@ -244,8 +244,13 @@ func PermissionsCheck(serverID string, roles []discord.Role, bot discord.Member,
 	case admin:
 		c.Status, c.Message = StatusOK, "The bot has the Administrator permission."
 		// what a least-privilege bot role would need instead (docs: self-hosting/bot-permissions)
-		if need := req.Permissions &^ discord.MustPermissions("Administrator"); need != 0 && !onlyBaseline(req) {
-			c.Message += " Without it, it would need: " + strings.Join(need.Names(), ", ") + "."
+		switch adminSrc := req.Sources["Administrator"]; {
+		case len(adminSrc) > 0:
+			c.Message += " It stays required: " + strings.Join(adminSrc, ", ") + " puts ManageRoles in a channel overwrite."
+		case !onlyBaseline(req):
+			if need := req.Permissions; need != 0 {
+				c.Message += " Without it, it would need: " + strings.Join(need.Names(), ", ") + "."
+			}
 		}
 		c.Data = map[string]any{"required": nonNilNames(req.Names()), "sources": req.Sources}
 	case len(missing.Sources) == 0:
@@ -529,7 +534,14 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 		add(ev)
 		// plan
 		pl := Check{ID: CheckPlan}
-		if p, err := slow.plan, slow.planErr; err != nil {
+		var pe *reconcile.PermissionsError
+		if p, err := slow.plan, slow.planErr; errors.As(err, &pe) {
+			// the preflight: the plan is fine, the bot cannot apply it
+			h := reconcile.HumanizeErr(err)
+			pl.Status, pl.Message, pl.Hint = StatusFail, h.Message+". Nothing will be applied until this is fixed.", h.Hint
+			pl.Data = map[string]any{"changes": len(p.Changes), "blocked": len(p.Blocked), "missing": nonNilNames(pe.Missing.Names()), "lockouts": pe.Lockouts}
+			rep.Plan = &p
+		} else if err != nil {
 			pl.Status, pl.Message = StatusFail, "Could not compute the plan: "+err.Error()
 			pl.Hint = reconcileHint(err)
 		} else {

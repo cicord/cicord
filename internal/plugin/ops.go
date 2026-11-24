@@ -46,7 +46,7 @@ const (
 // (members.read and dm.send use the gateway member list and DMs).
 var capabilityPermissions = map[string]discord.Permissions{
 	capMessagesRead:    discord.MustPermissions("ViewChannel", "ReadMessageHistory"),
-	capMessagesSend:    discord.MustPermissions("ViewChannel", "SendMessages", "EmbedLinks", "AttachFiles"),
+	capMessagesSend:    discord.MustPermissions("ViewChannel", "SendMessages", "EmbedLinks"),
 	capMessagesManage:  discord.MustPermissions("ViewChannel", "ManageMessages"),
 	capReactions:       discord.MustPermissions("ViewChannel", "AddReactions", "ReadMessageHistory"),
 	capMembersManage:   discord.MustPermissions("ManageNicknames"),
