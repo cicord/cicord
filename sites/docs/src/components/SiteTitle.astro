@@ -1,0 +1,48 @@
+---
+// Starlight's site title, followed by the version these docs describe. The version is
+// read at build time from internal/version/version.go (the engine version that
+// `make release` sets), so the badge follows every release without being edited.
+import Default from "@astrojs/starlight/components/SiteTitle.astro";
+
+const version = import.meta.env.CICORD_DOCS_VERSION as string | undefined;
+const href = version
+  ? `https://github.com/cicord/cicord/releases/tag/v${version}`
+  : "https://github.com/cicord/cicord/releases";
+---
+
+<div class="cicord-site-title">
+  <Default {...Astro.props} />
+  {
+    version && (
+      <a class="cicord-version" href={href} title={`Release notes of Cicord ${version}`}>
+        v{version}
+      </a>
+    )
+  }
+</div>
+
+<style>
+  .cicord-site-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .cicord-version {
+    flex: none;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 999px;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    font-size: var(--sl-text-xs);
+    line-height: 1.4;
+    color: var(--sl-color-gray-3);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .cicord-version:hover,
+  .cicord-version:focus-visible {
+    border-color: var(--sl-color-accent);
+    color: var(--sl-color-text-accent);
+  }
+</style>

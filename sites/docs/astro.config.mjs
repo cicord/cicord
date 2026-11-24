@@ -1,5 +1,12 @@
+import { readFileSync } from "node:fs";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+
+// The version these docs describe, shown next to the logo: the engine version of the
+// runtime, which `make release` sets (internal/version/version.go).
+const versionFile = new URL("../../internal/version/version.go", import.meta.url);
+const docsVersion = /^var Version = "([^"]+)"$/m.exec(readFileSync(versionFile, "utf8"))?.[1];
+if (!docsVersion) throw new Error("no Version in internal/version/version.go");
 
 // The combined site serves the landing page at BASE_PATH and these docs at BASE_PATH/docs/
 // (BASE_PATH is "/" for a custom domain, "/<repo>" on GitHub Pages project sites).
@@ -10,6 +17,7 @@ const repo = "https://github.com/cicord/cicord";
 
 export default defineConfig({
   site,
+  vite: { define: { "import.meta.env.CICORD_DOCS_VERSION": JSON.stringify(docsVersion) } },
   base: `${landing}docs`,
   trailingSlash: "always",
   integrations: [
@@ -25,6 +33,7 @@ export default defineConfig({
       ],
       editLink: { baseUrl: `${repo}/edit/main/sites/docs/` },
       customCss: ["./src/styles/theme.css"],
+      components: { SiteTitle: "./src/components/SiteTitle.astro" },
       lastUpdated: false,
       sidebar: [
         // An absolute URL: Starlight would prefix a bare path with the docs base.
