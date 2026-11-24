@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/npjonath/cicord/internal/discord"
 )
@@ -239,7 +240,14 @@ export default definePlugin({ commands: { f: command({ description: "x", options
     const r = await ctx.http.fetch(it.options.url);
     const items = await r.json() as unknown[];
     await it.reply(String(items.length));
-  } }) } });`, func(e *Env) { e.NetworkAllow = []string{u.Host}; e.AllowPrivateNetworks = true })
+  } }) } });`, func(e *Env) {
+		e.NetworkAllow = []string{u.Host}
+		e.AllowPrivateNetworks = true
+		// Fetching and parsing 4 MiB takes over 2 s under -race on CI runners: keep the
+		// interaction from being auto-deferred (tested elsewhere) so the reply is the
+		// initial response. Only the sync budget is under test here.
+		e.Limits.AutoDeferAfter = time.Minute
+	})
 	if err := h.command("f", []discord.InteractionOption{{Name: "url", Type: discord.OptionString, Value: srv.URL}}, discord.Resolved{}); err != nil {
 		t.Fatal(err)
 	}
