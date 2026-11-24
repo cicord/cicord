@@ -80,8 +80,10 @@ const SAFE_URL = /^https?:\/\//i;
 export function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
   const out: ReactNode[] = [];
   // Order matters: code first (no formatting inside), then links, bold, italic.
+  // Every run is bounded ({1,MAX}): an unbounded [^*]* scanned to the end of the text from
+  // each "*" without a closing one, quadratic on hostile input.
   const re =
-    /(`([^`]+)`)|(\[([^\]]+)\]\(([^)\s]+)\))|(\*\*([^*]+)\*\*)|(__([^_]+)__)|(\*([^*\s][^*]*)\*)|(\b_([^_\s][^_]*)_\b)/g;
+    /(`([^`]{1,1000})`)|(\[([^\]]{1,1000})\]\(([^)\s]{1,2000})\))|(\*\*([^*]{1,1000})\*\*)|(__([^_]{1,1000})__)|(\*([^*\s][^*]{0,999})\*)|(\b_([^_\s][^_]{0,999})_\b)/g;
   let last = 0;
   let n = 0;
   for (let m = re.exec(text); m; m = re.exec(text)) {

@@ -105,8 +105,15 @@ func (s *server) handlePlanUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 // extractTarGz extracts regular files and directories into dst, refusing absolute
-// paths, "..", links and special files, and enforcing size/count limits.
+// paths, "..", links and special files, and enforcing size/count limits. Every file
+// operation goes through an os.Root on dst, so nothing can be written outside it even if a
+// name slipped past the checks.
 func extractTarGz(r io.Reader, dst string) error {
+	root, err := os.OpenRoot(dst)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return err
@@ -130,10 +137,10 @@ func extractTarGz(r io.Reader, dst string) error {
 		if strings.HasPrefix(name, "/") || strings.Contains(name, "\\") || !filepath.IsLocal(filepath.FromSlash(strings.TrimSuffix(name, "/"))) {
 			return fmt.Errorf("unsafe path %q", h.Name)
 		}
-		target := filepath.Join(dst, filepath.FromSlash(name))
+		target := filepath.FromSlash(strings.TrimSuffix(name, "/")) // relative to root
 		switch h.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
+			if err := root.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg:
@@ -148,10 +155,10 @@ func extractTarGz(r io.Reader, dst string) error {
 			if total > maxArchiveTotal {
 				return fmt.Errorf("archive content too large (max %d bytes)", maxArchiveTotal)
 			}
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			if err := root.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+			f, err := root.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 			if err != nil {
 				return err
 			}

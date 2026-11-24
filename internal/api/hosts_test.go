@@ -397,3 +397,16 @@ func TestSetupModeAdminHost(t *testing.T) {
 		t.Fatalf("admin host: setup status = %+v", st)
 	}
 }
+
+// Paths browsers would resolve to another host are not local redirects.
+func TestIsLocalRedirect(t *testing.T) {
+	for target, want := range map[string]bool{
+		"/": true, "/admin/": true, "/portal?x=1#y": true,
+		"": false, "//evil.example": false, "/\\evil.example": false, "https://evil.example/": false,
+		"evil.example": false, "javascript:alert(1)": false, "/%2F%2Fevil": true,
+	} {
+		if got := isLocalRedirect(target); got != want {
+			t.Errorf("isLocalRedirect(%q) = %v, want %v", target, got, want)
+		}
+	}
+}

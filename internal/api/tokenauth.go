@@ -64,7 +64,7 @@ func (s *server) tokenRedirect(target string) (string, string, bool) {
 	if target == "" {
 		return "/", "", true
 	}
-	if local := s.safeRedirect(target); local == target && strings.HasPrefix(target, "/") {
+	if isLocalRedirect(target) {
 		return target, "", true
 	}
 	u, err := url.Parse(target)

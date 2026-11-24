@@ -38,8 +38,10 @@ createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
     res.end(html);
   } catch (error) {
+    // Details stay in this terminal: a page never shows a stack trace or a file path.
+    console.error(error);
     res.writeHead(500, { "Content-Type": "text/plain" });
-    res.end(String(error));
+    res.end("Internal error");
   }
 }).listen(port, "localhost", () => {
   console.log(`fan site on http://localhost:${port} (Cicord runtime: ${runtime})`);

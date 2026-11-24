@@ -730,7 +730,7 @@ func ParseColor(s string) (int, error) {
 	if !ok || len(h) != 6 {
 		return 0, fmt.Errorf("invalid color %q (expected #RRGGBB)", s)
 	}
-	v, err := strconv.ParseUint(h, 16, 32)
+	v, err := strconv.ParseUint(h, 16, 24) // 6 hex digits: fits an int on any platform
 	if err != nil {
 		return 0, fmt.Errorf("invalid color %q (expected #RRGGBB)", s)
 	}

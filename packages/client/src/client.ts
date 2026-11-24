@@ -221,7 +221,10 @@ const isRawBody = (body: unknown): boolean =>
 const seg = (value: string): string => encodeURIComponent(value);
 
 function trimSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  // A loop, not /\/+$/: that regex backtracks quadratically on many slashes not at the end.
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end--;
+  return value.slice(0, end);
 }
 
 /** Query string of a paged list (spec/api.md "Data tables"); empty values are left out. */

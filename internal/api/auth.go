@@ -550,8 +550,8 @@ func (s *server) safeRedirect(target string) string {
 	if target == "" {
 		return "/"
 	}
-	if strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") && !strings.HasPrefix(target, "/\\") {
-		if u, err := url.Parse(target); err == nil && u.Host == "" && u.Scheme == "" {
+	if strings.HasPrefix(target, "/") {
+		if isLocalRedirect(target) {
 			return target
 		}
 		return "/"
@@ -562,6 +562,16 @@ func (s *server) safeRedirect(target string) string {
 		}
 	}
 	return "/"
+}
+
+// isLocalRedirect reports whether target is a path on this host: it starts with a single
+// "/" (not "//" nor "/\\", which browsers read as another host) and has no scheme or host.
+func isLocalRedirect(target string) bool {
+	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") || strings.HasPrefix(target, "/\\") {
+		return false
+	}
+	u, err := url.Parse(target)
+	return err == nil && u.Host == "" && u.Scheme == ""
 }
 
 // clientSecret returns the OAuth2 client secret (SecretFunc first: the setup wizard

@@ -97,8 +97,8 @@ interface MockState {
   registries: MockRegistry[];
   storeInstalls: StoreInstall[];
   storeFetchedAt: string;
-  /** Names of the secrets in the runtime's secret store (registry tokens). */
-  secrets: string[];
+  /** Names (never values) of the secrets in the runtime's secret store (registry tokens). */
+  secretNames: string[];
   /**
    * Installed versions of Store plugins by "<source>/<plugin>" (cicord.lock entries and copies
    * of official plugins); the latest version is the one of the source. Absent: the latest.
@@ -150,8 +150,14 @@ const COMMUNITY_ERROR: HumanError = {
 const API = "/api/v1";
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60000).toISOString();
-const hex = () =>
-  Array.from({ length: 7 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+/** n random hex digits (crypto.getRandomValues: no Math.random, even for mock ids). */
+const randomHex = (n: number) =>
+  Array.from(crypto.getRandomValues(new Uint8Array(Math.ceil(n / 2))), (b) =>
+    b.toString(16).padStart(2, "0"),
+  )
+    .join("")
+    .slice(0, n);
+const hex = () => randomHex(7);
 
 function seed(): MockState {
   const rev: Revision = {
@@ -347,7 +353,7 @@ function seed(): MockState {
     storeInstalls: [],
     storeFetchedAt: ago(12),
     // The hub's token is configured; community's secretRef points at a missing secret.
-    secrets: [registrySecret("hub")],
+    secretNames: [registrySecret("hub")],
   };
 }
 
@@ -440,7 +446,7 @@ function message(
   extra: Partial<Message> = {},
 ): Message {
   return {
-    id: extra.id ?? `m-${Math.random().toString(36).slice(2, 10)}`,
+    id: extra.id ?? `m-${randomHex(8)}`,
     channelId,
     author,
     content,
@@ -569,7 +575,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           saved.registries ??= seedRegistries();
           saved.storeInstalls ??= [];
           saved.storeFetchedAt ??= new Date().toISOString();
-          saved.secrets ??= [];
+          saved.secretNames ??= [];
           saved.versions ??= {};
           return saved;
         }
@@ -1545,7 +1551,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
   /** A registry whose token is missing cannot be read. */
   const registryError = (r: MockRegistry) =>
     r.error ??
-    (r.secretRef && !state.secrets.includes(r.secretRef)
+    (r.secretRef && !state.secretNames.includes(r.secretRef)
       ? {
           code: "fetch_failed",
           message: "Could not fetch the registry index",
@@ -1573,7 +1579,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         ...(error ? { error } : {}),
         private: !!r.secretRef,
         ...(r.secretRef
-          ? { credentials: state.secrets.includes(r.secretRef) ? "ok" : "missing" }
+          ? { credentials: state.secretNames.includes(r.secretRef) ? "ok" : "missing" }
           : {}),
         plugins: error ? [] : r.plugins.map((p) => storePlugin(r.name, p)),
       };
@@ -1809,7 +1815,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         `could not read ${url}/index.yaml with this token: authentication failed`,
       );
     const secretRef = token ? registrySecret(name) : undefined;
-    if (secretRef && !state.secrets.includes(secretRef)) state.secrets.push(secretRef);
+    if (secretRef && !state.secretNames.includes(secretRef)) state.secretNames.push(secretRef);
     state.registries.push({ name, url, plugins: [], ...(secretRef ? { secretRef } : {}) });
     const user = userById(viewer)!;
     newRevision(`chore(store): add registry ${name}`, user.displayName);
@@ -1832,7 +1838,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           .join("\n"),
       });
     state.registries = state.registries.filter((r) => r !== registry);
-    state.secrets = state.secrets.filter((x) => x !== registrySecret(name));
+    state.secretNames = state.secretNames.filter((x) => x !== registrySecret(name));
     const user = userById(viewer)!;
     newRevision(`chore(store): remove registry ${name}`, user.displayName);
     addAudit(`discord:${viewer} (${user.displayName})`, "registry.remove", name, {});
@@ -1849,7 +1855,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (method === "DELETE") {
       if (!registry.secretRef) return json({ mode: "commit" });
       // Only the secret the admin UI created is deleted; an operator's secret stays.
-      if (registry.secretRef === own) state.secrets = state.secrets.filter((x) => x !== own);
+      if (registry.secretRef === own)
+        state.secretNames = state.secretNames.filter((x) => x !== own);
       delete registry.secretRef;
       newRevision(`registry: ${name} is public (token removed)`, user.displayName);
       addAudit(`discord:${viewer} (${user.displayName})`, "registry.token", name, {
@@ -1869,7 +1876,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     const ref = registry.secretRef ?? own;
     // The index can be read again with the token.
     delete registry.error;
-    if (!state.secrets.includes(ref)) state.secrets.push(ref);
+    if (!state.secretNames.includes(ref)) state.secretNames.push(ref);
     addAudit(`discord:${viewer} (${user.displayName})`, "registry.token", name, { set: true });
     if (registry.secretRef) {
       changed();

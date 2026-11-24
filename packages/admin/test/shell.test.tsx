@@ -47,7 +47,9 @@ describe("layout", () => {
       "Settings",
     ])
       expect(
-        within(nav).getByRole("link", { name: new RegExp(`^${name.replace("&", "\\&")}`) }),
+        within(nav).getByRole("link", {
+          name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+        }),
       ).toBeTruthy();
     const order = within(nav)
       .getAllByRole("link")

@@ -454,7 +454,7 @@ describe("store: sources", () => {
         within(row("community")).queryByText("The token is missing on this runtime"),
       ).toBeNull(),
     );
-    expect(runtime.state.secrets).toContain("CICORD_REGISTRY_COMMUNITY_TOKEN");
+    expect(runtime.state.secretNames).toContain("CICORD_REGISTRY_COMMUNITY_TOKEN");
     expect(sent.filter((s) => s.method === "PUT").map((s) => s.body)).toEqual([
       { token: "bad" },
       { token: "s3cret-value" },
@@ -488,7 +488,7 @@ describe("store: sources", () => {
       await screen.findByText("Token of hub removed", { selector: "[role=status] *" }),
     ).toBeTruthy();
     await waitFor(() => expect(within(row("hub")).queryByText("Private")).toBeNull());
-    expect(runtime.state.secrets).not.toContain("CICORD_REGISTRY_HUB_TOKEN");
+    expect(runtime.state.secretNames).not.toContain("CICORD_REGISTRY_HUB_TOKEN");
     expect(
       sent.some((s) => s.method === "DELETE" && s.path === "/api/v1/registries/hub/token"),
     ).toBe(true);
