@@ -103,9 +103,10 @@ case "$verify" in
       log "Cicord $new is available, but its provenance cannot be verified: put a GitHub token in /etc/cicord/github-token (see https://cicord.dev/docs/self-hosting/production-vps/#9-updates)"
       exit 1
     fi
-    if ! GH_TOKEN="$(cat /etc/cicord/github-token)" GH_PROMPT_DISABLED=1 gh attestation verify "oci://$IMAGE@$digest" \
-      --repo "$REPO" --signer-workflow "$REPO/.github/workflows/release.yml" --source-ref "refs/tags/$tag" >/dev/null 2>&1; then
-      log "release $tag: the build provenance of $IMAGE@$digest does not verify: refused"
+    if ! out="$(GH_TOKEN="$(cat /etc/cicord/github-token)" GH_PROMPT_DISABLED=1 gh attestation verify "oci://$IMAGE@$digest" \
+      --repo "$REPO" --signer-workflow "$REPO/.github/workflows/release.yml" --source-ref "refs/tags/$tag" 2>&1)"; then
+      # gh's last line says why (no attestation, wrong workflow or ref, or a refused token).
+      log "release $tag: the build provenance of $IMAGE@$digest could not be verified, refused: $(printf '%s' "$out" | grep -v '^\s*$' | tail -1)"
       exit 1
     fi ;;
   digest) log "CICORD_UPDATE_VERIFY=digest: provenance not verified, trusting the release notes" ;;

@@ -543,7 +543,9 @@ More in [Backups and secrets](../backups-and-secrets/), including
   The provenance check needs a GitHub token, even for a public repository. Create a
   [fine-grained token](https://github.com/settings/personal-access-tokens/new) with
   **Public repositories (read-only)** access and no permissions, then store it on the server
-  without echoing it:
+  without echoing it. Give it an expiry of a year at most (organizations often refuse longer
+  ones, with an HTTP 403 when the update runs) and put its renewal in your calendar: an
+  expired token stops the updates, which `journalctl -t cicord-update` then reports.
 
   ```sh
   read -rs T && printf '%s\n' "$T" | ssh cicord 'sudo sh -c "umask 077; cat > /etc/cicord/github-token"'; unset T
