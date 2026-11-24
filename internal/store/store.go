@@ -123,7 +123,8 @@ type Service struct {
 	FirstRefresh time.Duration
 	// FetchTimeout bounds one index fetch (default 20 s).
 	FetchTimeout time.Duration
-	// Fetch reads a registry index (default registry.FetchIndex).
+	// Fetch reads a registry index (default registry.FetchIndex). Sources calls it
+	// concurrently, once per registry: it must be safe for concurrent use.
 	Fetch func(ctx context.Context, url string) (*registry.Index, error)
 	// Resolve resolves "<registry>/<plugin>" (default registry.ResolveLatest).
 	Resolve func(ctx context.Context, regs []config.Registry, cacheDir, source, rng string) (*registry.Resolution, error)

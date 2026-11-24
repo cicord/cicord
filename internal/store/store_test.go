@@ -17,11 +17,14 @@ func repoWith(regs ...config.Registry) *config.Repo {
 
 func TestSourcesCacheAndErrors(t *testing.T) {
 	now := time.Date(2026, 11, 22, 10, 0, 0, 0, time.UTC)
+	var mu sync.Mutex // Sources fetches every registry concurrently
 	fetches := map[string]int{}
 	s := &Service{
 		Now: func() time.Time { return now },
 		Fetch: func(_ context.Context, url string) (*registry.Index, error) {
+			mu.Lock()
 			fetches[url]++
+			mu.Unlock()
 			if url == "https://down.example/r.git" {
 				return nil, errors.New("clone https://down.example/r.git: repository not found")
 			}
