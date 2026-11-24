@@ -26,6 +26,7 @@ import (
 	"github.com/cicord/cicord/internal/catalog"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord/disgoadapter"
+	"github.com/cicord/cicord/internal/gitauth"
 	"github.com/cicord/cicord/internal/registry"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/secrets"
@@ -47,6 +48,8 @@ type serverFlags struct {
 	publicURL   string
 	corsOrigins []string
 	logLevel    string
+	// githubAppKeyFile is the GitHub App private key file (serve only).
+	githubAppKeyFile string
 }
 
 func (f *serverFlags) register(cmd *cobra.Command, defListen string) {
@@ -288,7 +291,10 @@ the community portal (/).
 
 Environment:
   DISCORD_TOKEN_*             bot tokens (as named by token.secretRef)
-  CICORD_GIT_TOKEN              HTTPS token for git fetch, write-back and GitHub pull requests
+  CICORD_GIT_TOKEN              HTTPS token for git fetch, write-back, pull requests and commit statuses
+  CICORD_GITHUB_APP_ID          GitHub App ID: authenticate as a GitHub App instead (takes precedence)
+  CICORD_GITHUB_APP_PRIVATE_KEY the App's private key (PEM), or --github-app-key-file
+  CICORD_GITHUB_APP_INSTALLATION_ID  the App's installation (default: discovered from the repository)
   CICORD_RUNTIME_TOKEN          bearer token of the CLI / CI (machine endpoints)
   CICORD_WEBHOOK_SECRET         GitHub webhook secret
   CICORD_LINK_SECRET            portal link signing key (default: generated in the data dir)
@@ -310,6 +316,8 @@ Environment:
 	}
 	f.register(cmd, ":7420")
 	cmd.Flags().BoolVar(&local, "local", false, "serve the directory as-is, ignoring spec.source (no git)")
+	cmd.Flags().StringVar(&f.githubAppKeyFile, "github-app-key-file", os.Getenv(gitauth.AppPrivateKeyFileEnv),
+		"GitHub App private key file (PEM), instead of the "+gitauth.AppPrivateKeySecret+" secret (env "+gitauth.AppPrivateKeyFileEnv+")")
 	return cmd
 }
 
@@ -365,7 +373,10 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		return err
 	}
 	resolve := secrets.Resolver(sec, nil)
-	gitToken, _ := resolve(setup.GitTokenSecret)
+	var (
+		tokens gitauth.TokenSource // credentials of a remote repository
+		ghRepo string              // owner/name of a github provider (pull requests, commit statuses)
+	)
 	switch provider {
 	case "github", "git", "embedded":
 		remote, path := sp.Repo, sp.Path
@@ -389,15 +400,24 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 				poll = d
 			}
 		}
+		if provider != "embedded" {
+			method := ""
+			tokens, method, err = gitauth.Resolve(gitauth.Options{Lookup: resolve, KeyFile: f.githubAppKeyFile, Repo: githubRepo(remote)})
+			if err != nil {
+				return err
+			}
+			logRepoAuth(log, method, remote)
+		}
 		g, err := source.NewGit(source.GitOptions{URL: remote, Branch: branch, Path: path,
-			CacheDir: filepath.Join(dataDir, "source"), Token: gitToken, PollInterval: poll})
+			CacheDir: filepath.Join(dataDir, "source"), Tokens: tokens, PollInterval: poll})
 		if err != nil {
 			return err
 		}
 		src = g
-		gw := writeback.GitOptions{URL: remote, Branch: branch, Path: path, WorkDir: filepath.Join(dataDir, "writeback"), Token: gitToken}
+		gw := writeback.GitOptions{URL: remote, Branch: branch, Path: path, WorkDir: filepath.Join(dataDir, "writeback"), Tokens: tokens}
 		if provider == "github" {
-			gw.GitHubRepo = githubRepo(remote)
+			ghRepo = githubRepo(remote)
+			gw.GitHubRepo = ghRepo
 		}
 		if proj.Spec.WriteBack != nil && proj.Spec.WriteBack.Branch != "" {
 			gw.Branch = proj.Spec.WriteBack.Branch
@@ -440,6 +460,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
+		CommitStatus: commitStatusHook(log, ghRepo, tokens, public),
 	})
 	stopping := make(chan struct{})
 	runtimeToken := os.Getenv("CICORD_RUNTIME_TOKEN")

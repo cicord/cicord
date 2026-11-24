@@ -20,6 +20,7 @@ import (
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/discord/disgoadapter"
+	"github.com/cicord/cicord/internal/gitauth"
 	"github.com/cicord/cicord/internal/registry"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/secrets"
@@ -148,6 +149,7 @@ type runtimeEnv struct {
 	world      *sim.World
 	stopping   chan struct{}
 	runtimeTok string
+	appKeyFile string // --github-app-key-file
 }
 
 // build creates the source, writer and runtime for a repository chosen in the wizard.
@@ -156,6 +158,8 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 		src    source.Source
 		writer writeback.Writer
 		branch = repo.Branch
+		tokens gitauth.TokenSource
+		ghRepo string
 	)
 	if branch == "" {
 		branch = "main"
@@ -168,21 +172,26 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 		}
 		src, writer = l, &writeback.DirWriter{Root: repo.Dir}
 	case setup.ProviderEmbedded, setup.ProviderGitHub:
-		remote, token := repo.URL, ""
+		remote := repo.URL
 		if repo.Provider == setup.ProviderEmbedded {
 			remote = repo.Dir
-		} else if repo.TokenRef != "" {
-			token, _ = e.resolve(repo.TokenRef)
 		}
+		var method string
+		var err error
+		if tokens, method, err = setup.RepoTokens(repo, e.resolve, gitauth.Options{KeyFile: e.appKeyFile}); err != nil {
+			return nil, nil, nil, "", err
+		}
+		logRepoAuth(e.log, method, remote)
 		g, err := source.NewGit(source.GitOptions{URL: remote, Branch: branch, CacheDir: filepath.Join(e.dataDir, "source"),
-			Token: token, PollInterval: time.Minute})
+			Tokens: tokens, PollInterval: time.Minute})
 		if err != nil {
 			return nil, nil, nil, "", err
 		}
 		src = g
-		gw := writeback.GitOptions{URL: remote, Branch: branch, WorkDir: filepath.Join(e.dataDir, "writeback"), Token: token}
+		gw := writeback.GitOptions{URL: remote, Branch: branch, WorkDir: filepath.Join(e.dataDir, "writeback"), Tokens: tokens}
 		if repo.Provider == setup.ProviderGitHub {
-			gw.GitHubRepo = setup.GitHubRepo(remote)
+			ghRepo = setup.GitHubRepo(remote)
+			gw.GitHubRepo = ghRepo
 		}
 		writer = writeback.NewGitWriter(gw)
 	default:
@@ -198,7 +207,7 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 		Source: src, Connector: e.connector, Store: e.store, Secrets: e.resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, e.resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: e.public, Mode: e.mode, Simulator: e.world != nil,
-		AllowPrivateNetworks: e.world != nil, Logger: e.log,
+		AllowPrivateNetworks: e.world != nil, Logger: e.log, CommitStatus: commitStatusHook(e.log, ghRepo, tokens, e.public),
 	})
 	return rt, writer, src, branch, nil
 }
@@ -270,7 +279,7 @@ func runSetup(ctx context.Context, ss setupStart) error {
 	}
 	wz = setup.New(setup.Options{Mode: e.mode, Store: e.store, Secrets: e.secrets, Connector: e.connector, Probe: e.probe,
 		Catalog: catalog.Official(), Providers: ss.providers, DataDir: e.dataDir, Dir: e.dir, PublicURL: e.public,
-		Activate: activate, Sim: ss.sim, Logger: e.log})
+		Activate: activate, Sim: ss.sim, Logger: e.log, GitHubAppKeyFile: e.appKeyFile})
 	sw.set(api.NewSetup(api.Options{Store: e.store, Mode: e.mode, PublicURL: e.public, CORSOrigins: e.cors,
 		AdminUI: webui.Admin(), Logger: e.log, Stopping: e.stopping, Setup: wz, Catalog: catalog.Official()}))
 	token := wz.IssueToken()
@@ -294,7 +303,7 @@ func resumeWizard(ctx context.Context, e *runtimeEnv, stdout io.Writer) (*setup.
 		return nil, err
 	}
 	wz := setup.New(setup.Options{Mode: e.mode, Store: e.store, Secrets: e.secrets, Connector: e.connector, Probe: e.probe,
-		Catalog: catalog.Official(), DataDir: e.dataDir, Dir: e.dir, PublicURL: e.public, Logger: e.log})
+		Catalog: catalog.Official(), DataDir: e.dataDir, Dir: e.dir, PublicURL: e.public, Logger: e.log, GitHubAppKeyFile: e.appKeyFile})
 	tok := wz.IssueToken()
 	fmt.Fprintf(stdout, "  setup wizard not finished: %s\n", setup.SetupURL(e.public, tok))
 	return wz, nil
@@ -351,7 +360,7 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 	public := publicURLFor(f.publicURL, ln)
 	runtimeTok := os.Getenv("CICORD_RUNTIME_TOKEN")
 	e := &runtimeEnv{log: log, mode: "serve", dataDir: dataDir, dir: absDir, public: public, cors: f.corsOrigins, store: store,
-		secrets: sec, resolve: secrets.Resolver(sec, nil), stopping: make(chan struct{}), runtimeTok: runtimeTok}
+		secrets: sec, resolve: secrets.Resolver(sec, nil), stopping: make(chan struct{}), runtimeTok: runtimeTok, appKeyFile: f.githubAppKeyFile}
 	e.connector, e.probe = serveDiscord(log)
 
 	st, found, err := setup.LoadState(ctx, store)

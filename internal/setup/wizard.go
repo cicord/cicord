@@ -35,6 +35,7 @@ import (
 	"github.com/cicord/cicord/internal/catalog"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/gitauth"
 	"github.com/cicord/cicord/internal/importer"
 	"github.com/cicord/cicord/internal/reconcile"
 	"github.com/cicord/cicord/internal/runtime"
@@ -211,8 +212,15 @@ type Options struct {
 	// (default: the simulator's CDN with Sim, HTTP otherwise).
 	Download importer.Downloader
 	// Env looks environment variables up (default os.LookupEnv).
-	Env    func(string) (string, bool)
-	Logger *slog.Logger
+	Env func(string) (string, bool)
+	// GitHubAppKeyFile is the GitHub App private key file of `cicord serve
+	// --github-app-key-file` (it takes precedence over the stored key).
+	GitHubAppKeyFile string
+	// GitHubAPI overrides https://api.github.com and HTTPClient the client of the GitHub
+	// App token exchange (tests).
+	GitHubAPI  string
+	HTTPClient *http.Client
+	Logger     *slog.Logger
 	// ActivationTimeout bounds the wait for a plugin install to become active (default 30s).
 	ActivationTimeout time.Duration
 }
@@ -419,6 +427,9 @@ type RepoView struct {
 	URL         string `json:"url,omitempty"`
 	Branch      string `json:"branch"`
 	TokenStored bool   `json:"tokenStored,omitempty"`
+	// Auth is "token" or "githubApp" (github provider); AppID is the GitHub App's ID.
+	Auth  string `json:"auth,omitempty"`
+	AppID string `json:"appId,omitempty"`
 }
 
 // LoginView describes the admin login step.
@@ -460,7 +471,7 @@ func (w *Wizard) view(ctx context.Context, s State) View {
 		v.InviteURL = InviteURL(b.ApplicationID)
 	}
 	if r := s.Repo; r != nil {
-		v.Repo = &RepoView{Provider: r.Provider, URL: r.URL, Branch: r.Branch, TokenStored: r.TokenRef != "" && w.opts.Secrets.Has(ctx, r.TokenRef)}
+		v.Repo = w.repoView(ctx, *r)
 	}
 	v.Login = LoginView{LoginState: s.Login, RedirectURL: w.redirectURL()}
 	if s.Bot != nil {
@@ -797,14 +808,28 @@ type RepoRequest struct {
 	Provider string `json:"provider"`
 	URL      string `json:"url"`
 	Branch   string `json:"branch"`
-	Token    string `json:"token"`
+	// Auth is "token" (default: a personal access token in Token) or "githubApp" (AppID,
+	// PrivateKey and the optional InstallationID).
+	Auth           string `json:"auth,omitempty"`
+	Token          string `json:"token"`
+	AppID          string `json:"appId,omitempty"`
+	PrivateKey     string `json:"privateKey,omitempty"`
+	InstallationID string `json:"installationId,omitempty"`
 }
 
 // ChooseRepo validates and records the repository choice. The git token is stored in
-// the secret store (CICORD_GIT_TOKEN).
+// the secret store (CICORD_GIT_TOKEN), or the GitHub App in CICORD_GITHUB_APP_*: an
+// installation token is minted and the repository checked with it first.
 func (w *Wizard) ChooseRepo(ctx context.Context, req RepoRequest) (View, error) {
 	if !slices.Contains(w.opts.Providers, req.Provider) {
 		return View{}, errorf(http.StatusBadRequest, "invalid", "", "this runtime offers: %s", strings.Join(w.opts.Providers, ", "))
+	}
+	// Refused before any secret is stored or removed: the repository in use keeps its
+	// credentials.
+	if s, err := w.state(ctx); err != nil {
+		return View{}, err
+	} else if s.RepoInitialized {
+		return View{}, errorf(http.StatusConflict, "conflict", "", "The repository is already created.")
 	}
 	branch := strings.TrimSpace(req.Branch)
 	if branch == "" {
@@ -830,43 +855,26 @@ func (w *Wizard) ChooseRepo(ctx context.Context, req RepoRequest) (View, error) 
 			return View{}, errorf(http.StatusUnprocessableEntity, "invalid", "Use the HTTPS URL of the repository, e.g. https://github.com/your-name/my-community (not the git@ SSH URL).", "This is not an HTTPS repository URL.")
 		}
 		cfg.URL = strings.TrimSuffix(u, "/")
-		token := strings.TrimSpace(req.Token)
-		if token == "" {
-			token, _ = w.secret(GitTokenSecret)
-		}
-		if token == "" && !local {
-			return View{}, errorf(http.StatusUnprocessableEntity, "invalid",
-				"Create a fine-grained personal access token on GitHub (Settings → Developer settings → Personal access tokens) with “Contents: Read and write” on this repository.",
-				"A GitHub token is required.")
-		}
-		empty, hasCicord, err := CheckRemote(ctx, cfg.URL, branch, token)
+		creds, err := w.repoCredentials(ctx, req, cfg.URL, local)
 		if err != nil {
-			msg := err.Error()
-			e := &Error{Status: http.StatusUnprocessableEntity, Code: "invalid", Details: msg}
-			switch {
-			case strings.Contains(msg, "authentication") || strings.Contains(msg, "authorization"):
-				e.Message = "GitHub refused the token."
-				e.Hint = "Check that the token is not expired and has “Contents: Read and write” access to this repository."
-			case strings.Contains(msg, "not found"):
-				e.Message = "The repository was not found."
-				e.Hint = "Check the URL. For a private repository, the token must have access to it. Create the repository on GitHub first (it can be empty)."
-			default:
-				e.Message = "Could not reach the repository."
-				e.Hint = "Check the URL and the runtime's network connection."
-			}
-			return View{}, e
+			return View{}, err
+		}
+		empty, hasCicord, err := CheckRemote(ctx, cfg.URL, branch, creds.tokens)
+		if err != nil {
+			return View{}, explainRemoteErr(err, creds.method)
 		}
 		if hasCicord {
 			return View{}, errorf(http.StatusConflict, "conflict", "Pick an empty repository, or run `cicord serve` with this repository's cicord.yaml.",
 				"This repository already contains a Cicord configuration.")
 		}
 		_ = empty
-		if strings.TrimSpace(req.Token) != "" {
-			if err := w.opts.Secrets.Set(ctx, GitTokenSecret, strings.TrimSpace(req.Token)); err != nil {
-				return View{}, err
-			}
+		if err := w.storeCredentials(ctx, creds); err != nil {
+			return View{}, err
 		}
-		cfg.TokenRef = GitTokenSecret
+		cfg.Auth = creds.method
+		if creds.method == gitauth.MethodToken {
+			cfg.TokenRef = GitTokenSecret
+		}
 	}
 	return w.update(ctx, func(s *State) error {
 		if s.RepoInitialized {
@@ -977,14 +985,15 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 			return res, nil
 		}
 		w.closeSession() // the runtime opens its own gateway session
-		token := ""
-		if s.Repo.TokenRef != "" {
-			token, _ = w.secret(s.Repo.TokenRef)
+		tokens, err := w.repoTokens(*s.Repo)
+		if err != nil {
+			return ImportResult{}, &Error{Status: http.StatusConflict, Code: "conflict", Message: "The repository credentials are incomplete.",
+				Hint: "Go back to the repository choice (Change) and enter them again.", Details: err.Error()}
 		}
 		msg := fmt.Sprintf("Set up Cicord for %s\n\nImported %d role(s) and %d channel(s) from Discord.", s.Server.Name, len(snap.Roles), len(snap.Channels))
-		if _, err := InitRepository(ctx, *s.Repo, token, files, msg); err != nil {
+		if _, err := InitRepository(ctx, *s.Repo, tokens, files, msg); err != nil {
 			return ImportResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not create the repository.",
-				Hint: "For GitHub, check that the token has “Contents: Read and write” access; then try again.", Details: err.Error()}
+				Hint: "For GitHub, check that the token (or the GitHub App) has “Contents: Read and write” access; then try again.", Details: err.Error()}
 		}
 		if _, err := w.update(ctx, func(st *State) error { st.RepoInitialized = true; return nil }); err != nil {
 			return ImportResult{}, err

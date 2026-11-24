@@ -137,7 +137,7 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 	if _, err := git.PlainInit(remote, true); err != nil {
 		t.Fatal(err)
 	}
-	empty, hasCicord, err := CheckRemote(ctx, remote, "main", "")
+	empty, hasCicord, err := CheckRemote(ctx, remote, "main", nil)
 	if err != nil || !empty || hasCicord {
 		t.Fatalf("empty remote: %v %v %v", empty, hasCicord, err)
 	}
@@ -156,25 +156,25 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 	if !strings.Contains(string(files["bots/cicord/bot.yaml"]), "intents: [ServerMessages]") {
 		t.Fatalf("bot.yaml = %s", files["bots/cicord/bot.yaml"])
 	}
-	sha, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: remote, Branch: "main"}, "", files, "Set up Cicord")
+	sha, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: remote, Branch: "main"}, nil, files, "Set up Cicord")
 	if err != nil || sha == "" {
 		t.Fatalf("init: %q %v", sha, err)
 	}
-	_, hasCicord, err = CheckRemote(ctx, remote, "main", "")
+	_, hasCicord, err = CheckRemote(ctx, remote, "main", nil)
 	if err != nil || !hasCicord {
 		t.Fatalf("after push: %v %v", hasCicord, err)
 	}
-	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: remote, Branch: "main"}, "", files, "again"); err == nil ||
+	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: remote, Branch: "main"}, nil, files, "again"); err == nil ||
 		!strings.Contains(err.Error(), "already contains a Cicord configuration") {
 		t.Fatalf("second init: %v", err)
 	}
 	// A non-empty repository (README on main) gets the configuration next to it.
 	withReadme := filepath.Join(t.TempDir(), "readme.git")
-	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderEmbedded, Dir: withReadme, Branch: "main"}, "",
+	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderEmbedded, Dir: withReadme, Branch: "main"}, nil,
 		map[string][]byte{"README.md": []byte("# hello\n")}, "Initial commit"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: withReadme, Branch: "main"}, "", files, "Set up Cicord"); err != nil {
+	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderGitHub, URL: withReadme, Branch: "main"}, nil, files, "Set up Cicord"); err != nil {
 		t.Fatal(err)
 	}
 	r, _ := git.PlainOpen(withReadme)
@@ -194,16 +194,16 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 
 	// Embedded: refuses an existing repository; local: refuses an existing cicord.yaml.
 	bare := filepath.Join(t.TempDir(), "repo.git")
-	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderEmbedded, Dir: bare}, "", files, "x"); err != nil {
+	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderEmbedded, Dir: bare}, nil, files, "x"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderEmbedded, Dir: bare}, "", files, "x"); err == nil {
+	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderEmbedded, Dir: bare}, nil, files, "x"); err == nil {
 		t.Fatal("embedded overwrite")
 	}
 	local := t.TempDir()
 	_ = os.WriteFile(filepath.Join(local, "README.md"), []byte("mine\n"), 0o644)
 	_ = os.WriteFile(filepath.Join(local, ".gitignore"), []byte("*.log\n.env\n"), 0o644)
-	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderLocal, Dir: local}, "", files, "x"); err != nil {
+	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderLocal, Dir: local}, nil, files, "x"); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(local, "README.md")); string(b) != "mine\n" {
@@ -212,7 +212,7 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(local, ".gitignore")); !strings.HasPrefix(string(b), "*.log\n.env\n# Cicord\n") || strings.Count(string(b), ".env") != 1 {
 		t.Fatalf(".gitignore = %q", b)
 	}
-	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderLocal, Dir: local}, "", files, "x"); err == nil {
+	if _, err := InitRepository(ctx, RepoConfig{Provider: ProviderLocal, Dir: local}, nil, files, "x"); err == nil {
 		t.Fatal("local overwrite")
 	}
 }

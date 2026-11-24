@@ -20,7 +20,7 @@ can hold the runtime state instead of SQLite.
 ## `cicord serve`
 
 ```text
-cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local]
+cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--public-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local] [--github-app-key-file FILE]
 ```
 
 - **`dir`** (default `.`) must contain `cicord.yaml`. Its `spec.source` says what to follow:
@@ -45,29 +45,35 @@ cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--publ
   [state store](#state-store-sqlite-or-postgresql). Unset: SQLite in the data directory, which
   is needed either way. The URL is never logged.
 - **`--log-level`**: `debug`, `info` (default), `warn` or `error`.
+- **`--github-app-key-file`** (env `CICORD_GITHUB_APP_PRIVATE_KEY_FILE`): the GitHub App
+  private key as a file (a Docker or Kubernetes secret mounted as a file), instead of the
+  `CICORD_GITHUB_APP_PRIVATE_KEY` secret. See [GitHub access](#github-access-token-or-github-app).
 
 Started in a directory without `cicord.yaml`, `cicord serve` enters [setup mode](../../getting-started/quick-start/)
 and prints a one-time link to the setup wizard.
 
 ## Environment variables
 
-| Variable                                   | Purpose                                                                                                                                                            |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DISCORD_TOKEN_*`                          | Bot tokens. The name is each bot's `spec.token.secretRef`, e.g. `DISCORD_TOKEN_MODERATOR`. A missing token leaves that bot `Missing`.                              |
-| `CICORD_GIT_TOKEN`                         | HTTPS token to fetch a private repository, push write-back commits and open GitHub pull requests (contents: write; pull requests: write for `pullRequest` mode).   |
-| `CICORD_RUNTIME_TOKEN`                     | Bearer token of the CLI and CI (`cicord plan --remote`, `cicord status`, `cicord sync`). Acts as admin on every server. Unset: the machine endpoints answer `401`. |
-| `CICORD_WEBHOOK_SECRET`                    | Secret of the GitHub webhook (`POST /hooks/github`). Unset: webhooks are rejected.                                                                                 |
-| `CICORD_DISCORD_CLIENT_SECRET`             | OAuth2 client secret for "Log in with Discord" (admin console, portal). Unset: `/auth/login` answers `503`.                                                        |
-| `CICORD_DISCORD_CLIENT_ID`                 | OAuth2 client ID. Default: the application ID of the first bot (by key).                                                                                           |
-| `CICORD_LINK_SECRET`                       | Signing key of portal links. Default: generated once in the data directory (`link.key`).                                                                           |
-| `CICORD_SECRET_KEY`                        | Key of the encrypted secret store: base64 or hex of exactly 32 bytes (`openssl rand -base64 32`). Default: `secret.key`, generated in the data directory.          |
-| `CICORD_PUBLIC_URL`, `CICORD_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`.                                                                                                                    |
-| `CICORD_DATABASE_URL`                      | Default of `--database-url` (also read by `cicord dev` and `cicord secret`): use PostgreSQL for the state store. Unset: SQLite in the data directory.              |
-| `CICORD_CACHE_DIR`                         | Plugin download cache. Default: the user cache directory; the Docker image sets `/data/cache`.                                                                     |
-| `CICORD_ALLOW_PRIVATE_REGISTRIES`          | `true` lets the Store and plugin downloads reach private networks.                                                                                                 |
-| `CICORD_REGISTRY_<NAME>_TOKEN`             | Access token of a private registry (see [Publishing](../../plugins/publishing/#private-registries)).                                                               |
+| Variable                                   | Purpose                                                                                                                                                                          |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DISCORD_TOKEN_*`                          | Bot tokens. The name is each bot's `spec.token.secretRef`, e.g. `DISCORD_TOKEN_MODERATOR`. A missing token leaves that bot `Missing`.                                            |
+| `CICORD_GIT_TOKEN`                         | HTTPS token to fetch a private repository, push write-back commits, open GitHub pull requests and set commit statuses (see [GitHub access](#github-access-token-or-github-app)). |
+| `CICORD_GITHUB_APP_ID`                     | GitHub App ID: authenticate as a GitHub App instead of a token (it takes precedence over `CICORD_GIT_TOKEN`).                                                                    |
+| `CICORD_GITHUB_APP_PRIVATE_KEY`            | The App's private key (the `.pem` content), or `--github-app-key-file`.                                                                                                          |
+| `CICORD_GITHUB_APP_INSTALLATION_ID`        | The App's installation. Optional: discovered from `spec.source.repo` on github.com.                                                                                              |
+| `CICORD_RUNTIME_TOKEN`                     | Bearer token of the CLI and CI (`cicord plan --remote`, `cicord status`, `cicord sync`). Acts as admin on every server. Unset: the machine endpoints answer `401`.               |
+| `CICORD_WEBHOOK_SECRET`                    | Secret of the GitHub webhook (`POST /hooks/github`). Unset: webhooks are rejected.                                                                                               |
+| `CICORD_DISCORD_CLIENT_SECRET`             | OAuth2 client secret for "Log in with Discord" (admin console, portal). Unset: `/auth/login` answers `503`.                                                                      |
+| `CICORD_DISCORD_CLIENT_ID`                 | OAuth2 client ID. Default: the application ID of the first bot (by key).                                                                                                         |
+| `CICORD_LINK_SECRET`                       | Signing key of portal links. Default: generated once in the data directory (`link.key`).                                                                                         |
+| `CICORD_SECRET_KEY`                        | Key of the encrypted secret store: base64 or hex of exactly 32 bytes (`openssl rand -base64 32`). Default: `secret.key`, generated in the data directory.                        |
+| `CICORD_PUBLIC_URL`, `CICORD_CORS_ORIGINS` | Defaults of `--public-url` and `--cors-origin`.                                                                                                                                  |
+| `CICORD_DATABASE_URL`                      | Default of `--database-url` (also read by `cicord dev` and `cicord secret`): use PostgreSQL for the state store. Unset: SQLite in the data directory.                            |
+| `CICORD_CACHE_DIR`                         | Plugin download cache. Default: the user cache directory; the Docker image sets `/data/cache`.                                                                                   |
+| `CICORD_ALLOW_PRIVATE_REGISTRIES`          | `true` lets the Store and plugin downloads reach private networks.                                                                                                               |
+| `CICORD_REGISTRY_<NAME>_TOKEN`             | Access token of a private registry (see [Publishing](../../plugins/publishing/#private-registries)).                                                                             |
 
-Bot tokens, `CICORD_GIT_TOKEN`, the OAuth client secret and registry tokens can also live in the
+Bot tokens, `CICORD_GIT_TOKEN`, the `CICORD_GITHUB_APP_*` secrets, the OAuth client secret and registry tokens can also live in the
 encrypted secret store (the setup wizard writes them there, `cicord secret set` too). The
 environment always wins. See [Backups and secrets](../backups-and-secrets/).
 
@@ -267,6 +273,85 @@ server {
 
 </TabItem>
 </Tabs>
+
+## GitHub access: token or GitHub App
+
+Every access to the configuration repository (fetch, write-back pushes, pull requests,
+commit statuses) uses one of these credentials:
+
+- **A personal access token**, `CICORD_GIT_TOKEN`: a fine-grained token restricted to the
+  configuration repository, with the permissions below. Simple, but tied to a person and
+  long-lived.
+- **A GitHub App**, recommended for organizations: commits, pull requests and statuses appear
+  as `<app-name>[bot]`. The runtime only holds the App's private key; it mints installation
+  tokens that expire after an hour, restricted to the configuration repository, and renews
+  them before they expire. When the App is configured, it takes precedence over
+  `CICORD_GIT_TOKEN`.
+
+Repository permissions, the same for a fine-grained token and for the App:
+
+| Permission      | Access         | Used for                                                    |
+| --------------- | -------------- | ----------------------------------------------------------- |
+| Contents        | Read and write | fetching, write-back commits and `cicord/change-…` branches |
+| Pull requests   | Read and write | the `pullRequest` write-back mode                           |
+| Commit statuses | Read and write | the [`cicord/sync` commit status](#commit-statuses)         |
+| Metadata        | Read-only      | mandatory (selected automatically)                          |
+
+No organization or account permission is needed.
+
+### Create the GitHub App
+
+1. On GitHub, open **Settings → Developer settings → GitHub Apps → New GitHub App** (for an
+   organization: the organization's **Settings → Developer settings → GitHub Apps**).
+2. Enter a name (it becomes the commit author, for example `acme-cicord[bot]`) and a homepage
+   URL (your public URL).
+3. **Webhook** is optional. Uncheck _Active_ to rely on polling, or set the webhook URL to
+   `<public-url>/hooks/github`, its secret to `CICORD_WEBHOOK_SECRET`, and subscribe to the
+   **Push** event (other events are acknowledged and ignored). See [Webhooks](#webhooks).
+4. Set the repository permissions of the table above.
+5. Under _Where can this GitHub App be installed?_, choose **Only on this account**, then
+   create the App.
+6. Note the **App ID** (General → About). Under **Private keys**, click **Generate a private
+   key**: GitHub downloads a `.pem` file.
+7. Open **Install App**, install it on the account that owns the configuration repository,
+   choose **Only select repositories** and pick the configuration repository.
+
+### Give the runtime the App
+
+| Secret                              | Value                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `CICORD_GITHUB_APP_ID`              | The App ID (the client ID works too).                                                                                           |
+| `CICORD_GITHUB_APP_PRIVATE_KEY`     | The content of the `.pem` file (PKCS#1 or PKCS#8). A single line with literal `\n` is accepted; or use `--github-app-key-file`. |
+| `CICORD_GITHUB_APP_INSTALLATION_ID` | Optional on github.com (discovered from the repository): the number at the end of the installation's settings URL.              |
+
+Set them as environment variables, or store them encrypted:
+
+```bash
+cicord secret set CICORD_GITHUB_APP_ID --data-dir /data   # type the App ID, then Enter
+cicord secret set CICORD_GITHUB_APP_PRIVATE_KEY --data-dir /data < acme-cicord.private-key.pem
+```
+
+In the [setup wizard](../../getting-started/quick-start/), the Repository step offers
+**GitHub App** next to the token: it checks the App by getting a token and reading the
+repository, then stores these secrets. A partial configuration (an App ID without a key, or
+the reverse) stops `cicord serve` with an error naming what is missing. The startup log says
+which method is used, never the secret. GitHub Enterprise Server is not supported yet.
+
+## Commit statuses
+
+With `provider: github` and credentials, every commit the runtime evaluates gets a commit
+status with the context **`cicord/sync`**:
+
+- `pending` while the revision is validated and applied;
+- `success` once it is applied to every server;
+- `failure` when it is rejected (validation or plugin build) or a server failed; the
+  description gives the first reason.
+
+The status links to `<public-url>/admin/`, unless the public URL is a loopback address. When
+the credentials lack the _Commit statuses_ permission, the runtime logs a warning
+(`GitHub commit status not set`, once; then at debug level) and the sync goes on. Statuses are set on the commits of the
+tracked branch, after the merge; to check a pull request before merging, run `cicord plan` in
+CI ([Your first change](../../getting-started/first-change/#run-it-in-ci)).
 
 ## Webhooks
 

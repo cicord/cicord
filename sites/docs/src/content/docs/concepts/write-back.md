@@ -58,7 +58,7 @@ How write-back reaches the repository depends on `cicord.yaml` `spec.source`:
 
 | Source | Commit mode | Pull request mode |
 |---|---|---|
-| `provider: github` | Pushed to the tracked branch with `CICORD_GIT_TOKEN`. | Pushed to a `cicord/change-…` branch and opened as a pull request through the GitHub API. |
+| `provider: github` | Pushed to the tracked branch with `CICORD_GIT_TOKEN` or the GitHub App. | Pushed to a `cicord/change-…` branch and opened as a pull request through the GitHub API. |
 | `provider: git` (any HTTPS remote) | Pushed with `CICORD_GIT_TOKEN`. | Pushed to a `cicord/change-…` branch (no pull request is opened). |
 | `provider: embedded` (Managed by Cicord) | Committed to the bare repository in the data directory. | Same as `git`. |
 | No source, `cicord serve --local` or `cicord dev` | Written straight into the files of the directory (no commit). | Same. |
@@ -66,8 +66,22 @@ How write-back reaches the repository depends on `cicord.yaml` `spec.source`:
 Outside GitHub, a `pullRequest` policy leaves the change on a branch that someone has to merge
 by hand, so prefer `commit` policies for `git` and `embedded` sources (the setup wizard does).
 
-`CICORD_GIT_TOKEN` needs `contents: write`, plus `pull requests: write` for the pull request
-mode on GitHub. Authentication with a GitHub App instead of a token is planned.
+The runtime authenticates with a fine-grained personal access token (`CICORD_GIT_TOKEN`) or,
+preferably for organizations, a **GitHub App** (`CICORD_GITHUB_APP_ID`,
+`CICORD_GITHUB_APP_PRIVATE_KEY`, optional `CICORD_GITHUB_APP_INSTALLATION_ID`): the App takes
+precedence when configured, its short-lived installation tokens are renewed automatically, and
+its commits and pull requests appear as `<app-name>[bot]`. Either way the repository
+permissions are **Contents: Read and write**, **Pull requests: Read and write** (pull request
+mode), **Commit statuses: Read and write** and **Metadata: Read**. How to create the App:
+[GitHub access](../../self-hosting/deploy/#github-access-token-or-github-app).
+
+## Commit statuses
+
+On GitHub, the runtime reports what it did with each commit of the tracked branch, including
+its own write-back commits, as a `cicord/sync` commit status: `pending` while it applies the
+revision, `success` once every server is in sync, `failure` when the revision is rejected or a
+server failed (the description gives the reason). A status that cannot be posted is logged and
+never blocks the sync. See [Commit statuses](../../self-hosting/deploy/#commit-statuses).
 
 The setup wizard writes policies that match the repository it creates: everything is
 committed for the embedded repository and local folders; on GitHub, `bots/**` and

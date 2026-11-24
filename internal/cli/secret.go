@@ -58,7 +58,8 @@ func newSecretCmd() *cobra.Command {
 		Use:   "secret",
 		Short: "Manage the runtime secret store (bot tokens, OAuth and git secrets)",
 		Long: `Manage the encrypted secrets the runtime keeps in its state store (written by the setup
-wizard): bot tokens (token.secretRef), CICORD_DISCORD_CLIENT_SECRET, CICORD_GIT_TOKEN.
+wizard): bot tokens (token.secretRef), CICORD_DISCORD_CLIENT_SECRET, CICORD_GIT_TOKEN, the
+GitHub App (CICORD_GITHUB_APP_ID, CICORD_GITHUB_APP_PRIVATE_KEY, CICORD_GITHUB_APP_INSTALLATION_ID).
 The store is the data dir's SQLite database, or the PostgreSQL database of --database-url
 (default $CICORD_DATABASE_URL); the encryption key is CICORD_SECRET_KEY or the data dir's
 secret.key either way. Environment variables always take precedence over stored secrets.
@@ -90,16 +91,18 @@ its next restart.`,
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use: "set NAME", Short: "Store or rotate a secret (value read from stdin)", Args: cobra.ExactArgs(1),
-		Example: "  cicord secret set DISCORD_TOKEN_CICORD --data-dir /data   # paste the token, then Enter",
+		Long: `Store or rotate a secret. The value is read from stdin: one line (paste, then Enter), or a
+whole PEM block (a GitHub App private key: from its BEGIN line through its END line).`,
+		Example: "  cicord secret set DISCORD_TOKEN_CICORD --data-dir /data   # paste the token, then Enter\n" +
+			"  cicord secret set CICORD_GITHUB_APP_PRIVATE_KEY --data-dir /data < my-app.private-key.pem",
 		RunE: func(c *cobra.Command, args []string) error {
 			if !secrets.ValidName(args[0]) {
 				return fmt.Errorf("invalid secret name %q (letters, digits and _)", args[0])
 			}
-			line, err := bufio.NewReader(c.InOrStdin()).ReadString('\n')
-			if err != nil && !errors.Is(err, io.EOF) {
+			value, err := readSecretValue(c.InOrStdin())
+			if err != nil {
 				return err
 			}
-			value := strings.TrimSpace(line)
 			if value == "" {
 				return errors.New("empty value on stdin")
 			}
@@ -162,4 +165,48 @@ its next restart.`,
 		},
 	})
 	return cmd
+}
+
+// maxSecretValue bounds a value read from stdin (a 4096-bit PEM key is ~3.3 KiB).
+const maxSecretValue = 64 << 10
+
+// readSecretValue reads a secret value from stdin: the first line, or, when that line
+// opens a PEM block ("-----BEGIN …"), every line through the matching "-----END …"
+// line (or EOF). The value is trimmed.
+func readSecretValue(in io.Reader) (string, error) {
+	r := bufio.NewReader(io.LimitReader(in, maxSecretValue+1))
+	line, err := r.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	first := strings.TrimSpace(line)
+	if !strings.HasPrefix(first, "-----BEGIN ") || errors.Is(err, io.EOF) {
+		if len(line) > maxSecretValue {
+			return "", errors.New("value too large")
+		}
+		return first, nil
+	}
+	var b strings.Builder
+	b.WriteString(first)
+	b.WriteByte('\n')
+	for {
+		line, err := r.ReadString('\n')
+		if t := strings.TrimSpace(line); t != "" {
+			b.WriteString(t)
+			b.WriteByte('\n')
+			if strings.HasPrefix(t, "-----END ") {
+				break
+			}
+		}
+		if b.Len() > maxSecretValue {
+			return "", errors.New("value too large")
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	return strings.TrimSpace(b.String()), nil
 }

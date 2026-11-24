@@ -18,9 +18,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage/memory"
 
+	"github.com/cicord/cicord/internal/gitauth"
 	"github.com/cicord/cicord/internal/version"
 )
 
@@ -35,7 +35,7 @@ const (
 )
 
 // GitTokenSecret is the secret name of the git token (same as the environment variable).
-const GitTokenSecret = "CICORD_GIT_TOKEN" //nolint:gosec // G101: the name of a secret, not its value
+const GitTokenSecret = gitauth.TokenSecret
 
 // RepoConfig is where the configuration lives (persisted in the setup state so that a
 // restart without cicord.yaml boots from it).
@@ -46,8 +46,12 @@ type RepoConfig struct {
 	Branch string `json:"branch"`
 	// Dir is the watched directory (local) or the bare repository (embedded).
 	Dir string `json:"dir,omitempty"`
-	// TokenRef names the git token secret (github).
+	// TokenRef names the git token secret (github, personal access token).
 	TokenRef string `json:"tokenRef,omitempty"`
+	// Auth is how the github provider authenticates: gitauth.MethodToken (also when
+	// empty, states written before GitHub Apps) or gitauth.MethodApp (the
+	// CICORD_GITHUB_APP_* secrets).
+	Auth string `json:"auth,omitempty"`
 }
 
 // GitHubRepo returns "owner/name" for a github.com URL ("" otherwise).
@@ -245,22 +249,20 @@ func writeTree(dir string, files map[string][]byte) error {
 	return nil
 }
 
-func gitAuth(token string) transport.AuthMethod {
-	if token == "" {
-		return nil
-	}
-	return &githttp.BasicAuth{Username: "x-access-token", Password: token}
-}
-
 var cicordSig = func() *object.Signature {
 	return &object.Signature{Name: "cicord[bot]", Email: "cicord[bot]@users.noreply.github.com", When: time.Now()}
 }
 
-// CheckRemote verifies that a remote is reachable with the token. It returns whether the
-// remote is empty and whether it already contains a Cicord configuration on branch.
-func CheckRemote(ctx context.Context, remoteURL, branch, token string) (empty, hasCicord bool, err error) {
+// CheckRemote verifies that a remote is reachable with the credentials (nil: anonymous).
+// It returns whether the remote is empty and whether it already contains a Cicord
+// configuration on branch.
+func CheckRemote(ctx context.Context, remoteURL, branch string, tokens gitauth.TokenSource) (empty, hasCicord bool, err error) {
+	auth, err := gitauth.GitAuth(ctx, tokens)
+	if err != nil {
+		return false, false, err
+	}
 	rem := git.NewRemote(memory.NewStorage(), &gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteURL}})
-	refs, err := rem.ListContext(ctx, &git.ListOptions{Auth: gitAuth(token)})
+	refs, err := rem.ListContext(ctx, &git.ListOptions{Auth: auth})
 	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
 		return true, false, nil
 	}
@@ -280,7 +282,7 @@ func CheckRemote(ctx context.Context, remoteURL, branch, token string) (empty, h
 	if !found {
 		return false, false, nil
 	}
-	repo, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{URL: remoteURL, Auth: gitAuth(token),
+	repo, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{URL: remoteURL, Auth: auth,
 		ReferenceName: plumbing.NewBranchReferenceName(branch), SingleBranch: true, Depth: 1, NoCheckout: true})
 	if err != nil {
 		return false, false, err
@@ -305,7 +307,7 @@ func CheckRemote(ctx context.Context, remoteURL, branch, token string) (empty, h
 //   - embedded: a bare repository is created at cfg.Dir (it must not exist);
 //   - github: the remote is cloned (or initialized when empty), the files are committed
 //     on cfg.Branch and pushed. A remote that already contains cicord.yaml is refused.
-func InitRepository(ctx context.Context, cfg RepoConfig, token string, files map[string][]byte, message string) (string, error) {
+func InitRepository(ctx context.Context, cfg RepoConfig, tokens gitauth.TokenSource, files map[string][]byte, message string) (string, error) {
 	branch := cfg.Branch
 	if branch == "" {
 		branch = "main"
@@ -343,8 +345,11 @@ func InitRepository(ctx context.Context, cfg RepoConfig, token string, files map
 			return "", err
 		}
 		defer os.RemoveAll(work)
-		auth := gitAuth(token)
-		empty, hasCicord, err := CheckRemote(ctx, cfg.URL, branch, token)
+		auth, err := gitauth.GitAuth(ctx, tokens)
+		if err != nil {
+			return "", err
+		}
+		empty, hasCicord, err := CheckRemote(ctx, cfg.URL, branch, tokens)
 		if err != nil {
 			return "", err
 		}
@@ -377,6 +382,9 @@ func InitRepository(ctx context.Context, cfg RepoConfig, token string, files map
 		}
 		sha, err := commitAll(r, work, keepExisting(work, files), message)
 		if err != nil {
+			return "", err
+		}
+		if auth, err = gitauth.GitAuth(ctx, tokens); err != nil { // renewed token after a slow clone
 			return "", err
 		}
 		po := &git.PushOptions{RemoteName: "origin", Auth: auth,

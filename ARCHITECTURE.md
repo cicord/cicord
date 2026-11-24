@@ -110,7 +110,7 @@ See [ADR-0003](docs/adr/0003-state-in-runtime-db.md).
 
 ### 4.1 Source controller (`internal/source`)
 - Providers (`cicord.yaml` `spec.source.provider`): `github`, `git` (any HTTPS remote,
-  `CICORD_GIT_TOKEN`) and `embedded` (a bare repository in the data dir, seeded from the
+  `CICORD_GIT_TOKEN` or a GitHub App) and `embedded` (a bare repository in the data dir, seeded from the
   served directory); `cicord serve --local` and `cicord dev` use the working directory itself.
 - Git sources are fetched with go-git (pure Go, no `git` binary): **polling** (default 1 min,
   `spec.source.pollInterval`) plus **webhooks** (`/hooks/github`) and `POST /api/v1/sync`
@@ -202,8 +202,9 @@ UI edit ─▶ API validates against schema ─▶ patch YAML node tree (yaml.v3
         ─▶ conflict: the edit is re-applied on the latest head; if it no longer applies → 409
 ```
 
-`internal/writeback` pushes with go-git and `CICORD_GIT_TOKEN`; pull requests use the GitHub
-API (GitHub App credentials *(planned)*). `cicord dev` writes to the working directory. The
+`internal/writeback` pushes with go-git and the repository credentials of `internal/gitauth`
+(`CICORD_GIT_TOKEN`, or a GitHub App whose installation tokens are minted and renewed on
+demand); pull requests use the GitHub API with the same credentials. `cicord dev` writes to the working directory. The
 runtime never applies a change that is not committed first.
 
 ---
@@ -315,8 +316,9 @@ Running the portal *inside* Discord (Embedded App SDK / Activities) is a propose
 - **Plugin capabilities** are declared in the manifest and must be granted explicitly in
   `bot.yaml`. A plugin update that requests a new capability fails validation until granted.
 - **Supply chain**: `cicord.lock` pins plugin commits and content hashes.
-- **Write-back** uses `CICORD_GIT_TOKEN` (a repo-scoped token); GitHub App credentials are
-  *(planned)*.
+- **Write-back** uses `CICORD_GIT_TOKEN` (a repo-scoped token) or a GitHub App
+  (`CICORD_GITHUB_APP_*`: installation tokens restricted to the configuration repository,
+  renewed before they expire; the App takes precedence).
 - **HTTP API**: session cookies (HttpOnly, SameSite=Lax, Secure over https), CSRF header +
   Origin check, link sessions scoped to one server, dev mode bound to loopback hosts and
   dev login only with `--sim` or the runtime token. Checklist: [docs/deploy.md](docs/deploy.md).
@@ -383,8 +385,8 @@ examples/                  example Cicord repositories
 | **0 — Spec** | This document, ADRs, JSON Schemas, SDK contract, example repo. | Done |
 | **1 — Vertical slice** | `cicord` binary, config loader/validator, simulator, bot host, Sobek plugin host, KV, slash commands, `cicord dev`. | Done |
 | **2 — Server reconciler** | Resource map, plan/apply, drift + selfHeal, adoption, `import` / `adopt` / `mv`, GitHub Actions template. | Reconciler done; CLI commands in progress; template planned |
-| **3 — GitOps runtime** | Source controller, revisions + hot swap, webhooks, `plan --remote`, commit statuses. | Done except commit statuses; `cicord plan --remote` client in progress |
-| **4 — Admin UI + write-back** | HTTP API spec, OAuth, generated settings pages, write-back (commit / PR), simulator panel. | Done (GitHub App credentials planned) |
+| **3 — GitOps runtime** | Source controller, revisions + hot swap, webhooks, `plan --remote`, commit statuses. | Done (commit statuses: `cicord/sync` on GitHub); `cicord plan --remote` client in progress |
+| **4 — Admin UI + write-back** | HTTP API spec, OAuth, generated settings pages, write-back (commit / PR), simulator panel. | Done (GitHub App credentials included) |
 | **5 — Portal SDK** | `@cicord/client`, `@cicord/react`, `@cicord/ui`, `create-cicord-portal`, onboarding flow. | Done |
 | **6 — Registry** | Git-based index, `cicord plugin add` + `cicord.lock`, `cicord plugin publish`, verified publishers. | `add` done; publishing planned |
 | **7 — SaaS** | Multi-tenant runtime, stronger isolation backend, Postgres, managed git, billing. | Not started |

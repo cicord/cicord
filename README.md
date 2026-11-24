@@ -163,7 +163,8 @@ The setup wizard above does all of this for you. By hand:
 
    `--local` serves the directory as-is. Without it, `cicord serve` follows
    `cicord.yaml` `spec.source`: for a GitHub repository set `provider: github`, `repo` and
-   `branch`, and `CICORD_GIT_TOKEN` (fetch, write-back commits and pull requests). The
+   `branch`, and `CICORD_GIT_TOKEN` or a GitHub App (fetch, write-back commits, pull
+   requests and `cicord/sync` commit statuses; see [docs/deploy.md](docs/deploy.md)). The
    source is polled every minute; for instant syncs add a GitHub webhook (push events) to
    `<public-url>/hooks/github` with the secret in `CICORD_WEBHOOK_SECRET`.
 4. **Admin UI login** (`<public-url>/admin/`): set `CICORD_DISCORD_CLIENT_SECRET` (the
@@ -259,7 +260,7 @@ Done:
   update / publish), `portal`.
 
 Next: the official registry and npm publication (owner decisions), production hardening
-(GitHub App, metrics), then the hosted offering. See [TODO.md](TODO.md) and the
+(metrics), then the hosted offering. See [TODO.md](TODO.md) and the
 [roadmap](ARCHITECTURE.md#12-roadmap).
 
 Websites: the landing page (`sites/landing`) and the documentation (`sites/docs`) are Astro

@@ -20,9 +20,10 @@ import (
 	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/gitauth"
 )
 
 const (
@@ -190,9 +191,11 @@ type GitOptions struct {
 	Branch  string // target branch (default main)
 	Path    string // sub-directory containing cicord.yaml
 	WorkDir string // working clone location
-	Token   string // HTTPS token (also used for the GitHub API)
-	Author  string // default "cicord[bot]"
-	Email   string // default "cicord[bot]@users.noreply.github.com"
+	// Tokens authenticates git and the GitHub API (personal access token or GitHub App
+	// installation tokens, asked for before every operation). Nil: anonymous.
+	Tokens gitauth.TokenSource
+	Author string // default "cicord[bot]"
+	Email  string // default "cicord[bot]@users.noreply.github.com"
 	// GitHubRepo "owner/name" enables pull requests through the GitHub API.
 	GitHubRepo string
 	// GitHubAPI overrides https://api.github.com (tests).
@@ -228,21 +231,23 @@ func NewGitWriter(opts GitOptions) *GitWriter {
 	return &GitWriter{opts: opts}
 }
 
-func (w *GitWriter) auth() *githttp.BasicAuth {
-	if w.opts.Token == "" {
-		return nil
+// auth returns the credentials of one git operation (nil: anonymous).
+func (w *GitWriter) auth(ctx context.Context) (transport.AuthMethod, error) {
+	a, err := gitauth.GitAuth(ctx, w.opts.Tokens)
+	if err != nil {
+		return nil, fmt.Errorf("git credentials: %w", err)
 	}
-	return &githttp.BasicAuth{Username: "x-access-token", Password: w.opts.Token}
+	return a, nil
 }
 
 func (w *GitWriter) clone(ctx context.Context) (*git.Repository, error) {
 	r, err := git.PlainOpen(w.opts.WorkDir)
 	if errors.Is(err, git.ErrRepositoryNotExists) {
-		a := w.auth()
-		co := &git.CloneOptions{URL: w.opts.URL, ReferenceName: plumbing.NewBranchReferenceName(w.opts.Branch), SingleBranch: true}
-		if a != nil {
-			co.Auth = a
+		a, err := w.auth(ctx)
+		if err != nil {
+			return nil, err
 		}
+		co := &git.CloneOptions{URL: w.opts.URL, ReferenceName: plumbing.NewBranchReferenceName(w.opts.Branch), SingleBranch: true, Auth: a}
 		return git.PlainCloneContext(ctx, w.opts.WorkDir, false, co)
 	}
 	return r, err
@@ -255,11 +260,12 @@ func (w *GitWriter) Write(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("writeback clone: %w", err)
 	}
-	fo := &git.FetchOptions{RemoteName: "origin", Force: true,
-		RefSpecs: []gitconfig.RefSpec{gitconfig.RefSpec(fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", w.opts.Branch, w.opts.Branch))}}
-	if a := w.auth(); a != nil {
-		fo.Auth = a
+	a, err := w.auth(ctx)
+	if err != nil {
+		return Result{}, fmt.Errorf("writeback fetch: %w", err)
 	}
+	fo := &git.FetchOptions{RemoteName: "origin", Force: true, Auth: a,
+		RefSpecs: []gitconfig.RefSpec{gitconfig.RefSpec(fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", w.opts.Branch, w.opts.Branch))}}
 	if err := r.FetchContext(ctx, fo); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return Result{}, fmt.Errorf("writeback fetch: %w", err)
 	}
@@ -330,11 +336,12 @@ func (w *GitWriter) Write(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	po := &git.PushOptions{RemoteName: "origin",
-		RefSpecs: []gitconfig.RefSpec{gitconfig.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch))}}
-	if a := w.auth(); a != nil {
-		po.Auth = a
+	// Credentials again: an installation token may have been renewed meanwhile.
+	if a, err = w.auth(ctx); err != nil {
+		return Result{}, fmt.Errorf("writeback push: %w", err)
 	}
+	po := &git.PushOptions{RemoteName: "origin", Auth: a,
+		RefSpecs: []gitconfig.RefSpec{gitconfig.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch))}}
 	if err := r.PushContext(ctx, po); err != nil {
 		if strings.Contains(err.Error(), "non-fast-forward") {
 			return Result{}, fmt.Errorf("%w: branch moved during the write, retry", ErrConflict)
@@ -371,8 +378,15 @@ func (w *GitWriter) openPR(ctx context.Context, branch string, req Request) (str
 	if err != nil {
 		return "", err
 	}
+	authz, err := gitauth.Bearer(ctx, w.opts.Tokens)
+	if err != nil {
+		return "", fmt.Errorf("github: create pull request: credentials: %w", err)
+	}
 	hreq.Header.Set("Accept", "application/vnd.github+json")
-	hreq.Header.Set("Authorization", "Bearer "+w.opts.Token)
+	hreq.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if authz != "" {
+		hreq.Header.Set("Authorization", authz)
+	}
 	resp, err := w.opts.HTTPClient.Do(hreq)
 	if err != nil {
 		return "", err

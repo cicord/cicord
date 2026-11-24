@@ -30,3 +30,19 @@ being the source of truth and the next sync overwrites them.
 - Latency of a UI change ≈ commit + activation (seconds); the runtime activates its own commit
   without waiting for the webhook.
 - The runtime needs write credentials; they are the most sensitive secret after bot tokens.
+
+## Note (implementation, GitHub App)
+- Write credentials are a fine-grained personal access token (`CICORD_GIT_TOKEN`) or a
+  **GitHub App** (`CICORD_GITHUB_APP_ID`, `CICORD_GITHUB_APP_PRIVATE_KEY`, optional
+  `CICORD_GITHUB_APP_INSTALLATION_ID`), which takes precedence when configured. The runtime
+  signs an RS256 App JWT with the standard library (no new dependency), exchanges it for an
+  installation token restricted to the configuration repository, caches it and renews it
+  5 minutes before it expires (`internal/gitauth`). Every git operation and GitHub API call
+  asks for a token right before it runs.
+- Permissions, for the token and the App alike: Contents (read and write), Pull requests
+  (read and write), Commit statuses (read and write), Metadata (read). A webhook is optional
+  (push events to `/hooks/github`).
+- The runtime also reports back: each evaluated commit of a GitHub repository gets a
+  `cicord/sync` commit status (`pending` while applying, `success` when applied to every
+  server, `failure` when rejected or a server failed). Posting a status never blocks or
+  fails a sync.

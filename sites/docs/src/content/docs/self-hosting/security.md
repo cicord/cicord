@@ -16,7 +16,9 @@ description: What to check before exposing a Cicord runtime, and what the runtim
       admin everywhere: store it as a CI secret only.
 - [ ] Set **`CICORD_WEBHOOK_SECRET`** if you use webhooks (signatures are verified with
       HMAC-SHA256).
-- [ ] Scope **`CICORD_GIT_TOKEN`** to the configuration repository (a fine-grained token).
+- [ ] Scope **`CICORD_GIT_TOKEN`** to the configuration repository (a fine-grained token), or
+      use a **GitHub App** installed on that repository only, and keep its private key out of
+      the repository.
 - [ ] Keep bot tokens and secrets in an env file or the encrypted secret store, **never in the
       repository**.
 - [ ] Only list trusted origins in **`--cors-origin`**: they can make credentialed calls.

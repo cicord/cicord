@@ -17,8 +17,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/transport"
-	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
+
+	"github.com/cicord/cicord/internal/gitauth"
 )
 
 type GitOptions struct {
@@ -28,8 +28,9 @@ type GitOptions struct {
 	Path string
 	// CacheDir holds the mirror clone and the revision snapshots.
 	CacheDir string
-	// Token for HTTPS auth (GitHub token / app installation token). Optional.
-	Token string
+	// Tokens authenticates HTTPS fetches (personal access token or GitHub App
+	// installation tokens, asked for before every fetch). Nil: anonymous.
+	Tokens gitauth.TokenSource
 	// PollInterval triggers periodic fetches (0 disables polling).
 	PollInterval time.Duration
 }
@@ -82,13 +83,6 @@ func (g *Git) Close() error {
 	return nil
 }
 
-func (g *Git) auth() transport.AuthMethod {
-	if g.opts.Token == "" {
-		return nil
-	}
-	return &githttp.BasicAuth{Username: "x-access-token", Password: g.opts.Token}
-}
-
 func (g *Git) mirrorDir() string { return filepath.Join(g.opts.CacheDir, "mirror.git") }
 
 func (g *Git) open() (*git.Repository, error) {
@@ -117,8 +111,12 @@ func (g *Git) Fetch(ctx context.Context) (Revision, error) {
 	if err != nil {
 		return Revision{}, err
 	}
+	auth, err := gitauth.GitAuth(ctx, g.opts.Tokens)
+	if err != nil {
+		return Revision{}, fmt.Errorf("git fetch %s: credentials: %w", g.opts.URL, err)
+	}
 	refspec := config.RefSpec(fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", g.opts.Branch, g.opts.Branch))
-	err = r.FetchContext(ctx, &git.FetchOptions{RemoteName: "origin", RefSpecs: []config.RefSpec{refspec}, Auth: g.auth(), Force: true, Tags: git.NoTags})
+	err = r.FetchContext(ctx, &git.FetchOptions{RemoteName: "origin", RefSpecs: []config.RefSpec{refspec}, Auth: auth, Force: true, Tags: git.NoTags})
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return Revision{}, fmt.Errorf("git fetch %s: %w", g.opts.URL, err)
 	}

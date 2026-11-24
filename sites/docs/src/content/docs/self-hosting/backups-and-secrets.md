@@ -74,7 +74,7 @@ keys and repository.
 
 ## The secret store
 
-The setup wizard stores what you paste (bot tokens, the GitHub token, the OAuth client secret)
+The setup wizard stores what you paste (bot tokens, the GitHub token or GitHub App, the OAuth client secret)
 in an encrypted store inside the state store (SQLite or PostgreSQL), instead of asking you to
 manage environment variables:
 
@@ -82,6 +82,9 @@ manage environment variables:
 |---|---|
 | Bot token | `DISCORD_TOKEN_<BOT>`, the `token.secretRef` of the generated `bot.yaml` |
 | GitHub token | `CICORD_GIT_TOKEN` |
+| GitHub App ID | `CICORD_GITHUB_APP_ID` |
+| GitHub App private key (PEM) | `CICORD_GITHUB_APP_PRIVATE_KEY` |
+| GitHub App installation ID | `CICORD_GITHUB_APP_INSTALLATION_ID` (discovered by the wizard) |
 | OAuth client secret | `CICORD_DISCORD_CLIENT_SECRET` |
 | Private registry token | `CICORD_REGISTRY_<NAME>_TOKEN` (also from the Store) |
 
@@ -90,9 +93,11 @@ manage environment variables:
 - **Key**: `CICORD_SECRET_KEY` (base64 or hex of exactly 32 bytes, e.g.
   `openssl rand -base64 32`), otherwise `<data dir>/secret.key`, generated with mode 0600. A
   wrong key fails at startup.
-- **Resolution**: the runtime reads `token.secretRef`, `CICORD_GIT_TOKEN` and the OAuth client
-  secret from the **environment first, then the store**. An environment variable always
-  overrides a stored secret.
+- **Resolution**: the runtime reads `token.secretRef`, `CICORD_GIT_TOKEN`, the
+  `CICORD_GITHUB_APP_*` secrets and the OAuth client secret from the **environment first, then
+  the store**. An environment variable always overrides a stored secret. A configured GitHub
+  App takes precedence over `CICORD_GIT_TOKEN` (see
+  [GitHub access](../deploy/#github-access-token-or-github-app)).
 - The API never returns a secret value; secrets are listed by name and date only.
 
 ### `cicord secret`
@@ -103,9 +108,13 @@ never printed.
 ```sh
 cicord secret ls --data-dir /data                          # names only
 cicord secret set DISCORD_TOKEN_CICORD --data-dir /data      # paste the token, then Enter
+cicord secret set CICORD_GITHUB_APP_PRIVATE_KEY --data-dir /data < app.private-key.pem
 cicord secret rm DISCORD_TOKEN_CICORD --data-dir /data
 cicord secret rotate-key --data-dir /data                  # re-encrypt everything with a new key
 ```
+
+`set` reads one line, or a whole PEM block when the first line starts with `-----BEGIN` (a
+GitHub App private key, read through its `-----END` line).
 
 `--data-dir` defaults to `.cicord-data`. With PostgreSQL, pass the runtime's database too
 (`--database-url`, or `CICORD_DATABASE_URL` in the environment) and its data directory, which

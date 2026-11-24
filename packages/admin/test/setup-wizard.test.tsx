@@ -349,6 +349,77 @@ describe("setup wizard", () => {
     expect(installedConfig).toEqual({}); // defaults are not written to bot.yaml
   }, 20000);
 
+  test("Repository step: a GitHub App instead of a token", async () => {
+    const base = fakeSetup();
+    Object.assign(base.view, {
+      step: "repository",
+      server: { id: "42", name: "Pixel Pals", key: "pixel-pals" },
+    });
+    const bodies: Record<string, unknown>[] = [];
+    const fetch: FetchLike = async (input, init) => {
+      const p = new URL(input, window.location.origin).pathname;
+      if (p === "/api/v1/setup/repo") {
+        const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+        bodies.push(body);
+        if (body["installationId"] !== "77")
+          return apiError(
+            422,
+            "invalid",
+            "The GitHub App is not installed on this repository.",
+            "On the App's settings page, open “Install App”.",
+          );
+        base.view.repo = {
+          provider: "github",
+          url: body["url"] as string,
+          branch: "main",
+          auth: "githubApp",
+          appId: body["appId"] as string,
+          tokenStored: true,
+        };
+        return json(base.view);
+      }
+      return base.fetch(input, init);
+    };
+    const user = renderAt("/admin/setup?token=the-setup-token", fetch);
+    expect(
+      await screen.findByRole("heading", { name: "Where should Cicord keep your configuration?" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("radio", { name: /A GitHub repository/ }));
+    await user.type(screen.getByLabelText("Repository URL"), "https://github.com/acme/community");
+    expect(screen.getByLabelText("GitHub token")).toBeTruthy();
+    await user.click(screen.getByRole("radio", { name: "GitHub App" }));
+    expect(screen.queryByLabelText("GitHub token")).toBeNull();
+    await user.type(screen.getByLabelText("App ID"), "4242");
+    await user.click(screen.getByLabelText("Private key"));
+    await user.paste("-----BEGIN TEST BLOCK-----\nAAAA\n-----END TEST BLOCK-----");
+    await user.click(screen.getByRole("button", { name: "Use this" }));
+    expect(
+      await screen.findByText("The GitHub App is not installed on this repository."),
+    ).toBeTruthy();
+    expect(bodies[0]).toEqual({
+      provider: "github",
+      url: "https://github.com/acme/community",
+      branch: "main",
+      auth: "githubApp",
+      appId: "4242",
+      privateKey: "-----BEGIN TEST BLOCK-----\nAAAA\n-----END TEST BLOCK-----",
+      installationId: "",
+    });
+    expect(bodies[0]).not.toHaveProperty("token");
+
+    await user.type(screen.getByLabelText("Installation ID (optional)"), "77");
+    await user.click(screen.getByRole("button", { name: "Use this" }));
+    expect(
+      await screen.findByText("Configuration: https://github.com/acme/community"),
+    ).toBeTruthy();
+    expect(bodies[1]!["installationId"]).toBe("77");
+    // Changing the choice keeps the App selected; the stored key is not shown again.
+    await user.click(screen.getByRole("button", { name: "Change" }));
+    expect(screen.getByRole<HTMLInputElement>("radio", { name: "GitHub App" }).checked).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>("App ID").value).toBe("4242");
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Private key").value).toBe("");
+  });
+
   test("tokenFrom accepts a full link or a bare token", () => {
     expect(tokenFrom("http://localhost:7493/admin/setup?token=abc")).toBe("abc");
     expect(tokenFrom("  abc  ")).toBe("abc");

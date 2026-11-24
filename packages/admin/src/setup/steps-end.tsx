@@ -34,7 +34,15 @@ import {
   type JsonObject,
   type JsonSchema,
 } from "../schema-form/index.ts";
-import type { CatalogPlugin, ImportResult, InstallResult, Provider, Report } from "./api.ts";
+import type {
+  CatalogPlugin,
+  ImportResult,
+  InstallResult,
+  Provider,
+  RepoAuth,
+  RepoRequest,
+  Report,
+} from "./api.ts";
 import { useAction, usePoll } from "./hooks.ts";
 import {
   Checklist,
@@ -86,7 +94,11 @@ export function RepositoryStep({ view, api, onView }: StepProps) {
   const [provider, setProvider] = useState<Provider>(view.repo?.provider ?? view.providers[0]!);
   const [url, setUrl] = useState(view.repo?.url ?? "");
   const [branch, setBranch] = useState(view.repo?.branch ?? "main");
+  const [auth, setAuth] = useState<RepoAuth>(view.repo?.auth ?? "token");
   const [token, setToken] = useState("");
+  const [appId, setAppId] = useState(view.repo?.appId ?? "");
+  const [privateKey, setPrivateKey] = useState("");
+  const [installationId, setInstallationId] = useState("");
   const [editing, setEditing] = useState(!view.repo);
   const [imported, setImported] = useState<ImportResult | null>(null);
   const choose = useAction();
@@ -94,11 +106,16 @@ export function RepositoryStep({ view, api, onView }: StepProps) {
   const nav = useAction();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const v = await choose.run(() =>
-      api.repo(provider === "github" ? { provider, url, branch, token } : { provider }),
-    );
+    const body: RepoRequest =
+      provider !== "github"
+        ? { provider }
+        : auth === "githubApp"
+          ? { provider, url, branch, auth, appId, privateKey, installationId }
+          : { provider, url, branch, auth, token };
+    const v = await choose.run(() => api.repo(body));
     if (v) {
       setToken("");
+      setPrivateKey("");
       setEditing(false);
       onView(v);
     }
@@ -168,23 +185,100 @@ export function RepositoryStep({ view, api, onView }: StepProps) {
                   onChange={(e) => setBranch(e.target.value)}
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="repo-token">{t("setup.repo.token")}</Label>
-                <Input
-                  id="repo-token"
-                  type="password"
-                  autoComplete="off"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  className="font-mono text-[13px]"
-                />
-                <p className="text-xs text-muted-foreground">{t("setup.repo.tokenHelp")}</p>
-                <div>
-                  <ExternalButton href="https://github.com/settings/personal-access-tokens/new">
-                    {t("setup.repo.createToken")}
-                  </ExternalButton>
+              <fieldset className="grid gap-1.5">
+                <legend className="mb-1.5 text-[13px] font-medium">{t("setup.repo.auth")}</legend>
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                  {(["token", "githubApp"] as const).map((a) => (
+                    <label key={a} className="flex cursor-pointer items-center gap-2 text-[13px]">
+                      <input
+                        type="radio"
+                        name="repo-auth"
+                        value={a}
+                        checked={auth === a}
+                        onChange={() => setAuth(a)}
+                        className="accent-[var(--color-brand)]"
+                      />
+                      {t(`setup.repo.auths.${a}`)}
+                    </label>
+                  ))}
                 </div>
-              </div>
+              </fieldset>
+              {auth === "token" ? (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="repo-token">{t("setup.repo.token")}</Label>
+                  <Input
+                    id="repo-token"
+                    type="password"
+                    autoComplete="off"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    className="font-mono text-[13px]"
+                  />
+                  <p className="text-xs text-muted-foreground">{t("setup.repo.tokenHelp")}</p>
+                  <div>
+                    <ExternalButton href="https://github.com/settings/personal-access-tokens/new">
+                      {t("setup.repo.createToken")}
+                    </ExternalButton>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">{t("setup.repo.appHelp")}</p>
+                  <div>
+                    <ExternalButton href="https://github.com/settings/apps/new">
+                      {t("setup.repo.createApp")}
+                    </ExternalButton>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="repo-app-id">{t("setup.repo.appId")}</Label>
+                      <Input
+                        id="repo-app-id"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={appId}
+                        onChange={(e) => setAppId(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="repo-installation-id">{t("setup.repo.installationId")}</Label>
+                      <Input
+                        id="repo-installation-id"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={installationId}
+                        onChange={(e) => setInstallationId(e.target.value)}
+                        placeholder={t("setup.repo.installationIdPlaceholder")}
+                      />
+                    </div>
+                  </div>
+                  <p className="-mt-1.5 text-xs text-muted-foreground">
+                    {t("setup.repo.installationIdHelp")}
+                  </p>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="repo-private-key">{t("setup.repo.privateKey")}</Label>
+                    <textarea
+                      id="repo-private-key"
+                      rows={5}
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={privateKey}
+                      onChange={(e) => setPrivateKey(e.target.value)}
+                      placeholder={
+                        view.repo?.auth === "githubApp" && view.repo.tokenStored
+                          ? t("setup.repo.privateKeyStored")
+                          : t("setup.repo.privateKeyPlaceholder")
+                      }
+                      className="w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-1.5 font-mono text-xs outline-none placeholder:text-subtle-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 dark:bg-surface-sunken"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("setup.repo.privateKeyHelp")}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           ) : null}
           {choose.error ? <SetupError className="mt-4" error={choose.error} /> : null}

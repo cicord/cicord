@@ -54,8 +54,20 @@ type Options struct {
 	// hosts to a local server). The allow-list checks still apply; nil uses the egress-safe
 	// default client.
 	PluginHTTPClient *http.Client
-	Logger           *slog.Logger
+	// CommitStatus reports the evaluation of git revisions (GitHub commit statuses):
+	// CommitPending when a revision starts applying, then CommitSuccess (applied to every
+	// server) or CommitFailure (rejected, or a server failed). It is called synchronously
+	// and in order; it must bound its own duration and never fail the sync. Nil disables it.
+	CommitStatus func(ctx context.Context, sha, state, description string)
+	Logger       *slog.Logger
 }
+
+// Commit status states (Options.CommitStatus).
+const (
+	CommitPending = "pending"
+	CommitSuccess = "success"
+	CommitFailure = "failure"
+)
 
 // Runtime is safe for concurrent use.
 type Runtime struct {
@@ -322,12 +334,14 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	}
 	log := r.log.With("revision", rev.ID)
 	log.Info("activating revision", "message", rev.Message)
+	r.commitStatus(ctx, rev, CommitPending, "Validating and applying to Discord")
 
 	repo, builds, ds, err := r.LoadAndBuild(rev.Dir)
 	if err != nil {
 		details, _ := json.Marshal(ds.Errors())
 		r.record(ctx, state.SyncRecord{Revision: rev.ID, Target: "revision", Status: "rejected", Message: firstLine(err.Error()), Details: details})
 		r.setErr(err.Error())
+		r.commitStatus(ctx, rev, CommitFailure, "Rejected: "+firstLine(err.Error()))
 		return &RejectedError{Revision: rev.ID, Diagnostics: ds}
 	}
 	next := &active{rev: rev, repo: repo, builds: builds, servers: map[string]*serverRT{}}
@@ -344,6 +358,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	}
 
 	// 2. servers: reconcile with the first connected bot that lists them
+	var serverFailures []string // "server: reason", for the commit status
 	for _, key := range sortedKeys(repo.Servers) {
 		srv := repo.Servers[key]
 		rt := &serverRT{key: key, cfg: srv, cache: newServerCache(key, srv.Spec.DiscordID), health: HealthProgressing}
@@ -351,11 +366,13 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		host := r.reconcilingBot(repo, key)
 		if host == nil {
 			rt.health, rt.message = HealthMissing, "no connected bot is configured for this server"
+			serverFailures = append(serverFailures, key+": "+rt.message)
 			continue
 		}
 		rt.bot = host.key
 		if _, err := host.session.GetServer(ctx, srv.Spec.DiscordID); err != nil {
 			rt.health, rt.message = HealthMissing, fmt.Sprintf("bot %s cannot access the server: %v", host.key, err)
+			serverFailures = append(serverFailures, key+": "+rt.message)
 			continue
 		}
 		rt.rec = reconcile.New(reconcile.Options{
@@ -366,6 +383,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		})
 		if _, _, err := r.syncServer(ctx, rev, rt); err != nil {
 			log.Warn("server sync failed", "server", key, "err", err)
+			serverFailures = append(serverFailures, key+": "+firstLine(err.Error()))
 		}
 	}
 
@@ -411,7 +429,32 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	}
 	r.record(ctx, state.SyncRecord{Revision: rev.ID, Target: "revision", Status: "succeeded", Message: rev.Message})
 	log.Info("revision active", "servers", len(next.servers), "instances", len(next.instances))
+	switch {
+	case len(serverFailures) == 1:
+		r.commitStatus(ctx, rev, CommitFailure, "Server "+serverFailures[0])
+	case len(serverFailures) > 1:
+		r.commitStatus(ctx, rev, CommitFailure, fmt.Sprintf("%d servers failed; server %s", len(serverFailures), serverFailures[0]))
+	default:
+		r.commitStatus(ctx, rev, CommitSuccess, fmt.Sprintf("Applied to %d server(s)", len(next.servers)))
+	}
 	return nil
+}
+
+// commitStatus reports the state of a git revision (Options.CommitStatus).
+func (r *Runtime) commitStatus(ctx context.Context, rev source.Revision, st, description string) {
+	if r.opts.CommitStatus == nil || rev.Source != "git" || !isCommitSHA(rev.SHA) {
+		return
+	}
+	r.opts.CommitStatus(ctx, rev.SHA, st, description)
+}
+
+// isCommitSHA reports whether s is a full SHA-1 or SHA-256 commit hash.
+func isCommitSHA(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
 }
 
 func stopActive(ctx context.Context, a *active, log *slog.Logger) {

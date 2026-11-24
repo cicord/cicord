@@ -200,6 +200,7 @@ cicord serve [dir] [flags]
 | `--cors-origin` `strings` | external portal origin allowed with credentials (repeatable) |
 | `--data-dir` `string` | runtime state directory (database, caches, keys) |
 | `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) |
+| `--github-app-key-file` `string` | GitHub App private key file (PEM), instead of the CICORD_GITHUB_APP_PRIVATE_KEY secret (env CICORD_GITHUB_APP_PRIVATE_KEY_FILE) |
 | `--listen` `string` | HTTP listen address (default ":7420") |
 | `--local` | serve the directory as-is, ignoring spec.source (no git) |
 | `--log-level` `string` | log level: debug \| info \| warn \| error (default "info") |
@@ -279,7 +280,7 @@ cicord version [flags]
 
 ## Secrets
 
-Manage the encrypted secret store of a data directory (bot tokens, `CICORD_DISCORD_CLIENT_SECRET`, `CICORD_GIT_TOKEN`, registry tokens). Environment variables always take precedence over stored secrets. Values are read from stdin and never printed; the runtime picks a changed bot token up on its next restart. Every `cicord secret` command takes `--data-dir` (default `.cicord-data`, where `secret.key` lives) and, for a runtime on PostgreSQL, `--database-url` (default `CICORD_DATABASE_URL`). See [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
+Manage the encrypted secret store of a data directory (bot tokens, `CICORD_DISCORD_CLIENT_SECRET`, `CICORD_GIT_TOKEN`, the `CICORD_GITHUB_APP_*` secrets, registry tokens). Environment variables always take precedence over stored secrets. Values are read from stdin and never printed; the runtime picks a changed bot token up on its next restart. Every `cicord secret` command takes `--data-dir` (default `.cicord-data`, where `secret.key` lives) and, for a runtime on PostgreSQL, `--database-url` (default `CICORD_DATABASE_URL`). See [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
 
 ### `cicord secret ls`
 
@@ -296,7 +297,7 @@ cicord secret ls [flags]
 
 ### `cicord secret set`
 
-Store or rotate a secret; the value is read from stdin.
+Store or rotate a secret; the value is read from stdin: one line, or a whole PEM block (a GitHub App private key, from its `-----BEGIN` line through its `-----END` line).
 
 ```text
 cicord secret set NAME [flags]
@@ -309,6 +310,7 @@ cicord secret set NAME [flags]
 
 ```sh
 cicord secret set DISCORD_TOKEN_CICORD --data-dir /data   # paste the token, then Enter
+cicord secret set CICORD_GITHUB_APP_PRIVATE_KEY --data-dir /data < app.private-key.pem
 ```
 
 ### `cicord secret rm`

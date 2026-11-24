@@ -51,13 +51,12 @@ release until the product is complete. This page summarizes the project's living
   time zones in the plugin host, removing other users' reactions, role hierarchy information.
 - Discord parity: invites and webhooks, a holographic role style preset, live updates of the
   plan page, drift detection for widget, onboarding and welcome screen.
-- Setup wizard: GitHub App instead of a personal access token, a webhook step, several servers
-  and bots.
+- Setup wizard: a webhook step, creating the GitHub App from a manifest, several servers and
+  bots.
 - `cicord plugin publish` building from the tagged tree; `cicord mv` against a remote runtime.
 
 ## Production hardening
 
-- GitHub App authentication and commit statuses on synced commits.
 - Observability: a Prometheus `/metrics` endpoint, plugin error history, alerting hooks.
 - A security review: plugin sandbox escapes, memory limits, YAML fuzzing, link token reuse.
 

@@ -54,8 +54,9 @@ spec:
 | `path` | string | `.` | Sub-directory containing `cicord.yaml`, for monorepos. |
 | `pollInterval` | duration (`^[0-9]+(s\|m\|h)$`) | `1m` | Polling interval. Webhooks (`/hooks/github`) and `cicord sync` trigger immediate fetches; polling remains as a fallback. |
 
-Private repositories, write-back pushes and GitHub pull requests use `CICORD_GIT_TOKEN`
-(an HTTPS token). `cicord serve --local` ignores `spec.source` and serves the directory as is.
+Private repositories, write-back pushes, GitHub pull requests and commit statuses use
+`CICORD_GIT_TOKEN` (an HTTPS token) or a GitHub App (`CICORD_GITHUB_APP_*`, see
+[GitHub access](../../self-hosting/deploy/#github-access-token-or-github-app)). `cicord serve --local` ignores `spec.source` and serves the directory as is.
 
 ### `spec.runtime`
 

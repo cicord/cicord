@@ -103,12 +103,14 @@ configuration, the CLI does the following, then the wizard continues on the full
     rotate-key --data-dir <dir>` does the same from a terminal; values are read from
     stdin, never from arguments. A changed bot token is used from the next restart.
   - **API.** It never returns a value; secrets are listed by name and dates only.
-  - **Resolution.** The runtime resolves `token.secretRef`, `CICORD_GIT_TOKEN` and the OAuth
-    client secret **environment first, then the store**, so an environment variable always
-    overrides a stored secret.
+  - **Resolution.** The runtime resolves `token.secretRef`, `CICORD_GIT_TOKEN`, the
+    `CICORD_GITHUB_APP_*` secrets and the OAuth client secret **environment first, then the
+    store**, so an environment variable always overrides a stored secret.
   - **What the wizard stores.** The bot token as `DISCORD_TOKEN_<BOT>` (the `secretRef` of
-    the generated `bot.yaml`), the GitHub token as `CICORD_GIT_TOKEN`, and the OAuth client
-    secret as `CICORD_DISCORD_CLIENT_SECRET`.
+    the generated `bot.yaml`), the GitHub token as `CICORD_GIT_TOKEN` or the GitHub App as
+    `CICORD_GITHUB_APP_ID` / `CICORD_GITHUB_APP_PRIVATE_KEY` /
+    `CICORD_GITHUB_APP_INSTALLATION_ID`, and the OAuth client secret as
+    `CICORD_DISCORD_CLIENT_SECRET`.
   - **Tests.** They assert that the bot token and the setup token never appear in an API
     response, in the logs or in the repository.
 
@@ -152,10 +154,29 @@ Each step is validated by the runtime before moving on.
      (the highest role in the way) in Server Settings → Roles. Moving on is refused while
      a check fails.
 4. **Repository**: **Managed by Cicord** is a bare repository at `<data dir>/repo.git`,
-   where every change is a commit. **GitHub** takes an HTTPS URL, a branch and a token:
-   - the remote is checked first (reachable with the token, no `cicord.yaml` yet);
+   where every change is a commit. **GitHub** takes an HTTPS URL, a branch and the
+   credentials, either:
+   - a **personal access token** (fine-grained, on this repository: Contents, Pull requests
+     and Commit statuses: Read and write), stored as `CICORD_GIT_TOKEN`; choosing it removes
+     stored `CICORD_GITHUB_APP_*` secrets (they would take precedence), and it is refused
+     while `CICORD_GITHUB_APP_ID` is set in the environment;
+   - or a **GitHub App**: its App ID, its private key (the `.pem` content) and, optionally,
+     the installation ID. The wizard signs the App JWT, discovers the installation of the
+     repository on github.com (`GET /repos/{owner}/{repo}/installation`) when the ID is
+     empty, and mints an installation token: GitHub rejecting the App ID or key, and an App
+     not installed on the repository, are explained with what to fix. The secrets are
+     stored as `CICORD_GITHUB_APP_ID`, `CICORD_GITHUB_APP_PRIVATE_KEY` and
+     `CICORD_GITHUB_APP_INSTALLATION_ID` (the discovered ID, so restarts do not look it up
+     again). `cicord serve --github-app-key-file` provides the key as a file instead. How
+     to create the App: [deploy.md](deploy.md#github-access-token-or-github-app).
+
+   Then:
+   - the remote is checked (reachable with the credentials, no `cicord.yaml` yet);
    - an empty repository is initialized;
    - an existing branch (README…) gets the setup commit on top.
+
+   The setup state records the method (`auth: token | githubApp`); a repository set up with
+   the App refuses to start without its secrets instead of falling back to a token.
 
    `dev` also offers **This folder**. Then **Import and activate** runs these steps:
 
@@ -255,8 +276,8 @@ the Cicord repository is dropped).
 - In `cicord dev`, a restart between the first commit and the activation resumes the
   wizard as activated, since the runtime now runs the files.
 
-- GitHub authentication is a personal access token (GitHub App later); no webhook setup
-  instructions yet (polling every minute).
+- GitHub authentication is a personal access token or a GitHub App created by hand (no
+  App manifest flow yet); no webhook setup step (polling every minute).
 - The catalog lists the official plugins only; versions follow the binary.
 - `cicord serve` restarted in a directory that still has no `cicord.yaml` boots from the
   persisted embedded / GitHub repository. Moving that runtime elsewhere means copying the

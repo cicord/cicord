@@ -24,6 +24,23 @@ export type StepId =
 
 export type Provider = "local" | "embedded" | "github";
 
+/** How the GitHub repository is accessed. */
+export type RepoAuth = "token" | "githubApp";
+
+/** The Repository step form. */
+export interface RepoRequest {
+  provider: Provider;
+  url?: string;
+  branch?: string;
+  auth?: RepoAuth;
+  /** Personal access token (auth "token"). */
+  token?: string;
+  /** GitHub App (auth "githubApp"): its ID, private key (PEM) and optional installation. */
+  appId?: string;
+  privateKey?: string;
+  installationId?: string;
+}
+
 interface SetupBot {
   key: string;
   secretRef: string;
@@ -58,7 +75,15 @@ export interface SetupView {
   bot?: SetupBot;
   inviteUrl?: string;
   server?: SetupServer;
-  repo?: { provider: Provider; url?: string; branch: string; tokenStored?: boolean };
+  repo?: {
+    provider: Provider;
+    url?: string;
+    branch: string;
+    tokenStored?: boolean;
+    /** GitHub authentication: a personal access token or a GitHub App. */
+    auth?: RepoAuth;
+    appId?: string;
+  };
   activated: boolean;
   revision?: string;
   firstPlan?: Plan;
@@ -161,8 +186,7 @@ export function setupApi(client: CicordClient) {
       get<{ servers: ServerSummary[] }>("/discord/servers", signal).then((r) => r.servers),
     selectServer: (serverId: string) => post<ServerResult>("/server", { serverId }),
     checkServer: () => post<ServerResult>("/server/check"),
-    repo: (body: { provider: Provider; url?: string; branch?: string; token?: string }) =>
-      post<SetupView>("/repo", body),
+    repo: (body: RepoRequest) => post<SetupView>("/repo", body),
     import: (confirm = false) => post<ImportResult>("/import", { confirm }),
     saveOAuth: (clientSecret: string) => post<SetupView>("/oauth", { clientSecret }),
     skipLogin: () => post<SetupView>("/oauth/skip"),
