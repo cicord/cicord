@@ -112,4 +112,4 @@ No public release until the product is complete.
 ## Done (recent)
 - [x] License: Apache-2.0 for everything (ADR-0013, 2026-11-24)
 - [x] Runtime, reconciler, plugin host, simulator, API, admin UI, portal SDK, CLI (see git log)
-- [x] Real Discord validation: reconcile, slash commands, onboarding roles, drift + sync, OAuth (78aea4a)
+- [x] Real Discord validation: reconcile, slash commands, onboarding roles, drift + sync, OAuth (ce2a51c)
