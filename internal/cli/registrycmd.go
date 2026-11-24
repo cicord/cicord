@@ -62,6 +62,9 @@ plugins only if you trust them.`,
 			officialURL := "(bundled with cicord)"
 			if off, ok := registry.Official(); ok {
 				officialURL = "(bundled with cicord) + " + registry.Redact(off.URL) + " (signed index)"
+				if !registry.HasOfficialKeys() {
+					officialURL = "(bundled with cicord); " + registry.Redact(off.URL) + " not verifiable by this build (no official key)"
+				}
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t-\n", config.OfficialRegistryName, registry.TrustOfficial, officialURL)
 			for _, r := range repo.Project.Spec.Registries {
@@ -216,6 +219,13 @@ the registry's host only.`,
 			for i, src := range srcs {
 				if i == 0 && src.URL == "" {
 					continue // only the bundled plugins: nothing to fetch
+				}
+				if i == 0 && !registry.HasOfficialKeys() {
+					// Not a failure: this build cannot verify the official index, so it does
+					// not even fetch it; the bundled official plugins remain available.
+					fmt.Fprintf(w, "• %s: %d official plugin(s) bundled with cicord; the index of %s is not verifiable by this build (no official key embedded), so it is not used\n",
+						src.Name, len(src.Plugins), src.URL)
+					continue
 				}
 				if src.Error != nil {
 					failed = true

@@ -226,7 +226,7 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 				plan.Current = InstalledVersion{Version: e.Version, Capabilities: nonNil(e.Capabilities), Intents: []string{}, Network: []string{}}
 			}
 			plan.Current.Commit, plan.Current.Integrity, plan.Current.Repo = e.Commit, e.Integrity, registry.Redact(e.Repo)
-			plan.RepoChanged = config.NormalizeRegistryURL(e.Repo) != config.NormalizeRegistryURL(spec.Lock.Repo)
+			plan.RepoChanged = config.NormalizeRegistryURL(e.Repo) != config.NormalizeRegistryURL(spec.Lock.Repo) || e.Path != spec.Lock.Path
 		}
 	}
 	plan.Current.PrivilegedIntents = privileged(plan.Current.Intents)

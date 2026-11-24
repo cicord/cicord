@@ -110,4 +110,30 @@ Product decision: the store works like `apt` sources / Homebrew taps.
   its repository; its maintainers review, set `verified`, and sign.
 - **Not decided here (owner):** the official registry repository, its URL, and the
   production signing key (`registry.OfficialURLs` and `registry.OfficialKeys` are empty
-  until then, so today `cicord` is the bundled plugins only).
+  until then, so today `cicord` is the bundled plugins only). The repository and URL were
+  decided on 2026-11-24 (below); the key is still the owner's step.
+
+## Update (2026-11-24): the official registry is a monorepo
+
+- **Repository.** The official registry is `https://github.com/cicord/cicord-plugins`
+  (`registry.OfficialURLs`), approved by the owner: `plugins/<name>/` for each official
+  plugin and the signed `index.yaml` at the root. One repository keeps review, CI and
+  signing in one place for the official plugins and accepted community plugins.
+- **Index `path`.** An index entry may name the plugin directory inside its repository
+  (`path: plugins/polls`). Such a plugin is released with the tags `<name>/v<semver>`
+  (several plugins share the repository, not their tags); entries without `path` keep bare
+  `v<semver>` tags. `path` is validated as hostile input (relative, no `..` or hidden
+  segments) and is pinned in `cicord.lock` with the commit.
+- **Integrity of a subtree.** Only the plugin directory is downloaded, and the content hash
+  covers its files with paths relative to it: a plugin hashes the same in its own
+  repository and in a monorepo. The signed-index format does not change.
+- **Publishing.** `cicord plugin publish` detects a plugin below the repository root (or
+  `--path`), checks only that directory for uncommitted changes, compares versions with
+  that plugin's tags only, tags `<name>/v<version>` and writes `path`. A registry that is
+  also the repository of its plugins publishes with `--registry .`.
+- **Without the production key.** Until the owner embeds it (`registry.OfficialKeys`), a
+  build cannot verify the official index: it does not fetch it at all
+  (`registry.ErrNoOfficialKey`, an `ErrBadSignature`), and source `cicord` lists the bundled
+  plugins with an explanation instead of an "invalid signature" state. The bundled copies
+  stay in every build for offline and first installs.
+

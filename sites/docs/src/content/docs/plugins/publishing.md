@@ -3,9 +3,9 @@ title: Publishing plugins
 description: Release a plugin with cicord plugin publish, list it in a git registry's index.yaml, run private registries, and how the signed official index works.
 ---
 
-Cicord has no plugin server: a **plugin** is a git repository with semver tags, and a
-**registry** is a git repository with an `index.yaml` that lists plugins, like Go modules or
-Homebrew taps.
+Cicord has no plugin server: a **plugin** is a git repository with semver tags (or a
+directory of a repository that holds several plugins), and a **registry** is a git repository
+with an `index.yaml` that lists plugins, like Go modules or Homebrew taps.
 
 ## Release a plugin
 
@@ -25,20 +25,36 @@ Homebrew taps.
 
 5. Commit the registry change there and open a pull request.
 
-`cicord plugin publish [plugin-repo]`:
+### Several plugins in one repository
+
+A repository can hold several plugins, one directory each (`plugins/xp/plugin.yaml`), like
+the [official registry](#the-official-registry). Each plugin is released with its own tags,
+`<name>/v<semver>` (`xp/v1.2.0`), and its index entry names its directory with `path`:
+
+```sh
+cicord plugin publish plugins/xp --push --registry ../cicord-plugins
+# or from the repository root
+cicord plugin publish --path plugins/xp --push --registry ../cicord-plugins
+```
+
+Only that directory must be committed, so the index of a repository that is also its own
+registry (`--registry .`) can stay uncommitted while you publish several plugins in a row.
+
+`cicord plugin publish [plugin-dir]`:
 
 1. builds and inspects the plugin like `cicord plugin build` (any error stops it);
 2. refuses a dirty working tree (the tag must point at the validated code), a `metadata.name`
    that is not a valid registry key, and a version that is not a semver greater than every
-   existing `v*` tag (local tags; with `--push`, the remote's too);
-3. creates the annotated tag `v<version>` on `HEAD`, and pushes it with `--push` (to
-   `--remote`, default `origin`, with your git credentials);
+   earlier release tag of the plugin (local tags; with `--push`, the remote's too);
+3. creates the annotated tag `v<version>` on `HEAD` (`<name>/v<version>` for a plugin in a
+   subdirectory, with `path` in its entry), and pushes it with `--push` (to `--remote`,
+   default `origin`, with your git credentials);
 4. computes the index entry: `repo` from `--repo` or the remote URL (`git@host:a/b.git`
    becomes `https://host/a/b.git`; URLs with credentials are refused), `displayName`,
    `description` and `keywords` from `plugin.yaml`, `publisher`, `version` and `commit`.
    With `--registry <dir>` it adds or updates the entry in that `index.yaml`, keeping
    comments and the fields it does not manage; an existing entry keeps its `verified` flag
-   and `publisher`, and its `repo` only changes with `--replace-repo`. Without `--registry`
+   and `publisher`, and its `repo` and `path` only change with `--replace-repo`. Without `--registry`
    (or with an https URL) it prints the entry and the steps.
 
 Everything is checked before the tag is created. `publish` never sets `verified`: registry
@@ -49,7 +65,8 @@ maintainers do. If the registry's index is signed, it warns that the signature i
 planned.
 :::
 
-You can also tag releases by hand (`v1.2.0`) and edit `index.yaml` yourself.
+You can also tag releases by hand (`v1.2.0`, or `xp/v1.2.0` in a monorepo) and edit
+`index.yaml` yourself.
 
 ## The registry index
 
@@ -59,6 +76,7 @@ A registry is a git repository with `index.yaml` at its root:
 plugins:
   xp:
     repo: https://github.com/acme/cicord-xp.git    # plugin repository, semver tags v1.2.0
+    # path: plugins/xp                           # monorepo: plugin directory, tags xp/v1.2.0
     displayName: XP & levels                     # optional
     description: Levels and a portal leaderboard
     keywords: [xp, levels]
@@ -67,6 +85,10 @@ plugins:
     version: 1.2.0                               # optional: latest release (written by publish)
     commit: 3f1c…                                # optional: its tag's commit (a moved tag is refused)
 ```
+
+With `path`, only that directory is downloaded and hashed (the hash in `cicord.lock` is the same
+as for the plugin in its own repository), and only the tags `<name>/v<semver>` are releases. A
+`path` is a relative directory: no `..`, no leading `/`, no hidden segments.
 
 An `https` registry may only list `https` plugin repositories. Users add it and install from
 it:
@@ -114,14 +136,16 @@ network.
 
 ## The official registry
 
-The official registry is designed as a git repository maintained by the Cicord project, whose
-`index.yaml` is **signed**. Its plugins join source `cicord`, without any `cicord.yaml` entry, and
-only it can mark publishers as `verified`.
+The official registry is [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins),
+a monorepo maintained by the Cicord project: one directory per plugin (`plugins/<name>/`,
+tags `<name>/v<semver>`) and a **signed** `index.yaml` at its root. Its plugins join source
+`cicord`, without any `cicord.yaml` entry, and only it can mark publishers as `verified`.
+Community plugins are submitted there by pull request (see its `CONTRIBUTING.md`).
 
 :::caution[Not live yet]
-The official registry repository and its production signing key do not exist yet: the
-official URL and key list of current builds are empty, so source `cicord` is the plugins bundled
-in your binary. Everything below is implemented and tested, ready for when it exists.
+The production signing key is not embedded in current builds yet. Such a build cannot verify
+the official index, so it does not fetch it: source `cicord` lists the plugins bundled in your
+binary, with a notice. The bundled copies stay in every build, for offline and first installs.
 :::
 
 `index.yaml.sig`, next to the index, is a signature envelope followed by one ed25519

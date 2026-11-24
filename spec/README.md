@@ -290,11 +290,43 @@ lockVersion: 1
 plugins:
   cicord/welcome:
     version: 1.2.3
-    repo: https://github.com/cicord-plugins/welcome
+    repo: https://github.com/cicord/cicord-plugins
+    path: plugins/welcome        # plugin directory in a repository with several plugins
     commit: 4f0c2d9e8b1a7c6d5e4f3a2b1c0d9e8f7a6b5c4d
     integrity: sha256-Vb3nQ0x2...
     capabilities: [discord.messages.send, discord.members.read, storage.kv]
 ```
+
+- `integrity` is `sha256-<base64>` over the plugin's files sorted by path (paths relative to
+  the plugin directory: `path`, or the repository root), so a plugin hashes the same in its
+  own repository and in a monorepo. Symlinks and submodules are not part of a plugin.
+- `path` is absent for a plugin at the root of its repository.
+
+### Registries
+
+A registry is a git repository with `index.yaml` at its root:
+
+```yaml
+plugins:
+  <name>:                     # [a-z0-9][a-z0-9-]{0,63}: the plugin's registry key
+    repo: https://…           # plugin repository (https only in an https registry)
+    path: plugins/<name>      # optional: the plugin directory in that repository
+    displayName: …            # optional listing fields: description, keywords, publisher
+    verified: false           # honoured from the signed official index only
+    version: 1.2.3            # optional: latest release (written by `cicord plugin publish`)
+    commit: <sha>             # optional: its tag's commit; a moved tag is refused
+```
+
+- Releases are semver tags of `repo`: `v<semver>` for a plugin at the repository root;
+  `<name>/v<semver>` for a plugin with `path` (several plugins share the repository, not
+  their tags). Other tags are ignored. Prereleases are only resolved by ranges that admit them.
+- `path` is a relative directory: slash-separated segments that do not start with `.`, no
+  `..`, no leading or trailing `/`, at most 255 characters. Only that directory is
+  downloaded, and it must contain `plugin.yaml`.
+- The official registry (`https://github.com/cicord/cicord-plugins`, implicit source
+  `cicord`) also has `index.yaml.sig`, an ed25519 signature envelope binding the index hash,
+  the registry URL, a serial and an expiry; its index is only used when a signature by a key
+  embedded in the runtime verifies (see `docs/plugins.md` §9).
 
 ## 8. SDK semantics
 

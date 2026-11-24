@@ -728,8 +728,10 @@ click buttons and submit modals.
 Plugins are installed from **sources**, like apt sources or Homebrew taps (ADR-0011):
 - **`cicord`**, the official plugins bundled with the binary (welcome, onboarding, tickets,
   polls, levels, moderation, reaction-roles, audit-log, announcements). Always available.
-  Once the official registry exists, `cicord` also lists its plugins (see *The official
-  registry* below), without any `cicord.yaml` entry.
+  `cicord` also lists the plugins of the official registry,
+  [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins), when its
+  signed index verifies (see *The official registry* below), without any `cicord.yaml`
+  entry.
 - **Registries**: git repositories with an `index.yaml`, declared in `cicord.yaml`
   `spec.registries`. They are **unofficial** (trust is computed from the URL, never
   declared): the admin UI labels them everywhere and asks for an explicit confirmation,
@@ -738,11 +740,15 @@ Plugins are installed from **sources**, like apt sources or Homebrew taps (ADR-0
 To publish a plugin:
 1. Put it in its own git repository (`plugin.yaml` at the root), commit, and release it
    with `cicord plugin publish` (below), or tag releases by hand with semver tags (`v1.2.0`).
+   A repository can also hold several plugins (a monorepo, like the official registry):
+   each plugin is a directory (`plugins/xp/plugin.yaml`) released with its own tags,
+   `<name>/v<semver>` (`xp/v1.2.0`).
 2. List it in a registry's `index.yaml`:
    ```yaml
    plugins:
      xp:
        repo: https://github.com/acme/cicord-xp.git   # https registries may only list https repos
+       # path: plugins/xp   # in a monorepo: the plugin directory (tags xp/v<semver>)
        displayName: XP & levels
        description: Levels and a portal leaderboard
        keywords: [xp, levels]
@@ -758,7 +764,12 @@ To publish a plugin:
    ```
    or from the admin UI: **Store** → Sources → Add, then Install on a plugin.
 
-Installing pins the version in `cicord.lock` (commit + content hash) and adds
+For a plugin with a `path`, only its directory is downloaded, and the content hash covers
+that directory (paths relative to it, so a plugin hashes the same in its own repository and
+in a monorepo); bare `v<semver>` tags and the tags of the other plugins are ignored. A
+`path` is a relative directory (no `..`, no leading `/`, no hidden segments).
+
+Installing pins the version in `cicord.lock` (commit + content hash, and `path`) and adds
 `source: acme/xp` with `version: ^1.2.0` to the bot. The admin UI installs exactly the
 version that was reviewed: if a new tag appears between review and install, it asks to
 review again. Before installation, the Store reads what an unofficial plugin requests from
@@ -815,6 +826,7 @@ to release:
 ```sh
 cicord plugin publish --dry-run                       # check everything, change nothing
 cicord plugin publish --push --registry ../cicord-plugins --publisher acme
+cicord plugin publish plugins/xp --push --registry .  # a monorepo that is its own registry
 ```
 
 It
@@ -824,13 +836,17 @@ It
    greater than every existing tag (local tags; with `--push`, the remote's too);
 3. creates the annotated tag `v<version>` on `HEAD`, and pushes it with `--push` (to
    `--remote`, default `origin`, with your git credentials);
+   in a monorepo (the plugin directory is not the repository root, or `--path <dir>`
+   names it from the root) the tag is `<name>/v<version>`, the version is compared with
+   that plugin's tags only, only its directory must be clean, and the entry gets
+   `path: <dir>`;
 4. computes the index entry: `repo` from `--repo` or the remote URL (`git@host:a/b.git`
    becomes `https://host/a/b.git`; URLs with credentials are refused), `displayName`,
    `description` and `keywords` from `plugin.yaml`, `publisher`, `version` and `commit`.
    With `--registry <dir>` (a local checkout of the registry repository) it adds or
    updates the entry in that `index.yaml`, keeping comments and the fields it does not
    manage; an existing entry keeps its `verified` flag and `publisher`, and its `repo`
-   only changes with `--replace-repo`. Then commit there and open a pull request. Without
+   and `path` only change with `--replace-repo`. Then commit there and open a pull request. Without
    `--registry` (or with an https URL) it prints the entry and the steps.
 
 Everything is checked before the tag is created. `publish` never sets `verified`:
@@ -839,8 +855,11 @@ that the signature is now stale: the maintainers sign again after merging.
 
 ### The official registry: signed index, verified publishers
 
-The official registry is a git repository maintained by the Cicord project. Its
-`index.yaml` is **signed**: `index.yaml.sig`, next to it, is a signature envelope followed
+The official registry is
+[github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins), a monorepo
+maintained by the Cicord project: `plugins/<name>/` for each official plugin (tags
+`<name>/v<semver>`), `index.yaml` at the root listing them with `path`, and community
+plugins accepted by review (verified publishers). Its `index.yaml` is **signed**: `index.yaml.sig`, next to it, is a signature envelope followed
 by one ed25519 signature per signing key:
 
 ```
@@ -903,11 +922,45 @@ valid semver **greater** than the bundled version; otherwise the bundled copy is
 installing one from the official registry locks it in `cicord.lock` as `cicord/<name>`, like
 any registry plugin, and `cicord plugin add cicord/<name>` works the same way. If the official
 index cannot be read or verified, `cicord` still lists the bundled plugins and shows the
-error. Until the official registry repository and its key exist (the URL and key list in
-this build are empty), `cicord` is the bundled plugins only.
+error. A build that embeds no official public key yet cannot verify the index: it does not
+fetch it at all, and `cicord` lists the bundled plugins with an explanation (the Store
+shows no signature badge; `cicord registry update` prints an informational line and does
+not fail). The bundled copies remain in every build, for offline and first installs.
 
 **Development.** A development build embeds a test key at build time
 (`-ldflags "-X github.com/cicord/cicord/internal/registry.devOfficialKey=<base64>"`); only
 such a build honours `CICORD_DEV_OFFICIAL_REGISTRY=<url>`, which points the official registry
 at another URL (its index must be signed for that URL). Release builds ignore the variable:
 nothing in the environment, `cicord.yaml` or the admin UI can change what is official.
+
+### Setting up the official registry (project owner)
+
+The content of `cicord/cicord-plugins` is generated from `examples/` by
+`scripts/official-registry/prepare.sh <dir>` (the official plugins with standalone
+`tsconfig.json`, their unit tests, the vendored `@cicord/sdk`, README, CONTRIBUTING, CI
+workflows, and `index.yaml` written by `cicord plugin publish`, with local tags
+`<name>/v<version>`). Signing keys and pushes are the owner's steps, in this order:
+
+1. **Key pair**, offline, outside any repository:
+   `cicord registry keygen --out ~/cicord-registry-signing.key`. Keep an offline backup of
+   the private key file.
+2. **Embed the public key** (the base64 line printed by `keygen`) in
+   `internal/registry/sign.go` `OfficialKeys` (the `TODO(owner)` there) and release Cicord;
+   commit the same public key to `keys/official.pub` in cicord-plugins (its CI verifies with
+   it).
+3. **Secret**: in cicord-plugins, create the `registry-signing` environment (deployments
+   from `main` only) and store the content of the private key file as its
+   `CICORD_REGISTRY_SIGNING_KEY` secret (the sign workflow reads it with
+   `--key env:CICORD_REGISTRY_SIGNING_KEY`). Set the `CICORD_VERSION` Actions variable to a
+   Cicord release tag: the CI builds that version of `cicord`, and the sign workflow refuses
+   to run without it (the job holding the key never builds a moving branch). While
+   cicord/cicord is private, also add a `CICORD_SOURCE_TOKEN` secret able to read it
+   (pull requests from forks get no secret, so their checks need cicord/cicord public).
+4. **Push** the prepared repository as is, branch and tags
+   (`git push origin main && git push origin --tags`): the `commit:` fields of `index.yaml`
+   pin those exact commits, so do not re-create the history from the files.
+5. **First signature**: run the `sign` workflow (or locally
+   `cicord registry sign . --key ~/cicord-registry-signing.key --registry-url https://github.com/cicord/cicord-plugins`
+   and commit `index.yaml.sig`). Protect `main` (reviews required; allow the signing
+   workflow's bot to push `index.yaml.sig`): the re-sign job signs whatever is on `main`,
+   so branch protection is the real trust root.

@@ -173,3 +173,72 @@ func TestPublicRepoURL(t *testing.T) {
 		}
 	}
 }
+
+// A repository with several plugins that is also their registry (the official layout):
+// plugins/<name>/, index.yaml at the root, tags <name>/v<version>.
+func TestPluginPublishMonorepo(t *testing.T) {
+	isolatedGit(t)
+	ctx := context.Background()
+	mono := t.TempDir()
+	copyDir(t, "../../examples/basic/plugins/welcome", filepath.Join(mono, "plugins", "welcome"))
+	copyDir(t, "../../examples/basic/plugins/onboarding", filepath.Join(mono, "plugins", "onboarding"))
+	writeFile(t, filepath.Join(mono, "index.yaml"), "plugins: {}\n")
+	writeFile(t, filepath.Join(mono, "README.md"), "official plugins\n")
+	gitInit(t, mono)
+	gitTest(t, mono, "tag", "v5.0.0") // a bare tag is no release of the plugins
+	remote := t.TempDir()
+	gitTest(t, remote, "init", "-q", "--bare", "-b", "main")
+	gitTest(t, mono, "remote", "add", "origin", remote)
+	gitTest(t, mono, "push", "-q", "origin", "main")
+
+	// A change elsewhere in the repository does not block a plugin; one inside it does.
+	writeFile(t, filepath.Join(mono, "README.md"), "edited\n")
+	writeFile(t, filepath.Join(mono, "plugins", "onboarding", "notes.txt"), "wip")
+	code, out, errOut := run(t, "plugin", "publish", filepath.Join(mono, "plugins", "welcome"), "--push", "--registry", mono, "--publisher", "Cicord")
+	if code != 0 {
+		t.Fatalf("publish welcome = %d\n%s\n%s", code, out, errOut)
+	}
+	if !strings.Contains(out, "tagged welcome/v0.1.0") || !strings.Contains(out, "added welcome") {
+		t.Errorf("output:\n%s", out)
+	}
+	if code, _, errOut := run(t, "plugin", "publish", mono, "--path", "plugins/onboarding", "--registry", mono); code == 0 || !strings.Contains(errOut, "uncommitted changes") {
+		t.Errorf("dirty plugin directory = %d %s", code, errOut)
+	}
+	os.Remove(filepath.Join(mono, "plugins", "onboarding", "notes.txt"))
+	// --path from the repository root; the uncommitted index.yaml (previous publish) is
+	// outside the plugin directory.
+	if code, out, errOut := run(t, "plugin", "publish", mono, "--path", "plugins/onboarding", "--push", "--registry", mono); code != 0 || !strings.Contains(out, "tagged onboarding/v0.1.0") {
+		t.Fatalf("publish onboarding = %d\n%s\n%s", code, out, errOut)
+	}
+	if code, _, errOut := run(t, "plugin", "publish", filepath.Join(mono, "plugins", "welcome")); code == 0 || !strings.Contains(errOut, "tag welcome/v0.1.0 already exists") {
+		t.Errorf("republish = %d %s", code, errOut)
+	}
+	if code, _, errOut := run(t, "plugin", "publish", mono, "--path", "../welcome"); code == 0 || !strings.Contains(errOut, "invalid plugin path") {
+		t.Errorf("--path ../ = %d %s", code, errOut)
+	}
+	if got := gitTest(t, remote, "tag", "--list"); got != "onboarding/v0.1.0\nwelcome/v0.1.0" {
+		t.Errorf("remote tags = %q", got)
+	}
+	idx, err := registry.ParseIndex([]byte(readFile(t, filepath.Join(mono, "index.yaml"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := gitTest(t, mono, "rev-parse", "HEAD")
+	for name, e := range idx.Plugins {
+		if e.Repo != remote || e.Path != "plugins/"+name || e.Version != "0.1.0" || e.Commit != head {
+			t.Errorf("%s = %+v", name, e)
+		}
+	}
+	if len(idx.Plugins) != 2 || idx.Plugins["welcome"].Publisher != "Cicord" {
+		t.Errorf("index = %+v", idx.Plugins)
+	}
+
+	// The registry (this same repository) resolves each plugin from its directory and tags.
+	gitTest(t, mono, "commit", "-q", "-am", "publish")
+	for _, name := range []string{"welcome", "onboarding"} {
+		res, err := registry.ResolveLatest(ctx, []config.Registry{{Name: "acme", URL: mono}}, t.TempDir(), "acme/"+name, "*")
+		if err != nil || res.Entry.Version != "0.1.0" || res.Entry.Path != "plugins/"+name || res.Manifest.Metadata.Name != name {
+			t.Fatalf("resolve %s = %+v, %v", name, res, err)
+		}
+	}
+}

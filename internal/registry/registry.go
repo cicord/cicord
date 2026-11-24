@@ -1,6 +1,10 @@
 // Package registry resolves registry plugins (ADR-0011): a registry is a git repository
 // with an index.yaml mapping plugin names to git repositories; plugin versions are semver
 // tags; cicord.lock pins the resolved commit and a content hash.
+//
+// A plugin repository holds one plugin (plugin.yaml at its root, tags v<semver>) or several
+// (a monorepo: the index entry's path is the plugin directory, tags <name>/v<semver>, and
+// the content hash covers that directory only).
 package registry
 
 import (
@@ -43,7 +47,12 @@ type Index struct {
 }
 
 type IndexEntry struct {
-	Repo        string   `yaml:"repo"`
+	Repo string `yaml:"repo"`
+	// Path is the plugin directory inside Repo (slash-separated, e.g. plugins/polls) when
+	// the repository holds several plugins; "" when plugin.yaml is at its root. A plugin
+	// with a path is released with the tags <name>/v<semver> (TagPrefix), and only that
+	// directory is downloaded and hashed.
+	Path        string   `yaml:"path,omitempty"`
 	DisplayName string   `yaml:"displayName,omitempty"`
 	Description string   `yaml:"description,omitempty"`
 	Keywords    []string `yaml:"keywords,omitempty"`
@@ -53,6 +62,50 @@ type IndexEntry struct {
 	// Commit the commit of its tag: resolving that version fails if the tag moved.
 	Version string `yaml:"version,omitempty"`
 	Commit  string `yaml:"commit,omitempty"`
+}
+
+// TagPrefix is the prefix of the release tags of plugin name: "<name>/" for a plugin in a
+// subdirectory of its repository (several plugins share the tags of one repository), ""
+// for a plugin at the root of its own repository (tags v<semver>).
+func (e IndexEntry) TagPrefix(name string) string {
+	if e.Path == "" {
+		return ""
+	}
+	return name + "/"
+}
+
+// ReleaseTag is the tag of version (a semver without "v") with a TagPrefix.
+func ReleaseTag(prefix, version string) string { return prefix + "v" + version }
+
+// pluginPathRe is a relative directory: slash-separated segments that do not start with a
+// dot (no ".", "..", hidden directories), without empty segments.
+var pluginPathRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$`)
+
+// CheckPluginPath validates IndexEntry.Path (it comes from registry indexes, which may be
+// hostile): "" or a relative directory without "..", ".", backslashes or a leading slash.
+func CheckPluginPath(p string) error {
+	if p == "" || (pluginPathRe.MatchString(p) && path.Clean(p) == p && len(p) <= 255) {
+		return nil
+	}
+	return fmt.Errorf("invalid plugin path %q: use a relative directory like plugins/<name> (no \"..\", no leading slash)", p)
+}
+
+// tagVersion parses a release tag with prefix: "<prefix>v1.2.0" (or "<prefix>1.2.0").
+// Without prefix, tags containing a slash are not releases (they belong to the plugins of
+// a monorepo).
+func tagVersion(tag, prefix string) (*semver.Version, bool) {
+	if prefix != "" {
+		rest, ok := strings.CutPrefix(tag, prefix)
+		if !ok {
+			return nil, false
+		}
+		tag = rest
+	}
+	if strings.Contains(tag, "/") {
+		return nil, false
+	}
+	v, err := semver.NewVersion(tag)
+	return v, err == nil
 }
 
 // NameRe is the shape of registry and plugin names. Both become cache directories, so
@@ -85,13 +138,13 @@ const (
 )
 
 // OfficialURLs are the URLs of the official Cicord registry, the first being its address
-// (Official) and the others aliases. None exists yet: the official plugins are bundled in
-// the binary (internal/catalog). An index read from one of these URLs must be signed by
-// an official key (sign.go). Tests set it; DevOfficialRegistryEnv overrides it in
-// development.
-//
-// TODO(owner): set it once the official registry repository exists.
-var OfficialURLs = []string{}
+// (Official) and the others aliases: the monorepo github.com/cicord/cicord-plugins
+// (plugins/<name>/, tags <name>/v<semver>, signed index.yaml at its root). The official
+// plugins are also bundled in the binary (internal/catalog) for offline and first
+// installs. An index read from one of these URLs must be signed by an official key
+// (sign.go, OfficialKeys). Tests reset it (TestMain) so that they never reach GitHub;
+// DevOfficialRegistryEnv overrides it in development builds.
+var OfficialURLs = []string{"https://github.com/cicord/cicord-plugins"}
 
 // Trust is computed from the registry URL, never declared in cicord.yaml. "official" here
 // means "an official URL": its index is only used when its signature verifies (FetchIndex).
@@ -135,8 +188,10 @@ type Lock struct {
 }
 
 type LockEntry struct {
-	Version      string   `yaml:"version"`
-	Repo         string   `yaml:"repo"`
+	Version string `yaml:"version"`
+	Repo    string `yaml:"repo"`
+	// Path is the plugin directory inside Repo (IndexEntry.Path); Integrity covers it only.
+	Path         string   `yaml:"path,omitempty"`
 	Commit       string   `yaml:"commit"`
 	Integrity    string   `yaml:"integrity"`
 	Capabilities []string `yaml:"capabilities,omitempty"`
@@ -286,7 +341,7 @@ func Materialize(ctx context.Context, cacheDir, source string, e LockEntry) (str
 	}
 	tmp := dir + ".tmp"
 	os.RemoveAll(tmp)
-	sum, err := exportTree(commit, tmp)
+	sum, err := exportTree(commit, e.Path, tmp)
 	if err != nil {
 		os.RemoveAll(tmp)
 		return "", err
@@ -322,6 +377,9 @@ func cachePath(cacheDir, source string, e LockEntry) (string, error) {
 	if !shaRe.MatchString(e.Commit) {
 		return "", fmt.Errorf("%s: invalid commit %q", source, e.Commit)
 	}
+	if err := CheckPluginPath(e.Path); err != nil {
+		return "", fmt.Errorf("%s: %w", source, err)
+	}
 	dir := filepath.Join(cacheDir, reg, name, v.String()+"-"+shortSHA(e.Commit))
 	if rel, err := filepath.Rel(cacheDir, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("%s: cache path escapes the cache directory", source)
@@ -347,12 +405,21 @@ func cloneMem(ctx context.Context, url string) (*git.Repository, error) {
 	return r, nil
 }
 
-// exportTree writes the commit's files into dir and returns the integrity hash
-// ("sha256-<base64>") over sorted (path, content) pairs.
-func exportTree(c *object.Commit, dir string) (string, error) {
+// exportTree writes the files of the commit's directory sub ("" = the whole tree) into dir,
+// relative to sub, and returns the integrity hash ("sha256-<base64>") over sorted (path,
+// content) pairs: a plugin hashes the same in its own repository and in a monorepo.
+func exportTree(c *object.Commit, sub, dir string) (string, error) {
+	if err := CheckPluginPath(sub); err != nil {
+		return "", err
+	}
 	tree, err := c.Tree()
 	if err != nil {
 		return "", err
+	}
+	if sub != "" {
+		if tree, err = tree.Tree(sub); err != nil {
+			return "", fmt.Errorf("directory %s not found in commit %s: %w", sub, shortSHA(c.Hash.String()), err)
+		}
 	}
 	type entry struct {
 		name string
@@ -416,8 +483,12 @@ func Integrity(files map[string][]byte) string {
 
 // FetchIndex reads index.yaml from a registry repository. For an official URL, the index
 // must be signed by an official key (index.yaml.sig in the same commit, over the exact
-// bytes): otherwise it fails with ErrBadSignature and returns no index.
+// bytes): otherwise it fails with ErrBadSignature and returns no index. A build without
+// official keys fails with ErrNoOfficialKey without any network access.
 func FetchIndex(ctx context.Context, url string) (*Index, error) {
+	if Trust(url) == TrustOfficial && !HasOfficialKeys() {
+		return nil, fmt.Errorf("%s: %w", Redact(url), ErrNoOfficialKey)
+	}
 	r, err := cloneMem(ctx, url)
 	if err != nil {
 		return nil, err
@@ -514,6 +585,10 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	if err := CheckRepoURL(regURL, ie.Repo); err != nil {
 		return nil, err
 	}
+	if err := CheckPluginPath(ie.Path); err != nil {
+		return nil, fmt.Errorf("%s: %w", source, err)
+	}
+	prefix := ie.TagPrefix(name)
 	if publicOnly(ctx) && IsRemoteURL(ie.Repo) {
 		if err := CheckPublicHost(ctx, ie.Repo); err != nil {
 			return nil, fmt.Errorf("plugin repository %q: %w", Redact(ie.Repo), err)
@@ -537,9 +612,9 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	var best *semver.Version
 	var bestHash plumbing.Hash
 	err = tags.ForEach(func(ref *plumbing.Reference) error {
-		// Tags that are not semantic versions are skipped.
-		v, verr := semver.NewVersion(ref.Name().Short())
-		if verr == nil && c.Check(v) && (best == nil || v.GreaterThan(best)) {
+		// Tags that are not releases of this plugin (other prefix, not semver) are skipped.
+		v, ok := tagVersion(ref.Name().Short(), prefix)
+		if ok && c.Check(v) && (best == nil || v.GreaterThan(best)) {
 			h := ref.Hash()
 			if tag, err := repo.TagObject(h); err == nil { // annotated tag
 				h = tag.Target
@@ -555,22 +630,22 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 		return nil, fmt.Errorf("no version of %s matches %q", source, versionRange)
 	}
 	if iv, err := semver.NewVersion(ie.Version); err == nil && ie.Commit != "" && iv.Equal(best) && bestHash.String() != ie.Commit {
-		return nil, fmt.Errorf("%s: tag v%s points to %s, but the registry index published it at %s (the tag moved)",
-			source, best, shortSHA(bestHash.String()), shortSHA(ie.Commit))
+		return nil, fmt.Errorf("%s: tag %s points to %s, but the registry index published it at %s (the tag moved)",
+			source, ReleaseTag(prefix, best.String()), shortSHA(bestHash.String()), shortSHA(ie.Commit))
 	}
 	commit, err := repo.CommitObject(bestHash)
 	if err != nil {
 		return nil, err
 	}
-	entry := LockEntry{Version: best.String(), Repo: ie.Repo, Commit: bestHash.String()}
+	entry := LockEntry{Version: best.String(), Repo: ie.Repo, Path: ie.Path, Commit: bestHash.String()}
 	dir, err := cachePath(cacheDir, source, entry)
 	if err != nil {
 		return nil, err
 	}
 	os.RemoveAll(dir)
-	sum, err := exportTree(commit, dir)
+	sum, err := exportTree(commit, ie.Path, dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s@%s: %w", source, entry.Version, err)
 	}
 	entry.Integrity = sum
 	if err := os.WriteFile(filepath.Join(dir, ".cicord-integrity"), []byte(sum+"\n"), 0o644); err != nil {
@@ -578,7 +653,11 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	}
 	manifest, err := os.ReadFile(filepath.Join(dir, "plugin.yaml"))
 	if err != nil {
-		return nil, fmt.Errorf("%s@%s has no plugin.yaml", source, entry.Version)
+		where := "the repository root"
+		if ie.Path != "" {
+			where = ie.Path
+		}
+		return nil, fmt.Errorf("%s@%s has no plugin.yaml in %s", source, entry.Version, where)
 	}
 	var m config.Plugin
 	if err := yaml.Unmarshal(manifest, &m); err != nil {

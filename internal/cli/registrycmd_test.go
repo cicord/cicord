@@ -10,7 +10,16 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
+
+	"github.com/cicord/cicord/internal/registry"
 )
+
+// TestMain keeps the tests off the network: none may fetch the real official registry
+// (tests that need an official registry set registry.OfficialURLs themselves).
+func TestMain(m *testing.M) {
+	registry.OfficialURLs = nil
+	os.Exit(m.Run())
+}
 
 func commitRepo(t *testing.T, files map[string]string, tags ...string) string {
 	t.Helper()
@@ -78,5 +87,40 @@ func TestRegistryCommands(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(dir, "cicord.yaml"))
 	if strings.Contains(string(data), "acme") {
 		t.Errorf("cicord.yaml:\n%s", data)
+	}
+}
+
+// The default of a release build without the production key: the official URL is set, no
+// official key. Nothing fails because of it, and nothing is fetched from it.
+func TestRegistryCommandsWithoutOfficialKey(t *testing.T) {
+	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
+	old := registry.OfficialURLs
+	t.Cleanup(func() { registry.OfficialURLs = old })
+	registry.OfficialURLs = []string{"https://127.0.0.1:1/cicord-plugins"} // a fetch would fail differently
+	if registry.HasOfficialKeys() {
+		t.Skip("this test binary embeds a development official key")
+	}
+	dir := t.TempDir()
+	if code, _, errOut := run(t, "init", dir, "--server", "srv", "--bot", "bot"); code != 0 {
+		t.Fatalf("init: %s", errOut)
+	}
+	if code, out, _ := run(t, "registry", "list", "--dir", dir); code != 0 || !strings.Contains(out, "not verifiable by this build (no official key)") {
+		t.Errorf("list: %d %s", code, out)
+	}
+	if code, out, errOut := run(t, "registry", "update", "--dir", dir); code != 0 || !strings.Contains(out, "• cicord: 9 official plugin(s) bundled with cicord") || strings.Contains(out, "✗") {
+		t.Errorf("update: %d %s %s", code, out, errOut)
+	}
+	if code, out, _ := run(t, "registry", "search", "welcome", "--dir", dir); code != 0 || !strings.Contains(out, "cicord/welcome") {
+		t.Errorf("search: %d %s", code, out)
+	}
+	code, _, errOut := run(t, "plugin", "add", "cicord/welcome", "--bot", "bot", "--dir", dir)
+	if code == 0 || !strings.Contains(errOut, "embeds no official public key") || !strings.Contains(errOut, "welcome is bundled with cicord") {
+		t.Errorf("add bundled: %d %s", code, errOut)
+	}
+	if code, _, errOut := run(t, "plugin", "add", "cicord/xp", "--bot", "bot", "--dir", dir); code == 0 || !strings.Contains(errOut, "only the official plugins bundled") {
+		t.Errorf("add remote-only: %d %s", code, errOut)
+	}
+	if code, out, errOut := run(t, "plugin", "update", "--dir", dir); code != 0 {
+		t.Errorf("plugin update: %d %s %s", code, out, errOut)
 	}
 }

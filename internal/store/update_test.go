@@ -25,7 +25,7 @@ func TestUpdatesCacheLatestVersions(t *testing.T) {
 				"other": {Repo: "https://acme.example/other.git"},
 			}}, nil
 		},
-		Latest: func(_ context.Context, _, repoURL string) (string, error) {
+		Latest: func(_ context.Context, _, repoURL, _ string) (string, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			lookups[repoURL]++

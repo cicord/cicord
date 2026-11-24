@@ -7,16 +7,16 @@ import (
 
 func TestLatestVersion(t *testing.T) {
 	repo := initRepo(t, map[string]string{"plugin.yaml": "metadata:\n  name: x\n"}, "v1.0.0", "v1.2.0", "v2.0.0-rc.1", "latest")
-	v, err := LatestVersion(context.Background(), "/tmp/registry", repo)
+	v, err := LatestVersion(context.Background(), "/tmp/registry", repo, "")
 	if err != nil || v != "1.2.0" {
 		t.Fatalf("latest = %q, %v (prereleases and non-semver tags are ignored)", v, err)
 	}
 	// An https registry may not point to a local repository.
-	if _, err := LatestVersion(context.Background(), "https://example.org/r.git", repo); err == nil {
+	if _, err := LatestVersion(context.Background(), "https://example.org/r.git", repo, ""); err == nil {
 		t.Error("https registry listing a local repository")
 	}
 	// Public-only lookups refuse private hosts.
-	if _, err := LatestVersion(WithPublicOnly(context.Background()), "https://example.org/r.git", "https://127.0.0.1/x.git"); err == nil {
+	if _, err := LatestVersion(WithPublicOnly(context.Background()), "https://example.org/r.git", "https://127.0.0.1/x.git", ""); err == nil {
 		t.Error("public-only lookup of a private host")
 	}
 }
