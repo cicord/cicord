@@ -307,7 +307,7 @@ func (l *loader) checkServers(repo *Repo) {
 		roleExists := func(k string) bool { _, ok := sp.Roles[k]; return ok }
 		checkOverwrites := func(base string, ows map[string]OverwriteSpec) {
 			for target := range ows {
-				if target == "@everyone" || strings.HasPrefix(target, "member:") {
+				if target == "@everyone" || target == "@bot" || strings.HasPrefix(target, "member:") {
 					continue
 				}
 				ref(base+jsonPointer(target), "role", target, roleExists(target))

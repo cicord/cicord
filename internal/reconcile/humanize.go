@@ -85,6 +85,8 @@ var (
 	reREST        = regexp.MustCompile(`HTTP (\d{3}) (\d+): `)
 	reStatusOnly  = regexp.MustCompile(`HTTP (\d{3})\b`)
 	reUnresolved  = regexp.MustCompile(`unresolved (channel|category|role) "([^"]*)"`)
+	rePreflight   = regexp.MustCompile(`preflight: the bot lacks permissions this sync needs: ([A-Za-z, ]+)`)
+	reLockout     = regexp.MustCompile(`preflight: (?:.*; )?the bot cannot see or manage (\S+(?:, \S+)*)`)
 	reGrant       = regexp.MustCompile(`cannot (?:grant|allow or deny) permissions you do not have: ([A-Za-z, ]+)`)
 	reIntents     = regexp.MustCompile(`disallowed intents ([A-Za-z, ]+)`)
 	reRevision    = regexp.MustCompile(`^revision (\S+) rejected: `)
@@ -181,6 +183,24 @@ func classify(h *HumanError, raw, text, discordMsg string) {
 			h.Message += ": " + strings.TrimSpace(m[1])
 		}
 		h.Hint = "In the Discord Developer Portal (your application → Bot → Privileged Gateway Intents), enable the intents the plugins need, then restart Cicord."
+
+	// The sync preflight (PermissionsError), before anything was applied.
+	case rePreflight.MatchString(text):
+		perms := strings.TrimSpace(rePreflight.FindStringSubmatch(text)[1])
+		h.Code = ErrCodeMissingPermissions
+		h.Message = "The bot is missing permissions this sync needs: " + perms
+		h.Hint = "Nothing was applied. In Server Settings → Roles, give the bot's role these permissions, or remove them from the YAML, then sync again. " +
+			"Manage Roles in a channel overwrite always needs Administrator."
+		if reLockout.MatchString(text) {
+			h.Hint += " Some managed channels also hide themselves from the bot: allow ViewChannel to \"@bot\" in their overwrites."
+		}
+
+	case reLockout.MatchString(text):
+		paths := reLockout.FindStringSubmatch(text)[1]
+		h.Code = ErrCodeMissingAccess
+		h.Message = "The bot cannot see or manage " + paths
+		h.Hint = "Nothing was applied. Add \"@bot\": { allow: [ViewChannel] } to the overwrites of these channels (or their category). " +
+			"If the bot already cannot see a channel, also give its role View Channel there in Discord, then sync again."
 
 	case reGrant.MatchString(text):
 		perms := strings.TrimSpace(reGrant.FindStringSubmatch(text)[1])

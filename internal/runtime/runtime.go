@@ -620,6 +620,12 @@ func (r *Runtime) PlanDir(ctx context.Context, dir string) (config.Diagnostics, 
 			BotUserID: host.session.Self().ID, Logger: r.log})
 		p, err := rec.Plan(ctx)
 		rec.Close()
+		if pe := (*reconcile.PermissionsError)(nil); errors.As(err, &pe) {
+			// the bot lacks permissions: shown on the plan, like the CLI does
+			p.Blocked = append(p.Blocked, reconcile.Blocked{Action: "sync", Kind: reconcile.KindServer, Key: key, Reason: firstLine(err.Error())})
+			plans = append(plans, p)
+			continue
+		}
 		if err != nil {
 			return ds, plans, err
 		}

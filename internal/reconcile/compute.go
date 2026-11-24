@@ -23,6 +23,9 @@ type planInput struct {
 	Mapped  []state.Resource // resource map entries of this server (all owners)
 	// BotTop is the position of the bot's highest role (math.MaxInt = no constraint).
 	BotTop int
+	// BotUserID is the bot's user ID ("" = unknown): the "@bot" overwrite target falls
+	// back to it when the bot has no managed role, and the preflight uses it.
+	BotUserID string
 	// Icon is the content of the desired icon file (nil = icon not managed).
 	Icon      []byte
 	IconState iconState
@@ -163,6 +166,7 @@ func computePlan(in planInput) (Plan, error) {
 	for ph := phaseServer; ph <= phaseUnmanage; ph++ {
 		plan.Changes = append(plan.Changes, p.buckets[ph]...)
 	}
+	plan.preflight = p.preflight(plan.Changes)
 	return plan, nil
 }
 
@@ -716,6 +720,10 @@ func (p *planner) overwrites(where string, ows map[string]config.OverwriteSpec) 
 		}
 		var tg target
 		switch {
+		case t == BotTarget:
+			if tg, err = p.botTarget(); err != nil {
+				return nil, fmt.Errorf("%s.overwrites.%s: %w", where, t, err)
+			}
 		case t == "@everyone":
 			tg = target{id: p.serverID, typ: discord.OverwriteRole}
 		case strings.HasPrefix(t, "member:"):
@@ -773,6 +781,8 @@ func displayWant(ows []owSpec) map[string]owDisplay {
 	for _, o := range ows {
 		name := o.target.roleKey
 		switch {
+		case o.target.bot:
+			name = BotTarget
 		case name != "":
 		case o.target.typ == discord.OverwriteMember:
 			name = "member:" + o.target.id
@@ -796,6 +806,8 @@ func (p *planner) displayLive(ows []discord.Overwrite) map[string]owDisplay {
 			name = "member:" + o.ID
 		case o.ID == p.serverID:
 			name = "@everyone"
+		case o.ID == p.botRoleID():
+			name = BotTarget
 		default:
 			if k, ok := p.roleKeyByID(o.ID); ok {
 				name = k
@@ -806,6 +818,26 @@ func (p *planner) displayLive(ows []discord.Overwrite) map[string]owDisplay {
 		m[name] = owDisplay{Allow: o.Allow.Names(), Deny: o.Deny.Names()}
 	}
 	return m
+}
+
+// botTarget resolves "@bot": the bot's managed role, else a member overwrite for the
+// bot user (a bot invited without permissions has no managed role).
+func (p *planner) botTarget() (target, error) {
+	if id := p.botRoleID(); id != "" {
+		return target{id: id, typ: discord.OverwriteRole, bot: true}, nil
+	}
+	if p.in.BotUserID != "" && p.in.Live.HasBot {
+		return target{id: p.in.BotUserID, typ: discord.OverwriteMember, bot: true}, nil
+	}
+	return target{}, fmt.Errorf("the bot is unknown (no bot user configured)")
+}
+
+// botRoleID is the ID of the bot's managed role ("" when unknown or none).
+func (p *planner) botRoleID() string {
+	if r, ok := p.in.Live.BotRole(); ok {
+		return r.ID
+	}
+	return ""
 }
 
 func (p *planner) roleKeyByID(id string) (string, bool) {

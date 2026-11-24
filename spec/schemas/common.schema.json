@@ -95,9 +95,9 @@
       ]
     },
     "overwriteTarget": {
-      "description": "Permission overwrite target: @everyone, a role key, or member:<discord id>.",
+      "description": "Permission overwrite target: @everyone, @bot (the managing bot's own managed role), a role key, or member:<discord id>.",
       "type": "string",
-      "pattern": "^(@everyone|[a-z][a-z0-9-]{0,62}|member:[0-9]{17,20})$"
+      "pattern": "^(@everyone|@bot|[a-z][a-z0-9-]{0,62}|member:[0-9]{17,20})$"
     },
     "overwrites": {
       "description": "Permission overwrites keyed by target.",

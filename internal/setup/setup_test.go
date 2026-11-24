@@ -8,11 +8,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	git "github.com/go-git/go-git/v5"
 
+	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 )
 
@@ -117,7 +119,7 @@ func TestPermissionsAndHierarchy(t *testing.T) {
 	if h.Status != StatusFail || !strings.Contains(h.Hint, "drag the role “Cicord” above “Admin”") || !strings.Contains(h.Message, "below 2 role(s)") {
 		t.Fatalf("hierarchy = %+v", h)
 	}
-	p := PermissionsCheck(sid, roles, bot, "owner")
+	p := PermissionsCheck(sid, roles, bot, "owner", BaselineRequirements())
 	if p.Status != StatusFail || !strings.Contains(p.Message, "ManageServer") || strings.Contains(p.Message, "ManageRoles,") {
 		t.Fatalf("permissions = %+v", p)
 	}
@@ -126,7 +128,7 @@ func TestPermissionsAndHierarchy(t *testing.T) {
 	if h := HierarchyCheck(sid, roles, bot, "Cicord"); h.Status != StatusOK {
 		t.Fatalf("hierarchy ok = %+v", h)
 	}
-	if p := PermissionsCheck(sid, roles, bot, "owner"); p.Status != StatusOK || !strings.Contains(p.Message, "Administrator") {
+	if p := PermissionsCheck(sid, roles, bot, "owner", BaselineRequirements()); p.Status != StatusOK || !strings.Contains(p.Message, "Administrator") {
 		t.Fatalf("permissions ok = %+v", p)
 	}
 }
@@ -226,5 +228,46 @@ func TestSetupURLAndInvite(t *testing.T) {
 		if !strings.Contains(u, want) {
 			t.Fatalf("invite %s lacks %s", u, want)
 		}
+	}
+}
+
+// Once the configuration is known, the permission check uses what the server and its
+// plugins need, so it cannot report OK while a sync or a plugin call would be refused.
+func TestRequirementsFromConfig(t *testing.T) {
+	repo, diags := config.Load("../../examples/showcase", config.LoadOptions{})
+	if repo == nil || diags.HasErrors() {
+		t.Fatalf("load: %v", diags.Errors())
+	}
+	req, err := Requirements(repo, "showcase", "cicord")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for perm, src := range map[string]string{
+		"ViewChannel":         "Cicord",
+		"ManageChannels":      "plugin tickets: discord.channels.manage",
+		"CreatePublicThreads": "plugin polls: discord.threads.manage",
+		"ManageRoles":         "plugin levels: discord.roles.assign",
+	} {
+		if !slices.Contains(req.Sources[perm], src) {
+			t.Errorf("%s sources = %v, want %q", perm, req.Sources[perm], src)
+		}
+	}
+	const sid = "1"
+	roles := []discord.Role{
+		{ID: sid, Name: "@everyone"},
+		{ID: "11", Name: "Cicord", Position: 1, Managed: true, Permissions: RequiredPermissions},
+	}
+	bot := discord.Member{User: discord.User{ID: "b"}, RoleIDs: []string{"11"}}
+	if p := PermissionsCheck(sid, roles, bot, "owner", BaselineRequirements()); p.Status != StatusOK {
+		t.Fatalf("baseline = %+v", p)
+	}
+	p := PermissionsCheck(sid, roles, bot, "owner", req)
+	if p.Status != StatusFail || !strings.Contains(p.Message, "CreatePublicThreads") || !strings.Contains(p.Message, "Needed by: ") ||
+		!strings.Contains(p.Message, "plugin polls: discord.threads.manage") {
+		t.Fatalf("permissions = %+v", p)
+	}
+	roles[1].Permissions = req.Permissions
+	if p := PermissionsCheck(sid, roles, bot, "owner", req); p.Status != StatusOK {
+		t.Fatalf("with every requirement = %+v", p)
 	}
 }

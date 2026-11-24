@@ -85,8 +85,10 @@
 //
 // # Overwrites
 //
-// Targets: "@everyone" (the server ID), a role key (its mapped ID, resolved at apply
-// time when the role is created by the same plan) or "member:<id>". Entries with empty
+// Targets: "@everyone" (the server ID), "@bot" (the bot's own managed role, from the
+// bot member of the snapshot; a member overwrite for the bot user when it has none), a
+// role key (its mapped ID, resolved at apply time when the role is created by the same
+// plan) or "member:<id>". Entries with empty
 // allow and deny are ignored on both sides; comparison is order-insensitive. Overwrites
 // of a managed category/channel are owned as a whole: overwrites for unknown targets
 // are removed. A channel with syncWithCategory (config.Channel.SyncsWithCategory) gets
@@ -119,6 +121,21 @@
 // when the relative order of managed items differs (as predicted after the plan's
 // creates and moves). Apply recomputes positions from a fresh fetch, so the final order
 // is right even if Discord placed new items differently than predicted.
+//
+// # Permission preflight (permissions.go)
+//
+// When the bot is not Administrator (nor the owner), Plan checks what the plan sends
+// the way Discord does, before anything is applied: Manage Roles / Manage Channels /
+// Manage Server / Manage Expressions (Create Expressions for uploads) for the calls;
+// for a role or @everyone, the permissions it gains (all of them on create); for
+// overwrites, every allow/deny bit that changes, and Administrator when Manage Roles is
+// one of them; and View Channel + Manage Channels (+ Manage Roles, when held) in every
+// channel the plan edits, now and after the planned overwrites. A failure is a
+// *PermissionsError returned by Plan and Sync (the plan is returned too, Sync applies
+// nothing) naming the missing permissions and their configuration paths. Unchanged
+// resources are not checked: a live role already holding a permission the bot lacks
+// does not block a sync. ServerRequirements is the static union (what to give the
+// bot's role).
 //
 // # Apply
 //

@@ -105,6 +105,9 @@ spec:
           allow: [ViewChannel, SendMessages]
         support:
           allow: [ViewChannel, SendMessages]
+        # the bot's own role: keeps a bot that is not Administrator in the staff channels
+        "@bot":
+          allow: [ViewChannel, SendMessages]
 
   channels:
     rules:

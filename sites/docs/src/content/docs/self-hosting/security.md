@@ -23,6 +23,9 @@ description: What to check before exposing a Cicord runtime, and what the runtim
       the repository.
 - [ ] Keep bot tokens and secrets in an env file or the encrypted secret store, **never in the
       repository**.
+- [ ] Decide on the **bot's permissions**. Administrator is simplest, but a leaked token then
+      controls the whole server. A [least-privilege bot role](../bot-permissions/) holds only
+      what the configuration and plugins use. Private channels then need a `"@bot"` overwrite.
 - [ ] Only list trusted origins in **`--cors-origin`**: they can make credentialed calls.
 - [ ] **Protect the data directory** (`0700`, owned by the runtime user) and back it up: it
       holds sessions, plugin data, the secret store and its key.
@@ -83,6 +86,9 @@ description: What to check before exposing a Cicord runtime, and what the runtim
 
 - Only resources declared in YAML are ever modified; deletions need `prune: true` and are
   blocked by `deletionProtection` unless it is turned off.
+- With a bot that is not Administrator, every plan and sync first checks the permissions the
+  changes need and that the bot keeps access to the channels it manages. If a check fails,
+  nothing is applied ([bot permissions](../bot-permissions/#how-cicord-checks)).
 
 ## Admin on a private network, portal public
 

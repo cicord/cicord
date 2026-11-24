@@ -180,16 +180,21 @@ Threads are ignored by the reconciler.
 
 ## Permission overwrites
 
-`overwrites` on a category or channel are keyed by **target**: `@everyone`, a role key, or
-`member:<discord id>`. Each target has `allow` and `deny` lists; a permission in neither is
-inherited.
+`overwrites` on a category or channel are keyed by **target**: `@everyone`, `@bot`, a role
+key, or `member:<discord id>`. Each target has `allow` and `deny` lists; a permission in
+neither is inherited.
 
 ```yaml
 overwrites:
   "@everyone": { deny: [ViewChannel] }
   modo: { allow: [ViewChannel, ManageMessages] }
+  "@bot": { allow: [ViewChannel] }
   "member:112233445566778899": { allow: [ViewChannel] }
 ```
+
+`@bot` is the managing bot's own role, the managed role Discord created when the bot was
+invited. A bot that is not Administrator needs it in every private category or channel, or
+it locks itself out. See [bot permissions](../../self-hosting/bot-permissions/#private-channels-the-bot-target).
 
 Overwrites of a managed category or channel are owned as a whole: targets that are not in the
 YAML are removed. A channel with `syncWithCategory` gets exactly its category's overwrites.
