@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cicord/cicord/internal/catalog"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/registry"
 	"github.com/cicord/cicord/internal/writeback"
@@ -22,6 +24,19 @@ func init() {
 		return registry.NewResolver(abs, registry.DefaultCacheDir())
 	}
 	pluginSubcommands = append(pluginSubcommands, newPluginAddCmd)
+}
+
+// explainOfficialAdd adds what to do instead when `cicord plugin add cicord/<name>` fails
+// because this build cannot verify the official registry index (no official key).
+func explainOfficialAdd(source string, err error) error {
+	reg, name, _ := strings.Cut(source, "/")
+	if reg != config.OfficialRegistryName || !errors.Is(err, registry.ErrNoOfficialKey) {
+		return err
+	}
+	if _, ok := catalog.Official().Get(name); ok {
+		return fmt.Errorf("%w\n%s is bundled with cicord: install it from the Store of the admin console, which copies it to plugins/%s/", err, name, name)
+	}
+	return fmt.Errorf("%w\nonly the official plugins bundled with cicord are available in this build (cicord registry search)", err)
 }
 
 // yamlMapPlugin is the bot.yaml entry written by `cicord plugin add`.
@@ -58,7 +73,7 @@ func newPluginAddCmd() *cobra.Command {
 			ctx := registry.WithRegistryTokens(cmd.Context(), repo.Project.Spec.Registries, os.LookupEnv)
 			res, err := registry.ResolveLatest(ctx, repo.Project.Spec.Registries, registry.DefaultCacheDir(), source, rng)
 			if err != nil {
-				return err
+				return explainOfficialAdd(source, err)
 			}
 			lock, err := registry.ReadLock(repo.Root)
 			if err != nil {

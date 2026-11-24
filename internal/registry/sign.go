@@ -63,8 +63,9 @@ const (
 //	cicord registry keygen --out ~/cicord-registry-signing.key
 //
 // then paste the printed public key (base64, 44 characters; never the private key) here,
-// store the private key file's content as the CICORD_REGISTRY_SIGNING_KEY secret of
-// github.com/cicord/cicord-plugins, and keep an offline backup (docs/plugins.md §9).
+// store the private key file's content as the CICORD_REGISTRY_SIGNING_KEY secret of the
+// registry-signing environment of github.com/cicord/cicord-plugins, commit the public key
+// to its keys/official.pub, and keep an offline backup (docs/plugins.md §9).
 //
 // While empty, no official index can verify: FetchIndex fails with ErrNoOfficialKey
 // without network access, and the official source lists the bundled plugins only.

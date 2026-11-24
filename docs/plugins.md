@@ -948,10 +948,14 @@ workflows, and `index.yaml` written by `cicord plugin publish`, with local tags
    `internal/registry/sign.go` `OfficialKeys` (the `TODO(owner)` there) and release Cicord;
    commit the same public key to `keys/official.pub` in cicord-plugins (its CI verifies with
    it).
-3. **Secret**: store the content of the private key file as the
-   `CICORD_REGISTRY_SIGNING_KEY` Actions secret of cicord-plugins (the re-sign workflow
-   reads it with `--key env:CICORD_REGISTRY_SIGNING_KEY`), and set the
-   `CICORD_VERSION` Actions variable (the Cicord release the CI installs).
+3. **Secret**: in cicord-plugins, create the `registry-signing` environment (deployments
+   from `main` only) and store the content of the private key file as its
+   `CICORD_REGISTRY_SIGNING_KEY` secret (the sign workflow reads it with
+   `--key env:CICORD_REGISTRY_SIGNING_KEY`). Set the `CICORD_VERSION` Actions variable to a
+   Cicord release tag: the CI builds that version of `cicord`, and the sign workflow refuses
+   to run without it (the job holding the key never builds a moving branch). While
+   cicord/cicord is private, also add a `CICORD_SOURCE_TOKEN` secret able to read it
+   (pull requests from forks get no secret, so their checks need cicord/cicord public).
 4. **Push** the prepared repository as is, branch and tags
    (`git push origin main && git push origin --tags`): the `commit:` fields of `index.yaml`
    pin those exact commits, so do not re-create the history from the files.
