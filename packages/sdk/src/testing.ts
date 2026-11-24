@@ -36,6 +36,7 @@ import type {
   MessageInput,
   Modal,
   ModalInteraction,
+  Permission,
   PluginDefinition,
   ReplyInput,
   Role,
@@ -54,6 +55,18 @@ export interface TestRoleInit {
   name: string;
   color?: string;
   id?: string;
+  /** Hierarchy position (higher is higher). Default: 1, 2, 3… in declaration order. */
+  position?: number;
+  /** Default false. */
+  mentionable?: boolean;
+  /** Server-level permissions the role grants (`member.permissions`). Default none. */
+  permissions?: Permission[];
+}
+
+/** Who holds an access level (servers/<server>.yaml spec.access): user ids and role keys. */
+export interface TestPrincipals {
+  users?: string[];
+  roles?: string[];
 }
 
 export interface TestChannelInit {
@@ -98,7 +111,18 @@ export interface TestContextOptions {
   grants?: string[];
   plugin?: { name?: string; version?: string; instance?: string };
   bot?: { key?: string; username?: string };
-  server?: { id?: string; key?: string; name?: string; iconUrl?: string };
+  server?: {
+    id?: string;
+    key?: string;
+    name?: string;
+    iconUrl?: string;
+    /** `ctx.server.ownerId`; the owner has every permission and the admin access level. */
+    ownerId?: string;
+    /** Permissions of `@everyone` (part of every `member.permissions`). Default none. */
+    everyonePermissions?: Permission[];
+  };
+  /** spec.access of the server: `member.access` is "admin" / "moderator" for these. */
+  access?: { admins?: TestPrincipals; moderators?: TestPrincipals };
   /** Managed roles keyed by role key. */
   roles?: Record<string, TestRoleInit>;
   /** Managed channels keyed by channel key. */
@@ -116,10 +140,20 @@ export interface LogEntry {
   fields?: Record<string, Json>;
 }
 
+/** `allowedMentions` as the host sends it: lists are ids (objects replaced by their id). */
+export interface NormalizedAllowedMentions {
+  users?: boolean | string[];
+  roles?: boolean | string[];
+  everyone?: boolean;
+  repliedUser?: boolean;
+}
+
 export interface SentMessage {
   /** Channel key/id, or `dm:<userId>` for direct messages. */
   to: string;
   message: MessageInput;
+  /** The message's `allowedMentions`, normalized; absent when the message has none. */
+  allowedMentions?: NormalizedAllowedMentions;
   /** Id of the created message (see `harness.message(id)`). */
   id: string;
 }
@@ -180,6 +214,103 @@ export function capabilityError(capability: string): CapabilityError {
   return new CapabilityError(`missing capability "${capability}" (add it to grants in bot.yaml)`, {
     capability,
   });
+}
+
+/** Every permission name (Administrator and the owner get all of them). */
+const ALL_PERMISSIONS = [
+  "CreateInstantInvite",
+  "KickMembers",
+  "BanMembers",
+  "Administrator",
+  "ManageChannels",
+  "ManageServer",
+  "AddReactions",
+  "ViewAuditLog",
+  "PrioritySpeaker",
+  "Stream",
+  "ViewChannel",
+  "SendMessages",
+  "SendTTSMessages",
+  "ManageMessages",
+  "EmbedLinks",
+  "AttachFiles",
+  "ReadMessageHistory",
+  "MentionEveryone",
+  "UseExternalEmojis",
+  "ViewServerInsights",
+  "Connect",
+  "Speak",
+  "MuteMembers",
+  "DeafenMembers",
+  "MoveMembers",
+  "UseVAD",
+  "ChangeNickname",
+  "ManageNicknames",
+  "ManageRoles",
+  "ManageWebhooks",
+  "ManageExpressions",
+  "UseApplicationCommands",
+  "RequestToSpeak",
+  "ManageEvents",
+  "ManageThreads",
+  "CreatePublicThreads",
+  "CreatePrivateThreads",
+  "UseExternalStickers",
+  "SendMessagesInThreads",
+  "UseEmbeddedActivities",
+  "ModerateMembers",
+  "ViewCreatorMonetizationAnalytics",
+  "UseSoundboard",
+  "CreateExpressions",
+  "CreateEvents",
+  "UseExternalSounds",
+  "SendVoiceMessages",
+  "SendPolls",
+  "UseExternalApps",
+] as const satisfies readonly Permission[];
+// Fails type-checking when the spec adds a permission that is missing above.
+type MissingPermissions = Exclude<Permission, (typeof ALL_PERMISSIONS)[number]>;
+const allPermissionsListed: [MissingPermissions] extends [never] ? true : never = true;
+void allPermissionsListed;
+
+const SNOWFLAKE = /^\d{1,20}$/;
+const MAX_MENTION_IDS = 100;
+
+/**
+ * Validates and normalizes `allowedMentions` like the host: `users` / `roles` are a boolean
+ * or at most 100 ids (or objects with an id). Ids must be snowflakes, or ids known to the
+ * fakes (`known`), since test ids such as `role-staff` are not snowflakes. Throws a
+ * TypeError like the host.
+ */
+export function normalizeAllowedMentions(
+  input: MessageInput | ReplyInput,
+  known: (id: string) => boolean = () => false,
+): NormalizedAllowedMentions | undefined {
+  if (typeof input === "string" || input.allowedMentions === undefined) return undefined;
+  const am = input.allowedMentions as Record<string, unknown>;
+  const list = (name: "users" | "roles"): boolean | string[] | undefined => {
+    const v = am[name];
+    if (v === undefined || v === null) return undefined;
+    if (typeof v === "boolean") return v;
+    if (!Array.isArray(v))
+      throw new TypeError(`allowedMentions.${name} must be a boolean or an array of ids`);
+    if (v.length > MAX_MENTION_IDS)
+      throw new TypeError(`allowedMentions: at most ${MAX_MENTION_IDS} ${name} ids`);
+    return v.map((x: unknown) => {
+      const id = x !== null && typeof x === "object" ? (x as { id?: unknown }).id : x;
+      if (typeof id !== "string" || !(SNOWFLAKE.test(id) || known(id)))
+        throw new TypeError(`allowedMentions: ${name} id ${JSON.stringify(id)} is not a snowflake`);
+      return id;
+    });
+  };
+  const users = list("users");
+  const roles = list("roles");
+  return {
+    ...(users !== undefined ? { users } : {}),
+    ...(roles !== undefined ? { roles } : {}),
+    ...(am["everyone"] !== undefined ? { everyone: Boolean(am["everyone"]) } : {}),
+    ...(am["repliedUser"] !== undefined ? { repliedUser: Boolean(am["repliedUser"]) } : {}),
+  };
 }
 
 function clone<T extends Json>(value: T): T {
@@ -291,6 +422,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const kvExpiry = new Map<string, number>();
 
   const roles = new Map<string, Role>();
+  const rolePermissions = new Map<string, readonly Permission[]>(); // role id → permissions
   for (const [key, r] of Object.entries(options.roles ?? {})) {
     const id = r.id ?? `role-${key}`;
     roles.set(key, {
@@ -299,8 +431,19 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       name: r.name,
       ...(r.color ? { color: r.color } : {}),
       mention: `<@&${id}>`,
+      position: r.position ?? roles.size + 1,
+      mentionable: r.mentionable ?? false,
     });
+    rolePermissions.set(id, r.permissions ?? []);
   }
+  const ownerId = options.server?.ownerId;
+  const inPrincipals = (p: TestPrincipals | undefined, userId: string, owned: Set<string>) =>
+    !!p &&
+    ((p.users ?? []).includes(userId) ||
+      (p.roles ?? []).some((key) => {
+        const role = roles.get(key);
+        return role !== undefined && owned.has(role.id);
+      }));
   const resolveRole = (ref: RoleRef): Role | undefined => {
     if (typeof ref === "string") return roles.get(ref);
     for (const r of roles.values()) if (r.id === ref.id) return r;
@@ -346,9 +489,17 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     return message;
   };
   /** Records a message sent by the bot. */
+  const knownId = (id: string): boolean =>
+    members.has(id) || [...roles.values()].some((r) => r.id === id);
   const post = (channel: TextChannel, input: MessageInput, to?: string): Message => {
+    const allowedMentions = normalizeAllowedMentions(input, knownId);
     const message = makeMessage(channel, botUser, input);
-    sent.push({ to: to ?? channel.key ?? channel.id, message: input, id: message.id });
+    sent.push({
+      to: to ?? channel.key ?? channel.id,
+      message: input,
+      id: message.id,
+      ...(allowedMentions ? { allowedMentions } : {}),
+    });
     return message;
   };
 
@@ -435,6 +586,20 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         return [...roles.values()].filter((r) => owned.has(r.id));
       },
       joinedAt: init.joinedAt ?? new Date(0),
+      // Server-level, like the host: @everyone + roles; all for the owner and Administrator.
+      get permissions() {
+        if (user.id === ownerId) return ALL_PERMISSIONS;
+        const set = new Set<Permission>(options.server?.everyonePermissions ?? []);
+        for (const id of owned) for (const p of rolePermissions.get(id) ?? []) set.add(p);
+        if (set.has("Administrator")) return ALL_PERMISSIONS;
+        return ALL_PERMISSIONS.filter((p) => set.has(p));
+      },
+      get access() {
+        if (user.id === ownerId || inPrincipals(options.access?.admins, user.id, owned))
+          return "admin" as const;
+        if (inPrincipals(options.access?.moderators, user.id, owned)) return "moderator" as const;
+        return "member" as const;
+      },
       hasRole(ref) {
         const role = resolveRole(ref);
         return role ? owned.has(role.id) : false;
@@ -486,6 +651,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     key: serverKey,
     name: options.server?.name ?? "Test Server",
     ...(options.server?.iconUrl ? { iconUrl: options.server.iconUrl } : {}),
+    ...(ownerId !== undefined ? { ownerId } : {}),
     channel(ref) {
       need("discord.channels.read");
       const found = findChannel(ref);
@@ -838,8 +1004,22 @@ function fakeInteraction(
     throw new Error(`unknown channel ${JSON.stringify(call.channel)} for the interaction`);
   let phase: Phase = "none";
   let deferredUpdate = false;
+  const known = (candidate: string): boolean => {
+    if (harness.member(candidate)) return true;
+    try {
+      harness.ctx.server.role({ id: candidate });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  // Invalid allowedMentions throw, like the host.
+  const checkMentions = (message: MessageInput | ReplyInput): void => {
+    normalizeAllowedMentions(message, known);
+  };
   const followUp = async (message: ReplyInput): Promise<Message> => {
     if (phase === "none") throw new Error("followUp(): the interaction has not been answered yet");
+    checkMentions(message);
     result.followUps.push(message);
     // Follow-ups need no capability: the message is not recorded in `sent`.
     return {
@@ -890,6 +1070,7 @@ function fakeInteraction(
         await followUp(message);
         return;
       }
+      checkMentions(message);
       phase = "replied";
       result.replies.push(message);
     },
@@ -911,6 +1092,7 @@ function fakeInteraction(
       if (kind !== "component") throw new Error("update(): only for component interactions");
       if (phase === "replied" || phase === "modal" || (phase === "deferred" && !deferredUpdate))
         throw new Error("update(): the interaction was already answered");
+      checkMentions(message);
       phase = "updated";
       result.updates.push(message);
     },

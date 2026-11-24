@@ -1,6 +1,8 @@
 package sim
 
 import (
+	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -47,6 +49,11 @@ func validateMessage(m discord.MessageCreate) error {
 	}
 	if total > 6000 {
 		return badRequest("embeds exceed 6000 characters in total")
+	}
+	if m.AllowedMentions != nil {
+		if err := m.AllowedMentions.Validate(); err != nil {
+			return err
+		}
 	}
 	return validateComponents(m.Components)
 }
@@ -205,6 +212,9 @@ func (w *World) newMessage(c *channelState, author discord.User, m discord.Messa
 		return ms
 	}
 	ms.msg.Flags &^= discord.MessageFlagEphemeral
+	if m.Flags&msgFlagLoading == 0 {
+		ms.mentions = w.resolveMentions(c, author.ID, m)
+	}
 	c.msgIDs = append(c.msgIDs, msg.ID)
 	w.emit(discord.MessageCreateEvent{Message: cloneMessage(ms.msg)})
 	return ms
@@ -213,6 +223,13 @@ func (w *World) newMessage(c *channelState, author discord.User, m discord.Messa
 // editMessage replaces content, embeds and components and emits MessageUpdate unless
 // ephemeral. Caller holds w.mu.
 func (w *World) editMessage(ms *messageState, m discord.MessageCreate) {
+	// The first edit of a deferred response is its real content: it notifies like a new
+	// message. Later edits notify no one (Discord does not ping on edits).
+	if ms.msg.Flags&msgFlagLoading != 0 && !ms.ephemeral {
+		if c := w.channels[ms.msg.ChannelID]; c != nil {
+			ms.mentions = w.resolveMentions(c, ms.msg.Author.ID, m)
+		}
+	}
 	ms.msg.Content = m.Content
 	ms.msg.Embeds = cloneEmbeds(m.Embeds)
 	ms.msg.Components = cloneComponents(m.Components)
@@ -222,6 +239,60 @@ func (w *World) editMessage(ms *messageState, m discord.MessageCreate) {
 	if !ms.ephemeral {
 		w.emit(discord.MessageUpdateEvent{Message: cloneMessage(ms.msg)})
 	}
+}
+
+// Mentions is who a message notified: Discord's mentions, mention_roles and
+// mention_everyone, after allowed_mentions and the mention permissions are applied.
+type Mentions struct {
+	UserIDs  []string
+	RoleIDs  []string
+	Everyone bool
+}
+
+var (
+	userMentionRe = regexp.MustCompile(`<@!?(\d{1,20})>`)
+	roleMentionRe = regexp.MustCompile(`<@&(\d{1,20})>`)
+	everyoneRe    = regexp.MustCompile(`@(everyone|here)\b`)
+	permMention   = discord.MustPermissions("MentionEveryone")
+)
+
+// resolveMentions follows Discord: without allowed_mentions every mention in the content
+// notifies; with it, only the parsed types and the listed ids do. A role notifies only
+// when it is mentionable or the author has MentionEveryone in the channel; @everyone and
+// @here need MentionEveryone too. The author of the replied message is notified unless
+// allowed_mentions is set without replied_user. Caller holds w.mu.
+func (w *World) resolveMentions(c *channelState, authorID string, m discord.MessageCreate) Mentions {
+	var out Mentions
+	am := m.AllowedMentions
+	all := am == nil
+	for _, sm := range userMentionRe.FindAllStringSubmatch(m.Content, -1) {
+		id := sm[1]
+		if (all || am.Users || slices.Contains(am.UserIDs, id)) && !slices.Contains(out.UserIDs, id) {
+			out.UserIDs = append(out.UserIDs, id)
+		}
+	}
+	if m.ReplyTo != "" && (all || am.RepliedUser) {
+		if r := w.messages[m.ReplyTo]; r != nil && !slices.Contains(out.UserIDs, r.msg.Author.ID) {
+			out.UserIDs = append(out.UserIDs, r.msg.Author.ID)
+		}
+	}
+	s := w.servers[c.ch.ServerID]
+	if s == nil { // DMs: no roles, no @everyone
+		return out
+	}
+	canMentionAll := w.channelPerms(c, authorID).Has(permMention)
+	for _, sm := range roleMentionRe.FindAllStringSubmatch(m.Content, -1) {
+		id := sm[1]
+		r := s.roles[id]
+		if r == nil || id == s.info.ID || slices.Contains(out.RoleIDs, id) {
+			continue
+		}
+		if (all || am.Roles || slices.Contains(am.RoleIDs, id)) && (r.Mentionable || canMentionAll) {
+			out.RoleIDs = append(out.RoleIDs, id)
+		}
+	}
+	out.Everyone = everyoneRe.MatchString(m.Content) && (all || am.Everyone) && canMentionAll
+	return out
 }
 
 // checkSend verifies actor may post in channel c. Caller holds w.mu.

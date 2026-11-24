@@ -136,6 +136,7 @@ type messageState struct {
 	reactions    []*reaction
 	ephemeral    bool
 	ephemeralFor string // user who can see the ephemeral message
+	mentions     Mentions
 }
 
 // Call is one mutating call recorded in the call log.

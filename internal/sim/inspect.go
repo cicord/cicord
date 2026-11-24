@@ -2,6 +2,7 @@ package sim
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cicord/cicord/internal/discord"
 )
@@ -272,6 +273,21 @@ func (w *World) Message(messageID string) (discord.Message, bool) {
 		return discord.Message{}, false
 	}
 	return cloneMessage(ms.msg), true
+}
+
+// MessageMentions returns who a message notified (see Mentions).
+func (w *World) MessageMentions(messageID string) (Mentions, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ms := w.messages[messageID]
+	if ms == nil {
+		return Mentions{}, false
+	}
+	return Mentions{
+		UserIDs:  slices.Clone(ms.mentions.UserIDs),
+		RoleIDs:  slices.Clone(ms.mentions.RoleIDs),
+		Everyone: ms.mentions.Everyone,
+	}, true
 }
 
 // Reactions returns emoji → user IDs (in reaction order) for a message.

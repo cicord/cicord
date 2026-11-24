@@ -368,7 +368,10 @@ type wireMessage struct {
 type wireAllowedMentions struct {
 	// Parse must always be emitted: an empty list disables all mentions, while an
 	// absent allowed_mentions object means "Discord default".
-	Parse []string `json:"parse"`
+	Parse       []string `json:"parse"`
+	Users       []string `json:"users,omitempty"`
+	Roles       []string `json:"roles,omitempty"`
+	RepliedUser bool     `json:"replied_user,omitempty"`
 }
 
 type wireMessageReference struct {

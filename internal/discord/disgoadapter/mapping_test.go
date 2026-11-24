@@ -605,3 +605,50 @@ func TestOptionValueEdgeCases(t *testing.T) {
 		t.Errorf("mentionable = %v", v)
 	}
 }
+
+func TestAllowedMentionsToWire(t *testing.T) {
+	cases := []struct {
+		name string
+		in   discord.AllowedMentions
+		want map[string]any
+	}{
+		{"none", discord.AllowedMentions{}, map[string]any{"parse": []any{}}},
+		{"parse", discord.AllowedMentions{Users: true, Roles: true}, map[string]any{"parse": []any{"users", "roles"}}},
+		{"role list", discord.AllowedMentions{RoleIDs: []string{"42"}, UserIDs: []string{}},
+			map[string]any{"parse": []any{}, "roles": []any{"42"}}},
+		{"users parsed, roles listed", discord.AllowedMentions{Users: true, RoleIDs: []string{"42", "43"}, RepliedUser: true},
+			map[string]any{"parse": []any{"users"}, "roles": []any{"42", "43"}, "replied_user": true}},
+		// A parsed type is never also listed (Discord answers 400 to that).
+		{"parsed wins", discord.AllowedMentions{Roles: true, RoleIDs: []string{"42"}}, map[string]any{"parse": []any{"roles"}}},
+	}
+	for _, c := range cases {
+		got := jsonOf(t, allowedMentionsToWire(&c.in))
+		if !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+	send := jsonOf(t, messageSendToWire(discord.MessageCreate{Content: "<@&42>", AllowedMentions: &discord.AllowedMentions{RoleIDs: []string{"42"}}}))
+	if am := send.(map[string]any)["allowed_mentions"]; !reflect.DeepEqual(am, map[string]any{"parse": []any{}, "roles": []any{"42"}}) {
+		t.Errorf("send allowed_mentions = %v", am)
+	}
+}
+
+// The fields plugins rely on for permission checks (role position and mentionable, server
+// owner) decode from Discord's JSON names.
+func TestRoleAndServerFromJSON(t *testing.T) {
+	var r wireRole
+	if err := json.Unmarshal([]byte(`{"id":"3","name":"mod","position":7,"mentionable":true,"permissions":"1099511627776"}`), &r); err != nil {
+		t.Fatal(err)
+	}
+	role := roleFromWire(r)
+	if role.Position != 7 || !role.Mentionable || !role.Permissions.Has(discord.MustPermissions("ModerateMembers")) {
+		t.Errorf("role = %+v", role)
+	}
+	var g wireGuild
+	if err := json.Unmarshal([]byte(`{"id":"1","name":"S","owner_id":"99"}`), &g); err != nil {
+		t.Fatal(err)
+	}
+	if s := serverFromWire(g); s.OwnerID != "99" {
+		t.Errorf("owner = %q", s.OwnerID)
+	}
+}

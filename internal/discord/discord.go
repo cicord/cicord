@@ -12,6 +12,7 @@ package discord
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -558,10 +559,58 @@ type Component struct {
 	MaxLength *int
 }
 
+// AllowedMentions restricts who a message notifies (Discord's allowed_mentions). Users,
+// Roles and Everyone allow every mention of that type found in the content ("parse");
+// UserIDs and RoleIDs allow only the listed users or roles. A type cannot be both parsed
+// and listed (Validate). The zero value notifies no one.
 type AllowedMentions struct {
 	Users    bool
 	Roles    bool
 	Everyone bool
+	// UserIDs / RoleIDs: at most MaxAllowedMentionIDs snowflakes each.
+	UserIDs []string
+	RoleIDs []string
+	// RepliedUser notifies the author of the message replied to (MessageCreate.ReplyTo).
+	RepliedUser bool
+}
+
+// MaxAllowedMentionIDs is Discord's limit of ids per allowed_mentions list.
+const MaxAllowedMentionIDs = 100
+
+// Validate applies Discord's rules: snowflake ids, at most MaxAllowedMentionIDs per list,
+// and a type is never both parsed and listed. Errors wrap ErrBadRequest.
+func (a AllowedMentions) Validate() error {
+	check := func(kind string, parse bool, ids []string) error {
+		if parse && len(ids) > 0 {
+			return fmt.Errorf("%w: allowed mentions: %s cannot be both allowed (true) and listed", ErrBadRequest, kind)
+		}
+		if len(ids) > MaxAllowedMentionIDs {
+			return fmt.Errorf("%w: allowed mentions: at most %d %s ids", ErrBadRequest, MaxAllowedMentionIDs, kind)
+		}
+		for _, id := range ids {
+			if !IsSnowflake(id) {
+				return fmt.Errorf("%w: allowed mentions: %s id %q is not a snowflake", ErrBadRequest, kind, id)
+			}
+		}
+		return nil
+	}
+	if err := check("users", a.Users, a.UserIDs); err != nil {
+		return err
+	}
+	return check("roles", a.Roles, a.RoleIDs)
+}
+
+// IsSnowflake reports whether s looks like a Discord id (1–20 decimal digits).
+func IsSnowflake(s string) bool {
+	if s == "" || len(s) > 20 {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // MessageCreate is used to send or edit (full replace of the given fields) a message.

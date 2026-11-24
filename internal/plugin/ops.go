@@ -74,6 +74,7 @@ func init() {
 		"resolve.role":   opResolveRole,
 		"server.channel": opServerChannel,
 		"server.role":    opServerRole,
+		"server.owner":   opServerOwner,
 		"it.state":       opInteractionState,
 	}
 	asyncOps = map[string]asyncOp{
@@ -369,6 +370,14 @@ func opServerRole(i *Instance, _ *invocation, args json.RawMessage) (any, error)
 		return i.roleDTO(id), nil
 	}
 	return nil, fmt.Errorf("unknown role %s on server %q", a.Ref, i.env.ServerKey)
+}
+
+// opServerOwner returns the owner's user id, or null when it is not known.
+func opServerOwner(i *Instance, _ *invocation, _ json.RawMessage) (any, error) {
+	if id := i.ownerID(); id != "" {
+		return id, nil
+	}
+	return nil, nil
 }
 
 // ───────────────────────────────────────────────────────────── channel scope

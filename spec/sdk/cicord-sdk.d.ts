@@ -89,11 +89,31 @@ export interface ActionRow {
   components: (Button | SelectMenu)[];
 }
 
+/**
+ * Who a message may notify (Discord's `allowed_mentions`). Without it, every mention in the
+ * content notifies. `true` allows every mention of that type, `false` none, a list only
+ * those users or roles: ids (snowflakes, not keys) or objects with an `id` (a User, Member
+ * or Role), at most 100 per list. Even when allowed, a role that is not mentionable (and
+ * `@everyone` / `@here`) only notifies if the bot has MentionEveryone in the channel.
+ *
+ * ```ts
+ * // Pings exactly this role, nobody else, whatever else the content mentions.
+ * await channel.send({ content: `${role.mention} new poll`, allowedMentions: { roles: [role.id], users: [] } });
+ * ```
+ */
+export interface AllowedMentions {
+  users?: boolean | readonly (Snowflake | { readonly id: Snowflake })[];
+  roles?: boolean | readonly (Snowflake | { readonly id: Snowflake })[];
+  everyone?: boolean;
+  /** Notify the author of the message replied to (`message.reply`). Default false once allowedMentions is set. */
+  repliedUser?: boolean;
+}
+
 export interface MessagePayload {
   content?: string;
   embeds?: Embed[];
   components?: ActionRow[];
-  allowedMentions?: { users?: boolean; roles?: boolean; everyone?: boolean };
+  allowedMentions?: AllowedMentions;
 }
 
 export type MessageInput = string | MessagePayload;
@@ -152,6 +172,14 @@ export interface Role {
   readonly name: string;
   readonly color?: string;
   readonly mention: string;
+  /**
+   * Position in the role hierarchy: higher is higher, `@everyone` is 0. Two roles may share
+   * a position (Discord then orders them by id). `undefined` when the role is not known to
+   * the runtime (not cached yet, or an older engine): treat it as unknown, never as 0.
+   */
+  readonly position?: number;
+  /** Whether anyone may mention the role. `undefined` when the role is not known. */
+  readonly mentionable?: boolean;
 }
 
 export interface Channel {
@@ -185,6 +213,19 @@ export interface Member {
   readonly mention: string;
   readonly roles: readonly Role[];
   readonly joinedAt: Date;
+  /**
+   * Server-level permissions: those of `@everyone` and of every role of the member; all of
+   * them for the server owner and for Administrator. Channel overwrites (and timeouts) are
+   * NOT applied: this is not what the member may do in a given channel. Roles the runtime
+   * does not know count for nothing. `undefined` on an older engine.
+   */
+  readonly permissions?: readonly Permission[];
+  /**
+   * Cicord access level, as for portal routes: `"admin"` for the server owner and
+   * `spec.access.admins` of servers/<server>.yaml, `"moderator"` for
+   * `spec.access.moderators`, else `"member"`. `undefined` on an older engine.
+   */
+  readonly access?: "member" | "moderator" | "admin";
   hasRole(role: RoleRef): boolean;
   /** @capability discord.roles.assign */
   addRole(role: RoleRef, reason?: string): Promise<void>;
@@ -221,6 +262,8 @@ export interface Server {
   readonly key: string;
   readonly name: string;
   readonly iconUrl?: string;
+  /** User id of the server owner, read live; `undefined` when not known (or an older engine). */
+  readonly ownerId?: Snowflake;
   /** Resolve a channel by key or id. Throws if it does not exist. @capability discord.channels.read */
   channel(ref: ChannelRef): TextChannel;
   /** Resolve a role by key or id. Throws if it does not exist. */

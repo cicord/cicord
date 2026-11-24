@@ -55,6 +55,11 @@ type Env struct {
 
 	Discord  discord.Client
 	Resolver Resolver // may be nil (nothing resolves)
+	// OwnerID returns the server owner's user id, "" when unknown (nil: unknown). It is
+	// called on every use, so an ownership transfer is seen at once.
+	OwnerID func() string
+	// Access is the server's spec.access (Member.access).
+	Access Access
 
 	KV        state.KV          // already scoped to the instance; nil: kv calls fail
 	Tasks     state.TaskQueue   // nil: ctx.schedule fails
@@ -67,6 +72,15 @@ type Env struct {
 	Logger     *slog.Logger // nil: discarded
 	Limits     Limits
 	HTTPClient *http.Client // optional override for http.fetch (tests); egress name checks still apply
+}
+
+// Access lists who holds the moderator and admin access levels of the server
+// (servers/<server>.yaml spec.access): user ids and role keys. The owner is always admin.
+type Access struct {
+	AdminUsers     []string
+	AdminRoles     []string
+	ModeratorUsers []string
+	ModeratorRoles []string
 }
 
 // Resolver maps Cicord keys to Discord IDs for the instance's server and exposes the cached

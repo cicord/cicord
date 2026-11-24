@@ -260,6 +260,21 @@ func toPresence(p *config.Presence) discord.Presence {
 
 func instanceScope(in config.Instance) string { return "plugin:" + in.ID() }
 
+// pluginAccess gives plugins the server's access levels (Member.access).
+func pluginAccess(a *config.Access) plugin.Access {
+	var out plugin.Access
+	if a == nil {
+		return out
+	}
+	if p := a.Admins; p != nil {
+		out.AdminUsers, out.AdminRoles = p.Users, p.Roles
+	}
+	if p := a.Moderators; p != nil {
+		out.ModeratorUsers, out.ModeratorRoles = p.Users, p.Roles
+	}
+	return out
+}
+
 // startInstance creates and starts a plugin instance for irt (the caller installs it).
 func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverRT, irt *instanceRT) (*plugin.Instance, error) {
 	if irt.plugin == nil {
@@ -279,6 +294,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		Config: in.Config, Grants: in.Grants, NetworkAllow: network, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
 		MessageContent: slices.Contains(m.Spec.Intents, "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
 		Discord: host.session, Resolver: srt.cache,
+		OwnerID: func() string { return srt.cache.Server().OwnerID }, Access: pluginAccess(srt.cfg.Spec.Access),
 		KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources: ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
 		Portal:    &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, MaxTTL: 24 * time.Hour},

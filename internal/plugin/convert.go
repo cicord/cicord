@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,9 @@ type roleDTO struct {
 	Name    string `json:"name"`
 	Color   string `json:"color,omitempty"`
 	Mention string `json:"mention"`
+	// Position and Mentionable are omitted when the role is not known (not cached).
+	Position    *int  `json:"position,omitempty"`
+	Mentionable *bool `json:"mentionable,omitempty"`
 }
 
 type channelDTO struct {
@@ -43,6 +47,10 @@ type memberDTO struct {
 	DisplayName string    `json:"displayName"`
 	Roles       []roleDTO `json:"roles"`
 	JoinedAt    string    `json:"joinedAt,omitempty"`
+	// Permissions: server-level permission names (see memberPermissions).
+	Permissions []string `json:"permissions"`
+	// Access: "member", "moderator" or "admin" (see memberAccess).
+	Access string `json:"access"`
 }
 
 type attachmentDTO struct {
@@ -97,7 +105,17 @@ func (i *Instance) resolverKey(id string, kinds ...state.ResourceKind) string {
 	return ""
 }
 
+// roleDTOFrom converts a known role (from the cache or a resolved interaction payload).
 func (i *Instance) roleDTOFrom(r discord.Role) roleDTO {
+	dto := i.unknownRoleDTO(r)
+	pos, mentionable := r.Position, r.Mentionable
+	dto.Position, dto.Mentionable = &pos, &mentionable
+	return dto
+}
+
+// unknownRoleDTO converts a role whose position and settings are not known: only its id
+// (and what the payload carried) is reliable, so position and mentionable are left out.
+func (i *Instance) unknownRoleDTO(r discord.Role) roleDTO {
 	dto := roleDTO{ID: r.ID, Name: r.Name, Color: colorString(r.Color), Key: i.resolverKey(r.ID, state.KindRole)}
 	if r.ID == i.env.ServerID {
 		dto.Mention = "@everyone"
@@ -116,7 +134,7 @@ func (i *Instance) roleDTO(id string) roleDTO {
 			return i.roleDTOFrom(r)
 		}
 	}
-	return i.roleDTOFrom(discord.Role{ID: id})
+	return i.unknownRoleDTO(discord.Role{ID: id})
 }
 
 func channelTypeName(t discord.ChannelType) string {
@@ -157,11 +175,89 @@ func (i *Instance) memberDTO(m discord.Member) memberDTO {
 		DisplayName: m.DisplayName(),
 		Roles:       make([]roleDTO, 0, len(m.RoleIDs)),
 		JoinedAt:    jsTime(m.JoinedAt),
+		Permissions: i.memberPermissions(m).Names(),
+		Access:      i.memberAccess(m),
 	}
 	for _, id := range m.RoleIDs {
 		dto.Roles = append(dto.Roles, i.roleDTO(id))
 	}
 	return dto
+}
+
+// resolvedRoleDTO converts a role of an interaction: the resolved payload, else the cache.
+func (i *Instance) resolvedRoleDTO(res discord.Resolved, id string) roleDTO {
+	if r, ok := res.Roles[id]; ok {
+		return i.roleDTOFrom(r)
+	}
+	return i.roleDTO(id)
+}
+
+const allPermissions = ^discord.Permissions(0)
+
+var permAdministrator = discord.MustPermissions("Administrator")
+
+// ownerID is the server owner's user id ("" when unknown).
+func (i *Instance) ownerID() string {
+	if i.env.OwnerID == nil {
+		return ""
+	}
+	return i.env.OwnerID()
+}
+
+// memberPermissions is the member's server-level permission set: @everyone's permissions
+// and those of every role, all of them for the owner and for Administrator. Channel
+// overwrites and timeouts are not applied, and roles missing from the cache count for
+// nothing (the set errs on the side of fewer permissions).
+func (i *Instance) memberPermissions(m discord.Member) discord.Permissions {
+	if owner := i.ownerID(); owner != "" && m.User.ID == owner {
+		return allPermissions
+	}
+	if i.env.Resolver == nil {
+		return 0
+	}
+	var p discord.Permissions
+	if r, ok := i.env.Resolver.Role(i.env.ServerID); ok {
+		p = r.Permissions
+	}
+	for _, id := range m.RoleIDs {
+		if r, ok := i.env.Resolver.Role(id); ok {
+			p |= r.Permissions
+		}
+	}
+	if p.Has(permAdministrator) {
+		return allPermissions
+	}
+	return p
+}
+
+// memberAccess is the member's Cicord access level, as the portal and the API compute it
+// (spec/api.md §1): "admin" for the owner and spec.access.admins, "moderator" for
+// spec.access.moderators, else "member".
+func (i *Instance) memberAccess(m discord.Member) string {
+	if owner := i.ownerID(); owner != "" && m.User.ID == owner {
+		return "admin"
+	}
+	matches := func(users, roleKeys []string) bool {
+		if slices.Contains(users, m.User.ID) {
+			return true
+		}
+		if i.env.Resolver == nil {
+			return false
+		}
+		for _, k := range roleKeys {
+			if id, ok := i.env.Resolver.ID(state.KindRole, k); ok && m.HasRole(id) {
+				return true
+			}
+		}
+		return false
+	}
+	switch a := i.env.Access; {
+	case matches(a.AdminUsers, a.AdminRoles):
+		return "admin"
+	case matches(a.ModeratorUsers, a.ModeratorRoles):
+		return "moderator"
+	}
+	return "member"
 }
 
 func (i *Instance) messageDTO(m discord.Message) messageDTO {
@@ -428,15 +524,7 @@ func (i *Instance) optionDTOs(opts []discord.InteractionOption, res discord.Reso
 			ud := i.userDTO(u)
 			dto.User = &ud
 		case discord.OptionRole:
-			r := discord.Role{ID: id}
-			if rr, ok := res.Roles[id]; ok {
-				r = rr
-			} else if i.env.Resolver != nil {
-				if rr, ok := i.env.Resolver.Role(id); ok {
-					r = rr
-				}
-			}
-			rd := i.roleDTOFrom(r)
+			rd := i.resolvedRoleDTO(res, id)
 			dto.Role = &rd
 		case discord.OptionChannel:
 			var cd channelDTO
@@ -454,11 +542,7 @@ func (i *Instance) optionDTOs(opts []discord.InteractionOption, res discord.Reso
 				ud := i.userDTO(u)
 				dto.User = &ud
 			} else {
-				r := discord.Role{ID: id}
-				if rr, ok := res.Roles[id]; ok {
-					r = rr
-				}
-				rd := i.roleDTOFrom(r)
+				rd := i.resolvedRoleDTO(res, id)
 				dto.Role = &rd
 			}
 		case discord.OptionAttachment:
@@ -555,9 +639,31 @@ type messageInput struct {
 }
 
 type mentionsIn struct {
-	Users    bool `json:"users"`
-	Roles    bool `json:"roles"`
-	Everyone bool `json:"everyone"`
+	Users       mentionList `json:"users"`
+	Roles       mentionList `json:"roles"`
+	Everyone    bool        `json:"everyone"`
+	RepliedUser bool        `json:"repliedUser"`
+}
+
+// mentionList is `boolean | Snowflake[]` (allowedMentions.users / .roles).
+type mentionList struct {
+	all bool
+	ids []string // nil unless a list was given
+}
+
+func (l *mentionList) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		return nil
+	}
+	if err := json.Unmarshal(b, &l.all); err == nil {
+		return nil
+	}
+	var ids []string
+	if err := json.Unmarshal(b, &ids); err != nil {
+		return argErr("allowedMentions: users and roles must be a boolean or an array of ids")
+	}
+	l.ids = append([]string{}, ids...)
+	return nil
 }
 
 type embedIn struct {
@@ -663,8 +769,14 @@ func (i *Instance) messageCreate(in messageInput, allowEphemeral bool) (discord.
 		}
 		mc.Components = append(mc.Components, row)
 	}
-	if in.AllowedMentions != nil {
-		mc.AllowedMentions = &discord.AllowedMentions{Users: in.AllowedMentions.Users, Roles: in.AllowedMentions.Roles, Everyone: in.AllowedMentions.Everyone}
+	if am := in.AllowedMentions; am != nil {
+		mc.AllowedMentions = &discord.AllowedMentions{
+			Users: am.Users.all, Roles: am.Roles.all, Everyone: am.Everyone,
+			UserIDs: am.Users.ids, RoleIDs: am.Roles.ids, RepliedUser: am.RepliedUser,
+		}
+		if err := mc.AllowedMentions.Validate(); err != nil {
+			return mc, argErr("%s", strings.TrimPrefix(err.Error(), discord.ErrBadRequest.Error()+": "))
+		}
 	}
 	if mc.Content == "" && len(mc.Embeds) == 0 && len(mc.Components) == 0 {
 		return mc, argErr("message is empty (set content, embeds or components)")

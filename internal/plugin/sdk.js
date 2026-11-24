@@ -121,10 +121,25 @@
     return JSON.stringify(out);
   }
 
+  // allowedMentions.users / .roles: a boolean, or a list of ids (strings) or of objects
+  // with an id (users, members, roles), sent to the host as ids.
+  function mentionIds(v, name) {
+    if (v === undefined || v === null || typeof v === "boolean") return v;
+    if (!Array.isArray(v)) throw new TypeError("allowedMentions." + name + " must be a boolean or an array of ids");
+    return v.map((x) => (x !== null && typeof x === "object" ? x.id : x));
+  }
+  function withMentions(m) {
+    const am = m.allowedMentions;
+    if (am === undefined || am === null || typeof am !== "object") return m;
+    return Object.assign({}, m, {
+      allowedMentions: Object.assign({}, am, { users: mentionIds(am.users, "users"), roles: mentionIds(am.roles, "roles") }),
+    });
+  }
+
   function msgIn(m) {
     if (typeof m === "string") return { content: m };
     if (m === null || typeof m !== "object") throw new TypeError("message must be a string or a message payload");
-    return m;
+    return withMentions(m);
   }
 
   // ─────────────────────────────────────────────────────────── entities
@@ -143,7 +158,12 @@
 
   function mkRole(d) {
     if (!d) return undefined;
-    return freeze({ id: d.id, key: d.key || undefined, name: d.name || "", color: d.color || undefined, mention: d.mention });
+    return freeze({
+      id: d.id, key: d.key || undefined, name: d.name || "", color: d.color || undefined, mention: d.mention,
+      // Unknown (role not cached): left undefined, never guessed.
+      position: typeof d.position === "number" ? d.position : undefined,
+      mentionable: typeof d.mentionable === "boolean" ? d.mentionable : undefined,
+    });
   }
 
   function mkAttachment(d) {
@@ -256,6 +276,8 @@
     m.mention = "<@" + d.user.id + ">";
     m.joinedAt = d.joinedAt ? new Date(d.joinedAt) : new Date(NaN);
     memberRoles.set(m, (d.roles || []).map(mkRole));
+    m.permissions = Array.isArray(d.permissions) ? freeze(d.permissions.slice()) : undefined;
+    m.access = d.access || undefined;
     return freeze(m);
   }
 
@@ -267,7 +289,7 @@
   function replyIn(m) {
     if (typeof m === "string") return { content: m };
     if (m === null || typeof m !== "object") throw new TypeError("reply must be a string or a message payload");
-    return m;
+    return withMentions(m);
   }
 
   const InteractionProto = {
@@ -378,6 +400,7 @@
       key: d.server.key,
       name: d.server.name,
       iconUrl: d.server.iconUrl || undefined,
+      get ownerId() { return hcall("server.owner", {}) || undefined; },
       channel(ref) { return mkChannel(hcall("server.channel", { ref })); },
       role(ref) { return mkRole(hcall("server.role", { ref })); },
       async member(userId) {

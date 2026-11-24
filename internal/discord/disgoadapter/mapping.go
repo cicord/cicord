@@ -832,6 +832,15 @@ func allowedMentionsToWire(a *discord.AllowedMentions) *wireAllowedMentions {
 	if a.Everyone {
 		w.Parse = append(w.Parse, "everyone")
 	}
+	// Discord rejects a type that is both in parse and listed: Validate refuses that
+	// earlier, and a listed type is never parsed here.
+	if !a.Users {
+		w.Users = a.UserIDs
+	}
+	if !a.Roles {
+		w.Roles = a.RoleIDs
+	}
+	w.RepliedUser = a.RepliedUser
 	return w
 }
 

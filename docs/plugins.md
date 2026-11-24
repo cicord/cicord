@@ -299,6 +299,28 @@ Server resources are referenced by their **key** in `servers/<server>.yaml`
 (`ctx.server.channel("general")`, `member.addRole("member")`), or by `{ id }` for resources
 Cicord does not manage.
 
+#### Permission checks: roles, owner, access level
+
+Discord checks a command's default `permissions` and the **bot's** role hierarchy, never
+the invoker's. A plugin acting on behalf of a member (moderating someone, pinging a role)
+checks the rest itself with:
+
+- `role.position` (higher is higher, `@everyone` is 0) and `role.mentionable`;
+- `ctx.server.ownerId` (read live, so an ownership transfer is seen at once);
+- `member.permissions`: the **server-level** permissions (`@everyone` plus every role of
+  the member; all of them for the owner and for `Administrator`). Channel overwrites and
+  timeouts are **not** applied: it is not what the member may do in a given channel;
+- `member.access`: the Cicord access level used by portal routes, `"admin"` for the owner
+  and `spec.access.admins` of `servers/<server>.yaml`, `"moderator"` for
+  `spec.access.moderators`, else `"member"`.
+
+These fields are optional in the types: they are `undefined` when the runtime does not know
+the value (a role not cached yet, an older engine). **Fail closed**: an unknown position or
+access level must never let a check pass. The official `moderation` plugin is the
+reference: the owner may moderate anyone, nobody may moderate the owner, staff (moderator
+or admin access) can only be moderated by an admin, and the moderator's highest role must be
+strictly above the target's; anything it cannot verify is refused.
+
 ### Events
 
 From [`welcome`](../examples/basic/plugins/welcome/src/index.ts) (intent `ServerMembers`):
@@ -505,6 +527,29 @@ modals: {
 Select menus are `{ type: "select", id, options: [{ value, label }], minValues?, maxValues? }`,
 and the picked values arrive in `interaction.values`. Link buttons are
 `{ type: "link", url, label }` and trigger no handler.
+
+### Mentions: `allowedMentions`
+
+Without `allowedMentions`, every mention in the content notifies, including roles that are
+not mentionable when the bot has MentionEveryone. Set it whenever the content contains text
+from a member, or a mention the member picked:
+
+```ts
+await channel.send({
+  content: `${role.mention} — new poll by ${interaction.user.mention}`,
+  // Notifies exactly this role: not the author, not any other mention in the text.
+  allowedMentions: { roles: [role.id], users: [] },
+});
+```
+
+`users` and `roles` take `true` (every mention of that type), `false` (none) or a list of
+**ids** (snowflakes, not resource keys) or objects with an `id` (a `User`, `Member` or
+`Role`), at most 100 per list; a type cannot be both allowed and listed. `everyone` allows
+`@everyone` / `@here`; `repliedUser` notifies the author of the message replied to
+(`message.reply()`). A non-mentionable role, `@everyone` and `@here` still only notify
+when the bot has MentionEveryone in the channel. Invalid lists make the call throw. The
+official `polls` plugin only lets poll managers ping a role that is not mentionable, and
+notifies only the picked member or role.
 
 ### Portal routes
 
@@ -739,7 +784,8 @@ Vitest or `node:test` without Discord:
 
 - `createTestContext(options)` returns a harness. Its `ctx` goes to your handlers, and it
   records:
-  - `sent` (messages with their `id`; DMs are `to: "dm:<userId>"`), `edits`,
+  - `sent` (messages with their `id` and, when set, the normalized `allowedMentions`: lists
+    hold ids; DMs are `to: "dm:<userId>"`), `edits`,
     `deletedMessages`, `reactions`, `threads`;
   - `roleChanges`, `moderation` (timeouts, kicks, bans, nicknames);
   - `createdChannels` / `deletedChannels` (created channels resolve with `{ id }`, and
@@ -754,6 +800,10 @@ Vitest or `node:test` without Discord:
   - `grants` (when given, calls without the grant throw `CapabilityError`);
   - `plugin`, `bot`, `server`, `roles` and `channels` (keyed by resource key), `members`,
     `portalUrl`;
+  - for permission checks: roles take `position` (default 1, 2, 3… in declaration order),
+    `mentionable` and `permissions`; `server` takes `ownerId` and `everyonePermissions`;
+    `access: { admins, moderators }` (`{ users?, roles? }`, role keys) sets
+    `member.access`. `member.permissions` is computed like the runtime (server-level);
   - `fetch(url, init)`: the fake `ctx.http.fetch` (`{ status?, headers?, body? }`).
 - `callRoute(plugin, harness, "POST /complete", { viewer, body, query })` matches the
   route patterns. It answers `401` for anonymous callers of non-public routes and `403` for
@@ -772,7 +822,10 @@ Vitest or `node:test` without Discord:
   the runtime checks them (an invalid result throws).
 - Events, tasks, schedules and subscriptions are plain functions: call them with the
   harness context, e.g. `await plugin.tasks!.close!(t.ctx, { id: "1" })`.
-- `capabilityError(name)` and `normalizeRouteResponse(response)` are helpers.
+- `capabilityError(name)`, `normalizeRouteResponse(response)` and
+  `normalizeAllowedMentions(message)` are helpers. Sent messages, replies, follow-ups and
+  updates check `allowedMentions` like the host (ids must be snowflakes or ids of the
+  fakes, such as `role-staff`).
 
 Adapted from [`onboarding.test.ts`](../examples/basic/plugins/onboarding/test/onboarding.test.ts):
 

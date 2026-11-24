@@ -80,7 +80,12 @@ relative imports, `import type` for types, no `enum` or `namespace`. Prefer Vite
   `applyDefaults(schema, config)` is exported too); `grants` (when given, calls without the
   grant throw `CapabilityError`); `plugin`, `bot`, `server`; `roles` and `channels` keyed by
   resource key; `members`; `portalUrl`; and `fetch(url, init)`, the fake `ctx.http.fetch`.
-- **Recorded effects**: `sent` (messages with their `id`; DMs are `to: "dm:<userId>"`),
+  For permission checks, roles take `position` (default 1, 2, 3… in declaration order),
+  `mentionable` and `permissions`; `server` takes `ownerId` and `everyonePermissions`; and
+  `access: { admins, moderators }` (`{ users?, roles? }`, role keys) sets `member.access`.
+  `member.permissions` is computed like the runtime (server-level).
+- **Recorded effects**: `sent` (messages with their `id` and their normalized
+  `allowedMentions`, lists holding ids; DMs are `to: "dm:<userId>"`),
   `edits`, `deletedMessages`, `reactions`, `threads`, `roleChanges`, `moderation`
   (timeouts, kicks, bans, nicknames), `createdChannels` / `deletedChannels`, `links`,
   `published`, `scheduled`, `requests` (`http.fetch`), `logs`, and the raw `kv` (TTLs follow
@@ -101,8 +106,10 @@ components, ids fall back to the part before `:`):
 | `callRoute(plugin, harness, "POST /complete", { viewer, body, query })` | `{ status, body, headers }`; `401` for anonymous callers of non-public routes, `403` for non-members of `member` routes |
 
 Events, tasks, schedules and subscriptions are plain functions: call them with the harness
-context, for example `await plugin.tasks!.close!(t.ctx, { id: "1" })`. `capabilityError(name)`
-and `normalizeRouteResponse(response)` are exported helpers.
+context, for example `await plugin.tasks!.close!(t.ctx, { id: "1" })`. `capabilityError(name)`,
+`normalizeRouteResponse(response)` and `normalizeAllowedMentions(message)` are exported
+helpers. Messages, replies, follow-ups and updates check `allowedMentions` like the host
+(ids must be snowflakes or ids of the fakes, such as `role-staff`).
 
 Importing the JSON schema in tests needs `"resolveJsonModule": true` in the test
 `tsconfig.json`.

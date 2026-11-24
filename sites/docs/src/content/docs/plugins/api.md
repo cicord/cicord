@@ -32,7 +32,7 @@ Every handler receives `ctx`:
 |---|---|
 | `ctx.plugin` | `name`, `version`, `instance` |
 | `ctx.bot` | `key`, `user` |
-| `ctx.server` | The instance's server: `id`, `key`, `name`, `channel()`, `role()`, `member()`, `createChannel()`, `deleteChannel()` |
+| `ctx.server` | The instance's server: `id`, `key`, `name`, `ownerId`, `channel()`, `role()`, `member()`, `createChannel()`, `deleteChannel()` |
 | `ctx.config` | The effective config (overrides merged, defaults applied) |
 | `ctx.log` | `debug`, `info`, `warn`, `error(message, fields)` |
 | `ctx.kv` | Instance-scoped storage |
@@ -44,6 +44,24 @@ Every handler receives `ctx`:
 Server resources are referenced by their **key** in `servers/<server>.yaml`
 (`ctx.server.channel("general")`, `member.addRole("member")`), or by `{ id }` for resources
 Cicord does not manage.
+
+### Permission checks
+
+Discord checks a command's `permissions` and the **bot's** role hierarchy, not the
+invoker's. To check what a member may do to another one, or which role they may ping:
+
+| Field | What it is |
+|---|---|
+| `role.position` | Hierarchy position, higher is higher (`@everyone` is 0) |
+| `role.mentionable` | Whether anyone may mention the role |
+| `ctx.server.ownerId` | The owner's user id, read live |
+| `member.permissions` | **Server-level** permissions: `@everyone` and every role; all for the owner and `Administrator`. Channel overwrites are not applied |
+| `member.access` | `"admin"` (owner, `spec.access.admins`), `"moderator"` (`spec.access.moderators`) or `"member"` |
+
+They are `undefined` when the runtime does not know them (a role not cached yet, an older
+engine): fail closed, never treat an unknown position as 0. The official `moderation`
+plugin refuses a moderator acting on the owner, on staff (unless the moderator is an admin)
+or on a member whose highest role is not strictly below theirs.
 
 ## Events
 
@@ -226,6 +244,17 @@ modals: {
   the picked values arrive in `interaction.values`.
 - Messages: a string, or `{ content?, embeds?, components?, allowedMentions? }`; interaction
   replies can add `ephemeral: true`.
+- `allowedMentions`: who the message may notify. `users` and `roles` take `true` (all),
+  `false` (none) or a list of ids, or of objects with an `id` (at most 100); plus
+  `everyone` and `repliedUser`. Without it every mention notifies, so set it when the
+  content holds a mention a member chose:
+
+  ```ts
+  await channel.send({ content: `${role.mention} new poll`, allowedMentions: { roles: [role.id], users: [] } });
+  ```
+
+  A non-mentionable role, `@everyone` and `@here` only notify when the bot has
+  MentionEveryone. Invalid lists make the call throw.
 
 ## Portal routes
 
