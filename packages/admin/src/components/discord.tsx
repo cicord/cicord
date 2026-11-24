@@ -17,9 +17,9 @@ import { Button } from "./ui/button.tsx";
 import { Card, CardDescription, CardHeader, CardTitle } from "./ui/card.tsx";
 
 /** Boosts needed for each level (index = level). */
-export const BOOST_TIERS = [0, 2, 7, 14] as const;
+const BOOST_TIERS = [0, 2, 7, 14] as const;
 
-export const BOOST_PERKS = [
+const BOOST_PERKS = [
   { key: "animatedIcon", level: 1 },
   { key: "splash", level: 1 },
   { key: "banner", level: 2 },
@@ -30,14 +30,14 @@ export const BOOST_PERKS = [
 ] as const;
 
 /** Expression slots per boost level (emojis: static, and as many animated). */
-export const SLOTS = {
+const SLOTS = {
   emojis: [50, 100, 150, 250],
   stickers: [5, 15, 30, 60],
   sounds: [8, 24, 36, 48],
 } as const;
 
 /** Boost level needed by each server image. */
-export const ASSET_LEVEL: Record<ServerAssetKind, number> = { icon: 0, banner: 2, splash: 1 };
+const ASSET_LEVEL: Record<ServerAssetKind, number> = { icon: 0, banner: 2, splash: 1 };
 
 const clampLevel = (n: number | undefined) => Math.min(Math.max(n ?? 0, 0), 3);
 
@@ -47,7 +47,7 @@ export function slotsAt(level: number | undefined) {
 }
 
 /** "Level 1 · 3 boosts" with a progress bar toward the next level. */
-export function BoostMeter({ server, className }: { server: ServerStatus; className?: string }) {
+function BoostMeter({ server, className }: { server: ServerStatus; className?: string }) {
   const { t } = useTranslation();
   const level = clampLevel(server.boostLevel);
   const count = server.boostCount ?? 0;
@@ -86,7 +86,7 @@ export function BoostMeter({ server, className }: { server: ServerStatus; classN
 }
 
 /** Community on/off badge. */
-export function CommunityBadge({ server }: { server: ServerStatus }) {
+function CommunityBadge({ server }: { server: ServerStatus }) {
   const { t } = useTranslation();
   return server.community ? (
     <Badge tone="success">
@@ -379,9 +379,12 @@ export function AssetRow({
     setNotes([]);
     setPr("");
     try {
-      const res = await client.admin.uploadServerAsset(serverKey, kind, file, {
-        ...(revision ? { revision } : {}),
-      });
+      const res = await client.admin.uploadServerAsset(
+        serverKey,
+        kind,
+        file,
+        revision ? { revision } : {},
+      );
       setNotes(res.warnings ?? []);
       if (res.mode === "pullRequest") {
         setPr(res.pullRequestUrl);

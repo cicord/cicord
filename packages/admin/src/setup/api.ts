@@ -24,7 +24,7 @@ export type StepId =
 
 export type Provider = "local" | "embedded" | "github";
 
-export interface SetupBot {
+interface SetupBot {
   key: string;
   secretRef: string;
   applicationId: string;
@@ -38,7 +38,7 @@ export interface SetupBot {
   intents: Check;
 }
 
-export interface SetupServer {
+interface SetupServer {
   id: string;
   name: string;
   iconUrl?: string;

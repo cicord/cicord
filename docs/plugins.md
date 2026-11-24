@@ -637,7 +637,7 @@ Plugins are type-checked with a `tsconfig.json` that maps `@cicord/sdk` to the S
 - a scaffolded plugin uses `.cicord/cicord-sdk.d.ts` (`cicord plugin sdk-types`);
 - the examples use `spec/sdk/cicord-sdk.d.ts`.
 
-Use `"lib": ["ES2022"]` and `"types": []`, so that no DOM or Node types leak in. Run
+Use `"lib": ["ES2023"]` (Sobek provides the ES2023 built-ins, such as `toSorted` and `findLast`) and `"types": []`, so that no DOM or Node types leak in. Run
 `tsc --noEmit -p plugins/hello`.
 
 ## 8. Testing with `@cicord/sdk/testing`

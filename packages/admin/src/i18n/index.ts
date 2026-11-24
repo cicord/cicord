@@ -4,11 +4,11 @@
  * `resources` below. Dates and relative times go through Intl in the current language.
  * Initialized synchronously on import so tests and the app render translated text at once.
  */
-import i18next from "i18next";
+import i18next, { changeLanguage, t as translate, use as addModule } from "i18next";
 import { initReactI18next, useTranslation } from "react-i18next";
 import en from "./en.json";
 
-export const resources = { en: { translation: en } } as const;
+const resources = { en: { translation: en } } as const;
 export type Language = keyof typeof resources;
 export const LANGUAGES: { id: Language; name: string }[] = [{ id: "en", name: "English" }];
 
@@ -31,7 +31,7 @@ function initialLanguage(): Language {
   return "en";
 }
 
-void i18next.use(initReactI18next).init({
+void addModule(initReactI18next).init({
   resources,
   lng: initialLanguage(),
   fallbackLng: "en",
@@ -41,7 +41,7 @@ void i18next.use(initReactI18next).init({
 });
 
 export function setLanguage(lng: Language): void {
-  void i18next.changeLanguage(lng);
+  void changeLanguage(lng);
   try {
     localStorage.setItem(LANG_KEY, lng);
   } catch {
@@ -74,7 +74,7 @@ export function formatRelative(
   if (Number.isNaN(t)) return "—";
   const diff = Math.round((t - now) / 1000);
   // Under 10 s, or slightly in the future (server clock ahead of the browser).
-  if (Math.abs(diff) < 10 || (diff > 0 && diff < 120)) return i18next.t("time.justNow");
+  if (Math.abs(diff) < 10 || (diff > 0 && diff < 120)) return translate("time.justNow");
   const rtf = new Intl.RelativeTimeFormat(lng, { numeric: "auto" });
   for (const [unit, secs] of UNITS) {
     if (Math.abs(diff) >= secs || unit === "second")
@@ -88,10 +88,6 @@ export function formatDateTime(iso: string, lng = i18next.language): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return new Intl.DateTimeFormat(lng, { dateStyle: "medium", timeStyle: "medium" }).format(d);
-}
-
-export function formatNumber(n: number, lng = i18next.language): string {
-  return new Intl.NumberFormat(lng).format(n);
 }
 
 /** True for Go's zero time and empty values. */

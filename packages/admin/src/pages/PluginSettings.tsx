@@ -125,7 +125,7 @@ function OutcomeNote({ outcome, onDismiss }: { outcome: SaveOutcome; onDismiss: 
 // ───────────────────────────────────────────────────────────── editor
 
 /** 40-char git SHAs are shortened; other revision ids (local-…) are shown as is. */
-export const shortRev = (id: string): string => (/^[0-9a-f]{40}$/i.test(id) ? id.slice(0, 7) : id);
+const shortRev = (id: string): string => (/^[0-9a-f]{40}$/i.test(id) ? id.slice(0, 7) : id);
 
 export function formatPath(path: readonly (string | number)[]): string {
   return path.map((s, i) => (typeof s === "number" ? `[${s}]` : i === 0 ? s : `.${s}`)).join("");
@@ -155,8 +155,8 @@ function SettingsEditor({
   const schema = instance.schema as JsonSchema;
   // "server" edits the effective config on this server; "base" edits spec.plugins[].config.
   const baseConfig = instance.baseConfig ? applyDefaults(schema, instance.baseConfig) : undefined;
-  const baseline = (scope === "base" && baseConfig ? baseConfig : instance.config) as JsonObject;
-  const overridden = Object.keys(instance.override ?? {}).sort();
+  const baseline = scope === "base" && baseConfig ? baseConfig : instance.config;
+  const overridden = Object.keys(instance.override ?? {}).toSorted();
   const [draft, setDraft] = useState<JsonObject>(baseline);
   const [reviewing, setReviewing] = useState(false);
   const [saving, setSaving] = useState(false);

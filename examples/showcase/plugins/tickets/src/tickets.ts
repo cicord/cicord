@@ -4,7 +4,7 @@
  */
 import type { Context, Embed, Json, Member, MessagePayload, User } from "@cicord/sdk";
 
-export type TicketStatus = "open" | "closed";
+type TicketStatus = "open" | "closed";
 
 export interface Person {
   id: string;
@@ -41,7 +41,7 @@ export interface TicketSummary {
 }
 
 // Zero-padded numbers keep `kv.list()` (lexicographic) in ticket order.
-export const ticketKey = (n: number): string => `ticket:${String(n).padStart(8, "0")}`;
+const ticketKey = (n: number): string => `ticket:${String(n).padStart(8, "0")}`;
 export const openKey = (userId: string, n: number): string => `open:${userId}:${n}`;
 export const channelKey = (channelId: string): string => `channel:${channelId}`;
 export const activityKey = (n: number): string => `activity:${n}`;
@@ -164,7 +164,7 @@ export async function listTickets(
     cursor = page.cursor;
   } while (cursor);
   const out: TicketSummary[] = [];
-  for (const t of tickets.reverse()) {
+  for (const t of tickets.toReversed()) {
     if (status && t.status !== status) continue;
     const open = t.status === "open";
     out.push({

@@ -92,27 +92,24 @@ export function RepositoryStep({ view, api, onView }: StepProps) {
   const choose = useAction();
   const imp = useAction();
   const nav = useAction();
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    void choose
-      .run(() => api.repo(provider === "github" ? { provider, url, branch, token } : { provider }))
-      .then((v) => {
-        if (v) {
-          setToken("");
-          setEditing(false);
-          onView(v);
-        }
-      });
+    const v = await choose.run(() =>
+      api.repo(provider === "github" ? { provider, url, branch, token } : { provider }),
+    );
+    if (v) {
+      setToken("");
+      setEditing(false);
+      onView(v);
+    }
   };
-  const runImport = (confirm: boolean) =>
-    void imp
-      .run(() => api.import(confirm))
-      .then((r) => {
-        if (r) {
-          setImported(r);
-          if (!r.needsConfirm) onView(r.view);
-        }
-      });
+  const runImport = async (confirm: boolean) => {
+    const r = await imp.run(() => api.import(confirm));
+    if (r) {
+      setImported(r);
+      if (!r.needsConfirm) onView(r.view);
+    }
+  };
   const label = (p: Provider) => t(`setup.repo.providers.${p}`);
   return (
     <>
@@ -356,16 +353,13 @@ export function LoginStep({ view, api, onView }: StepProps) {
             <p>{t("setup.login.step3")}</p>
             <form
               className="mt-2 flex flex-col gap-2 sm:flex-row"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                void save
-                  .run(() => api.saveOAuth(secret))
-                  .then((v) => {
-                    if (v) {
-                      setSecret("");
-                      onView(v);
-                    }
-                  });
+                const v = await save.run(() => api.saveOAuth(secret));
+                if (v) {
+                  setSecret("");
+                  onView(v);
+                }
               }}
             >
               <Label htmlFor="client-secret" className="sr-only">
@@ -519,9 +513,7 @@ function intentToggle(t: ReturnType<typeof useTranslation>["t"], name: string) {
 /** Only what differs from the schema defaults goes to bot.yaml. */
 export function nonDefaults(schema: JsonSchema, draft: JsonObject): JsonObject {
   const defaults = applyDefaults(schema, {});
-  return Object.fromEntries(
-    Object.entries(draft).filter(([k, v]) => !deepEqual(v, defaults[k])),
-  ) as JsonObject;
+  return Object.fromEntries(Object.entries(draft).filter(([k, v]) => !deepEqual(v, defaults[k])));
 }
 
 function PluginReview({
@@ -542,7 +534,7 @@ function PluginReview({
   const { t } = useTranslation();
   const schema = plugin.schema as JsonSchema;
   const hasSettings = Object.keys((schema as { properties?: object }).properties ?? {}).length > 0;
-  const [draft, setDraft] = useState<JsonObject>(() => applyDefaults(schema, {}) as JsonObject);
+  const [draft, setDraft] = useState<JsonObject>(() => applyDefaults(schema, {}));
   const [attempted, setAttempted] = useState(false);
   const [serverErrors, setServerErrors] = useState<Record<string, string[]>>({});
   const [done, setDone] = useState<InstallResult | null>(null);
@@ -553,17 +545,14 @@ function PluginReview({
     [schema, draft, resources.data, hasSettings],
   );
   const errors = mergeErrors(attempted ? errorsByField(clientErrors) : {}, serverErrors);
-  const install = () => {
+  const install = async () => {
     setAttempted(true);
     if (clientErrors.length) return;
-    void a
-      .run(() => api.install(plugin.name, nonDefaults(schema, draft)))
-      .then((r) => {
-        if (r) {
-          setDone(r.result);
-          onView(r.view);
-        }
-      });
+    const r = await a.run(() => api.install(plugin.name, nonDefaults(schema, draft)));
+    if (r) {
+      setDone(r.result);
+      onView(r.view);
+    }
   };
   useEffect(() => {
     const e = a.error;
@@ -749,15 +738,13 @@ export function DoneStep({ view, api, onView }: StepProps) {
   const { t } = useTranslation();
   const a = useAction();
   const loginOn = view.login.configured || view.simulator;
-  const finish = () =>
-    void a
-      .run(() => api.finish())
-      .then((v) => {
-        if (v) {
-          onView(v);
-          window.location.assign(href("/"));
-        }
-      });
+  const finish = async () => {
+    const v = await a.run(() => api.finish());
+    if (v) {
+      onView(v);
+      window.location.assign(href("/"));
+    }
+  };
   const rows: [string, ReactNode][] = [
     [t("setup.done.bot"), view.bot?.username ?? "—"],
     [t("setup.done.server"), view.server?.name ?? "—"],

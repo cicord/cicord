@@ -31,4 +31,4 @@ proto["hasPointerCapture"] ??= () => false;
 proto["releasePointerCapture"] ??= () => undefined;
 proto["setPointerCapture"] ??= () => undefined;
 
-window.scrollTo = (() => undefined) as typeof window.scrollTo;
+window.scrollTo = () => undefined;

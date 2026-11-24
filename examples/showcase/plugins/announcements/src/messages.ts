@@ -43,7 +43,7 @@ const ZWSP = "​";
  * may ping (some are mentioned on purpose) other role mentions are turned into plain names.
  * The SDK's allowedMentions only has on/off switches, not id lists, hence the rewriting.
  */
-export function neutralize(
+function neutralize(
   ctx: Context,
   text: string,
   opts: { everyone: boolean; roles: string[] },
@@ -64,7 +64,7 @@ export function neutralize(
 }
 
 /** The mention line and the allowedMentions that let exactly these mentions ping. */
-export function mentionPart(
+function mentionPart(
   ctx: Context,
   m: Mentions,
 ): { line: string; allowed: NonNullable<MessagePayload["allowedMentions"]>; dropped: boolean } {
@@ -82,7 +82,7 @@ export function mentionPart(
 }
 
 /** Role ids of the configured mentions (unknown roles are logged and left out). */
-export function configuredMentions(ctx: Context, a: Configured): Mentions {
+function configuredMentions(ctx: Context, a: Configured): Mentions {
   const roles: string[] = [];
   for (const key of a.mentions?.roles ?? []) {
     try {

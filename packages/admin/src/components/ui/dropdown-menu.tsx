@@ -5,7 +5,6 @@ import { cn } from "../../lib/utils.ts";
 
 export const DropdownMenu = P.Root;
 export const DropdownMenuTrigger = P.Trigger;
-export const DropdownMenuGroup = P.Group;
 export const DropdownMenuRadioGroup = P.RadioGroup;
 
 const item =
@@ -76,13 +75,4 @@ export function DropdownMenuLabel({ className, ...props }: ComponentProps<typeof
 
 export function DropdownMenuSeparator({ className, ...props }: ComponentProps<typeof P.Separator>) {
   return <P.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
-}
-
-export function DropdownMenuShortcut({ className, ...props }: ComponentProps<"span">) {
-  return (
-    <span
-      className={cn("ml-auto text-xs tracking-wide text-subtle-foreground", className)}
-      {...props}
-    />
-  );
 }

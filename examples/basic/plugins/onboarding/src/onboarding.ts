@@ -8,7 +8,7 @@ type StepConfig = PluginConfig["steps"][number];
 
 // ───────────────────────────────────────────────────────────── contract (JSON shapes)
 
-export type OnboardingOption = {
+type OnboardingOption = {
   role: string;
   label: string;
   emoji: string;
@@ -17,7 +17,7 @@ export type OnboardingOption = {
   color: string;
 };
 
-export type OnboardingStep = {
+type OnboardingStep = {
   id: string;
   title: string;
   description: string;
@@ -59,12 +59,12 @@ export type Problem = { severity: "error"; path: string; message: string };
 
 export const completionKey = (userId: string): string => `completed:${userId}`;
 
-export function toOnboardingRole(role: Role): OnboardingRole {
+function toOnboardingRole(role: Role): OnboardingRole {
   return { key: role.key ?? "", id: role.id, name: role.name, color: role.color ?? "" };
 }
 
 /** Resolves a role key, or undefined (and a warning) when it no longer exists on Discord. */
-export function tryRole(ctx: Context, key: string): Role | undefined {
+function tryRole(ctx: Context, key: string): Role | undefined {
   try {
     return ctx.server.role(key);
   } catch {
@@ -74,7 +74,7 @@ export function tryRole(ctx: Context, key: string): Role | undefined {
 }
 
 /** Steps with unique ids (the schema cannot enforce uniqueness; later duplicates are ignored). */
-export function configuredSteps(ctx: Context): StepConfig[] {
+function configuredSteps(ctx: Context): StepConfig[] {
   const seen = new Set<string>();
   const steps: StepConfig[] = [];
   for (const step of ctx.config.steps ?? []) {

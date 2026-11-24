@@ -85,9 +85,7 @@ export class CicordApiError extends Error {
           status,
           message:
             typeof e.message === "string" && e.message ? e.message : statusText || `HTTP ${status}`,
-          diagnostics: Array.isArray(e.diagnostics)
-            ? (e.diagnostics as unknown as Diagnostic[])
-            : [],
+          diagnostics: Array.isArray(e.diagnostics) ? e.diagnostics : [],
           body,
           hint: str(e.hint),
           details: str(e.details),

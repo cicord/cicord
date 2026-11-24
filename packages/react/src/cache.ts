@@ -55,7 +55,8 @@ export class QueryCache {
 
   #set(entry: Entry, state: QueryState<unknown>): void {
     entry.state = state;
-    for (const listener of [...entry.listeners]) listener();
+    // A snapshot: listeners may subscribe or unsubscribe while being notified.
+    for (const listener of Array.from(entry.listeners)) listener();
   }
 
   getState<T>(key: QueryKey): QueryState<T> {

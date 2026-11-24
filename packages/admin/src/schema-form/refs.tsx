@@ -65,7 +65,7 @@ export function refOptions(kind: RefKind, resources: ServerResources | undefined
     category ? (order.get(category) ?? resources.categories.length) : -1;
   return resources.channels
     .filter((c) => c.key && c.type !== "category")
-    .sort((a, b) => rank(a.category) - rank(b.category))
+    .toSorted((a, b) => rank(a.category) - rank(b.category))
     .map((c) => ({
       value: c.key,
       label: c.name,

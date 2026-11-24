@@ -242,12 +242,10 @@ describe("setup wizard", () => {
     await user.click(pick);
     const hierarchy = await screen.findByText(/drag the role “Cicord” above “Admin”/);
     expect(hierarchy).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Continue" }).disabled).toBe(true);
     await user.click(screen.getAllByRole("button", { name: "Re-check" })[0]!);
     await waitFor(() =>
-      expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Continue" }).disabled).toBe(
         false,
       ),
     );

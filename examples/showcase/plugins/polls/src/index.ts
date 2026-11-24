@@ -163,7 +163,7 @@ export default definePlugin({
       const picked = current.includes(choice)
         ? current.filter((i) => i !== choice)
         : poll.multiple
-          ? [...current, choice].sort((a, b) => a - b)
+          ? [...current, choice].toSorted((a, b) => a - b)
           : [choice];
       await vote(ctx, interaction, poll, picked);
     },
@@ -175,7 +175,7 @@ export default definePlugin({
       const picked = [...new Set(interaction.values.map(Number))]
         .filter((i) => Number.isInteger(i) && i >= 0 && i < poll.choices.length)
         .slice(0, poll.multiple ? poll.choices.length : 1)
-        .sort((a, b) => a - b);
+        .toSorted((a, b) => a - b);
       await vote(ctx, interaction, poll, picked);
     },
 

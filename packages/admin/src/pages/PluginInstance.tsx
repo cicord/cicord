@@ -376,13 +376,13 @@ function DangerZone({ instance, serverKey }: { instance: PluginInstance; serverK
     try {
       const result = await client.admin.uninstallPlugin(serverKey, instance.bot, instance.instance);
       setOpen(false);
-      setFlash<UninstallFlash>(`uninstall:${serverKey}`, {
+      setFlash(`uninstall:${serverKey}`, {
         name,
         bot: instance.bot,
         instance: instance.instance,
         server,
         result,
-      });
+      } satisfies UninstallFlash);
       if (result.mode === "pullRequest") toast.info(t("plugins.uninstall.done.pr"));
       else toast.success(t("plugins.uninstall.done.title", { name, server }));
       // Leave first: refetching this instance now would 404 under our feet.

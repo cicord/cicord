@@ -51,31 +51,23 @@ const BG: Record<Tone, string> = {
   violet: "bg-violet",
 };
 
-export const SYNC_STATES = ["Synced", "OutOfSync", "Unknown"] as const;
-export const HEALTH_STATES = ["Healthy", "Progressing", "Degraded", "Missing"] as const;
+const SYNC_STATES = ["Synced", "OutOfSync", "Unknown"] as const;
+const HEALTH_STATES = ["Healthy", "Progressing", "Degraded", "Missing"] as const;
 export const HISTORY_STATES = ["succeeded", "failed", "rejected"] as const;
-export const ACTIONS = [
-  "create",
-  "update",
-  "delete",
-  "adopt",
-  "reorder",
-  "unmanage",
-  "blocked",
-] as const;
+const ACTIONS = ["create", "update", "delete", "adopt", "reorder", "unmanage", "blocked"] as const;
 
 type SyncState = (typeof SYNC_STATES)[number];
 type HealthState = (typeof HEALTH_STATES)[number];
 type HistoryState = (typeof HISTORY_STATES)[number];
 type ActionName = (typeof ACTIONS)[number];
 
-export const syncMeta: Record<SyncState, { tone: Tone; icon: LucideIcon }> = {
+const syncMeta: Record<SyncState, { tone: Tone; icon: LucideIcon }> = {
   Synced: { tone: "success", icon: CircleCheck },
   OutOfSync: { tone: "warning", icon: RefreshCw },
   Unknown: { tone: "neutral", icon: CircleDashed },
 };
 
-export const healthMeta: Record<HealthState, { tone: Tone }> = {
+const healthMeta: Record<HealthState, { tone: Tone }> = {
   Healthy: { tone: "success" },
   Progressing: { tone: "info" },
   Degraded: { tone: "danger" },
@@ -88,7 +80,7 @@ export const historyMeta: Record<HistoryState, { tone: Tone; icon: LucideIcon }>
   rejected: { tone: "danger", icon: Ban },
 };
 
-export const actionMeta: Record<ActionName, { tone: Tone; icon: LucideIcon }> = {
+const actionMeta: Record<ActionName, { tone: Tone; icon: LucideIcon }> = {
   create: { tone: "success", icon: Plus },
   update: { tone: "info", icon: PenLine },
   delete: { tone: "danger", icon: Minus },
@@ -189,21 +181,6 @@ export function HealthBadge({ health }: { health: string }) {
       dot
       label={t(`status.health.${health}.label`)}
       description={t(`status.health.${health}.description`)}
-    />
-  );
-}
-
-export function HistoryBadge({ status }: { status: string }) {
-  const { t } = useTranslation();
-  if (!isKey(HISTORY_STATES, status))
-    return <StateBadge tone="neutral" icon={CircleHelp} label={status} />;
-  const m = historyMeta[status];
-  return (
-    <StateBadge
-      tone={m.tone}
-      icon={m.icon}
-      label={t(`status.history.${status}.label`)}
-      description={t(`status.history.${status}.description`)}
     />
   );
 }

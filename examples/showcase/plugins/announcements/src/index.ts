@@ -40,8 +40,8 @@ function scheduleOf(a: Configured): Schedule | string {
 }
 
 async function scheduledList(ctx: Context): Promise<Scheduled[]> {
-  const { items } = await ctx.kv.list<Json>({ prefix: "ad:", limit: 1000 });
-  return items.map((i) => i.value as unknown as Scheduled).sort((a, b) => a.at - b.at);
+  const { items } = await ctx.kv.list({ prefix: "ad:", limit: 1000 });
+  return items.map((i) => i.value as unknown as Scheduled).toSorted((a, b) => a.at - b.at);
 }
 
 /** Posts a configured announcement. Failures are logged (the tick never throws). */

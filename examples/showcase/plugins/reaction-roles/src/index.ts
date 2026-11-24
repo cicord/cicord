@@ -73,7 +73,7 @@ async function syncPanel(ctx: Context, panel: Panel, force = false): Promise<Syn
       if (stored.hash === hash) return { status: "unchanged", channel: channel.mention, skipped };
       await existing.edit(message);
       if (panel.style === "reactions") await addReactions(ctx, existing, options);
-      await ctx.kv.set(panelKey(panel.name), { ...stored, hash } as unknown as Json);
+      await ctx.kv.set(panelKey(panel.name), { ...stored, hash });
       return { status: "updated", channel: channel.mention, skipped };
     }
     status = "reposted"; // the message was deleted

@@ -14,7 +14,7 @@ function subscribe(listener: () => void): () => void {
 }
 
 /** App path without the base ("/admin/servers/x" → "/servers/x"). */
-export function appPath(pathname: string): string {
+function appPath(pathname: string): string {
   const rest = BASE && pathname.startsWith(BASE) ? pathname.slice(BASE.length) : pathname;
   return rest === "" ? "/" : rest;
 }

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 
 const store = new Map<string, unknown>();
 
-export function setFlash<T>(key: string, value: T): void {
+export function setFlash(key: string, value: unknown): void {
   store.set(key, value);
 }
 

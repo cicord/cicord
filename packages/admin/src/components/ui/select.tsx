@@ -5,7 +5,6 @@ import { cn } from "../../lib/utils.ts";
 
 export const Select = P.Root;
 export const SelectValue = P.Value;
-export const SelectGroup = P.Group;
 
 export function SelectTrigger({ className, children, ...props }: ComponentProps<typeof P.Trigger>) {
   return (

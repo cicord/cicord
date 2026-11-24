@@ -73,15 +73,13 @@ export function Picker(props: PickerProps) {
         o.value.toLowerCase().includes(q) ||
         (o.group ?? "").toLowerCase().includes(q),
     );
-    return clearable && !q
-      ? [{ value: "", label: "None", hint: "" } as PickerOption, ...list]
-      : list;
+    return clearable && !q ? [{ value: "", label: "None", hint: "" }, ...list] : list;
   }, [options, query, clearable]);
 
   const selected = options.find((o) => o.value === value);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const onDoc = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };

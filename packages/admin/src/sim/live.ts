@@ -11,7 +11,7 @@ export function useSimLive(enabled = true): LiveMode {
   const failures = useRef(0);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return undefined;
     let timer: number | undefined;
     let poll: number | undefined;
     let opened = false;

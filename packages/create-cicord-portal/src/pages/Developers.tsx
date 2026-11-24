@@ -1,4 +1,4 @@
-import { CicordApiError, type Json, type PortalPlugin } from "@cicord/client";
+import { CicordApiError, type PortalPlugin } from "@cicord/client";
 import { useCicord, useLogout, useMe, useMember, useSession } from "@cicord/react";
 import { Button, Card, RoleChip } from "@cicord/ui";
 import { useState } from "react";
@@ -162,10 +162,10 @@ function PluginRoutes({ plugin }: { plugin: PortalPlugin }) {
   const [result, setResult] = useState<{ route: string; body: string; ok: boolean } | null>(null);
   const call = async (route: string, path: string) => {
     try {
-      const body = await client.plugin(server.key, plugin.bot, plugin.instance).get<Json>(path);
+      const body = await client.plugin(server.key, plugin.bot, plugin.instance).get(path);
       setResult({ route, body: JSON.stringify(body ?? null, null, 2), ok: true });
     } catch (error) {
-      const e = error instanceof CicordApiError ? `${e2s(error)}` : String(error);
+      const e = error instanceof CicordApiError ? e2s(error) : String(error);
       setResult({ route, body: e, ok: false });
     }
   };

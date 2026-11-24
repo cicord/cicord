@@ -43,7 +43,7 @@ export function command<const O extends Record<string, Spec.CommandOption> = {}>
 export function defineRoutes<Routes extends { [K in keyof Routes]: Spec.RouteTypes }>(routes: {
   [K in keyof Routes & Spec.RouteKey]: Spec.TypedRouteDefinition<K, Routes[K]>;
 }): { [K in Spec.RouteKey]?: Spec.RouteDefinition } {
-  return routes as unknown as { [K in Spec.RouteKey]?: Spec.RouteDefinition };
+  return routes;
 }
 
 // ───────────────────────────────────────────────────────────── conformance with the spec

@@ -31,7 +31,7 @@ export function usePoll<T>(
   const fnRef = useRef(fn);
   fnRef.current = fn;
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return undefined;
     const ctrl = new AbortController();
     let timer: number | undefined;
     const once = async () => {

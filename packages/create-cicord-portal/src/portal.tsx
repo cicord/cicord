@@ -8,7 +8,7 @@ import {
   usePortalServers,
 } from "@cicord/react";
 import { Avatar, Button, Spinner, ThemeProvider } from "@cicord/ui";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { forgetServer, requestedServer, rememberServer, type PortalConfig } from "./config.ts";
 import { I18nProvider, pickLocale, useT } from "./i18n/index.tsx";
 import { Link, navigate, usePathname } from "./router.tsx";
@@ -20,7 +20,7 @@ const ServerContext = createContext<PortalServer | null>(null);
 
 export const ConfigProvider = ConfigContext.Provider;
 
-export function usePortalConfig(): PortalConfig {
+function usePortalConfig(): PortalConfig {
   const value = useContext(ConfigContext);
   if (!value) throw new Error("missing <ConfigProvider>");
   return value;
@@ -53,11 +53,11 @@ export function usePlugin(plugin: string, route?: string): PortalPlugin | undefi
 const rank: Record<string, number> = { member: 1, moderator: 2, admin: 3 };
 
 /** The viewer's role on the server (undefined when logged out or not a member). */
-export function useViewerRole(): AccessRole | undefined {
+function useViewerRole(): AccessRole | undefined {
   return useMember().data?.role;
 }
 
-export function atLeast(role: AccessRole | undefined, min: AccessRole): boolean {
+function atLeast(role: AccessRole | undefined, min: AccessRole): boolean {
   return (rank[role ?? ""] ?? 0) >= (rank[min] ?? 0);
 }
 
@@ -101,7 +101,7 @@ export function ServerGate({
 }) {
   const servers = usePortalServers();
   const [wanted, setWanted] = useState(requestedServer);
-  const list = servers.data ?? [];
+  const list = useMemo(() => servers.data ?? [], [servers.data]);
   const server = list.find((s) => s.key === wanted) ?? list[0];
 
   useEffect(() => {
@@ -236,7 +236,7 @@ function ServerSwitcher() {
 }
 
 /** The runtime's simulator state when it runs `cicord dev --sim` (null otherwise). */
-export function useSimulator() {
+function useSimulator() {
   const { client } = useCicord();
   return useCicordQuery(["cicord", "sim", "state"], async (signal) => {
     try {

@@ -31,7 +31,7 @@ export function progress(xp: number): Progress {
 export const levelOf = (xp: number): number => progress(xp).level;
 
 export const xpKey = (userId: string): string => `xp:${userId}`;
-export const profileKey = (userId: string): string => `user:${userId}`;
+const profileKey = (userId: string): string => `user:${userId}`;
 export const cooldownKey = (userId: string): string => `cooldown:${userId}`;
 export const authorKey = (messageId: string): string => `msg:${messageId}`;
 export const reactionKey = (messageId: string, userId: string, emoji: string): string =>
@@ -41,7 +41,7 @@ export const dayKey = (day: string, userId: string): string => `day:${day}:${use
 /** "2026-11-21" (UTC). */
 export const dayOf = (d: Date): string => d.toISOString().slice(0, 10);
 
-export interface Profile {
+interface Profile {
   displayName: string;
   avatarUrl: string | null;
 }
@@ -70,7 +70,7 @@ export async function standings(ctx: Context, prefix = "xp:"): Promise<Standing[
     }
     cursor = page.cursor;
   } while (cursor);
-  return out.sort((a, b) => b.xp - a.xp || a.userId.localeCompare(b.userId));
+  return out.toSorted((a, b) => b.xp - a.xp || a.userId.localeCompare(b.userId));
 }
 
 export async function leaderboard(ctx: Context, limit: number): Promise<LeaderboardEntry[]> {

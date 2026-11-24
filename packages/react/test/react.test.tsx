@@ -355,7 +355,7 @@ describe("<OnboardingFlow>", () => {
     await user.click(screen.getByRole("button", { name: "Suivant" }));
 
     expect(screen.getByRole("heading", { name: "Plateforme" })).toBeTruthy();
-    const finish = screen.getByRole("button", { name: "Terminer" }) as HTMLButtonElement;
+    const finish = screen.getByRole<HTMLButtonElement>("button", { name: "Terminer" });
     expect(finish.disabled).toBe(true); // required step
     await user.click(screen.getByRole("button", { name: "PC" }));
     await user.click(screen.getByRole("button", { name: "Console" })); // single choice: replaces PC

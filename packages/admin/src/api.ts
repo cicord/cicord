@@ -1,8 +1,6 @@
 /** Data hooks of the admin console, on top of @cicord/react's query cache. */
 import type {
-  AccessRole,
   AuditEntry,
-  Me,
   PluginInstance,
   Message,
   Plan,
@@ -19,7 +17,6 @@ import type {
   SyncRecord,
 } from "@cicord/client";
 import { useCicord, useCicordQuery, type QueryResult } from "@cicord/react";
-import { useMemo } from "react";
 
 export const keys = {
   status: () => ["admin", "status"] as const,
@@ -166,13 +163,5 @@ export function useSimDms(userId: string | undefined): QueryResult<Message[]> {
   const { client } = useCicord();
   return useCicordQuery(userId ? keys.simDms(userId) : null, (signal) =>
     client.sim.dms(userId!, { signal }),
-  );
-}
-
-/** The viewer's role on a server ("admin" | "moderator" | "member" | undefined). */
-export function useRole(me: Me, server: string | undefined): AccessRole | undefined {
-  return useMemo(
-    () => (server ? me.servers.find((s) => s.key === server)?.role : undefined),
-    [me, server],
   );
 }

@@ -669,7 +669,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       capabilities: [],
       intents: [],
       commands: [],
-      schema: { type: "object" } as JsonSchema,
+      schema: { type: "object" },
       source,
       trust: source === "cicord" ? "official" : source === "local" ? "local" : "unofficial",
     };
@@ -818,7 +818,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
             role === "admin" || (role === "moderator" && p["x-cicord-access"] === "moderator"),
         )
         .map(([k]) => k)
-        .sort();
+        .toSorted();
       return {
         bot: inst.bot,
         instance: inst.instance,
@@ -965,7 +965,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
   }
 
   function addAudit(actor: string, action: string, target: string, details: Obj) {
-    const id = Math.max(0, ...state.audit.map((a) => Number(a.id))) + 1;
+    const id = Math.max(0, ...state.audit.map((a) => a.id)) + 1;
     state.audit.unshift({
       id,
       time: new Date().toISOString(),
@@ -1335,8 +1335,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
 
   function listDiff(a: string[], b: string[]) {
     return {
-      added: b.filter((x) => !a.includes(x)).sort(),
-      removed: a.filter((x) => !b.includes(x)).sort(),
+      added: b.filter((x) => !a.includes(x)).toSorted(),
+      removed: a.filter((x) => !b.includes(x)).toSorted(),
     };
   }
 
@@ -1409,28 +1409,28 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (!detail.ok) return detail;
     if (!storeInstalled(source, name).length)
       return fail(404, "not_installed", `${source}/${name} is not installed`);
-    const plan = updatePlan(source, name);
+    const planned = updatePlan(source, name);
     const bundled = source === "cicord";
     return json({
       available: !!updateOf(source, name),
       update: updateOf(source, name) ?? null,
       detail: storeDetailBody(source, name),
-      current: plan.current,
-      diff: plan.diff,
-      instances: plan.instances,
+      current: planned.current,
+      diff: planned.diff,
+      instances: planned.instances,
       ...(bundled
         ? {
             files: {
               changed: ["plugin.yaml", "src/index.ts"],
               added: [],
-              removed: plan.v.modified ? ["src/local-tweaks.ts"] : [],
+              removed: planned.v.modified ? ["src/local-tweaks.ts"] : [],
             },
           }
         : {}),
-      modified: !!plan.v.modified,
+      modified: !!planned.v.modified,
       repoChanged: false,
       servers: [SERVER_KEY],
-      configValid: plan.instances.every((i) => !i.diagnostics.length),
+      configValid: planned.instances.every((i) => !i.diagnostics.length),
       missingAdmin: [],
       restricted: [],
     });
@@ -1442,8 +1442,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (!detail.ok) return detail;
     if (!storeInstalled(source, name).length)
       return fail(404, "not_installed", `${source}/${name} is not installed`);
-    const plan = updatePlan(source, name);
-    const { p, found, v } = plan;
+    const planned = updatePlan(source, name);
+    const { p, found, v } = planned;
     if (found.registry) {
       const reg = p as MockRegistry["plugins"][number];
       if (body["confirmUnofficial"] !== true)
@@ -1486,7 +1486,9 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         hint: "Updating overwrites the local changes: keep them elsewhere, then force the update.",
         details: "changed: src/index.ts\ndeleted by the update: src/local-tweaks.ts",
       });
-    const missing = plan.diff.privilegedIntents.added.filter((i) => !ENABLED_INTENTS.includes(i));
+    const missing = planned.diff.privilegedIntents.added.filter(
+      (i) => !ENABLED_INTENTS.includes(i),
+    );
     if (missing.length)
       return explained(409, {
         code: "intents",
@@ -1494,7 +1496,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         hint: "Turn it on in the Discord developer portal (Bot → Privileged Gateway Intents), save, then update again.",
         link: "https://discord.com/developers/applications/900/bot",
       });
-    const diagnostics = plan.instances.flatMap((i) => i.diagnostics);
+    const diagnostics = planned.instances.flatMap((i) => i.diagnostics);
     if (diagnostics.length)
       return explained(422, {
         code: "invalid",
@@ -1520,8 +1522,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       plugin: name,
       from: v.version,
       to: p.version,
-      capabilitiesAdded: plan.diff.capabilities.added,
-      capabilitiesRemoved: plan.diff.capabilities.removed,
+      capabilitiesAdded: planned.diff.capabilities.added,
+      capabilitiesRemoved: planned.diff.capabilities.removed,
       forced: body["force"] === true && !!v.modified,
       trust: found.registry ? "unofficial" : "official",
       mode: "commit",
@@ -1531,7 +1533,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       version: p.version,
       mode: "commit",
       revision: state.revision.id,
-      instances: plan.instances.map((i) => ({
+      instances: planned.instances.map((i) => ({
         server: i.server,
         bot: i.bot,
         instance: i.instance,
@@ -1682,7 +1684,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     };
   }
 
-  const explained = (status: number, error: Obj): Response => json({ error }, status);
+  const explained = (code: number, error: Obj): Response => json({ error }, code);
 
   function storeInstall(viewer: string, body: Obj): Response {
     const source = jsonText(body["source"]);
@@ -1819,13 +1821,13 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
   function removeRegistry(viewer: string, name: string): Response {
     const registry = state.registries.find((r) => r.name === name);
     if (!registry) return fail(404, "not_found", `unknown registry ${name}`);
-    const users = state.storeInstalls.filter((i) => i.source === name);
-    if (users.length)
+    const dependents = state.storeInstalls.filter((i) => i.source === name);
+    if (dependents.length)
       return explained(409, {
         code: "in_use",
-        message: `registry ${name} is used by ${users.length} plugin instance(s)`,
+        message: `registry ${name} is used by ${dependents.length} plugin instance(s)`,
         hint: "Remove these instances from bot.yaml first.",
-        details: users
+        details: dependents
           .map((i) => `bots/${i.bot}/bot.yaml: ${i.instance} (${i.source}/${i.plugin})`)
           .join("\n"),
       });
@@ -2031,20 +2033,20 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         return staff(() => {
           const before = Number(url.searchParams.get("before") ?? 0);
           const limit = Number(url.searchParams.get("limit") ?? 50);
-          const items = state.audit.filter((a) => !before || Number(a.id) < before).slice(0, limit);
+          const items = state.audit.filter((a) => !before || a.id < before).slice(0, limit);
           return json({ items });
         });
       if (method === "GET" && rest === "/plugins") return staff((v) => pluginsPage(v, url));
       const one = /^\/plugins\/([^/]+)\/([^/]+)$/.exec(rest);
       if (one) {
-        const bot = decodeURIComponent(one[1]!);
+        const botKey = decodeURIComponent(one[1]!);
         const name = decodeURIComponent(one[2]!);
-        const inst = state.instances.find((i) => i.bot === bot && i.instance === name);
+        const inst = state.instances.find((i) => i.bot === botKey && i.instance === name);
         const missing = () =>
-          fail(404, "not_found", `no plugin instance ${bot}/${name} on ${SERVER_KEY}`);
+          fail(404, "not_found", `no plugin instance ${botKey}/${name} on ${SERVER_KEY}`);
         if (method === "GET")
           return staff((v) => {
-            const item = pluginItems(v).find((i) => i.bot === bot && i.instance === name);
+            const item = pluginItems(v).find((i) => i.bot === botKey && i.instance === name);
             return item ? json(item) : missing();
           });
         if (method === "DELETE") return staff((v) => (inst ? uninstall(v, inst) : missing()), true);

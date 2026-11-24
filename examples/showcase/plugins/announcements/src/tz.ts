@@ -126,10 +126,6 @@ function transitions(rule: Exclude<Rule, "none">, std: number, year: number): [n
   return t;
 }
 
-export function isZone(zone: string): boolean {
-  return Object.hasOwn(ZONES, zone);
-}
-
 /** UTC offset of a zone at an instant, in minutes. Unknown zones are UTC. */
 export function offsetAt(zone: string, utcMs: number): number {
   const z = ZONES[zone];

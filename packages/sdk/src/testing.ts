@@ -32,7 +32,6 @@ import type {
   MessageInput,
   Modal,
   ModalInteraction,
-  PluginConfig,
   PluginDefinition,
   ReplyInput,
   Role,
@@ -364,10 +363,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       async messages(opts = {}) {
         need("discord.messages.read");
         // Newest first; `before`/`after` compare snowflakes numerically, like Discord.
-        let list = [...(history.get(id) ?? [])].reverse();
+        let list = (history.get(id) ?? []).toReversed();
         const { before, after } = opts;
         if (before) list = list.filter((m) => BigInt(m.id) < BigInt(before));
-        if (after) list = list.filter((m) => BigInt(m.id) > BigInt(after)).reverse();
+        if (after) list = list.filter((m) => BigInt(m.id) > BigInt(after)).toReversed();
         return list.slice(0, opts.limit ?? 50);
       },
       async createThread(name, opts = {}) {
@@ -557,7 +556,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       need("storage.kv");
       const keys = [...kvData.keys()]
         .filter((k) => k.startsWith(opts.prefix ?? "") && live(k))
-        .sort();
+        .toSorted();
       const start = opts.cursor ? Number(opts.cursor) : 0;
       const limit = opts.limit ?? 100;
       const page = keys.slice(start, start + limit);
@@ -586,7 +585,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     },
     bot: { key: options.bot?.key ?? "test-bot", user: botUser },
     server,
-    config: config as Readonly<PluginConfig>,
+    config,
     log: { debug: log("debug"), info: log("info"), warn: log("warn"), error: log("error") },
     kv,
     schedule: {
@@ -698,7 +697,7 @@ export function normalizeRouteResponse(response: RouteResponse): RouteResult {
   }
   // Like the runtime: a handler returning nothing answers 204.
   if (response === undefined) return { status: 204, body: undefined, headers: {} };
-  return { status: 200, body: response as Json, headers: {} };
+  return { status: 200, body: response, headers: {} };
 }
 
 /**
@@ -763,8 +762,8 @@ function matchPath(pattern: string, path: string): Record<string, string> | unde
   if (p.length !== s.length) return undefined;
   const params: Record<string, string> = {};
   for (let i = 0; i < p.length; i++) {
-    const seg = p[i] as string;
-    const val = s[i] as string;
+    const seg = p[i];
+    const val = s[i];
     if (seg.startsWith(":")) params[seg.slice(1)] = decodeURIComponent(val);
     else if (seg !== val) return undefined;
   }

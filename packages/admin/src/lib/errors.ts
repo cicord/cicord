@@ -58,7 +58,7 @@ export function errorOf(entry: {
   return entry.message ? explainRaw(entry.message) : null;
 }
 
-export type ErrorKind =
+type ErrorKind =
   | "network"
   | "unauthenticated"
   | "forbidden"

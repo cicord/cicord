@@ -290,11 +290,10 @@ function Playground({
     }
   };
 
-  const nonMembers = users.filter((u) => !isMember(u.id));
-  const welcomeUser = nonMembers[0];
-  const dmTarget = [...server.members]
-    .reverse()
-    .find((m) => !botIds.has(m.user.id) && m.user.id !== server.ownerId)?.user;
+  const welcomeUser = users.find((u) => !isMember(u.id));
+  const dmTarget = server.members.findLast(
+    (m) => !botIds.has(m.user.id) && m.user.id !== server.ownerId,
+  )?.user;
 
   return (
     <div className="sim">
@@ -534,7 +533,7 @@ function ChannelNav({
     pos(a) - pos(b);
   const loose = server.channels
     .filter((c) => c.type !== "category" && !cats.some((k) => k.id === parent(c)))
-    .sort(byPos);
+    .toSorted(byPos);
   const item = (c: SimServer["channels"][number]) => {
     const textual = TEXTUAL.has(c.type);
     const active = view?.kind === "channel" && view.id === c.id;
@@ -556,13 +555,13 @@ function ChannelNav({
   return (
     <nav className="sim-channels" aria-label={i18n.t("sim.channels")}>
       <ul>{loose.map(item)}</ul>
-      {[...cats].sort(byPos).map((cat) => (
+      {cats.toSorted(byPos).map((cat) => (
         <div key={cat.id} className="sim-cat">
           <h3 className="sim-cat-title">{cat.name}</h3>
           <ul>
             {server.channels
               .filter((c) => parent(c) === cat.id)
-              .sort(byPos)
+              .toSorted(byPos)
               .map(item)}
           </ul>
         </div>
@@ -824,7 +823,9 @@ function ActorPicker({
         icon: <Avatar name={u.displayName || u.username} url={u.avatarUrl} size={16} />,
       };
     })
-    .sort((a, b) => (a.group === b.group ? 0 : a.group === i18n.t("sim.members.title") ? -1 : 1));
+    .toSorted((a, b) =>
+      a.group === b.group ? 0 : a.group === i18n.t("sim.members.title") ? -1 : 1,
+    );
   return (
     <div className="actor">
       <span className="muted small" id="actor-label">
@@ -1085,7 +1086,7 @@ function ModalDialog({
 function topRoleColor(server: SimServer, roleIds: string[]): string | undefined {
   const roles = server.roles
     .filter((r) => roleIds.includes(r.id) && r.color && r.color !== "#000000")
-    .sort((a, b) => b.position - a.position);
+    .toSorted((a, b) => b.position - a.position);
   return roles[0]?.color;
 }
 

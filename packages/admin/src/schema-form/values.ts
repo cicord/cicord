@@ -10,14 +10,6 @@ export function toPointer(path: Path): string {
   return path.map((s) => `/${String(s).replace(/~/g, "~0").replace(/\//g, "~1")}`).join("");
 }
 
-export function fromPointer(pointer: string): string[] {
-  if (pointer === "" || pointer === "/") return [];
-  return pointer
-    .replace(/^\//, "")
-    .split("/")
-    .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
-}
-
 export function isObject(v: unknown): v is JsonObject {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }

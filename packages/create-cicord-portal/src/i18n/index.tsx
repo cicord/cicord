@@ -4,7 +4,7 @@ import { fr, type Messages } from "./fr.ts";
 
 export type { Messages };
 
-export const messages: Record<string, Messages> = { en, fr };
+const messages: Record<string, Messages> = { en, fr };
 
 /** `spec.portal.locale` when set and supported, else the browser language, else English. */
 export function pickLocale(serverLocale?: string): string {

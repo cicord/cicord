@@ -611,7 +611,7 @@ function summarize(item: Json | undefined, schema: JsonSchema, ctx: Ctx): string
   const props = schema.properties ?? {};
   const emoji = typeof item["emoji"] === "string" ? `${item["emoji"]} ` : "";
   for (const key of ["title", "label", "name"]) {
-    if (typeof item[key] === "string" && item[key]) return `${emoji}${item[key] as string}`;
+    if (typeof item[key] === "string" && item[key]) return `${emoji}${item[key]}`;
   }
   for (const [key, raw] of Object.entries(props)) {
     const p = resolve(raw, ctx.root);

@@ -6,8 +6,8 @@ import type { Json } from "@cicord/client";
 import { jsonText } from "./values.ts";
 
 export type RefKind = "channel" | "category" | "role";
-export type Widget = "textarea" | "markdown" | "color" | "duration";
-export type Access = "admin" | "moderator";
+type Widget = "textarea" | "markdown" | "color" | "duration";
+type Access = "admin" | "moderator";
 
 export interface JsonSchema {
   $ref?: string;
@@ -140,7 +140,7 @@ export function enumOptions(schema: JsonSchema): EnumOption[] {
 }
 
 /** "dmOnboarding" → "Dm onboarding", "completed_role" → "Completed role". */
-export function humanize(key: string): string {
+function humanize(key: string): string {
   const words = key
     .replace(/[_-]+/g, " ")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -208,7 +208,7 @@ export function editableFor(schema: JsonSchema, role: "admin" | "moderator" | "m
     const access = prop["x-cicord-access"] ?? "admin";
     if (role === "admin" || (role === "moderator" && access === "moderator")) out.push(key);
   }
-  return out.sort();
+  return out.toSorted();
 }
 
 /** Top-level config with schema defaults filled in (what the runtime calls the effective view). */

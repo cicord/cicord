@@ -35,11 +35,11 @@ export function luminance([r, g, b]: Rgb): number {
 }
 
 export function contrast(a: Rgb, b: Rgb): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  const [hi, lo] = [luminance(a), luminance(b)].toSorted((x, y) => y - x) as [number, number];
   return (hi + 0.05) / (lo + 0.05);
 }
 
-export function mix(a: Rgb, b: Rgb, amount: number): Rgb {
+function mix(a: Rgb, b: Rgb, amount: number): Rgb {
   return [
     a[0] + (b[0] - a[0]) * amount,
     a[1] + (b[1] - a[1]) * amount,

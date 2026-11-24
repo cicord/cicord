@@ -47,7 +47,7 @@ function server(items: Item[] = ITEMS) {
     const out = items
       .filter((it) => words.every((w) => it.name.toLowerCase().includes(w)))
       .filter((it) => !q.filters["kind"] || it.kind === q.filters["kind"])
-      .sort((a, b) => {
+      .toSorted((a, b) => {
         const c = q.sort === "size" ? a.size - b.size : a.name.localeCompare(b.name);
         return q.order === "desc" ? -c : c;
       });

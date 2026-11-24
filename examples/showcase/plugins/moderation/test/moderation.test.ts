@@ -190,7 +190,7 @@ describe("events", () => {
       nickname: "Nice",
       roles: [...troll.roles, t.ctx.server.role("mod")],
     };
-    await plugin.events!.memberUpdate!(t.ctx, updated as never, troll);
+    await plugin.events!.memberUpdate!(t.ctx, updated, troll);
     expect(logs(t).map((e) => e.description)).toEqual([
       "📥 <@2> (troll) joined.",
       "📤 <@2> (troll) left.",

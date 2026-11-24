@@ -25,7 +25,7 @@ const WIDTH = "15rem";
 const WIDTH_ICON = "3.25rem";
 const MOBILE_QUERY = "(max-width: 767px)";
 
-export function useIsMobile(): boolean {
+function useIsMobile(): boolean {
   const [mobile, setMobile] = useState(() =>
     typeof window === "undefined" ? false : window.matchMedia(MOBILE_QUERY).matches,
   );

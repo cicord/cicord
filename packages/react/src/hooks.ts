@@ -162,7 +162,7 @@ export function useLinkTokenLogin(options: { param?: string } = {}): LinkTokenLo
 
   useEffect(() => {
     const token = tokenRef.current;
-    if (!token) return;
+    if (!token) return undefined;
     let perClient = exchanges.get(client);
     if (!perClient) {
       perClient = new Map();
@@ -174,20 +174,24 @@ export function useLinkTokenLogin(options: { param?: string } = {}): LinkTokenLo
       perClient.set(token, promise);
     }
     let active = true;
-    promise.then(
-      (me) => {
-        if (!active) return;
-        if (me) {
-          cache.setData(cicordKeys.me(), me);
-          void cache.invalidate(["cicord", "portal"]);
-          void cache.invalidate(["cicord", "plugin"]);
-          setState({ status: "success", me });
-        } else setState({ status: "none" });
-      },
-      (error: unknown) => {
+    const exchange = promise;
+    const settle = async () => {
+      let me: Awaited<typeof exchange>;
+      try {
+        me = await exchange;
+      } catch (error: unknown) {
         if (active) setState({ status: "error", error });
-      },
-    );
+        return;
+      }
+      if (!active) return;
+      if (me) {
+        cache.setData(cicordKeys.me(), me);
+        void cache.invalidate(["cicord", "portal"]);
+        void cache.invalidate(["cicord", "plugin"]);
+        setState({ status: "success", me });
+      } else setState({ status: "none" });
+    };
+    void settle();
     return () => {
       active = false;
     };

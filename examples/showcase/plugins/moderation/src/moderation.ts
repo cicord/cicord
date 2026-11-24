@@ -1,7 +1,7 @@
 /** Cases, warnings, the audit log and the webhook, independent of the handlers. */
 import type { Context, Embed, Json, User } from "@cicord/sdk";
 
-export type Action = "warn" | "timeout" | "untimeout" | "kick" | "ban" | "clear";
+type Action = "warn" | "timeout" | "untimeout" | "kick" | "ban" | "clear";
 
 export interface Case {
   number: number;
@@ -54,7 +54,7 @@ export function duration(minutes: number): string {
   return `${minutes} min`;
 }
 
-export function caseEmbed(c: Case): Embed {
+function caseEmbed(c: Case): Embed {
   const fields: NonNullable<Embed["fields"]> = [
     { name: "Member", value: `<@${c.member.id}> (${c.member.name})`, inline: true },
     { name: "Moderator", value: c.moderator ? `<@${c.moderator.id}>` : "automatic", inline: true },
@@ -103,7 +103,7 @@ export async function logLine(ctx: Context, text: string, color = "#95a5a6"): Pr
 }
 
 /** Posts to the optional webhook. Failures are logged, never thrown. */
-export async function notifyWebhook(ctx: Context, text: string): Promise<void> {
+async function notifyWebhook(ctx: Context, text: string): Promise<void> {
   const hook = ctx.config.webhook;
   if (!hook) return;
   const body =
@@ -123,6 +123,6 @@ export async function notifyWebhook(ctx: Context, text: string): Promise<void> {
 }
 
 export async function activeWarnings(ctx: Context, userId: string): Promise<Warning[]> {
-  const { items } = await ctx.kv.list<Json>({ prefix: warnPrefix(userId), limit: 1000 });
-  return items.map((i) => i.value as unknown as Warning).sort((a, b) => a.case - b.case);
+  const { items } = await ctx.kv.list({ prefix: warnPrefix(userId), limit: 1000 });
+  return items.map((i) => i.value as unknown as Warning).toSorted((a, b) => a.case - b.case);
 }

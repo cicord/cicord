@@ -2,7 +2,7 @@
 import type { Context, Embed, Json, MessagePayload } from "@cicord/sdk";
 
 /** Where an entry goes (config `channels.<group>`, else `channel`). */
-export type Group = "members" | "messages" | "plugins";
+type Group = "members" | "messages" | "plugins";
 
 export interface Entry {
   /** Epoch ms. */
@@ -74,12 +74,12 @@ export function render(entries: Entry[], dropped = 0): MessagePayload[] {
   });
 }
 
-export function channelFor(ctx: Context, group: Group): string {
+function channelFor(ctx: Context, group: Group): string {
   return ctx.config.channels?.[group] ?? ctx.config.channel;
 }
 
 /** Posts entries now, grouped by destination channel. */
-export async function post(ctx: Context, entries: Entry[], dropped = 0): Promise<void> {
+async function post(ctx: Context, entries: Entry[], dropped = 0): Promise<void> {
   const byChannel = new Map<string, Entry[]>();
   for (const e of entries) {
     const key = channelFor(ctx, e.group);
@@ -129,14 +129,14 @@ export async function record(ctx: Context, entry: Omit<Entry, "at">): Promise<vo
 export async function flush(ctx: Context, olderThanMs?: number): Promise<number> {
   if (olderThanMs !== undefined) {
     // Sweep: only a batch whose flush task was lost (older than a batch should get).
-    const { items } = await ctx.kv.list<Json>({ prefix: QUEUE, limit: 1 });
+    const { items } = await ctx.kv.list({ prefix: QUEUE, limit: 1 });
     const oldest = (items[0]?.value as unknown as Entry | undefined)?.at;
     if (oldest === undefined || Date.now() - oldest < olderThanMs) return 0;
   }
   // Reset before reading: an entry recorded from now on schedules the next flush, and an
   // entry recorded meanwhile is either read below or flushed by that next task.
   await ctx.kv.set(PENDING, 0);
-  const { items } = await ctx.kv.list<Json>({ prefix: QUEUE, limit: 1000 });
+  const { items } = await ctx.kv.list({ prefix: QUEUE, limit: 1000 });
   if (items.length === 0) return 0;
   for (const { key } of items) await ctx.kv.delete(key);
   // More than one page queued (a raid): the rest goes with the next batch.

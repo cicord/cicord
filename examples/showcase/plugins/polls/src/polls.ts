@@ -1,7 +1,7 @@
 /** Poll records, tallies and rendering, independent of the handlers. */
 import type { ActionRow, Context, Json, Message, MessagePayload } from "@cicord/sdk";
 
-export type PollStyle = "buttons" | "select";
+type PollStyle = "buttons" | "select";
 
 /** Stored under `poll:<id>`. */
 export interface Poll {
@@ -41,7 +41,7 @@ export interface PollClosed {
 
 export const MAX_CHOICES = 10;
 
-export const pollKey = (id: string): string => `poll:${id}`;
+const pollKey = (id: string): string => `poll:${id}`;
 export const voteKey = (id: string, userId: string): string => `vote:${id}:${userId}`;
 
 /** "Pizza | Sushi; Tacos" → ["Pizza", "Sushi", "Tacos"] (also one per line). */

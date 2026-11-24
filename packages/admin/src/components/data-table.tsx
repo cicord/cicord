@@ -77,7 +77,7 @@ export interface TableQuery {
   filters: Record<string, string>;
 }
 
-export const PAGE_SIZES = [25, 50, 100] as const;
+const PAGE_SIZES = [25, 50, 100] as const;
 
 export interface DataTableProps<T> {
   /** Accessible name of the table. */
@@ -222,7 +222,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   }, [query.q]);
   useEffect(() => {
     const value = text.trim();
-    if (value === query.q) return;
+    if (value === query.q) return undefined;
     const id = window.setTimeout(() => update({ q: value || null, page: null }, true), debounce);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -342,19 +342,19 @@ export function DataTable<T>(props: DataTableProps<T>) {
     );
   } else {
     body = page.items.map((row) => {
-      const to = rowHref(row);
+      const href = rowHref(row);
       return (
         <TableRow
           key={rowKey(row)}
           className="cursor-pointer has-[a:focus-visible]:bg-surface-hover"
-          onClick={(e) => follow(e, to)}
-          onAuxClick={(e) => follow(e, to)}
+          onClick={(e) => follow(e, href)}
+          onAuxClick={(e) => follow(e, href)}
         >
           {columns.map((c) => (
             <TableCell key={c.id} className={cn("align-top", c.className)}>
               {c.primary ? (
                 <Link
-                  to={to}
+                  to={href}
                   className="block rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {c.cell(row)}
@@ -611,7 +611,7 @@ function PageButton({
 }
 
 /** Native select styled like the inputs (keyboard and screen readers get the platform one). */
-export function NativeSelect({
+function NativeSelect({
   id,
   value,
   onChange,

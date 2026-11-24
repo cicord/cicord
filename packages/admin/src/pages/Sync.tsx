@@ -177,7 +177,9 @@ export function groupChanges(changes: readonly PlanChange[]): [string, PlanChang
     const i = KIND_ORDER.indexOf(k);
     return i < 0 ? KIND_ORDER.length : i;
   };
-  return [...groups.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
+  return [...groups.entries()].toSorted(
+    (a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]),
+  );
 }
 
 function kindLabel(kind: string): string {
@@ -185,7 +187,7 @@ function kindLabel(kind: string): string {
 }
 
 /** Explanation of a blocked operation: the runtime's error object, else a local fallback. */
-export function blockedError(b: PlanBlocked): HumanError {
+function blockedError(b: PlanBlocked): HumanError {
   if (b.error) return b.error;
   const known = ["deletionProtection", "hierarchy", "ownership", "managed", "type change"].find(
     (r) => b.reason.startsWith(r),
@@ -257,7 +259,7 @@ export function PlanPage({ serverKey }: { serverKey: string }) {
   );
 }
 
-export function PlanView({ plan }: { plan: Plan }) {
+function PlanView({ plan }: { plan: Plan }) {
   const { t } = useTranslation();
   const groups = useMemo(() => groupChanges(plan.changes), [plan.changes]);
   const counts = useMemo(() => {
@@ -410,7 +412,7 @@ export function relevantHistory(
   });
 }
 
-export function useServerBots(serverKey: string): string[] {
+function useServerBots(serverKey: string): string[] {
   const status = useStatus();
   return useMemo(
     () => (status.data?.bots ?? []).filter((b) => b.servers.includes(serverKey)).map((b) => b.key),
@@ -486,7 +488,7 @@ export function HistoryPage({ serverKey }: { serverKey: string }) {
 
 // ───────────────────────────────────────────────────────────── drift
 
-export function DriftTable({ drift }: { drift: readonly Drift[] }) {
+function DriftTable({ drift }: { drift: readonly Drift[] }) {
   const { t } = useTranslation();
   return (
     <Table>

@@ -60,9 +60,7 @@ test("a signed bot link logs in and the onboarding flow assigns roles", async ()
   await user.click(screen.getByRole("checkbox", { name: "Minecraft" }));
   await user.click(screen.getByRole("button", { name: "Suivant" }));
   expect(await screen.findByRole("heading", { name: "Tu joues surtout sur…" })).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Suivant" }) as HTMLButtonElement).disabled).toBe(
-    true,
-  );
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Suivant" }).disabled).toBe(true);
   await user.click(screen.getByRole("radio", { name: "PC" }));
   await user.click(screen.getByRole("button", { name: "Suivant" }));
   expect(

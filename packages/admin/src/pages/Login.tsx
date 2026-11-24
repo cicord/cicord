@@ -69,7 +69,7 @@ export function LoginPage() {
   };
 
   const owners = new Set((sim?.servers ?? []).map((s) => s.ownerId).filter(Boolean));
-  const users = [...(sim?.users ?? [])].sort(
+  const users = (sim?.users ?? []).toSorted(
     (a, b) => Number(owners.has(b.id)) - Number(owners.has(a.id)),
   );
   const memberOf = (id: string) =>

@@ -157,7 +157,7 @@ function NavEntry({
 /** Workspace-style server switcher: server icon + name + sync dot. While the status
  * loads it shows placeholders (and the server name when the session knows it), never the
  * raw key; "Pick a server" only when there is no current server. */
-export function ServerSwitcher() {
+function ServerSwitcher() {
   const { t } = useTranslation();
   const ws = useWorkspace();
   const servers = ws.status?.servers ?? [];

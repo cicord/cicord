@@ -326,7 +326,7 @@ export class CicordClient {
   }
 
   #fetch: FetchLike = (input, init) => {
-    const impl = this.#options.fetch ?? (globalThis.fetch as FetchLike | undefined);
+    const impl = this.#options.fetch ?? globalThis.fetch;
     if (!impl) throw new Error("@cicord/client: no fetch implementation available");
     return impl(input, init);
   };
@@ -584,7 +584,7 @@ export class CicordClient {
         const [method, path] = resolveRoute(route, params);
         return routes.request(method, path, {
           ...rest,
-          ...(query ? { query: query as Query } : {}),
+          ...(query ? { query } : {}),
           ...(body === undefined ? {} : { body }),
         });
       }) as TypedPluginRoutes<N>["call"],

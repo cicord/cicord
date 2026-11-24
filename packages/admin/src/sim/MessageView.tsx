@@ -117,7 +117,7 @@ export function MessageItem({
                   ) : (
                     <ComponentButton
                       key={j}
-                      button={c as MessageButton}
+                      button={c}
                       busy={busy === m.id}
                       onClick={
                         onComponent && c.customId

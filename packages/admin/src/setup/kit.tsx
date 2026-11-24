@@ -103,7 +103,7 @@ const STATUS_ICON: Record<CheckStatus, { Icon: typeof CheckIcon; cls: string; sp
   skip: { Icon: CircleSlash, cls: "bg-surface-2 text-subtle-foreground" },
 };
 
-export function StatusDot({ status }: { status: CheckStatus }) {
+function StatusDot({ status }: { status: CheckStatus }) {
   const { t } = useTranslation();
   const s = STATUS_ICON[status] ?? { Icon: CircleDashed, cls: "bg-surface-2" };
   return (

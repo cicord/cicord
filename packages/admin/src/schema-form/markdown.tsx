@@ -116,7 +116,7 @@ export function Markdown({ source, ...opts }: { source: string } & MarkdownOptio
     <div className="md">
       {blocks.map((block, i) => {
         const key = `b${i}`;
-        if (/^```/.test(block) && /```$/.test(block))
+        if (block.startsWith("```") && block.endsWith("```"))
           return (
             <pre key={key}>
               <code>{block.replace(/^```\w*\n?/, "").replace(/```$/, "")}</code>

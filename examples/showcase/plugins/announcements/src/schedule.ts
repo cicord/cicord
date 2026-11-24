@@ -105,15 +105,15 @@ function dayMatches(c: Cron, date: Date): boolean {
   return dom && dow;
 }
 
-export function cronMatches(c: Cron, local: number): boolean {
+function cronMatches(c: Cron, local: number): boolean {
   const d = new Date(local * 60_000);
   return c.minutes.has(d.getUTCMinutes()) && c.hours.has(d.getUTCHours()) && dayMatches(c, d);
 }
 
 /** First local minute strictly after `local` matching the cron (day by day, ≤ 5 years). */
-export function nextCron(c: Cron, local: number): number | undefined {
-  const hours = [...c.hours].sort((a, b) => a - b);
-  const minutes = [...c.minutes].sort((a, b) => a - b);
+function nextCron(c: Cron, local: number): number | undefined {
+  const hours = [...c.hours].toSorted((a, b) => a - b);
+  const minutes = [...c.minutes].toSorted((a, b) => a - b);
   const startDay = Math.floor(local / 1440);
   for (let day = startDay; day < startDay + 1830; day++) {
     if (!dayMatches(c, new Date(day * 86_400_000))) continue;
@@ -128,11 +128,11 @@ export function nextCron(c: Cron, local: number): number | undefined {
 
 const UNITS: Record<string, number> = { m: 1, h: 60, d: 1440, w: 10080 };
 /** Anchor of intervals without `start`: Monday 2024-01-01 00:00 (local). */
-export const DEFAULT_START = Date.UTC(2024, 0, 1) / 60_000;
-export const MIN_INTERVAL = 5;
+const DEFAULT_START = Date.UTC(2024, 0, 1) / 60_000;
+const MIN_INTERVAL = 5;
 
 /** "30m", "6h", "1d", "2w" → minutes. */
-export function parseEvery(text: string): number | undefined {
+function parseEvery(text: string): number | undefined {
   const m = /^([1-9]\d{0,4})([mhdw])$/.exec(text.trim());
   return m ? Number(m[1]) * (UNITS[m[2] as string] as number) : undefined;
 }
@@ -158,7 +158,7 @@ export function parseSchedule(a: ScheduleInput): Schedule {
     try {
       return { kind: "cron", cron: parseCron(a.cron), text: `cron \`${a.cron}\`` };
     } catch (error) {
-      throw new Error(`invalid cron "${a.cron}": ${(error as Error).message}`);
+      throw new Error(`invalid cron "${a.cron}": ${(error as Error).message}`, { cause: error });
     }
   }
   if (a.every !== undefined) {
@@ -180,15 +180,10 @@ export function parseSchedule(a: ScheduleInput): Schedule {
   return { kind: "at", at, text: `once, ${formatLocal(at)}` };
 }
 
-export function matches(s: Schedule, local: number): boolean {
-  switch (s.kind) {
-    case "cron":
-      return cronMatches(s.cron, local);
-    case "every":
-      return local >= s.start && (local - s.start) % s.minutes === 0;
-    case "at":
-      return local === s.at;
-  }
+function matches(s: Schedule, local: number): boolean {
+  if (s.kind === "cron") return cronMatches(s.cron, local);
+  if (s.kind === "every") return local >= s.start && (local - s.start) % s.minutes === 0;
+  return local === s.at;
 }
 
 /** Next firing after the UTC minute `afterUtc`, as a UTC minute (undefined: never again). */

@@ -167,13 +167,13 @@ describe("rendering the welcome schema", () => {
 
   test("fields outside `editable` are read-only (moderator view)", () => {
     render(<Harness schema={welcome} initial={welcomeConfig} editable={["message"]} />);
-    expect((screen.getByRole("combobox", { name: "Channel" }) as HTMLButtonElement).disabled).toBe(
+    expect(screen.getByRole<HTMLButtonElement>("combobox", { name: "Channel" }).disabled).toBe(
       true,
     );
-    expect(
-      (screen.getByRole("switch", { name: "Dm onboarding" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).disabled).toBe(
+    expect(screen.getByRole<HTMLButtonElement>("switch", { name: "Dm onboarding" }).disabled).toBe(
+      true,
+    );
+    expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Message" }).disabled).toBe(
       false,
     );
     expect(screen.getAllByText("Admins only")).toHaveLength(3);
@@ -235,9 +235,9 @@ describe("rendering the onboarding schema (arrays of objects)", () => {
     await user.click(screen.getByRole("button", { name: "Remove step 2" }));
     expect((value["steps"] as JsonObject[]).map((s) => s["id"])).toEqual(["plateforme"]);
     // minItems: 1 → the last step cannot be removed.
-    expect(
-      (screen.getByRole("button", { name: "Remove step 1" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Remove step 1" }).disabled).toBe(
+      true,
+    );
   });
 
   test("adding a step creates the required structure", () => {
@@ -431,7 +431,7 @@ describe("every widget kind (synthetic schema)", () => {
     render(<Harness schema={kitchen} initial={value} onValue={(v) => (value = v)} />);
 
     // integer: min/max attributes, emptied optional number is removed
-    const count = screen.getByRole("spinbutton", { name: "Count" }) as HTMLInputElement;
+    const count = screen.getByRole<HTMLInputElement>("spinbutton", { name: "Count" });
     expect(count.min).toBe("1");
     expect(count.max).toBe("10");
     await user.clear(count);

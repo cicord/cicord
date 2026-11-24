@@ -24,7 +24,7 @@ import { ValueView } from "./Sync.tsx";
 
 type Obj = { [key: string]: Json };
 const obj = (v: Json | undefined): Obj =>
-  v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {};
+  v && typeof v === "object" && !Array.isArray(v) ? v : {};
 const list = (v: Json | undefined): string[] => (Array.isArray(v) ? v.map(String) : []);
 
 export function ServerSettingsPage({ serverKey }: { serverKey: string }) {
@@ -464,7 +464,7 @@ function Row({
           (mono && typeof value === "string" ? (
             <Mono className="text-foreground">{value}</Mono>
           ) : (
-            <ValueView value={value as Json | undefined} />
+            <ValueView value={value} />
           ))}
       </dd>
     </div>

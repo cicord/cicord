@@ -104,8 +104,6 @@ import { dyn, nonDefaults } from "../setup/steps-end.tsx";
 import { instancePath, storePluginPath, storeUpdatePath } from "../shell/nav.ts";
 import { StoreUpdate } from "./StoreUpdate.tsx";
 
-export { TrustBadge };
-
 type T = ReturnType<typeof useTranslation>["t"];
 
 export const DEVELOPER_PORTAL = "https://discord.com/developers/applications";
@@ -118,7 +116,7 @@ export const capabilityLabel = (t: T, cap: string) =>
 export const intentLabel = (t: T, intent: string) =>
   dyn(t)(`setup.discord.toggle.${intent}`, { defaultValue: intent });
 
-export const REGISTRY_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const REGISTRY_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 export type RegistryFieldError =
   | "nameRequired"
@@ -198,7 +196,7 @@ export function inUseItems(error: unknown): string[] {
 
 // ───────────────────────────────────────────────────────────── page
 
-export function AdminOnly() {
+function AdminOnly() {
   const { t } = useTranslation();
   return (
     <Page>
@@ -317,7 +315,7 @@ function Store({ serverKey }: { serverKey: string }) {
 
 // ───────────────────────────────────────────────────────────── browse
 
-export const storeParams = (q: TableQuery): StorePluginParams => ({
+const storeParams = (q: TableQuery): StorePluginParams => ({
   ...(q.q ? { q: q.q } : {}),
   sort: q.sort as StorePluginSortKey,
   order: q.order,
@@ -952,7 +950,7 @@ function InstallForm({
 
   const [bot, setBot] = useState("");
   const [instance, setInstance] = useState(detail.name);
-  const [draft, setDraft] = useState<JsonObject>(() => applyDefaults(schema, {}) as JsonObject);
+  const [draft, setDraft] = useState<JsonObject>(() => applyDefaults(schema, {}));
   const [confirmed, setConfirmed] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [serverErrors, setServerErrors] = useState<MappedDiagnostics>({ byField: {}, general: [] });

@@ -284,13 +284,13 @@ describe("plugin settings", () => {
     const card = await screen.findByRole("region", { name: "Welcome settings" });
     expect(within(card).getByText("message", { selector: ".editor-note code" })).toBeTruthy();
     await user.click(within(card).getByRole("radio", { name: "Base config" }));
-    const message = within(card).getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
+    const message = within(card).getByRole<HTMLTextAreaElement>("textbox", { name: "Message" });
     expect(message.value).toBe("Bienvenue {member} sur {server} ! 👋");
     expect(within(card).getByText(/the override still wins for/)).toBeTruthy();
     await user.click(within(card).getByRole("switch", { name: "Dm onboarding" }));
     // Switching scope is blocked while there are unsaved changes.
     expect(
-      (within(card).getByRole("radio", { name: "This server's override" }) as HTMLButtonElement)
+      within(card).getByRole<HTMLButtonElement>("radio", { name: "This server's override" })
         .disabled,
     ).toBe(true);
     await user.click(within(card).getByRole("button", { name: "Review changes" }));
@@ -311,7 +311,7 @@ describe("plugin settings", () => {
     await user.click(await screen.findByRole("button", { name: /Mina/ }));
     const card = await screen.findByRole("region", { name: "Welcome settings" });
     expect(
-      (within(card).getByRole("combobox", { name: "Channel" }) as HTMLButtonElement).disabled,
+      within(card).getByRole<HTMLButtonElement>("combobox", { name: "Channel" }).disabled,
     ).toBe(true);
     const message = within(card).getByRole("textbox", { name: "Message" });
     await user.type(message, "!");

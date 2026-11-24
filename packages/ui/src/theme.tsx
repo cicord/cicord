@@ -22,6 +22,9 @@ export type ResolvedMode = "light" | "dark";
 
 export const DEFAULT_PRIMARY = "#5865f2";
 export const DEFAULT_ACCENT = "#eb459e";
+// Both defaults are valid hex colors.
+const DEFAULT_PRIMARY_RGB = parseHex(DEFAULT_PRIMARY)!;
+const DEFAULT_ACCENT_RGB = parseHex(DEFAULT_ACCENT)!;
 
 // Surfaces the derived colors are checked against (keep in sync with styles.css).
 const SURFACE: Record<ResolvedMode, Rgb> = { dark: [27, 29, 38], light: [255, 255, 255] };
@@ -31,8 +34,8 @@ export function themeVariables(
   theme: CicordTheme | undefined,
   mode: ResolvedMode,
 ): Record<string, string> {
-  const primary = parseHex(theme?.primary) ?? (parseHex(DEFAULT_PRIMARY) as Rgb);
-  const accent = parseHex(theme?.accent) ?? (parseHex(DEFAULT_ACCENT) as Rgb);
+  const primary = parseHex(theme?.primary) ?? DEFAULT_PRIMARY_RGB;
+  const accent = parseHex(theme?.accent) ?? DEFAULT_ACCENT_RGB;
   const surface = SURFACE[mode];
   return {
     "--cicord-primary": toHex(primary),
@@ -53,7 +56,7 @@ function systemMode(): ResolvedMode {
 export function useResolvedMode(mode: CicordTheme["mode"]): ResolvedMode {
   const [system, setSystem] = useState<ResolvedMode>(systemMode);
   useEffect(() => {
-    if (mode !== "system" || typeof window === "undefined" || !window.matchMedia) return;
+    if (mode !== "system" || typeof window === "undefined" || !window.matchMedia) return undefined;
     const media = window.matchMedia("(prefers-color-scheme: light)");
     const update = () => setSystem(media.matches ? "light" : "dark");
     update();
@@ -107,7 +110,7 @@ export function ThemeProvider({
   const value = useMemo(() => ({ theme: theme ?? {}, mode: resolved }), [theme, resolved]);
 
   useEffect(() => {
-    if (!global || typeof document === "undefined") return;
+    if (!global || typeof document === "undefined") return undefined;
     const root = document.documentElement;
     const previous = root.getAttribute("data-cicord-mode");
     root.setAttribute("data-cicord-mode", resolved);

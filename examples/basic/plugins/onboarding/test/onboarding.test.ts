@@ -105,11 +105,11 @@ describe("POST /complete", () => {
       removed: ["valorant", "console"],
       message: "C'est tout bon !",
     });
-    const roles = (res.body as { roles: { key: string }[] }).roles.map((r) => r.key).sort();
+    const roles = (res.body as { roles: { key: string }[] }).roles.map((r) => r.key).toSorted();
     expect(roles).toEqual(["admin", "member", "minecraft", "pc"]);
     // Live member agrees; admin (not in config) untouched.
     const member = t.member("1");
-    expect(member?.roles.map((r) => r.key).sort()).toEqual(roles);
+    expect(member?.roles.map((r) => r.key).toSorted()).toEqual(roles);
     expect(t.kv.get("completed:1")).toMatchObject({
       answers: { jeux: ["minecraft"], plateforme: ["pc"], notifs: [] },
     });
@@ -144,7 +144,7 @@ describe("POST /complete", () => {
       res.body as { error: { code: string; diagnostics: { path: string; message: string }[] } }
     ).error;
     expect(error.code).toBe("invalid");
-    expect(error.diagnostics.map((d) => d.path).sort()).toEqual([
+    expect(error.diagnostics.map((d) => d.path).toSorted()).toEqual([
       "/answers/ghost",
       "/answers/jeux",
       "/answers/plateforme",

@@ -62,7 +62,7 @@ describe("theme", () => {
 describe("components", () => {
   test("Button loading disables it", () => {
     render(<Button loading>Envoyer</Button>);
-    const button = screen.getByRole("button", { name: /Envoyer/ }) as HTMLButtonElement;
+    const button = screen.getByRole<HTMLButtonElement>("button", { name: /Envoyer/ });
     expect(button.disabled).toBe(true);
     expect(button.getAttribute("aria-busy")).toBe("true");
   });

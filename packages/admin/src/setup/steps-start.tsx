@@ -216,18 +216,15 @@ export function DiscordStep(props: StepProps) {
   const [simNote, setSimNote] = useState(false);
   const a = useAction();
   const next = useAction();
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!token.trim()) return;
-    void a
-      .run(() => api.submitToken(token))
-      .then((v) => {
-        if (v) {
-          setToken("");
-          setEditing(false);
-          onView(v);
-        }
-      });
+    const v = await a.run(() => api.submitToken(token));
+    if (v) {
+      setToken("");
+      setEditing(false);
+      onView(v);
+    }
   };
   const bot = view.bot;
   return (
@@ -250,16 +247,13 @@ export function DiscordStep(props: StepProps) {
               <p>{t("setup.simulatorHint")}</p>
               <div className="mt-2">
                 <SimButton
-                  onClick={() =>
-                    void a
-                      .run(() => api.sim.createBot())
-                      .then((r) => {
-                        if (r) {
-                          setToken(r.token);
-                          setSimNote(true);
-                        }
-                      })
-                  }
+                  onClick={async () => {
+                    const r = await a.run(() => api.sim.createBot());
+                    if (r) {
+                      setToken(r.token);
+                      setSimNote(true);
+                    }
+                  }}
                 >
                   {t("setup.discord.simCreate")}
                 </SimButton>
@@ -360,24 +354,20 @@ export function ServerStep({ view, api, onView }: StepProps) {
   const next = useAction();
   const servers = usePoll((signal) => api.servers(signal), 2500);
   const list = servers.data ?? [];
-  const select = (id: string) =>
-    void a
-      .run(() => api.selectServer(id))
-      .then((r) => {
-        if (r) {
-          setResult(r);
-          onView(r.view);
-        }
-      });
-  const recheck = () =>
-    void a
-      .run(() => api.checkServer())
-      .then((r) => {
-        if (r) setResult(r);
-      });
+  const select = async (id: string) => {
+    const r = await a.run(() => api.selectServer(id));
+    if (r) {
+      setResult(r);
+      onView(r.view);
+    }
+  };
+  const recheck = async () => {
+    const r = await a.run(() => api.checkServer());
+    if (r) setResult(r);
+  };
   // Resumed on this step (reload, restart): check the selected server right away.
   useEffect(() => {
-    if (view.server && !result) recheck();
+    if (view.server && !result) void recheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const checks: Check[] | undefined = result?.checks;

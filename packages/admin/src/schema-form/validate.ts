@@ -66,7 +66,10 @@ function check(
   }
 
   if (type === "string" || kind === "ref") {
-    if (typeof value !== "string") return fail(i18n.t("form.errors.text"));
+    if (typeof value !== "string") {
+      fail(i18n.t("form.errors.text"));
+      return;
+    }
     if (s.minLength !== undefined && value.length < s.minLength)
       fail(
         s.minLength === 1
@@ -101,7 +104,10 @@ function check(
     return;
   }
   if (type === "number" || type === "integer") {
-    if (typeof value !== "number" || Number.isNaN(value)) return fail(i18n.t("form.errors.number"));
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      fail(i18n.t("form.errors.number"));
+      return;
+    }
     if (type === "integer" && !Number.isInteger(value)) fail(i18n.t("form.errors.integer"));
     if (s.minimum !== undefined && value < s.minimum)
       fail(i18n.t("form.errors.minimum", { value: s.minimum }));
@@ -118,7 +124,10 @@ function check(
     return;
   }
   if (type === "array") {
-    if (!Array.isArray(value)) return fail(i18n.t("form.errors.list"));
+    if (!Array.isArray(value)) {
+      fail(i18n.t("form.errors.list"));
+      return;
+    }
     if (s.minItems !== undefined && value.length < s.minItems)
       fail(i18n.t("form.errors.minItems", { count: s.minItems }));
     if (s.maxItems !== undefined && value.length > s.maxItems)
@@ -131,7 +140,10 @@ function check(
     return;
   }
   if (type === "object") {
-    if (!isObject(value)) return fail(i18n.t("form.errors.object"));
+    if (!isObject(value)) {
+      fail(i18n.t("form.errors.object"));
+      return;
+    }
     for (const key of s.required ?? []) {
       const v = value[key];
       if (v === undefined || v === null)

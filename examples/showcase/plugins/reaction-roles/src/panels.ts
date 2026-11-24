@@ -2,7 +2,7 @@
 import type { ActionRow, Context, Message, MessagePayload, PluginConfig, Role } from "@cicord/sdk";
 
 export type Panel = PluginConfig["panels"][number];
-export type PanelOption = Panel["options"][number];
+type PanelOption = Panel["options"][number];
 
 /** Where a panel was posted, stored under `panel:<name>`. */
 export interface PostedPanel {
@@ -24,8 +24,8 @@ export const panelKey = (name: string): string => `panel:${name}`;
 export const messageKey = (messageId: string): string => `msg:${messageId}`;
 
 /** Component ids: `rr:<panel>:<roleId>` (button), `rrs:<panel>` (select). */
-export const buttonId = (panel: string, roleId: string): string => `rr:${panel}:${roleId}`;
-export const selectId = (panel: string): string => `rrs:${panel}`;
+const buttonId = (panel: string, roleId: string): string => `rr:${panel}:${roleId}`;
+const selectId = (panel: string): string => `rrs:${panel}`;
 
 export function findPanel(ctx: Context, name: string): Panel | undefined {
   return ctx.config.panels.find((p) => p.name === name);
@@ -168,7 +168,7 @@ export function fingerprint(panel: Panel, message: MessagePayload): string {
 }
 
 /** Adds 1 to a snowflake (decimal string), without BigInt. */
-export function nextSnowflake(id: string): string {
+function nextSnowflake(id: string): string {
   const digits = id.split("").map(Number);
   let i = digits.length - 1;
   while (i >= 0 && digits[i] === 9) digits[i--] = 0;

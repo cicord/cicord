@@ -125,7 +125,7 @@ describe("store: browse", () => {
 
     // A row opens the plugin's page.
     const first = within(table).getAllByRole("link")[0]!;
-    const name = first.querySelector(".font-medium")!.textContent!;
+    const name = first.querySelector(".font-medium")!.textContent;
     await user.click(first);
     expect(await screen.findByRole("heading", { level: 1, name })).toBeTruthy();
     expect(window.location.pathname).toMatch(/\/servers\/ma-commu\/store\/[^/]+\/[^/]+$/);
@@ -521,7 +521,7 @@ describe("store: sources", () => {
     await user.type(screen.getByLabelText("Git URL (https)"), "https://git.acme.dev/q.git");
     await user.click(screen.getByRole("button", { name: "Add registry" }));
     await screen.findByText("Registry open added", { selector: "[role=status] *" });
-    expect(sent.filter((s) => s.path === "/api/v1/registries").at(-1)!.body).toEqual({
+    expect(sent.findLast((s) => s.path === "/api/v1/registries")!.body).toEqual({
       name: "open",
       url: "https://git.acme.dev/q.git",
     });

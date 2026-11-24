@@ -13,9 +13,9 @@ import { useFlash } from "../lib/flash.ts";
 import { instancePath } from "../shell/nav.ts";
 import { UninstallNotice, type UninstallFlash } from "./PluginInstance.tsx";
 
-export { formatPath, shortRev } from "./PluginSettings.tsx";
+export { formatPath } from "./PluginSettings.tsx";
 
-export const pluginParams = (q: TableQuery): PluginListParams => ({
+const pluginParams = (q: TableQuery): PluginListParams => ({
   ...(q.q ? { q: q.q } : {}),
   sort: q.sort as PluginSortKey,
   order: q.order,

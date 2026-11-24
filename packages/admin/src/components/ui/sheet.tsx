@@ -4,8 +4,6 @@ import { cn } from "../../lib/utils.ts";
 import { overlayClass } from "./dialog.tsx";
 
 export const Sheet = P.Root;
-export const SheetTrigger = P.Trigger;
-export const SheetClose = P.Close;
 
 export function SheetContent({
   className,
