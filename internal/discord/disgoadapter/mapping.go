@@ -226,6 +226,7 @@ func memberFromWire(serverID string, m wireMember, user *wireUser) discord.Membe
 		t := *m.CommunicationDisabledUntil
 		out.TimeoutUntil = &t
 	}
+	out.Flags = discord.MemberFlags(m.Flags)
 	return out
 }
 
@@ -890,6 +891,15 @@ func messageFromWire(w wireMessage) discord.Message {
 		Flags:     discord.MessageFlags(w.Flags),
 		CreatedAt: w.Timestamp,
 		EditedAt:  w.EditedTimestamp,
+		WebhookID: w.WebhookID,
+		Poll:      w.Poll != nil,
+		System:    isSystemMessage(w.Type),
+	}
+	if r := w.MessageReference; r != nil && r.Type == 0 && w.Type == messageTypeReply {
+		m.ReplyToID = r.MessageID
+	}
+	for _, st := range w.StickerItems {
+		m.StickerIDs = append(m.StickerIDs, st.ID)
 	}
 	if w.Member != nil && w.GuildID != "" {
 		mem := memberFromWire(w.GuildID, *w.Member, &w.Author)
@@ -905,6 +915,18 @@ func messageFromWire(w wireMessage) discord.Message {
 		m.Attachments = append(m.Attachments, attachmentFromWire(a))
 	}
 	return m
+}
+
+// Message types written by their author: DEFAULT, REPLY, CHAT_INPUT_COMMAND and
+// CONTEXT_MENU_COMMAND. Every other type is a system message.
+const messageTypeReply = 19
+
+func isSystemMessage(t int) bool {
+	switch t {
+	case 0, messageTypeReply, 20, 23:
+		return false
+	}
+	return true
 }
 
 func attachmentFromWire(a wireAttachment) discord.Attachment {

@@ -154,7 +154,7 @@ func TestGatewayEndToEnd(t *testing.T) {
 		time.Sleep(100 * time.Microsecond) // slow-ish handler
 		mu.Lock()
 		events = append(events, e)
-		if l := len(events); l == n+3 {
+		if l := len(events); l == n+4 {
 			close(allDone)
 		}
 		mu.Unlock()
@@ -181,7 +181,7 @@ func TestGatewayEndToEnd(t *testing.T) {
 	case <-allDone:
 	case <-time.After(10 * time.Second):
 		mu.Lock()
-		t.Fatalf("received %d/%d events", len(events), n+3)
+		t.Fatalf("received %d/%d events", len(events), n+4)
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -189,16 +189,19 @@ func TestGatewayEndToEnd(t *testing.T) {
 	if !ok || r.User.ID != "600" || len(r.ServerIDs) != 1 {
 		t.Fatalf("first event = %#v", events[0])
 	}
-	u1 := events[1].(discord.MemberUpdateEvent)
+	if a, ok := events[1].(discord.ServerAvailableEvent); !ok || a.ServerID != "1" {
+		t.Errorf("second event = %#v, want the server available", events[1])
+	}
+	u1 := events[2].(discord.MemberUpdateEvent)
 	if u1.Previous == nil || len(u1.Previous.RoleIDs) != 1 || len(u1.Member.RoleIDs) != 2 {
 		t.Errorf("member update (GUILD_CREATE seed) = %#v", u1)
 	}
-	u2 := events[2].(discord.MemberUpdateEvent)
+	u2 := events[3].(discord.MemberUpdateEvent)
 	if u2.Previous == nil || u2.Previous.RoleIDs[0] != "7" {
 		t.Errorf("member update (chunk seed) = %#v", u2)
 	}
 	for i := range n {
-		m := events[3+i].(discord.MessageCreateEvent)
+		m := events[4+i].(discord.MessageCreateEvent)
 		if m.Message.ID != fmt.Sprint(i+1) {
 			t.Fatalf("message %d has id %s: order not preserved", i+1, m.Message.ID)
 		}

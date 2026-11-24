@@ -43,7 +43,13 @@ type ReactionRemoveEvent struct{ ReactionEvent }
 
 type InteractionCreateEvent struct{ Interaction Interaction }
 
-type ChannelCreateEvent struct{ Channel Channel }
+// ChannelCreateEvent is also delivered for threads. NewThread is set when the thread was
+// just created (THREAD_CREATE newly_created), not when the bot was added to an existing
+// thread.
+type ChannelCreateEvent struct {
+	Channel   Channel
+	NewThread bool
+}
 type ChannelUpdateEvent struct{ Channel Channel }
 type ChannelDeleteEvent struct{ Channel Channel }
 
@@ -190,6 +196,20 @@ func ServerIDOf(e Event) string {
 	case SoundUpdateEvent:
 		return ev.ServerID
 	case SoundDeleteEvent:
+		return ev.ServerID
+	case VoiceStateUpdateEvent:
+		return ev.State.ServerID
+	case PresenceUpdateEvent:
+		return ev.ServerID
+	case ServerAvailableEvent:
+		return ev.ServerID
+	case AuditLogEntryEvent:
+		return ev.ServerID
+	case AutoModActionEvent:
+		return ev.ServerID
+	case InviteCreateEvent:
+		return ev.ServerID
+	case InviteDeleteEvent:
 		return ev.ServerID
 	}
 	return ""

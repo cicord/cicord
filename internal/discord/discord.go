@@ -430,7 +430,18 @@ type Member struct {
 	JoinedAt time.Time
 	// TimeoutUntil is set while the member is timed out.
 	TimeoutUntil *time.Time
+	// Flags are Discord's guild member flags (MemberFlagCompletedOnboarding…).
+	Flags MemberFlags
 }
+
+// MemberFlags is the guild member flags bitset.
+type MemberFlags int
+
+const (
+	MemberFlagDidRejoin           MemberFlags = 1 << 0
+	MemberFlagCompletedOnboarding MemberFlags = 1 << 1
+	MemberFlagStartedOnboarding   MemberFlags = 1 << 3
+)
 
 // DisplayName returns the nickname, else the user's display name.
 func (m Member) DisplayName() string {
@@ -644,6 +655,18 @@ type Message struct {
 	Flags       MessageFlags
 	CreatedAt   time.Time
 	EditedAt    *time.Time
+	// WebhookID is set for messages sent by a webhook.
+	WebhookID string
+	// ReplyToID is the message this one replies to ("" when not a reply).
+	ReplyToID string
+	// StickerIDs are the stickers sent with the message.
+	StickerIDs []string
+	// Poll is true when the message carries a Discord poll (emptied, like Content,
+	// without the MessageContent intent).
+	Poll bool
+	// System is true for system messages (member joined, boost, pin…), which are not
+	// written by their author.
+	System bool
 }
 
 type ListMessagesParams struct {

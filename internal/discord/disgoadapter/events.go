@@ -36,6 +36,9 @@ func parseSnowflake(s string) (snowflake.ID, error) {
 // more Cicord events, updating the member cache on the way. Unknown or irrelevant
 // dispatches return nil.
 func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
+	if evs, ok, err := s.translateAnalytics(t, d); ok {
+		return evs, err
+	}
 	switch t {
 	case "READY":
 		var r wireReady
@@ -63,14 +66,18 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		if s.chunkingEnabled() {
 			s.requestMembers(g.ID)
 		}
+		avail, err := serverAvailable(d)
+		if err != nil {
+			return nil, err
+		}
 		if !s.servers.created(g.ID) {
-			return nil, nil
+			return []discord.Event{avail}, nil
 		}
 		var full wireGuild
 		if err := json.Unmarshal(d, &full); err != nil {
 			return nil, err
 		}
-		return []discord.Event{discord.ServerJoinEvent{Server: serverFromWire(full)}}, nil
+		return []discord.Event{discord.ServerJoinEvent{Server: serverFromWire(full)}, avail}, nil
 
 	case "GUILD_DELETE":
 		var g wireGuildDelete
@@ -188,7 +195,13 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []discord.Event{discord.ChannelCreateEvent{Channel: c}}, nil
+		var nc struct {
+			NewlyCreated bool `json:"newly_created"`
+		}
+		if t == "THREAD_CREATE" {
+			_ = json.Unmarshal(d, &nc) // already decoded once as a channel
+		}
+		return []discord.Event{discord.ChannelCreateEvent{Channel: c, NewThread: nc.NewlyCreated}}, nil
 	case "CHANNEL_UPDATE", "THREAD_UPDATE":
 		c, err := decodeChannel(d)
 		if err != nil {
