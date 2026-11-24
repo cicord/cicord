@@ -120,12 +120,13 @@ func BenchmarkCPUBoundCommand(b *testing.B) {
 	}
 }
 
-// BenchmarkIdleInstanceMemory reports the Go heap held by one started, idle instance.
+// BenchmarkIdleInstanceMemory reports the memory held by one started, idle instance: the Go
+// heap and the VM's wasm memory (outside the Go heap; its size bounds what was touched).
 func BenchmarkIdleInstanceMemory(b *testing.B) {
 	code, def := benchBundle(b)
 	env, _ := benchEnv()
 	const n = 20
-	var total float64
+	var heap, linear float64
 	for b.Loop() {
 		var before, after runtime.MemStats
 		runtime.GC()
@@ -143,10 +144,12 @@ func BenchmarkIdleInstanceMemory(b *testing.B) {
 		}
 		runtime.GC()
 		runtime.ReadMemStats(&after)
-		total += float64(after.HeapInuse-before.HeapInuse) / n
+		heap += (float64(after.HeapInuse) - float64(before.HeapInuse)) / n
 		for _, inst := range insts {
+			linear += float64(inst.vm.q.LinearMemorySize()) / n
 			_ = inst.Stop(context.Background())
 		}
 	}
-	b.ReportMetric(total/float64(b.N)/1024, "KiB/instance")
+	b.ReportMetric(heap/float64(b.N)/1024, "heap-KiB/instance")
+	b.ReportMetric(linear/float64(b.N)/1024, "wasm-KiB/instance")
 }

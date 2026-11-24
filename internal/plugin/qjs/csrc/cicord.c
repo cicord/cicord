@@ -14,11 +14,13 @@
 // (cq_state).
 //
 // CPU: QuickJS's interrupt handler asks Go (cicord.interrupt) whether to stop: 1 stops the
-// JS code with an uncatchable error (soft stop, the VM stays usable), 2 kills the VM (the
-// guest traps). Native builtins do not all reach the interrupt handler, so the whole
-// engine is also built with -finstrument-function-entry-bare: every C function entry
-// counts down to a kill check, and a builtin stuck in a long loop traps within a few
-// thousand calls of the kill (see scripts/build-quickjs-wasm.sh).
+// JS code with an uncatchable error (soft stop, the VM stays usable). Killing the VM is a
+// flag in linear memory (cicord_kill) that Go sets with an atomic store: the guest traps at
+// the next check. Native builtins do not all reach the interrupt handler, so the whole
+// engine is built with -finstrument-function-entry-bare (every C function entry checks the
+// flag, a load and a branch) and the build script adds the check to the loops that can run
+// long without a call (string search, BigInt multiplication rows); see
+// scripts/build-quickjs-wasm.sh.
 //
 // Memory: JS allocations go through malloc functions that enforce the limit given to
 // cq_init and set a sticky out-of-memory flag when it is hit (plugin code can catch the
@@ -32,6 +34,7 @@
 #include <malloc.h>
 
 #include "quickjs.h"
+#include "cicord_kill.h"
 
 #define IMPORT(name) __attribute__((import_module("cicord"), import_name(name)))
 #define EXPORT(name) __attribute__((export_name(name)))
@@ -69,23 +72,15 @@ static struct {
 	int32_t len;
 	char *jptr; // last exception that escaped a job
 	int32_t jlen;
-} out;
+	volatile int32_t *kill; // &cicord_kill, for Go
+} out = {.kill = &cicord_kill};
 
 // Answers of cicord.interrupt.
 enum { I_RUN = 0, I_STOP = 1, I_KILL = 2 };
 
-// Function entries between two kill checks.
-#define KILL_CHECK_EVERY 4096
+volatile int32_t cicord_kill;
 
-static int32_t kill_countdown = KILL_CHECK_EVERY;
-
-__attribute__((no_instrument_function)) void __cyg_profile_func_enter_bare(void) {
-	if (--kill_countdown > 0)
-		return;
-	kill_countdown = KILL_CHECK_EVERY;
-	if (host_interrupt() == I_KILL)
-		__builtin_trap();
-}
+__attribute__((no_instrument_function)) void __cyg_profile_func_enter_bare(void) { CICORD_KILL_CHECK(); }
 
 static JSRuntime *rt;
 static JSContext *ctx;
@@ -290,6 +285,7 @@ static int32_t result(JSValue v) {
 static int interrupt_handler(JSContext *c, void *opaque) {
 	(void)c;
 	(void)opaque;
+	CICORD_KILL_CHECK();
 	int32_t r = host_interrupt();
 	if (r == I_KILL)
 		__builtin_trap();

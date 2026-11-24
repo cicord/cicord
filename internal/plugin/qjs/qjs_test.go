@@ -3,8 +3,8 @@ package qjs
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -166,5 +166,30 @@ func TestKillStopsNativeBuiltins(t *testing.T) {
 	}
 	if d := time.Since(start); d > time.Second {
 		t.Fatalf("kill took %s", d)
+	}
+}
+
+// TestKillStopsQuadraticStringSearch: a single naive O(n*m) indexOf (hours of CPU, no JS
+// interrupt check inside) is stopped by the kill checks patched into string_cmp.
+func TestKillStopsQuadraticStringSearch(t *testing.T) {
+	v := newTestVM(t, Config{}, nil)
+	time.AfterFunc(100*time.Millisecond, v.Kill)
+	start := time.Now()
+	_, _, err := v.Call(context.Background(), "run", `const h = "a".repeat(8e6), n = "a".repeat(4e6) + "b"; h.indexOf(n)`)
+	if !errors.Is(err, ErrKilled) {
+		t.Fatalf("err = %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("kill took %s", d)
+	}
+}
+
+// TestKillAfterClose: Kill on a closed VM (its memory unmapped) is a no-op.
+func TestKillAfterClose(t *testing.T) {
+	v := newTestVM(t, Config{}, nil)
+	v.Close()
+	v.Kill()
+	if _, _, err := v.Call(context.Background(), "echo", "a", "b"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -15,10 +15,12 @@
 //     stays usable;
 //   - Kill, or cancelling the context of a call, stops it unconditionally: the guest traps
 //     at its next kill check and the VM is dead afterwards (ErrKilled). This is the hard
-//     stop for code that does not reach an interrupt check (a long native builtin): the
-//     engine is built so that every C function entry counts down to a kill check (see
-//     csrc/cicord.c). wazero's WithCloseOnContextDone would do the same at every wasm loop
-//     iteration, at about 4 times the CPU cost;
+//     stop for code that does not reach an interrupt check (a long native builtin): Kill
+//     stores a flag into the guest's linear memory (backed outside the Go heap at a fixed
+//     address, memory_unix.go) and the engine checks it at every C function entry and in
+//     the loops that can run long without a call (csrc/cicord.c). wazero's
+//     WithCloseOnContextDone would check at every wasm loop iteration through Go, at about
+//     4 times the CPU cost;
 //   - any wasm trap (stack exhaustion, assertion) kills the VM (ErrTrap). The Go process
 //     is never affected.
 //
@@ -37,6 +39,7 @@ import (
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
@@ -148,7 +151,6 @@ func sharedFor(ctx context.Context, pages uint32) (*shared, error) {
 	}
 	cfg := wazero.NewRuntimeConfig().
 		WithCompilationCache(cache).
-
 		WithMemoryLimitPages(pages).
 		WithCoreFeatures(api.CoreFeaturesV2)
 	rt := wazero.NewRuntimeWithConfig(ctx, cfg)
@@ -185,7 +187,7 @@ func Precompile(ctx context.Context) error {
 }
 
 func pagesFor(limit int64) uint32 {
-	return uint32((limit + memoryMargin + pageSize - 1) / pageSize)
+	return uint32((limit + memoryMargin + pageSize - 1) / pageSize) //nolint:gosec // limit is checked to be in (0, 1 GiB]
 }
 
 // VM is one QuickJS runtime and context in its own wasm instance.
@@ -194,15 +196,17 @@ type VM struct {
 	host HostFunc
 
 	fnInit, fnPrelude, fnEval, fnCall, fnJobs, fnTakeRej, fnMem, fnGC api.Function
-	fnCompile, fnPreludeBC, fnEvalBC                                 api.Function
-	outAddr                                                          uint32
+	fnCompile, fnPreludeBC, fnEvalBC                                  api.Function
+	outAddr                                                           uint32
 
-	state       atomic.Int32 // stateRun, stateStop (Interrupt) or stateKill
-	pending     []byte // host result waiting for host_take
-	args        []byte // call arguments waiting for args_take
-	flags       uint32
-	jobErr      error
-	dead        error
+	state    atomic.Int32 // stateRun, stateStop (Interrupt) or stateKill
+	pending  []byte       // host result waiting for host_take
+	args     []byte       // call arguments waiting for args_take
+	flags    uint32
+	mem      *linearMemory
+	killAddr uint32 // &cicord_kill in linear memory
+	jobErr   error
+	dead     error
 }
 
 // New instantiates a VM.
@@ -230,9 +234,25 @@ func New(ctx context.Context, cfg Config, host HostFunc) (*VM, error) {
 		WithSysWalltime().
 		WithSysNanotime().
 		WithRandSource(rand.Reader)
-	mod, err := s.rt.InstantiateModule(v.ctx(ctx), s.mod, mcfg)
+	var memErr error
+	alloc := experimental.MemoryAllocatorFunc(func(_, max uint64) experimental.LinearMemory {
+		m, err := newLinearMemory(max)
+		if err != nil {
+			memErr = err
+			return nil
+		}
+		v.mem = m
+		return m
+	})
+	mod, err := s.rt.InstantiateModule(experimental.WithMemoryAllocator(v.ctx(ctx), alloc), s.mod, mcfg)
+	if err == nil && v.mem == nil {
+		err = errors.New("linear memory not allocated")
+	}
 	if err != nil {
-		return nil, fmt.Errorf("qjs: instantiate: %w", err)
+		if mod != nil {
+			_ = mod.Close(context.Background())
+		}
+		return nil, fmt.Errorf("qjs: instantiate: %w", errors.Join(err, memErr))
 	}
 	v.mod = mod
 	get := func(name string) api.Function {
@@ -255,8 +275,14 @@ func New(ctx context.Context, cfg Config, host HostFunc) (*VM, error) {
 		v.Close()
 		return nil, fmt.Errorf("qjs: cq_state: %w", err)
 	}
-	v.outAddr = uint32(r[0])
-	code, err := v.call(ctx, v.fnInit, uint64(cfg.MemoryLimit), uint64(cfg.StackLimit))
+	v.outAddr = api.DecodeU32(r[0])
+	killAddr, ok := mod.Memory().ReadUint32Le(v.outAddr + 16)
+	if !ok || killAddr == 0 {
+		v.Close()
+		return nil, errors.New("qjs: cq_state: no kill flag")
+	}
+	v.killAddr = killAddr
+	code, err := v.call(ctx, v.fnInit, uint64(cfg.MemoryLimit), uint64(cfg.StackLimit)) //nolint:gosec // both checked positive and bounded above
 	if err == nil && code != cqOK {
 		err = errors.New("qjs: cannot create the JS runtime")
 	}
@@ -292,7 +318,12 @@ func (v *VM) ClearInterrupt() { v.state.CompareAndSwap(stateStop, stateRun) }
 
 // Kill stops the running (or next) call unconditionally; the VM is dead afterwards. Safe
 // for concurrent use.
-func (v *VM) Kill() { v.state.Store(stateKill) }
+func (v *VM) Kill() {
+	v.state.Store(stateKill)
+	if m := v.mem; m != nil {
+		m.store32(v.killAddr, 1)
+	}
+}
 
 // JobsPending reports that microtasks were pending after the last call.
 func (v *VM) JobsPending() bool { return v.flags&fJobs != 0 }
@@ -318,7 +349,16 @@ func (v *VM) MemoryUsed() int64 {
 	if err != nil {
 		return 0
 	}
-	return int64(uint32(r[0]))
+	return int64(api.DecodeU32(r[0]))
+}
+
+// LinearMemorySize is the size of the VM's wasm memory in bytes: an upper bound of the
+// memory it touched (it lives outside the Go heap on unix).
+func (v *VM) LinearMemorySize() int64 {
+	if v.mod == nil {
+		return 0
+	}
+	return int64(v.mod.Memory().Size())
 }
 
 // GC runs the garbage collector.
@@ -353,7 +393,7 @@ func (v *VM) call(ctx context.Context, fn api.Function, params ...uint64) (int, 
 	if len(r) == 0 {
 		return cqOK, nil
 	}
-	st := uint32(r[0])
+	st := api.DecodeU32(r[0])
 	v.flags = st
 	if st&fOOM != 0 {
 		v.dead = ErrOutOfMemory

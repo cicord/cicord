@@ -33,13 +33,21 @@ curl -fsSL -o "$work/qjs.tar.gz" "https://github.com/quickjs-ng/quickjs/archive/
 echo "${QJS_SHA256}  $work/qjs.tar.gz" | shasum -a 256 -c - >/dev/null
 mkdir -p "$work/src"
 tar xzf "$work/qjs.tar.gz" -C "$work/src" --strip-components=1
-cp "$pkg/csrc/cicord.c" "$work/src/cicord.c"
+cp "$pkg/csrc/cicord.c" "$pkg/csrc/cicord_kill.h" "$work/src/"
+
+# Kill checks in the loops that can run long without calling a function (function entries
+# are checked through -finstrument-function-entry-bare): string_cmp is called per position
+# by the naive O(n*m) string searches (indexOf, includes, lastIndexOf, split, replace), the
+# js_mp_*mul1 helpers per row of a BigInt multiplication or division.
+for fn in string_cmp js_mp_mul1 js_mp_add_mul1 js_mp_sub_mul1; do
+  FN="$fn" perl -0pi -e 's/(\nstatic [^\n(]*\b\Q$ENV{FN}\E\([^{;]*\)\s*\{)/$1 CICORD_KILL_CHECK();/ or die "kill check: $ENV{FN} not found\n"' "$work/src/quickjs.c"
+done
 
 docker run --rm --platform "$PLATFORM" --network none \
   -v "$work/src:/src:ro" -v "$work:/out" -w /src "$WASI_SDK_IMAGE" \
   /opt/wasi-sdk/bin/clang --target=wasm32-wasip1 -mexec-model=reactor \
   -O2 -std=gnu11 -ffile-prefix-map=/src=quickjs -fno-ident \
-  -finstrument-function-entry-bare \
+  -finstrument-function-entry-bare -include cicord_kill.h \
   -D_GNU_SOURCE -DCONFIG_VERSION="\"${QJS_VERSION}\"" \
   -Wno-unused-parameter -Wno-sign-compare -Wno-implicit-fallthrough \
   -Wl,--stack-first -Wl,-z,stack-size=${STACK_SIZE} \
