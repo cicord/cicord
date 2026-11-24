@@ -218,3 +218,43 @@ ssh cicord 'sudo docker logs cicord 2>&1 | grep "setup wizard"'
 
 Open it from a device of the tailnet. On the public host, setup mode answers 404 except the
 health endpoints.
+
+## 8. Secrets and backups
+
+The wizard stores the bot token, the Discord OAuth client secret and the GitHub App ID, key and
+installation ID in the runtime's **encrypted secret store**: AES-256-GCM, inside `cicord.db`
+in the `cicord_cicord-data` volume; the key is `secret.key` (mode 0600) in the same volume,
+generated on the server. The browser reaches the wizard over the tailnet (WireGuard, then
+`tailscale serve` HTTPS) only. `cicord secret ls` shows names, never values.
+
+The GitHub webhook secret (the value typed in the GitHub App settings, step 5) is set from the
+workstation, the value being pasted into the prompt (stdin), never on a command line:
+
+```sh
+ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_WEBHOOK_SECRET --data-dir /data'
+```
+
+What the encryption protects: a copy of the database alone (a backup, a dump) reveals no
+secret. What it does not: root on the server can read the key and the database — the runtime
+has to decrypt the tokens to work. The protection there is the server's exposure (only Caddy
+public, SSH and admin on the tailnet).
+
+Hardening applied:
+- the data directory is `0700` (the image creates `/data` that way; an existing volume:
+  `sudo chmod 0700 "$(sudo docker volume inspect -f '{{.Mountpoint}}' cicord_cicord-data)"`);
+- **the key is kept apart from the backups**: once, in the password manager, copied without
+  being displayed:
+
+  ```sh
+  ssh cicord 'sudo cat /var/lib/docker/volumes/cicord_cicord-data/_data/secret.key' | pbcopy
+  # paste into the password manager, then: pbcopy < /dev/null
+  ```
+
+- daily backups — `scripts/05-backup.sh` installs a systemd timer (03:30 UTC) writing
+  `/var/backups/cicord/cicord-<timestamp>.tar.zst` (root, 0600): an online, integrity-checked
+  copy of `cicord.db` plus the embedded repository / write-back clone, **without**
+  `secret.key` or `link.key`; 14 days kept. Check: `sudo systemctl list-timers cicord-backup.timer`,
+  `sudo systemctl start cicord-backup.service`. Copy the archives off the server as well.
+
+Rotation of a leaked credential (bot token, OAuth secret, App key, webhook secret, store key):
+see the docs, *Self-hosting → Backups and secrets → Rotating a leaked credential*.

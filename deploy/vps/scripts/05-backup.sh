@@ -5,8 +5,11 @@
 # Installs /usr/local/sbin/cicord-backup and a systemd timer (daily, 03:30 UTC) that
 # writes /var/backups/cicord/cicord-<UTC timestamp>.tar.zst (mode 0600) with:
 #   - cicord.db: an online, consistent copy (sqlite3 .backup, safe while the runtime runs)
-#   - secret.key and link.key: WITHOUT secret.key the encrypted secrets are unreadable
 #   - the embedded repository (repo.git) and write-back clone, when present
+# The encryption key secret.key is deliberately NOT included: the archives hold the
+# encrypted secrets, the key is kept once, apart (password manager), so a stolen backup
+# reveals nothing. Restoring needs both. link.key is not included either: it is
+# regenerated when missing (outstanding portal links then stop working, nothing else).
 # Backups older than 14 days are deleted. Copy them off the server too (provider backup
 # storage, another machine): a local backup does not survive the loss of the server.
 set -eu
@@ -29,7 +32,6 @@ if [ -f "\$DATA/cicord.db" ]; then
   sqlite3 "\$DATA/cicord.db" ".backup '\$WORK/cicord.db'"
   sqlite3 "\$WORK/cicord.db" "PRAGMA integrity_check;" | grep -qx ok
 fi
-for f in secret.key link.key; do [ -f "\$DATA/\$f" ] && cp -p "\$DATA/\$f" "\$WORK/"; done
 for d in repo.git writeback; do [ -d "\$DATA/\$d" ] && cp -a "\$DATA/\$d" "\$WORK/"; done
 tar -C "\$WORK" -cf - . | zstd -q -19 -o "\$OUT/cicord-\$STAMP.tar.zst"
 chmod 600 "\$OUT/cicord-\$STAMP.tar.zst"

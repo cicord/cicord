@@ -15,11 +15,21 @@ a PostgreSQL database with `--database-url` / `CICORD_DATABASE_URL` (see
 | The state store: `cicord.db` (+ `-wal`, `-shm`), or the PostgreSQL database | The resource map (which Discord ID each key is), plugin data (XP, warnings, tickets…), scheduled tasks, sessions, the audit log, the sync history and the encrypted secrets. |
 | `secret.key` | The key of the secret store, unless you set `CICORD_SECRET_KEY`. Without it, stored secrets cannot be decrypted. Needed with PostgreSQL too. |
 | `repo.git` | With the `embedded` provider ("Managed by Cicord"), this **is** your configuration. |
-| `link.key` | Portal link signing key, unless you set `CICORD_LINK_SECRET`. |
+| `link.key` | Portal link signing key, unless you set `CICORD_LINK_SECRET`. Regenerated when missing: only the portal links already sent stop working. |
 
 The rest of the data directory (`source/`, `writeback/`, `snapshots/`, `cache/`) is rebuilt
-automatically. Keep the key (`secret.key` or `CICORD_SECRET_KEY`) in a different place than the
-database backups it protects.
+automatically.
+
+**Keep the key apart from the backups.** The database backups hold the secrets encrypted; the
+key (`secret.key` or `CICORD_SECRET_KEY`) decrypts them. Store the key once, in a password
+manager or a vault, and leave it out of the routine backups: a stolen backup then reveals no
+secret, and a restore needs both. Copy the key without displaying it, for example on macOS:
+
+```sh
+ssh <server> 'sudo cat /var/lib/docker/volumes/<project>_cicord-data/_data/secret.key' | pbcopy
+# paste it into the password manager, then clear the clipboard:
+pbcopy < /dev/null
+```
 
 ### SQLite
 
@@ -33,8 +43,8 @@ database backups it protects.
 
   Never copy `cicord.db` alone while the runtime is running: the WAL file holds recent writes.
 - **Restore**: stop the runtime, put the copy in place as `cicord.db`, delete any leftover
-  `cicord.db-wal` and `cicord.db-shm`, restore `secret.key`, `link.key` and `repo.git`, then
-  start the runtime.
+  `cicord.db-wal` and `cicord.db-shm`, put `secret.key` back from where you keep it, restore
+  `repo.git`, then start the runtime.
 
 ### PostgreSQL
 
@@ -46,7 +56,7 @@ database backups it protects.
   pg_dump --format=custom --file=cicord.dump --dbname="$CICORD_DATABASE_URL"
   ```
 
-  Back up `secret.key`, `link.key` and `repo.git` from the data directory too.
+  Back up `repo.git` from the data directory too; keep `secret.key` apart (above).
 - **Restore**: stop the runtime, create an empty database owned by the runtime's user, restore
   the dump, put the key files and `repo.git` back in the data directory, then start the
   runtime:
@@ -128,3 +138,20 @@ runtime's `CICORD_DATABASE_URL`, if any):
 ```sh
 docker exec -i cicord cicord secret set DISCORD_TOKEN_CICORD --data-dir /data
 ```
+
+### Rotating a leaked credential
+
+If a secret may have leaked (a server compromise, a token pasted in the wrong place), make the
+old value useless at its source, then store the new one. Each value is shown once by its
+provider: paste it straight into `cicord secret set`.
+
+| Secret | Where to regenerate it | Then |
+|---|---|---|
+| `DISCORD_TOKEN_<BOT>` (bot token) | Discord Developer Portal → the application → **Bot → Reset Token** | `cicord secret set DISCORD_TOKEN_<BOT>`, restart the runtime |
+| `CICORD_DISCORD_CLIENT_SECRET` | Developer Portal → **OAuth2 → Reset Secret** | `cicord secret set CICORD_DISCORD_CLIENT_SECRET` |
+| `CICORD_GITHUB_APP_PRIVATE_KEY` | GitHub App settings → **Private keys → Generate a private key**, then **delete the old key** | `cicord secret set CICORD_GITHUB_APP_PRIVATE_KEY < new.pem` |
+| `CICORD_GIT_TOKEN` (token instead of an App) | GitHub → Settings → Developer settings → the token → **Regenerate**, or revoke it | `cicord secret set CICORD_GIT_TOKEN` |
+| `CICORD_WEBHOOK_SECRET` | a new random value (`openssl rand -hex 32`), set in the GitHub App (or repository) webhook settings too | `cicord secret set CICORD_WEBHOOK_SECRET` |
+| `CICORD_RUNTIME_TOKEN` (CI) | a new random value | update the CI secret and the runtime |
+| the store's key (`secret.key`) | `cicord secret rotate-key` re-encrypts every secret with a new key | store the new key in the password manager, delete the old copy |
+| `link.key` | delete the file (or change `CICORD_LINK_SECRET`) and restart | portal links already sent stop working |

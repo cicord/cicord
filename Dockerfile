@@ -58,7 +58,7 @@ RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod \
     GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
       -ldflags "-s -w -X github.com/cicord/cicord/internal/version.Version=${VERSION} -X github.com/cicord/cicord/internal/version.Commit=${COMMIT}" \
       -o /out/cicord ./cmd/cicord \
- && mkdir -p /out/data /out/repo
+ && mkdir -p /out/data /out/repo && chmod 0700 /out/data /out/repo
 
 # ───────────────────────────────────────────────────────────── runtime
 FROM gcr.io/distroless/static-debian13:nonroot
