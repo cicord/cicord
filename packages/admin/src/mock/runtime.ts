@@ -43,6 +43,7 @@ import {
   welcomeBase,
   welcomeOverride,
 } from "./data.ts";
+import { createMockAnalytics, type MockAnalyticsVariant } from "./analytics.ts";
 
 type Obj = { [key: string]: Json };
 
@@ -499,6 +500,10 @@ export interface MockRuntimeOptions {
    * version and acme/giveaways is installed at an older version (default false).
    */
   demoUpdates?: boolean;
+  /** Analytics of the server (src/mock/analytics.ts; default "full"). */
+  analytics?: MockAnalyticsVariant;
+  /** Clock of the generated analytics (ms; default Date.now). */
+  now?: () => number;
 }
 
 export function createMockRuntime(options: MockRuntimeOptions = {}) {
@@ -562,6 +567,11 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     return s;
   };
   let state: MockState = load();
+  const analytics = createMockAnalytics({
+    variant: options.analytics ?? "full",
+    server: SERVER_KEY,
+    ...(options.now ? { now: options.now } : {}),
+  });
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const encoder = new TextEncoder();
 
@@ -1968,6 +1978,17 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       if (method === "GET" && rest === "")
         return staff(() => json({ ...serverStatus(), spec: serverSpec }));
       if (method === "GET" && rest === "/resources") return staff(() => json(resources()));
+      const insight = /^\/analytics\/(summary|series|catalog)$/.exec(rest);
+      if (method === "GET" && insight)
+        return staff(() => {
+          const r =
+            insight[1] === "summary"
+              ? analytics.summary(url)
+              : insight[1] === "series"
+                ? analytics.series(url)
+                : analytics.catalog();
+          return r.status === 200 ? json(r.body) : fail(400, "invalid", r.message);
+        });
       if (method === "GET" && rest === "/plan") return staff(() => json(plan()), true);
       if (method === "GET" && rest === "/diagnostics")
         return staff(
