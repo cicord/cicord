@@ -45,5 +45,8 @@ func (m *linearMemory) store32(addr uint32, v int32) {
 	if m.freed || uint64(addr)+4 > uint64(len(m.buf)) || addr%4 != 0 {
 		return
 	}
-	atomic.StoreInt32((*int32)(unsafe.Pointer(&m.buf[addr])), v)
+	// The guest reads this word with plain loads while it runs: an atomic store into the
+	// fixed mapping is the cross-thread write wazero documents for shared memories.
+	// nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block -- bounds and alignment checked above; the mapping never moves and is not freed while mu is held
+	atomic.StoreInt32((*int32)(unsafe.Pointer(&m.buf[addr])), v) //nolint:gosec // bounds and alignment checked above, buf is never moved or freed while held
 }

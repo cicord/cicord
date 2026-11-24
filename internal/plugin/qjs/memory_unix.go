@@ -11,7 +11,7 @@ func newLinearMemory(max uint64) (*linearMemory, error) {
 	if max == 0 {
 		max = pageSize
 	}
-	b, err := syscall.Mmap(-1, 0, int(max), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE) //nolint:gosec // max is the page cap of a VM (<= 1 GiB + margin)
+	b, err := syscall.Mmap(-1, 0, int(max), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
 	if err != nil {
 		return nil, err
 	}
