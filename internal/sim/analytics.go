@@ -266,7 +266,7 @@ func (w *World) JoinWithInvite(userID, code string) error {
 		inv := a.invites[code]
 		if inv == nil {
 			if a.vanity != nil && a.vanity.Code == code {
-				if _, err := w.addMember(sid, userID); err != nil {
+				if err := w.addMember(sid, userID); err != nil {
 					return err
 				}
 				a.vanity.Uses++
@@ -274,7 +274,7 @@ func (w *World) JoinWithInvite(userID, code string) error {
 			}
 			continue
 		}
-		if _, err := w.addMember(sid, userID); err != nil {
+		if err := w.addMember(sid, userID); err != nil {
 			return err
 		}
 		inv.Uses++

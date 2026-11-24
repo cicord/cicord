@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cicord/cicord/internal/analytics"
 	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/config"
@@ -63,7 +64,11 @@ type Options struct {
 	CommitStatus func(ctx context.Context, sha, state, description string)
 	// Metrics receives the runtime metrics (nil: a private registry, never exposed).
 	Metrics *metrics.Registry
-	Logger  *slog.Logger
+	// Analytics stores the server activity analytics (nil: analytics are off). The
+	// collecting bot of each server with analytics enabled gets the non-privileged
+	// intents the collector needs (analytics.CollectorIntents).
+	Analytics state.Analytics
+	Logger    *slog.Logger
 }
 
 // Commit status states (Options.CommitStatus).
@@ -95,6 +100,9 @@ type Runtime struct {
 
 	restart restartPolicy
 	metrics *runtimeMetrics
+
+	collector     *analytics.Collector // nil when Options.Analytics is nil
+	analyticsDone <-chan struct{}      // closed after the collector's last flush
 }
 
 // active is an activated revision.
@@ -190,6 +198,13 @@ func New(opts Options) *Runtime {
 		restart: restartPolicy{min: restartMin, max: restartMax, stable: restartStable}}
 	r.sched = newScheduler(r)
 	r.metrics = newRuntimeMetrics(opts.Metrics, r)
+	if opts.Analytics != nil {
+		var kv state.KV
+		if opts.Store != nil {
+			kv = opts.Store.KV(analyticsKVScope)
+		}
+		r.collector = analytics.NewCollector(analytics.CollectorOptions{Store: opts.Analytics, KV: kv, Logger: opts.Logger})
+	}
 	return r
 }
 
@@ -204,6 +219,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		resync = t.C
 	}
 	go r.sched.run(ctx)
+	r.analyticsDone = r.runAnalytics(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -451,6 +467,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	r.lastErr = ""
 	r.mu.Unlock()
 	r.sched.reset(next)
+	r.configureAnalytics(next)
 
 	if old != nil {
 		// The old revision is stopped in the background and must finish even when the
@@ -673,6 +690,13 @@ func (r *Runtime) shutdown() {
 	defer cancel()
 	for _, h := range hosts {
 		_ = h.session.Close(ctx)
+	}
+	if r.analyticsDone != nil {
+		select { // Run's context is done: the collector flushes a last time
+		case <-r.analyticsDone:
+		case <-time.After(analyticsShutdownTimeout):
+			r.log.Warn("analytics: last flush timed out")
+		}
 	}
 }
 

@@ -180,7 +180,7 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 		}
 		sum := sha256.Sum256([]byte(token))
 		th := hex.EncodeToString(sum[:])
-		intents := botIntents(repo, key)
+		intents := botIntents(repo, key) | r.analyticsIntents(repo, key)
 		if h := r.bot(key); h != nil && h.tokenHash == th && h.intents == intents {
 			continue
 		}
@@ -421,6 +421,9 @@ func (h *botHost) install(ctx context.Context, a *active) {
 // handle is the gateway event handler (called sequentially by the session).
 func (h *botHost) handle(ev discord.Event) {
 	h.rt.diag.observe(ev)
+	if c := h.rt.collector; c != nil {
+		c.Handle(h.key, ev) // before the early returns below (interactions, own messages)
+	}
 	rt := h.routing.Load()
 	sid := discord.ServerIDOf(ev)
 	if c := rt.caches[sid]; c != nil {

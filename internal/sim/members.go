@@ -16,30 +16,29 @@ const maxTimeout = 28 * 24 * time.Hour
 func (w *World) AddMember(serverID, userID string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	_, err := w.addMember(serverID, userID)
-	return err
+	return w.addMember(serverID, userID)
 }
 
-func (w *World) addMember(serverID, userID string) (*discord.Member, error) {
+func (w *World) addMember(serverID, userID string) error {
 	s, err := w.server(serverID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	u := w.users[userID]
 	if u == nil {
-		return nil, notFound("unknown user %s", userID)
+		return notFound("unknown user %s", userID)
 	}
 	if m := s.members[userID]; m != nil {
-		return m, nil
+		return nil
 	}
 	if s.bans[userID] {
-		return nil, forbidden("user %s is banned from server %s", userID, serverID)
+		return forbidden("user %s is banned from server %s", userID, serverID)
 	}
 	m := &discord.Member{ServerID: serverID, User: u.user, RoleIDs: []string{}, JoinedAt: w.now()}
 	s.members[userID] = m
 	s.memberOrder = append(s.memberOrder, userID)
 	w.emit(discord.MemberJoinEvent{Member: cloneMember(*m)})
-	return m, nil
+	return nil
 }
 
 // RemoveMember makes userID leave serverID (emits MemberLeaveEvent). When a bot leaves,
