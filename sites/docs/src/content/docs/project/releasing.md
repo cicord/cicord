@@ -15,10 +15,7 @@ it starts two workflows:
 `@cicord/admin` (the admin console, embedded in `cicord`) are not published. Versions are
 semver, `0.x` while the API is `v1alpha1`.
 
-Pre-release tags (`v0.2.0-rc.1`) are supported by the workflows, but the engine check of
-`spec.engine` and plugin `engine` ranges (Masterminds semver) does not match a pre-release
-against a range like `>=0.1.0`: such a binary refuses those repositories and plugins. Until
-the check ignores the pre-release part, prefer plain versions.
+Pre-releases (`v0.2.0-rc.1`) are described in [Pre-releases](#pre-releases).
 
 ## What the workflows do
 
@@ -94,6 +91,36 @@ digest verified).
 A failed `release.yml` run can be re-run from the Actions page. If the GitHub Release was
 already created, delete it (not the tag) before re-running the `release` job. Never move a
 published tag: make a new patch version.
+
+## Pre-releases
+
+A release candidate is `x.y.z-rc.N` (`0.2.0-rc.1`, `0.2.0-rc.2`, then `0.2.0`), cut like a
+release: `make release VERSION=0.2.0-rc.1` prepares the commit, then tag `v0.2.0-rc.1`.
+
+- **Versions.** `scripts/release.sh` accepts `x.y.z` and `x.y.z-rc.N` (numbers without
+  leading zeros) and refuses a version that is not greater than the current one by semver
+  precedence: `0.2.0-rc.2 < 0.2.0-rc.10 < 0.2.0`, so it refuses an rc after its release.
+- **What is published.** A GitHub prerelease (never "Latest"), the npm packages under the
+  dist-tag `next` (`latest` does not move), and the image tags `:0.2.0-rc.1` and
+  `:sha-<commit>` only (no `:0.2`, no `:latest`). The automatic updates of the
+  [VPS install](../../self-hosting/production-vps/#9-updates) follow the latest release, so
+  they never install a pre-release, and a server running one moves to the release.
+- **Changelog.** A pre-release needs entries under `[Unreleased]` but leaves them there: they
+  become the `0.2.0` section when `0.2.0` is released, with a compare link from the previous
+  release (`v0.1.1...v0.2.0`). The GitHub prerelease has the generated notes.
+- **Engine ranges.** The `spec.engine` ranges of `cicord.yaml` and plugin manifests are
+  checked by plain semver precedence, pre-releases included: `0.2.0-rc.1` sorts after every
+  `0.1.x` and before `0.2.0`. So `0.2.0-rc.1` satisfies `>=0.1.0` and `>=0.1.0 <0.2.0`
+  (like `0.1.x`, it is below `0.2.0`), and not `>=0.2.0`. A range that is meant for the
+  `0.2` release candidates starts at `>=0.2.0-0`, which `0.2.0` satisfies too; repositories
+  and plugins created by a pre-release binary get `>=0.2.0-0 <0.3.0`. Caret and tilde ranges
+  compare the version numbers instead: `^0.1.0` and `~0.1.0` mean `0.1.x` and do not admit
+  `0.2.0-rc.1`. Build metadata (`+…`) is ignored.
+- **Plugin versions.** The version ranges of registry plugins (in `bot.yaml`) keep the npm
+  rule: a plugin's pre-release tag is only resolved by a range that names a pre-release
+  (`^2.0.0-0`), never by `*` or `^1.0.0`. `cicord plugin publish` requires a version greater
+  than every earlier tag by the same precedence (`1.0.0` after `1.0.0-rc.2`, not the
+  reverse).
 
 ## Verifying a release
 

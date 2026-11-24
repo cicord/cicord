@@ -6,6 +6,18 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Fixed
+
+- A pre-release engine (`0.2.0-rc.1`) refused every repository and plugin: `spec.engine`
+  ranges are now checked by semver precedence, pre-releases included, so `0.2.0-rc.1`
+  satisfies `>=0.1.0` and `>=0.1.0 <0.2.0` but not `>=0.2.0` (use `>=0.2.0-0`). Repositories
+  and plugins created by a pre-release binary get a range that admits it.
+- `make release` accepts `x.y.z-rc.N` and orders versions by semver precedence
+  (`0.2.0-rc.10` after `0.2.0-rc.2`, `0.2.0` after both); a pre-release leaves the
+  CHANGELOG's `[Unreleased]` section for the release.
+- The automatic VPS updates never moved a server running a pre-release to its release:
+  `sort -V` ranked `0.2.0-rc.1` above `0.2.0`.
+
 ## [0.1.1] - 2026-11-24
 
 ### Added
