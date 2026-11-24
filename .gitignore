@@ -4,6 +4,7 @@ dist/
 *.db-*
 .env
 .env.*
+!deploy/vps/.env.example
 .DS_Store
 .cicord/
 .cicord-data/

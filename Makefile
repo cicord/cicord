@@ -3,7 +3,7 @@ GO ?= go
 VERSION ?= 0.1.0
 LDFLAGS := -s -w -X github.com/cicord/cicord/internal/version.Version=$(VERSION) -X github.com/cicord/cicord/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
-.PHONY: all build ui test test-go test-js vet lint check clean hooks
+.PHONY: all build ui test test-go test-js vet lint check clean hooks release
 
 all: ui build
 
@@ -46,3 +46,7 @@ clean:
 ## hooks: use the repository git hooks (.githooks: gitleaks on staged changes before each commit)
 hooks:
 	git config core.hooksPath .githooks
+
+## release: prepare the release commit of VERSION (versions + CHANGELOG), e.g. make release VERSION=0.1.1 (never pushes nor tags)
+release:
+	scripts/release.sh $(VERSION)

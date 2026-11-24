@@ -204,6 +204,10 @@ jobs:
       id-token: write # Sigstore certificate of the attestation
       attestations: write
       artifact-metadata: write # storage record of the attested image
+    outputs:
+      # Written into the release notes: deploy/vps/scripts/06-auto-update.sh only installs an
+      # image whose digest is the one published by this workflow.
+      digest: ${{ steps.image.outputs.digest }}
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
@@ -266,9 +270,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.meta.outputs.version }}
           PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+          DIGEST: ${{ needs.image.outputs.digest }}
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no image digest from the image job"; exit 1; }
           cat > notes.md <<EOF
           ## Install
 
@@ -279,7 +285,8 @@ jobs:
           gh attestation verify cicord_${VERSION}_linux_amd64.tar.gz --repo ${GITHUB_REPOSITORY}
           \`\`\`
 
-          Container image (linux/amd64, linux/arm64):
+          Container image (linux/amd64, linux/arm64): \`${image}:${VERSION}\`, digest
+          \`${image}@${DIGEST}\`.
 
           \`\`\`sh
           docker pull ${image}:${VERSION}

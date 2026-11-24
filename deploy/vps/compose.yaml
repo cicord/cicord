@@ -1,13 +1,16 @@
 # Cicord on a single server: the runtime and Caddy (public community portal).
 # The admin console is NOT published here: `tailscale serve` exposes 127.0.0.1:7420 to the
-# tailnet only (see INSTALL.md). Values come from .env (copy .env.example; no secrets in it:
+# tailnet only (see https://cicord.dev/docs/self-hosting/production-vps/). Values come from
+# .env (copy .env.example; no secrets in it:
 # secrets live in the runtime's encrypted store, set through the setup wizard or
 # `sudo docker compose exec -T cicord cicord secret set NAME --data-dir /data`).
 name: cicord
 
 services:
   cicord:
-    image: cicord:${CICORD_IMAGE_TAG:?set CICORD_IMAGE_TAG in .env}
+    # A release pinned by digest (ghcr.io/cicord/cicord:<version>@sha256:…, what
+    # scripts/06-auto-update.sh maintains) or a local build from source (cicord:<commit>).
+    image: ${CICORD_IMAGE:?set CICORD_IMAGE in .env}
     container_name: cicord
     restart: unless-stopped
     environment:
