@@ -246,8 +246,12 @@ func TestAnalyticsEndToEnd(t *testing.T) {
 		t.Errorf("moderation actions = %v", v)
 	}
 	// The first sample ran when the runtime started.
-	if v := s.sum("main", analytics.MembersTotal, ""); v < 3 || v > 5 { // sampled concurrently with the joins
+	// members.total counts humans: the two bots of the runtime are members.bots.
+	if v := s.sum("main", analytics.MembersTotal, ""); v < 1 || v > 3 { // sampled concurrently with the joins
 		t.Errorf("members.total = %v", v)
+	}
+	if v := s.sum("main", analytics.MembersBots, ""); v != 2 {
+		t.Errorf("members.bots = %v", v)
 	}
 	day := time.Now().UTC().Format(time.DateOnly)
 	if n, _ := s.CountActive(context.Background(), "main", analytics.ActiveSetAll, day); n != 2 {
