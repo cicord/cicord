@@ -32,7 +32,7 @@ Every handler receives `ctx`:
 |---|---|
 | `ctx.plugin` | `name`, `version`, `instance` |
 | `ctx.bot` | `key`, `user` |
-| `ctx.server` | The instance's server: `id`, `key`, `name`, `iconUrl`, `ownerId`, `channel()`, `role()`, `member()`, `createChannel()`, `deleteChannel()` |
+| `ctx.server` | The instance's server: `id`, `key`, `name`, `iconUrl`, `ownerId`, `channel()`, `role()`, `member()`, `createChannel()`, `editChannel()`, `deleteChannel()`, `voiceMembers()` |
 | `ctx.config` | The effective config (overrides merged, defaults applied) |
 | `ctx.log` | `debug`, `info`, `warn`, `error(message, fields?)` |
 | `ctx.kv` | Instance-scoped storage |
@@ -47,9 +47,9 @@ Cicord does not manage. `channel()` and `role()` throw when the resource does no
 
 | Object | Methods (capability in [Capabilities and grants](../writing/#capabilities-and-grants)) |
 |---|---|
-| `TextChannel` | `send(message)`, `messages({ limit?, before?, after? })`, `message(id)` (`undefined` once deleted), `createThread(name, { private?, fromMessage? })` |
+| `TextChannel` | `send(message)`, `messages({ limit?, before?, after? })`, `message(id)` (`undefined` once deleted), `createThread(name, { private?, fromMessage? })`; `id`, `key`, `name`, `type`, `categoryId`, `mention` |
 | `Message` | `reply(message)`, `edit(message)`, `delete(reason?)`, `react(emoji)`; `content`, `author`, `member`, `channel`, `attachments`, `embeds`, `createdAt` |
-| `Member` | `hasRole(role)`, `addRole(role, reason?)`, `removeRole(role, reason?)`, `setNickname(nickname \| null, reason?)`, `timeout(durationMs, reason?)` (0 removes it), `kick(reason?)`, `ban({ reason?, deleteMessagesSeconds? })`, `send(message)` (DM); `user`, `nickname`, `displayName`, `roles`, `joinedAt` |
+| `Member` | `hasRole(role)`, `addRole(role, reason?)`, `removeRole(role, reason?)`, `setNickname(nickname \| null, reason?)`, `timeout(durationMs, reason?)` (0 removes it), `kick(reason?)`, `ban({ reason?, deleteMessagesSeconds? })`, `send(message)` (DM), `moveTo(channel, reason?)` and `disconnect(reason?)` ([voice](#voice)); `user`, `nickname`, `displayName`, `roles`, `joinedAt` |
 | `Role` | `members({ limit?, after? })` ([below](#members-of-a-role)); `id`, `key`, `name`, `color`, `mention` |
 
 ### Permission checks
@@ -130,6 +130,7 @@ events: {
 | `messageUpdate` | `message` | `ServerMessages` |
 | `messageDelete` | `{ id, channel }` | `ServerMessages` |
 | `reactionAdd`, `reactionRemove` | `{ message, user, emoji }` (the message is partial: `message.channel.message(message.id)` fetches it) | `ServerMessageReactions` |
+| `voiceStateUpdate` | `{ user, member, channel, previous, selfMute, selfDeaf, streaming, video }` ([voice](#voice)) | `ServerVoiceStates` |
 | `serverJoin` | `{ id, name, iconUrl }` | none |
 | `serverLeave` | `{ id }` | none |
 
@@ -460,15 +461,77 @@ plugin does this to close a poll.
 
 ## Plugin-owned channels
 
-`ctx.server.createChannel({ name, type, category, topic, overwrites })`
+`ctx.server.createChannel({ name, type, category, topic, overwrites, userLimit, bitrate })`
 (`discord.channels.manage`; `type` is `text`, `voice` or `forum`) creates a channel owned by
 the instance: the reconciler never
-touches or prunes it, even with `prune: true`, and only that instance can `deleteChannel()`
-it. `overwrites` keys are `"@everyone"`, a role key, `"role:<id>"` or `"member:<id>"`.
+touches or prunes it, even with `prune: true`, and only that instance can `editChannel()` and
+`deleteChannel()` it. `overwrites` keys are `"@everyone"`, a role key, `"role:<id>"` or
+`"member:<id>"`. Without `overwrites`, a channel created in a category gets the category's
+(Discord syncs it): a channel of a private category stays private. `userLimit` (0–99, 0 is no
+limit) and `bitrate` (8000–384000; above 96000 needs server boosts) are for voice channels.
 
 Give the bot itself access (`member:${ctx.bot.user.id}`) when the channel hides `@everyone`,
 or a bot without Administrator locks itself out. The official `tickets` plugin is a complete
 example.
+
+`ctx.server.editChannel(channel, { name, topic, userLimit, bitrate, overwrites, reason })`
+changes a channel the instance owns. Its `overwrites` are **patched**: for each target,
+`allow` and `deny` set those permissions (taking them out of the other side), `clear` makes
+them neutral again, and `null` removes the target's overwrite. Targets and permissions not
+mentioned are kept, including what the channel got from its category:
+
+```ts
+// Lock a room: nobody but the members allowed one by one can connect.
+await ctx.server.editChannel(room, { overwrites: { "@everyone": { deny: ["Connect"] } } });
+await ctx.server.editChannel(room, { overwrites: { [`member:${guest.id}`]: { allow: ["ViewChannel", "Connect"] } } });
+// Unlock it.
+await ctx.server.editChannel(room, { overwrites: { "@everyone": { clear: ["Connect"] } } });
+```
+
+The runtime reads the channel's current overwrites from Discord, applies the patch and writes
+them back. A permission in two of `allow`, `deny` and `clear` is a `TypeError`; an empty
+member overwrite is removed.
+
+## Voice
+
+| Call | What it does | Needs |
+|---|---|---|
+| `voiceStateUpdate(ctx, update)` | A member joined, left or moved between voice channels, or changed their voice state (mute, deafen, stream, camera) | `ServerVoiceStates` intent |
+| `ctx.server.voiceMembers(channel)` | The members connected to a voice channel, in user id order, bots included | `discord.members.read`, `ServerVoiceStates` intent |
+| `member.moveTo(channel, reason?)` | Moves a member who is connected to voice to a voice channel | `discord.voice.move` |
+| `member.disconnect(reason?)` | Disconnects a member from voice | `discord.voice.move` |
+
+`update.channel` is where the member is now (`undefined` once they left voice) and
+`update.previous` where they were: compare them to tell a join, a leave and a move from a mute.
+Discord does not send `previous`: the runtime keeps the voice states of its servers (the
+gateway sends them when a server becomes available, then every change) and fills it in. Just
+after a start or a reconnect it may not know yet, and `previous` is `undefined`; a plugin that
+must not miss a leave also checks its channels periodically, as the official `voice-rooms`
+plugin does.
+
+`voiceMembers()` reads the same voice states. Until the gateway has sent them it throws (it
+never answers "nobody" when it does not know), so a plugin that cleans up empty channels at
+start schedules the check a little later (`ctx.schedule.after`). The intent is checked when
+it is called, and `cicord plugin build` does not warn about a declared `ServerVoiceStates`
+without `voiceStateUpdate` when the plugin has `discord.members.read`.
+
+`moveTo()` needs the bot to have Move Members, and Connect in the destination; the
+destination's user limit does not apply to moves. A member who is not connected to voice
+cannot be moved (the call rejects). The bot moving a member sends a `voiceStateUpdate` like
+any move.
+
+```ts
+events: {
+  async voiceStateUpdate(ctx, { member, channel, previous }) {
+    if (channel?.id === previous?.id || !member || !channel) return; // mute, leave…
+    if (channel.id !== ctx.server.channel("create-room").id) return;
+    const room = await ctx.server.createChannel({ name: `${member.displayName}'s room`, type: "voice",
+      category: channel.categoryId ? { id: channel.categoryId } : undefined });
+    await ctx.server.editChannel(room, { overwrites: { [`member:${member.id}`]: { allow: ["Connect", "MoveMembers"] } } });
+    await member.moveTo(room);
+  },
+},
+```
 
 ## Cross-plugin events
 

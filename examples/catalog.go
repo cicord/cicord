@@ -20,6 +20,7 @@ import "embed"
 //go:embed showcase/plugins/reaction-roles/plugin.yaml showcase/plugins/reaction-roles/config.schema.json showcase/plugins/reaction-roles/tsconfig.json showcase/plugins/reaction-roles/src/*.ts
 //go:embed showcase/plugins/audit-log/plugin.yaml showcase/plugins/audit-log/config.schema.json showcase/plugins/audit-log/tsconfig.json showcase/plugins/audit-log/src/*.ts
 //go:embed showcase/plugins/announcements/plugin.yaml showcase/plugins/announcements/config.schema.json showcase/plugins/announcements/tsconfig.json showcase/plugins/announcements/src/*.ts
+//go:embed showcase/plugins/voice-rooms/plugin.yaml showcase/plugins/voice-rooms/config.schema.json showcase/plugins/voice-rooms/tsconfig.json showcase/plugins/voice-rooms/src/*.ts
 var Plugins embed.FS
 
 // Official lists the catalog plugins (directory inside Plugins), in display order.
@@ -33,4 +34,5 @@ var Official = []string{
 	"showcase/plugins/reaction-roles",
 	"showcase/plugins/audit-log",
 	"showcase/plugins/announcements",
+	"showcase/plugins/voice-rooms",
 }

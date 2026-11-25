@@ -230,6 +230,16 @@ func TestUpdateServerAndMemberNulls(t *testing.T) {
 	if !reflect.DeepEqual(f.last().Body, map[string]any{"communication_disabled_until": "2030-01-01T11:00:00Z"}) {
 		t.Errorf("timeout body = %v", f.last().Body)
 	}
+	// Voice: a channel moves the member, "" disconnects (channel_id: null).
+	for _, c := range []struct{ id, want any }{{"30", "30"}, {"", nil}} {
+		id := c.id.(string)
+		if _, err := s.UpdateMember(context.Background(), "1", "2", discord.MemberParams{VoiceChannelID: &id}, ""); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(f.last().Body, map[string]any{"channel_id": c.want}) {
+			t.Errorf("voice body = %v", f.last().Body)
+		}
+	}
 }
 
 func TestBanAndLockPermissions(t *testing.T) {

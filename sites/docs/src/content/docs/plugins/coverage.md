@@ -14,8 +14,8 @@ the manual check on real Discord: **to verify** unless noted; the
 
 The Go tests run with `go test ./...`:
 
-- **`rt/<Name>`**: `TestShowcase<Name>` in `internal/runtime/showcase_test.go` and
-  `showcase_more_test.go`. The probe fixture (`internal/runtime/testdata/probe`) covers error paths a
+- **`rt/<Name>`**: `TestShowcase<Name>` in `internal/runtime/showcase_test.go`,
+  `showcase_more_test.go` and `showcase_voice_test.go`. The probe fixture (`internal/runtime/testdata/probe`) covers error paths a
   real plugin never hits on purpose.
 - **`api/…`**: `internal/api/showcase_test.go` (`TestShowcaseRouteAccess`): portal routes
   through the HTTP API, which enforces the access levels.
@@ -41,6 +41,7 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`) and in the official reg
 | `reactionAdd` / `reactionRemove` on a plugin's own message | reaction-roles (reaction panels) | rt/ReactionRoles | to verify |
 | `serverJoin` / `serverLeave` (a real join vs the lazy `GUILD_CREATE` after `READY` or after an outage; a leave is a `GUILD_DELETE` without `unavailable`) | none | `internal/plugin` TestServerEvents, `disgoadapter` TestTranslateServerJoinLeave, `internal/sim` TestServerJoinLeaveEvents | to verify |
 | Slash commands registered again after a re-invite (`serverJoin`) | all | `internal/runtime` TestCommandsReRegisteredOnServerJoin | to verify |
+| `voiceStateUpdate` (join, leave, move; `previous` from the runtime's voice states, rebuilt from each `GUILD_CREATE`; the bot's own moves) | voice-rooms | rt/VoiceRooms; `internal/runtime` TestVoiceCache; `internal/plugin` TestVoiceStateUpdateEvent; `disgoadapter` TestTranslateVoiceAndPresence | to verify |
 
 ## Commands
 
@@ -113,7 +114,12 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`) and in the official reg
 | `allowedMentions` id lists (`roles: [id]`, `users: [id]`, `repliedUser`; ≤ 100 snowflakes; a type never both parsed and listed) | polls `ping` (only the pinged member or role) | rt/Polls (`sim` MessageMentions); `internal/plugin` TestAllowedMentionIDLists; `internal/sim` TestAllowedMentionsResolution; `disgoadapter` TestAllowedMentionsToWire; `internal/discord` TestAllowedMentionsValidate | to verify |
 | `server.createChannel` (category, topic, overwrites `@everyone` / role key / `member:<id>`) | tickets | rt/Tickets (visibility per member) | to verify |
 | A plugin-owned channel is never pruned (`prune: true`) and its overwrites are kept by `SyncServer` | tickets | rt/Tickets | to verify |
-| `server.deleteChannel` (ownership record removed) | tickets close | rt/Tickets | to verify |
+| `server.deleteChannel` (ownership record removed) | tickets close, voice-rooms (empty room) | rt/Tickets, rt/VoiceRooms | to verify |
+| `server.createChannel` voice (`userLimit`, `bitrate`; no overwrites: synced with a private category) | voice-rooms | rt/VoiceRooms; `internal/plugin` TestVoiceChannelOps | to verify |
+| `server.editChannel` (plugin-owned only; name, user limit; overwrites patched: `allow` / `deny` / `clear`, `null` removes a target) | voice-rooms (owner, lock, permit, kick, transfer) | rt/VoiceRooms; `internal/plugin` TestVoiceChannelOps; SDK voice tests | to verify |
+| `server.voiceMembers()` (ServerVoiceStates intent; throws until the voice states are known) | voice-rooms | rt/VoiceRooms; `internal/plugin` TestVoiceChannelOps, TestVoiceCapabilitiesAndIntent | to verify |
+| `member.moveTo()` / `member.disconnect()` (Move Members; Connect in the destination; its user limit ignored) | voice-rooms | rt/VoiceRooms; `internal/sim` TestSimVoiceMoveDisconnectAndLimits; `disgoadapter` TestUpdateServerAndMemberNulls | to verify |
+| A plugin-owned voice room survives a plan and a sync (`prune: true`), no drift | voice-rooms | rt/VoiceRooms | to verify |
 | `channel.send` | all | rt/* | to verify |
 | `channel.messages()` (history) | tickets summary | rt/Tickets | to verify |
 | `channel.message(id)` (one message; `undefined` when deleted) | polls task and `/polls close`, reaction-roles panels | rt/Polls, rt/ReactionRoles; `internal/plugin` TestChannelMessageOp | to verify |
@@ -240,3 +246,15 @@ for the "member" steps.
     posted two minutes later with only @Events pinged; `/announce-list`, `/announce-cancel`.
     Set the `game-night` cron to a minute or two ahead (Europe/Paris time): it posts once, at
     that minute.
+13. **Voice rooms**: join *➕ Create a channel*: "🔊 <name>'s channel" appears under *Voice*
+    and you are moved into it at once; the channel's permissions show you (and the bot). Run
+    `/voice lock` in its chat: the second account can no longer join; `/voice permit` lets it
+    in, `/voice kick` disconnects it and keeps it out. `/voice limit count:2`, `/voice rename`
+    twice (a third rename within 10 minutes is refused). `/voice transfer` to the second
+    account, leave: the room stays; the second account leaves: the room is deleted within a
+    second. Join *➕ Create a guild channel* without the Guild role: disconnected; with it, the
+    room appears under the private *Guilds* category, invisible to the others. Restart the bot
+    while a room is in use: it is kept, and deleted once empty (at most 5 minutes later if
+    the leave happened while the bot was down). Repeat without Administrator but with Move
+    Members (the `@bot` overwrite of *Guilds* and the bot's member overwrite must keep it
+    working).

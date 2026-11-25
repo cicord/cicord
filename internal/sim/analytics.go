@@ -55,13 +55,26 @@ func (w *World) activity(serverID string) *serverActivity {
 func (w *World) serverAvailable(serverID string) discord.ServerAvailableEvent {
 	a := w.activity(serverID)
 	ev := discord.ServerAvailableEvent{ServerID: serverID}
+	s := w.servers[serverID]
 	for _, id := range sortedKeys(a.voice) {
-		ev.VoiceStates = append(ev.VoiceStates, a.voice[id])
+		st := a.voice[id]
+		if s != nil {
+			st = w.withVoiceMember(s, st)
+		}
+		ev.VoiceStates = append(ev.VoiceStates, st)
 	}
 	for _, id := range sortedKeys(a.presences) {
 		ev.Presences = append(ev.Presences, clonePresence(a.presences[id]))
 	}
 	return ev
+}
+
+func cloneVoiceState(st discord.VoiceState) discord.VoiceState {
+	if st.Member != nil {
+		m := cloneMember(*st.Member)
+		st.Member = &m
+	}
+	return st
 }
 
 func clonePresence(p discord.MemberPresence) discord.MemberPresence {
@@ -85,7 +98,9 @@ func (w *World) filterAnalytics(s *Session, ev discord.Event) (discord.Event, bo
 	case discord.ServerAvailableEvent:
 		out := discord.ServerAvailableEvent{ServerID: e.ServerID}
 		if has(intentVoiceStates) {
-			out.VoiceStates = append([]discord.VoiceState(nil), e.VoiceStates...)
+			for _, st := range e.VoiceStates {
+				out.VoiceStates = append(out.VoiceStates, cloneVoiceState(st))
+			}
 		}
 		if has(intentPresences) {
 			for _, p := range e.Presences {
@@ -94,6 +109,7 @@ func (w *World) filterAnalytics(s *Session, ev discord.Event) (discord.Event, bo
 		}
 		return out, has(intentServers)
 	case discord.VoiceStateUpdateEvent:
+		e.State = cloneVoiceState(e.State)
 		return e, has(intentVoiceStates)
 	case discord.PresenceUpdateEvent:
 		return discord.PresenceUpdateEvent{ServerID: e.ServerID, Presence: clonePresence(e.Presence)}, has(intentPresences)
@@ -123,8 +139,10 @@ func (w *World) filterAnalytics(s *Session, ev discord.Event) (discord.Event, bo
 
 // ───────────────────────────────────────────────────────────── voice
 
-// JoinVoice connects userID to a voice or stage channel (emits VoiceStateUpdateEvent).
-// Joining another channel moves the member.
+// JoinVoice connects userID to a voice or stage channel (emits VoiceStateUpdateEvent),
+// like the Discord client: the member needs Connect in the channel, and a full channel
+// (user limit) only lets in members with MoveMembers there. Joining another channel
+// moves the member.
 func (w *World) JoinVoice(userID, channelID string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -132,19 +150,21 @@ func (w *World) JoinVoice(userID, channelID string) error {
 	if c == nil {
 		return notFound("unknown channel %s", channelID)
 	}
-	if c.ch.Type != discord.ChannelVoice && c.ch.Type != discord.ChannelStage {
+	if !voiceLike(c.ch.Type) {
 		return badRequest("channel %s is not a voice channel", channelID)
 	}
 	s := w.servers[c.ch.ServerID]
-	m := s.members[userID]
-	if m == nil {
+	if s.members[userID] == nil {
 		return notFound("unknown member %s", userID)
 	}
-	a := w.activity(s.info.ID)
-	st := a.voice[userID]
-	st.ServerID, st.ChannelID, st.UserID, st.Bot = s.info.ID, channelID, userID, m.User.Bot
-	a.voice[userID] = st
-	w.emit(discord.VoiceStateUpdateEvent{State: st})
+	p := w.channelPerms(c, userID)
+	if !p.Has(permConnect) {
+		return missingErr(p, permConnect)
+	}
+	if !p.Has(permMoveMembers) && w.voiceFull(c, userID) {
+		return forbidden("channel %s is full (user limit %d)", channelID, c.ch.UserLimit)
+	}
+	w.setVoice(s, userID, channelID)
 	return nil
 }
 
@@ -152,14 +172,98 @@ func (w *World) JoinVoice(userID, channelID string) error {
 func (w *World) LeaveVoice(serverID, userID string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	a := w.activity(serverID)
-	st, ok := a.voice[userID]
-	if !ok {
+	s, err := w.server(serverID)
+	if err != nil {
+		return err
+	}
+	if _, ok := w.activity(serverID).voice[userID]; !ok {
 		return notFound("member %s is not in voice", userID)
 	}
-	delete(a.voice, userID)
-	st.ChannelID, st.SelfStream, st.SelfVideo = "", false, false
-	w.emit(discord.VoiceStateUpdateEvent{State: st})
+	w.setVoice(s, userID, "")
+	return nil
+}
+
+// voiceFull reports whether a voice channel with a user limit is full for userID (who
+// does not count when already in it). Caller holds w.mu.
+func (w *World) voiceFull(c *channelState, userID string) bool {
+	if c.ch.UserLimit <= 0 {
+		return false
+	}
+	n := 0
+	for id, st := range w.activity(c.ch.ServerID).voice {
+		if st.ChannelID == c.ch.ID && id != userID {
+			n++
+		}
+	}
+	return n >= c.ch.UserLimit
+}
+
+// setVoice connects userID to channelID ("" disconnects) and emits the voice state with
+// the member. Caller holds w.mu.
+func (w *World) setVoice(s *serverState, userID, channelID string) {
+	a := w.activity(s.info.ID)
+	st := a.voice[userID]
+	st.ServerID, st.UserID, st.ChannelID, st.Member = s.info.ID, userID, channelID, nil
+	if m := s.members[userID]; m != nil {
+		st.Bot = m.User.Bot
+	}
+	if channelID == "" {
+		delete(a.voice, userID)
+		st.SelfStream, st.SelfVideo = false, false
+	} else {
+		a.voice[userID] = st
+	}
+	w.emit(discord.VoiceStateUpdateEvent{State: w.withVoiceMember(s, st)})
+}
+
+// withVoiceMember attaches a copy of the member to a voice state, like Discord's
+// VOICE_STATE_UPDATE payload. Caller holds w.mu.
+func (w *World) withVoiceMember(s *serverState, st discord.VoiceState) discord.VoiceState {
+	if m := s.members[st.UserID]; m != nil {
+		cm := cloneMember(*m)
+		st.Member = &cm
+	}
+	return st
+}
+
+// disconnectVoice disconnects every member connected to a voice channel (the channel is
+// being deleted). Caller holds w.mu.
+func (w *World) disconnectVoice(s *serverState, channelID string) {
+	a := w.activity(s.info.ID)
+	for _, id := range sortedKeys(a.voice) {
+		if a.voice[id].ChannelID == channelID {
+			w.setVoice(s, id, "")
+		}
+	}
+}
+
+// moveVoice moves (channelID != "") or disconnects (channelID == "") a member connected to
+// voice, as UpdateMember's channel_id does: MoveMembers in the member's channel, and
+// Connect + MoveMembers in the destination (which ignores its user limit). Caller holds
+// w.mu.
+func (w *World) moveVoice(a actor, s *serverState, userID, channelID string) error {
+	cur, ok := w.activity(s.info.ID).voice[userID]
+	if !ok {
+		return badRequest("target user is not connected to voice")
+	}
+	if src := w.channels[cur.ChannelID]; src != nil {
+		if err := w.requireChannel(a, src, permMoveMembers); err != nil {
+			return err
+		}
+	}
+	if channelID != "" {
+		dst := w.channels[channelID]
+		if dst == nil || dst.ch.ServerID != s.info.ID {
+			return notFound("unknown channel %s", channelID)
+		}
+		if !voiceLike(dst.ch.Type) {
+			return badRequest("channel %s is not a voice channel", channelID)
+		}
+		if err := w.requireChannel(a, dst, permMoveMembers|permConnect); err != nil {
+			return err
+		}
+	}
+	w.setVoice(s, userID, channelID)
 	return nil
 }
 

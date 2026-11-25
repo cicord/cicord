@@ -20,6 +20,12 @@ func TestTranslateServerAvailable(t *testing.T) {
 	  "presences":[{"user":{"id":"2"},"status":"idle","client_status":{"mobile":"idle"},
 	    "activities":[{"name":"Minecraft","type":0},{"name":"Custom Status","type":4,"state":"hi"},{"name":"?","type":42}]}]}`)
 	a := one(t, evs).(discord.ServerAvailableEvent)
+	for i, st := range a.VoiceStates { // the member is checked apart
+		if st.Member == nil || st.Member.User.ID != st.UserID || st.Member.ServerID != "1" {
+			t.Errorf("voice state %d member = %#v", i, st.Member)
+		}
+		a.VoiceStates[i].Member = nil
+	}
 	want := discord.ServerAvailableEvent{
 		ServerID: "1",
 		VoiceStates: []discord.VoiceState{
@@ -39,6 +45,12 @@ func TestTranslateServerAvailable(t *testing.T) {
 	if len(a.VoiceStates) != 2 || a.VoiceStates[0].Bot || !a.VoiceStates[1].Bot {
 		t.Errorf("partial voice states = %#v", a.VoiceStates)
 	}
+	// … and so does the member.
+	for _, st := range a.VoiceStates {
+		if st.Member == nil || st.Member.User.ID != st.UserID {
+			t.Errorf("partial voice state member = %#v", st.Member)
+		}
+	}
 	// A join emits the join first, then the availability.
 	mustTranslate(t, s, "READY", `{"user":{"id":"600"},"guilds":[]}`)
 	evs = mustTranslate(t, s, "GUILD_CREATE", `{"id":"9","name":"New"}`)
@@ -57,7 +69,11 @@ func TestTranslateVoiceAndPresence(t *testing.T) {
 	s := testSession()
 	v := one(t, mustTranslate(t, s, "VOICE_STATE_UPDATE", `{"guild_id":"1","channel_id":"30","user_id":"2","session_id":"x",
 	  "self_mute":true,"self_deaf":false,"self_stream":false,"self_video":true,"member":{"user":{"id":"2","username":"a"},"roles":[]}}`)).(discord.VoiceStateUpdateEvent)
-	if v.State != (discord.VoiceState{ServerID: "1", ChannelID: "30", UserID: "2", SelfMute: true, SelfVideo: true}) || discord.ServerIDOf(v) != "1" {
+	if v.State.Member == nil || v.State.Member.User.Username != "a" || v.State.Member.ServerID != "1" {
+		t.Errorf("voice member = %#v", v.State.Member)
+	}
+	v.State.Member = nil
+	if v.State != (discord.VoiceState{ServerID: "1", ChannelID: "30", UserID: "2", SelfMute: true, SelfVideo: true}) || v.Previous != nil || discord.ServerIDOf(v) != "1" {
 		t.Errorf("voice = %#v", v)
 	}
 	left := one(t, mustTranslate(t, s, "VOICE_STATE_UPDATE", `{"guild_id":"1","channel_id":null,"user_id":"2"}`)).(discord.VoiceStateUpdateEvent)

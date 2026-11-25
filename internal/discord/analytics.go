@@ -6,7 +6,8 @@ import (
 )
 
 // Events and REST reads used by the server activity analytics (internal/analytics).
-// Plugins do not receive these events (plugin.EventName returns "").
+// Plugins receive VoiceStateUpdateEvent (the voiceStateUpdate handler), not the others
+// (plugin.EventName returns "").
 
 // ───────────────────────────────────────────────────────────── voice
 
@@ -21,10 +22,18 @@ type VoiceState struct {
 	SelfVideo  bool
 	SelfMute   bool
 	SelfDeaf   bool
+	// Member is the member, when the payload carries it (VOICE_STATE_UPDATE does; the
+	// voice states of GUILD_CREATE get it from the members array).
+	Member *Member
 }
 
-// VoiceStateUpdateEvent needs the ServerVoiceStates intent.
-type VoiceStateUpdateEvent struct{ State VoiceState }
+// VoiceStateUpdateEvent needs the ServerVoiceStates intent. Previous is not sent by
+// Discord: the runtime fills it from its voice state cache (the member's state before
+// this update; nil when they were not in voice, or when the cache does not know).
+type VoiceStateUpdateEvent struct {
+	State    VoiceState
+	Previous *VoiceState
+}
 
 // ───────────────────────────────────────────────────────────── presence
 

@@ -18,18 +18,19 @@ spec:
     updatesChannel: mod-log
 
   # Pruning is on: everything not declared here and not owned by a plugin is removed. Ticket
-  # channels are created at runtime by the tickets plugin, recorded as plugin-owned and never
-  # pruned.
+  # channels and voice rooms are created at runtime by the tickets and voice-rooms plugins,
+  # recorded as plugin-owned and never pruned.
   syncPolicy:
     selfHeal: false
     prune: true
     deletionProtection: false
 
   # Everyone who joins can chat right away (there is no verification step in the showcase):
-  # levels, polls and tickets need regular members to be able to post.
+  # levels, polls and tickets need regular members to be able to post, voice rooms to talk.
   everyone:
     permissions: [ViewChannel, ReadMessageHistory, AddReactions, UseApplicationCommands,
-                  SendMessages, SendMessagesInThreads, EmbedLinks, AttachFiles]
+                  SendMessages, SendMessagesInThreads, EmbedLinks, AttachFiles,
+                  Connect, Speak, Stream, UseVAD]
 
   roles:
     admin:
@@ -79,8 +80,11 @@ spec:
       name: Minecraft
     chess:
       name: Chess
+    # Members of the guild: they see the guild category and use its hub (plugin "voice-rooms").
+    guild:
+      name: Guild
 
-  hierarchy: [admin, mod, support, legend, veteran, regular, member, red, blue, green, events-ping, news-ping, minecraft, chess]
+  hierarchy: [admin, mod, support, legend, veteran, regular, member, red, blue, green, events-ping, news-ping, minecraft, chess, guild]
 
   categories:
     info:
@@ -108,6 +112,22 @@ spec:
         # the bot's own role: keeps a bot that is not Administrator in the staff channels
         "@bot":
           allow: [ViewChannel, SendMessages]
+    # Voice rooms (plugin "voice-rooms"): joining a hub creates a room in the category.
+    voice:
+      name: Voice
+      position: 4
+    guilds:
+      name: Guilds
+      position: 5
+      overwrites:
+        "@everyone":
+          deny: [ViewChannel]
+        guild:
+          allow: [ViewChannel]
+        mod:
+          allow: [ViewChannel]
+        "@bot":
+          allow: [ViewChannel, Connect, MoveMembers]
 
   channels:
     rules:
@@ -173,6 +193,16 @@ spec:
       name: staff-chat
       type: text
       category: staff
+    create-room:
+      name: ➕ Create a channel
+      type: voice
+      category: voice
+      position: 0
+    create-guild-room:
+      name: ➕ Create a guild channel
+      type: voice
+      category: voice
+      position: 1
 
   access:
     admins:

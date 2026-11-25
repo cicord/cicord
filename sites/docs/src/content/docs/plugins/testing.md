@@ -125,8 +125,9 @@ test("POST /complete adds the picked roles", async () => {
 - **Options**: `config`; `schema` (its defaults are applied like the runtime does;
   `applyDefaults(schema, config)` is exported too); `grants` (when given, calls without the
   grant throw `CapabilityError`); `intents` (plugin.yaml `spec.intents`: when given,
-  `role.members()` throws without `ServerMembers`, like the runtime); `plugin`, `bot`,
-  `server`; `roles` and `channels` keyed by resource key; `members` (`role.members()` lists
+  `role.members()` throws without `ServerMembers` and `voiceMembers()` without
+  `ServerVoiceStates`, like the runtime); `plugin`, `bot`, `server`; `roles` and `channels`
+  keyed by resource key (a channel takes `type` and `categoryId`); `members` (`role.members()` lists
   those holding the role, in user id order); `portalUrl`; and `fetch(url, init)`, the fake
   `ctx.http.fetch`.
   For permission checks, roles take `position` (default 1, 2, 3… in declaration order),
@@ -136,12 +137,24 @@ test("POST /complete adds the picked roles", async () => {
 - **Recorded effects**: `sent` (messages with their `id` and their normalized
   `allowedMentions`, lists holding ids; DMs are `to: "dm:<userId>"`),
   `edits`, `deletedMessages`, `reactions`, `threads`, `roleChanges`, `moderation`
-  (timeouts, kicks, bans, nicknames), `createdChannels` / `deletedChannels` (created channels
-  resolve with `{ id }`, and `deleteChannel()` refuses channels the plugin did not create), `links`,
+  (timeouts, kicks, bans, nicknames), `createdChannels` / `editedChannels` / `deletedChannels`
+  (created channels resolve with `{ id }`; `editChannel()` and `deleteChannel()` refuse
+  channels the plugin did not create), `voiceMoves` (`moveTo()` and `disconnect()`), `links`,
   `published`, `scheduled`, `requests` (`http.fetch`), `logs`, and the raw `kv` (TTLs follow
   `Date.now()`, so fake timers expire keys).
 - **Helpers**: `member(id)`, `addMember(init)`, `removeMember(id)`, `message(id)`,
   `channel(keyOrId)`.
+- **Voice**: `setVoice(userId, channel | null)` connects, moves or disconnects a member and
+  returns the update to pass to `voiceStateUpdate` (with `previous`); `voiceChannel(userId)`
+  is where they are (`moveTo()` and `disconnect()` change it too, and deleting a channel
+  disconnects its members); `overwrites(channelId)` is a created channel's overwrites after
+  its `editChannel()` patches (category overwrites are not modelled).
+
+  ```ts
+  const t = createTestContext({ channels: { hub: { name: "Create", type: "voice" } }, members: [{ id: "1" }] });
+  await plugin.events!.voiceStateUpdate!(t.ctx, t.setVoice("1", "hub"));
+  expect(t.voiceChannel("1")).toBe(t.createdChannels[0]!.channel.id);
+  ```
 
 Runners drive the handlers with fakes that follow the runtime's rules (a second `reply()`
 throws, `followUp()` needs a response, `showModal()` must come first, `update()` is for

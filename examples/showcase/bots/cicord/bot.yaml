@@ -176,3 +176,23 @@ spec:
             every: 2w
             start: "2026-01-05 10:00"
             content: A friendly reminder to read the rules and to pick your roles in the roles channel.
+
+    - name: voice-rooms
+      source: ../../plugins/voice-rooms
+      grants:
+        - discord.channels.read
+        - discord.channels.manage
+        - discord.voice.move
+        - discord.members.read
+        - storage.kv
+        - scheduler
+      config:
+        hubs:
+          - channel: create-room
+            name: "🔊 {member}'s channel"
+          - channel: create-guild-room
+            name: "🛡️ Guild room #{n}"
+            category: guilds
+            userLimit: 10
+            allowedRoles: [guild]
+        staffRoles: [mod]

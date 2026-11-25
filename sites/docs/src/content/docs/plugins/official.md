@@ -1,10 +1,10 @@
 ---
 title: Official plugins
-description: The ten plugins of the signed official registry, with their versions, commands, capabilities and settings.
+description: The eleven plugins of the signed official registry, with their versions, commands, capabilities and settings.
 ---
 
 The official registry [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins)
-(source `cicord`, tags `<name>/vX.Y.Z`) publishes ten plugins. Install one with
+(source `cicord`, tags `<name>/vX.Y.Z`) publishes eleven plugins. Install one with
 `cicord plugin add cicord/<name> --bot <bot>`, or from the admin console's Store. Their
 sources are in that repository, under `plugins/<name>/`, and are complete examples of the
 SDK.
@@ -21,11 +21,12 @@ SDK.
 | [audit-log](#audit-log) | 0.1.0 | Server events in a staff channel, in batched embeds. | none | `ServerMembers` |
 | [announcements](#announcements) | 0.1.0 | Scheduled and one-off announcements, `/announce` for staff. | `/announce`, `/announce-list`, `/announce-cancel` | none |
 | [github-releases](#github-releases) | 0.1.0 | Announces GitHub releases in your channels. | `/changelog latest`, `/changelog check` | none |
+| [voice-rooms](#voice-rooms) | 0.1.0 | Voice channels on demand ("join to create"), managed by their owner. | `/voice rename`, `limit`, `lock`, `unlock`, `permit`, `kick`, `transfer`, `claim` | none |
 
-The `cicord` binary also bundles copies of the first nine, for offline and first installs
-(how the two are merged: [source `cicord`](../publishing/#source-cicord-and-the-bundled-plugins)).
-The bundled copies are the same versions as the registry; github-releases is only in the
-registry.
+The `cicord` binary also bundles copies of all of them but github-releases, for offline and
+first installs (how the two are merged:
+[source `cicord`](../publishing/#source-cicord-and-the-bundled-plugins)). The bundled copies
+are the same versions as the registry; github-releases is only in the registry.
 
 Privileged intents must be enabled in the Discord developer portal; installing a plugin that
 needs one is refused, with the toggle to turn on, until it is.
@@ -333,11 +334,81 @@ and each check costs one request per feed, so keep `feeds × 60 / pollMinutes` w
 The plugin's [README](https://github.com/cicord/cicord-plugins/tree/main/plugins/github-releases#readme)
 details the rate limits and the retry behavior.
 
+## voice-rooms
+
+Voice channels on demand, often called "join to create": a member who joins a hub channel
+such as "➕ Create a channel" gets a voice channel of their own, is moved into it, and the
+channel is deleted once nobody (but bots) is left in it. A server can have several hubs, for
+instance a regular one and a "guild" one with its own name, category, limit and roles.
+
+- **Commands** (`/voice …`, for the room's owner or the staff, answered privately): `rename
+  name` (Discord allows two renames per 10 minutes), `limit count` (0 is no limit), `lock`
+  and `unlock`, `permit member` (lets them in, even locked), `kick member` (disconnects them
+  and keeps them out), `transfer member` (to a member in the room) and `claim` (take over a
+  room whose owner left). A command acts on the room whose chat it is typed in, else the room
+  the member is connected to, else a room they own.
+- **Schedule**: every 5 minutes, deletes empty rooms the events missed (a member who left
+  while the bot was disconnected, a room deleted by hand).
+- **Capabilities**: `discord.channels.read`, `discord.channels.manage` (the rooms are
+  plugin-owned: never pruned), `discord.voice.move`, `discord.members.read`, `storage.kv`,
+  `scheduler`. **Intents**: `ServerVoiceStates` (not privileged).
+
+| Setting | Default | Description |
+|---|---|---|
+| `hubs` (required) | | 1 to 10 hubs (below). |
+| `emptyDelaySeconds` | `0` | How long an empty room is kept before it is deleted (a member who reconnects in time keeps it). |
+| `cooldownSeconds` | `5` | Minimum time between two rooms of the same member; joining a hub sooner disconnects them from it. 0 turns it off. |
+| `onRestart` | `adopt` | Rooms found when the plugin starts (a restart, a new configuration): `adopt` keeps them and deletes them once empty; `delete` deletes them at once, disconnecting whoever is in them. |
+| `staffRoles` | `[]` | Roles that may use `/voice` on any room (Cicord moderators and admins and the server owner may too). |
+
+Each hub:
+
+| Setting | Default | Description |
+|---|---|---|
+| `channel` (required) | | The hub, a voice channel. |
+| `name` | `🔊 {member}'s channel` | Room name: `{member}` (display name), `{username}`, `{n}` (lowest number free among the hub's rooms). |
+| `category` | the hub's | Category of the rooms. |
+| `userLimit` | `0` | Members a room holds (0: no limit). |
+| `bitrate` | Discord's (64000) | Bits per second, 8000–384000 (above 96000 needs boosts). |
+| `allowedRoles` | `[]` | Only these roles may use the hub (others are disconnected from it); empty: whoever can join it. |
+| `ownerPermissions` | `ViewChannel`, `Connect`, `Speak`, `Stream`, `MoveMembers` | What the owner may do in their room, on top of the category's permissions. |
+
+- **Permissions**: a room is created without overwrites, so it gets its category's (a room of a
+  private category stays private); the owner's and the bot's own (View Channel, Connect, Move
+  Members, so that it can still move members into a locked room) are added next. The bot
+  needs every permission it writes: Mute Members, Deafen Members, Priority Speaker or Manage
+  Channels in `ownerPermissions` need the bot's role to hold them.
+- **Locking** denies Connect to `@everyone` and to the hub's `allowedRoles`; `unlock` clears
+  it again. A role with its own Connect allow on the category (other than the allowed roles)
+  can still join a locked room. `permit` and `kick` are member overwrites, which win over
+  role overwrites.
+- **One room per member and hub**: joining the hub again moves the owner back to their room.
+- **Ownership follows the hub's roles**: `transfer` and `claim` only give a room to a member
+  with one of its hub's `allowedRoles` (or to the staff), so a guest let into a guild room
+  cannot take it over.
+
+```yaml
+- name: voice-rooms
+  source: ../../plugins/voice-rooms
+  grants: [discord.channels.read, discord.channels.manage, discord.voice.move,
+           discord.members.read, storage.kv, scheduler]
+  config:
+    hubs:
+      - channel: create-room              # "➕ Create a channel"
+        name: "🔊 {member}'s channel"
+      - channel: create-guild-room        # "➕ Create a guild channel"
+        name: "🛡️ Guild room #{n}"
+        category: guilds
+        userLimit: 10
+        allowedRoles: [guild]
+    staffRoles: [mod]
+```
+
 ## Using them together
 
 [`examples/showcase`](https://github.com/cicord/cicord/tree/main/examples/showcase) runs
-tickets, polls, levels, moderation, reaction-roles, audit-log and announcements (the bundled
-copies) on one bot, and is the end-to-end test fixture of the runtime. Try it offline:
+tickets, polls, levels, moderation, reaction-roles, audit-log, announcements and voice-rooms
+(the bundled copies) on one bot, and is the end-to-end test fixture of the runtime. Try it offline:
 
 ```sh
 cicord dev --sim examples/showcase

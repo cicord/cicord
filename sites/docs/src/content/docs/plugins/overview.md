@@ -14,7 +14,7 @@ Plugins are installed from **sources**, like apt sources or Homebrew taps:
 
 | Source | What it is | Trust |
 |---|---|---|
-| **`cicord`** | The ten [official plugins](../official/), published in the signed official registry [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins); nine of them are also bundled with the binary, for offline and first installs. Always available, no configuration. | `official` |
+| **`cicord`** | The eleven [official plugins](../official/), published in the signed official registry [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins); ten of them are also bundled with the binary, for offline and first installs. Always available, no configuration. | `official` |
 | **Registries** | Git repositories with an `index.yaml`, declared in `cicord.yaml` `spec.registries`. Community collections, your organization's private plugins, your own development registry. | `unofficial` |
 | **Local plugins** | A directory of your repository (`plugins/<name>/`), referenced by path. | `local` |
 

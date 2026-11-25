@@ -193,7 +193,7 @@ These endpoints answer in any mode.
 - `GET /api/v1/catalog` (admin of a server, the setup session or the bearer token) returns
   `{"plugins": [CatalogPlugin]}`: the [official plugins](../../../plugins/official/) bundled in
   the binary (welcome, onboarding, tickets, polls, levels, moderation, reaction-roles,
-  audit-log, announcements).
+  audit-log, announcements, voice-rooms).
 
   ```json
   { "name", "displayName", "description", "version", "keywords": [], "source": "official",

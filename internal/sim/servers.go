@@ -1322,6 +1322,9 @@ func (w *World) removeChannel(s *serverState, c *channelState) {
 		drop(t)
 	}
 	drop(c)
+	if voiceLike(c.ch.Type) {
+		w.disconnectVoice(s, c.ch.ID) // Discord disconnects the members first
+	}
 	w.layoutChannels(s, nil, nil)
 	w.emit(discord.ChannelDeleteEvent{Channel: c.ch})
 	for _, t := range threads {

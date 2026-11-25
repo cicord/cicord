@@ -31,6 +31,9 @@ type botHost struct {
 	tokenHash string
 	intents   discord.Intents
 	session   discord.Session
+	// voice is the session's voice state cache (server.voiceMembers, voiceStateUpdate's
+	// previous channel).
+	voice *voiceCache
 
 	routing atomic.Pointer[routing]
 
@@ -211,7 +214,8 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 		} else {
 			r.appIntents.Delete(key)
 		}
-		h := &botHost{rt: r, key: key, tokenHash: th, intents: intents, session: sess, cmdHashes: map[string]string{}}
+		h := &botHost{rt: r, key: key, tokenHash: th, intents: intents, session: sess, cmdHashes: map[string]string{},
+			voice: newVoiceCache(intents)}
 		h.routing.Store(&routing{})
 		if p := b.Spec.Presence; p != nil {
 			_ = sess.SetPresence(ctx, toPresence(p))
@@ -294,8 +298,12 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL,
 		Config: in.Config, Grants: in.Grants, NetworkAllow: network, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
 		MessageContent: slices.Contains(m.Spec.Intents, "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
-		ServerMembers: slices.Contains(m.Spec.Intents, "ServerMembers"),
-		Discord:       host.session, Resolver: srt.cache,
+		ServerMembers:     slices.Contains(m.Spec.Intents, "ServerMembers"),
+		ServerVoiceStates: slices.Contains(m.Spec.Intents, "ServerVoiceStates"),
+		Discord:           host.session, Resolver: srt.cache,
+		VoiceStates: func() ([]discord.VoiceState, bool) {
+			return host.voice.States(srt.cfg.Spec.DiscordID)
+		},
 		Members: func(ctx context.Context) ([]discord.Member, error) {
 			return srt.cache.members.List(ctx, host.session, srt.cfg.Spec.DiscordID)
 		},
@@ -441,6 +449,7 @@ func (h *botHost) handle(ev discord.Event) {
 	if c := h.rt.collector; c != nil {
 		c.Handle(h.key, ev) // before the early returns below (interactions, own messages)
 	}
+	ev = h.voice.Observe(ev) // fills VoiceStateUpdateEvent.Previous
 	rt := h.routing.Load()
 	sid := discord.ServerIDOf(ev)
 	if c := rt.caches[sid]; c != nil {

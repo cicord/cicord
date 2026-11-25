@@ -242,6 +242,7 @@ var (
 	permKick              = discord.MustPermissions("KickMembers")
 	permBan               = discord.MustPermissions("BanMembers")
 	permModerate          = discord.MustPermissions("ModerateMembers")
+	permMoveMembers       = discord.MustPermissions("MoveMembers")
 	permAddReactions      = discord.MustPermissions("AddReactions")
 	permPublicThreads     = discord.MustPermissions("CreatePublicThreads")
 	permPrivateThreads    = discord.MustPermissions("CreatePrivateThreads")

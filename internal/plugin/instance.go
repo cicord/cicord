@@ -55,13 +55,21 @@ type Env struct {
 	// ServerMembers reports that the plugin declares the ServerMembers intent in plugin.yaml,
 	// which role.members() requires (it lists the server's members).
 	ServerMembers bool
+	// ServerVoiceStates reports that the plugin declares the ServerVoiceStates intent in
+	// plugin.yaml, which server.voiceMembers() requires.
+	ServerVoiceStates bool
 
 	Discord discord.Client
 	// Members lists every member of the server for role.members(), usually from a short-lived
 	// cache shared by the server's instances. nil: Discord is asked on every call (it must
 	// implement discord.MemberLister).
-	Members  func(ctx context.Context) ([]discord.Member, error)
-	Resolver Resolver // may be nil (nothing resolves)
+	Members func(ctx context.Context) ([]discord.Member, error)
+	// VoiceStates returns the voice states of the server's connected members (the
+	// runtime's cache, kept current by gateway events); known is false until the gateway
+	// has sent them (server.voiceMembers() then fails rather than answer "nobody"). nil:
+	// never known.
+	VoiceStates func() (states []discord.VoiceState, known bool)
+	Resolver    Resolver // may be nil (nothing resolves)
 	// OwnerID returns the server owner's user id, "" when unknown (nil: unknown). It is
 	// called on every use, so an ownership transfer is seen at once.
 	OwnerID func() string

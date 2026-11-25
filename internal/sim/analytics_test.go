@@ -175,3 +175,57 @@ func TestSimAnalyticsPermissions(t *testing.T) {
 		t.Errorf("invites without ManageServer: %v", err)
 	}
 }
+
+func TestSimVoiceMoveDisconnectAndLimits(t *testing.T) {
+	voiceIntents := discord.MustIntents("Servers", "ServerVoiceStates")
+	f := newFixture(t, fixtureOpts{intents: voiceIntents, perms: discord.MustPermissions("ViewChannel", "Connect", "ManageChannels")})
+	bob := f.w.CreateUser("bob")
+	isErr(t, f.w.AddMember(f.srv.ID, bob.ID), nil)
+	hub, err := f.w.AdminCreateChannel(f.srv.ID, discord.ChannelParams{Name: ptr("Hub"), Type: discord.ChannelVoice})
+	isErr(t, err, nil)
+	room, err := f.w.AdminCreateChannel(f.srv.ID, discord.ChannelParams{Name: ptr("Room"), Type: discord.ChannelVoice, UserLimit: ptr(1)})
+	isErr(t, err, nil)
+
+	// A user limit keeps members out, the member is in the voice state.
+	isErr(t, f.w.JoinVoice(f.alice.ID, room.ID), nil)
+	isErr(t, f.w.JoinVoice(bob.ID, room.ID), discord.ErrForbidden)
+	isErr(t, f.w.JoinVoice(f.alice.ID, room.ID), nil) // already in: does not count
+	isErr(t, f.w.JoinVoice(bob.ID, hub.ID), nil)
+	if vs := simEvents[discord.VoiceStateUpdateEvent](f); len(vs) != 3 || vs[0].State.Member == nil || vs[0].State.Member.User.ID != f.alice.ID {
+		t.Fatalf("voice events = %#v", vs)
+	}
+
+	// Moving needs MoveMembers; the destination's user limit does not apply to moves.
+	move := func(user, channel string) error {
+		_, err := f.sess.UpdateMember(ctx, f.srv.ID, user, discord.MemberParams{VoiceChannelID: &channel}, "")
+		return err
+	}
+	isErr(t, move(bob.ID, room.ID), discord.ErrForbidden)
+	_, err = f.w.AdminUpdateRole(f.srv.ID, f.botRole.ID, discord.RoleParams{Permissions: ptr(discord.MustPermissions("ViewChannel", "Connect", "ManageChannels", "MoveMembers"))})
+	isErr(t, err, nil)
+	f.resetEvents()
+	isErr(t, move(bob.ID, room.ID), nil)
+	if vs := f.w.VoiceStates(f.srv.ID); len(vs) != 2 || vs[0].ChannelID != room.ID || vs[1].ChannelID != room.ID {
+		t.Fatalf("after move = %#v", vs)
+	}
+	if n := len(simEvents[discord.MemberUpdateEvent](f)); n != 0 {
+		t.Errorf("a voice move emitted %d member updates", n)
+	}
+	isErr(t, move(f.alice.ID, f.general.ID), discord.ErrBadRequest) // not a voice channel
+	isErr(t, move(f.owner.ID, hub.ID), discord.ErrBadRequest)       // not connected to voice
+
+	// "" disconnects; deleting a voice channel disconnects its members.
+	isErr(t, move(bob.ID, ""), nil)
+	f.resetEvents()
+	isErr(t, f.w.AdminDeleteChannel(room.ID), nil)
+	vs := simEvents[discord.VoiceStateUpdateEvent](f)
+	if len(vs) != 1 || vs[0].State.UserID != f.alice.ID || vs[0].State.ChannelID != "" || len(f.w.VoiceStates(f.srv.ID)) != 0 {
+		t.Fatalf("delete disconnects = %#v", vs)
+	}
+
+	// Members need Connect.
+	_, err = f.w.AdminUpdateChannel(hub.ID, discord.ChannelParams{Overwrites: &[]discord.Overwrite{
+		{ID: f.srv.ID, Type: discord.OverwriteRole, Deny: discord.MustPermissions("Connect")}}})
+	isErr(t, err, nil)
+	isErr(t, f.w.JoinVoice(f.alice.ID, hub.ID), discord.ErrForbidden)
+}

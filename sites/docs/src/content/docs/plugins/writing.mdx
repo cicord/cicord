@@ -234,26 +234,27 @@ Every capability in `spec.capabilities` must also be listed in the instance's `g
 a plugin update that asks for more shows up in review. At run time, a call that is not
 granted throws a `CapabilityError` whose `capability` field names the missing one.
 
-| Capability                            | Allows                                                                          |
-| ------------------------------------- | ------------------------------------------------------------------------------- |
-| `discord.messages.read`               | `channel.messages()` (history), `channel.message(id)`                           |
-| `discord.messages.send`               | `channel.send()`, `message.reply()`, `message.edit()` of the bot's own messages |
-| `discord.messages.manage`             | `message.delete()` (any message), `message.edit()` of other authors' messages   |
-| `discord.reactions.manage`            | `message.react()`                                                               |
-| `discord.members.read`                | `ctx.server.member()`, `role.members()` (with the `ServerMembers` intent)       |
-| `discord.members.manage`              | `member.setNickname()`                                                          |
-| `discord.members.moderate`            | `member.timeout()`, `kick()`, `ban()`                                           |
-| `discord.roles.assign`                | `member.addRole()`, `removeRole()`                                              |
-| `discord.channels.read`               | `ctx.server.channel()`                                                          |
-| `discord.channels.manage`             | `ctx.server.createChannel()` / `deleteChannel()` (plugin-owned channels)        |
-| `discord.threads.manage`              | `channel.createThread()`                                                        |
-| `discord.dm.send`                     | `member.send()`                                                                 |
-| `storage.kv`                          | `ctx.kv`                                                                        |
-| `scheduler`                           | `schedules`, `tasks`, `ctx.schedule`                                            |
-| `http.fetch`                          | `ctx.http.fetch()` to the `spec.network.allow` hosts                            |
-| `portal.routes`                       | `routes`                                                                        |
-| `portal.links`                        | `ctx.portal.link()`                                                             |
-| `events.publish` / `events.subscribe` | `ctx.events.publish()` / `subscriptions`                                        |
+| Capability                            | Allows                                                                                                                            |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `discord.messages.read`               | `channel.messages()` (history), `channel.message(id)`                                                                             |
+| `discord.messages.send`               | `channel.send()`, `message.reply()`, `message.edit()` of the bot's own messages                                                   |
+| `discord.messages.manage`             | `message.delete()` (any message), `message.edit()` of other authors' messages                                                     |
+| `discord.reactions.manage`            | `message.react()`                                                                                                                 |
+| `discord.members.read`                | `ctx.server.member()`, `role.members()` (with the `ServerMembers` intent), `ctx.server.voiceMembers()` (with `ServerVoiceStates`) |
+| `discord.members.manage`              | `member.setNickname()`                                                                                                            |
+| `discord.members.moderate`            | `member.timeout()`, `kick()`, `ban()`                                                                                             |
+| `discord.roles.assign`                | `member.addRole()`, `removeRole()`                                                                                                |
+| `discord.channels.read`               | `ctx.server.channel()`                                                                                                            |
+| `discord.channels.manage`             | `ctx.server.createChannel()` / `editChannel()` / `deleteChannel()` (plugin-owned channels)                                        |
+| `discord.threads.manage`              | `channel.createThread()`                                                                                                          |
+| `discord.voice.move`                  | `member.moveTo()` (to a voice channel), `member.disconnect()` (from voice)                                                        |
+| `discord.dm.send`                     | `member.send()`                                                                                                                   |
+| `storage.kv`                          | `ctx.kv`                                                                                                                          |
+| `scheduler`                           | `schedules`, `tasks`, `ctx.schedule`                                                                                              |
+| `http.fetch`                          | `ctx.http.fetch()` to the `spec.network.allow` hosts                                                                              |
+| `portal.routes`                       | `routes`                                                                                                                          |
+| `portal.links`                        | `ctx.portal.link()`                                                                                                               |
+| `events.publish` / `events.subscribe` | `ctx.events.publish()` / `subscriptions`                                                                                          |
 
 Answering the plugin's own interactions (`reply`, `defer`, `followUp`, `update`,
 `showModal`) needs no capability.
@@ -284,9 +285,11 @@ intent is a build error.
 | `memberJoin`, `memberLeave`, `memberUpdate`       | `ServerMembers` (privileged)                                                  |
 | `messageCreate`, `messageUpdate`, `messageDelete` | `ServerMessages`; add `MessageContent` (privileged) to read `message.content` |
 | `reactionAdd`, `reactionRemove`                   | `ServerMessageReactions`                                                      |
+| `voiceStateUpdate`                                | `ServerVoiceStates`                                                           |
 
-One call needs an intent too: `role.members()` needs `ServerMembers`, checked when it is
-called (see [Members of a role](../api/#members-of-a-role)).
+Two calls need an intent too, checked when they are called: `role.members()` needs
+`ServerMembers` (see [Members of a role](../api/#members-of-a-role)) and
+`ctx.server.voiceMembers()` needs `ServerVoiceStates` (see [Voice](../api/#voice)).
 
 **Message content is gated per plugin.** A plugin that does not declare `MessageContent`
 gets an empty `message.content`, `attachments` and `embeds`, in events and in

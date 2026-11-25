@@ -464,6 +464,10 @@ type MemberParams struct {
 	Nick *string // "" resets the nickname
 	// TimeoutUntil: non-nil sets a timeout; a pointer to the zero time removes it.
 	TimeoutUntil *time.Time
+	// VoiceChannelID moves a member connected to voice to that voice channel; a pointer
+	// to "" disconnects them (Discord's channel_id: null). It needs MoveMembers, and
+	// Connect in the destination channel.
+	VoiceChannelID *string
 }
 
 type SelfParams struct {

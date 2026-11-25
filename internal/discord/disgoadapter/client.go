@@ -352,6 +352,9 @@ func memberParamsBody(p discord.MemberParams) map[string]any {
 			body["communication_disabled_until"] = p.TimeoutUntil.UTC().Format(time.RFC3339)
 		}
 	}
+	if p.VoiceChannelID != nil {
+		body["channel_id"] = nullIfEmpty(*p.VoiceChannelID) // null disconnects
+	}
 	return body
 }
 

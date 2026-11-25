@@ -70,6 +70,7 @@ Plugins add what their **granted** capabilities use:
 | `discord.channels.read` | View Channel |
 | `discord.channels.manage` | View Channel, Manage Channels, Manage Roles |
 | `discord.threads.manage` | View Channel, Create Public Threads, Create Private Threads, Manage Threads, Send Messages in Threads |
+| `discord.voice.move` | View Channel, Connect, Move Members |
 
 The other grants (`discord.members.read`, `discord.dm.send`, storage, scheduler, events,
 portal, `http.fetch`) need no permission on the server.
