@@ -66,6 +66,25 @@ func (e *SimEnv) CreateServer(name string) (discord.Server, error) {
 			return srv, err
 		}
 	}
+	// A private staff category (the inspection shows it hidden from a bot without
+	// Administrator) and an AutoMod rule (readable with Manage Server only).
+	var mod string
+	for _, r := range w.Roles(srv.ID) {
+		if r.Name == "Moderator" {
+			mod = r.ID
+		}
+	}
+	private := []discord.Overwrite{
+		{ID: srv.ID, Type: discord.OverwriteRole, Deny: perm("ViewChannel")},
+		{ID: mod, Type: discord.OverwriteRole, Allow: perm("ViewChannel")},
+	}
+	staff, err := w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("Staff"), Type: discord.ChannelCategory, Overwrites: &private})
+	if err != nil {
+		return srv, err
+	}
+	if _, err := w.AdminCreateChannel(srv.ID, discord.ChannelParams{Name: ptr("mod-log"), Type: discord.ChannelText, ParentID: ptr(staff.ID), Overwrites: &private}); err != nil {
+		return srv, err
+	}
 	for _, n := range []string{"alice", "bob"} {
 		u := w.CreateUser(n)
 		if err := w.AddMember(srv.ID, u.ID); err != nil {
@@ -76,6 +95,10 @@ func (e *SimEnv) CreateServer(name string) (discord.Server, error) {
 	ctx, admin := context.Background(), w.AdminClient(srv.ID)
 	icon := solidPNG(128, color.RGBA{0x58, 0x65, 0xF2, 0xFF})
 	if _, err := admin.UpdateServer(ctx, srv.ID, discord.ServerParams{Icon: &icon}); err != nil {
+		return srv, err
+	}
+	if _, err := admin.CreateAutoModRule(ctx, srv.ID, discord.AutoModRule{Name: "No invites", Trigger: discord.AutoModKeyword,
+		Keywords: []string{"discord.gg/*"}, Enabled: true, Actions: []discord.AutoModAction{{Type: discord.AutoModActionBlock}}}, ""); err != nil {
 		return srv, err
 	}
 	if _, err := admin.CreateEmoji(ctx, srv.ID, discord.EmojiParams{Name: "pixel", Image: solidPNG(32, color.RGBA{0xEB, 0x45, 0x9E, 0xFF})}, ""); err != nil {
@@ -137,11 +160,17 @@ func (e *SimEnv) botUser(token string) (discord.User, string, error) {
 // Invite adds the bot to a server with Administrator, like the OAuth invite. low places
 // the bot's role at the bottom of the hierarchy (to rehearse the "drag the role" fix).
 func (e *SimEnv) Invite(token, serverID string, low bool) error {
+	return e.InviteWith(token, serverID, discord.MustPermissions("Administrator"), low)
+}
+
+// InviteWith is Invite with the permissions of the invite link (View Channels for the
+// inspection invite).
+func (e *SimEnv) InviteWith(token, serverID string, perms discord.Permissions, low bool) error {
 	u, _, err := e.botUser(token)
 	if err != nil {
 		return err
 	}
-	role, err := e.World.AddBotToServer(serverID, u.ID, discord.MustPermissions("Administrator"))
+	role, err := e.World.AddBotToServer(serverID, u.ID, perms)
 	if err != nil {
 		return err
 	}
@@ -149,6 +178,26 @@ func (e *SimEnv) Invite(token, serverID string, low bool) error {
 		return e.World.AdminSetRolePositions(serverID, []discord.RolePosition{{ID: role.ID, Position: 1}})
 	}
 	return nil
+}
+
+// SetBotPermissions sets the permissions of the bot's managed role, like authorizing an
+// invite link again with other permissions.
+func (e *SimEnv) SetBotPermissions(token, serverID string, perms discord.Permissions) error {
+	u, _, err := e.botUser(token)
+	if err != nil {
+		return err
+	}
+	m, ok := e.World.Member(serverID, u.ID)
+	if !ok {
+		return errors.New("the bot is not in this server")
+	}
+	for _, r := range e.World.Roles(serverID) {
+		if r.Managed && m.HasRole(r.ID) {
+			_, err := e.World.AdminUpdateRole(serverID, r.ID, discord.RoleParams{Permissions: &perms})
+			return err
+		}
+	}
+	return errors.New("the bot has no role in this server")
 }
 
 // RaiseBotRole moves the bot's managed role to the top ("drag it above every role").

@@ -18,7 +18,7 @@ test("/hello replies with the default greeting", async () => {
 });
 
 test("the greeting comes from the config", async () => {
-  const t = createTestContext({ schema, grants, members, config: { greeting: "Salut !" } });
+  const t = createTestContext({ schema, grants, members, config: { greeting: "Hi there!" } });
   const result = await runCommand(plugin, t, "hello", { user: "1" });
-  assert.deepEqual(result.replies, ["Salut !"]);
+  assert.deepEqual(result.replies, ["Hi there!"]);
 });

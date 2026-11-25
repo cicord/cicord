@@ -1,0 +1,49 @@
+{
+  "name": "@cicord/cli",
+  "version": "0.1.6",
+  "description": "The cicord command line tool and runtime, as an npm package: installs the release binary for your platform.",
+  "keywords": [
+    "cicord",
+    "cli",
+    "discord",
+    "discord-bot",
+    "gitops"
+  ],
+  "homepage": "https://cicord.dev/docs/getting-started/installation/",
+  "bugs": {
+    "url": "https://github.com/cicord/cicord/issues"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cicord/cicord.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "cicord": "bin/cicord.js"
+  },
+  "files": [
+    "bin/cicord.js",
+    "platforms.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "test": "vp test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

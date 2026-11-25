@@ -143,3 +143,9 @@ Product decision: the store works like `apt` sources / Homebrew taps.
   plugins with an explanation instead of an "invalid signature" state. The bundled copies
   stay in every build for offline and first installs.
 
+## Update (2026-11-24): production key embedded
+
+The production public key (key id `10d3620231e083f8`) is in `registry.OfficialKeys`, so
+builds fetch and verify the signed official index; source `cicord` is the union of
+the bundled plugins and that index.
+

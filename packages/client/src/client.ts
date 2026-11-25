@@ -55,6 +55,9 @@ import type {
   StoreUpdateReview,
   SyncRecord,
   SyncResult,
+  PauseResult,
+  PauseState,
+  ResumeResult,
   TokenSession,
   UninstallResult,
   UpdatePluginConfigRequest,
@@ -687,9 +690,36 @@ export class CicordClient {
     /** `GET /servers/{server}/plan` (admin). */
     plan: (server: string, options?: CallOptions): Promise<Plan> =>
       this.#api<Plan>("GET", `/servers/${seg(server)}/plan`, options),
-    /** `POST /servers/{server}/sync` (admin) — reconcile now. */
-    sync: (server: string, options?: CallOptions): Promise<SyncResult> =>
-      this.#api<SyncResult>("POST", `/servers/${seg(server)}/sync`, options),
+    /**
+     * `POST /servers/{server}/sync` (admin) — reconcile now. Rejects with `paused` (409)
+     * while enforcement is paused, unless `resume` is set (resumes, then syncs).
+     */
+    sync: (
+      server: string,
+      options: CallOptions & { resume?: boolean } = {},
+    ): Promise<SyncResult> => {
+      const { resume, ...rest } = options;
+      return this.#api<SyncResult>("POST", `/servers/${seg(server)}/sync`, {
+        ...rest,
+        ...(resume ? { body: { resume: true } } : {}),
+      });
+    },
+    /** `GET /servers/{server}/pause` (moderator) — the pause and the pending plan. */
+    pauseState: (server: string, options?: CallOptions): Promise<PauseState> =>
+      this.#api<PauseState>("GET", `/servers/${seg(server)}/pause`, options),
+    /**
+     * `POST /servers/{server}/pause` (moderator) — pauses enforcement: nothing is applied to
+     * the server until it is resumed.
+     */
+    pause: (
+      server: string,
+      body: { reason?: string } = {},
+      options?: CallOptions,
+    ): Promise<PauseResult> =>
+      this.#api<PauseResult>("POST", `/servers/${seg(server)}/pause`, { ...options, body }),
+    /** `POST /servers/{server}/resume` (moderator) — the next revision or sync applies again. */
+    resume: (server: string, options?: CallOptions): Promise<ResumeResult> =>
+      this.#api<ResumeResult>("POST", `/servers/${seg(server)}/resume`, options),
     /** `GET /servers/{server}/audit?before=&limit=` (moderator), newest first. */
     audit: async (
       server: string,

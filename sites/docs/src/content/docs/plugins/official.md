@@ -1,34 +1,34 @@
 ---
 title: Official plugins
-description: The nine official plugins, published in the signed cicord-plugins registry - welcome, onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log and announcements - with their commands, capabilities and settings.
+description: The ten plugins of the signed official registry, with their versions, commands, capabilities and settings.
 ---
 
-Nine official plugins are published in the signed official registry
-[cicord/cicord-plugins](https://github.com/cicord/cicord-plugins) (source `cicord`, tags
-`<name>/vX.Y.Z`). Install one with `cicord plugin add cicord/<name> --bot <bot>`, which locks
-its exact commit and integrity in `cicord.lock`. Copies are also bundled in the `cicord` binary
-for offline and first installs: the setup wizard always installs the bundled copy into
-`plugins/<name>/`, and the admin console's Store does too unless the registry has a newer
-version.
-They are also complete examples of the SDK: their sources live in
-[`examples/basic/plugins`](https://github.com/cicord/cicord/tree/main/examples/basic/plugins)
-and [`examples/showcase/plugins`](https://github.com/cicord/cicord/tree/main/examples/showcase/plugins).
+The official registry [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins)
+(source `cicord`, tags `<name>/vX.Y.Z`) publishes ten plugins. Install one with
+`cicord plugin add cicord/<name> --bot <bot>`, or from the admin console's Store. Their
+sources are in that repository, under `plugins/<name>/`, and are complete examples of the
+SDK.
 
-| Plugin | In one line | Commands | Privileged intents |
-|---|---|---|---|
-| [welcome](#welcome) | Greets new members, gives a default role, DMs an onboarding link. | `/welcome-preview`, `/welcome-stats` | `ServerMembers` |
-| [onboarding](#onboarding) | Step-by-step role picking on the community portal. | `/onboarding` | none |
-| [tickets](#tickets) | Support tickets in private, plugin-owned channels. | `/ticket-panel` | none |
-| [polls](#polls) | Polls with buttons or a select menu, live results, auto-close. | `/poll` | none |
-| [levels](#levels) | XP, levels, role rewards, leaderboard on the portal. | `/rank`, `/top` | `MessageContent` |
-| [moderation](#moderation) | Warnings, timeouts, kicks, bans, escalation, flood protection. | `/warn`, `/warnings`, `/timeout`, `/kick`, `/ban` | `ServerMembers` |
-| [reaction-roles](#reaction-roles) | Self-assignable role panels (buttons, select menu or reactions). | `/role-panel` | none |
-| [audit-log](#audit-log) | Server events in a staff channel, in batched embeds. | none | `ServerMembers` |
-| [announcements](#announcements) | Scheduled and one-off announcements, `/announce` for staff. | `/announce`, `/announce-list`, `/announce-cancel` | none |
+| Plugin | Version | In one line | Commands | Privileged intents |
+|---|---|---|---|---|
+| [welcome](#welcome) | 0.1.1 | Greets new members, gives a default role, DMs an onboarding link. | `/welcome-preview`, `/welcome-stats` | `ServerMembers` |
+| [onboarding](#onboarding) | 0.1.0 | Step-by-step role picking on the community portal. | `/onboarding` | none |
+| [tickets](#tickets) | 0.2.1 | Support tickets in private channels, with a member and staff portal. | `/ticket-panel` | `MessageContent`, `ServerMembers` |
+| [polls](#polls) | 0.1.1 | Polls with buttons or a select menu, live results, auto-close. | `/poll`, `/polls close`, `/polls results` | none |
+| [levels](#levels) | 0.1.0 | XP, levels, role rewards, leaderboard on the portal. | `/rank`, `/top` | `MessageContent` |
+| [moderation](#moderation) | 0.1.1 | Warnings, timeouts, kicks, bans, escalation, flood protection. | `/warn`, `/warnings`, `/timeout`, `/kick`, `/ban` | `ServerMembers` |
+| [reaction-roles](#reaction-roles) | 0.1.1 | Self-assignable role panels (buttons, select menu or reactions). | `/role-panel` | none |
+| [audit-log](#audit-log) | 0.1.0 | Server events in a staff channel, in batched embeds. | none | `ServerMembers` |
+| [announcements](#announcements) | 0.1.0 | Scheduled and one-off announcements, `/announce` for staff. | `/announce`, `/announce-list`, `/announce-cancel` | none |
+| [github-releases](#github-releases) | 0.1.0 | Announces GitHub releases in your channels. | `/changelog latest`, `/changelog check` | none |
+
+The `cicord` binary also bundles copies of the first nine, for offline and first installs
+(how the two are merged: [source `cicord`](../publishing/#source-cicord-and-the-bundled-plugins)).
+The bundled copies are the same versions as the registry; github-releases is only in the
+registry.
 
 Privileged intents must be enabled in the Discord developer portal; installing a plugin that
-needs one is refused, with the toggle to turn on, until it is. Every plugin is version
-`0.1.0` and follows the version of the binary.
+needs one is refused, with the toggle to turn on, until it is.
 
 Settings marked *(moderator)* below can be edited by moderators in the admin console; the
 others need an admin.
@@ -68,7 +68,7 @@ not, and complements Discord's [native onboarding](../../configuration/server/#o
 | `intro` *(moderator)* | | Text before the first step. |
 | `completedRole` | | Role given to members who complete it. |
 | `successMessage` *(moderator)* | `You're all set!` | Shown once complete. |
-| `linkMessage`, `buttonLabel` *(moderator)* | | The `/onboarding` reply and its link button. |
+| `linkMessage`, `buttonLabel` *(moderator)* | `Pick your roles on the community portal:`, `Open onboarding` | The `/onboarding` reply and its link button. |
 
 ## tickets
 
@@ -89,8 +89,10 @@ never touches or prunes them.
     `null`), `PATCH /tickets/:id` (priority, label), `POST /tickets/:id/close` (optional
     reason), `POST /tickets/:id/reopen` (recreates the channel when needed),
     `POST /tickets/:id/messages` (the bot posts the reply, signed "— name (via portal)").
-  Staff are the members of `staffRoles`, the server owner and the server's admins; a
-  Cicord moderator without a staff role gets `403` on the staff routes.
+  Staff are the members of `staffRoles`, the server owner and Cicord admins. The staff
+  routes need both: the moderator access level (checked by the runtime) and staff (checked
+  by the plugin), so a Cicord moderator without a staff role gets `403`.
+- **Requires** Cicord 0.1.5 or later (`spec.engine: ">=0.1.5"`).
 - **Capabilities**: `discord.messages.send`, `discord.messages.read`,
   `discord.channels.read`, `discord.channels.manage`, `discord.members.read`, `storage.kv`,
   `portal.routes`.
@@ -120,6 +122,9 @@ audit-log can log it).
   are separated by `|` (2 to 10). `ping` notifies exactly the picked member or role (never
   the author, never `@everyone`); a role that is not mentionable can only be pinged by a poll
   manager.
+- `/polls close poll` (its author or a poll manager) and `/polls results poll`. `poll`
+  autocompletes: the open polls of the author (all of them for a manager) for `close`, every
+  poll for `results`.
 - **Portal routes**: `GET /polls/:id` (public), with a typed route contract.
 - **Capabilities**: `discord.messages.send`, `discord.messages.read`,
   `discord.channels.read`, `discord.threads.manage`, `storage.kv`, `scheduler`,
@@ -303,11 +308,36 @@ only who you say.
 The plugin host has no `Intl`, so the plugin carries the offset and daylight-saving rules
 (EU, US, Australia, New Zealand) of the time zones listed in its schema.
 
+## github-releases
+
+Announces the releases of public GitHub repositories: one embed per release with the notes
+(cut to 4096 characters with a link), the author, a pre-release badge and an optional role
+ping. Drafts are never announced, and a release is never announced twice.
+
+- **Commands**: `/changelog latest repo` (autocompletes from the configured feeds; posts the
+  latest release publicly) and `/changelog check` (checks every feed now); both need Manage
+  Server.
+- **Schedule**: a tick every 5 minutes checks the feeds whose `pollMinutes` have elapsed.
+- **Capabilities**: `discord.messages.send`, `discord.channels.read`, `storage.kv`,
+  `scheduler`, `http.fetch` (to `api.github.com` only). No intents.
+
+| Setting | Default | Description |
+|---|---|---|
+| `feeds` (required) *(moderator)* | | 1 to 20: `repo` (`owner/name`), `channel`, `includePrereleases` (`false`), `mentionRole`, `label` (display name). A repository may be listed twice, for example pre-releases in another channel. |
+| `pollMinutes` | `15` | How often each feed is checked (5–1440). |
+| `announceExisting` | `false` | Announce a feed's recent releases on its first check (5 at most); off, only later releases are announced. |
+| `color` *(moderator)* | `#2da44e` | Embed color. |
+
+The GitHub API is called without a token: GitHub allows 60 requests per hour per IP address,
+and each check costs one request per feed, so keep `feeds × 60 / pollMinutes` well under 60.
+The plugin's [README](https://github.com/cicord/cicord-plugins/tree/main/plugins/github-releases#readme)
+details the rate limits and the retry behavior.
+
 ## Using them together
 
 [`examples/showcase`](https://github.com/cicord/cicord/tree/main/examples/showcase) runs
-tickets, polls, levels, moderation, reaction-roles, audit-log and announcements on one bot,
-and is the end-to-end test fixture of the runtime. Try it offline:
+tickets, polls, levels, moderation, reaction-roles, audit-log and announcements (the bundled
+copies) on one bot, and is the end-to-end test fixture of the runtime. Try it offline:
 
 ```sh
 cicord dev --sim examples/showcase

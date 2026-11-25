@@ -22,6 +22,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cicord/cicord/internal/api"
+	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/discord/disgoadapter"
 )
@@ -234,7 +236,8 @@ const (
 	archiveMaxContents = 64 << 20
 )
 
-// alwaysExcluded are directory names never uploaded, at any depth.
+// alwaysExcluded are directory names never uploaded, at any depth, except on the way to
+// and inside the portal build (see archivedPortal).
 var alwaysExcluded = map[string]bool{".git": true, "node_modules": true, ".cicord": true, ".cicord-data": true, "dist": true}
 
 // ignoreRules is a minimal .gitignore matcher (root .gitignore only): blank lines and
@@ -302,6 +305,23 @@ func secretFile(name string) bool {
 	return name == ".env" || strings.HasPrefix(name, ".env.")
 }
 
+// archivedPortal returns the repository-relative portal build directory (cicord.yaml
+// spec.portal.path), "" when unset or when cicord.yaml cannot be read (the runtime then
+// reports the problem). The portal build is committed and validated by the plan (it must
+// exist, be a directory with an index.html, without symbolic links), so it is uploaded
+// even though it is usually named dist or listed in .gitignore.
+func archivedPortal(dir string) string {
+	proj, err := readProject(dir)
+	if err != nil || proj.Spec.Portal == nil || proj.Spec.Portal.Path == "" {
+		return ""
+	}
+	rel, ok := config.ResolveRepoPath("cicord.yaml", proj.Spec.Portal.Path)
+	if !ok {
+		return ""
+	}
+	return rel
+}
+
 // archiveRepo builds a .tar.gz of the repository rooted at dir (cicord.yaml at the root of
 // the archive). It returns the archive and the number of files.
 func archiveRepo(dir string) ([]byte, int, error) {
@@ -309,6 +329,20 @@ func archiveRepo(dir string) ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("%s is not a Cicord repository (no cicord.yaml)", dir)
 	}
 	ign := loadIgnore(dir)
+	portal := archivedPortal(dir)
+	inPortal := func(rel string) bool { return portal != "" && (rel == portal || strings.HasPrefix(rel, portal+"/")) }
+	towardPortal := func(rel string) bool { return portal != "" && strings.HasPrefix(portal, rel+"/") }
+	// Excluded directories walked only because the portal is inside them: of their
+	// content, only the way to the portal is archived.
+	var pruned []string
+	underPruned := func(rel string) bool {
+		for _, p := range pruned {
+			if strings.HasPrefix(rel, p+"/") {
+				return true
+			}
+		}
+		return false
+	}
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
@@ -327,13 +361,19 @@ func archiveRepo(dir string) ([]byte, int, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if alwaysExcluded[d.Name()] || ign.match(rel, true) {
-				return filepath.SkipDir
+			if !inPortal(rel) && (underPruned(rel) || alwaysExcluded[d.Name()] || ign.match(rel, true)) {
+				if !towardPortal(rel) {
+					return filepath.SkipDir
+				}
+				pruned = append(pruned, rel)
 			}
 			return tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: rel + "/", Mode: 0o755, ModTime: time.Unix(0, 0)})
 		}
-		if !d.Type().IsRegular() || secretFile(d.Name()) || ign.match(rel, false) {
-			return nil // symlinks and special files are refused by the runtime
+		if !d.Type().IsRegular() || secretFile(d.Name()) || api.MacOSJunk(d.Name()) {
+			return nil // symlinks and special files are refused by the runtime; secrets and macOS metadata stay local
+		}
+		if !inPortal(rel) && (underPruned(rel) || ign.match(rel, false)) {
+			return nil
 		}
 		info, err := d.Info()
 		if err != nil {

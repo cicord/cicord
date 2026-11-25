@@ -75,8 +75,8 @@ export default definePlugin({
 	}
 	res := discord.Resolved{
 		Users:       map[string]discord.User{"77": {ID: "77", Username: "bob", GlobalName: "Bobby", Bot: true}},
-		Channels:    map[string]discord.Channel{"100": {ID: "100", ServerID: "10", Name: "général", Type: discord.ChannelText}},
-		Roles:       map[string]discord.Role{"200": {ID: "200", Name: "Membre", Color: 0x3498db}, "201": {ID: "201", Name: "Modo"}},
+		Channels:    map[string]discord.Channel{"100": {ID: "100", ServerID: "10", Name: "general-chat", Type: discord.ChannelText}},
+		Roles:       map[string]discord.Role{"200": {ID: "200", Name: "Member", Color: 0x3498db}, "201": {ID: "201", Name: "Moderator"}},
 		Attachments: map[string]discord.Attachment{"900": {ID: "900", Filename: "a.png", Size: 12}},
 	}
 	if err := h.command("opts", opts, res); err != nil {
@@ -89,8 +89,8 @@ export default definePlugin({
 	want := map[string]any{
 		"s": "hello", "i": float64(42), "iType": "number", "n": 1.5, "b": true,
 		"user":        []any{"77", "bob", "Bobby", "<@77>", true},
-		"channel":     []any{"100", "general", "général", "text", "<#100>", "function"},
-		"role":        []any{"200", "member", "Membre", "#3498db", "<@&200>"},
+		"channel":     []any{"100", "general", "general-chat", "text", "<#100>", "function"},
+		"role":        []any{"200", "member", "Member", "#3498db", "<@&200>"},
 		"mentionable": "<@&201>",
 		"attachment":  []any{"a.png", float64(12)},
 		"missing":     true, "frozen": true,
@@ -275,7 +275,7 @@ export default definePlugin({
 	if err := h.command("probe", nil, discord.Resolved{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := contentOf(h.responses()[0]); got != "true:discord.channels.read:CapabilityError|storage.kv|http.fetch|Membre" {
+	if got := contentOf(h.responses()[0]); got != "true:discord.channels.read:CapabilityError|storage.kv|http.fetch|Member" {
 		t.Fatalf("got %q", got)
 	}
 	err := h.inst.HandleEvent(context.Background(), memberJoin("42"))
@@ -649,7 +649,7 @@ export default definePlugin({
 		"member":       []any{"77", "bob", true, false, float64(1), float64(2024)},
 		"none":         true,
 		"unmanaged":    []any{"unmanaged", nil},
-		"server":       []any{"10", "ma-commu", "Ma Commu"},
+		"server":       []any{"10", "my-community", "My Community"},
 		"bot":          []any{"moderator", "1"},
 		"plugin":       map[string]any{"name": "test", "version": "0.1.0", "instance": "inst"},
 		"configFrozen": true, "greeting": "hi",
@@ -776,7 +776,7 @@ export default definePlugin({
 	if d := h.dc.Calls("DeleteChannel"); len(d) != 1 || d[0].Args[0] != parts[0] {
 		t.Fatalf("DeleteChannel: %+v", d)
 	}
-	if list, _ := h.resources.List(context.Background(), "ma-commu"); len(list) != 0 {
+	if list, _ := h.resources.List(context.Background(), "my-community"); len(list) != 0 {
 		t.Fatalf("ownership record not removed: %+v", list)
 	}
 	if s := h.dc.Calls("SendMessage"); len(s) != 1 || s[0].Args[0] != parts[0] {
@@ -793,7 +793,7 @@ export default definePlugin({
 	if err := h.inst.HandleEvent(context.Background(), memberJoin("1")); err != nil {
 		t.Fatal(err)
 	}
-	list, _ := h.resources.List(context.Background(), "ma-commu")
+	list, _ := h.resources.List(context.Background(), "my-community")
 	if len(list) != 1 || list[0].Owner != "plugin:moderator/inst" || list[0].Kind != state.KindChannel ||
 		list[0].Key != "moderator/inst/"+list[0].ID {
 		t.Fatalf("resources: %+v", list)
@@ -867,7 +867,7 @@ export default definePlugin({
 	}
 	parts := strings.Split(contentOf(h.responses()[0]), "|")
 	tasks := h.tasks.All()
-	if len(tasks) != 1 || tasks[0].ID != parts[0] || tasks[0].Scope != "plugin:moderator/inst/ma-commu" || tasks[0].Name != "remind" ||
+	if len(tasks) != 1 || tasks[0].ID != parts[0] || tasks[0].Scope != "plugin:moderator/inst/my-community" || tasks[0].Name != "remind" ||
 		string(tasks[0].Payload) != `{"who":"42"}` || time.Until(tasks[0].RunAt) < 50*time.Second {
 		t.Fatalf("tasks: %+v", tasks)
 	}

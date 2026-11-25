@@ -41,7 +41,7 @@ An error is an HTTP status and `{"error": {"code": "<snake_case>", "message": "<
 Validation errors add `"diagnostics": [Diagnostic]`:
 
 ```json
-{ "severity": "error", "file": "servers/ma-commu.yaml", "line": 12, "path": "/spec/channels/general", "message": "…" }
+{ "severity": "error", "file": "servers/my-community.yaml", "line": 12, "path": "/spec/channels/general", "message": "…" }
 ```
 
 `severity` is `error` or `warning`; `file`, `line` and `path` (a JSON pointer) are optional.
@@ -73,8 +73,8 @@ form** next to the raw field, which is unchanged (`internal/reconcile/humanize.g
 ```json
 { "code": "community_required",
   "message": "Announcement and stage channels need the Community feature",
-  "hint": "Enable Community in Discord (Server Settings → Enable Community), then sync again. …",
-  "details": "reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: … (HTTP 400 50035: Invalid Form Body {…})",
+  "hint": "Declare community: {enabled: true, rulesChannel, updatesChannel} in the server YAML and Cicord enables Community at the next sync. …",
+  "details": "reconcile my-community: 1 change(s) failed: create channel news: discord CreateChannel: … (HTTP 400 50035: Invalid Form Body {…})",
   "discordCode": 50035, "httpStatus": 400,
   "resource": { "action": "create", "kind": "channel", "key": "news" },
   "fields": [ { "path": "type", "code": "BASE_TYPE_CHOICES", "message": "Value must be one of {0, 2}." } ],
@@ -101,7 +101,7 @@ The error object appears as:
 - `error` on a server of `/status` and `/servers/{server}` (Degraded or Missing with a
   `message`), and on a bot of `/status`; `lastErrorInfo` explains `lastError`;
 - `error` on `/history` records whose status is `failed` or `rejected`;
-- `error` on every `blocked[]` entry of a [plan](servers/#plan) (`/plan`, `/sync`);
+- `error` on every `blocked[]` entry of a [server plan](servers/#plan) (`GET …/plan`, `POST …/sync`; not the machine `POST /api/v1/plan`);
 - in the error envelope of `plan` and `sync` failures (`503`): `message` is the explained
   message, plus `hint`, `details` (raw text) and `reason` (the error object's `code`).
 
@@ -164,7 +164,7 @@ Roles are per server: see [Roles](authentication/#roles).
 
 | Method | Path | Role | Result |
 |---|---|---|---|
-| GET | `/api/v1/servers/{server}` | moderator | [Status entry with live drift, plus the server's YAML `spec`](servers/#servers). |
+| GET | `/api/v1/servers/{server}` | moderator | [Status entry with its drift, plus the server's YAML `spec`](servers/#servers). |
 | GET | `/api/v1/servers/{server}/resources` | moderator | [Roles, categories and channels](servers/#resources), for pickers. |
 | GET | `/api/v1/servers/{server}/plan` | admin | [The plan](servers/#plan) of the active revision against live Discord. |
 | POST | `/api/v1/servers/{server}/sync` | admin | Reconcile now: `{plan, applied}`. |

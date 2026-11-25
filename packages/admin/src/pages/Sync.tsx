@@ -33,6 +33,7 @@ import {
   toastError,
 } from "../components/errors.tsx";
 import { HistoryList } from "../components/history.tsx";
+import { PauseButton } from "../components/pause.tsx";
 import { ActionBadge, StatusLegend } from "../components/status.tsx";
 import {
   AlertDialog,
@@ -74,9 +75,12 @@ import { Swatch } from "../schema-form/index.ts";
 
 export function SyncButton({ serverKey, size }: { serverKey: string; size?: "sm" | "default" }) {
   const { t } = useTranslation();
+  const ws = useWorkspace();
   const { client, cache } = useCicord();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // A paused server applies nothing: Sync now becomes Resume (which shows the plan).
+  const paused = ws.server?.key === serverKey && ws.server.paused !== undefined;
   const run = async () => {
     setBusy(true);
     try {
@@ -114,6 +118,7 @@ export function SyncButton({ serverKey, size }: { serverKey: string; size?: "sm"
       setOpen(false);
     }
   };
+  if (paused) return <PauseButton {...(size ? { size } : {})} />;
   return (
     <AlertDialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
       <AlertDialogTrigger asChild>
@@ -266,7 +271,7 @@ export function PlanPage({ serverKey }: { serverKey: string }) {
   );
 }
 
-function PlanView({ plan }: { plan: Plan }) {
+export function PlanView({ plan }: { plan: Plan }) {
   const { t } = useTranslation();
   const waiting = plan.blocked.filter(waitsForBoost);
   const blocked = plan.blocked.filter((b) => !waitsForBoost(b));

@@ -32,9 +32,9 @@ Every handler receives `ctx`:
 |---|---|
 | `ctx.plugin` | `name`, `version`, `instance` |
 | `ctx.bot` | `key`, `user` |
-| `ctx.server` | The instance's server: `id`, `key`, `name`, `ownerId`, `channel()`, `role()`, `member()`, `createChannel()`, `deleteChannel()` |
+| `ctx.server` | The instance's server: `id`, `key`, `name`, `iconUrl`, `ownerId`, `channel()`, `role()`, `member()`, `createChannel()`, `deleteChannel()` |
 | `ctx.config` | The effective config (overrides merged, defaults applied) |
-| `ctx.log` | `debug`, `info`, `warn`, `error(message, fields)` |
+| `ctx.log` | `debug`, `info`, `warn`, `error(message, fields?)` |
 | `ctx.kv` | Instance-scoped storage |
 | `ctx.schedule` | `after()`, `cancel()` |
 | `ctx.http` | `fetch()` |
@@ -43,7 +43,14 @@ Every handler receives `ctx`:
 
 Server resources are referenced by their **key** in `servers/<server>.yaml`
 (`ctx.server.channel("general")`, `member.addRole("member")`), or by `{ id }` for resources
-Cicord does not manage.
+Cicord does not manage. `channel()` and `role()` throw when the resource does not exist.
+
+| Object | Methods (capability in [Capabilities and grants](../writing/#capabilities-and-grants)) |
+|---|---|
+| `TextChannel` | `send(message)`, `messages({ limit?, before?, after? })`, `message(id)` (`undefined` once deleted), `createThread(name, { private?, fromMessage? })` |
+| `Message` | `reply(message)`, `edit(message)`, `delete(reason?)`, `react(emoji)`; `content`, `author`, `member`, `channel`, `attachments`, `embeds`, `createdAt` |
+| `Member` | `hasRole(role)`, `addRole(role, reason?)`, `removeRole(role, reason?)`, `setNickname(nickname \| null, reason?)`, `timeout(durationMs, reason?)` (0 removes it), `kick(reason?)`, `ban({ reason?, deleteMessagesSeconds? })`, `send(message)` (DM); `user`, `nickname`, `displayName`, `roles`, `joinedAt` |
+| `Role` | `members({ limit?, after? })` ([below](#members-of-a-role)); `id`, `key`, `name`, `color`, `mention` |
 
 ### Permission checks
 
@@ -224,7 +231,8 @@ poll: {
 Discord expects an answer within 3 seconds. If a handler has not answered after **2 s**, the
 runtime **defers automatically** (ephemerally when the command says `ephemeral: true`;
 components get a silent deferred update), and a later `reply()` edits the deferred response.
-The first response fixes ephemerality; after `reply()`, use `followUp()`. Autocomplete
+The first response fixes ephemerality; after `reply()`, use `followUp()`.
+`interaction.replied` and `interaction.deferred` tell where the interaction stands. Autocomplete
 interactions are the exception: they are never deferred, the handler's return value is the
 answer. If a handler throws before answering, the user gets an ephemeral "Something went
 wrong while handling this interaction." and the error is logged.
@@ -284,10 +292,15 @@ modals: {
 },
 ```
 
-- Buttons: `{ type: "button", id, label?, emoji?, style? }` (`primary`, `secondary`,
-  `success`, `danger`); link buttons `{ type: "link", url, label }` trigger no handler.
-- Select menus: `{ type: "select", id, options: [{ value, label }], minValues?, maxValues? }`;
-  the picked values arrive in `interaction.values`.
+- Buttons: `{ type: "button", id, label?, emoji?, style?, disabled? }` (`primary`,
+  `secondary`, `success`, `danger`); link buttons `{ type: "link", url, label?, emoji?,
+  disabled? }` trigger no handler.
+- Select menus: `{ type: "select", id, placeholder?, minValues?, maxValues?, options }`, each
+  option `{ value, label, description?, emoji?, default? }`; the picked values arrive in
+  `interaction.values`.
+- Modals: `{ id, title, fields }`, each field `{ id, label, style?, required?, placeholder?,
+  value?, minLength?, maxLength? }` (`short` or `paragraph`); the values arrive in
+  `interaction.fields`.
 - Messages: a string, or `{ content?, embeds?, components?, allowedMentions? }`; interaction
   replies can add `ephemeral: true`.
 
@@ -411,7 +424,8 @@ In a portal, `@cicord/client`'s `client.routes(plugin, server, instance)` (typed
 ### Portal links
 
 `ctx.portal.link(path, { member, expiresInSeconds })` (`portal.links`) returns a signed portal
-URL. With `member`, opening it signs that member in, restricted to this server. Links last 15
+URL. With `member` (a `Member` or a `User`), opening it signs that member in, restricted to
+this server. Links last 15
 minutes by default, 24 hours at most. The `welcome` example above DMs one to each new member.
 
 ## Schedules and tasks
@@ -447,7 +461,8 @@ plugin does this to close a poll.
 ## Plugin-owned channels
 
 `ctx.server.createChannel({ name, type, category, topic, overwrites })`
-(`discord.channels.manage`) creates a channel owned by the instance: the reconciler never
+(`discord.channels.manage`; `type` is `text`, `voice` or `forum`) creates a channel owned by
+the instance: the reconciler never
 touches or prunes it, even with `prune: true`, and only that instance can `deleteChannel()`
 it. `overwrites` keys are `"@everyone"`, a role key, `"role:<id>"` or `"member:<id>"`.
 
@@ -479,9 +494,11 @@ The official plugins publish `polls.closed` and `moderation.case`.
 ## Storage, HTTP and logging
 
 - **`ctx.kv`** (`storage.kv`): a JSON key-value store scoped to the instance: `get`,
-  `set(key, value, { ttlSeconds })`, `delete`, atomic `increment`,
-  `list({ prefix, limit, cursor })`. It persists across revisions and restarts.
-- **`ctx.http.fetch(url, { method, headers, body, timeoutMs })`** (`http.fetch`) returns
+  `set(key, value, { ttlSeconds })`, `delete`, atomic `increment(key, by?)` (from 0),
+  `list({ prefix, limit, cursor })` (returns `{ items, cursor? }`). It persists across
+  revisions and restarts.
+- **`ctx.http.fetch(url, { method, headers, body, timeoutMs })`** (`http.fetch`; `body` is a
+  string) returns
   `{ status, headers, text(), json() }`, to the `spec.network.allow` hosts only.
 - **`ctx.log.debug/info/warn/error(message, fields)`** and `console.*` go to the runtime log,
   tagged with the instance.

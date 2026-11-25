@@ -216,7 +216,7 @@ func TestSeriesTopDimensions(t *testing.T) {
 	a := st.Analytics()
 	ctx := t.Context()
 	qMust(t, st.Resources().Put(ctx, state.Resource{Server: "main", Kind: state.KindChannel, Key: "general", ID: "111", Owner: state.OwnerGit}))
-	spec := &config.ServerSpec{Channels: map[string]config.Channel{"general": {Name: "général", Type: "text"}}}
+	spec := &config.ServerSpec{Channels: map[string]config.Channel{"general": {Name: "general", Type: "text"}}}
 	r := &analytics.Reader{Store: a, Now: func() time.Time { return qNow },
 		Labeler: analytics.ResourceLabeler{Resources: st.Resources(), Spec: func(string) *config.ServerSpec { return spec }}}
 	// Channels 111 (10+5), 222 (8), 333 (2), 444 (1).
@@ -242,7 +242,7 @@ func TestSeriesTopDimensions(t *testing.T) {
 			t.Errorf("%q = %v, want %v", dim, got, want)
 		}
 	}
-	if l := res.Labels["111"]; l.Name != "général" || l.Kind != "channel" || l.Deleted {
+	if l := res.Labels["111"]; l.Name != "general" || l.Kind != "channel" || l.Deleted {
 		t.Errorf("label 111 = %+v", l)
 	}
 	if l := res.Labels["222"]; l.Name != "222" || !l.Deleted {
@@ -534,7 +534,7 @@ func TestLabels(t *testing.T) {
 	}
 	spec := &config.ServerSpec{
 		Channels: map[string]config.Channel{"voice": {Name: "Lounge", Type: "voice"}},
-		Roles:    map[string]config.RoleSpec{"mod": {Name: "Modérateur", Color: "#FF00aa"}, "plain": {Name: "Plain", Color: "red"}},
+		Roles:    map[string]config.RoleSpec{"mod": {Name: "Moderator", Color: "#FF00aa"}, "plain": {Name: "Plain", Color: "red"}},
 		Emojis:   map[string]config.EmojiSpec{"pepe": {Name: "pepe_happy"}},
 		AutoMod:  map[string]config.AutoModSpec{"spam": {Name: "No spam"}},
 	}
@@ -547,7 +547,7 @@ func TestLabels(t *testing.T) {
 	})
 	want := map[string]analytics.Label{
 		"1":      {Name: "live-lounge", Kind: "voice"},
-		"2":      {Name: "Modérateur", Kind: "role", Color: "#ff00aa"},
+		"2":      {Name: "Moderator", Kind: "role", Color: "#ff00aa"},
 		"3":      {Name: "Plain", Kind: "role"},
 		"pepe:4": {Name: "pepe_happy", Kind: "emoji", ImageURL: "https://cdn.discordapp.com/emojis/4.png"},
 		"5":      {Name: "No spam", Kind: "label"},

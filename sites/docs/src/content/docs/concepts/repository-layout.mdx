@@ -12,9 +12,9 @@ A Cicord repository is plain YAML plus, optionally, the TypeScript sources of yo
 - cicord.yaml the Project: engine, source, registries, write-back, portal
 - cicord.lock generated: pinned registry plugins (commit + content hash)
 - servers/
-  - ma-commu.yaml one Server per file, named after its key
+  - my-community.yaml one Server per file, named after its key
   - assets/
-    - ma-commu/ icons, banners, emojis, stickers, sounds (written by `cicord import`)
+    - my-community/ icons, banners, emojis, stickers, sounds (written by `cicord import`)
 - bots/
   - moderator/
     - bot.yaml one Bot per directory: token reference, servers, plugin instances
@@ -25,7 +25,7 @@ A Cicord repository is plain YAML plus, optionally, the TypeScript sources of yo
 - .github/
   - workflows/
     - cicord.yml CI: validate, plan on pull requests, wait for the sync
-- .gitignore
+- .gitignore ignores `.cicord/` (the CLI's local state) and `*.db`
 - README.md
 
 </FileTree>
@@ -39,10 +39,8 @@ runs seven more.
 :::tip[A real-world example]
 The configuration of the official Cicord community server is public:
 [github.com/cicord/cicord-community](https://github.com/cicord/cicord-community). It was
-created by the setup wizard and follows a GitHub repository with write-back policies
-(`bots/**` committed directly, `servers/**` through pull requests), and its bot installs
-official plugins from the official registry, pinned in `cicord.lock`. Its runtime is installed
-as described in [Production on a VPS](../../self-hosting/production-vps/).
+created by the setup wizard, commits `bots/**` and `plugins/**` directly and opens pull
+requests for `servers/**`, and pins official registry plugins in `cicord.lock`.
 :::
 
 ## Resources
@@ -53,7 +51,7 @@ Every file holds one resource, Kubernetes style:
 apiVersion: cicord.dev/v1alpha1 # the format version
 kind: Server # Project, Server, Bot or Plugin
 metadata:
-  name: ma-commu # the key
+  name: my-community # the key
 spec:
   # …
 ```
@@ -73,8 +71,11 @@ or the directory name (`bots/<key>/`). `metadata` can also carry `labels` and
 The JSON Schemas in
 [`spec/schemas/`](https://github.com/cicord/cicord/tree/main/spec/schemas)
 (`project`, `server`, `bot` and `plugin.schema.json`) are normative, like the plugin SDK
-types in `spec/sdk/cicord-sdk.d.ts`. For completion and checks in your editor, add
-`# yaml-language-server: $schema=<URL or path of the schema>` at the top of a file.
+types in `spec/sdk/cicord-sdk.d.ts`. They are published at
+`https://cicord.dev/schemas/v1alpha1/<kind>.schema.json`: for completion and checks in your
+editor, add `# yaml-language-server: $schema=https://cicord.dev/schemas/v1alpha1/server.schema.json`
+(or a path to the schema) at the top of a file. See
+[Editor support](../../getting-started/installation/#editor-support).
 
 ## Keys and display names
 
@@ -84,7 +85,7 @@ names shown in Discord:
 ```yaml
 channels:
   general: # ← key: stable, used for references and state
-    name: général # ← display name: change it freely (a rename, not a recreate)
+    name: general-chat # ← display name: change it freely (a rename, not a recreate)
     category: community # ← a reference, by key
 ```
 
@@ -103,7 +104,7 @@ channels:
 ## Configuration in git, data in the database
 
 Only **configuration** goes to git. Everything that is **data** lives in the runtime's state
-database (SQLite in the data directory):
+database (SQLite in the data directory, or PostgreSQL with `--database-url`):
 
 | In git                                          | In the database                                            |
 | ----------------------------------------------- | ---------------------------------------------------------- |
@@ -111,5 +112,5 @@ database (SQLite in the data directory):
 | Bots, plugin instances, plugin settings         | Plugin storage (XP, warnings, tickets, member preferences) |
 | Registries, write-back policies, portal options | Audit log, sessions, sync history                          |
 
-This is why the runtime's data directory must be [backed up](../../self-hosting/backups-and-secrets/),
-and why the repository never sees commit loops from state changes.
+This is why the state database must be [backed up](../../self-hosting/backups-and-secrets/),
+and why state changes never cause commits.

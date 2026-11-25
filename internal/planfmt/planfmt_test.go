@@ -10,21 +10,21 @@ import (
 )
 
 const samplePlan = `{
-  "server": "ma-commu",
+  "server": "my-community",
   "changes": [
     {"action": "create", "kind": "role", "key": "vip", "summary": "create role \"VIP\"",
      "fields": {"name": {"from": null, "to": "VIP"}, "color": {"from": null, "to": "#ff0000"}, "hoist": {"from": null, "to": false},
                 "permissions": {"from": null, "to": ["SendMessages"]}}},
-    {"action": "update", "kind": "channel", "key": "general", "id": "1", "summary": "rename channel #général → #discussions, update slowmode",
-     "fields": {"name": {"from": "général", "to": "discussions"}, "slowmode": {"from": 0, "to": 10}}},
-    {"action": "update", "kind": "role", "key": "modo", "id": "2", "summary": "update role \"Modo\": permissions",
+    {"action": "update", "kind": "channel", "key": "general", "id": "1", "summary": "rename channel #general → #discussions, update slowmode",
+     "fields": {"name": {"from": "general", "to": "discussions"}, "slowmode": {"from": 0, "to": 10}}},
+    {"action": "update", "kind": "role", "key": "moderator", "id": "2", "summary": "update role \"Moderator\": permissions",
      "fields": {"permissions": {"from": ["KickMembers", "ManageMessages"], "to": ["KickMembers", "BanMembers"]}}},
     {"action": "update", "kind": "category", "key": "staff", "id": "3", "summary": "update category \"Staff\": overwrites",
      "fields": {"overwrites": {"from": {"@everyone": {"deny": ["ViewChannel"]}, "old": {"allow": ["ViewChannel"]}},
-                               "to": {"@everyone": {"deny": ["ViewChannel", "SendMessages"]}, "modo": {"allow": ["ViewChannel"]}}}}},
-    {"action": "reorder", "kind": "role", "key": "hierarchy", "summary": "reorder roles: admin > modo",
-     "fields": {"order": {"from": ["modo", "admin"], "to": ["admin", "modo"]}}},
-    {"action": "adopt", "kind": "channel", "key": "rules", "id": "4", "summary": "adopt channel #règlement (4)"},
+                               "to": {"@everyone": {"deny": ["ViewChannel", "SendMessages"]}, "moderator": {"allow": ["ViewChannel"]}}}}},
+    {"action": "reorder", "kind": "role", "key": "hierarchy", "summary": "reorder roles: admin > moderator",
+     "fields": {"order": {"from": ["moderator", "admin"], "to": ["admin", "moderator"]}}},
+    {"action": "adopt", "kind": "channel", "key": "rules", "id": "4", "summary": "adopt channel #rules (4)"},
     {"action": "delete", "kind": "channel", "key": "old", "id": "5", "summary": "delete channel #old"},
     {"action": "unmanage", "kind": "role", "key": "legacy", "id": "6", "summary": "stop managing role \"Legacy\""}
   ],
@@ -49,21 +49,21 @@ func TestText(t *testing.T) {
 	Text(&b, []Plan{sample(t), {Server: "other"}})
 	out := b.String()
 	for _, want := range []string{
-		"Server ma-commu: 8 change(s), 2 blocked",
+		"Server my-community: 8 change(s), 2 blocked",
 		`  + create role "VIP"`,
 		`      color:       "#ff0000"`,
 		`      permissions: [SendMessages]`,
-		"  ~ rename channel #général → #discussions, update slowmode",
-		`      name:     "général" → "discussions"`,
+		"  ~ rename channel #general → #discussions, update slowmode",
+		`      name:     "general" → "discussions"`,
 		"      slowmode: 0 → 10",
 		"      permissions: +BanMembers -ManageMessages",
 		"      overwrites:",
 		"        ~ @everyone: deny +SendMessages",
-		"        + modo: allow ViewChannel",
+		"        + moderator: allow ViewChannel",
 		"        - old: allow ViewChannel",
-		"  > reorder roles: admin > modo",
-		"      order: modo, admin → admin, modo",
-		"  = adopt channel #règlement (4)",
+		"  > reorder roles: admin > moderator",
+		"      order: moderator, admin → admin, moderator",
+		"  = adopt channel #rules (4)",
 		"  - delete channel #old",
 		`  # stop managing role "Legacy"`,
 		"  ! blocked: delete role gone (deletionProtection)",
@@ -87,7 +87,7 @@ func TestSummaryAndPending(t *testing.T) {
 	if Pending([]Plan{empty}) {
 		t.Error("blocked-only plan is pending")
 	}
-	if got := SummaryLine(empty); got != "No changes. Discord matches the configuration. 1 operation(s) blocked." {
+	if got := SummaryLine(empty); got != "No changes can be applied: 1 operation(s) blocked." {
 		t.Errorf("summary = %q", got)
 	}
 	if !Pending([]Plan{sample(t)}) {
@@ -120,7 +120,7 @@ func TestMarkdown(t *testing.T) {
 		"<!-- cicord-plan:x -->\n### Cicord plan for `x`",
 		"**Plan: 1 to create",
 		"<summary>Warnings (1)</summary>",
-		"<details open><summary>Server <code>ma-commu</code>: 8 change(s), 2 blocked</summary>",
+		"<details open><summary>Server <code>my-community</code>: 8 change(s), 2 blocked</summary>",
 		"```diff\n+ create role \"VIP\"",
 		"\nfooter\n",
 	} {
@@ -191,5 +191,124 @@ func TestMemberRoles(t *testing.T) {
 	Text(&nb, []Plan{{Server: "n", Notes: ps[0].Notes}})
 	if !strings.Contains(nb.String(), "Server n: no changes, 1 note(s)") || Pending([]Plan{{Server: "n", Notes: ps[0].Notes}}) {
 		t.Errorf("notes only:\n%s", nb.String())
+	}
+}
+
+func TestBoostWaits(t *testing.T) {
+	ps, err := FromReconcile(reconcile.Plan{
+		Server: "showcase",
+		Blocked: []reconcile.Blocked{
+			{Action: reconcile.ActionUpdate, Kind: reconcile.KindServer, Key: "showcase", ID: "1",
+				Reason: "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
+				Fields: map[string]reconcile.FieldChange{"banner": {To: "./assets/banner.png"}}},
+			{Action: reconcile.ActionDelete, Kind: "role", Key: "gone", ID: "7", Reason: "deletionProtection"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := Count(ps...); c.Blocked != 1 || c.Boost != 1 {
+		t.Errorf("counts = %+v", c)
+	}
+	var b strings.Builder
+	Text(&b, ps)
+	out := b.String()
+	for _, want := range []string{
+		"Server showcase: 0 change(s), 1 blocked, 1 waiting for boosts",
+		"  ! blocked: delete role gone (deletionProtection)\n" +
+			"  ^ waits for boost: update server showcase (banner requires boost level 2; server is level 0 (0 boost(s)))\n" +
+			`      banner: (none) → "./assets/banner.png"`,
+		"No changes can be applied: 1 operation(s) blocked. 1 change(s) wait for a higher boost level.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	// a plan that only waits for boosts has no changes and nothing blocked
+	only := []Plan{{Server: "showcase", Changes: []Change{}, Blocked: ps[0].Blocked[:1]}}
+	var ob strings.Builder
+	Text(&ob, only)
+	if got := ob.String(); !strings.Contains(got, "Server showcase: no changes, 1 waiting for boosts\n") || strings.Contains(got, "blocked") ||
+		!strings.HasSuffix(got, "No changes. Discord matches the configuration; 1 change(s) wait for a higher boost level.\n") {
+		t.Errorf("boost only:\n%s", got)
+	}
+	md := Markdown(Result{Valid: true, Plans: only}, MarkdownOptions{})
+	if !strings.Contains(md, "<details><summary>Server <code>showcase</code>: no changes, 1 waiting for boosts</summary>") ||
+		!strings.Contains(md, "**No changes. Discord matches the configuration; 1 change(s) wait for a higher boost level.**") ||
+		!strings.Contains(md, "\n^ waits for boost: update server showcase") {
+		t.Errorf("markdown:\n%s", md)
+	}
+}
+
+// The summary says "Discord matches the configuration" only when nothing is blocked; a
+// boost wait is listed apart and still mentioned.
+func TestSummaryExact(t *testing.T) {
+	boost := Blocked{Action: "update", Kind: "server", Key: "s", Reason: "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
+		Fields: map[string]Field{"banner": {To: "./assets/banner.png"}}}
+	hier := Blocked{Action: "update", Kind: "role", Key: "top", Reason: "hierarchy: above the bot", Fields: map[string]Field{"color": {From: "#000000", To: "#ffffff"}}}
+	for _, tc := range []struct {
+		name          string
+		blocked       []Blocked
+		summary, text string
+		md            string
+	}{{
+		name:    "exact match",
+		summary: "No changes. Discord matches the configuration.",
+		text:    "Server s: no changes\n\nNo changes. Discord matches the configuration.\n",
+		md: "### Cicord plan\n\n**No changes. Discord matches the configuration.**\n\n" +
+			"<details><summary>Server <code>s</code>: no changes</summary>\n\n</details>\n\n",
+	}, {
+		name:    "blocked",
+		blocked: []Blocked{hier},
+		summary: "No changes can be applied: 1 operation(s) blocked.",
+		text: "Server s: 0 change(s), 1 blocked\n" +
+			"  ! blocked: update role top (hierarchy: above the bot)\n" +
+			"      color: \"#000000\" → \"#ffffff\"\n\n" +
+			"No changes can be applied: 1 operation(s) blocked.\n",
+		md: "### Cicord plan\n\n**No changes can be applied: 1 operation(s) blocked.**\n\n" +
+			"<details open><summary>Server <code>s</code>: no changes, 1 blocked</summary>\n\n" +
+			"```diff\n! blocked: update role top (hierarchy: above the bot)\n    color: \"#000000\" → \"#ffffff\"\n```\n</details>\n\n",
+	}, {
+		name:    "boost wait only",
+		blocked: []Blocked{boost},
+		summary: "No changes. Discord matches the configuration; 1 change(s) wait for a higher boost level.",
+		text: "Server s: no changes, 1 waiting for boosts\n" +
+			"  ^ waits for boost: update server s (banner requires boost level 2; server is level 0 (0 boost(s)))\n" +
+			"      banner: (none) → \"./assets/banner.png\"\n\n" +
+			"No changes. Discord matches the configuration; 1 change(s) wait for a higher boost level.\n",
+		md: "### Cicord plan\n\n**No changes. Discord matches the configuration; 1 change(s) wait for a higher boost level.**\n\n" +
+			"<details><summary>Server <code>s</code>: no changes, 1 waiting for boosts</summary>\n\n" +
+			"```diff\n^ waits for boost: update server s (banner requires boost level 2; server is level 0 (0 boost(s)))\n    banner: (none) → \"./assets/banner.png\"\n```\n</details>\n\n",
+	}, {
+		name:    "blocked and boost wait",
+		blocked: []Blocked{boost, hier},
+		summary: "No changes can be applied: 1 operation(s) blocked. 1 change(s) wait for a higher boost level.",
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ps := []Plan{{Server: "s", Changes: []Change{}, Blocked: append([]Blocked{}, tc.blocked...)}}
+			if got := SummaryLine(ps...); got != tc.summary {
+				t.Errorf("summary = %q, want %q", got, tc.summary)
+			}
+			if c := Count(ps...); c.Blocked > 0 && strings.Contains(SummaryLine(ps...), "matches") {
+				t.Errorf("blocked plan says it matches: %q", SummaryLine(ps...))
+			}
+			if tc.text != "" {
+				var b strings.Builder
+				Text(&b, ps)
+				if b.String() != tc.text {
+					t.Errorf("text =\n%s\nwant\n%s", b.String(), tc.text)
+				}
+			}
+			if tc.md != "" {
+				if md := Markdown(Result{Valid: true, Plans: ps}, MarkdownOptions{}); md != tc.md {
+					t.Errorf("markdown =\n%q\nwant\n%q", md, tc.md)
+				}
+			}
+		})
+	}
+	// with changes, blocked operations and boost waits follow the counts
+	ps := []Plan{{Server: "s", Changes: []Change{{Action: "create", Kind: "role", Key: "r"}}, Blocked: []Blocked{boost, hier}}}
+	if got, want := SummaryLine(ps...), "Plan: 1 to create, 0 to update, 0 to delete. 1 operation(s) blocked. 1 change(s) wait for a higher boost level."; got != want {
+		t.Errorf("summary = %q, want %q", got, want)
 	}
 }

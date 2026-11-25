@@ -27,10 +27,10 @@ func startWelcome(t *testing.T) *harness {
 	return startCode(t, res.Code, func(e *Env) {
 		e.PluginName, e.InstanceName = "welcome", "welcome"
 		e.Grants = welcomeGrants
-		// Effective config for ma-commu: base config + override, schema defaults applied.
+		// Effective config for my-community: base config + override, schema defaults applied.
 		e.Config = map[string]any{
 			"channel":      "general",
-			"message":      "Salut {member}, bienvenue sur {server} ! Passe lire le règlement.",
+			"message":      "Hi {member}, welcome to {server}! Take a minute to read the rules.",
 			"autoRole":     "member",
 			"dmOnboarding": true,
 		}
@@ -84,7 +84,7 @@ func TestWelcomeMemberJoinEndToEnd(t *testing.T) {
 	if ch := sends[0].Args[0]; ch != "100" {
 		t.Fatalf("welcome sent to %v, want 100", ch)
 	}
-	if got := sends[0].Args[1].(discord.MessageCreate).Content; got != "Salut <@42>, bienvenue sur Ma Commu ! Passe lire le règlement." {
+	if got := sends[0].Args[1].(discord.MessageCreate).Content; got != "Hi <@42>, welcome to My Community! Take a minute to read the rules." {
 		t.Fatalf("welcome content = %q", got)
 	}
 	// 2. default role resolved from the "member" key
@@ -100,11 +100,11 @@ func TestWelcomeMemberJoinEndToEnd(t *testing.T) {
 		t.Fatalf("DM sent to %v", sends[1].Args[0])
 	}
 	dm := sends[1].Args[1].(discord.MessageCreate)
-	if !strings.Contains(dm.Content, "**Ma Commu**") || !strings.Contains(dm.Content, "rôles") {
+	if !strings.Contains(dm.Content, "**My Community**") || !strings.Contains(dm.Content, "Pick your roles") {
 		t.Fatalf("DM content = %q", dm.Content)
 	}
 	wantRow := []discord.Component{{Type: discord.ComponentActionRow, Components: []discord.Component{{
-		Type: discord.ComponentButton, Style: discord.ButtonLink, Label: "Commencer",
+		Type: discord.ComponentButton, Style: discord.ButtonLink, Label: "Get started",
 		URL: "https://portal.example.com/onboarding?member=42&ttl=0s",
 	}}}}
 	if !reflect.DeepEqual(dm.Components, wantRow) {
@@ -116,7 +116,7 @@ func TestWelcomeMemberJoinEndToEnd(t *testing.T) {
 	}
 	e := h.logged("member welcomed")
 	if e.Attrs["member"] != "42" || e.Attrs["total"] != float64(1) || e.Attrs["plugin"] != "welcome" ||
-		e.Attrs["instance"] != "welcome" || e.Attrs["server"] != "ma-commu" || e.Attrs["handler"] != "event" {
+		e.Attrs["instance"] != "welcome" || e.Attrs["server"] != "my-community" || e.Attrs["handler"] != "event" {
 		t.Fatalf("log attrs = %v", e.Attrs)
 	}
 
@@ -154,9 +154,9 @@ func TestWelcomeCommands(t *testing.T) {
 		t.Fatalf("responses = %+v", rs)
 	}
 	for k, want := range []string{
-		"7 membres accueillis.",
-		"Salut <@77>, bienvenue sur Ma Commu ! Passe lire le règlement.",
-		"Salut <@42>, bienvenue sur Ma Commu ! Passe lire le règlement.",
+		"7 members welcomed.",
+		"Hi <@77>, welcome to My Community! Take a minute to read the rules.",
+		"Hi <@42>, welcome to My Community! Take a minute to read the rules.",
 	} {
 		r := rs[k]
 		if r.Type != discord.ResponseMessage || r.Data.Content != want {

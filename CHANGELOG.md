@@ -2,9 +2,113 @@
 
 All notable changes to Cicord. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the API is
-`v1alpha1`: minor versions may break formats and APIs). Release process: [RELEASING.md](RELEASING.md).
+`v1alpha1`: minor versions may break formats and APIs). Release process: [Releasing](https://cicord.dev/docs/project/releasing/).
 
 ## [Unreleased]
+
+### Added
+
+- Emergency pause: **Pause enforcement** in the admin console, `cicord pause <server>
+  --reason …` or `POST /api/v1/servers/{server}/pause` stops every apply to a server, whatever
+  the trigger (a new revision, Sync now, the periodic resync, self-heal), until it is resumed.
+  Changes made in Discord stay, drift is still computed and shown, and plugins keep running.
+  The pause is runtime state: it survives restarts and new revisions, and a banner on every
+  page of the server says who paused, when and why. **Resume…** (`cicord resume`,
+  `POST …/resume`) shows the pending plan first and applies nothing by itself; `cicord resume
+  --sync` (or `POST …/sync` with `{"resume": true}`) resumes and syncs. Moderators and admins of
+  the server can pause and resume. Pauses and resumes are in the audit log, the sync history
+  and the alerts; a sync of a paused server answers `409 paused`. `@cicord/client`:
+  `client.admin.pause`, `resume` and `pauseState`.
+- `cicord inspect <server-id> [dir]` and the setup wizard's **Inspect first**: evaluate a live
+  server with a bot invited with View Channels only (`permissions=1024`). A read-only report
+  lists what the bot sees, the hidden channels it knows of (Discord hides private channels
+  from bots, so they are counted, not named), what it could not read and why, the
+  permissions applying would need with the YAML paths that need each one, and the plan of the
+  imported configuration, which must be empty. Every Discord call goes through a read-only
+  client: zero writes. See [Evaluate an existing server](https://cicord.dev/docs/getting-started/evaluate-a-server/).
+- Built-in alerts: with `CICORD_ALERT_WEBHOOK` (secret store or environment, or
+  `--alert-webhook`), `cicord serve` posts to a Discord webhook (embeds) or any JSON webhook
+  when a plugin handler fails repeatedly, a plugin instance or a bot is degraded, a server sync
+  fails, a revision is rejected or a server is paused, and once when each recovers. Alerts name
+  the runtime, server, bot, plugin instance and workflow, link to the admin console, and never
+  carry a secret, a plugin's error text or Discord content; a problem fires once, however
+  often it flaps. `cicord alert test` runs a drill; `cicord alert send` posts from scripts.
+- `cicord healthcheck --service`: `cicord status --wait` from inside the container, with the
+  runtime token of the secret store and the admin host.
+- Install script: `curl -fsSL https://cicord.dev/install.sh | sh` installs the latest
+  release on Linux and macOS (or `CICORD_VERSION`, into `CICORD_INSTALL_DIR`), after checking
+  the SHA-256 of the archive and, when the GitHub CLI is logged in, its build provenance.
+- Homebrew (from this release on): `brew install cicord/tap/cicord`, a cask (macOS and
+  Linux) that the release workflow commits to `cicord/homebrew-tap` for every release.
+- npm (from a later release, once its packages are set up; see
+  [Releasing](https://cicord.dev/docs/project/releasing/#new-npm-packages)): `npm i -g
+  @cicord/cli` or `npx @cicord/cli`, the release binary in one package per platform
+  (`@cicord/cli-<os>-<arch>`, Windows included), published with provenance from the verified
+  release archives. Until the repository variable `CICORD_NPM_CLI` is `true`, a release
+  publishes the four SDK packages only.
+- The JSON schemas are published at their `$id` URLs, `https://cicord.dev/schemas/v1alpha1/`
+  (`project`, `server`, `bot`, `plugin`), for editors (`# yaml-language-server: $schema=…`).
+- VPS: automatic updates are accepted only when the service check passes (before the update,
+  so a version is never rolled back for a problem it did not cause, and after it), with a copy
+  of the database taken before the update; otherwise they roll back to the previous image
+  digest, restoring that copy when the new version migrated the database, and send an alert.
+  Backups fail loudly (missing or damaged `cicord.db`, a failed off-host copy) with an alert,
+  can be copied off the server (`CICORD_BACKUP_REMOTE`: rclone or rsync), keep the encryption
+  key apart and write a `MANIFEST`; `07-restore.sh` restores one onto a fresh machine and
+  verifies it. The runtime gets `stop_grace_period: 40s`, the time it needs to stop gracefully.
+- Docs: [Evaluate an existing server](https://cicord.dev/docs/getting-started/evaluate-a-server/),
+  a timed recovery drill, what a backup covers, and
+  [Handing over an instance](https://cicord.dev/docs/self-hosting/handoff/) (a dedicated
+  instance per customer, an application and a repository the customer owns, credential
+  rotation).
+- Official plugins: tickets 0.2.1 runs the support queue from the community portal (members
+  open and follow their tickets; staff assign, prioritize, label, reply, close and reopen),
+  needs Cicord 0.1.5 and the `MessageContent` and `ServerMembers` intents; welcome 0.1.1 and
+  reaction-roles 0.1.1. The bundled copies match the official registry's.
+
+### Changed
+
+- **Behaviour change: `syncPolicy.selfHeal: false` only reports drift.** The periodic resync
+  (every 5 minutes) now only plans, and a change made in Discord stays until the next revision
+  or **Sync now**; before, the resync applied the configuration and reverted it. A failed
+  apply of a new revision is not retried on its own either, only by the next revision or Sync
+  now. With `selfHeal: true`, drift is reverted within seconds and at the resync, as before.
+- **Behaviour change: `cicord status --wait` and the `cicord/sync` commit status are
+  stricter.** `--wait` fails at once, naming the cause, when a plugin instance failed to
+  start or keeps crashing (`Degraded`), a bot is offline or degraded, or a server is paused;
+  it still times out on a blocked change and prints it. The commit status fails when a server
+  is paused, a bot is not connected or a plugin instance failed to start, names the first
+  problem and counts the others, and turns `success` once they are gone. Changes that only wait
+  for a boost level keep the server `Synced` and pass both.
+- `cicord plan` lists the changes that wait for a boost level apart (`^ waits for boost: …`),
+  and never says "Discord matches the configuration" next to a blocked operation (`No changes
+  can be applied: 1 operation(s) blocked.`). The server status message names the first
+  blocked change.
+- `cicord plan --remote` always uploads the committed portal build at `spec.portal.path`,
+  even under `dist/` or an ignored path, and leaves out macOS `._*` and `.DS_Store` files.
+- `cicord import` reads AutoMod, the widget and the welcome screen separately: what the bot
+  cannot read (without Manage Server) is left out with a warning, and the rest is imported.
+- The `cicord-portal.yml` workflow written by `cicord portal init` installs the release binary
+  of its cicord version after verifying its checksum and build provenance, instead of
+  `go install`. The `cicord.yml` workflow of `cicord init` pins its actions by commit SHA and
+  cicord by the version that generated it.
+- `spec.portal.theme.mode` defaults to `dark` (it was `system`).
+- The examples are in English; `examples/basic`'s server is now `my-community`.
+
+### Fixed
+
+- A bot's `profile.banner` was never applied to Discord.
+- Saving plugin settings in the admin console wrote numeric settings equal to their default
+  into the bot's YAML (`overrides` or the base config).
+- The error for an announcement channel on a server without Community now points to
+  `community.enabled: true`.
+- Diagnostics reported changes that wait for a boost level as a problem; they are OK.
+- The admin console's Plan, Resources and Drift pages now refresh live when drift is seen in a
+  gateway event, not only after syncs.
+- The admin console shows forum and media channels with their own icons.
+- `@cicord/react`: invalidating a query that was observed but not fetched yet (a disabled
+  query) removed it from the cache with its subscribers: components kept the stale data and
+  did not fetch again once enabled.
 
 ## [0.1.6] - 2026-11-25
 

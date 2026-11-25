@@ -91,3 +91,14 @@ header.header {
 .hero .tagline {
   max-width: 38rem;
 }
+
+/* Product screenshots: framed like a window, at reading width. */
+.sl-markdown-content img[src*="/_astro/admin-"],
+.sl-markdown-content img[src*="/_astro/portal-"] {
+  display: block;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.5rem;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.08),
+    0 8px 24px -12px rgb(0 0 0 / 0.35);
+}

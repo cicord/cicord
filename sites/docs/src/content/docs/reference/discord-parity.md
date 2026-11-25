@@ -4,9 +4,8 @@ description: Which Discord server settings Cicord can declare and reconcile, whi
 ---
 
 Goal: everything a server owner can set in Discord **and** that the bot API allows is
-declarable in YAML, one to one; the rest is listed here as "Discord only". This table comes
-from an audit of the Discord server settings UI against the `Server` resource, on the test
-server on 2026-11-21.
+declarable in YAML, one to one; the rest is listed here as "Discord only". The tables compare
+the Discord server settings UI with the [`Server`](../../configuration/server/) resource.
 
 **Legend.** **Yes**: declared in YAML and reconciled. **Not yet**: the API allows it, Cicord does
 not support it yet. **Discord only**: not settable by a bot. **Data**: runtime data, not
@@ -17,8 +16,8 @@ configuration.
 | Discord setting | Cicord | Field and notes |
 |---|---|---|
 | Name | Yes | `profile.name` |
-| Icon | Yes | `profile.icon`; animated icons need boost level 1. Also uploadable from the admin console's Server settings. |
-| Banner image | Yes | `profile.banner`; boost level 2, blocked in the plan below it. Also uploadable from the admin console's Server settings. |
+| Icon | Yes | `profile.icon`; an animated (GIF) icon needs boost level 1. Also uploadable from the admin console's Server settings. |
+| Banner image | Yes | `profile.banner`; boost level 2, an animated (GIF) banner level 3. Also uploadable from the admin console's Server settings. |
 | Invite splash | Yes | `profile.splash`; boost level 1. |
 | Discovery splash | Discord only | Needs Discovery. |
 | Description | Yes | `profile.description`; shown for Community and Discovery servers. |
@@ -55,7 +54,7 @@ configuration.
 | Community updates channel | Yes | `community.updatesChannel` |
 | Welcome screen | Yes | `welcomeScreen` |
 | Onboarding (questions, default channels, mode) | Yes | `onboarding`; see [Native onboarding and the onboarding plugin](#native-onboarding-and-the-onboarding-plugin). |
-| Announcement channels | Yes | `type: announcement`; they need Community: blocked in the plan without it, created right after Community is enabled. |
+| Announcement channels | Yes | `type: announcement`; they need Community (stage channels too): blocked in the plan without it, created right after Community is enabled. |
 
 ## Roles
 
@@ -64,7 +63,7 @@ configuration.
 | Name, color, hoist, mentionable, permissions, hierarchy | Yes | `roles`, `hierarchy` |
 | Gradient and holographic colors | Yes | `roles.*.colors`; boost level 2. `color` stays the solid shorthand. |
 | Role icon image | Yes | `roles.*.icon`; boost level 2. |
-| Role icon emoji | Yes | `roles.*.emoji`; exclusive with `icon`. |
+| Role icon emoji | Yes | `roles.*.emoji`; exclusive with `icon`, boost level 2 too. |
 | Role holders | Yes | `roles.*.members`: listed users get the role; additive, unlisted holders keep it. |
 | `@everyone` permissions | Yes | `everyone.permissions` |
 | Linked roles (role connections) | Not yet | Application-level metadata. |
@@ -77,7 +76,7 @@ configuration.
 | Voice bitrate, user limit, region, video quality | Yes | `bitrate`, `userLimit`, `voiceRegion`, `videoQuality` |
 | Thread "hide after inactivity", thread slowmode | Yes | `threadArchiveAfter`, `threadSlowmode` |
 | Forum and media: tags, default reaction, sort order, layout, guidelines | Yes | `tags` (keyed; IDs kept on rename), `defaultReaction`, `sortOrder`, `layout`, `guidelines` |
-| Stage channels | Yes | `type: stage` |
+| Stage channels | Yes | `type: stage`; need Community, like announcement channels. |
 | Spoiler channel | Not yet | To verify in the API. |
 | Channel webhooks | Not yet | Planned (they involve secrets). |
 | Invites | Not yet | Declared permanent invite links are planned. |
@@ -86,28 +85,60 @@ configuration.
 
 | Discord setting | Cicord | Field and notes |
 |---|---|---|
-| Emojis | Yes | `emojis: { key: { name, image, roles } }`; slots per boost level blocked in the plan. A changed image file needs a new key. |
-| Stickers | Yes | `stickers: { key: { name, description, emoji, file } }` |
-| Soundboard sounds | Yes | `soundboard: { key: { name, sound, volume, emoji } }` |
+| Emojis | Yes | `emojis: { key: { name, image, roles } }`; emojis beyond the slots of the boost level are blocked in the plan. A changed image file needs a new key (Discord cannot replace it). |
+| Stickers | Yes | `stickers: { key: { name, description, emoji, file } }`; slots per boost level, a changed file needs a new key, as for emojis. |
+| Soundboard sounds | Yes | `soundboard: { key: { name, sound, volume, emoji } }`; same slot and file rules. |
 | AutoMod rules (mention spam, spam, keyword presets, custom keywords, actions, exemptions) | Yes | `automod: { key: {...} }`; adopted by name and trigger, rule caps blocked in the plan. |
 | Bans, scheduled events | Data | Handled by plugins, not configuration. |
 | Audit log | Data | Read-only. |
 | Server template, boost perks | Discord only | |
 
-## Live server status
+## Boost level and Community gating
 
-The admin console and the planner read, without changing anything:
+The planner reads the server's live boost level and feature flags (`boostLevel`,
+`boostCount`, `features` and `community` in the [server status](../http-api/servers/#runtime-status))
+and blocks what the server cannot use yet, instead of failing on apply:
 
-| Information | Source | Use |
+| Gate | Blocked until | Plan reason |
 |---|---|---|
-| Boost level and boost count | `premium_tier`, `premium_subscription_count` | Features locked by the boost level (banner, role icons, gradient role colors, splash, upload limits…) are **blocked in the plan with a clear reason** ("banner requires boost level 2, server is level 0") instead of failing on apply. |
-| Community and other features | `features`: `COMMUNITY`, `DISCOVERABLE`, `WELCOME_SCREEN_ENABLED`, `ROLE_ICONS`… | Community-only settings are blocked in the plan while Community is off. |
-| Current icon, banner and splash | `iconUrl`, `bannerUrl`, `splashUrl` in the status API | Shown in the admin console; the server switcher shows the icon. |
+| Animated icon, invite splash | boost level 1 | `boost: invite splash requires boost level 1; …` |
+| Banner, role icons (image or emoji), gradient role colors | boost level 2 | `boost: banner requires boost level 2; server is level 0 (0 boost(s))` |
+| Animated banner | boost level 3 | `boost: animated banner requires boost level 3; …` |
+| Emojis, stickers, sounds beyond the slots | a higher boost level (below 3) | `boost: maximum number of stickers reached (5 at boost level 0); a higher boost level gives more slots` |
+| Announcement and stage channels, welcome screen, onboarding, rules, updates and safety alerts channels | Community on (`community.enabled`) | `community: the welcome screen requires the Community feature (set community.enabled: true)` |
+
+A server that has a feature flag without the boosts (partnered and verified servers) is not
+blocked. Changes that only wait for a boost level stay listed in the plan but are not drift:
+the server stays `Synced` and the admin's Plan page shows them under "Waiting for boosts".
+Once the server reaches the level, the server update event makes Cicord plan again: with
+`selfHeal` it applies them right away; otherwise they become pending changes (`OutOfSync`)
+until the next revision or **Sync now**. At level 3, slot limits
+are final (`limit:`, drift like any other blocked change).
+
+![A banner declared on a server at boost level 0: listed under Waiting for boosts, the server stays Synced](../../../assets/screenshots/admin-plan.webp)
+
+A banner declared on a server at boost level 0, in `cicord plan` and `cicord status`:
+
+```text
+Server showcase: no changes, 1 waiting for boosts
+  ^ waits for boost: update server showcase (banner requires boost level 2; server is level 0 (0 boost(s)))
+      banner: (none) → "./assets/banner.png"
+
+No changes. Discord matches the configuration; 1 change(s) wait for a higher boost level.
+```
+
+```text
+Servers (1)
+  showcase             Synced     Healthy     synced 2026-11-25T12:27:46Z via cicord
+    1 change(s) wait for a higher boost level
+```
 
 `cicord import` (and the setup wizard's import) downloads the server icon, banner and invite
 splash, role icons, emojis (GIF when animated), stickers and soundboard sounds from the
 Discord CDN into `servers/assets/<server>/` and records them as uploaded, so the first plan is
-empty. Files over Discord's upload limits and managed emojis are reported and skipped.
+empty. Files over Discord's upload limits and managed emojis are reported and skipped;
+`cicord validate` checks the size of declared files (10 MiB for server images, 256 KiB for
+role icons and emojis, 512 KiB for stickers and sounds).
 
 Hand edits of managed AutoMod rules, emojis, stickers and soundboard sounds reach the
 reconciler through the gateway (`AUTO_MODERATION_RULE_*`, `GUILD_EMOJIS_UPDATE`,
@@ -115,56 +146,75 @@ reconciler through the gateway (`AUTO_MODERATION_RULE_*`, `GUILD_EMOJIS_UPDATE`,
 
 ## Example
 
-```yaml title="servers/ma-commu.yaml (excerpt)"
+From the server of the [Cicord community](https://github.com/cicord/cicord-community)
+(`servers/cicord.yaml`, trimmed):
+
+```yaml title="servers/cicord.yaml (excerpt)"
 spec:
   profile:
-    banner: ./assets/ma-commu-banner.png # boost level 2
+    name: Cicord
+    icon: ../assets/icon.png
+    banner: ../assets/banner.png # boost level 2: waits in the plan until the server reaches it
+    verificationLevel: medium
     explicitContentFilter: allMembers
-    preferredLocale: fr
-    premiumProgressBar: true
     systemChannel: general
-    systemChannelFlags: { welcomeMessages: true, setupTips: false }
-  community: { enabled: true, rulesChannel: rules, updatesChannel: mod-news }
-  afk: { channel: lounge, timeout: 900 }
-  widget: { enabled: true, channel: general }
-  roles:
-    mod: { name: Mod, colors: { primary: "#5865f2", secondary: "#eb459e" }, emoji: "🛡️" }
+    systemChannelFlags:
+      welcomeMessages: false # the welcome plugin greets new members
+      boostMessages: true
+      setupTips: false
+  community:
+    enabled: true
+    rulesChannel: rules
+    updatesChannel: discord-updates
+    safetyAlertsChannel: mod-log
   channels:
     help:
       name: help
       type: forum
-      guidelines: Search before asking.
-      tags: { question: { name: Question, emoji: "❓" }, solved: { name: Solved, moderated: true } }
-      defaultReaction: "👍"
-      sortOrder: creationDate
+      category: support
+      guidelines: One post per question. Search first, then tell us your Cicord version.
+      tags:
+        question: { name: Question, emoji: "❓" }
+        solved: { name: Solved, emoji: "✅" }
+      sortOrder: latestActivity
       layout: list
+      threadArchiveAfter: 1w
   automod:
-    bad-words:
-      name: Bad words
-      trigger: keyword
-      keywords: [darn, "heck*"]
-      actions: { block: { message: "Language!" }, alert: mod-log, timeout: 10m }
-      exemptRoles: [mod]
-  welcomeScreen:
-    description: Welcome!
-    channels: [{ channel: rules, description: Read the rules, emoji: "📜" }]
+    mention-spam:
+      name: Mention spam
+      trigger: mentionSpam
+      mentionLimit: 5
+      mentionRaidProtection: true
+      actions:
+        block: { message: Too many mentions in one message. }
+        alert: mod-log
+        timeout: 1h
+      exemptRoles: [maintainer, moderator]
   onboarding:
     enabled: true
-    defaultChannels: [rules, general, news, help, memes, events, lounge]
+    defaultChannels: [welcome, rules, announcements, changelog, general, showcase, off-topic, help,
+                      development, plugins]
     prompts:
-      - key: games
-        title: What do you play?
-        options: [{ title: Minecraft, emoji: "⛏️", roles: [minecraft], channels: [minecraft] }]
-  emojis: { party: { name: party, image: ./assets/party.png } }
-  stickers: { wave: { name: Wave, emoji: wave, file: ./assets/wave.png } }
-  soundboard: { horn: { name: Horn, sound: ./assets/horn.ogg, volume: 0.6 } }
+      - key: releases
+        title: Get pinged for new releases?
+        singleSelect: true
+        options:
+          - title: "Yes, ping me in #changelog"
+            emoji: "🔔"
+            roles: [changelog-ping]
+  welcomeScreen:
+    enabled: true
+    description: GitOps for Discord - declare your server in git, review changes, let Cicord apply them.
+    channels:
+      - { channel: rules, description: Read the rules, emoji: "📜" }
+      - { channel: help, description: Ask a question, emoji: "❓" }
 ```
 
 Every field is described in [Server](../../configuration/server/).
 
 ## Behavior observed on real Discord
 
-Verified on the test server, with Community enabled by Cicord, on 2026-11-21:
+Verified on a test server with Community enabled by Cicord:
 
 - **Default mention spam rule.** A Community server lists a "Block Mention Spam" rule created
   by Discord's AutoMod system user (`1008776202191634432`). It is a placeholder: `PATCH` and
@@ -180,13 +230,10 @@ Verified on the test server, with Community enabled by Cicord, on 2026-11-21:
   for voice and stage; Discord's `DEFAULT_CHANNEL_REQUIRES_EVERYONE_ACCESS`), and 5 of the
   counted channels must let `@everyone` send messages. `cicord validate` reports both when
   `spec.everyone` is declared.
-- **Boost gating** (banner, role icon) is blocked in the plan at boost level 0, as designed.
-- **Roles can share a position.** After a drag in the Discord client, the API listed every
-  role at position 1; Discord then ranks the older role (lower ID) higher, and the bot could
-  edit the tied roles. Cicord turns positions into distinct ranks in that order, so hierarchy
-  checks and the reorder planner see the real hierarchy. Any bulk `PATCH /roles` (even a no-op
-  on one role) makes Discord renumber every role 1..n in that same order, so the positions
-  Cicord writes from those ranks stay consistent.
+- **Roles can share a position.** After a drag in the Discord client, the API can list several
+  roles at the same position; Discord then ranks the older role (lower ID) higher. Cicord turns
+  positions into distinct ranks in that order, so hierarchy checks and the reorder planner see
+  the real hierarchy.
 
 ## Native onboarding and the onboarding plugin
 
@@ -209,11 +256,3 @@ Stickers, soundboard sounds, gradient role colors and role icons are implemented
 the simulator, but still untested on a real server (they need boosts). The widget, onboarding
 and welcome screen have no Discord events, so manual changes to them are only seen at the next
 plan.
-
-## What's next
-
-The parity work went in this order: live status and boost gating, then Community and the
-server profile and engagement settings, AutoMod, native onboarding and the welcome screen,
-role icons and gradient colors with the channel extras, and emojis, stickers and sounds from
-repository assets. Invites and channel webhooks come next; the other **Not yet** rows above
-(linked roles, spoiler channels) are open.

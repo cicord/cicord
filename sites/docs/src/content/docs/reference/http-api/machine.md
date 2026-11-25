@@ -22,7 +22,7 @@ served on a separate listener, `cicord serve --metrics-listen` (see
 
 The bearer endpoints need the runtime token, `Authorization: Bearer <CICORD_RUNTIME_TOKEN>`.
 Without `CICORD_RUNTIME_TOKEN` they answer `401` ("machine endpoints are disabled"); a missing
-or wrong token answers `401`.
+or wrong token answers `401` ("a valid runtime bearer token is required").
 
 ## Plan archive
 
@@ -31,11 +31,36 @@ or wrong token answers `401`.
 - `cicord.yaml` at the root of the archive or inside a single top-level directory.
 - Only regular files and directories: absolute paths, `..`, backslashes, symbolic links, hard
   links and special files answer `400 invalid`.
+- macOS metadata entries (AppleDouble `._*` files and `.DS_Store`) are ignored.
 - At most 5000 files, 16 MiB per file and 64 MiB extracted; a body over 32 MiB answers `413`.
 - An invalid repository is `200` with `valid: false`, its diagnostics and `plans: []`. Planning
   errors (Discord unreachable…) answer `503`.
 
-The [plan shape](../servers/#plan) is the same as `GET /api/v1/servers/{server}/plan`.
+The [plan shape](../servers/#plan) is the same as `GET /api/v1/servers/{server}/plan`, without
+the explained `error` on `blocked[]` entries.
+
+`cicord plan --remote -o json` uploads the repository with the right exclusions (`.git`,
+`node_modules`, `.cicord`, `dist`, `.env` files, macOS metadata, the root `.gitignore` patterns,
+but always the portal build at `spec.portal.path`; see the
+[CLI reference](../../cli/#cicord-plan)) and prints the same `{valid, diagnostics, plans}` body. Prefer it to a
+hand-made archive, which can carry secrets such as `.env` files:
+
+```sh
+CICORD_RUNTIME_TOKEN=… cicord plan --remote=http://127.0.0.1:7420 -o json
+```
+
+```json
+{ "valid": true,
+  "diagnostics": [ { "severity": "warning", "file": "servers/showcase.yaml", "line": 24, "path": "/spec/syncPolicy",
+                     "message": "prune is enabled without deletion protection: resources removed from this file will be deleted" } ],
+  "plans": [ { "server": "showcase",
+               "changes": [ { "action": "update", "kind": "role", "key": "mod", "id": "1575125354564026369",
+                              "summary": "update role \"Moderator\": color",
+                              "fields": { "color": { "from": "#e67e22", "to": "#f1c40f" } } }, … ],
+               "blocked": [ { "action": "update", "kind": "server", "key": "showcase", "id": "223344556677889900",
+                              "reason": "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
+                              "fields": { "banner": { "from": null, "to": "./assets/banner.png" } } } ] } ] }
+```
 
 ## GitHub webhook
 

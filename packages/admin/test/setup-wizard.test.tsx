@@ -30,6 +30,7 @@ function fakeSetup() {
   let invited = false;
   let raised = false;
   let intentsOn = false;
+  let upgraded = false; // the bot's permissions after "Inspect first"
   const view: SetupView = {
     step: "welcome",
     steps: ["welcome", "discord", "server", "repository", "login", "verify", "plugin", "done"],
@@ -39,6 +40,7 @@ function fakeSetup() {
     version: "0.1.0",
     providers: ["embedded", "github"],
     publicUrl: "https://cicord.example.org",
+    access: "admin",
     activated: false,
     login: {
       configured: false,
@@ -59,9 +61,16 @@ function fakeSetup() {
           link: "https://discord.com/developers/applications/999/bot",
           data: { missing: ["MessageContent", "ServerMembers"], enabled: [] },
         };
+  const inspecting = () => view.access === "inspect" && !upgraded;
   const serverChecks = (): Check[] => [
     { id: "member", status: "ok", message: "Cicord is a member of Pixel Pals." },
-    { id: "permissions", status: "ok", message: "The bot has the Administrator permission." },
+    inspecting()
+      ? {
+          id: "permissions",
+          status: "fail",
+          message: "The bot is missing permissions: ManageRoles, ManageChannels, ManageServer.",
+        }
+      : { id: "permissions", status: "ok", message: "The bot has the Administrator permission." },
     raised
       ? {
           id: "hierarchy",
@@ -127,7 +136,14 @@ function fakeSetup() {
         };
         view.inviteUrl =
           "https://discord.com/oauth2/authorize?client_id=999&permissions=8&scope=bot+applications.commands";
+        view.inspectInviteUrl =
+          "https://discord.com/oauth2/authorize?client_id=999&permissions=1024&scope=bot+applications.commands";
         return json(view);
+      case "/api/v1/setup/access":
+        view.access = body["access"] as SetupView["access"];
+        return json(view);
+      case "/api/v1/setup/inspect":
+        return json(inspectResult(!inspecting()));
       case "/api/v1/setup/discord/recheck":
         intentsOn = true;
         view.bot!.intents = intents();
@@ -142,14 +158,83 @@ function fakeSetup() {
       case "/api/v1/setup/server":
         view.server = { id: "42", name: "Pixel Pals", key: "pixel-pals" };
         view.step = "server";
-        return json({ view, checks: serverChecks(), ok: raised });
+        return json({ view, checks: serverChecks(), ok: raised && !inspecting() });
       case "/api/v1/setup/server/check":
         raised = true;
-        return json({ view, checks: serverChecks(), ok: true });
+        return json({ view, checks: serverChecks(), ok: !inspecting() });
     }
     return apiError(404, "not_found", "not found");
   };
-  return { fetch, calls, view };
+  return {
+    fetch,
+    calls,
+    view,
+    upgrade: () => {
+      upgraded = true;
+    },
+  };
+}
+
+/** The read-only inspection of Pixel Pals with View Channels only (ready: after the upgrade). */
+function inspectResult(ready: boolean) {
+  const ch = (id: string, name: string, type: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    type,
+    private: false,
+    visible: true,
+    ...extra,
+  });
+  return {
+    report: {
+      serverId: "42",
+      serverName: "Pixel Pals",
+      key: "pixel-pals",
+      botName: "Cicord",
+      administrator: ready,
+      permissions: ready ? ["Administrator"] : ["SendMessages", "ViewChannel"],
+      rolePermissions: ready ? ["Administrator"] : ["ViewChannel"],
+      categories: [
+        ch("c1", "Community", "category"),
+        ch("c2", "Staff", "category", { private: true, visible: ready }),
+      ],
+      channels: [
+        ch("t1", "general", "text"),
+        ch("t2", "rules", "text", { categoryId: "c1", category: "Community" }),
+        ch("t3", "mod-log", "text", {
+          categoryId: "c2",
+          category: "Staff",
+          private: true,
+          visible: ready,
+        }),
+      ],
+      unlisted: [],
+      unreadable: ready
+        ? []
+        : [{ part: "automod", name: "AutoMod rules", needs: "ManageServer", error: "403" }],
+      needs: ready
+        ? []
+        : [
+            {
+              permission: "ManageRoles",
+              sources: ["roles.member", "roles.moderator"],
+              why: "Edit roles, @everyone, the role order and permission overwrites.",
+            },
+          ],
+      hierarchy: {
+        id: "hierarchy",
+        status: "ok",
+        message: "The role “Cicord” is above every role Cicord manages.",
+      },
+      ready,
+      upgradeInviteUrl: "https://discord.com/oauth2/authorize?client_id=999&permissions=268438544",
+      adminInviteUrl: "https://discord.com/oauth2/authorize?client_id=999&permissions=8",
+      warnings: [],
+      reads: 16,
+      writes: 0,
+    },
+    plan: { server: "pixel-pals", changes: [], blocked: [], notes: [] },
+  };
 }
 
 function renderAt(path: string, fetch: FetchLike) {
@@ -347,6 +432,87 @@ describe("setup wizard", () => {
     expect(await screen.findByText("Polls is active")).toBeTruthy();
     expect(screen.getByText("Try it now: type /poll in a channel of Pixel Pals.")).toBeTruthy();
     expect(installedConfig).toEqual({}); // defaults are not written to bot.yaml
+  }, 20000);
+
+  test("Server step: Inspect first invites with View Channels, reports, and changes nothing", async () => {
+    const f = fakeSetup();
+    Object.assign(f.view, {
+      step: "server",
+      bot: {
+        key: "cicord",
+        secretRef: "DISCORD_TOKEN_CICORD",
+        applicationId: "999",
+        applicationName: "Cicord",
+        userId: "1",
+        username: "Cicord",
+        flags: 0,
+        tokenStored: true,
+        portalUrl: "https://discord.com/developers/applications/999/bot",
+        intents: { id: "intents", status: "ok", message: "ok" },
+      },
+      inviteUrl: "https://discord.com/oauth2/authorize?client_id=999&permissions=8",
+      inspectInviteUrl: "https://discord.com/oauth2/authorize?client_id=999&permissions=1024",
+    });
+    const user = renderAt("/admin/setup?token=the-setup-token", f.fetch);
+    expect(await screen.findByRole("heading", { name: "Add the bot to your server" })).toBeTruthy();
+    // Administrator stays the default fast path; the trade-off is spelled out.
+    const admin = screen.getByRole("radio", { name: /Administrator \(fastest\)/ });
+    expect(admin.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText(/Anyone holding the bot token controls the whole server/)).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Open the invite link/ }).getAttribute("href"),
+    ).toContain("permissions=8");
+
+    await user.click(screen.getByRole("radio", { name: /Inspect first/ }));
+    const invite = await screen.findByRole("link", { name: /Open the inspection invite/ });
+    expect(invite.getAttribute("href")).toContain("permissions=1024");
+    expect(screen.getByText(/View Channels permission only/)).toBeTruthy();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage this server" }, { timeout: 6000 }),
+    );
+    expect(
+      await screen.findByText("Nothing was changed on Discord: 16 read calls, 0 write calls."),
+    ).toBeTruthy();
+    const hidden = screen.getByRole("region", { name: "Hidden from the bot" });
+    expect(within(hidden).getByText("#mod-log")).toBeTruthy();
+    expect(within(hidden).getByText("Staff")).toBeTruthy();
+    expect(
+      within(hidden).getByText(/private channels the bot is not allowed in may be missing/),
+    ).toBeTruthy();
+    const unread = screen.getByRole("region", { name: "Not read" });
+    expect(within(unread).getByText(/AutoMod rules/)).toBeTruthy();
+    expect(within(unread).getByText("ManageServer")).toBeTruthy();
+    const needs = screen.getByRole("list", { name: "To apply changes, the bot would also need" });
+    expect(within(needs).getByText("ManageRoles")).toBeTruthy();
+    expect(within(needs).getByText("Needed by roles.member, roles.moderator")).toBeTruthy();
+    expect(screen.getByText("No changes: Cicord would adopt everything as it is.")).toBeTruthy();
+    expect(screen.getByText("You can stop here")).toBeTruthy();
+    expect(screen.getByText("Before Cicord can manage Pixel Pals")).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Continue" }).disabled).toBe(true);
+
+    // Upgrade the bot's role in Discord, then re-check: the report and the checks agree.
+    const upgrade = screen.getByText("Continue: give the bot more access").closest("[role=status]");
+    expect(
+      within(upgrade as HTMLElement)
+        .getByRole("link", { name: /Invite with Administrator/ })
+        .getAttribute("href"),
+    ).toContain("permissions=8");
+    f.upgrade();
+    await user.click(within(upgrade as HTMLElement).getByRole("button", { name: "Re-check" }));
+    expect(
+      await screen.findByText("The bot is Administrator: it sees and can change everything."),
+    ).toBeTruthy();
+    expect(screen.queryByText("You can stop here")).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Continue" }).disabled).toBe(
+        false,
+      ),
+    );
+    // Nothing was imported, saved or applied along the way.
+    expect(f.calls.filter((c) => /setup\/(import|repo)/.test(c))).toEqual([]);
+    expect(f.calls).toContain("POST /api/v1/setup/access");
+    expect(f.calls.filter((c) => c === "POST /api/v1/setup/inspect").length).toBe(2);
   }, 20000);
 
   test("Repository step: a GitHub App instead of a token", async () => {

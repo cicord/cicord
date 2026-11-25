@@ -75,7 +75,7 @@ func TestRoleMembers(t *testing.T) {
 		"byId":   float64(3),
 		"member": []any{"Annie", true, []any{"moderator"}, "function"},
 		"frozen": true,
-		"json":   `{"id":"201","key":"moderator","name":"Modo","mention":"<@&201>","position":0,"mentionable":false}`,
+		"json":   `{"id":"201","key":"moderator","name":"Moderator","mention":"<@&201>","position":0,"mentionable":false}`,
 	}
 	for k, w := range want {
 		if !reflect.DeepEqual(got[k], w) {

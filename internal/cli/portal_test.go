@@ -129,10 +129,17 @@ func TestPortalInit(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "cicord portal typegen --check --out portal/src/cicord-routes.d.ts", "cicord portal vendor --check portal"} {
+	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "cicord portal typegen --check --out portal/src/cicord-routes.d.ts", "cicord portal vendor --check portal",
+		// The release binary (it embeds the portal kit), verified; not a `go install` build.
+		`CICORD_TAG: "` + cicordInstallVersion() + `"`, "gh release download \"$tag\" --repo cicord/cicord", "sha256sum -c -",
+		"gh attestation verify \"$archive\" --repo cicord/cicord"} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow misses %q:\n%s", want, wf)
 		}
+	}
+	checkWorkflowYAML(t, wf)
+	if strings.Contains(wf, "run: go install") || strings.Contains(wf, "setup-go") || strings.Contains(wf, "[[") {
+		t.Errorf("workflow builds cicord from source or has a template leftover:\n%s", wf)
 	}
 
 	// A second run refuses to overwrite.
@@ -240,5 +247,35 @@ func TestPortalVendor(t *testing.T) {
 	}
 	if code, out, _ := run(t, "portal", "vendor", npm); code != 0 || !strings.Contains(out, "nothing to do") {
 		t.Errorf("npm portal = %d %s", code, out)
+	}
+}
+
+// checkWorkflowYAML parses a generated GitHub workflow: every job has steps, and every
+// step uses an action or runs a script.
+func checkWorkflowYAML(t *testing.T, wf string) {
+	t.Helper()
+	var doc struct {
+		On   map[string]any `yaml:"on"`
+		Jobs map[string]struct {
+			Steps []map[string]any `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal([]byte(wf), &doc); err != nil {
+		t.Fatalf("workflow is not valid YAML: %v\n%s", err, wf)
+	}
+	if len(doc.On) == 0 || len(doc.Jobs) == 0 {
+		t.Fatalf("workflow has no triggers or jobs:\n%s", wf)
+	}
+	for name, job := range doc.Jobs {
+		if len(job.Steps) == 0 {
+			t.Errorf("job %s has no steps", name)
+		}
+		for i, st := range job.Steps {
+			_, uses := st["uses"].(string)
+			_, run := st["run"].(string)
+			if uses == run {
+				t.Errorf("job %s step %d: needs exactly one of uses and run: %v", name, i, st)
+			}
+		}
 	}
 }

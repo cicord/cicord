@@ -36,6 +36,8 @@ export function prefixesFor(event: AdminEvent): QueryKey[] {
     case "status":
       return [keys.status()];
     case "sync":
+      // With a server: a sync record, or drift seen in a gateway event (its plan, resources
+      // and drift changed).
       return event.server
         ? [keys.status(), ["admin", "history"], keys.server(event.server)]
         : [keys.status(), ["admin", "history"]];

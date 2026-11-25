@@ -19,7 +19,7 @@ func TestWithSQLiteStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	scope := "plugin:moderator/inst/ma-commu"
+	scope := "plugin:moderator/inst/my-community"
 	h := start(t, `
 import { command, definePlugin } from "@cicord/sdk";
 export default definePlugin({
@@ -86,7 +86,7 @@ export default definePlugin({
 	if err != nil || len(due) != 1 || due[0].ID != got.ID || due[0].Scope != scope || strings.TrimSpace(string(due[0].Payload)) != `{"x":1}` {
 		t.Fatalf("due = %+v %v", due, err)
 	}
-	if list, _ := store.Resources().List(context.Background(), "ma-commu"); len(list) != 0 {
+	if list, _ := store.Resources().List(context.Background(), "my-community"); len(list) != 0 {
 		t.Fatalf("resources = %+v", list)
 	}
 	if len(h.dc.Calls("DeleteChannel")) != 1 {

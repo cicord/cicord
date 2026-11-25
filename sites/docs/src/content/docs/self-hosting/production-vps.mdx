@@ -1,35 +1,28 @@
 ---
 title: Production on a VPS
-description: A complete, hardened install of Cicord on one Ubuntu server - SSH and firewall, automatic updates, Tailscale for the admin console, Docker, Caddy for the public portal, the Discord application, a GitHub App, the setup wizard, backups and updates.
+description: Install Cicord on one Ubuntu server, step by step - SSH and firewall, automatic updates, Tailscale for the admin console, Docker, Caddy for the public portal, the Discord application, a GitHub App, the setup wizard, backups and updates.
 tableOfContents:
   maxHeadingLevel: 3
 ---
 
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-This tutorial installs Cicord on a single virtual server, the way the official Cicord community
-runtime is installed. At the end:
-
-- the **community portal** is public, over HTTPS, behind Caddy;
-- the **admin console**, the admin API and the setup wizard are only reachable from your
-  [Tailscale](https://tailscale.com/) tailnet, and so is **SSH**;
-- the runtime runs in Docker as a non-root user on a read-only file system, listening on
-  `127.0.0.1` only;
-- secrets are stored encrypted by the runtime, never written in a file you edit;
-- the system updates and reboots itself, and the runtime state is backed up every day.
-
-Every step is a script or a file of
-[`deploy/vps/`](https://github.com/cicord/cicord/tree/main/deploy/vps) in the Cicord
-repository. The scripts are idempotent: you can run them again, and replay the whole install on
-a fresh server.
+This runbook installs Cicord on one virtual server, the way the official Cicord community
+runtime is installed. Every step is a script or a file of
+[`deploy/vps/`](https://github.com/cicord/cicord/tree/main/deploy/vps); the scripts are
+idempotent, so you can run them again or replay the install on a fresh server. The options
+behind each step are in [Deploy](../deploy/).
 
 | What                                                         | Where                                                                    | Reachable from        |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------ | --------------------- |
 | Community portal, member login, GitHub webhook, CI endpoints | `https://community.example.org` → Caddy (80/443) → `127.0.0.1:7420`      | the internet          |
 | Admin console, admin API, setup wizard                       | `https://cicord.<tailnet>.ts.net` → `tailscale serve` → `127.0.0.1:7420` | your tailnet          |
 | SSH                                                          | port 22 on `tailscale0`                                                  | your tailnet          |
-| Cicord runtime                                               | Docker, `127.0.0.1:7420`                                                 | the server            |
+| Cicord runtime                                               | Docker, non-root, read-only file system, `127.0.0.1:7420`                | the server            |
 | Fallback                                                     | your provider's web console (KVM, rescue mode)                           | your provider account |
+
+Secrets (bot token, OAuth client secret, GitHub App key, webhook secret) are kept in the
+runtime's encrypted secret store, never in a file you edit.
 
 ## What you need
 
@@ -41,8 +34,8 @@ a fresh server.
 - A [Tailscale](https://tailscale.com/) account, with Tailscale installed on your workstation.
 - A Discord account that owns (or will own) the server, and a GitHub account or organization for
   the configuration repository.
-- A password manager: the bot token, the OAuth client secret, the GitHub App key and the
-  secret store key go there, and nowhere else.
+- A password manager: the bot token, the OAuth client secret, the GitHub App key, the webhook
+  secret and the secret store key go there, and nowhere else.
 - A checkout of the Cicord repository on your workstation, for the `deploy/vps` files:
 
   ```sh
@@ -54,15 +47,9 @@ a fresh server.
   copies from your checkout, not a script piped from the network.
 </Aside>
 
-**On the fresh server**, look at what you start from: typically only `sshd` listens (port 22,
-public; `sudo ss -tlnp`), with key-only authentication and no key for root, no firewall,
-`unattended-upgrades` installed for security updates only, and the clock synchronized (chrony,
-UTC). The steps below change all of that except the clock.
-
-**On your workstation**, check your SSH configuration first: a `Host *` block with
-`ForwardAgent yes` forwards your SSH agent to every server, so root on the server could use
-your keys while you are connected. Add a dedicated block **before** `Host *` (the first value
-found wins); it is used from step 3 on:
+On your workstation, make sure your SSH agent is not forwarded to the server (a `Host *` block
+with `ForwardAgent yes` would let root on the server use your keys). Add this block **before**
+`Host *` (the first value found wins); it is used from step 3 on:
 
 ```text title="~/.ssh/config"
 Host cicord
@@ -73,10 +60,9 @@ Host cicord
 
 ## 1. Base system
 
-[`01-base.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/01-base.sh)
-upgrades the system and hardens it. Copy the scripts to your home directory on the server
-(not `/tmp`, which is emptied by the reboot), run it with the hostname to set, then reboot (a
-new kernel is usually installed):
+Copy the scripts to your home directory on the server (not `/tmp`, which the reboot empties),
+run [`01-base.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/01-base.sh)
+with the hostname to set, then reboot (a new kernel is usually installed):
 
 ```sh
 scp -r deploy/vps/scripts ubuntu@203.0.113.10:
@@ -86,25 +72,23 @@ ssh ubuntu@203.0.113.10 'sudo systemctl reboot'
 
 It:
 
-- runs a full upgrade and installs `ufw`, `unattended-upgrades`, `needrestart`, `sqlite3` and
-  what the next steps need;
+- runs a full upgrade and installs `ufw`, `unattended-upgrades`, `needrestart` and `sqlite3`;
 - sets the hostname;
-- turns on **automatic updates, daily**: security updates **and regular updates** from Ubuntu,
-  and the packages of the Docker and Tailscale repositories added later. When an update needs
-  it, the server **reboots automatically at 04:00 UTC**, and `needrestart` restarts services
-  after library updates. Check the configuration with
+- turns on **daily automatic updates**: security and regular updates from Ubuntu, and the
+  Docker and Tailscale repositories added later. When an update needs it, the server
+  **reboots at 04:00 UTC**; `needrestart` restarts services after library updates. Check with
   `sudo unattended-upgrade --dry-run --debug`;
-- hardens the kernel and the network with `sysctl`: no ICMP redirects or source routing,
-  reverse-path filtering, SYN cookies, martian logging, hidden kernel pointers, `dmesg` and
-  `ptrace` restricted, protected links, no core dumps of setuid programs;
+- hardens the kernel and network with `sysctl` (no ICMP redirects or source routing,
+  reverse-path filtering, SYN cookies, restricted `dmesg` and `ptrace`, no core dumps of setuid
+  programs);
 - caps the journal at 1 GiB and one month.
 
 ## 2. Tailscale
 
 [`02-tailscale.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/02-tailscale.sh)
 installs Tailscale from its official repository and joins your tailnet as `cicord`, with
-Tailscale SSH off (the regular `sshd` is used). It prints a login URL: open it and sign in with
-an account of your tailnet.
+Tailscale SSH off (the regular `sshd` is used). Open the login URL it prints and sign in with an
+account of your tailnet:
 
 ```sh
 ssh ubuntu@203.0.113.10 'sudo sh scripts/02-tailscale.sh cicord'
@@ -112,71 +96,52 @@ ssh ubuntu@203.0.113.10 'sudo sh scripts/02-tailscale.sh cicord'
 
 Then, in the Tailscale admin console:
 
-- **disable key expiry** for the machine. Otherwise it leaves the tailnet when its key expires,
-  and with it SSH and the admin console;
-- in **DNS**, keep MagicDNS on and enable **HTTPS Certificates**: `tailscale serve` (step 6)
-  needs them.
+- **disable key expiry** for the machine, or it leaves the tailnet when its key expires, and
+  SSH and the admin console with it;
+- in **DNS**, keep MagicDNS on and enable **HTTPS Certificates** (`tailscale serve` needs them
+  in step 6).
 
-If the machine registered under another name, rename it with
-`sudo tailscale set --hostname=cicord`. From your workstation, `tailscale ping cicord` must
-answer, and `ssh ubuntu@<tailscale IP>` must work: the next step closes SSH on the public
-address.
+If the machine registered under another name, run `sudo tailscale set --hostname=cicord`. From
+your workstation, `tailscale ping cicord` must answer and `ssh ubuntu@<tailscale IP>` must work:
+the next step closes SSH on the public address.
 
 ## 3. SSH and firewall
 
-Run
-[`03-ssh-firewall.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/03-ssh-firewall.sh)
-**over the tailnet**, with the user allowed to log in. It refuses to run if Tailscale is not up.
+Run [`03-ssh-firewall.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/03-ssh-firewall.sh)
+**over the tailnet**, with the user allowed to log in (it refuses to run if Tailscale is not up):
 
 ```sh
 ssh ubuntu@<tailscale IP> 'sudo sh scripts/03-ssh-firewall.sh ubuntu'
 ```
 
-- `sshd`: a drop-in, `/etc/ssh/sshd_config.d/10-cicord.conf`, allows public-key logins only,
-  for that user only (`AllowUsers`), never root; no agent, TCP or X11 forwarding, no tunnels;
-  `MaxAuthTries 3`, `LoginGraceTime 30`.
-- `ufw`: incoming traffic is denied by default; allowed are `22/tcp` **on `tailscale0` only**,
-  `80/tcp` and `443/tcp` (Caddy) and `41641/udp` (direct Tailscale connections). `sshd` keeps
-  listening on every address, so a late Tailscale start never locks it out; the firewall does
-  the filtering.
+- `sshd` (`/etc/ssh/sshd_config.d/10-cicord.conf`): public keys only, that user only
+  (`AllowUsers`), never root; no agent, TCP or X11 forwarding, no tunnels; `MaxAuthTries 3`,
+  `LoginGraceTime 30`.
+- `ufw`: incoming traffic denied by default, except `22/tcp` **on `tailscale0` only**, `80/tcp`
+  and `443/tcp` (Caddy) and `41641/udp` (direct Tailscale connections). `sshd` still listens on
+  every address, so a late Tailscale start never locks it out; the firewall does the filtering.
 
-Check with `sudo sshd -T` and `sudo ufw status verbose`. From your workstation, SSH to the
-public IP must now time out, and `ssh cicord` must work. If the tailnet is ever unreachable,
-use your provider's web console.
+Check with `sudo sshd -T` and `sudo ufw status verbose`. SSH to the public IP must now time
+out, and `ssh cicord` must work.
 
 ## 4. Docker
 
 [`04-docker.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/04-docker.sh)
-installs Docker Engine and the Compose plugin from Docker's official repository (it removes the
-distribution's packages first) and writes `/etc/docker/daemon.json`:
+installs Docker Engine and the Compose plugin from Docker's repository (removing the
+distribution's packages first) and writes `/etc/docker/daemon.json`: `no-new-privileges`, no
+inter-container traffic on the default bridge (`icc: false`), `live-restore`, no userland proxy,
+and rotated logs (`local` driver, 5 × 20 MB).
 
 ```sh
 ssh cicord 'sudo sh scripts/04-docker.sh'
 ```
 
-```json title="/etc/docker/daemon.json"
-{
-  "no-new-privileges": true,
-  "icc": false,
-  "live-restore": true,
-  "userland-proxy": false,
-  "log-driver": "local",
-  "log-opts": { "max-size": "20m", "max-file": "5" }
-}
-```
-
-Containers cannot gain privileges, containers on the default bridge cannot talk to each other
-(Compose networks are used instead), containers keep running while `dockerd` is upgraded, and
-logs are rotated.
-
-- Your login user is **not** added to the `docker` group: membership is equivalent to root.
-  Use `sudo docker …`.
+- Your login user is **not** added to the `docker` group (membership is equivalent to root):
+  use `sudo docker …`.
 - **Docker bypasses ufw** for published ports. That is why only Caddy publishes ports (80 and
   443), and the runtime is published on `127.0.0.1` only.
 
 ## 5. DNS, Discord and GitHub
-
-These steps happen in your providers' consoles.
 
 ### DNS
 
@@ -188,8 +153,8 @@ At the DNS provider of your domain, point the portal host at the server:
 | `AAAA` | `community` | the server's public IPv6 (`2001:db8::10`) |
 
 Check with `dig +short A community.example.org` and `dig +short AAAA community.example.org`.
-Caddy obtains the TLS certificate on its first start, so ports 80 and 443 must reach it by then.
-The admin hostname needs no DNS record: MagicDNS resolves it inside the tailnet only.
+Caddy obtains the TLS certificate on its first start (step 6), so ports 80 and 443 must reach it
+by then. The admin hostname needs no record: MagicDNS resolves it inside the tailnet only.
 
 ### The Discord application
 
@@ -203,16 +168,16 @@ The admin hostname needs no DNS record: MagicDNS resolves it inside the tailnet 
 3. **Bot** tab:
    - **Reset Token** shows the bot token once. Paste it **only into the setup wizard**
      (step 7), which stores it encrypted, or into the password manager. Never into a file, a
-     chat or a terminal argument.
+     chat or a command line.
    - **Privileged Gateway Intents**: turn on only what your plugins need. **Server Members
-     Intent** is used by member events (welcome, audit-log, moderation); **Message Content
-     Intent** only by plugins that read what members write (levels). Cicord never uses the
-     Presence Intent. The wizard names the intents your configuration needs, and installing a
-     plugin whose intent is off is refused until you turn it on.
+     Intent** is used by member events (welcome, audit-log, moderation), **Message Content
+     Intent** by plugins that read what members write (levels), **Presence Intent** only by
+     [server analytics](../analytics/) with `spec.analytics.presence: true`. The wizard names
+     the intents your configuration needs.
 
 4. **OAuth2** tab:
-   - note the **Client ID**; **Reset Secret** shows the client secret once: it goes into the
-     setup wizard (the admin login step), never into a file;
+   - **Reset Secret** shows the client secret once: it goes into the setup wizard (admin login
+     step), never into a file;
    - under **Redirects**, add both callback URLs, exactly:
      - `https://community.example.org/auth/callback` (members, on the public portal)
      - `https://cicord.<tailnet>.ts.net/auth/callback` (the admin console, on the tailnet)
@@ -231,53 +196,40 @@ The admin hostname needs no DNS record: MagicDNS resolves it inside the tailnet 
 <Steps>
 
 1. Create the configuration repository, **empty** (public or private): the setup wizard writes
-   the first commit. The official community server's configuration,
-   [github.com/cicord/cicord-community](https://github.com/cicord/cicord-community), is an
-   example of what it contains.
+   the first commit. [github.com/cicord/cicord-community](https://github.com/cicord/cicord-community),
+   the official community server's configuration, shows what it ends up containing.
 
-2. Create a GitHub App: your organization's **Settings → Developer settings → GitHub Apps →
-   New GitHub App** (for a personal account, your own **Settings → Developer settings**).
-   - **GitHub App name**: for example "Acme Cicord". Commits, pull requests and statuses appear
-     as `<app-name>[bot]`. **Homepage URL**: your portal URL.
-   - **Webhook**: active. **Webhook URL**: `https://community.example.org/hooks/github`.
-     **Webhook secret**: a long random value, for example from `openssl rand -hex 32`, kept in
-     the password manager. You give it to the runtime in step 7.
-   - **Repository permissions**:
+2. Generate the webhook secret and keep it in the password manager:
 
-     | Permission      | Access         | Used for                                  |
-     | --------------- | -------------- | ----------------------------------------- |
-     | Contents        | Read and write | fetching revisions, write-back commits    |
-     | Pull requests   | Read and write | the `pullRequest` write-back mode         |
-     | Commit statuses | Read and write | the `cicord/sync` status on each revision |
-     | Metadata        | Read-only      | mandatory                                 |
+   ```sh
+   openssl rand -hex 32
+   ```
 
-     No organization or account permission.
+3. Create the GitHub App as described in
+   [Create the GitHub App](../deploy/#create-the-github-app), with:
+   - **Homepage URL**: `https://community.example.org`;
+   - **Webhook**: active, URL `https://community.example.org/hooks/github`, secret from step 2,
+     event **Push**;
+   - the [repository permissions](../deploy/#github-access-token-or-github-app) (Contents,
+     Pull requests and Commit statuses read and write; no organization permission);
+   - **Only on this account**, then installed on the configuration repository only.
 
-   - **Subscribe to events**: **Push** (it appears once Contents is selected). Without a
-     webhook, the runtime still sees new commits by polling every minute.
-   - **Where can this GitHub App be installed?**: **Only on this account**.
-
-3. After creating it, note the **App ID**. Under **Private keys**, click **Generate a private
-   key**: GitHub downloads a `.pem` file. Put it in the password manager and delete the
-   download; it goes into the setup wizard.
-
-4. **Install App** → your account or organization → **Only select repositories** → the
-   configuration repository only.
+4. Note the **App ID**, generate a **private key**, put the `.pem` in the password manager and
+   delete the download: it goes into the setup wizard.
 
 </Steps>
 
 Check the installation with
 `gh api orgs/<org>/installations --jq '.installations[] | {app_slug, permissions, events}'`: it
-shows the four permissions and `events: ["push"]`. The runtime only holds the App's private key:
-it mints installation tokens that expire after an hour, restricted to this repository. See
-[GitHub access](../deploy/#github-access-token-or-github-app).
+shows the four permissions (with `metadata: read`) and `events: ["push"]`.
 
 ## 6. Deploy the runtime and Caddy
 
 [`compose.yaml`](https://github.com/cicord/cicord/blob/main/deploy/vps/compose.yaml) runs two
 containers, `cicord` and `caddy`, configured by
 [`Caddyfile`](https://github.com/cicord/cicord/blob/main/deploy/vps/Caddyfile) and an `.env`
-file. Copy them to `/opt/cicord`, a root-only directory:
+file. Copy them to `/opt/cicord`, a root-only directory (`COPYFILE_DISABLE=1` keeps macOS `._*`
+files out of the archive):
 
 ```sh
 ssh cicord 'sudo install -d -m 0750 /opt/cicord'
@@ -285,29 +237,35 @@ COPYFILE_DISABLE=1 tar -C deploy/vps -cf - compose.yaml Caddyfile .env.example s
   | ssh cicord 'sudo tar -C /opt/cicord -xf -'
 ```
 
-(`COPYFILE_DISABLE=1` keeps macOS `._*` metadata files out of the archive.)
-
 ### The environment file
 
-`.env` holds addresses and names only, **no secrets**:
+`.env` holds the image, addresses and names, **no secrets**:
 
 ```sh
 ssh cicord 'sudo cp /opt/cicord/.env.example /opt/cicord/.env && sudo chmod 600 /opt/cicord/.env'
 ssh -t cicord 'sudoedit /opt/cicord/.env'
 ```
 
+Set every value (keep comments on their own lines: the update script reads the values
+literally):
+
 ```sh title="/opt/cicord/.env"
-CICORD_IMAGE=ghcr.io/cicord/cicord:<version>@sha256:<digest>  # the image, see below
-CICORD_AUTO_UPDATE=patch                            # automatic updates, see step 9
-CICORD_PUBLIC_URL=https://community.example.org     # the public portal
+# The image (see below).
+CICORD_IMAGE=ghcr.io/cicord/cicord:<version>@sha256:<digest>
+# Automatic updates (step 9): patch, minor or off; verified by attestation or digest.
+CICORD_AUTO_UPDATE=patch
+CICORD_UPDATE_VERIFY=attestation
+# The public portal and the admin console on the tailnet.
+CICORD_PUBLIC_URL=https://community.example.org
 CICORD_PUBLIC_HOST=community.example.org
-CICORD_ADMIN_URL=https://cicord.your-tailnet.ts.net # the admin console, on the tailnet
-PUBLIC_IPV4=203.0.113.10                            # the server's public addresses:
-PUBLIC_IPV6=2001:db8::10                            # Caddy binds 80/443 to them only
+CICORD_ADMIN_URL=https://cicord.your-tailnet.ts.net
+# The server's public addresses: Caddy binds 80/443 to them only.
+PUBLIC_IPV4=203.0.113.10
+PUBLIC_IPV6=2001:db8::10
 ```
 
 `CICORD_ADMIN_URL` makes the runtime serve the admin console, the admin API and the setup
-wizard on that hostname only: on any other `Host` they answer `404`. See
+wizard on that hostname only (`404` on any other `Host`); see
 [Admin on a private network, portal public](../security/#admin-on-a-private-network-portal-public).
 
 <Aside type="note" title="IPv4-only server">
@@ -318,35 +276,29 @@ wizard on that hostname only: on any other `Host` they answer `404`. See
 
 ### The image
 
-`CICORD_IMAGE` is the image Compose runs: a release **pinned by its digest**, so what runs is
-exactly the image the release workflow built, or an image you build from source.
-
-**From a release** (the default). Each release's notes give the image digest; read it and
-check the image's build provenance from your workstation:
+`CICORD_IMAGE` is a release **pinned by its digest**, so what runs is exactly what the release
+workflow built. Each release's notes give the digest; read it and check the image's build
+provenance from your workstation:
 
 ```sh
 VERSION=0.1.6
 gh release view "v$VERSION" --repo cicord/cicord --json body --jq .body \
-  | grep -oE 'ghcr.io/cicord/cicord@sha256:[0-9a-f]{64}'          # the digest
+  | grep -oE 'ghcr.io/cicord/cicord@sha256:[0-9a-f]{64}'
 gh attestation verify "oci://ghcr.io/cicord/cicord:$VERSION" --repo cicord/cicord
 ```
 
-Then set it in `/opt/cicord/.env`, tag and digest together:
-`CICORD_IMAGE=ghcr.io/cicord/cicord:0.1.6@sha256:…`. Docker pulls by the digest, and the
-image is multi-arch (linux/amd64, linux/arm64): the server gets its own architecture. See
-[Installation](../../getting-started/installation/#verify-a-download) for the other checks
-(SBOM, `cosign`).
+Set tag and digest together: `CICORD_IMAGE=ghcr.io/cicord/cicord:0.1.6@sha256:…`. The image is
+multi-arch (linux/amd64, linux/arm64). Other checks (SBOM, `cosign`) are in
+[Installation](../../getting-started/installation/#verify-a-download).
 
-**From source**, if you run unreleased changes: build it on the server from an archive of your
-checkout (the server's own architecture, no git credentials on the server), and set
-`CICORD_IMAGE=cicord:<commit>`:
+**From source**, to run unreleased changes: build on the server from an archive of your
+checkout (no git credentials on the server), then set `CICORD_IMAGE=cicord:<commit>`.
+Automatic updates (step 9) leave a source build alone.
 
 ```sh
 COPYFILE_DISABLE=1 git archive --format=tar HEAD | ssh cicord \
   "sudo docker build --build-arg COMMIT=$(git rev-parse --short HEAD) -t cicord:$(git rev-parse --short HEAD) -"
 ```
-
-Automatic updates (step 9) leave a source build alone: they only follow releases.
 
 ### Start
 
@@ -358,30 +310,28 @@ ssh cicord 'sudo docker compose --project-directory /opt/cicord -f /opt/cicord/c
 
 What the files set up:
 
-- **The runtime** (`cicord`) runs as user 65532 with a read-only root file system, every Linux
-  capability dropped, `no-new-privileges`, 2 GiB of memory and 1024 processes at most, and a
-  health check (`cicord healthcheck`). Its state is in the volume `cicord_cicord-data`
-  (`/data`, mode `0700`), its repository in `cicord_cicord-repo` (`/repo`). It is published on
-  `127.0.0.1:7420` only, for `tailscale serve`.
-- **Caddy** (pinned by digest) is published on the **public addresses only**. Published on
-  every interface, Docker's NAT rules would also capture port 443 of `tailscale0` and hide the
-  admin console served there by `tailscale serve`. The Compose network has IPv6 enabled: with
-  the userland proxy off, Docker can only forward published IPv6 ports to containers that have
-  an IPv6 address.
-- **The Caddyfile** proxies the portal, member login, the portal API, `/api/v1/me`, the CI
-  endpoints (`/api/v1/plan`, `/api/v1/sync`, bearer token) and the GitHub webhook (HMAC), and
-  answers `404` for `/admin` and every other `/api/` path, in addition to the runtime's own
-  check. It adds HSTS, `nosniff`, a referrer policy, a permissions policy and
-  `Cross-Origin-Opener-Policy`, removes the `Server` header, limits request bodies to 32 MB,
-  allows 5-minute reads for server-sent events and long plans, and speaks HTTP/1.1 and HTTP/2
-  (HTTP/3 would need UDP 443 published too).
+- **`cicord`**: user 65532, read-only root file system, every capability dropped,
+  `no-new-privileges`, 2 GiB of memory, 1024 processes, the image's health check. State in the
+  volume `cicord_cicord-data` (`/data`, mode `0700`), repository in `cicord_cicord-repo`
+  (`/repo`). Published on `127.0.0.1:7420` only, for `tailscale serve`.
+- **`caddy`** (pinned by digest): published on the **public addresses only**. Published on every
+  interface, Docker's NAT rules would also capture port 443 of `tailscale0` and hide the admin
+  console. The Compose network has IPv6 on: with the userland proxy off, Docker only forwards
+  published IPv6 ports to containers that have an IPv6 address.
+- **`Caddyfile`**: proxies the portal, `/auth/*`, `/api/v1/portal/*`, `/api/v1/me`, the CI
+  endpoints (`/api/v1/plan`, `/api/v1/sync`) and `/hooks/github`, and answers `404` for `/admin`
+  and every other `/api/` path, in addition to the runtime's own check. It adds HSTS, `nosniff`,
+  a referrer policy, a permissions policy and `Cross-Origin-Opener-Policy`, removes `Server`,
+  limits bodies to 32 MB, allows 5-minute requests (long plans) and speaks HTTP/1.1 and HTTP/2
+  (HTTP/3 would need UDP 443 published).
 
-Caddy obtains the certificate of the public host on its first start; its log shows
-`certificate obtained successfully` (`ssh cicord 'sudo docker logs caddy'`).
+Caddy's log shows `certificate obtained successfully` once it has the certificate
+(`ssh cicord 'sudo docker logs caddy'`).
 
 ### The admin console on the tailnet
 
-`tailscale serve` publishes the runtime on the tailnet name, with a certificate from Tailscale:
+`tailscale serve` publishes the runtime on the tailnet name, with a Tailscale certificate, and
+keeps it across reboots (`--bg`):
 
 ```sh
 ssh cicord 'sudo tailscale serve --bg --https=443 http://127.0.0.1:7420'
@@ -397,80 +347,56 @@ From a device on the tailnet, check:
 
 ## 7. First start: the setup wizard
 
-With no configuration yet, the runtime starts in **setup mode** and prints a one-time link,
-with the admin URL:
+With no configuration yet, the runtime is in **setup mode** and logs a one-time link on the
+admin URL:
 
 ```sh
 ssh cicord 'sudo docker logs cicord 2>&1 | grep "setup wizard"'
 ```
 
-Open it from a device on your tailnet; on the public host, setup mode answers `404` except for
-the health endpoints. The wizard ([Quick start](../../getting-started/quick-start/)) takes you
-through:
+Open it from a device on your tailnet (on the public host, setup mode only answers the health
+endpoints). The wizard ([Setup wizard](../../getting-started/setup-wizard/)) goes through:
 
 1. **Discord application**: paste the bot token. The wizard derives the application ID and
    checks the privileged intents.
-2. **Server**: open the invite link and authorize the bot on your server. It asks for the
-   Administrator permission (see
-   [Discord server hardening](../security/#discord-server-hardening)). Drag the bot's role
-   above every role Cicord will manage when the wizard asks.
+2. **Server**: open the invite link and authorize the bot on your server. It asks for
+   Administrator ([Bot permissions](../bot-permissions/) explains the least-privilege
+   alternative). Drag the bot's role above every role Cicord will manage when the wizard asks.
 3. **Repository**: **GitHub**, the repository URL and branch, then **GitHub App**: the App ID
-   and the private key (paste the content of the `.pem`). The installation is discovered. The
-   wizard imports your server, and the first plan must be empty: everything is adopted,
-   nothing changes on Discord.
+   and the content of the `.pem` (the installation is discovered). The wizard imports your
+   server; the first plan must be empty: everything is adopted, nothing changes on Discord.
 4. **Admin login**: paste the OAuth client secret. The wizard checks that both redirect URLs
    are registered and names the missing ones.
 5. **Verify**, **first plugin**, then **Finish**.
 
 The wizard stores the bot token, the client secret and the GitHub App ID, key and installation
-in the runtime's **encrypted secret store**. The browser reaches it over the tailnet only
-(WireGuard, then HTTPS from `tailscale serve`).
+in the runtime's encrypted secret store.
 
-Then give the runtime the **webhook secret** of the GitHub App (the value you typed in its
-settings in step 5). `cicord secret set` reads it from stdin, never from the command line. Read
-it without echo on your workstation, pipe it to the server, then restart the runtime, which
-reads the webhook secret at startup only:
+Then store the **webhook secret** (step 5) and restart the runtime, which reads it at startup
+only. `cicord secret set` reads the value from stdin; `read -rs` takes it from your paste without
+echoing it on either side:
 
 ```sh
 read -rs S && printf '%s\n' "$S" | ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_WEBHOOK_SECRET --data-dir /data'; unset S
 ssh cicord 'sudo docker restart cicord'
 ```
 
-`read -rs` waits for you to paste the value and keeps it off the screen: with a plain
-`ssh cicord '… secret set …'` and no terminal on the other side, what you paste would be
-echoed. On macOS you can pipe the clipboard instead:
-`pbpaste | ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_WEBHOOK_SECRET --data-dir /data'`,
-then `pbcopy < /dev/null` to clear it.
-
 In the GitHub App settings, **Advanced → Recent Deliveries**, redeliver the last push: it must
-come back green (`202`); the next pushes do too. Do the same for `CICORD_RUNTIME_TOKEN` if a CI job should call
+come back `202`. Store `CICORD_RUNTIME_TOKEN` the same way if a CI job calls
 `cicord plan --remote` or `cicord sync` (a long random value, also stored as the CI secret).
-`cicord secret ls --data-dir /data` lists names, never values. An environment variable with the
-same name would take precedence over a stored secret.
+`sudo docker exec cicord cicord secret ls --data-dir /data` lists the names, never the values.
 
 Your configuration is now in git: the next change can be a pull request, planned in CI
-([Your first change](../../getting-started/first-change/)) and applied by the runtime when it
-is merged.
+([Your first change](../../getting-started/first-change/)) and applied when it is merged.
 
 ## 8. Secrets and backups
 
-The secret store is encrypted with AES-256-GCM inside `cicord.db`, in the `cicord_cicord-data`
-volume. The key is `secret.key` (mode `0600`) in the same volume, generated on the server.
+The secret store is encrypted (AES-256-GCM) inside `cicord.db`, in the `cicord_cicord-data`
+volume; its key is `secret.key` (mode `0600`) in the same volume. A copy of the database alone
+(a backup) reveals no secret; root on the server can read both, which is why only Caddy is
+public.
 
-The data directory is mode `0700`: the image creates `/data` that way, so a new volume
-inherits it. For a volume created by an older image, set it once:
-
-```sh
-sudo chmod 0700 "$(sudo docker volume inspect -f '{{.Mountpoint}}' cicord_cicord-data)"
-```
-
-- **What the encryption protects**: a copy of the database alone (a backup, a dump) reveals no
-  secret.
-- **What it does not**: root on the server can read the key and the database; the runtime has
-  to decrypt the tokens to work. The protection there is the server's exposure: only Caddy is
-  public, SSH and the admin console are on the tailnet.
-
-**Keep the key apart from the backups.** Copy it once into the password manager, without
+**Keep the key apart from the backups.** Copy it once into the password manager without
 displaying it (macOS):
 
 ```sh
@@ -487,73 +413,93 @@ installs `/usr/local/sbin/cicord-backup` and a systemd timer (03:30 UTC):
 ssh cicord 'sudo sh /opt/cicord/scripts/05-backup.sh'
 ```
 
-Each run writes `/var/backups/cicord/cicord-<UTC timestamp>.tar.zst` (root, mode `0600`): an
-online, integrity-checked copy of `cicord.db` (SQLite's backup command, safe while the runtime
-runs), plus the embedded repository and the write-back clone when present. It deliberately
-leaves out `secret.key` and `link.key` (regenerated when missing: only the portal links already
-sent stop working). Archives older than 14 days are deleted.
+Each run writes `/var/backups/cicord/cicord-<UTC timestamp>.tar.zst` (mode `0600`): an online,
+integrity-checked copy of `cicord.db` (SQLite's `.backup`, safe while the runtime runs), plus
+`repo.git`, `writeback/` and a `MANIFEST`. It never includes `secret.key` (it lives in the
+password manager) nor `link.key` (regenerated when missing: only portal links already sent
+stop working). Archives older than 14 days (`CICORD_BACKUP_KEEP_DAYS`) are deleted. A run
+fails, and sends an alert when [alerts](../monitoring/#alerts) are configured, when
+`cicord.db` is missing or damaged, or when the off-host copy fails.
 
-- Check: `sudo systemctl list-timers cicord-backup.timer`; run one now:
+- **Copy the archives off the server**: a local backup does not survive the loss of the
+  server. Set `CICORD_BACKUP_REMOTE` in `.env` (`rclone:<remote>:<path>` or
+  `rsync:[user@]host:<path>`, see [Off-host copies](../backups-and-secrets/#off-host-copies))
+  and run `05-backup.sh` again.
+- Check: `sudo systemctl list-timers cicord-backup.timer`, `systemctl --failed`; run one now:
   `sudo systemctl start cicord-backup.service`.
-- **Copy the archives off the server** too (your provider's backup storage, another machine): a
-  local backup does not survive the loss of the server.
 
-**Restore** on the same server, or on a new one where steps 1 to 6 are done (the stack started
-once, so the volume exists, and `zstd` installed by `05-backup.sh` or
-`sudo apt-get install -y zstd`): stop the runtime, put the archive's content and the key back into
-the data volume, and start it again. With the GitHub provider, the setup state in `cicord.db`
-says where the configuration is, so nothing else is needed.
+**Restore** on the same server, or on a new one where steps 1 to 6 are done (`.env` with the
+same `CICORD_IMAGE`, `05-backup.sh` run), with
+[`07-restore.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/07-restore.sh):
 
 ```sh
-sudo docker stop cicord
-DATA="$(sudo docker volume inspect -f '{{.Mountpoint}}' cicord_cicord-data)"
-sudo rm -f "$DATA/cicord.db-wal" "$DATA/cicord.db-shm"
-sudo zstd -dc cicord-<timestamp>.tar.zst | sudo tar -C "$DATA" -xf -
-sudo sh -c "umask 077; cat > '$DATA/secret.key'"    # paste the key from the password manager, Enter, Ctrl-D
-sudo chown -R 65532:65532 "$DATA" && sudo chmod 0700 "$DATA"
-sudo docker start cicord
+# the key copied from the password manager, piped without being displayed:
+pbpaste | ssh cicord 'sudo sh /opt/cicord/scripts/07-restore.sh /var/backups/cicord/cicord-<timestamp>.tar.zst'
+pbcopy < /dev/null
 ```
 
+It checks the archive, stops the runtime, keeps the current state aside, restores the database,
+the repository and the key, starts the runtime and verifies it (health and service checks).
+With the GitHub provider, the setup state in `cicord.db` says where the configuration is, so
+nothing else is needed. Rehearse it with the [recovery drill](../backups-and-secrets/#recovery-drill).
 More in [Backups and secrets](../backups-and-secrets/), including
 [rotating a leaked credential](../backups-and-secrets/#rotating-a-leaked-credential).
 
+**Alerts**: create a webhook in a private Discord channel (**Edit channel → Integrations →
+Webhooks**), store its URL, restart, and run the drill:
+
+```sh
+ssh cicord 'sudo docker exec -i cicord cicord secret set CICORD_ALERT_WEBHOOK --data-dir /data'   # paste the URL, Enter
+ssh cicord 'sudo docker restart cicord && sleep 15 && sudo docker exec cicord cicord alert test --data-dir /data'
+```
+
+Plugin, bot, sync, revision and pause alerts then reach that channel, and so do failed backups
+and rolled-back updates. The runtime cannot report its own death: add an external uptime check
+of the public portal. See [Alerts](../monitoring/#alerts).
+
 ## 9. Updates
 
-- **The system, Docker and Tailscale** update themselves (step 1). What was installed is
-  logged in `/var/log/unattended-upgrades/`.
-- **Cicord** updates itself to new **patch** releases (`0.1.x` → `0.1.y`) with
+- **The system, Docker and Tailscale** update themselves (step 1); see
+  `/var/log/unattended-upgrades/`.
+- **Cicord** updates itself to new patch releases with
   [`06-auto-update.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/06-auto-update.sh),
-  once the runtime runs a release image:
+  once `CICORD_IMAGE` is a release image:
 
   ```sh
-  ssh cicord 'sudo sh scripts/06-auto-update.sh'
+  ssh cicord 'sudo sh /opt/cicord/scripts/06-auto-update.sh'
   ```
 
-  It installs `cicord-update`, the GitHub CLI and a daily timer (around 05:30 UTC, after the
-  backup and the reboot window). Each run asks GitHub for the latest release, accepts it only
-  if the release workflow created it and its notes give the image digest, **verifies the
-  image's signed build provenance** (built by `release.yml` from that release's tag), then
-  **backs up**, pulls the image by that digest, switches `CICORD_IMAGE` and restarts the
-  runtime. If the new version does not
-  become healthy within 3 minutes, it puts the previous image back. `CICORD_AUTO_UPDATE` in
-  `.env` chooses the policy: `patch` (the default), `minor` (also `0.x` → `0.y`, which may
-  change formats: read [Upgrading](../upgrading/) first) or `off`. A release it does not apply
-  is only logged.
+  It installs `cicord-update`, the GitHub CLI and a daily timer (05:30 UTC, up to 30 minutes
+  later; after the backup and the reboot window). Each run takes the latest release only if
+  the release workflow created it and its notes give the image digest, **verifies the image's
+  signed build provenance** (built by `release.yml` from that release's tag), backs up, pulls
+  the image by digest, stops the runtime and copies its database, switches `CICORD_IMAGE` and
+  restarts it. It keeps the new version only if the container's health check passes within 3
+  minutes **and** the [service check](../monitoring/#health-checks) passes within 5: the active
+  revision is loaded, every server is `Synced` (boost waits are fine) and not paused, every
+  bot and plugin instance is `Healthy`. Otherwise it puts the previous image back; if the new
+  version had migrated the database, it restores the copy first (an older binary refuses a
+  newer schema; what the new version wrote in those minutes is lost), and sends an **Update
+  rolled back** alert. Before updating, the running version must pass the same check: a
+  degraded plugin or a paused server postpones updates (**Update postponed** alert) instead of
+  blaming the new version. The check authenticates with the runtime token; the updater stores
+  a random `CICORD_RUNTIME_TOKEN` when there is none.
 
-  The provenance check needs a GitHub token, even for a public repository. Create a
-  [fine-grained token](https://github.com/settings/personal-access-tokens/new) with
-  **Public repositories (read-only)** access and no permissions, then store it on the server
-  without echoing it. Give it an expiry of a year at most (organizations often refuse longer
-  ones, with an HTTP 403 when the update runs) and put its renewal in your calendar: an
-  expired token stops the updates, which `journalctl -t cicord-update` then reports.
+  | `.env`                 | Values                                                                                                                                                                        |
+  | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `CICORD_AUTO_UPDATE`   | `patch` (default: `0.1.x` → `0.1.y`), `minor` (also `0.x` → `0.y`, which may change formats: read [Upgrading](../upgrading/) first) or `off`. Others are logged.              |
+  | `CICORD_UPDATE_VERIFY` | `attestation` (default, needs the token below) or `digest` (trusts the release notes' digest only: weaker, for a server that cannot hold a token).                            |
+  | `CICORD_UPDATE_CHECK`  | `service` (default: health and service checks, before and after) or `health` (the container's health check only: updates even while a server is paused or a plugin degraded). |
+
+  The provenance check needs a GitHub token, even for a public repository: a
+  [fine-grained token](https://github.com/settings/personal-access-tokens/new) with **Public
+  repositories (read-only)** access and no permissions. Give it an expiry of a year at most
+  (organizations often refuse longer ones) and note its renewal: an expired or missing token
+  stops the updates, which the log reports. Store it without echoing it:
 
   ```sh
   read -rs T && printf '%s\n' "$T" | ssh cicord 'sudo sh -c "umask 077; cat > /etc/cicord/github-token"'; unset T
   ```
-
-  Without the token, available updates are logged and refused.
-  `CICORD_UPDATE_VERIFY=digest` in `.env` skips the signature and trusts the release notes'
-  digest only: weaker, use it only if you cannot keep a token on the server.
 
   ```sh
   ssh cicord 'journalctl -t cicord-update --since -7d'          # what it did
@@ -566,28 +512,30 @@ More in [Backups and secrets](../backups-and-secrets/), including
 
 - **Caddy** is pinned by digest in `compose.yaml`: update the tag and digest there, then
   `up -d` again.
-- **`tailscale serve`** is kept across reboots (`--bg`); nothing to redo.
 
 ## Troubleshooting
 
-| Symptom                                                                                                                    | Cause and fix                                                                                                                                                                                                                                                   |
-| -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The admin URL answers `404` on `/admin/`, or does not answer.                                                              | Caddy is published on every interface and captures port 443 of `tailscale0`: check `PUBLIC_IPV4` / `PUBLIC_IPV6` and the `ports` of `caddy`. Or `tailscale serve` is not running: `sudo tailscale serve status`. A proxy that rewrites `Host` also gives `404`. |
-| Caddy gets no certificate.                                                                                                 | The DNS records do not point at the server yet, or ports 80/443 do not reach it (`sudo ufw status`, your provider's firewall). Read `sudo docker logs caddy`.                                                                                                   |
-| `docker compose up` stops with `PUBLIC_IPV6` (or another variable) unset.                                                  | A value of `.env` is missing; on an IPv4-only server, see [the note in step 6](#the-environment-file).                                                                                                                                                          |
-| Discord login fails with an invalid `redirect_uri`.                                                                        | One of the two callback URLs is not registered in the application's OAuth2 settings, or differs (scheme, trailing slash).                                                                                                                                       |
-| The first sync reports missing permissions on the server update, or "announcement channels require the Community feature". | Announcement channels, the rules and updates channels and onboarding need the Discord **Community** feature. Enable it once in Server Settings → **Enable Community**, picking the rules and updates channels Cicord created, then sync again.                  |
-| The bot stays offline, or the wizard reports a missing intent.                                                             | A privileged intent your plugins need is off in the Developer Portal (Bot tab). Turn it on and re-check.                                                                                                                                                        |
-| GitHub deliveries fail with `401`.                                                                                         | `webhooks are disabled`: the runtime has no webhook secret (set it, then restart). `invalid webhook signature`: the stored value differs from the App's. Pushes are still picked up by polling.                                                                 |
-| The container is `unhealthy`.                                                                                              | `sudo docker inspect --format '{{json .State.Health}}' cicord` and `sudo docker logs cicord`.                                                                                                                                                                   |
-| SSH and the admin console are unreachable.                                                                                 | The machine left the tailnet (key expiry, Tailscale stopped). Log in from your provider's web console, then `sudo tailscale up`.                                                                                                                                |
+| Symptom                                                                                            | Cause and fix                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The admin URL answers `404` on `/admin/`, or does not answer.                                      | Caddy is published on every interface and captures port 443 of `tailscale0`: check `PUBLIC_IPV4` / `PUBLIC_IPV6` and the `ports` of `caddy`. Or `tailscale serve` is not running: `sudo tailscale serve status`. A proxy that rewrites `Host` also gives `404`.          |
+| Caddy gets no certificate.                                                                         | The DNS records do not point at the server yet, or ports 80/443 do not reach it (`sudo ufw status`, your provider's firewall). Read `sudo docker logs caddy`.                                                                                                            |
+| `docker compose up` stops with `PUBLIC_IPV6` (or another variable) unset.                          | A value of `.env` is missing; on an IPv4-only server, see [the note in step 6](#the-environment-file).                                                                                                                                                                   |
+| Discord login fails with an invalid `redirect_uri`.                                                | One of the two callback URLs is not registered in the application's OAuth2 settings, or differs (scheme, trailing slash).                                                                                                                                                |
+| The plan blocks a channel or a setting because it needs the Community feature.                     | Declare [`community`](../../configuration/server/#community) in the server YAML (`enabled: true`, `rulesChannel`, `updatesChannel`, with `profile.verificationLevel` at least `low` and `explicitContentFilter: allMembers`): Cicord enables Community in the same sync. |
+| The bot stays offline, or the wizard reports a missing intent.                                     | A privileged intent your plugins need is off in the Developer Portal (Bot tab). Turn it on and re-check.                                                                                                                                                                 |
+| GitHub deliveries fail with `401`.                                                                 | `webhooks are disabled`: the runtime has no webhook secret (store it, then restart). `invalid webhook signature`: the stored value differs from the App's. Pushes are still picked up by polling.                                                                        |
+| `journalctl -t cicord-update` says `unknown CICORD_AUTO_UPDATE` or `unknown CICORD_UPDATE_VERIFY`. | A comment or a space after the value on that `.env` line: put comments on their own lines.                                                                                                                                                                               |
+| The container is `unhealthy`.                                                                      | `sudo docker inspect --format '{{json .State.Health}}' cicord` and `sudo docker logs cicord`.                                                                                                                                                                            |
+| SSH and the admin console are unreachable.                                                         | The machine left the tailnet (key expiry, Tailscale stopped). Log in from your provider's web console, then `sudo tailscale up`.                                                                                                                                         |
 
 ## Next
 
 - Read the [security checklist](../security/), including the
   [Discord server hardening](../security/#discord-server-hardening) recommendations.
-- Run `cicord plan` on your pull requests:
-  [Your first change](../../getting-started/first-change/#run-it-in-ci). `cicord status --wait`
-  reads admin endpoints, so run it against the admin URL, from a runner on your tailnet.
+- Run `cicord plan --remote` on your pull requests:
+  [Your first change](../../getting-started/first-change/#run-it-in-ci). `cicord status` and
+  `cicord sync --wait` read admin endpoints: run them against the admin URL, from a runner on
+  your tailnet.
 - Install more [plugins](../../plugins/overview/) from the Store.
 - Scrape the runtime's [metrics](../monitoring/#docker-and-compose) with Prometheus.
+- Running it for someone else: [Handing over an instance](../handoff/).

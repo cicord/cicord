@@ -10,9 +10,9 @@ shows as soon as something changes on the runtime, and to notice an update.
 |---|---|---|---|
 | GET | `/api/v1/events` | moderator | A `text/event-stream` of change hints. |
 
-It is an admin route: on a runtime with an [admin URL](../../cli/), it only answers on the
+It is an admin route: on a runtime with an [admin URL](../authentication/#admin-host---admin-url), it only answers on the
 admin host. Send the session cookie (or a bearer token) as for the other admin endpoints. A
-signed-in user who moderates no server gets `403 forbidden`.
+signed-in user who moderates no server gets `403 forbidden` ("no server to administer").
 
 ## Events
 
@@ -22,21 +22,21 @@ access checks.
 
 | Event | Data | Meaning |
 |---|---|---|
-| `hello` | `{"version": "0.1.4", "revision": "53ca230…"}` | Sent first, on every connection. A client that sees another `version` than the one it loaded runs outdated code: the admin console offers to reload. |
-| `status` | `{}` | The runtime status changed: revision, bot connections, last error ([`GET /api/v1/status`](servers/#runtime-status)). |
-| `sync` | `{"server": "ma-commu"}` | A sync was recorded: the history, and the server's sync state, resources and drift. Without `server`: a revision (activated or rejected). |
-| `plugins` | `{"server": "ma-commu"}` | A plugin instance of the server crashed or restarted. |
-| `analytics` | `{"server": "ma-commu"}` | New [analytics](analytics/) points were written for the server (at most every 30 seconds while there is activity). |
+| `hello` | `{"version": "0.1.6", "revision": "local-df15894"}` | Sent first, on every connection. A client that sees another `version` than the one it loaded runs outdated code: the admin console offers to reload. |
+| `status` | `{}` | The runtime status changed: revision, bot connections, a server's health or status message, last error ([`GET /api/v1/status`](../servers/#runtime-status)). |
+| `sync` | `{"server": "my-community"}` | A sync was recorded, or a gateway event showed drift on the server: the history, and the server's sync state, plan, resources and drift. Without `server`: a revision (activated or rejected). |
+| `plugins` | `{"server": "my-community"}` | A plugin instance of the server crashed or restarted. |
+| `analytics` | `{"server": "my-community"}` | New [analytics](../analytics/) points were written for the server (at most every 30 seconds while there is activity). |
 | `stopping` | `{}` | The runtime is shutting down (a restart or an update): reconnect. |
 
 ```text
 id: 1
 event: hello
-data: {"version":"0.1.4","revision":"53ca230"}
+data: {"version":"0.1.6","revision":"local-df15894"}
 
 id: 2
 event: sync
-data: {"server":"ma-commu"}
+data: {"server":"showcase"}
 ```
 
 - Server events (`sync`, `plugins`, `analytics` with a `server`) are only sent for the

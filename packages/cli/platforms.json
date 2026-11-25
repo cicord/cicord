@@ -1,0 +1,7 @@
+{
+  "darwin-arm64": { "goos": "darwin", "goarch": "arm64", "binary": "cicord" },
+  "darwin-x64": { "goos": "darwin", "goarch": "amd64", "binary": "cicord" },
+  "linux-arm64": { "goos": "linux", "goarch": "arm64", "binary": "cicord" },
+  "linux-x64": { "goos": "linux", "goarch": "amd64", "binary": "cicord" },
+  "win32-x64": { "goos": "windows", "goarch": "amd64", "binary": "cicord.exe" }
+}

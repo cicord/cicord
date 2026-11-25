@@ -12,22 +12,22 @@ server, no Node.js and no `git` binary to install: git is implemented in Go and 
 pure Go driver. If you prefer, a [PostgreSQL database](#state-store-sqlite-or-postgresql)
 can hold the runtime state instead of SQLite.
 
-:::tip[A complete, hardened install]
-[Production on a VPS](../production-vps/) walks through a whole install on one Ubuntu server:
-firewall and SSH over Tailscale, automatic updates, Docker, Caddy for the public portal, the
-admin console on the tailnet only, a GitHub App, the setup wizard and daily backups. This page
-is the reference for each piece.
+:::tip[Step by step]
+[Production on a VPS](../production-vps/) applies this page to one Ubuntu server: Docker,
+Caddy for the public portal, the admin console on a Tailscale tailnet, a GitHub App, backups
+and automatic updates. This page is the reference for each option.
 :::
 
 :::danger[Never deploy `cicord dev`]
-`cicord dev` is for local development only: it lets anyone who can reach it sign in as any user
-(`/auth/dev-login`) and edits the working tree. Always run `cicord serve` on a server.
+`cicord dev` is for local development only: it edits the working tree, and with `--sim` (or the
+runtime token) `/auth/dev-login` signs in as any user. Always run `cicord serve` on a server.
 :::
 
 ## `cicord serve`
 
 ```text
-cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--public-url URL] [--admin-url URL] [--cors-origin ORIGIN]... [--log-level LEVEL] [--local] [--github-app-key-file FILE]
+cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--public-url URL] [--admin-url URL]
+             [--cors-origin ORIGIN]... [--metrics-listen ADDR] [--log-level LEVEL] [--local] [--github-app-key-file FILE]
 ```
 
 - **`dir`** (default `.`) must contain `cicord.yaml`. Its `spec.source` says what to follow:
@@ -46,8 +46,9 @@ cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--publ
   `cicord.yaml`, then (for a configuration created by the setup wizard) the URL the wizard ran
   on, then the listener's own address: `http://localhost:7420` for the default `:7420` (any
   address that is not a wildcard is used as is, for example `http://127.0.0.1:7420`). It logs
-  a warning when it falls back. Browser `POST`/`PUT` requests from any other origin are
-  rejected with `403`.
+  a warning when it falls back. Unsafe requests (`POST`, `PUT`, `PATCH`, `DELETE`) sent with
+  an `Origin` that is neither this URL, the admin URL nor an allowed CORS origin are rejected
+  with `403`.
 - **`--admin-url`** (env `CICORD_ADMIN_URL`): the URL of the admin console when it lives on a
   separate, private hostname, for example `https://cicord.example.ts.net` on a Tailscale
   tailnet, while the portal stays public on `--public-url`. It must be `https://host[:port]`
@@ -62,6 +63,8 @@ cicord serve [dir] [--data-dir DIR] [--database-url URL] [--listen ADDR] [--publ
 - **`--database-url`** (env `CICORD_DATABASE_URL`): PostgreSQL connection URL of the
   [state store](#state-store-sqlite-or-postgresql). Unset: SQLite in the data directory, which
   is needed either way. The URL is never logged.
+- **`--metrics-listen`** (env `CICORD_METRICS_LISTEN`): address of a separate, unauthenticated
+  Prometheus listener, for example `127.0.0.1:9420`. Off by default. See [Monitoring](../monitoring/).
 - **`--log-level`**: `debug`, `info` (default), `warn` or `error`.
 - **`--github-app-key-file`** (env `CICORD_GITHUB_APP_PRIVATE_KEY_FILE`): the GitHub App
   private key as a file (a Docker or Kubernetes secret mounted as a file), instead of the
@@ -109,16 +112,16 @@ the application used for login, and also `<admin-url>/auth/callback` when `--adm
 
 ## Data directory
 
-| Path                                             | Content                                                                                                                        | Back up?           |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
-| `cicord.db` (+ `cicord.db-wal`, `cicord.db-shm`) | SQLite (WAL mode): resource map, plugin storage, sessions, audit log, sync history, encrypted secrets. Absent with PostgreSQL. | **Yes**            |
-| `secret.key`                                     | Key of the secret store (when `CICORD_SECRET_KEY` is not set). Keep one copy **apart** from the routine backups.               | **Yes, apart**     |
-| `link.key`                                       | Portal link signing key (when `CICORD_LINK_SECRET` is not set). Losing it invalidates outstanding links.                       | Yes                |
-| `repo.git`                                       | Bare repository of the `embedded` provider: this **is** your configuration.                                                    | **Yes**            |
-| `source/`                                        | Clone of the git source.                                                                                                       | No (fetched again) |
-| `writeback/`                                     | Work tree used to commit and push admin console edits.                                                                         | No                 |
-| `snapshots/`                                     | Snapshots of a local source.                                                                                                   | No                 |
-| `cache/` (Docker image)                          | Downloaded plugins.                                                                                                            | No                 |
+| Path                                             | Content                                                                                                                         | Back up?           |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `cicord.db` (+ `cicord.db-wal`, `cicord.db-shm`) | SQLite (WAL mode): resource map, plugin storage, sessions, audit log, sync history, encrypted secrets. Absent with PostgreSQL.  | **Yes**            |
+| `secret.key`                                     | Key of the secret store (when `CICORD_SECRET_KEY` is not set). Keep one copy **apart** from the routine backups.                | **Yes, apart**     |
+| `link.key`                                       | Portal link signing key (when `CICORD_LINK_SECRET` is not set). Regenerated when missing: only links already sent stop working. | No                 |
+| `repo.git`                                       | Bare repository of the `embedded` provider: this **is** your configuration.                                                     | **Yes**            |
+| `source/`                                        | Clone of the git source.                                                                                                        | No (fetched again) |
+| `writeback/`                                     | Work tree used to commit and push admin console edits.                                                                          | No                 |
+| `snapshots/`                                     | Snapshots of a local source.                                                                                                    | No                 |
+| `cache/` (Docker image)                          | Downloaded plugins.                                                                                                             | No                 |
 
 The resource map in the state store links YAML keys to Discord IDs. Without it, the next sync
 adopts the existing resources [by name](../../concepts/reconciliation/#adoption-by-name) again,
@@ -176,7 +179,7 @@ With Compose, add a `postgres` service and point the runtime at it:
 ```yaml title="compose.yaml (excerpt)"
 services:
   cicord:
-    # ... as above, plus:
+    # the service of the Compose example below, plus:
     environment:
       CICORD_DATABASE_URL: postgres://cicord@postgres:5432/cicord?sslmode=disable
       PGPASSWORD: ${CICORD_DB_PASSWORD} # from .env, keeps the password out of the URL
@@ -218,10 +221,10 @@ with Node 26 and the pnpm of `packageManager`, then `cicord` with `CGO_ENABLED=0
 docker build -t cicord --build-arg VERSION=0.1.6 --build-arg COMMIT=$(git rev-parse --short HEAD) .
 ```
 
-The image runs `cicord serve /repo --data-dir /data --listen :7420` as user 65532 on a distroless
-image, with a volume on `/data` and port `7420`, and a `HEALTHCHECK` (`cicord healthcheck`,
-which probes `http://127.0.0.1:7420/healthz`; override it if you change `--listen`).
-`/repo` must contain at least `cicord.yaml`.
+The image runs `cicord serve /repo --data-dir /data --listen :7420` as user 65532, with a
+volume on `/data`, port `7420` and a `HEALTHCHECK`. `/repo` must contain at least
+`cicord.yaml`. The image has no shell: the entrypoint is `cicord`, so
+`docker run --rm cicord validate /repo` works too.
 
 <Tabs syncKey="docker">
 <TabItem label="docker run">
@@ -239,8 +242,7 @@ docker run -d --name cicord --restart unless-stopped \
 
 Arguments after the image name replace the default command, so repeat the defaults when you
 add flags. Or keep the default command and pass `-e CICORD_PUBLIC_URL=https://cicord.example.org`
-instead of `--public-url`. The entrypoint is `cicord`, so `docker run --rm cicord validate /repo`
-works too.
+instead of `--public-url`.
 
 </TabItem>
 <TabItem label="Compose">
@@ -277,21 +279,15 @@ volumes:
   `chown 65532:65532` the host directory first.
 - For a local source (no `spec.source`), mount the whole repository at `/repo`, writable if
   admin console edits should be saved (`:ro` makes write-back fail).
-- **Health**: `GET /healthz` (process up) and `GET /readyz` (a revision is active; `503`
-  before). The image has no shell or curl; [`cicord healthcheck`](../../reference/cli/#cicord-healthcheck)
-  checks `http://127.0.0.1:7420/healthz` from inside the container (exit 0 on `200`, 1
-  otherwise; `--url` for another address, `--timeout`, default `3s`), for a Docker
-  `HEALTHCHECK CMD ["/usr/local/bin/cicord", "healthcheck"]` or a Compose `healthcheck`:
-
-  ```yaml
-  healthcheck:
-    test: ["CMD", "/usr/local/bin/cicord", "healthcheck"]
-    interval: 30s
-    timeout: 5s
-  ```
-
-- Stop with `SIGTERM` (`docker stop`): the HTTP server and the bots shut down gracefully
-  (about 25 seconds).
+- **Health**: `GET /healthz` (process up, also in setup mode) and `GET /readyz` (a revision
+  is active; `503` before). The image's `HEALTHCHECK` runs
+  [`cicord healthcheck`](../../reference/cli/#cicord-healthcheck), which probes
+  `http://127.0.0.1:7420/healthz` (every 30 s, timeout 5 s, 3 retries). With another
+  `--listen` port, override it with `cicord healthcheck --url http://127.0.0.1:<port>/healthz`.
+- Stop with `SIGTERM`: the HTTP server, the bots and the background jobs shut down
+  gracefully, which can take up to about 35 seconds (10 s for HTTP, 15 s for the runtime,
+  10 s for background jobs). `docker stop` kills the container after 10 seconds by default:
+  use `docker stop -t 40` (Compose: `stop_grace_period: 40s`, as in `deploy/vps/compose.yaml`).
 
 ## Reverse proxy and TLS
 
@@ -308,8 +304,10 @@ Run Cicord behind a TLS-terminating proxy (Caddy, nginx, Traefik) and keep port 
   may wait up to 20 seconds for the new revision, so keep proxy read timeouts above 60 seconds.
 - An external portal on another origin is allowed with `--cors-origin https://portal.example.org`;
   the OAuth `redirect` may then point to that origin.
-- Server-sent events (`/api/v1/sim/events`) only exist with `cicord dev --sim`. If you proxy a
-  dev runtime anyway, turn buffering off (the runtime sends `X-Accel-Buffering: no`).
+- `GET /api/v1/events` is a server-sent events stream (live refresh of the admin console): a
+  ping every 25 seconds, closed after 10 minutes. The proxy must not buffer it (the runtime
+  sends `X-Accel-Buffering: no`, which nginx honors; Caddy flushes event streams) and its read
+  timeout must be above 25 seconds.
 
 <Tabs syncKey="proxy">
 <TabItem label="Caddy">
@@ -412,15 +410,22 @@ With `provider: github` and credentials, every commit the runtime evaluates gets
 status with the context **`cicord/sync`**:
 
 - `pending` while the revision is validated and applied;
-- `success` once it is applied to every server;
-- `failure` when it is rejected (validation or plugin build) or a server failed (no connected
-  bot, the bot cannot access the server, or the sync failed); the description gives the first
-  reason.
+- `success` once it is applied to every server, every bot is connected and every plugin
+  instance started;
+- `failure` when it is rejected (validation or plugin build), a server failed (no connected
+  bot, the bot cannot access the server, or the sync failed), a server is
+  [paused](../../concepts/reconciliation/#emergency-pause-enforcement) (the revision is not
+  applied to it), a bot is not connected, or a plugin instance failed to start. The
+  description names the first problem and counts the others, for example
+  `2 problems; Server my-community paused by owner: not applied`. Changes that only wait for
+  a boost level do not fail it. Once the problems are gone (the server resumed and synced, for example), the
+  status of the active commit turns `success`; a problem that appears later is runtime
+  health ([alerts](../monitoring/#alerts), `cicord status`), not a new failure.
 
 The status links to `<admin-url>/admin/` when `--admin-url` is set, otherwise to
-`<public-url>/admin/`, unless that URL is a loopback address. When
-the credentials lack the _Commit statuses_ permission, the runtime logs a warning
-(`GitHub commit status not set`, once; then at debug level) and the sync goes on. Statuses are set on the commits of the
+`<public-url>/admin/`, unless that URL is a loopback address. When the credentials lack the
+_Commit statuses_ permission, the runtime logs a warning (`GitHub commit status not set`,
+once; then at debug level) and the sync goes on. Statuses are set on the commits of the
 tracked branch, after the merge; to check a pull request before merging, run
 `cicord plan --remote --comment` in CI, which comments the plan on the pull request
 ([Your first change](../../getting-started/first-change/#run-it-in-ci)).

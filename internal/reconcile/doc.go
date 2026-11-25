@@ -11,7 +11,7 @@
 //	res, _ := r.Apply(ctx, plan)    // ordered, resumable
 //	plan, res, _ = r.Sync(ctx)      // plan + apply
 //	drift, _ := r.Drift(ctx)        // desired vs live, for status
-//	r.HandleEvent(ev)               // gateway events → drift flag / debounced selfHeal
+//	r.HandleEvent(ev)               // gateway events → drift flag / debounced selfHeal or re-plan
 //
 // The diff itself is the pure function computePlan(planInput) so it can be tested
 // without any client.
@@ -60,8 +60,8 @@
 // # Compared fields and zero values
 //
 // Text-like channel names (text, announcement, forum, media) are compared after the
-// normalization Discord applies (lowercase, whitespace runs → "-"), so "Général Chat"
-// in YAML matches #général-chat.
+// normalization Discord applies (lowercase, whitespace runs → "-"), so "General Chat"
+// in YAML matches #general-chat.
 //
 // Always managed (the YAML zero value is applied): role name, color (0 = none), hoist,
 // mentionable, permissions; category/channel name and overwrites; channel topic (text,
@@ -171,5 +171,11 @@
 // HandleEvent marks drift for role, channel, AutoMod rule, emoji, sticker and
 // soundboard sound events on git-owned resources, @everyone and server updates, and
 // member events (ServerMembers intent) of a listed role holder who joins or lacks a
-// listed role; with syncPolicy.selfHeal it schedules a debounced Sync.
+// listed role; it schedules a debounced Sync with syncPolicy.selfHeal, a debounced Plan
+// (nothing applied) without. Options.OnPlan sees every plan.
+//
+// While Options.Paused reports a pause (the runtime's emergency switch), nothing is
+// applied: events schedule a Plan even with selfHeal, a Sync stops after its plan and an
+// Apply is refused, both with ErrPaused. Quiesce turns a scheduled self-heal into a Plan
+// and waits for the sync in flight.
 package reconcile

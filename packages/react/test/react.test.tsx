@@ -20,6 +20,7 @@ import {
   useRouteMutation,
   useRouteQuery,
 } from "../src/index.ts";
+import { QueryCache } from "../src/cache.ts";
 
 // As written by `cicord portal typegen` for a plugin with a contract.
 declare module "@cicord/client" {
@@ -44,12 +45,12 @@ const json = (body: unknown, status = 200) =>
 
 const me = {
   user: { id: "1", username: "alice", displayName: "Alice", avatarUrl: "" },
-  servers: [{ key: "ma-commu", name: "Ma Commu", role: "member" }],
+  servers: [{ key: "my-community", name: "My Community", role: "member" }],
 };
 
 const portalServer = {
-  key: "ma-commu",
-  name: "Ma Commu",
+  key: "my-community",
+  name: "My Community",
   iconUrl: "",
   theme: { primary: "#5865f2", mode: "dark" },
   plugins: [
@@ -63,15 +64,15 @@ const portalServer = {
 };
 
 const steps: OnboardingSteps = {
-  title: "Bienvenue",
+  title: "Welcome",
   intro: "",
   completed: false,
   completedAt: null,
   completedRole: null,
   steps: [
     {
-      id: "jeux",
-      title: "Jeux",
+      id: "games",
+      title: "Games",
       description: "",
       multiple: true,
       required: false,
@@ -96,8 +97,8 @@ const steps: OnboardingSteps = {
       ],
     },
     {
-      id: "plateforme",
-      title: "Plateforme",
+      id: "platform",
+      title: "Platform",
       description: "",
       multiple: false,
       required: true,
@@ -133,7 +134,7 @@ function setup(handler: Handler) {
   const client = createCicordClient({ fetch });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <StrictMode>
-      <CicordProvider client={client} server="ma-commu">
+      <CicordProvider client={client} server="my-community">
         {children}
       </CicordProvider>
     </StrictMode>
@@ -163,7 +164,7 @@ describe("hooks", () => {
   test("useMember shares one request between components", async () => {
     const member = { user: me.user, member: { nick: "", joinedAt: "", roles: [] }, role: "member" };
     const { wrapper, calls } = setup((_m, path) =>
-      path === "/api/v1/portal/ma-commu/me" ? json(member) : undefined,
+      path === "/api/v1/portal/my-community/me" ? json(member) : undefined,
     );
     const { result } = renderHook(() => [useMember(), useMember()] as const, { wrapper });
     await waitFor(() => expect(result.current[0].data).toEqual(member));
@@ -193,8 +194,8 @@ describe("hooks", () => {
   test("usePluginQuery + usePluginMutation", async () => {
     let count = 0;
     const { wrapper } = setup((method, path, body) => {
-      if (path === "/api/v1/portal/ma-commu/plugins/bot/counter/count") return json({ count });
-      if (method === "POST" && path === "/api/v1/portal/ma-commu/plugins/bot/counter/add") {
+      if (path === "/api/v1/portal/my-community/plugins/bot/counter/count") return json({ count });
+      if (method === "POST" && path === "/api/v1/portal/my-community/plugins/bot/counter/add") {
         count += (body as { by: number }).by;
         return json({ count });
       }
@@ -227,12 +228,12 @@ describe("hooks", () => {
       ],
     };
     const { wrapper, calls } = setup((method, path, body) => {
-      if (path === "/api/v1/portal/ma-commu") return json(server);
-      if (path === "/api/v1/portal/ma-commu/plugins/bot/polls-1/polls/p%201")
+      if (path === "/api/v1/portal/my-community") return json(server);
+      if (path === "/api/v1/portal/my-community/plugins/bot/polls-1/polls/p%201")
         return json({ id: "p 1", question: "?", voters: votes });
       if (
         method === "POST" &&
-        path === "/api/v1/portal/ma-commu/plugins/bot/counter/items/7/votes"
+        path === "/api/v1/portal/my-community/plugins/bot/counter/items/7/votes"
       ) {
         votes += (body as { by: number }).by;
         return json({ votes });
@@ -274,15 +275,15 @@ function Flow() {
     <OnboardingFlow>
       {(flow) => {
         if (flow.status === "complete")
-          return <p>Terminé: {flow.result?.roles.map((r) => r.key).join(",")}</p>;
-        if (flow.status === "unavailable") return <p>Pas d'onboarding</p>;
-        if (flow.status === "unauthenticated") return <p>Connecte-toi</p>;
-        if (flow.status !== "ready" && flow.status !== "submitting") return <p>Chargement</p>;
+          return <p>Done: {flow.result?.roles.map((r) => r.key).join(",")}</p>;
+        if (flow.status === "unavailable") return <p>No onboarding</p>;
+        if (flow.status === "unauthenticated") return <p>Sign in</p>;
+        if (flow.status !== "ready" && flow.status !== "submitting") return <p>Loading</p>;
         return (
           <section>
             <h2>{flow.step?.title}</h2>
             <p>
-              Étape {flow.index + 1}/{flow.total}
+              Step {flow.index + 1}/{flow.total}
             </p>
             {flow.step?.options.map((o) => (
               <button
@@ -298,10 +299,10 @@ function Flow() {
               <p role="alert">{flow.stepErrors[flow.step.id]}</p>
             ) : null}
             <button type="button" onClick={flow.back} disabled={flow.isFirst}>
-              Retour
+              Back
             </button>
             <button type="button" onClick={flow.next} disabled={!flow.canContinue}>
-              {flow.isLast ? "Terminer" : "Suivant"}
+              {flow.isLast ? "Finish" : "Next"}
             </button>
           </section>
         );
@@ -313,11 +314,12 @@ function Flow() {
 describe("<OnboardingFlow>", () => {
   function onboardingRuntime(onComplete: (body: unknown) => Response) {
     return setup((method, path, body) => {
-      if (path === "/api/v1/portal/ma-commu") return json(portalServer);
-      if (path === "/api/v1/portal/ma-commu/plugins/moderator/onboarding/steps") return json(steps);
+      if (path === "/api/v1/portal/my-community") return json(portalServer);
+      if (path === "/api/v1/portal/my-community/plugins/moderator/onboarding/steps")
+        return json(steps);
       if (
         method === "POST" &&
-        path === "/api/v1/portal/ma-commu/plugins/moderator/onboarding/complete"
+        path === "/api/v1/portal/my-community/plugins/moderator/onboarding/complete"
       )
         return onComplete(body);
       return undefined;
@@ -343,7 +345,7 @@ describe("<OnboardingFlow>", () => {
     const { wrapper } = onboardingRuntime(onComplete);
     render(<Flow />, { wrapper });
 
-    expect(await screen.findByRole("heading", { name: "Jeux" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Games" })).toBeTruthy();
     // Pre-selected from the member's roles.
     expect(screen.getByRole("button", { name: "Valorant" }).getAttribute("aria-pressed")).toBe(
       "true",
@@ -352,19 +354,19 @@ describe("<OnboardingFlow>", () => {
     expect(screen.getByRole("button", { name: "Minecraft" }).getAttribute("aria-pressed")).toBe(
       "true",
     );
-    await user.click(screen.getByRole("button", { name: "Suivant" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
 
-    expect(screen.getByRole("heading", { name: "Plateforme" })).toBeTruthy();
-    const finish = screen.getByRole<HTMLButtonElement>("button", { name: "Terminer" });
+    expect(screen.getByRole("heading", { name: "Platform" })).toBeTruthy();
+    const finish = screen.getByRole<HTMLButtonElement>("button", { name: "Finish" });
     expect(finish.disabled).toBe(true); // required step
     await user.click(screen.getByRole("button", { name: "PC" }));
     await user.click(screen.getByRole("button", { name: "Console" })); // single choice: replaces PC
     expect(screen.getByRole("button", { name: "PC" }).getAttribute("aria-pressed")).toBe("false");
     await user.click(finish);
 
-    expect(await screen.findByText("Terminé: minecraft,valorant,console")).toBeTruthy();
+    expect(await screen.findByText("Done: minecraft,valorant,console")).toBeTruthy();
     expect(onComplete).toHaveBeenCalledWith({
-      answers: { jeux: ["valorant", "minecraft"], plateforme: ["console"] },
+      answers: { games: ["valorant", "minecraft"], platform: ["console"] },
     });
   });
 
@@ -377,7 +379,7 @@ describe("<OnboardingFlow>", () => {
             code: "invalid",
             message: "bad",
             diagnostics: [
-              { severity: "error", path: "/answers/jeux", message: "rôle indisponible" },
+              { severity: "error", path: "/answers/games", message: "role unavailable" },
             ],
           },
         },
@@ -385,27 +387,45 @@ describe("<OnboardingFlow>", () => {
       ),
     );
     render(<Flow />, { wrapper });
-    await user.click(await screen.findByRole("button", { name: "Suivant" }));
+    await user.click(await screen.findByRole("button", { name: "Next" }));
     await user.click(screen.getByRole("button", { name: "PC" }));
-    await user.click(screen.getByRole("button", { name: "Terminer" }));
-    expect((await screen.findByRole("alert")).textContent).toBe("rôle indisponible");
-    expect(screen.getByRole("heading", { name: "Jeux" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Finish" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("role unavailable");
+    expect(screen.getByRole("heading", { name: "Games" })).toBeTruthy();
   });
 
   test("unavailable without an onboarding plugin, unauthenticated on 401", async () => {
     const a = setup((_m, path) =>
-      path === "/api/v1/portal/ma-commu" ? json({ ...portalServer, plugins: [] }) : undefined,
+      path === "/api/v1/portal/my-community" ? json({ ...portalServer, plugins: [] }) : undefined,
     );
     render(<Flow />, { wrapper: a.wrapper });
-    expect(await screen.findByText("Pas d'onboarding")).toBeTruthy();
+    expect(await screen.findByText("No onboarding")).toBeTruthy();
     cleanup();
 
     const b = setup((_m, path) =>
-      path === "/api/v1/portal/ma-commu"
+      path === "/api/v1/portal/my-community"
         ? json(portalServer)
         : json({ error: { code: "unauthenticated", message: "login" } }, 401),
     );
     render(<Flow />, { wrapper: b.wrapper });
-    expect(await screen.findByText("Connecte-toi")).toBeTruthy();
+    expect(await screen.findByText("Sign in")).toBeTruthy();
+  });
+});
+
+describe("QueryCache.invalidate", () => {
+  test("keeps an observed query that has no fetch function and notifies it", () => {
+    const cache = new QueryCache();
+    cache.setData(["plan", "s1"], { changes: 1 });
+    const listener = vi.fn();
+    const unsubscribe = cache.subscribe(["plan", "s1"], listener);
+
+    void cache.invalidate(["plan"]);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(cache.getState(["plan", "s1"]).data).toBeUndefined();
+    // Still subscribed: a later update reaches the same listener.
+    cache.setData(["plan", "s1"], { changes: 0 });
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
   });
 });

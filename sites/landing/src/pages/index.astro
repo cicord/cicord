@@ -1,51 +1,113 @@
 ---
+import { Image } from "astro:assets";
 import Base from "../layouts/Base.astro";
-import { links } from "../lib/links";
+import shotOverview from "../assets/screenshots/admin-overview.webp";
+import shotPlan from "../assets/screenshots/admin-plan.webp";
+import shotSettings from "../assets/screenshots/admin-plugin-settings.webp";
+import shotPortal from "../assets/screenshots/portal-custom.webp";
+import shotQueue from "../assets/screenshots/portal-custom-queue.webp";
+import shotAnalytics from "../assets/screenshots/admin-analytics.webp";
+import { links, url } from "../lib/links";
 import { ts, yaml, yamlLine } from "../lib/highlight";
 
 const title = "Cicord: GitOps for Discord";
 const description =
   "Declare Discord servers and bots in a git repository. Cicord plans every change, applies it, heals drift and runs sandboxed TypeScript plugins. Self-hosted, single binary, pre-release.";
 
-// Hero: a commit to servers/ma-commu.yaml (examples/basic) and the plan Cicord computes for
-// it, in the exact format of internal/planfmt.
+// Hero: a pull request on the Cicord community's own configuration (cicord/cicord-community,
+// servers/cicord.yaml) and the plan Cicord computes for it: the stdout of
+// `cicord plan --remote` against that configuration running on `cicord dev --sim`.
 const diff: [mark: " " | "+" | "-", text: string][] = [
   [" ", "spec:"],
   [" ", "  roles:"],
-  [" ", "    modo:"],
-  [" ", "      name: Modo"],
-  [" ", '      color: "#e67e22"'],
-  [" ", "      permissions:"],
-  [" ", "        - KickMembers"],
-  [" ", "        - ModerateMembers"],
-  [" ", "        - ManageMessages"],
-  ["+", "        - ManageThreads"],
+  ["+", "    helper:"],
+  ["+", "      name: Helper"],
+  ["+", '      color: "#3ba55d"'],
+  ["+", "      mentionable: true"],
+  [" ", "    contributor:"],
+  [" ", "      name: Contributor"],
   [" ", "  channels:"],
-  ["+", "    announcements:"],
-  ["+", "      name: annonces"],
-  ["+", "      type: announcement"],
-  ["+", "      category: info"],
+  ["+", "    office-hours:"],
+  ["+", "      name: Office hours"],
+  ["+", "      type: voice"],
+  ["+", "      category: voice"],
 ];
 
 type PlanLine = { kind: "cmd" | "head" | "add" | "upd" | "field" | "blank" | "sum"; text: string };
 const plan: PlanLine[] = [
-  { kind: "cmd", text: "cicord plan" },
-  { kind: "head", text: "Server ma-commu: 2 change(s)" },
-  { kind: "upd", text: '  ~ update role "Modo": permissions' },
-  { kind: "field", text: "      permissions: +ManageThreads" },
-  { kind: "add", text: '  + create announcement channel #annonces in "Infos"' },
-  { kind: "field", text: '      category: "info"' },
-  { kind: "field", text: '      name:     "annonces"' },
-  { kind: "field", text: '      type:     "announcement"' },
+  { kind: "cmd", text: "cicord plan --remote" },
+  { kind: "head", text: "Server cicord: 2 change(s)" },
+  { kind: "add", text: '  + create role "Helper"' },
+  { kind: "field", text: '      color:       "#3ba55d"' },
+  { kind: "field", text: "      mentionable: true" },
+  { kind: "field", text: '      name:        "Helper"' },
+  { kind: "add", text: '  + create voice channel #Office hours in "Voice"' },
+  { kind: "field", text: '      category: "voice"' },
+  { kind: "field", text: '      name:     "Office hours"' },
+  { kind: "field", text: '      type:     "voice"' },
   { kind: "blank", text: "" },
-  { kind: "sum", text: "Plan: 1 to create, 1 to update, 0 to delete." },
+  { kind: "sum", text: "Plan: 2 to create, 0 to update, 0 to delete." },
+];
+
+// The product tour: screenshots of the Cicord community's configuration running on
+// `cicord dev --sim` (scripts/screenshots.mjs, set "community"), except Analytics, which needs
+// months of history: the admin console's demo data (set "demo").
+const tour = [
+  {
+    id: "overview",
+    tab: "Overview",
+    path: "/admin/servers/cicord",
+    image: shotOverview,
+    alt: "The admin console's overview of the Cicord server: Synced and Healthy, its boost level and Community state, the last syncs and the bot's seven plugins.",
+    caption: "Sync and health of each server, what is live on Discord, recent syncs and the plugins of every bot.",
+  },
+  {
+    id: "plan",
+    tab: "Plan",
+    path: "/admin/servers/cicord/plan",
+    image: shotPlan,
+    alt: "The Plan page: nothing to change, a banner waiting for boost level 2, and a note about a role holder who has not joined yet.",
+    caption: "What the next sync would change, and why anything waits: here a banner that needs boost level 2.",
+  },
+  {
+    id: "settings",
+    tab: "Plugin settings",
+    path: "/admin/servers/cicord/plugins/cicord/tickets",
+    image: shotSettings,
+    alt: "The settings form of the tickets plugin, with a channel picker, a category picker and staff role pickers.",
+    caption: "Forms generated from each plugin's config schema. Saving writes the bot's YAML in git.",
+  },
+  {
+    id: "analytics",
+    tab: "Analytics",
+    path: "/admin/servers/pixel-haven/analytics",
+    image: shotAnalytics,
+    alt: "The Analytics page of a demo community: members, joins and leaves, messages, voice time, reactions, commands and moderation actions over 30 days, with charts.",
+    caption: "Hourly activity counts, bots apart, with no message content: shown here on the admin console's demo community.",
+  },
+  {
+    id: "portal",
+    tab: "Community portal",
+    path: "community.cicord.dev",
+    image: shotPortal,
+    alt: "The Cicord community portal home page, with the server banner, links and the member's shortcuts.",
+    caption: "A custom portal built on the SDK: the members' side of the same server.",
+  },
+  {
+    id: "queue",
+    tab: "Support queue",
+    path: "community.cicord.dev/support",
+    image: shotQueue,
+    alt: "The staff support queue of the portal: two open tickets with their author, last activity and assignee.",
+    caption: "Staff answer tickets from the portal, through the tickets plugin's typed routes.",
+  },
 ];
 
 const serverKeys: [key: string, note: string][] = [
   ["profile", "name, icon, banner, verification"],
   ["community", "rules and updates channels"],
   ["everyone", "@everyone permissions"],
-  ["roles", "colors, icons, permissions"],
+  ["roles", "colors, icons, permissions, members"],
   ["hierarchy", "role order"],
   ["categories", "with permission overwrites"],
   ["channels", "text, voice, forum, stage…"],
@@ -59,6 +121,7 @@ const serverKeys: [key: string, note: string][] = [
   ["afk", ""],
   ["access", "admins and moderators"],
   ["portal", "the community portal"],
+  ["analytics", "activity counts, portal stats"],
   ["syncPolicy", "selfHeal, prune, deletionProtection"],
 ];
 const width = Math.max(...serverKeys.map(([k]) => k.length)) + 1;
@@ -67,13 +130,15 @@ const serverTree = [
   ...serverKeys.map(([k, note]) => `  ${(k + ":").padEnd(width)}${note ? `  # ${note}` : ""}`),
 ].join("\n");
 
+// A shorter welcome plugin than examples/basic (no DM, no message template); this source and
+// pluginManifest build together with `cicord plugin build`.
 const pluginSource = `import { definePlugin } from "@cicord/sdk";
 
 export default definePlugin({
   events: {
     async memberJoin(ctx, member) {
       const { channel, autoRole } = ctx.config;
-      await ctx.server.channel(channel).send(\`Bienvenue \${member.mention} !\`);
+      await ctx.server.channel(channel).send(\`Welcome \${member.mention}!\`);
 
       if (autoRole && !member.hasRole(autoRole)) {
         await member.addRole(autoRole, "welcome: default role");
@@ -117,6 +182,7 @@ const levelsCaps = [
   "portal.links",
 ];
 
+// Bundled in the binary (examples.Official); the registry also has officialRegistryOnly.
 const official = [
   "welcome",
   "onboarding",
@@ -128,6 +194,7 @@ const official = [
   "audit-log",
   "announcements",
 ];
+const officialRegistryOnly = ["github-releases"];
 ---
 
 <Base title={title} description={description}>
@@ -166,7 +233,7 @@ const official = [
           </div>
           <p class="hero__status">
             <span class="pill">Pre-release</span>
-            <span>Version <code>v1alpha1</code>. Formats and APIs may still change.</span>
+            <span>Cicord 0.1.6, API <code>v1alpha1</code>. Formats and APIs may still change.</span>
           </p>
         </div>
       </div>
@@ -174,12 +241,12 @@ const official = [
       <figure class="flow">
         <div class="pane pane--diff">
           <div class="pane__bar">
-            <span class="pane__name">servers/ma-commu.yaml</span>
-            <span class="pane__meta"><span class="t-add">+5</span> <span class="t-del">-0</span></span>
+            <span class="pane__name">servers/cicord.yaml</span>
+            <span class="pane__meta"><span class="t-add">+8</span> <span class="t-del">-0</span></span>
           </div>
           <pre
             class="pane__body"
-            aria-label="Diff of servers/ma-commu.yaml: the role Modo gets ManageThreads, a new announcement channel annonces is added in the category info"><code>{diff.map(([mark, text], i) => (
+            aria-label="Diff of servers/cicord.yaml: a new role Helper and a new voice channel Office hours in the Voice category"><code>{diff.map(([mark, text], i) => (
             <span class:list={["dl", { "dl--add": mark === "+" }]} style={`--i:${i}`}><span class="dl__mark" aria-hidden="true">{mark}</span><Fragment set:html={yamlLine(text)} /></span>
           ))}</code></pre>
         </div>
@@ -203,10 +270,59 @@ const official = [
         </div>
 
         <figcaption class="flow__caption">
-          A commit to <code>examples/basic</code> and the plan Cicord computes for it. The runtime
-          applies the same plan when the commit reaches the branch it follows.
+          A pull request on the
+          <a href={links.communityConfig}>Cicord community's configuration</a>{" "}and the plan
+          Cicord computes for it. The runtime applies that plan when the change is
+          merged into the branch it follows.
         </figcaption>
       </figure>
+    </div>
+  </section>
+
+  <section class="section tour" aria-labeledby="tour-title">
+    <div class="wrap">
+      <div class="tour__head">
+        <h2 id="tour-title" class="section__title">See it run a real server</h2>
+        <p class="tour__lede">
+          The Cicord community's own configuration, running on Cicord: the admin console for the
+          team, the portal for the members.
+        </p>
+      </div>
+      <div class="tour__tabs" role="tablist" aria-label="Product screenshots">
+        {tour.map((t, i) => (
+          <button
+            type="button"
+            role="tab"
+            id={`tour-tab-${t.id}`}
+            aria-controls={`tour-panel-${t.id}`}
+            aria-selected={i === 0 ? "true" : "false"}
+            tabindex={i === 0 ? 0 : -1}
+          >{t.tab}</button>
+        ))}
+      </div>
+      {tour.map((t, i) => (
+        <figure
+          class="window"
+          role="tabpanel"
+          id={`tour-panel-${t.id}`}
+          aria-labelledby={`tour-tab-${t.id}`}
+          hidden={i !== 0}
+        >
+          <div class="window__bar">
+            <span class="pane__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="window__path">{t.path}</span>
+          </div>
+          <Image
+            src={t.image}
+            alt={t.alt}
+            widths={[720, 1440, 2160, 2880]}
+            sizes="(min-width: 76rem) 72rem, 100vw"
+            loading={i === 0 ? "eager" : "lazy"}
+            class="window__shot"
+          />
+          <figcaption class="window__caption">{t.caption}</figcaption>
+        </figure>
+      ))}
     </div>
   </section>
 
@@ -221,7 +337,7 @@ const official = [
             Roles, channels, permissions, onboarding and bots live as YAML files in a repository:
             on GitHub, any git host, or a repository Cicord manages for you.
           </p>
-          <code class="step__artifact">servers/ma-commu.yaml</code>
+          <code class="step__artifact">servers/cicord.yaml</code>
         </li>
         <li class="step step--brand">
           <span class="step__node" aria-hidden="true"></span>
@@ -245,10 +361,9 @@ const official = [
           <span class="step__node" aria-hidden="true"></span>
           <h3>Stay in sync</h3>
           <p>
-            Hand edits to managed roles and channels are detected as they happen: reported, or
-            reverted with
-            <code>selfHeal</code>. Edits made in the admin console come back to git as a commit or a
-            pull request.
+            Hand edits to managed roles and channels are detected as they happen: reverted at once
+            with <code>selfHeal</code>, otherwise reported until the next revision or Sync now. During
+            a raid, pause enforcement and they stay. Edits made in the admin console go to git.
           </p>
           <code class="step__artifact">selfHeal: true</code>
         </li>
@@ -262,16 +377,17 @@ const official = [
         <h2 id="f-server" class="section__title">The whole server, as code</h2>
         <p>
           A server file covers what you would otherwise click through in Server Settings: the
-          profile, Community, roles and their order, categories and channels with their permission
-          overwrites, the welcome screen, onboarding, AutoMod, emojis, stickers and soundboard
-          sounds.
+          profile, Community, roles, who holds the staff roles, the role order, categories and
+          channels with their permission overwrites, the welcome screen, onboarding, AutoMod,
+          emojis, stickers and soundboard sounds.
         </p>
         <p>
           Cicord only touches what it manages. Pointing it at an existing server adopts matching
           roles and channels instead of duplicating them, resources you never declared are left
           alone, and a key removed from YAML is deleted, kept or blocked according to your sync
-          policy. <code>cicord validate</code> checks the files offline, and the plan blocks, with a
-          reason, what Discord would refuse at the server's boost level.
+          policy. <code>cicord validate</code> checks the files offline. Before applying, the plan
+          checks the permissions of a bot without Administrator, and a change that needs a higher boost level waits, with
+          the reason, until the server reaches it.
         </p>
       </div>
       <div class="code-card">
@@ -291,17 +407,18 @@ const official = [
           buttons and modals, schedules, storage and portal routes.
         </p>
         <p>
-          Each plugin instance runs in its own isolated VM with time and size limits, and only
-          reaches its own server. A plugin can only do what its manifest declares and the bot
-          grants: an ungranted call throws, and a new capability in an update shows up in review.
-          The runtime bundles the TypeScript itself, so running Cicord needs no Node.js. Unit tests
-          use <code>@cicord/sdk/testing</code>.
+          Each plugin instance runs in its own WebAssembly sandbox with a hard memory cap and a CPU
+          budget, and only reaches its own server; a crashed instance restarts without taking the
+          others down. A plugin can only do what its manifest declares and the bot grants: an
+          ungranted call throws, and a new capability in an update shows up in review. The runtime
+          bundles the TypeScript itself, so running Cicord needs no Node.js. Unit tests use
+          <code>@cicord/sdk/testing</code>.
         </p>
         <p><a href={links.plugins}>Read the plugin guide</a></p>
       </div>
       <div class="code-stack">
         <div class="code-card">
-          <div class="code-card__bar"><span>plugins/welcome/src/index.ts</span><span>excerpt</span></div>
+          <div class="code-card__bar"><span>plugins/welcome/src/index.ts</span><span>simplified</span></div>
           <pre class="code-card__body"><code set:html={ts(pluginSource)} /></pre>
         </div>
         <div class="code-card">
@@ -318,11 +435,12 @@ const official = [
         <h2 id="f-store" class="section__title">A Store where you see what you grant</h2>
         <p>
           The official plugins are published in a signed registry,
-          <a href={links.officialPlugins}>cicord-plugins</a>, and ship with the binary for offline
-          installs:
+          <a href={links.officialPlugins}>cicord-plugins</a>, and most of them ship with the binary
+          for offline installs:
           <span class="inline-list"
-            >{official.map((p, i) => <><code>{p}</code>{i < official.length - 1 ? ", " : "."}</>)}</span
-          >
+            >{official.map((p, i) => <><code>{p}</code>{i < official.length - 1 ? ", " : ""}</>)}</span
+          >, plus {officialRegistryOnly.map((p, i) => <><code>{p}</code>{i < officialRegistryOnly.length - 1 ? ", " : ""}</>)}{" "}
+          from the registry.
         </p>
         <p>
           Third-party plugins come from registries: git repositories with an index. Their trust is
@@ -374,9 +492,10 @@ const official = [
       <div class="feature__copy">
         <h2 id="f-admin" class="section__title">An admin console that writes to git</h2>
         <p>
-          Moderators change plugin settings in forms generated from each plugin's config schema,
-          with channel and role pickers, without opening a YAML file. The console also shows sync
-          status, drift, the history of the configuration and the audit log.
+          Plugin settings are forms generated from each plugin's config schema, with channel and
+          role pickers: admins edit everything, moderators the fields a plugin opens to them, and
+          nobody opens a YAML file. The console also shows sync status, the plan, drift, the sync
+          history, the audit log and server analytics, and refreshes live as the runtime changes.
         </p>
         <p>
           Every save goes back to the repository. Path policies in <code>cicord.yaml</code> decide
@@ -392,12 +511,12 @@ const official = [
         <ul class="outcomes" aria-label="What the policy above does with two saves">
           <li>
             <span>Change the welcome message</span>
-            <code>bots/moderator/bot.yaml</code>
+            <code>bots/cicord/bot.yaml</code>
             <span class="tag tag--ok">Commit</span>
           </li>
           <li>
             <span>Add a role</span>
-            <code>servers/ma-commu.yaml</code>
+            <code>servers/cicord.yaml</code>
             <span class="tag tag--brand">Pull request</span>
           </li>
         </ul>
@@ -422,6 +541,34 @@ const official = [
           </dd>
         </div>
         <div class="more__item">
+          <dt>Inspect before you trust it</dt>
+          <dd>
+            <p>
+              Invite the bot with View Channels only, then run <code>cicord inspect</code> or pick
+              Inspect first in the wizard. You get a read-only report: what the bot can see, what it
+              could not read, the permissions it would need and why, and the first plan, which must
+              be empty before you go further. Cicord makes no write calls to Discord.
+            </p>
+            <p><a href={url("docs/getting-started/evaluate-a-server/")}>Evaluate an existing server</a></p>
+          </dd>
+        </div>
+        <div class="more__item">
+          <dt>An emergency brake, and alerts</dt>
+          <dd>
+            <p>
+              During a raid, a moderator pauses enforcement on the server from the admin console
+              or with <code>cicord pause</code>. Nothing is applied until someone resumes and reviews
+              the pending plan, and drift stays visible the whole time. Built-in alerts post to a
+              Discord or JSON webhook when a plugin fails, a bot drops, a sync breaks or a server is
+              paused, and post again when it is resolved. They never include secrets or message content.
+            </p>
+            <p>
+              <a href={url("docs/concepts/reconciliation/#emergency-pause-enforcement")}>Pause enforcement</a> ·
+              <a href={url("docs/self-hosting/monitoring/#alerts")}>Alerts</a>
+            </p>
+          </dd>
+        </div>
+        <div class="more__item">
           <dt>Discord simulator</dt>
           <dd>
             <p>
@@ -433,11 +580,23 @@ const official = [
           </dd>
         </div>
         <div class="more__item">
+          <dt>Server analytics</dt>
+          <dd>
+            <p>
+              Members, joins and leaves, active members, messages per channel, voice time,
+              reactions and how members use every bot of the server, kept as hourly counts in the
+              state database. No message content and no member IDs are stored. The portal can
+              show the server-wide numbers to the community.
+            </p>
+            <p><a href={url("docs/self-hosting/analytics/")}>Server analytics</a></p>
+          </dd>
+        </div>
+        <div class="more__item">
           <dt>Community portal SDK</dt>
           <dd>
             <p>
               The runtime serves a community portal at <code>/</code>: sign-in with Discord,
-              onboarding, member profile, themed from YAML. Fork it with
+              onboarding, member profile, community stats, themed from YAML. Fork it with
               <code>cicord portal init</code>, or build your own with <code>@cicord/client</code>,
               <code>@cicord/react</code> and <code>@cicord/ui</code> in a site you already have.
             </p>
@@ -448,9 +607,10 @@ const official = [
           <dd>
             <p>
               One static Go binary holds the reconciler, the bot gateways, the plugin host, the API,
-              the admin console and the portal. No database server, no Node.js, no git binary: just
-              a data directory, with SQLite, or PostgreSQL if you prefer. The release pipeline
-              builds binaries and a multi-arch container image with signed build provenance.
+              the admin console and the portal. No Node.js, no git binary, and no database server
+              unless you want PostgreSQL: by default, state is a SQLite file in the data directory.
+              Releases ship binaries and a multi-arch container image with signed build provenance,
+              and Prometheus metrics are one flag away.
             </p>
             <p><a href={links.deploy}>Self-hosting guide</a></p>
           </dd>
@@ -461,8 +621,10 @@ const official = [
             <p>
               A step-by-step production install on a single VPS: SSH and the admin console
               reachable only from your Tailscale tailnet, Caddy serving the public portal over
-              HTTPS, a firewall, automatic updates and reboots, a GitHub App with short-lived tokens,
-              secrets stored encrypted by the runtime, and daily backups that keep the key apart.
+              HTTPS, a firewall, a GitHub App with short-lived tokens, and secrets stored encrypted by
+              the runtime. An automatic update is kept only when every server, bot and plugin is
+              healthy afterwards, and is rolled back otherwise. Daily backups keep the key apart and
+              can be copied off the server, and a timed drill restores one onto a fresh machine.
             </p>
             <p><a href={links.productionVps}>Production on a VPS</a></p>
           </dd>
@@ -490,17 +652,19 @@ const official = [
       <div class="start__copy">
         <h2 id="start-title" class="section__title">Get started in five minutes</h2>
         <p>
-          Install <code>cicord</code> (a release binary or the container image, see the
-          <a href={links.install}>installation guide</a>, or from source as below), then either connect a real server with the setup wizard or try everything
-          offline against the simulator.
+          Install <code>cicord</code>, then either connect a real server with the setup wizard or
+          try everything offline against the simulator. The
+          <a href={links.install}>installation guide</a> covers Windows, the container image,
+          verifying a download and building from source. Homebrew arrives with the next release,
+          npm with a later one.
         </p>
         <aside class="notice" aria-labeledby="status-title">
           <h3 id="status-title">Status: pre-release</h3>
           <p>
-            Cicord is at <code>v1alpha1</code>. The runtime, the reconciler, the plugin host, the
-            simulator, the admin console and the portal SDK work end to end, but file formats and
-            APIs may still change between <code>0.x</code> releases. Expect rough edges, and report
-            them on GitHub.
+            Cicord 0.1.6 implements the API <code>v1alpha1</code>. The runtime, the reconciler, the
+            plugin host, the simulator, the admin console and the portal SDK work end to end, and
+            run the official community server, but file formats and APIs may still change between
+            <code>0.x</code> releases. Expect rough edges, and report them on GitHub.
           </p>
         </aside>
         <p class="start__links">
@@ -510,29 +674,62 @@ const official = [
       </div>
       <div class="cmds">
         <div class="cmd">
-          <p class="cmd__title">1. Build from source</p>
-          <p class="cmd__note">Go 1.27, plus Node 26 and pnpm for the web UIs.</p>
-          <pre><code><span class="p">git clone https://github.com/cicord/cicord.git</span>
-<span class="p">cd cicord</span>
-<span class="p">make all</span>            <span class="t-com"># builds the UIs and bin/cicord</span></code></pre>
+          <p class="cmd__title">1. Install cicord</p>
+          <p class="cmd__note">Linux or macOS. Verifies the checksum, and the provenance with gh.</p>
+          <pre><code><span class="p">curl -fsSL https://cicord.dev/install.sh | sh</span>
+<span class="t-com"># next release: brew install cicord/tap/cicord; npm (@cicord/cli) later</span></code></pre>
         </div>
         <div class="cmd">
           <p class="cmd__title">2a. Connect a real server</p>
-          <p class="cmd__note">With <code>bin/cicord</code> on your PATH.</p>
+          <p class="cmd__note">In an empty directory, on the URL people will reach.</p>
           <pre><code><span class="p">mkdir my-community && cd my-community</span>
 <span class="p">cicord serve --public-url https://cicord.example.org</span>
 <span class="t-com"># open the setup link it prints</span></code></pre>
         </div>
         <div class="cmd">
           <p class="cmd__title">2b. Or try it offline</p>
-          <p class="cmd__note">From the clone, on the example repository. No bot token.</p>
-          <pre><code><span class="p">cicord dev --sim examples/basic</span>
+          <p class="cmd__note">A scaffolded repository on the simulator. No bot token.</p>
+          <pre><code><span class="p">cicord init my-community && cd my-community</span>
+<span class="p">cicord dev --sim</span>
 <span class="t-com"># then open http://127.0.0.1:7420/admin/</span></code></pre>
         </div>
       </div>
     </div>
   </section>
 </Base>
+
+<script>
+  // Product tour tabs (WAI-ARIA tabs: click, arrows, Home and End).
+  for (const list of document.querySelectorAll<HTMLElement>(".tour__tabs")) {
+    const tabs = [...list.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const select = (tab: HTMLButtonElement) => {
+      for (const t of tabs) {
+        const on = t === tab;
+        t.setAttribute("aria-selected", String(on));
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute("aria-controls")!)!.hidden = !on;
+      }
+    };
+    list.addEventListener("click", (e) => {
+      const tab = (e.target as HTMLElement).closest<HTMLButtonElement>('[role="tab"]');
+      if (tab) select(tab);
+    });
+    list.addEventListener("keydown", (e) => {
+      const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
+      if (i < 0) return;
+      const next =
+        e.key === "ArrowRight" ? tabs[(i + 1) % tabs.length]
+        : e.key === "ArrowLeft" ? tabs[(i - 1 + tabs.length) % tabs.length]
+        : e.key === "Home" ? tabs[0]
+        : e.key === "End" ? tabs[tabs.length - 1]
+        : undefined;
+      if (!next) return;
+      e.preventDefault();
+      select(next);
+      next.focus();
+    });
+  }
+</script>
 
 <style>
   /* Shared section rhythm ------------------------------------------------- */
@@ -635,6 +832,116 @@ const official = [
     color: var(--warn);
     font-size: 0.8125rem;
     font-weight: 500;
+  }
+
+  /* Product tour ---------------------------------------------------------- */
+  .tour__head {
+    display: grid;
+    gap: 1rem;
+  }
+
+  @media (min-width: 64rem) {
+    .tour__head {
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+      column-gap: 4rem;
+      align-items: end;
+    }
+  }
+
+  .tour__lede {
+    max-width: 46ch;
+    color: var(--muted);
+    font-size: 1.0625rem;
+    line-height: 1.55;
+  }
+
+  .tour__tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: clamp(1.75rem, 4vw, 2.5rem);
+    padding: 0.25rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tour__tabs [role="tab"] {
+    flex: none;
+    padding: 0.45rem 0.85rem;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s var(--ease), background-color 0.15s var(--ease);
+  }
+
+  .tour__tabs [role="tab"]:hover {
+    color: var(--fg);
+  }
+
+  .tour__tabs [role="tab"][aria-selected="true"] {
+    background: var(--surface-2);
+    color: var(--fg);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+
+  .tour__tabs [role="tab"]:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
+  }
+
+  .window {
+    margin-top: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    overflow: hidden;
+    box-shadow: 0 30px 80px -40px rgb(88 101 242 / 0.35);
+  }
+
+  .window[hidden] {
+    display: none;
+  }
+
+  .window__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .window__path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--subtle);
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .window__shot {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #000;
+  }
+
+  .window__caption {
+    padding: 0.85rem 1rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.9375rem;
   }
 
   /* The flow figure: diff, git push, plan. */

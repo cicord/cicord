@@ -1,46 +1,41 @@
 #!/bin/sh
-# 05-backup.sh — daily local backup of the Cicord runtime state (idempotent).
+# 05-backup.sh — daily backup of the Cicord runtime state, copied off the server (idempotent).
 # Run as root: sudo sh 05-backup.sh [compose project name]
 #
-# Installs /usr/local/sbin/cicord-backup and a systemd timer (daily, 03:30 UTC) that
-# writes /var/backups/cicord/cicord-<UTC timestamp>.tar.zst (mode 0600) with:
-#   - cicord.db: an online, consistent copy (sqlite3 .backup, safe while the runtime runs)
-#   - the embedded repository (repo.git) and write-back clone, when present
-# The encryption key secret.key is deliberately NOT included: the archives hold the
-# encrypted secrets, the key is kept once, apart (password manager), so a stolen backup
-# reveals nothing. Restoring needs both. link.key is not included either: it is
+# Installs /usr/local/sbin/cicord-backup (bin/cicord-backup, with lib/cicord-ops.sh as
+# /usr/local/lib/cicord/ops.sh) and a systemd timer (daily, 03:30 UTC). Each run writes
+# /var/backups/cicord/cicord-<UTC timestamp>.tar.zst (mode 0600) with:
+#   - cicord.db: an online, consistent copy (sqlite3 .backup, safe while the runtime runs),
+#     checked with PRAGMA integrity_check;
+#   - the embedded repository (repo.git) and the write-back clone, when present;
+#   - MANIFEST: the image, the schema version and the database checksum.
+# The encryption key secret.key is NEVER in an archive: the archives hold the secrets
+# encrypted, the key is kept once, apart (password manager), so a stolen backup reveals
+# nothing. Restoring needs both (07-restore.sh). link.key is not included either: it is
 # regenerated when missing (outstanding portal links then stop working, nothing else).
-# Backups older than 14 days are deleted. Copy them off the server too (provider backup
-# storage, another machine): a local backup does not survive the loss of the server.
+#
+# Off-host copy, after each backup, from /opt/cicord/.env:
+#   CICORD_BACKUP_REMOTE=rclone:<remote>:<path>       e.g. rclone:b2:my-bucket/cicord
+#   CICORD_BACKUP_REMOTE=rsync:[user@]host:<path>     e.g. rsync:backup@nas.example.org:/srv/cicord
+#   CICORD_BACKUP_KEEP_DAYS=14                        local retention
+# A run fails (non-zero exit, the unit is failed, and an alert is sent when the runtime has an
+# alert webhook) when cicord.db is missing, fails its integrity check, or the copy fails.
 set -eu
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
 PROJECT="${1:-cicord}"
-apt-get -y -q install sqlite3 zstd >/dev/null
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=SCRIPTDIR/lib/cicord-ops.sh
+. "$HERE/lib/cicord-ops.sh"
+apt-get -y -q install sqlite3 zstd rsync >/dev/null
+case "$(envget CICORD_BACKUP_REMOTE)" in
+  rclone:*) command -v rclone >/dev/null || apt-get -y -q install rclone >/dev/null ;;
+esac
+install -d -m 0755 /usr/local/lib/cicord
+install -m 0644 "$HERE/lib/cicord-ops.sh" /usr/local/lib/cicord/ops.sh
+install -m 0700 "$HERE/bin/cicord-backup" /usr/local/sbin/cicord-backup
 
-cat > /usr/local/sbin/cicord-backup <<EOF
-#!/bin/sh
-set -eu
-umask 077
-DATA="\$(docker volume inspect -f '{{.Mountpoint}}' ${PROJECT}_cicord-data)"
-OUT=/var/backups/cicord
-STAMP="\$(date -u +%Y%m%dT%H%M%SZ)"
-WORK="\$(mktemp -d)"
-trap 'rm -rf "\$WORK"' EXIT
-mkdir -p "\$OUT"
-if [ -f "\$DATA/cicord.db" ]; then
-  sqlite3 "\$DATA/cicord.db" ".backup '\$WORK/cicord.db'"
-  sqlite3 "\$WORK/cicord.db" "PRAGMA integrity_check;" | grep -qx ok
-fi
-for d in repo.git writeback; do [ -d "\$DATA/\$d" ] && cp -a "\$DATA/\$d" "\$WORK/"; done
-tar -C "\$WORK" -cf - . | zstd -q -19 -o "\$OUT/cicord-\$STAMP.tar.zst"
-chmod 600 "\$OUT/cicord-\$STAMP.tar.zst"
-find "\$OUT" -name 'cicord-*.tar.zst' -mtime +14 -delete
-echo "backup: \$OUT/cicord-\$STAMP.tar.zst"
-EOF
-chmod 700 /usr/local/sbin/cicord-backup
-
-cat > /etc/systemd/system/cicord-backup.service <<'EOF'
+cat > /etc/systemd/system/cicord-backup.service <<UNIT
 [Unit]
 Description=Backup of the Cicord runtime state
 After=docker.service
@@ -48,11 +43,12 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
+Environment=CICORD_PROJECT=$PROJECT
 ExecStart=/usr/local/sbin/cicord-backup
 Nice=10
 IOSchedulingClass=idle
-EOF
-cat > /etc/systemd/system/cicord-backup.timer <<'EOF'
+UNIT
+cat > /etc/systemd/system/cicord-backup.timer <<'UNIT'
 [Unit]
 Description=Daily backup of the Cicord runtime state
 
@@ -63,7 +59,9 @@ RandomizedDelaySec=5m
 
 [Install]
 WantedBy=timers.target
-EOF
+UNIT
 systemctl daemon-reload
 systemctl enable --now cicord-backup.timer >/dev/null
 systemctl list-timers cicord-backup.timer --no-pager | head -3
+[ -n "$(envget CICORD_BACKUP_REMOTE)" ] ||
+  echo "No CICORD_BACKUP_REMOTE in $CICORD_ENV: backups stay on this server. See https://cicord.dev/docs/self-hosting/backups-and-secrets/#off-host-copies"

@@ -1,6 +1,7 @@
 /**
- * Mock data mirroring examples/basic (servers/ma-commu.yaml, bots/moderator/bot.yaml and the
- * two example plugins). Used by `vp dev --mode mock` and the tests.
+ * Mock data modelled on examples/basic (a server YAML, bots/moderator/bot.yaml and the two
+ * example plugins), with English demo content: "Pixel Haven", a gaming community. Used by
+ * `vp dev --mode mock` (product screenshots) and the tests.
  */
 import type { Json } from "@cicord/client";
 import onboardingSchema from "../../../../examples/basic/plugins/onboarding/config.schema.json";
@@ -11,7 +12,8 @@ import pollsSchema from "../../../../examples/showcase/plugins/polls/config.sche
 import ticketsSchema from "../../../../examples/showcase/plugins/tickets/config.schema.json";
 import type { JsonSchema } from "../schema-form/schema.ts";
 
-export const SERVER_KEY = "ma-commu";
+export const SERVER_KEY = "pixel-haven";
+export const SERVER_NAME = "Pixel Haven";
 export const SERVER_ID = "112233445566778899";
 
 export const schemas: Record<string, JsonSchema> = {
@@ -28,40 +30,40 @@ export interface MockRole {
 
 export const roles: MockRole[] = [
   { key: "admin", id: "r-admin", name: "Admin", color: "#e74c3c" },
-  { key: "modo", id: "r-modo", name: "Modo", color: "#e67e22" },
-  { key: "member", id: "r-member", name: "Membre", color: "#3498db" },
+  { key: "mod", id: "r-mod", name: "Moderator", color: "#e67e22" },
+  { key: "member", id: "r-member", name: "Member", color: "#3498db" },
   { key: "minecraft", id: "r-mc", name: "Minecraft", color: "#5b8731" },
   { key: "valorant", id: "r-valo", name: "Valorant", color: "#ff4655" },
   { key: "lol", id: "r-lol", name: "League of Legends", color: "#c89b3c" },
   { key: "pc", id: "r-pc", name: "PC", color: "#95a5a6" },
   { key: "console", id: "r-console", name: "Console", color: "#9b59b6" },
   { key: "mobile", id: "r-mobile", name: "Mobile", color: "#1abc9c" },
-  { key: "ping-events", id: "r-ping", name: "Notifs événements", color: "#f1c40f" },
+  { key: "ping-events", id: "r-ping", name: "Event Pings", color: "#f1c40f" },
 ];
 
 /** Roles that exist on Discord but are not declared in YAML. */
 export const unmanagedRoles: MockRole[] = [
-  { key: "", id: "r-gardien", name: "Gardien", color: "#7289da" },
+  { key: "", id: "r-warden", name: "Warden", color: "#7289da" },
   { key: "", id: "r-vip", name: "VIP 2023", color: "#ad1457" },
 ];
 
 export const categories = [
-  { key: "info", id: "c-info", name: "Infos" },
-  { key: "community", id: "c-community", name: "Communauté" },
+  { key: "info", id: "c-info", name: "Info" },
+  { key: "community", id: "c-community", name: "Community" },
   { key: "staff", id: "c-staff", name: "Staff" },
 ];
 
 export const channels = [
-  { key: "rules", id: "ch-rules", name: "règlement", type: "text", category: "info" },
+  { key: "rules", id: "ch-rules", name: "rules", type: "text", category: "info" },
   {
     key: "announcements",
     id: "ch-announcements",
-    name: "annonces",
+    name: "announcements",
     type: "announcement",
     category: "info",
   },
-  { key: "general", id: "ch-general", name: "général", type: "text", category: "community" },
-  { key: "voice", id: "ch-voice", name: "Vocal", type: "voice", category: "community" },
+  { key: "general", id: "ch-general", name: "general", type: "text", category: "community" },
+  { key: "voice", id: "ch-voice", name: "Lounge", type: "voice", category: "community" },
   { key: "staff-chat", id: "ch-staff", name: "staff", type: "text", category: "staff" },
 ];
 
@@ -74,47 +76,47 @@ export const users = {
   alice: { id: "101", username: "alice", displayName: "Alice", avatarUrl: "" },
   bob: { id: "102", username: "bob", displayName: "Bob", avatarUrl: "" },
   charlie: { id: "103", username: "charlie", displayName: "Charlie", avatarUrl: "" },
-  mina: { id: "104", username: "mina", displayName: "Mina (modo)", avatarUrl: "" },
+  mina: { id: "104", username: "mina", displayName: "Mina (mod)", avatarUrl: "" },
 };
 
-export const bot = { id: "900", username: "Gardien", displayName: "Gardien", avatarUrl: "" };
+export const bot = { id: "900", username: "Warden", displayName: "Warden", avatarUrl: "" };
 
 export const welcomeBase: { [key: string]: Json } = {
   channel: "general",
-  message: "Bienvenue {member} sur {server} ! 👋",
+  message: "Welcome {member} to {server}! 👋",
   autoRole: "member",
   dmOnboarding: true,
 };
 
 export const welcomeOverride: { [key: string]: Json } = {
-  message: "Salut {member}, bienvenue sur {server} ! Passe lire le règlement.",
+  message: "Hey {member}, welcome to {server}! Take a minute to read the rules.",
 };
 
 export const onboardingBase: { [key: string]: Json } = {
-  title: "Bienvenue sur Ma Commu !",
+  title: "Welcome to Pixel Haven!",
   intro:
-    "Trois petites questions pour personnaliser ton expérience. Tu pourras changer d'avis quand tu veux avec /onboarding.",
+    "Three quick questions to set things up for you. You can change your answers anytime with /onboarding.",
   steps: [
     {
-      id: "jeux",
-      title: "À quoi tu joues ?",
-      description: "Tu auras accès aux salons et aux pings de tes jeux.",
+      id: "games",
+      title: "What do you play?",
+      description: "You get the channels and pings for your games.",
       multiple: true,
       options: [
-        { role: "minecraft", emoji: "⛏️", description: "Survie, créatif et serveur de la commu" },
-        { role: "valorant", emoji: "🎯", description: "Ranked, customs et tournois" },
+        { role: "minecraft", emoji: "⛏️", description: "Survival, creative and the community SMP" },
+        { role: "valorant", emoji: "🎯", description: "Ranked, customs and tournaments" },
         {
           role: "lol",
           label: "League of Legends",
           emoji: "🛡️",
-          description: "Flex, ARAM et Clash",
+          description: "Flex, ARAM and Clash",
         },
       ],
     },
     {
-      id: "plateforme",
-      title: "Tu joues surtout sur…",
-      description: "Pour trouver des coéquipiers sur la même plateforme.",
+      id: "platform",
+      title: "Where do you mostly play?",
+      description: "So you can find teammates on the same platform.",
       required: true,
       options: [
         { role: "pc", emoji: "🖥️" },
@@ -123,23 +125,23 @@ export const onboardingBase: { [key: string]: Json } = {
       ],
     },
     {
-      id: "notifs",
-      title: "On te prévient pour les événements ?",
-      description: "Soirées jeux, tournois et lives de la commu. Zéro spam, promis.",
+      id: "notifications",
+      title: "Want a heads-up for events?",
+      description: "Game nights, tournaments and community streams. No spam, promise.",
       options: [
         {
           role: "ping-events",
-          label: "Oui, ping-moi !",
+          label: "Yes, ping me!",
           emoji: "🔔",
-          description: "Tu seras mentionné à chaque nouvel événement",
+          description: "You get mentioned for every new event",
         },
       ],
     },
   ],
   completedRole: "member",
-  successMessage: "C'est tout bon ! Tes rôles sont à jour, file dire bonjour dans #général.",
-  linkMessage: "Choisis tes rôles sur le portail de la commu :",
-  buttonLabel: "Choisir mes rôles",
+  successMessage: "All set! Your roles are updated, come say hi in #general.",
+  linkMessage: "Pick your roles on the community portal:",
+  buttonLabel: "Pick my roles",
 };
 
 export const plugins = {
@@ -177,9 +179,9 @@ export const plugins = {
 
 export const serverSpec: { [key: string]: Json } = {
   discordId: SERVER_ID,
-  profile: { name: "Ma Commu", verificationLevel: "medium", systemChannel: "general" },
+  profile: { name: SERVER_NAME, verificationLevel: "medium", systemChannel: "general" },
   syncPolicy: { selfHeal: false, prune: false, deletionProtection: true },
-  access: { admins: { roles: ["admin"] }, moderators: { roles: ["modo"] } },
+  access: { admins: { roles: ["admin"] }, moderators: { roles: ["mod"] } },
 };
 
 // ───────────────────────────────────────────────────────────── store (https://cicord.dev/docs/reference/http-api/store/)
@@ -227,10 +229,10 @@ export const bundledPlugins: MockStorePlugin[] = [
   },
   {
     name: "tickets",
-    version: "0.1.0",
+    version: "0.2.1",
     displayName: "Tickets",
     description:
-      "Support tickets in private channels. Members open a ticket from a panel button and a short form; staff and the member talk in a channel only they can see.",
+      "Support tickets in private channels, opened from a panel button or the community portal. Members follow theirs on the portal; staff manage the queue there (assignee, priority, labels, replies) and read ticket channels (MessageContent). Closing posts a summary to the staff log.",
     keywords: ["tickets", "support", "helpdesk", "portal"],
     verified: true,
     publisher: "cicord",
@@ -239,10 +241,11 @@ export const bundledPlugins: MockStorePlugin[] = [
       "discord.messages.read",
       "discord.channels.read",
       "discord.channels.manage",
+      "discord.members.read",
       "storage.kv",
       "portal.routes",
     ],
-    intents: ["ServerMessages"],
+    intents: ["ServerMessages", "MessageContent", "ServerMembers"],
     network: [],
     schema: ticketsSchema as unknown as JsonSchema,
     commands: [{ name: "ticket", description: "Open a support ticket" }],

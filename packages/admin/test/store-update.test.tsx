@@ -59,7 +59,7 @@ async function login(user: ReturnType<typeof userEvent.setup>, who = /Owner/) {
 const updates = (sent: Sent[]) =>
   sent.filter((s) => s.method === "POST" && s.path.endsWith("/update"));
 
-const SERVER = "/admin/servers/ma-commu";
+const SERVER = "/admin/servers/pixel-haven";
 
 describe("plugin updates", () => {
   test("tables show the update badge and filter on it", async () => {
@@ -157,7 +157,7 @@ describe("plugin updates", () => {
             {
               severity: "error",
               file: "bots/moderator/bot.yaml",
-              message: "[server ma-commu] missing channel",
+              message: "[server pixel-haven] missing channel",
             },
           ],
         },
@@ -169,7 +169,7 @@ describe("plugin updates", () => {
     expect(
       await within(main).findByText("The configuration is not valid with the new version"),
     ).toBeTruthy();
-    expect(within(main).getByText("[server ma-commu] missing channel")).toBeTruthy();
+    expect(within(main).getByText("[server pixel-haven] missing channel")).toBeTruthy();
   });
 
   test("a plugin that also runs where the viewer is not admin cannot be updated", async () => {
@@ -181,16 +181,16 @@ describe("plugin updates", () => {
         const review = (await (await runtime.fetch(url.toString(), init)).json()) as object;
         return json({
           ...review,
-          servers: ["annexe", "ma-commu"],
-          missingAdmin: ["annexe"],
-          restricted: [{ server: "annexe", instances: 2 }],
+          servers: ["annex", "pixel-haven"],
+          missingAdmin: ["annex"],
+          restricted: [{ server: "annex", instances: 2 }],
         });
       },
     );
     await login(user);
     const main = screen.getByRole("main");
     expect(await within(main).findByText("You cannot apply this update")).toBeTruthy();
-    expect(within(main).getByText("annexe: 2 instances")).toBeTruthy();
+    expect(within(main).getByText("annex: 2 instances")).toBeTruthy();
     await user.click(within(main).getByRole("checkbox", { name: /I trust acme/ }));
     expect(within(main).getByRole("button", { name: "Update to 0.4.1" })).toHaveProperty(
       "disabled",

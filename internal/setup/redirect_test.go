@@ -20,7 +20,7 @@ func (redirectProbe) Servers(context.Context, string) ([]ServerSummary, error) {
 // answered "invalid redirect_uri" at the first admin login. The wizard must say so
 // when the client secret is saved.
 func TestCheckRedirect(t *testing.T) {
-	bot := &BotState{SecretRef: "DISCORD_TOKEN_GARDIEN", ApplicationID: "999"}
+	bot := &BotState{SecretRef: "DISCORD_TOKEN_WARDEN", ApplicationID: "999"}
 	env := func(name string) (string, bool) { return "tok", name == bot.SecretRef }
 	cases := []struct {
 		name string
@@ -48,8 +48,8 @@ func TestCheckRedirect(t *testing.T) {
 }
 
 func TestPruneEmptyDropsBlankListRows(t *testing.T) {
-	got := pruneEmpty(map[string]any{"roles": []any{"modo", "", nil}, "empty": []any{""}, "name": ""})
-	if r, ok := got["roles"].([]any); !ok || len(r) != 1 || r[0] != "modo" || len(got) != 1 {
+	got := pruneEmpty(map[string]any{"roles": []any{"moderator", "", nil}, "empty": []any{""}, "name": ""})
+	if r, ok := got["roles"].([]any); !ok || len(r) != 1 || r[0] != "moderator" || len(got) != 1 {
 		t.Errorf("pruneEmpty = %v", got)
 	}
 }
@@ -61,7 +61,7 @@ func TestCheckRedirectAdminURL(t *testing.T) {
 		public = "https://community.example.org/auth/callback"
 		admin  = "https://cicord.example.ts.net/auth/callback"
 	)
-	bot := &BotState{SecretRef: "DISCORD_TOKEN_GARDIEN", ApplicationID: "999"}
+	bot := &BotState{SecretRef: "DISCORD_TOKEN_WARDEN", ApplicationID: "999"}
 	env := func(name string) (string, bool) { return "tok", name == bot.SecretRef }
 	cases := []struct {
 		name    string

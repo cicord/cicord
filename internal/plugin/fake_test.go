@@ -442,14 +442,14 @@ func newFakeResolver() *fakeResolver {
 			state.KindCategory: {"support": "300"},
 		},
 		channels: map[string]discord.Channel{
-			"100": {ID: "100", ServerID: "10", Name: "général", Type: discord.ChannelText},
-			"101": {ID: "101", ServerID: "10", Name: "règles", Type: discord.ChannelText},
+			"100": {ID: "100", ServerID: "10", Name: "general", Type: discord.ChannelText},
+			"101": {ID: "101", ServerID: "10", Name: "rules", Type: discord.ChannelText},
 			"102": {ID: "102", ServerID: "10", Name: "unmanaged", Type: discord.ChannelText},
 		},
 		roles: map[string]discord.Role{
 			"10":  {ID: "10", Name: "@everyone"},
-			"200": {ID: "200", Name: "Membre", Color: 0x3498db},
-			"201": {ID: "201", Name: "Modo"},
+			"200": {ID: "200", Name: "Member", Color: 0x3498db},
+			"201": {ID: "201", Name: "Moderator"},
 		},
 	}
 }
@@ -590,9 +590,9 @@ func testEnv(dc *fakeDiscord) Env {
 	return Env{
 		BotKey: "moderator", InstanceName: "inst", PluginName: "test", PluginVersion: "0.1.0",
 		Bot: discord.User{ID: "1", Username: "cicord", Bot: true}, ApplicationID: "app",
-		ServerKey: "ma-commu", ServerID: "10", ServerName: "Ma Commu",
+		ServerKey: "my-community", ServerID: "10", ServerName: "My Community",
 		Config: map[string]any{"greeting": "hi"}, Grants: allGrants, MessageContent: true,
-		Discord: dc, Resolver: newFakeResolver(), Portal: fakePortal{}, TaskScope: "plugin:moderator/inst/ma-commu",
+		Discord: dc, Resolver: newFakeResolver(), Portal: fakePortal{}, TaskScope: "plugin:moderator/inst/my-community",
 	}
 }
 

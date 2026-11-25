@@ -46,17 +46,17 @@ func TestPortalServerNoCodeFields(t *testing.T) {
 	e := start(t)
 	c := e.client()
 	var p portalServerDTO
-	c.expect(200, "GET", "/api/v1/portal/ma-commu", nil).json(t, &p)
-	if p.Title != "Bienvenue sur Ma Commu" || !strings.Contains(p.Tagline, "francophone") || !strings.Contains(p.Description, "## Ce que tu trouveras ici") {
+	c.expect(200, "GET", "/api/v1/portal/my-community", nil).json(t, &p)
+	if p.Title != "Welcome to My Community" || !strings.Contains(p.Tagline, "game nights") || !strings.Contains(p.Description, "## What you'll find here") {
 		t.Errorf("texts = %q / %q / %q", p.Title, p.Tagline, p.Description)
 	}
-	if p.Locale != "fr" || !p.Pages.Onboarding || !p.Pages.Profile || !p.Pages.Leaderboard || !p.Pages.Tickets {
+	if p.Locale != "en" || !p.Pages.Onboarding || !p.Pages.Profile || !p.Pages.Leaderboard || !p.Pages.Tickets {
 		t.Errorf("locale/pages = %q %+v", p.Locale, p.Pages)
 	}
-	if len(p.Links) != 4 || p.Links[0] != (portalLinkDTO{Label: "Site web", URL: "https://ma-commu.example", Icon: "website"}) {
+	if len(p.Links) != 4 || p.Links[0] != (portalLinkDTO{Label: "Website", URL: "https://my-community.example", Icon: "website"}) {
 		t.Errorf("links = %+v", p.Links)
 	}
-	if !strings.HasPrefix(p.Theme.Logo, "/api/v1/portal/ma-commu/logo?v=") || !strings.HasPrefix(p.Banner, "/api/v1/portal/ma-commu/banner?v=") {
+	if !strings.HasPrefix(p.Theme.Logo, "/api/v1/portal/my-community/logo?v=") || !strings.HasPrefix(p.Banner, "/api/v1/portal/my-community/banner?v=") {
 		t.Fatalf("image URLs = %q %q", p.Theme.Logo, p.Banner)
 	}
 
@@ -76,21 +76,21 @@ func TestPortalServerNoCodeFields(t *testing.T) {
 	}
 
 	// Pages, defaults and absent images.
-	srvFile := filepath.Join(e.dir, "servers", "ma-commu.yaml")
+	srvFile := filepath.Join(e.dir, "servers", "my-community.yaml")
 	data, _ := os.ReadFile(srvFile)
 	s := strings.Replace(string(data), "    banner: ../assets/banner.jpg\n", "", 1)
 	s = strings.Replace(s, "      profile: true\n", "      profile: false\n", 1)
-	s = strings.Replace(s, "    title: Bienvenue sur Ma Commu\n", "", 1)
+	s = strings.Replace(s, "    title: Welcome to My Community\n", "", 1)
 	writeTestFile(t, srvFile, s)
 	e.waitFor("profile page disabled", func() bool {
 		srv, _ := e.rt.ServerConfig(serverKey)
 		return srv.Spec.Portal.Pages != nil && srv.Spec.Portal.Pages.Profile != nil && !*srv.Spec.Portal.Pages.Profile
 	})
-	c.expect(200, "GET", "/api/v1/portal/ma-commu", nil).json(t, &p)
+	c.expect(200, "GET", "/api/v1/portal/my-community", nil).json(t, &p)
 	if p.Pages.Profile || !p.Pages.Onboarding || p.Banner != "" || p.Title != p.Name {
 		t.Errorf("after edit: pages %+v banner %q title %q name %q", p.Pages, p.Banner, p.Title, p.Name)
 	}
-	c.expect(404, "GET", "/api/v1/portal/ma-commu/banner", nil)
+	c.expect(404, "GET", "/api/v1/portal/my-community/banner", nil)
 }
 
 func TestPortalImageRejectsEscapes(t *testing.T) {
@@ -101,14 +101,14 @@ func TestPortalImageRejectsEscapes(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(e.dir, "assets", "evil.png")); err != nil {
 		t.Fatal(err)
 	}
-	srvFile := filepath.Join(e.dir, "servers", "ma-commu.yaml")
+	srvFile := filepath.Join(e.dir, "servers", "my-community.yaml")
 	data, _ := os.ReadFile(srvFile)
 	writeTestFile(t, srvFile, strings.Replace(string(data), "../assets/logo.svg", "../assets/evil.png", 1))
 	e.waitFor("logo changed", func() bool {
 		srv, _ := e.rt.ServerConfig(serverKey)
 		return srv.Spec.Portal.Theme.Logo == "../assets/evil.png"
 	})
-	if r := c.do("GET", "/api/v1/portal/ma-commu/logo", nil); r.status != 404 || strings.Contains(string(r.body), "secret") {
+	if r := c.do("GET", "/api/v1/portal/my-community/logo", nil); r.status != 404 || strings.Contains(string(r.body), "secret") {
 		t.Fatalf("symlinked logo = %d %s", r.status, r.body)
 	}
 }
@@ -136,7 +136,7 @@ func TestCustomPortalFromRevision(t *testing.T) {
 	writeTestFile(t, filepath.Join(dist, "favicon.svg"), "<svg/>")
 	e.waitFor("custom portal served", func() bool { return string(c.do("GET", "/", nil).body) == "<html>custom v1</html>" })
 
-	r := c.expect(200, "GET", "/onboarding?server=ma-commu", nil)
+	r := c.expect(200, "GET", "/onboarding?server=my-community", nil)
 	if string(r.body) != "<html>custom v1</html>" || r.header.Get("Cache-Control") != "no-cache" || r.header.Get("X-Cicord-Portal") != "repository" {
 		t.Errorf("SPA fallback = %s %v", r.body, r.header)
 	}
@@ -159,7 +159,7 @@ func TestCustomPortalFromRevision(t *testing.T) {
 	if r := c.do("POST", "/", nil); r.status != 405 {
 		t.Errorf("POST / = %d", r.status)
 	}
-	if r := c.expect(200, "GET", "/api/v1/portal/ma-commu", nil); !strings.Contains(string(r.body), `"key":"ma-commu"`) {
+	if r := c.expect(200, "GET", "/api/v1/portal/my-community", nil); !strings.Contains(string(r.body), `"key":"my-community"`) {
 		t.Errorf("API shadowed: %s", r.body)
 	}
 
@@ -263,12 +263,12 @@ func TestTokenModeSessions(t *testing.T) {
 	tc.noCSRF, tc.bearer = true, ts.Token
 	// Portal endpoints: full role (the owner is admin of the server).
 	var pm struct{ Role string }
-	tc.expect(200, "GET", "/api/v1/portal/ma-commu/me", nil).json(t, &pm)
+	tc.expect(200, "GET", "/api/v1/portal/my-community/me", nil).json(t, &pm)
 	if pm.Role != "admin" {
 		t.Errorf("portal role = %q", pm.Role)
 	}
 	// Admin endpoints: at most member.
-	if r := tc.do("GET", "/api/v1/servers/ma-commu", nil); r.status != 403 {
+	if r := tc.do("GET", "/api/v1/servers/my-community", nil); r.status != 403 {
 		t.Errorf("admin endpoint with a token session = %d %s", r.status, r.body)
 	}
 	var me meDTO
@@ -277,7 +277,7 @@ func TestTokenModeSessions(t *testing.T) {
 		t.Errorf("/me servers = %+v", me.Servers)
 	}
 	// Unsafe request from the embedding origin with the token, no CSRF header needed.
-	if r := tc.do("POST", "/api/v1/servers/ma-commu/sync", nil, "Origin", fan); r.status != 403 || r.errCode() != "forbidden" {
+	if r := tc.do("POST", "/api/v1/servers/my-community/sync", nil, "Origin", fan); r.status != 403 || r.errCode() != "forbidden" {
 		t.Errorf("sync with token = %d %s", r.status, r.body)
 	}
 	// From a non-allowed origin: refused before auth.

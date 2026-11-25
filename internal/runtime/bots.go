@@ -307,9 +307,9 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 			r.publish(in.Bot, srt.cfg.Spec.DiscordID, topic, payload)
 			return nil
 		},
-		Logger:    r.log.With("bot", in.Bot, "instance", in.Name, "server", in.Server),
+		Logger:    r.log, // the instance adds bot, plugin, instance and server
 		Limits:    r.opts.PluginLimits,
-		OnHandler: r.metrics.onHandler(in),
+		OnHandler: r.onHandler(in),
 	}
 	inst, err := plugin.NewInstance(irt.plugin.code, irt.plugin.def, env)
 	if err != nil {
@@ -394,17 +394,29 @@ func (h *botHost) install(ctx context.Context, a *active) {
 			u := p.Username
 			sp.Username = &u
 		}
-		if p.Avatar != "" {
-			data, err := os.ReadFile(filepath.Join(a.repo.Root, filepath.Dir(b.File), filepath.FromSlash(p.Avatar)))
-			if err == nil {
-				sum := sha256.Sum256(data)
-				sig += hex.EncodeToString(sum[:])
-				if h.profileHash != sig {
-					sp.Avatar = &data
-				}
+		// Images are files relative to bot.yaml; the signature carries their hashes, so an
+		// unchanged profile is not uploaded again.
+		images := []struct {
+			name, path string
+			dst        **[]byte
+		}{{"avatar", p.Avatar, &sp.Avatar}, {"banner", p.Banner, &sp.Banner}}
+		for _, img := range images {
+			if img.path == "" {
+				continue
 			}
+			data, err := os.ReadFile(filepath.Join(a.repo.Root, filepath.Dir(b.File), filepath.FromSlash(img.path)))
+			if err != nil {
+				h.rt.log.Warn("bot profile: read "+img.name, "bot", h.key, "err", err)
+				continue
+			}
+			sum := sha256.Sum256(data)
+			sig += "|" + img.name + ":" + hex.EncodeToString(sum[:])
+			*img.dst = &data
 		}
-		if (sp.Username != nil || sp.Avatar != nil) && h.profileHash != sig {
+		if h.profileHash == sig {
+			sp.Avatar, sp.Banner = nil, nil
+		}
+		if (sp.Username != nil || sp.Avatar != nil || sp.Banner != nil) && h.profileHash != sig {
 			if _, err := h.session.UpdateSelf(ctx, sp); err != nil {
 				h.rt.log.Warn("update bot profile", "bot", h.key, "err", err)
 			} else {
@@ -434,8 +446,9 @@ func (h *botHost) handle(ev discord.Event) {
 	if c := rt.caches[sid]; c != nil {
 		c.Observe(ev)
 	}
-	if s := rt.reconcilers[sid]; s != nil && s.rec != nil {
-		s.rec.HandleEvent(ev)
+	if s := rt.reconcilers[sid]; s != nil && s.rec != nil && s.rec.HandleEvent(ev) {
+		// Drift: the server's sync state, plan, resources and drift changed.
+		h.rt.notify(ChangeSync, s.key)
 	}
 	switch e := ev.(type) {
 	case discord.InteractionCreateEvent:
@@ -463,7 +476,7 @@ func (h *botHost) handle(ev discord.Event) {
 		done := i.inst().DispatchEvent(context.Background(), ev)
 		go func() {
 			err := <-done
-			i.setHealth(err)
+			h.rt.handlerDone(i, err)
 			if err != nil {
 				h.rt.log.Warn("plugin event handler failed", "instance", i.id(), "event", name, "err", err)
 			}
@@ -520,7 +533,7 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 	done := target.inst().DispatchInteraction(context.Background(), it, kind, localID)
 	go func() {
 		err := <-done
-		target.setHealth(err)
+		h.rt.handlerDone(target, err)
 		if err != nil {
 			h.rt.log.Warn("plugin interaction failed", "instance", target.id(), "kind", kind, "id", localID, "err", err)
 		}
@@ -541,7 +554,7 @@ func (r *Runtime) publish(bot, serverID, topic string, payload json.RawMessage) 
 					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					defer cancel()
 					err := i.inst().Deliver(ctx, topic, payload)
-					i.setHealth(err)
+					r.handlerDone(i, err)
 				}()
 			}
 		}

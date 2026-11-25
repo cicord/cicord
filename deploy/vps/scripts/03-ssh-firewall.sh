@@ -13,8 +13,9 @@ set -eu
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
 SSH_USER="${1:-ubuntu}"
-command -v tailscale >/dev/null && tailscale ip -4 >/dev/null 2>&1 || {
-  echo "Tailscale is not up: run 02-tailscale.sh first" >&2; exit 1; }
+if ! { command -v tailscale >/dev/null && tailscale ip -4 >/dev/null 2>&1; }; then
+  echo "Tailscale is not up: run 02-tailscale.sh first" >&2; exit 1
+fi
 
 echo "==> sshd"
 cat > /etc/ssh/sshd_config.d/10-cicord.conf <<EOF

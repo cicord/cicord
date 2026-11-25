@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // create-cicord-portal — copies the reference Cicord community portal into a new directory.
 //
-//   pnpm create cicord-portal portal        (or: npx create-cicord-portal portal)
+//   node packages/create-cicord-portal/bin/create-cicord-portal.mjs portal
+//
+// The package is not published on npm: outside this repository, use `cicord portal init`.
 //
 // The portal is this package itself (src/, index.html, vite.config.ts…). Workspace-only
 // version specifiers (workspace:*, catalog:) are rewritten to real versions.

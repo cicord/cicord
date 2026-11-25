@@ -105,16 +105,16 @@ func TestAssetUpload(t *testing.T) {
 		t.Fatalf("upload = %d %s", r.status, r.body)
 	}
 	r.json(t, &out)
-	if out.Mode != "commit" || out.Path != "servers/assets/ma-commu-icon.png" || out.Value != "./assets/ma-commu-icon.png" ||
+	if out.Mode != "commit" || out.Path != "servers/assets/my-community-icon.png" || out.Value != "./assets/my-community-icon.png" ||
 		out.Format != "png" || out.Width != 512 || len(out.Warnings) != 0 {
 		t.Fatalf("response = %+v", out)
 	}
-	data, err := os.ReadFile(filepath.Join(e.dir, "servers/assets/ma-commu-icon.png"))
+	data, err := os.ReadFile(filepath.Join(e.dir, "servers/assets/my-community-icon.png"))
 	if err != nil || !bytes.Equal(data, img) {
 		t.Fatalf("asset file: %v", err)
 	}
-	yml, _ := os.ReadFile(filepath.Join(e.dir, "servers/ma-commu.yaml"))
-	if !strings.Contains(string(yml), "icon: ./assets/ma-commu-icon.png") || !strings.Contains(string(yml), "systemChannel: general") {
+	yml, _ := os.ReadFile(filepath.Join(e.dir, "servers/my-community.yaml"))
+	if !strings.Contains(string(yml), "icon: ./assets/my-community-icon.png") || !strings.Contains(string(yml), "systemChannel: general") {
 		t.Fatalf("server YAML not patched:\n%s", yml)
 	}
 	rev2, _ := e.rt.Revision()
@@ -122,7 +122,7 @@ func TestAssetUpload(t *testing.T) {
 		t.Fatalf("new revision not active: %s → %s (response %q)", rev1.ID, rev2.ID, out.Revision)
 	}
 	srv, _ := e.rt.ServerConfig(serverKey)
-	if srv.Spec.Profile.Icon != "./assets/ma-commu-icon.png" {
+	if srv.Spec.Profile.Icon != "./assets/my-community-icon.png" {
 		t.Fatalf("active profile.icon = %q", srv.Spec.Profile.Icon)
 	}
 
@@ -143,7 +143,7 @@ func TestAssetUpload(t *testing.T) {
 
 	// A small banner is accepted with a warning.
 	owner.expect(200, "PUT", base+"banner", pngBytes(t, 300, 100)).json(t, &out)
-	if len(out.Warnings) == 0 || out.Value != "./assets/ma-commu-banner.png" {
+	if len(out.Warnings) == 0 || out.Value != "./assets/my-community-banner.png" {
 		t.Fatalf("banner = %+v", out)
 	}
 
@@ -164,7 +164,7 @@ func (p *prWriter) Write(_ context.Context, req writeback.Request) (writeback.Re
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.reqs = append(p.reqs, req)
-	return writeback.Result{Mode: writeback.ModePullRequest, PullRequestURL: "https://github.com/example/ma-commu-cicord/pull/7"}, nil
+	return writeback.Result{Mode: writeback.ModePullRequest, PullRequestURL: "https://github.com/example/my-community-cicord/pull/7"}, nil
 }
 
 func TestAssetUploadPullRequest(t *testing.T) {
@@ -182,15 +182,15 @@ func TestAssetUploadPullRequest(t *testing.T) {
 	}
 	req := pw.reqs[0]
 	// cicord.yaml: servers/** → pullRequest.
-	if req.Mode != writeback.ModePullRequest || len(req.Edits) != 2 || !strings.HasPrefix(req.Message, "server(ma-commu): update banner") {
+	if req.Mode != writeback.ModePullRequest || len(req.Edits) != 2 || !strings.HasPrefix(req.Message, "server(my-community): update banner") {
 		t.Fatalf("request = %+v", req)
 	}
-	yml, _ := os.ReadFile(filepath.Join(e.dir, "servers/ma-commu.yaml"))
-	next, err := req.Edits["servers/ma-commu.yaml"](yml)
-	if err != nil || !strings.Contains(string(next), "banner: ./assets/ma-commu-banner.gif") {
+	yml, _ := os.ReadFile(filepath.Join(e.dir, "servers/my-community.yaml"))
+	next, err := req.Edits["servers/my-community.yaml"](yml)
+	if err != nil || !strings.Contains(string(next), "banner: ./assets/my-community-banner.gif") {
 		t.Fatalf("yaml edit: %v\n%s", err, next)
 	}
-	if bin, _ := req.Edits["servers/assets/ma-commu-banner.gif"](nil); !bytes.HasPrefix(bin, []byte("GIF89a")) {
+	if bin, _ := req.Edits["servers/assets/my-community-banner.gif"](nil); !bytes.HasPrefix(bin, []byte("GIF89a")) {
 		t.Fatal("binary edit does not return the GIF unchanged")
 	}
 }

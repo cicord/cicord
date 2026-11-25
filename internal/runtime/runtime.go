@@ -48,7 +48,8 @@ type Options struct {
 	// Mode is "serve" or "dev"; Simulator reports that Connector is the simulator.
 	Mode      string
 	Simulator bool
-	// ResyncInterval re-runs reconciliation periodically (0 = 5m; negative disables).
+	// ResyncInterval re-plans every server periodically (0 = 5m; negative disables): the
+	// plan is applied only for servers with syncPolicy.selfHeal (see shouldApply).
 	ResyncInterval time.Duration
 	PluginLimits   plugin.Limits
 	// AllowPrivateNetworks relaxes http.fetch egress checks (dev only).
@@ -68,6 +69,9 @@ type Options struct {
 	// collecting bot of each server with analytics enabled gets the non-privileged
 	// intents the collector needs (analytics.CollectorIntents).
 	Analytics state.Analytics
+	// OnHandler receives every plugin handler result after the metrics, e.g. for alerts;
+	// it must not block.
+	OnHandler func(in config.Instance, res plugin.HandlerResult)
 	Logger    *slog.Logger
 }
 
@@ -105,6 +109,12 @@ type Runtime struct {
 	analyticsDone <-chan struct{}      // closed after the collector's last flush
 
 	changes changeHub // GET /api/v1/events
+
+	pauseMu sync.RWMutex
+	pauses  pauseState // paused servers (pause.go)
+
+	// commit is the last commit status posted for the active revision (syncMu).
+	commit struct{ sha, state string }
 }
 
 // active is an activated revision.
@@ -135,6 +145,7 @@ type serverRT struct {
 	message    string
 	lastSync   *time.Time
 	lastSyncOK bool // the last full sync succeeded
+	applied    bool // a sync of this revision succeeded (the commit status recheck)
 }
 
 type instanceRT struct {
@@ -159,21 +170,35 @@ func (i *instanceRT) id() string { return i.cfg.ID() }
 // inst is the running plugin instance (nil when it never started).
 func (i *instanceRT) inst() *plugin.Instance { return i.current.Load() }
 
-func (i *instanceRT) setHealth(err error) {
+// setHealth records the outcome of a handler call: three failures in a row make the
+// instance Degraded, a success makes it Healthy again. It reports whether the health
+// changed.
+func (i *instanceRT) setHealth(err error) bool {
 	if errors.Is(err, plugin.ErrCrashed) {
-		return // the supervisor reports crashes and restarts
+		return false // the supervisor reports crashes and restarts
 	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	before := i.health
 	if err == nil {
 		i.failures = 0
 		i.health, i.message = HealthHealthy, ""
-		return
+		return before != i.health
 	}
 	i.failures++
 	i.message = err.Error()
 	if i.failures >= 3 {
 		i.health = HealthDegraded
+	}
+	return before != i.health
+}
+
+// handlerDone is setHealth after a handler call, telling the admin console when the
+// instance's health changed.
+func (r *Runtime) handlerDone(i *instanceRT, err error) {
+	if i.setHealth(err) {
+		r.notify(ChangePlugins, i.cfg.Server)
+		r.notify(ChangeStatus, "")
 	}
 }
 
@@ -385,6 +410,12 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	log := r.log.With("revision", rev.ID)
 	log.Info("activating revision", "message", rev.Message)
 	r.commitStatus(ctx, rev, CommitPending, "Validating and applying to Discord")
+	if err := r.loadPauses(ctx); err != nil {
+		// Without the pauses, a paused server would be applied: activate nothing.
+		r.setErr(err.Error())
+		r.commitStatus(ctx, rev, CommitFailure, "Not applied: "+firstLine(err.Error()))
+		return err
+	}
 
 	repo, builds, ds, err := r.LoadAndBuild(rev.Dir)
 	if err != nil {
@@ -420,7 +451,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	}
 
 	// 2. servers: reconcile with the first connected bot that lists them
-	var serverFailures []string // "server: reason", for the commit status
+	var serverFailures []string // "Server x: reason", for the commit status
 	for _, key := range sortedKeys(repo.Servers) {
 		srv := repo.Servers[key]
 		rt := &serverRT{key: key, cfg: srv, cache: newServerCache(key, srv.Spec.DiscordID), health: HealthProgressing}
@@ -428,28 +459,33 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		host := r.reconcilingBot(repo, key)
 		if host == nil {
 			rt.health, rt.message = HealthMissing, "no connected bot is configured for this server"
-			serverFailures = append(serverFailures, key+": "+rt.message)
+			serverFailures = append(serverFailures, "Server "+key+": "+rt.message)
 			continue
 		}
 		rt.bot = host.key
 		if _, err := host.session.GetServer(ctx, srv.Spec.DiscordID); err != nil {
 			rt.health, rt.message = HealthMissing, fmt.Sprintf("bot %s cannot access the server: %v", host.key, err)
-			serverFailures = append(serverFailures, key+": "+rt.message)
+			serverFailures = append(serverFailures, "Server "+key+": "+rt.message)
 			continue
 		}
 		rt.rec = reconcile.New(reconcile.Options{
 			Server: srv, RepoRoot: rev.Dir, Client: host.session, Resources: r.opts.Store.Resources(),
 			KV: r.opts.Store.KV("reconcile:" + key), BotUserID: host.session.Self().ID,
-			Logger: log.With("server", key), Reason: "cicord " + rev.ID, Context: context.Background(),
-			OnSync: func(_ reconcile.Plan, res reconcile.Result, err error) { r.afterSelfHeal(rt, res, err) },
+			Logger: log, Reason: "cicord " + rev.ID, Context: context.Background(),
+			OnSync: func(p reconcile.Plan, res reconcile.Result, err error) { r.afterSelfHeal(rt, p, res, err) },
+			OnPlan: func(p reconcile.Plan, err error) { r.planned(rt, p, err) },
+			Paused: func() bool { return r.isPaused(key) },
 		})
-		if _, _, err := r.syncServer(ctx, rev, rt); err != nil {
+		if _, _, applied, err := r.reconcileServer(ctx, rev, rt, triggerRevision); err != nil {
 			log.Warn("server sync failed", "server", key, "err", err)
-			serverFailures = append(serverFailures, key+": "+firstLine(err.Error()))
+			serverFailures = append(serverFailures, "Server "+key+": "+firstLine(err.Error()))
+		} else if p, paused := r.Paused(key); paused && !applied {
+			serverFailures = append(serverFailures, fmt.Sprintf("Server %s paused by %s: not applied", key, p.Who()))
 		}
 	}
 
 	// 3. plugin instances
+	var pluginFailures []string // for the commit status
 	for _, in := range repo.Instances {
 		irt := &instanceRT{cfg: in, plugin: builds[in.Plugin.Key], health: HealthProgressing, quit: make(chan struct{})}
 		next.instances = append(next.instances, irt)
@@ -468,6 +504,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		if err != nil {
 			irt.health, irt.message = HealthDegraded, err.Error()
 			log.Error("plugin instance failed to start", "instance", irt.id(), "err", err)
+			pluginFailures = append(pluginFailures, fmt.Sprintf("Plugin %s on %s (bot %s) failed to start: %s", in.Name, in.Server, in.Bot, firstLine(err.Error())))
 			continue
 		}
 		irt.current.Store(inst)
@@ -496,15 +533,66 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	r.record(ctx, state.SyncRecord{Revision: rev.ID, Target: "revision", Status: "succeeded", Message: rev.Message})
 	r.metrics.activations.Inc("activated")
 	log.Info("revision active", "servers", len(next.servers), "instances", len(next.instances))
-	switch {
-	case len(serverFailures) == 1:
-		r.commitStatus(ctx, rev, CommitFailure, "Server "+serverFailures[0])
-	case len(serverFailures) > 1:
-		r.commitStatus(ctx, rev, CommitFailure, fmt.Sprintf("%d servers failed; server %s", len(serverFailures), serverFailures[0]))
-	default:
-		r.commitStatus(ctx, rev, CommitSuccess, fmt.Sprintf("Applied to %d server(s)", len(next.servers)))
-	}
+	failures := slices.Concat(serverFailures, r.botFailures(repo), pluginFailures)
+	st, desc := commitVerdict(failures, len(next.servers))
+	r.commitStatus(ctx, rev, st, desc)
 	return nil
+}
+
+// botFailures lists the bots of repo that are not connected, for the commit status.
+func (r *Runtime) botFailures(repo *config.Repo) []string {
+	var out []string
+	for _, key := range sortedKeys(repo.Bots) {
+		if r.bot(key) == nil {
+			out = append(out, fmt.Sprintf("Bot %s is not connected: %s", key, firstLine(r.botError(key))))
+		}
+	}
+	return out
+}
+
+// commitVerdict is the commit status of a revision from its problems (servers not
+// applied, bots not connected, plugin instances that failed to start).
+func commitVerdict(failures []string, servers int) (state, description string) {
+	switch len(failures) {
+	case 0:
+		return CommitSuccess, fmt.Sprintf("Applied to %d server(s)", servers)
+	case 1:
+		return CommitFailure, failures[0]
+	default:
+		return CommitFailure, fmt.Sprintf("%d problems; %s", len(failures), failures[0])
+	}
+}
+
+// recheckCommitStatus posts success for the active revision once a problem reported when
+// it was activated is gone (a paused server resumed and synced, a server fixed and
+// synced). It never turns a success into a failure: later problems are runtime health,
+// not the evaluation of the commit. Caller holds syncMu.
+func (r *Runtime) recheckCommitStatus(ctx context.Context) {
+	a := r.Active()
+	if a == nil || r.commit.sha != a.rev.SHA || r.commit.state != CommitFailure {
+		return
+	}
+	var failures []string
+	for _, key := range sortedKeys(a.servers) {
+		s := a.servers[key]
+		s.mu.Lock()
+		ok := s.applied && s.health != HealthDegraded && s.health != HealthMissing
+		s.mu.Unlock()
+		if _, paused := r.Paused(key); paused || !ok {
+			failures = append(failures, key)
+		}
+	}
+	failures = append(failures, r.botFailures(a.repo)...)
+	for _, i := range a.instances {
+		i.mu.Lock()
+		if i.health == HealthDegraded || i.health == HealthMissing {
+			failures = append(failures, i.id())
+		}
+		i.mu.Unlock()
+	}
+	if len(failures) == 0 {
+		r.commitStatus(ctx, a.rev, CommitSuccess, fmt.Sprintf("Applied to %d server(s)", len(a.servers)))
+	}
 }
 
 // commitStatus reports the state of a git revision (Options.CommitStatus).
@@ -512,7 +600,20 @@ func (r *Runtime) commitStatus(ctx context.Context, rev source.Revision, st, des
 	if r.opts.CommitStatus == nil || rev.Source != "git" || !isCommitSHA(rev.SHA) {
 		return
 	}
-	r.opts.CommitStatus(ctx, rev.SHA, st, description)
+	r.commit.sha, r.commit.state = rev.SHA, st
+	r.opts.CommitStatus(ctx, rev.SHA, st, truncateRunes(description, maxCommitDescription))
+}
+
+// maxCommitDescription is GitHub's limit for a commit status description.
+const maxCommitDescription = 140
+
+// truncateRunes shortens s to at most n runes, ending with "…" when cut.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
 }
 
 // isCommitSHA reports whether s is a full SHA-1 or SHA-256 commit hash.
@@ -541,34 +642,163 @@ func stopActive(ctx context.Context, a *active, log *slog.Logger) {
 	}
 }
 
+// syncTrigger is what starts a reconciliation of a server.
+type syncTrigger int
+
+const (
+	triggerRevision syncTrigger = iota // a new revision is activated
+	triggerManual                      // an explicit sync (API "Sync now")
+	triggerResync                      // the periodic resync (Options.ResyncInterval)
+)
+
+// shouldApply decides whether a reconciliation started by trigger applies the plan or
+// only re-plans (refreshing the drift and the status). Nothing is applied to a paused
+// server. Otherwise a new revision and an explicit sync apply; the periodic resync
+// applies only with syncPolicy.selfHeal, which reverts drift. Without it, drift is
+// reported and the server stays OutOfSync until the next revision or an explicit sync.
+func shouldApply(srv *config.Server, t syncTrigger, paused bool) bool {
+	if paused {
+		return false
+	}
+	if t == triggerResync {
+		return srv.Spec.SyncPolicy.SelfHeal()
+	}
+	return true
+}
+
+// planStatus is the health and message of a server after a plan. pending is the number
+// of its changes that were not applied (a plan without a sync); paused tells that
+// enforcement is paused on the server.
+func planStatus(srv *config.Server, plan reconcile.Plan, pending int, paused bool, err error) (health, message string) {
+	if err != nil {
+		return HealthDegraded, err.Error()
+	}
+	var parts []string
+	if pending > 0 {
+		part := fmt.Sprintf("%d change(s) to apply", pending)
+		switch {
+		case paused:
+			part += " (enforcement is paused: nothing is applied until it is resumed)"
+		case !srv.Spec.SyncPolicy.SelfHeal():
+			part += " (selfHeal is off: the next revision or Sync now applies them)"
+		}
+		parts = append(parts, part)
+	}
+	boost := 0
+	for _, b := range plan.Blocked {
+		if reconcile.WaitsForBoost(b) {
+			boost++
+		}
+	}
+	if n := len(plan.Blocked) - boost; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d change(s) blocked (%s)", n, blockedSummary(plan.Blocked)))
+	}
+	if boost > 0 {
+		parts = append(parts, fmt.Sprintf("%d wait for a higher boost level", boost))
+		if len(parts) == 1 {
+			parts[0] = fmt.Sprintf("%d change(s) wait for a higher boost level", boost)
+		}
+	}
+	return HealthHealthy, strings.Join(parts, ", ")
+}
+
+// blockedSummary names the first blocked operation that does not wait for a boost level
+// and why ("delete channel old: deletionProtection is on"), with the count of the others.
+func blockedSummary(blocked []reconcile.Blocked) string {
+	var first *reconcile.Blocked
+	n := 0
+	for i := range blocked {
+		if reconcile.WaitsForBoost(blocked[i]) {
+			continue
+		}
+		if first == nil {
+			first = &blocked[i]
+		}
+		n++
+	}
+	if first == nil {
+		return ""
+	}
+	out := fmt.Sprintf("%s %s %s: %s", first.Action, first.Kind, first.Key, firstLine(first.Reason))
+	if n > 1 {
+		out += fmt.Sprintf(" and %d more", n-1)
+	}
+	return out
+}
+
+// setStatus sets the health and message of a server, and tells the admin console when
+// they changed.
+func (r *Runtime) setStatus(rt *serverRT, health, message string) {
+	rt.mu.Lock()
+	changed := rt.health != health || rt.message != message
+	rt.health, rt.message = health, message
+	rt.mu.Unlock()
+	if changed {
+		r.notify(ChangeStatus, "")
+	}
+}
+
+// planned is Options.OnPlan of the reconcilers: every plan refreshes the server's status,
+// so that its message matches its drift (a plan that is not followed by an apply leaves
+// its changes pending).
+// A server whose last sync failed stays Degraded, with that error, while the plan still
+// has changes to apply: a plan does not retry them.
+func (r *Runtime) planned(rt *serverRT, plan reconcile.Plan, err error) {
+	rt.mu.Lock()
+	failed := rt.lastSync != nil && !rt.lastSyncOK && rt.health == HealthDegraded
+	rt.mu.Unlock()
+	if failed && err == nil && len(plan.Changes) > 0 {
+		return
+	}
+	h, m := planStatus(rt.cfg, plan, len(plan.Changes), r.isPaused(rt.key), err)
+	r.setStatus(rt, h, m)
+}
+
+// reconcileServer reconciles a server for trigger: a sync (plan and apply), or only a
+// plan when shouldApply says so (the drift and the status are refreshed, nothing is
+// applied, nothing is recorded in the sync history, except a new revision that is not
+// applied to a paused server). applied tells which.
+func (r *Runtime) reconcileServer(ctx context.Context, rev source.Revision, rt *serverRT, t syncTrigger) (plan reconcile.Plan, res reconcile.Result, applied bool, err error) {
+	pause, paused := r.Paused(rt.key)
+	if !shouldApply(rt.cfg, t, paused) {
+		plan, err = rt.rec.Plan(ctx) // OnPlan updates the status
+		if paused && t == triggerRevision {
+			msg := fmt.Sprintf("not applied: enforcement is paused by %s", pause.Who())
+			if n := len(plan.Changes); n > 0 {
+				msg += fmt.Sprintf(" (%d change(s) pending)", n)
+			}
+			r.record(ctx, state.SyncRecord{Revision: rev.ID, Target: "server:" + rt.key, Status: SyncRecordSkipped, Message: msg})
+		}
+		return plan, res, false, err
+	}
+	plan, res, err = r.syncServer(ctx, rev, rt)
+	if errors.Is(err, reconcile.ErrPaused) {
+		// paused while it was planning: nothing was applied
+		p, _ := r.Paused(rt.key)
+		return plan, res, false, &PausedError{Server: rt.key, Info: p}
+	}
+	return plan, res, true, err
+}
+
 func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serverRT) (reconcile.Plan, reconcile.Result, error) {
 	plan, res, err := rt.rec.Sync(ctx)
+	if errors.Is(err, reconcile.ErrPaused) {
+		// paused between the trigger and the apply: OnPlan refreshed the status, nothing
+		// was applied or recorded
+		return plan, res, err
+	}
 	now := time.Now().UTC()
+	health, message := planStatus(rt.cfg, plan, 0, false, err)
 	rt.mu.Lock()
 	rt.lastSync = &now
 	rt.lastSyncOK = err == nil
-	switch {
-	case err != nil:
-		rt.health, rt.message = HealthDegraded, err.Error()
-	case len(plan.Blocked) > 0:
-		boost := 0
-		for _, b := range plan.Blocked {
-			if reconcile.WaitsForBoost(b) {
-				boost++
-			}
-		}
-		switch {
-		case boost == len(plan.Blocked):
-			rt.health, rt.message = HealthHealthy, fmt.Sprintf("%d change(s) wait for a higher boost level", boost)
-		case boost > 0:
-			rt.health, rt.message = HealthHealthy, fmt.Sprintf("%d change(s) blocked, %d wait for a higher boost level", len(plan.Blocked)-boost, boost)
-		default:
-			rt.health, rt.message = HealthHealthy, fmt.Sprintf("%d change(s) blocked", len(plan.Blocked))
-		}
-	default:
-		rt.health, rt.message = HealthHealthy, ""
-	}
+	rt.applied = rt.applied || err == nil
+	changed := rt.health != health || rt.message != message
+	rt.health, rt.message = health, message
 	rt.mu.Unlock()
+	if changed {
+		r.notify(ChangeStatus, "")
+	}
 	status, msg := "succeeded", fmt.Sprintf("%d change(s) applied", len(res.Applied))
 	if err != nil {
 		status, msg = "failed", err.Error()
@@ -585,8 +815,10 @@ func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serve
 	return plan, res, err
 }
 
-func (r *Runtime) afterSelfHeal(rt *serverRT, res reconcile.Result, err error) {
+func (r *Runtime) afterSelfHeal(rt *serverRT, plan reconcile.Plan, res reconcile.Result, err error) {
 	r.metrics.reconciled(rt.key, "self_heal", res)
+	h, m := planStatus(rt.cfg, plan, 0, false, err)
+	r.setStatus(rt, h, m)
 	if len(res.Applied) == 0 && err == nil {
 		return
 	}
@@ -617,12 +849,19 @@ func (r *Runtime) resyncServers(ctx context.Context) {
 		return
 	}
 	for _, key := range sortedKeys(a.servers) {
-		if rt := a.servers[key]; rt.rec != nil {
-			if _, _, err := r.syncServer(ctx, a.rev, rt); err != nil {
-				r.log.Warn("server sync failed", "server", key, "err", err)
+		rt := a.servers[key]
+		if rt.rec == nil {
+			continue
+		}
+		if _, _, applied, err := r.reconcileServer(ctx, a.rev, rt, triggerResync); err != nil {
+			what := "sync"
+			if !applied {
+				what = "plan"
 			}
+			r.log.Warn("server "+what+" failed", "server", key, "err", err)
 		}
 	}
+	r.recheckCommitStatus(ctx)
 }
 
 // SyncServer reconciles one server now (API "sync" button).
@@ -640,11 +879,17 @@ func (r *Runtime) SyncServer(ctx context.Context, key string) (reconcile.Plan, i
 	if rt.rec == nil {
 		return reconcile.Plan{}, 0, errors.New(rt.message)
 	}
+	if p, paused := r.Paused(key); paused {
+		return reconcile.Plan{}, 0, &PausedError{Server: key, Info: p}
+	}
 	plan, err := rt.rec.Plan(ctx)
 	if err != nil {
 		return plan, 0, err
 	}
-	plan, res, err := r.syncServer(ctx, a.rev, rt)
+	plan, res, _, err := r.reconcileServer(ctx, a.rev, rt, triggerManual)
+	if err == nil {
+		r.recheckCommitStatus(ctx)
+	}
 	return plan, len(res.Applied), err
 }
 
@@ -844,7 +1089,7 @@ func (r *Runtime) HandleRoute(ctx context.Context, server, bot, instance, method
 				return plugin.RouteResponse{}, plugin.RouteDef{}, ErrNotFound
 			}
 			resp, err := i.inst().HandleRoute(ctx, method, path, req)
-			i.setHealth(err)
+			r.handlerDone(i, err)
 			return resp, route, err
 		}
 	}
@@ -888,6 +1133,9 @@ func (r *Runtime) Status() Status {
 		s.mu.Lock()
 		ss := ServerStatus{Key: key, DiscordID: s.cfg.Spec.DiscordID, Health: s.health, Message: s.message, LastSync: s.lastSync, Bot: s.bot, Drift: []DriftEntry{}}
 		s.mu.Unlock()
+		if p, ok := r.Paused(key); ok {
+			ss.Paused = &p
+		}
 		ss.Name = s.cache.Server().Name
 		if ss.Name == "" && s.cfg.Spec.Profile != nil {
 			ss.Name = s.cfg.Spec.Profile.Name
@@ -921,7 +1169,7 @@ func (r *Runtime) Status() Status {
 			bs.Plugins = append(bs.Plugins, PluginStatus{Instance: i.cfg.Name, Plugin: i.cfg.Plugin.Manifest.Metadata.Name,
 				Version: i.cfg.Plugin.Manifest.Metadata.Version, Server: i.cfg.Server, Health: i.health, Message: i.message})
 			if i.health == HealthDegraded && bs.Health == HealthHealthy {
-				bs.Health, bs.Message = HealthDegraded, "a plugin instance is degraded"
+				bs.Health, bs.Message = HealthDegraded, fmt.Sprintf("plugin instance %s on %s is degraded", i.cfg.Name, i.cfg.Server)
 			}
 			i.mu.Unlock()
 		}

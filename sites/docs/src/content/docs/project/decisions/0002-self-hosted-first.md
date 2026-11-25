@@ -19,8 +19,10 @@ multi-tenancy first would slow down the core and the community adoption.
   - storage behind an interface (SQLite / Postgres); both exist now (`internal/state/sqlite`,
     `internal/state/postgres`, selected with `--database-url`), held to the same contract by
     the conformance suite `internal/state/statetest`;
-  - plugin execution behind `PluginRuntime` so a stronger isolation backend can be added;
-  - secrets resolved through a `SecretResolver` (env vars now, secret store later);
+  - plugin execution behind `PluginRuntime` so a stronger isolation backend can be added
+    (*update: `plugin.Runtime`, see ADR-0018*);
+  - secrets resolved through a `SecretResolver` (env vars now, secret store later;
+    *update: the encrypted secret store exists, `internal/secrets`*);
   - git source abstracted (GitHub App, generic git, embedded go-git).
 
 ## Consequences

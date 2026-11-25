@@ -11,9 +11,9 @@ import (
 
 func TestHumanize(t *testing.T) {
 	// Real text shapes: disgoadapter.mapError + apply.go prefixes + withCommunityHint.
-	announcement := `reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request ` +
+	announcement := `reconcile my-community: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request ` +
 		`(HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2, 4, 6, 13, 14, 15}."}]}}) ` +
-		`(announcement channels require the Community feature: Server Settings → Enable Community, then sync again)`
+		`(announcement channels require the Community feature: set community.enabled: true in the server YAML and Cicord enables it; if it is set, enabling it failed or Community was turned off outside Cicord)`
 	cases := []struct {
 		name     string
 		raw      string
@@ -23,7 +23,7 @@ func TestHumanize(t *testing.T) {
 		resource string // action/kind/key
 	}{
 		{"announcement needs community", announcement, ErrCodeCommunityRequired,
-			"Announcement and stage channels need the Community feature", "Enable Community", "create/channel/news"},
+			"Announcement and stage channels need the Community feature", "community: {enabled: true", "create/channel/news"},
 		{"community without reconcile hint",
 			`create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2}."}]}})`,
 			ErrCodeCommunityRequired, "Community", "Enable Community", "create/channel/news"},
@@ -31,14 +31,14 @@ func TestHumanize(t *testing.T) {
 			`reconcile s: 1 change(s) failed: update server s: discord UpdateServer: discord: bad request (HTTP 400 50035: Invalid Form Body {"rules_channel_id":{"_errors":[{"code":"GUILD_RULES_CHANNEL_INVALID","message":"x"}]}})`,
 			ErrCodeCommunityRequired, "Community feature", "Enable Community", "update/server/s"},
 		{"missing permissions on a role",
-			`reconcile s: 1 change(s) failed: update role modo: discord UpdateRole: discord: missing permissions (HTTP 403 50013: Missing Permissions)`,
-			ErrCodeMissingPermissions, "needs the Manage Roles permission to update the role “modo”", "Manage Roles", "update/role/modo"},
+			`reconcile s: 1 change(s) failed: update role moderator: discord UpdateRole: discord: missing permissions (HTTP 403 50013: Missing Permissions)`,
+			ErrCodeMissingPermissions, "needs the Manage Roles permission to update the role “moderator”", "Manage Roles", "update/role/moderator"},
 		{"missing permissions on a channel",
 			`create channel general: discord CreateChannel: discord: missing permissions (HTTP 403 50013: Missing Permissions)`,
 			ErrCodeMissingPermissions, "Manage Channels", "Manage Channels", "create/channel/general"},
 		{"missing permissions on the server",
-			`update server ma-commu: discord UpdateServer: discord: missing permissions (HTTP 403 50013: Missing Permissions)`,
-			ErrCodeMissingPermissions, "Manage Server permission to update the server settings", "", "update/server/ma-commu"},
+			`update server my-community: discord UpdateServer: discord: missing permissions (HTTP 403 50013: Missing Permissions)`,
+			ErrCodeMissingPermissions, "Manage Server permission to update the server settings", "", "update/server/my-community"},
 		{"missing access", `update channel staff: discord UpdateChannel: discord: missing permissions (HTTP 403 50001: Missing Access)`,
 			ErrCodeMissingAccess, "cannot see the channel “staff”", "View Channel", "update/channel/staff"},
 		{"sim grant", `reconcile s: 1 change(s) failed: create role admin: discord: missing permissions: cannot grant permissions you do not have: Administrator, BanMembers`,
@@ -118,7 +118,7 @@ func TestHumanizeDetails(t *testing.T) {
 	if Humanize("  ") != nil || HumanizeErr(nil) != nil {
 		t.Fatal("empty input must give nil")
 	}
-	h := Humanize(`reconcile ma-commu: 3 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2}."}]}})
+	h := Humanize(`reconcile my-community: 3 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2}."}]}})
 create channel stage: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {})
 update role a: x`)
 	if h.Failures != 3 || h.HTTPStatus != 400 || h.DiscordCode != 50035 {

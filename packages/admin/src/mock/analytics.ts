@@ -78,19 +78,19 @@ const ch = (id: string, name: string, weight: number, extra: Partial<Dim> = {}):
 });
 
 const TEXT: Dim[] = [
-  ch("ch-general", "général", 30),
+  ch("ch-general", "general", 30),
   ch("ch-memes", "memes", 14),
   ch("ch-mc", "minecraft", 11),
   ch("ch-valo", "valorant", 10),
-  ch("ch-lfg", "cherche-team", 8),
-  ch("ch-offtopic", "hors-sujet", 7),
+  ch("ch-lfg", "looking-for-group", 8),
+  ch("ch-offtopic", "off-topic", 7),
   ch("ch-lol", "league-of-legends", 6, { from: LOL_DAY }),
   ch("ch-clips", "clips", 6),
-  ch("ch-help", "aide", 5),
+  ch("ch-help", "help", 5),
   ch("ch-staff", "staff", 4),
   ch("ch-events-2025", "events-2025", 5, { until: D - 150 }),
-  ch("ch-announcements", "annonces", 0.6),
-  ch("ch-rules", "règlement", 0.1),
+  ch("ch-announcements", "announcements", 0.6),
+  ch("ch-rules", "rules", 0.1),
 ];
 
 const vc = (id: string, name: string, weight: number): Dim => ({
@@ -101,13 +101,13 @@ const vc = (id: string, name: string, weight: number): Dim => ({
 
 const VOICE: Dim[] = [
   vc("ch-vgame1", "Gaming 1", 28),
-  vc("ch-voice", "Vocal", 24),
+  vc("ch-voice", "Lounge", 24),
   vc("ch-vchill", "Chill", 20),
   vc("ch-vgame2", "Gaming 2", 15),
-  vc("ch-vmusic", "Musique", 8),
+  vc("ch-vmusic", "Music", 8),
   vc("ch-vstudy", "Focus", 5),
 ];
-const STAGE: Dim[] = [{ id: "ch-stage", weight: 1, label: { name: "Scène", kind: "voice" } }];
+const STAGE: Dim[] = [{ id: "ch-stage", weight: 1, label: { name: "Stage", kind: "voice" } }];
 
 function emojiImage(text: string, color: string): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="${color}"/><text x="16" y="21" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">${text}</text></svg>`;
@@ -128,7 +128,7 @@ const EMOJIS: Dim[] = [
   { id: "🔥", weight: 10 },
   custom("gg", "1180000000000000002", 9, "GG", "#5865f2"),
   { id: "👀", weight: 7 },
-  custom("macommu", "1180000000000000003", 6, "MC", "#e8590c"),
+  custom("pixelhaven", "1180000000000000003", 6, "PX", "#e8590c"),
   { id: "🎉", weight: 5 },
   custom("kekw", "1180000000000000004", 4, "KW", "#c2255c"),
   { id: "😭", weight: 3 },
@@ -153,7 +153,7 @@ const invite = (code: string, weight: number, extra: Partial<Dim> = {}): Dim => 
 });
 
 const INVITES: Dim[] = [
-  invite("macommu", 40),
+  invite("pixelhaven", 40),
   invite("x7Kp2Qa", 22),
   invite("yt-desc", 12),
   invite("tiktok", 14, { from: D - 250 }),
@@ -170,9 +170,9 @@ const role = (id: string, name: string, color: string, weight: number, from?: nu
 });
 
 const ROLES: Dim[] = [
-  role("r-member", "Membre", "#3498db", 90),
+  role("r-member", "Member", "#3498db", 90),
   role("r-pc", "PC", "#95a5a6", 48),
-  role("r-ping", "Notifs événements", "#f1c40f", 34),
+  role("r-ping", "Event Pings", "#f1c40f", 34),
   role("r-mc", "Minecraft", "#5b8731", 30),
   role("r-valo", "Valorant", "#ff4655", 26),
   role("r-mobile", "Mobile", "#1abc9c", 24),
@@ -196,7 +196,7 @@ const COMMANDS = plain([
   ["8ball", 2],
 ]);
 
-/** Commands of every bot of the server, "<bot> /<command>" (Cicord and Gardien run on Cicord). */
+/** Commands of every bot of the server, "<bot> /<command>" (Cicord and Warden run on Cicord). */
 const BOT_COMMANDS = plain([
   ["Jockie Music /play", 28],
   ["Cicord /rank", 18],
@@ -204,7 +204,7 @@ const BOT_COMMANDS = plain([
   ["Jockie Music /skip", 12],
   ["Cicord /poll", 8],
   ["Jockie Music /queue", 6],
-  ["Gardien /verify", 6],
+  ["Warden /verify", 6],
   ["Cicord /onboarding", 5],
   ["Dyno /warn", 4],
   ["Cicord /giveaway", 3],
@@ -214,15 +214,15 @@ const BOT_COMMANDS = plain([
 ]);
 /** Share of the bot commands that are Cicord's bots' (the only ones with a member tenure). */
 const CICORD_SHARE =
-  BOT_COMMANDS.filter((c) => /^(Cicord|Gardien) \//.test(c.id)).reduce((a, c) => a + c.weight, 0) /
+  BOT_COMMANDS.filter((c) => /^(Cicord|Warden) \//.test(c.id)).reduce((a, c) => a + c.weight, 0) /
   BOT_COMMANDS.reduce((a, c) => a + c.weight, 0);
 
 const BOT_CHANNELS: Dim[] = [
-  ch("ch-bots", "commandes-bot", 34),
-  ch("ch-music", "musique", 24),
-  ch("ch-general", "général", 12),
-  ch("ch-help", "aide", 10),
-  ch("ch-verify", "vérification", 6),
+  ch("ch-bots", "bot-commands", 34),
+  ch("ch-music", "music", 24),
+  ch("ch-general", "general", 12),
+  ch("ch-help", "help", 10),
+  ch("ch-verify", "verify", 6),
   ch("ch-staff", "staff", 5),
   ch("ch-valo", "valorant", 3),
   ch("ch-mc", "minecraft", 2),
@@ -240,7 +240,7 @@ const TENURES = plain([
 /** Buttons and select menus, per Cicord bot. */
 const COMPONENT_BOTS = plain([
   ["Cicord", 76],
-  ["Gardien", 24],
+  ["Warden", 24],
 ]);
 
 const MOD_ACTIONS = plain([
@@ -305,13 +305,13 @@ const EVENTS: Dim[] = [
     weight: 1,
     from: D - 45,
     until: D - 30,
-    label: { name: "Tournoi Valorant", kind: "event" },
+    label: { name: "Valorant Tournament", kind: "event" },
   },
   {
     id: "1200000000000000002",
     weight: 1,
     from: D - 10,
-    label: { name: "Soirée jeux de société", kind: "event" },
+    label: { name: "Board Game Night", kind: "event" },
   },
 ];
 

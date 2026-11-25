@@ -36,7 +36,7 @@ import (
 const (
 	testToken  = "test-runtime-token"
 	testSecret = "webhook-secret"
-	serverKey  = "ma-commu"
+	serverKey  = "my-community"
 )
 
 type env struct {
@@ -266,16 +266,16 @@ func (c *client) login(userID string) meDTO {
 	return me
 }
 
-// moderator creates a member with the "modo" role.
+// moderator creates a member with the "moderator" role.
 func (e *env) moderator() discord.User {
 	e.t.Helper()
-	u := e.world.CreateUser("modo-user")
+	u := e.world.CreateUser("moderator-user")
 	if err := e.world.AddMember(e.serverID(), u.ID); err != nil {
 		e.t.Fatal(err)
 	}
-	role, ok := e.world.RoleByName(e.serverID(), e.repo.Servers[serverKey].Spec.Roles["modo"].Name)
+	role, ok := e.world.RoleByName(e.serverID(), e.repo.Servers[serverKey].Spec.Roles["moderator"].Name)
 	if !ok {
-		e.t.Fatal("modo role not created")
+		e.t.Fatal("moderator role not created")
 	}
 	if err := e.world.AdminAddMemberRole(e.serverID(), u.ID, role.ID); err != nil {
 		e.t.Fatal(err)
@@ -848,6 +848,20 @@ func TestPlanUpload(t *testing.T) {
 		t.Fatal("plan applied changes")
 	}
 
+	// An archive made by tar on macOS: AppleDouble "._*" files next to every entry (also
+	// next to the top-level directory) and .DS_Store are ignored, not read as YAML.
+	junk := append(dirTarEntries(t, dir, "repo/"),
+		tarEntry{name: "._repo", typ: tar.TypeReg, data: "\x00\x05\x16\x07 Mac OS X"},
+		tarEntry{name: "repo/servers/._" + serverKey + ".yaml", typ: tar.TypeReg, data: "\x00\x05\x16\x07 Mac OS X"},
+		tarEntry{name: "repo/._servers", typ: tar.TypeReg, data: "\x00\x05\x16\x07"},
+		tarEntry{name: "repo/.DS_Store", typ: tar.TypeReg, data: "\x00\x00\x00\x01Bud1"})
+	r = post(makeTarGz(t, junk))
+	out.Plans, out.Diagnostics = nil, nil
+	r.json(t, &out)
+	if r.status != 200 || !out.Valid || len(out.Diagnostics) != 0 || len(out.Plans) != 1 {
+		t.Fatalf("plan with macOS metadata files = %d %s", r.status, r.body)
+	}
+
 	// Invalid repository: diagnostics, no plans.
 	os.WriteFile(filepath.Join(dir, "servers", serverKey+".yaml"), []byte("kind: Server\n"), 0o644)
 	r = post(makeTarGz(t, dirTarEntries(t, dir, "")))
@@ -887,7 +901,7 @@ func TestStaticAndHealth(t *testing.T) {
 		t.Fatalf("healthz = %d %s", r.status, r.body)
 	}
 	c.expect(200, "GET", "/readyz", nil)
-	if r := c.expect(200, "GET", "/admin/servers/ma-commu/plugins", nil); string(r.body) != "<html>admin</html>" || r.header.Get("X-Frame-Options") != "DENY" {
+	if r := c.expect(200, "GET", "/admin/servers/my-community/plugins", nil); string(r.body) != "<html>admin</html>" || r.header.Get("X-Frame-Options") != "DENY" {
 		t.Fatalf("admin SPA fallback = %s", r.body)
 	}
 	if r := c.expect(200, "GET", "/admin/assets/app.js", nil); !strings.Contains(string(r.body), "console.log") {
@@ -897,7 +911,7 @@ func TestStaticAndHealth(t *testing.T) {
 	if r := c.expect(301, "GET", "/admin", nil); r.header.Get("Location") != "/admin/" {
 		t.Fatalf("redirect = %v", r.header)
 	}
-	if r := c.expect(200, "GET", "/onboarding?server=ma-commu", nil); string(r.body) != "<html>portal</html>" {
+	if r := c.expect(200, "GET", "/onboarding?server=my-community", nil); string(r.body) != "<html>portal</html>" {
 		t.Fatalf("portal fallback = %s", r.body)
 	}
 	for _, p := range []string{"/api/v1/nope", "/api/nope", "/auth/nope", "/hooks/nope"} {

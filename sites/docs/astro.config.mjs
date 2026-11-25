@@ -44,6 +44,7 @@ export default defineConfig({
             { label: "Introduction", slug: "getting-started/introduction" },
             { label: "Installation", slug: "getting-started/installation" },
             { label: "Quick start", slug: "getting-started/quick-start" },
+            { label: "Evaluate an existing server", slug: "getting-started/evaluate-a-server" },
             { label: "Setup wizard reference", slug: "getting-started/setup-wizard" },
             { label: "Your first change", slug: "getting-started/first-change" },
           ],
@@ -98,6 +99,7 @@ export default defineConfig({
             { label: "Monitoring", slug: "self-hosting/monitoring" },
             { label: "Server analytics", slug: "self-hosting/analytics" },
             { label: "Upgrading", slug: "self-hosting/upgrading" },
+            { label: "Handing over an instance", slug: "self-hosting/handoff" },
           ],
         },
         {

@@ -34,6 +34,20 @@ named after `profile.username` or its key) invited with `Administrator`, and the
 | GET | `/api/v1/sim/commands?serverId=` | `{"items": [{"bot", "name", "description", "options": [...]}]}`: the registered commands, of every simulated server by default. |
 | GET | `/api/v1/sim/events` | Server-Sent Events: `event: change` whenever the simulated world changes (a UI refresh hint). |
 
+A user posts in a channel (`X-Cicord-Request` is the [CSRF](../authentication/#csrf) header):
+
+```sh
+curl -X POST http://127.0.0.1:7420/api/v1/sim/messages -H 'X-Cicord-Request: 1' \
+  -d '{"userId": "1575125353398009859", "channelId": "1575125354564026388", "content": "Hello everyone!"}'
+```
+
+```json
+{ "id": "1575126926903738368", "channelId": "1575125354564026388", "serverId": "223344556677889900",
+  "author": { "id": "1575125353398009859", "username": "alice", "displayName": "alice", "avatarUrl": "" },
+  "content": "Hello everyone!", "embeds": [], "components": [], "ephemeral": false,
+  "createdAt": "2026-11-25T13:32:03.817611+01:00" }
+```
+
 - `bot` is a bot key (an application ID or a bot user ID is accepted too); unknown: `404`. In
   command listings `bot` is the bot key, or the application ID for bots outside the
   repository.
@@ -74,7 +88,7 @@ a `: ping` comment every 25 seconds. The stream ends when the runtime shuts down
 
 ```json
 // SimServer
-{ "id": "…", "key"?: "ma-commu", "name": "…", "ownerId": "…",
+{ "id": "…", "key"?: "my-community", "name": "…", "ownerId": "…",
   "channels": [ { "id", "name", "type", "parentId"?, "position" } ],
   "roles": [ { "id", "name", "color", "position", "managed" } ],
   "members": [ { "user", "nick", "roles": ["<role id>"] } ] }

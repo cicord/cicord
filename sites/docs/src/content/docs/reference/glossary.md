@@ -5,18 +5,19 @@ description: The vocabulary of Cicord, from adoption to write-back.
 
 - **Adoption**: When a declared key has no mapping yet, the reconciler takes over an existing, unmapped Discord resource of the same kind with exactly the same display name, instead of creating a duplicate. See [Reconciliation](../../concepts/reconciliation/#adoption-by-name).
 - **Admin console**: The web UI embedded in the binary, served at `/admin/`. Every save is written back to git.
-- **Blocked**: A plan operation Cicord refuses, with a reason (`boost:`, `community:`, `limit:`, `deletionProtection`, `hierarchy:`…). Blocked operations never fail the plan; they keep the server `OutOfSync`.
+- **Blocked**: A plan operation Cicord refuses, with a reason (`boost:`, `community:`, `limit:`, `deletionProtection`, `hierarchy:`…). Blocked operations never fail the plan; they keep the server `OutOfSync`, except those that only wait for a boost level ("Waiting for boosts").
 - **Bot**: One Discord application (one token, one identity), declared in `bots/<key>/bot.yaml`.
 - **Capability**: A permission a plugin requests in its manifest (`discord.messages.send`, `storage.kv`, `http.fetch`…) and that must be granted in `bot.yaml`.
 - **cicord.lock**: The generated file that pins registry plugins (version, commit, content hash, capabilities).
-- **Data directory**: The runtime's state on disk (`--data-dir`, default `.cicord-data`): the SQLite database, keys, and the embedded repository.
+- **Data directory**: The runtime's state on disk (`--data-dir`, default `.cicord-data`): the SQLite database (unless PostgreSQL is used), keys, caches, and the embedded repository.
 - **Deletion protection**: `syncPolicy.deletionProtection` (default `true`): refuse every deletion, even with `prune`.
 - **Drift**: A difference between the YAML and the live server, usually a manual change in Discord. Reported, or reverted with `selfHeal`.
 - **Grant**: A capability listed in a plugin instance's `grants` in `bot.yaml`.
 - **Instance (plugin instance)**: A plugin running for one (bot, server) pair, with its own config, storage and schedules. An entry of `bot.yaml` `spec.plugins` produces one instance per server.
 - **Intent**: A Discord gateway intent, in Cicord naming (`ServerMembers`, `MessageContent`…). Privileged intents must be enabled in the Discord developer portal.
-- **Key**: The stable identifier of a resource (`general`), separate from its display name. Keys are used for references and never change.
+- **Key**: The stable identifier of a resource (`general`), separate from its display name. Keys are used for references; rename one only with `cicord mv`.
 - **Official / unofficial**: The trust level of a plugin source, computed from its URL. Source `cicord` (the bundled plugins and the signed official registry, github.com/cicord/cicord-plugins) is official; other registries are unofficial.
+- **Pause (enforcement)**: The emergency switch of a server (`cicord pause`, the admin console): nothing is applied to it until it is resumed, while drift stays visible. Runtime state, not git. See [Reconciliation](../../concepts/reconciliation/#emergency-pause-enforcement).
 - **Plan**: The ordered list of changes (`create`, `update`, `delete`, `adopt`, `reorder`, `unmanage`) between the YAML and Discord. Shown by `cicord plan`.
 - **Plugin**: A TypeScript module with a static manifest (`plugin.yaml`), run sandboxed by the runtime.
 - **Plugin-owned resource**: A channel created at run time by a plugin (`ctx.server.createChannel`). The reconciler never touches or prunes it.
@@ -28,7 +29,7 @@ description: The vocabulary of Cicord, from adoption to write-back.
 - **Revision**: An immutable, validated and built snapshot of the repository at one commit. The runtime runs exactly one active revision and hot-swaps to the next.
 - **Route contract**: A type-only TypeScript file (`spec.routes.types`) describing a plugin's portal routes, copied into portals by `cicord portal typegen`.
 - **Runtime**: `cicord serve` (or `cicord dev`): the long-running process that follows the repository, reconciles servers, runs bots and plugins, and serves the API and UIs.
-- **Self-heal**: `syncPolicy.selfHeal`: revert drift automatically instead of only reporting it.
+- **Self-heal**: `syncPolicy.selfHeal`: revert drift automatically (on gateway events and at the periodic resync) instead of only reporting it.
 - **Server**: A Discord server (a *guild* in Discord's API), declared in `servers/<key>.yaml`. Cicord never says guild.
 - **Setup wizard**: The guided setup in the admin console when the runtime starts without `cicord.yaml`.
 - **Simulator**: An in-memory Discord used by `cicord dev --sim`, `cicord plugin test` and Cicord's own tests.

@@ -55,8 +55,8 @@ describe("login", () => {
     expect(await screen.findByRole("button", { name: /Alice/ })).toBeTruthy();
     await loginAsOwner(user);
     // "/" lands on the overview of the first server.
-    expect(await screen.findByRole("heading", { level: 1, name: "Ma Commu" })).toBeTruthy();
-    expect(window.location.pathname).toMatch(/\/servers\/ma-commu$/);
+    expect(await screen.findByRole("heading", { level: 1, name: "Pixel Haven" })).toBeTruthy();
+    expect(window.location.pathname).toMatch(/\/servers\/pixel-haven$/);
   });
 
   test("a member without staff role gets an explanation", async () => {
@@ -79,9 +79,9 @@ describe("overview & server", () => {
     await loginAsOwner(user);
     expect(await screen.findByText("4f0c2d9", { selector: ".rev-id" })).toBeTruthy();
     expect(screen.getByText("The latest revision was rejected")).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 1, name: "Ma Commu" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Pixel Haven" })).toBeTruthy();
     expect(screen.getAllByText("Out of sync").length).toBeGreaterThan(0);
-    expect(screen.getByText("Gardien")).toBeTruthy();
+    expect(screen.getByText("Warden")).toBeTruthy();
     expect(await screen.findByText("bot reloaded (2 plugins)")).toBeTruthy();
     // The Discord failure is explained, grouped, and its raw JSON stays in the collapsed details.
     const alerts = screen.getAllByRole("alert");
@@ -89,7 +89,7 @@ describe("overview & server", () => {
       a.textContent?.includes("Announcement and stage channels need the Community feature"),
     )!;
     expect(failure).toBeTruthy();
-    expect(within(failure).getByText(/Enable Community in Discord/)).toBeTruthy();
+    expect(within(failure).getByText(/^Declare community: \{enabled: true/)).toBeTruthy();
     expect(within(failure).getByText(/Failed 4 times/)).toBeTruthy();
     expect(await screen.findByText("Failed 4 times")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/_errors|BASE_TYPE_CHOICES/);
@@ -99,7 +99,7 @@ describe("overview & server", () => {
   });
 
   test("plan groups changes, shows field diffs and blocked items; sync applies it", async () => {
-    const { user } = setup("/admin/servers/ma-commu/plan");
+    const { user } = setup("/admin/servers/pixel-haven/plan");
     await loginAsOwner(user);
     const roles = await screen.findByRole("region", { name: "Roles" });
     expect(within(roles).getByText("valorant")).toBeTruthy();
@@ -108,7 +108,7 @@ describe("overview & server", () => {
     expect(within(blocked).getByText(/deletion protection is on/)).toBeTruthy();
     expect(within(blocked).getByText(/syncPolicy.deletionProtection: false/)).toBeTruthy();
     // A refused role assignment reads as what it is, not as its key.
-    expect(within(blocked).getByText(/give role "Admin" to @Léa/)).toBeTruthy();
+    expect(within(blocked).getByText(/give role "Admin" to @Leah/)).toBeTruthy();
     expect(within(blocked).queryByText("admin/112233445566778900")).toBeNull();
     // A banner below its boost level waits for boosts: a warning, not a block.
     const waiting = screen.getByRole("region", { name: "Waiting for boosts" });
@@ -125,19 +125,19 @@ describe("overview & server", () => {
   });
 
   test("resources and audit log", async () => {
-    const { user } = setup("/admin/servers/ma-commu/resources");
+    const { user } = setup("/admin/servers/pixel-haven/resources");
     await loginAsOwner(user);
-    expect(await screen.findByText("Notifs événements")).toBeTruthy();
+    expect(await screen.findByText("Event Pings")).toBeTruthy();
     expect(screen.getAllByText("unmanaged").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("radio", { name: "Unmanaged" }));
-    expect(screen.queryByText("Notifs événements")).toBeNull();
+    expect(screen.queryByText("Event Pings")).toBeNull();
     await user.click(screen.getByRole("link", { name: "Audit log" }));
     expect(await screen.findByText("moderator/onboarding")).toBeTruthy();
   });
 
   test("server settings: boost, community, Discord-only list and image upload", async () => {
     const uploads: { url: string; type: string | null }[] = [];
-    const { user } = setup("/admin/servers/ma-commu/settings", (url, init) => {
+    const { user } = setup("/admin/servers/pixel-haven/settings", (url, init) => {
       if (init.method !== "PUT" || !url.pathname.includes("/assets/")) return undefined;
       uploads.push({
         url: url.pathname + url.search,
@@ -147,8 +147,8 @@ describe("overview & server", () => {
         mode: "pullRequest",
         revision: "",
         pullRequestUrl: "https://github.com/o/r/pull/9",
-        path: "servers/assets/ma-commu-banner.png",
-        value: "./assets/ma-commu-banner.png",
+        path: "servers/assets/pixel-haven-banner.png",
+        value: "./assets/pixel-haven-banner.png",
         format: "png",
         width: 300,
         height: 100,
@@ -170,7 +170,7 @@ describe("overview & server", () => {
     await user.upload(screen.getByLabelText("Upload a new banner"), file);
     expect(await screen.findByRole("link", { name: /Open pull request/ })).toBeTruthy();
     expect(screen.getByText(/Discord recommends a 16:9 image/)).toBeTruthy();
-    expect(uploads[0]?.url).toMatch(/^\/api\/v1\/servers\/ma-commu\/assets\/banner/);
+    expect(uploads[0]?.url).toMatch(/^\/api\/v1\/servers\/pixel-haven\/assets\/banner/);
     expect(uploads[0]?.type).toBe("image/png");
   });
 
@@ -187,7 +187,7 @@ describe("overview & server", () => {
 
 describe("plugin settings", () => {
   test("edit, review the diff and commit", async () => {
-    const { user, runtime } = setup("/admin/servers/ma-commu/plugins/moderator/welcome");
+    const { user, runtime } = setup("/admin/servers/pixel-haven/plugins/moderator/welcome");
     await loginAsOwner(user);
     const card = await screen.findByRole("region", { name: "Welcome settings" });
     const message = within(card).getByRole("textbox", { name: "Message" });
@@ -209,26 +209,29 @@ describe("plugin settings", () => {
   });
 
   test("client validation blocks review; 422 diagnostics land on fields", async () => {
-    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/onboarding", (url, init) => {
-      if (init.method === "PUT" && url.pathname.endsWith("/onboarding/config"))
-        return json(
-          {
-            error: {
-              code: "invalid",
-              message: "the configuration is invalid",
-              diagnostics: [
-                {
-                  severity: "error",
-                  path: "/spec/plugins/1/overrides/ma-commu/config/buttonLabel",
-                  message: "[server ma-commu] label already used by another plugin",
-                },
-              ],
+    const { user } = setup(
+      "/admin/servers/pixel-haven/plugins/moderator/onboarding",
+      (url, init) => {
+        if (init.method === "PUT" && url.pathname.endsWith("/onboarding/config"))
+          return json(
+            {
+              error: {
+                code: "invalid",
+                message: "the configuration is invalid",
+                diagnostics: [
+                  {
+                    severity: "error",
+                    path: "/spec/plugins/1/overrides/pixel-haven/config/buttonLabel",
+                    message: "[server pixel-haven] label already used by another plugin",
+                  },
+                ],
+              },
             },
-          },
-          422,
-        );
-      return undefined;
-    });
+            422,
+          );
+        return undefined;
+      },
+    );
     await loginAsOwner(user);
     const card = await screen.findByRole("region", { name: "Onboarding settings" });
     const title = within(card).getByRole("textbox", { name: "Title" });
@@ -238,7 +241,7 @@ describe("plugin settings", () => {
     expect(alerts.some((a) => a.textContent === "Required")).toBe(true);
     expect(within(card).queryByRole("button", { name: "Save to git" })).toBeNull();
 
-    await user.type(title, "Salut");
+    await user.type(title, "Hey");
     const label = within(card).getByRole("textbox", { name: "Button label" });
     await user.clear(label);
     await user.type(label, "Go");
@@ -250,7 +253,7 @@ describe("plugin settings", () => {
 
   test("409 conflict offers a reload; pull request mode links the PR", async () => {
     let mode: "conflict" | "pr" = "conflict";
-    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/welcome", (_url, init) => {
+    const { user } = setup("/admin/servers/pixel-haven/plugins/moderator/welcome", (_url, init) => {
       if (init.method !== "PUT") return undefined;
       return mode === "conflict"
         ? json(
@@ -283,7 +286,7 @@ describe("plugin settings", () => {
   test("base scope edits spec.plugins[].config, not the effective values", async () => {
     let sent: { config: Record<string, unknown>; scope: string } | undefined;
     const { user, runtime } = setup(
-      "/admin/servers/ma-commu/plugins/moderator/welcome",
+      "/admin/servers/pixel-haven/plugins/moderator/welcome",
       (_url, init) => {
         if (init.method === "PUT") sent = JSON.parse(init.body as string) as typeof sent;
         return undefined;
@@ -294,7 +297,7 @@ describe("plugin settings", () => {
     expect(within(card).getByText("message", { selector: ".editor-note code" })).toBeTruthy();
     await user.click(within(card).getByRole("radio", { name: "Base config" }));
     const message = within(card).getByRole<HTMLTextAreaElement>("textbox", { name: "Message" });
-    expect(message.value).toBe("Bienvenue {member} sur {server} ! 👋");
+    expect(message.value).toBe("Welcome {member} to {server}! 👋");
     expect(within(card).getByText(/the override still wins for/)).toBeTruthy();
     await user.click(within(card).getByRole("switch", { name: "Dm onboarding" }));
     // Switching scope is blocked while there are unsaved changes.
@@ -306,13 +309,13 @@ describe("plugin settings", () => {
     await user.click(within(card).getByRole("button", { name: "Save to git" }));
     await within(card).findByText("is now the active revision", { exact: false });
     expect(sent?.scope).toBe("base");
-    expect(sent?.config["message"]).toBe("Bienvenue {member} sur {server} ! 👋");
+    expect(sent?.config["message"]).toBe("Welcome {member} to {server}! 👋");
     expect(sent?.config["dmOnboarding"]).toBe(false);
-    expect(runtime.state.instances[0]!.override["message"]).toMatch(/^Salut/);
+    expect(runtime.state.instances[0]!.override["message"]).toMatch(/^Hey/);
   });
 
   test("moderators see admin-only fields locked and 403 is explained", async () => {
-    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/welcome", (_url, init) =>
+    const { user } = setup("/admin/servers/pixel-haven/plugins/moderator/welcome", (_url, init) =>
       init.method === "PUT"
         ? json({ error: { code: "forbidden", message: "you may not change: channel" } }, 403)
         : undefined,
@@ -331,7 +334,7 @@ describe("plugin settings", () => {
 
   test("a 401 on any call returns to the login page", async () => {
     let expired = false;
-    const { user } = setup("/admin/servers/ma-commu/plugins", (url) =>
+    const { user } = setup("/admin/servers/pixel-haven/plugins", (url) =>
       expired && url.pathname.startsWith("/api/v1/")
         ? json({ error: { code: "unauthenticated", message: "login required" } }, 401)
         : undefined,
@@ -348,12 +351,12 @@ describe("plugin settings", () => {
 
 describe("plugins table and instance page", () => {
   test("rows link to the instance page; overview, breadcrumb and back link", async () => {
-    const { user } = setup("/admin/servers/ma-commu/plugins");
+    const { user } = setup("/admin/servers/pixel-haven/plugins");
     await loginAsOwner(user);
     const table = await screen.findByRole("table", { name: "Plugin instances" });
     const welcome = await within(table).findByRole("link", { name: /Welcome/ });
     expect(welcome.getAttribute("href")).toMatch(
-      /\/servers\/ma-commu\/plugins\/moderator\/welcome$/,
+      /\/servers\/pixel-haven\/plugins\/moderator\/welcome$/,
     );
     const row = welcome.closest("tr") as HTMLElement;
     expect(within(row).getByText("welcome@0.1.0")).toBeTruthy();
@@ -390,7 +393,7 @@ describe("plugins table and instance page", () => {
   });
 
   test("an unknown instance shows a not-found state", async () => {
-    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/nope");
+    const { user } = setup("/admin/servers/pixel-haven/plugins/moderator/nope");
     await loginAsOwner(user);
     expect(await screen.findByText("This plugin instance does not exist")).toBeTruthy();
     expect(screen.getByText(/no instance moderator\/nope on this server/)).toBeTruthy();
@@ -398,24 +401,24 @@ describe("plugins table and instance page", () => {
 
   test("uninstall: confirm, result on the table, the instance is gone", async () => {
     const { user, runtime } = setup(
-      "/admin/servers/ma-commu/plugins/moderator/welcome?section=danger",
+      "/admin/servers/pixel-haven/plugins/moderator/welcome?section=danger",
     );
     await loginAsOwner(user);
     await user.click(await screen.findByRole("button", { name: "Uninstall…" }));
     const dialog = await screen.findByRole("alertdialog", {
-      name: "Uninstall Welcome from Ma Commu?",
+      name: "Uninstall Welcome from Pixel Haven?",
     });
     // What happens is spelled out before confirming.
-    expect(within(dialog).getByText(/only Ma Commu is removed from it/)).toBeTruthy();
+    expect(within(dialog).getByText(/only Pixel Haven is removed from it/)).toBeTruthy();
     expect(within(dialog).getByText(/its cicord.lock entry/)).toBeTruthy();
     expect(within(dialog).getByText(/stored data \(key-value storage\) is kept/)).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Uninstall" }));
 
     // Back on the table, with the result.
     const table = await screen.findByRole("table", { name: "Plugin instances" });
-    expect(window.location.pathname).toMatch(/\/servers\/ma-commu\/plugins$/);
+    expect(window.location.pathname).toMatch(/\/servers\/pixel-haven\/plugins$/);
     const notice = screen
-      .getByText("Welcome was uninstalled from Ma Commu", { selector: "[role=status] p" })
+      .getByText("Welcome was uninstalled from Pixel Haven", { selector: "[role=status] p" })
       .closest("[role=status]")!;
     expect(within(notice as HTMLElement).getByText("plugins/welcome/")).toBeTruthy();
     expect(within(notice as HTMLElement).getByText("is now the active revision")).toBeTruthy();
@@ -430,7 +433,7 @@ describe("plugins table and instance page", () => {
   test("uninstall errors: 422 dependency, 409 conflict, 403", async () => {
     let mode: "mock" | "conflict" | "forbidden" = "mock";
     const { user } = setup(
-      "/admin/servers/ma-commu/plugins/moderator/onboarding?section=danger",
+      "/admin/servers/pixel-haven/plugins/moderator/onboarding?section=danger",
       (_url, init) =>
         init.method !== "DELETE" || mode === "mock"
           ? undefined
@@ -476,7 +479,7 @@ describe("plugins table and instance page", () => {
   });
 
   test("moderators have no danger zone", async () => {
-    const { user } = setup("/admin/servers/ma-commu/plugins/moderator/welcome?section=danger");
+    const { user } = setup("/admin/servers/pixel-haven/plugins/moderator/welcome?section=danger");
     await user.click(await screen.findByRole("button", { name: /Mina/ }));
     // Falls back to the settings.
     expect(await screen.findByRole("region", { name: "Welcome settings" })).toBeTruthy();
@@ -490,19 +493,19 @@ describe("simulator", () => {
   test("join a user: welcome message, role, DM with the portal link; run a command; click a button", async () => {
     const { user } = setup("/admin/simulator");
     await loginAsOwner(user);
-    expect(await screen.findByRole("heading", { name: "général" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "general" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "alice joins the server" }));
-    expect(await screen.findByText(/bienvenue sur Ma Commu/)).toBeTruthy();
+    expect(await screen.findByText(/welcome to Pixel Haven/)).toBeTruthy();
     const members = screen.getByRole("complementary", { name: "Members" });
     expect(await within(members).findByText("Alice")).toBeTruthy();
 
     await user.click(within(members).getByRole("button", { name: "DMs of alice" }));
-    const link = await screen.findByRole("link", { name: /Commencer/ });
+    const link = await screen.findByRole("link", { name: /Get started/ });
     expect(link.getAttribute("href")).toMatch(/\/onboarding\?cicord_token=/);
     expect(link.getAttribute("target")).toBe("_blank");
 
     // Slash command as the owner
-    await user.click(screen.getByRole("button", { name: /général/ }));
+    await user.click(screen.getByRole("button", { name: /general/ }));
     await user.click(screen.getByRole("tab", { name: "Slash command" }));
     await user.selectOptions(await screen.findByLabelText("Command"), "moderator/welcome-preview");
     await user.click(screen.getByRole("button", { name: "Run /welcome-preview" }));
@@ -511,9 +514,9 @@ describe("simulator", () => {
     expect(within(result).getByText("ephemeral")).toBeTruthy();
 
     // Buttons call the component endpoint
-    await user.click(screen.getByRole("button", { name: /règlement/ }));
-    await user.click(await screen.findByRole("button", { name: /En savoir plus/ }));
-    await waitFor(() => expect(screen.getByText("Clicked “En savoir plus”")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /rules/ }));
+    await user.click(await screen.findByRole("button", { name: /Learn more/ }));
+    await waitFor(() => expect(screen.getByText("Clicked “Learn more”")).toBeTruthy());
     expect(screen.getByText("1 followup")).toBeTruthy();
   });
 
@@ -521,8 +524,8 @@ describe("simulator", () => {
     const { user } = setup("/admin/simulator");
     await loginAsOwner(user);
     const input = await screen.findByRole("textbox", { name: "Message" });
-    await user.type(input, "Salut **tout le monde**{Enter}");
-    expect(await screen.findByText("tout le monde")).toBeTruthy();
+    await user.type(input, "Hey **everyone**{Enter}");
+    expect(await screen.findByText("everyone")).toBeTruthy();
     await user.type(screen.getByLabelText("New user name"), "dave");
     await user.click(screen.getByRole("button", { name: "Create" }));
     expect(await screen.findByRole("button", { name: "dave joins the server" })).toBeTruthy();

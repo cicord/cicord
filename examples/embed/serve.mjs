@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Serves the embedding example: a third-party "fan site" on its own origin that uses the
-// Cicord portal SDK in token mode (https://cicord.dev/docs/portal/custom-portal/, "Embedding in another site").
+// Cicord portal SDK in token mode (https://cicord.dev/docs/portal/embedding/#token-mode).
 //
 //   node examples/embed/serve.mjs [--port 5180] [--runtime http://127.0.0.1:7420]
 //

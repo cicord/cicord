@@ -145,7 +145,7 @@
       "type": "object",
       "properties": {
         "selfHeal": {
-          "description": "Revert manual changes made in Discord instead of only reporting drift.",
+          "description": "What Cicord does with drift (a change made in Discord, outside git). true: reverted within seconds of the gateway event, and by the periodic resync (every 5 minutes). false: only reported; the server stays OutOfSync until the next revision or Sync now. Either way, a new revision and Sync now apply the whole configuration, and nothing is applied while enforcement is paused (cicord pause).",
           "type": "boolean",
           "default": false
         },
@@ -363,7 +363,11 @@
               "description": "Image file of the repository (png, jpg, gif, webp, avif or svg), relative to this file.",
               "$ref": "common.schema.json#/$defs/relativePath"
             },
-            "mode": { "enum": ["light", "dark", "system"], "default": "system" }
+            "mode": {
+              "description": "Color scheme of the portal; system follows the visitor's light or dark preference. Default: dark.",
+              "enum": ["light", "dark", "system"],
+              "default": "dark"
+            }
           },
           "additionalProperties": false
         },

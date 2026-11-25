@@ -1,10 +1,68 @@
 package writeback
 
 import (
+	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"reflect"
+
+	"gopkg.in/yaml.v3"
 )
+
+// JSONEqual reports whether two JSON-compatible values are equal, comparing numbers by
+// value whatever their Go type: plugin schema defaults are json.Number (the schema is
+// decoded with UseNumber) while configs decoded from YAML or JSON hold float64 or int, so
+// reflect.DeepEqual would see a default of 168 and a sent 168 as different.
+func JSONEqual(a, b any) bool {
+	if x, ok := jsonNumber(a); ok {
+		y, ok := jsonNumber(b)
+		return ok && x == y
+	}
+	switch av := a.(type) {
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for k, x := range av {
+			y, ok := bv[k]
+			if !ok || !JSONEqual(x, y) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		bv, ok := b.([]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !JSONEqual(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+// jsonNumber returns v as a float64 when it is a number (the types produced by
+// encoding/json and yaml.v3).
+func jsonNumber(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	}
+	return 0, false
+}
 
 // DiffMergePatch returns the minimal RFC 7386 merge patch turning from into to
 // (nil when they are equal).
@@ -24,7 +82,7 @@ func DiffMergePatch(from, to map[string]any) map[string]any {
 			}
 			continue
 		}
-		if !reflect.DeepEqual(fv, tv) {
+		if !JSONEqual(fv, tv) {
 			patch[k] = tv
 		}
 	}

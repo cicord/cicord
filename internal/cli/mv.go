@@ -44,8 +44,8 @@ reconciler sees the old key removed and the new key added with the same display 
 moves the mapping (plan: "adopt" + "move … mapping"): the Discord resource is kept, never
 duplicated. Changing the display name in the same commit defeats this matching, so rename
 the key first, then the display name.`,
-		Example: `  cicord mv ma-commu channel general discussions
-  cicord mv ma-commu role modo moderators --dry-run`,
+		Example: `  cicord mv my-community channel general discussions
+  cicord mv my-community role moderator mods --dry-run`,
 		Args: cobra.RangeArgs(4, 5),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := absDir(args[4:])

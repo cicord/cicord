@@ -84,9 +84,9 @@ func TestPlanRemote(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, deployed, dir)
 	writeFile(t, filepath.Join(dir, ".env"), "SECRET=1\n") // never uploaded
-	p := filepath.Join(dir, "servers", "ma-commu.yaml")
+	p := filepath.Join(dir, "servers", "my-community.yaml")
 	data := readFile(t, p)
-	data = strings.Replace(data, "name: général", "name: discussions", 1)
+	data = strings.Replace(data, "name: general", "name: discussions", 1)
 	data = strings.Replace(data, "  hierarchy:", "    vip:\n      name: VIP\n      color: \"#ff0000\"\n\n  hierarchy:", 1)
 	writeFile(t, p, data)
 
@@ -95,7 +95,7 @@ func TestPlanRemote(t *testing.T) {
 		t.Fatalf("plan --remote = %d\n%s\n%s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"Server ma-commu: ", "~ rename channel #général → #discussions", `name: "général" → "discussions"`,
+		"Server my-community: ", "~ rename channel #general → #discussions", `name: "general" → "discussions"`,
 		`+ create role "VIP"`, `color:       "#ff0000"`, "Plan: 1 to create, 1 to update, 0 to delete",
 	} {
 		if !strings.Contains(out, want) {
@@ -130,12 +130,62 @@ func TestPlanRemote(t *testing.T) {
 	}
 }
 
+// End to end (CLI archive → POST /api/v1/plan → runtime validation): a committed portal
+// build at spec.portal.path gives no portal warning, even when .gitignore lists dist/; a
+// build without index.html or a missing build directory still warns.
+func TestPlanRemotePortalBuild(t *testing.T) {
+	url, deployed, _ := startRuntime(t)
+	t.Setenv("CICORD_RUNTIME_TOKEN", runtimeToken)
+	dir := t.TempDir()
+	copyDir(t, deployed, dir)
+	p := filepath.Join(dir, "cicord.yaml")
+	data := readFile(t, p)
+	if !strings.Contains(data, "\nspec:\n") {
+		t.Fatalf("no spec in cicord.yaml:\n%s", data)
+	}
+	writeFile(t, p, strings.Replace(data, "\nspec:\n", "\nspec:\n  portal:\n    path: ./portal/dist\n", 1))
+	writeFile(t, filepath.Join(dir, ".gitignore"), "dist/\n")
+	writeFile(t, filepath.Join(dir, "portal", "dist", "index.html"), "<html>portal</html>")
+	writeFile(t, filepath.Join(dir, "portal", "dist", "assets", "app.js"), "console.log(1)")
+
+	portalDiags := func() []string {
+		t.Helper()
+		code, out, errOut := run(t, "plan", "--remote="+url, "-o", "json", dir)
+		var res struct {
+			Valid       bool
+			Diagnostics []struct{ Severity, Path, Message string }
+		}
+		if code != 0 || json.Unmarshal([]byte(out), &res) != nil || !res.Valid {
+			t.Fatalf("plan --remote = %d\n%s\n%s", code, out, errOut)
+		}
+		var msgs []string
+		for _, d := range res.Diagnostics {
+			if d.Path == "/spec/portal/path" {
+				msgs = append(msgs, d.Severity+": "+d.Message)
+			}
+		}
+		return msgs
+	}
+	if d := portalDiags(); len(d) != 0 {
+		t.Errorf("committed portal build: unexpected diagnostics %v", d)
+	}
+	os.Remove(filepath.Join(dir, "portal", "dist", "index.html"))
+	if d := portalDiags(); len(d) != 1 || !strings.HasPrefix(d[0], "warning: ") || !strings.Contains(d[0], "index.html not found") {
+		t.Errorf("build without index.html: diagnostics %v", d)
+	}
+	os.RemoveAll(filepath.Join(dir, "portal"))
+	if d := portalDiags(); len(d) != 1 || !strings.HasPrefix(d[0], "warning: ") || !strings.Contains(d[0], `"./portal/dist" does not exist`) {
+		t.Errorf("missing build: diagnostics %v", d)
+	}
+}
+
 func TestArchiveExclusions(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "cicord.yaml"), "x")
 	writeFile(t, filepath.Join(dir, ".gitignore"), "*.db\nlogs/\n/secret.txt\n")
 	for _, f := range []string{"servers/a.yaml", ".env", ".env.local", "x.db", "logs/a.log", "secret.txt", "sub/secret.txt",
-		"node_modules/m/i.js", ".git/HEAD", "plugins/p/dist/b.js", ".cicord/state.db", "plugins/p/src/i.ts"} {
+		"node_modules/m/i.js", ".git/HEAD", "plugins/p/dist/b.js", ".cicord/state.db", "plugins/p/src/i.ts",
+		"servers/._a.yaml", "._cicord.yaml", ".DS_Store", "servers/.DS_Store"} {
 		writeFile(t, filepath.Join(dir, filepath.FromSlash(f)), "x")
 	}
 	os.Symlink("/etc/passwd", filepath.Join(dir, "link"))
@@ -149,13 +199,47 @@ func TestArchiveExclusions(t *testing.T) {
 			t.Errorf("%s missing from the archive: %v", want, names)
 		}
 	}
-	for _, not := range []string{".env", ".env.local", "x.db", "logs/a.log", "secret.txt", "node_modules/m/i.js", ".git/HEAD", "plugins/p/dist/b.js", ".cicord/state.db", "link"} {
+	for _, not := range []string{".env", ".env.local", "x.db", "logs/a.log", "secret.txt", "node_modules/m/i.js", ".git/HEAD", "plugins/p/dist/b.js", ".cicord/state.db", "link",
+		"servers/._a.yaml", "._cicord.yaml", ".DS_Store", "servers/.DS_Store"} {
 		if names[not] {
 			t.Errorf("%s must not be uploaded", not)
 		}
 	}
 	if n != 5 {
 		t.Errorf("%d files", n)
+	}
+}
+
+// The committed portal build (spec.portal.path) is uploaded although it is named dist and
+// ignored by .gitignore: the plan checks it exists and holds an index.html.
+func TestArchivePortalBuild(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "cicord.yaml"), "apiVersion: cicord.dev/v1alpha1\nkind: Project\nmetadata:\n  name: x\nspec:\n  portal:\n    path: ./web/portal/dist\n")
+	writeFile(t, filepath.Join(dir, ".gitignore"), "dist/\nweb/\n*.map\n")
+	for _, f := range []string{"web/portal/dist/index.html", "web/portal/dist/assets/a.js", "web/portal/dist/assets/a.js.map",
+		"web/portal/dist/dist/x.js", "web/portal/dist/._index.html", "web/portal/dist/.env",
+		"web/portal/src/main.ts", "web/portal/package.json", "web/readme.md", "web/portal/node_modules/m/i.js",
+		"plugins/p/dist/b.js", "other/dist/c.js"} {
+		writeFile(t, filepath.Join(dir, filepath.FromSlash(f)), "x")
+	}
+	data, n, err := archiveRepo(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := tarNames(t, data)
+	for _, want := range []string{"web/portal/dist/index.html", "web/portal/dist/assets/a.js", "web/portal/dist/assets/a.js.map", "web/portal/dist/dist/x.js"} {
+		if !names[want] {
+			t.Errorf("%s missing from the archive: %v", want, names)
+		}
+	}
+	for _, not := range []string{"web/portal/dist/._index.html", "web/portal/dist/.env", "web/portal/src/main.ts", "web/portal/package.json",
+		"web/readme.md", "web/portal/node_modules/m/i.js", "plugins/p/dist/b.js", "other/dist/c.js"} {
+		if names[not] {
+			t.Errorf("%s must not be uploaded", not)
+		}
+	}
+	if n != 6 { // cicord.yaml, .gitignore and the 4 portal build files
+		t.Errorf("%d files: %v", n, names)
 	}
 }
 
@@ -224,10 +308,10 @@ func TestPlanComment(t *testing.T) {
 		}
 		io.Copy(io.Discard, r.Body)
 		if !valid.Load() {
-			io.WriteString(w, `{"valid": false, "diagnostics": [{"severity": "error", "file": "servers/ma-commu.yaml", "line": 3, "message": "boom"}], "plans": []}`)
+			io.WriteString(w, `{"valid": false, "diagnostics": [{"severity": "error", "file": "servers/my-community.yaml", "line": 3, "message": "boom"}], "plans": []}`)
 			return
 		}
-		io.WriteString(w, `{"valid": true, "diagnostics": [], "plans": [{"server": "ma-commu", "changes": [
+		io.WriteString(w, `{"valid": true, "diagnostics": [], "plans": [{"server": "my-community", "changes": [
 		  {"action": "delete", "kind": "channel", "key": "old", "summary": "delete channel #old"}], "blocked": []}]}`)
 	}))
 	defer rts.Close()
@@ -237,7 +321,7 @@ func TestPlanComment(t *testing.T) {
 		c := ghComment{ID: int64(i + 1), Body: "lgtm"}
 		c.User.Type = "User"
 		if i == 50 { // a person quoting the marker: never edited
-			c.Body = "> <!-- cicord-plan:ma-commu --> why?"
+			c.Body = "> <!-- cicord-plan:my-community --> why?"
 		}
 		gh.comments = append(gh.comments, c)
 	}
@@ -282,7 +366,7 @@ func TestPlanComment(t *testing.T) {
 		t.Fatalf("posts=%d patches=%d comments=%d", gh.posts, gh.patches, len(gh.comments))
 	}
 	body := gh.comments[100].Body
-	for _, want := range []string{"<!-- cicord-plan:ma-commu -->", "**Validation failed**", "servers/ma-commu.yaml:3: error: boom", "at 0123456"} {
+	for _, want := range []string{"<!-- cicord-plan:my-community -->", "**Validation failed**", "servers/my-community.yaml:3: error: boom", "at 0123456"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("comment misses %q:\n%s", want, body)
 		}
@@ -341,9 +425,9 @@ func statusJSON(rev, sync, health, msg string) string {
 		revJSON = fmt.Sprintf(`{"id": %q, "sha": %q, "message": "merge", "author": "dev", "source": "git"}`, rev[:7], rev)
 	}
 	return fmt.Sprintf(`{"version": "0.1.0", "mode": "serve", "revision": %s, "servers": [
-	  {"key": "ma-commu", "name": "Ma Commu", "discordId": "1", "sync": %q, "health": %q, "message": %q, "drift": []}],
-	  "bots": [{"key": "moderator", "username": "Gardien", "userId": "2", "health": "Healthy", "servers": ["ma-commu"],
-	    "plugins": [{"instance": "welcome", "plugin": "welcome", "version": "0.1.0", "server": "ma-commu", "health": "Healthy"}]}]}`,
+	  {"key": "my-community", "name": "My Community", "discordId": "1", "sync": %q, "health": %q, "message": %q, "drift": []}],
+	  "bots": [{"key": "moderator", "username": "Warden", "userId": "2", "health": "Healthy", "servers": ["my-community"],
+	    "plugins": [{"instance": "welcome", "plugin": "welcome", "version": "0.1.0", "server": "my-community", "health": "Healthy"}]}]}`,
 		revJSON, sync, health, msg)
 }
 
@@ -372,7 +456,7 @@ func TestStatusWait(t *testing.T) {
 		serve(f)
 		code, out, errOut := run(t, "status", dir, "--wait", "--revision", sha, "--timeout", "10s")
 		if code != 0 || !strings.Contains(errOut, "Revision 4f0c2d9 is active and every server is Synced and Healthy") ||
-			!strings.Contains(out, "ma-commu") || !strings.Contains(out, "plugin welcome (welcome@0.1.0) on ma-commu: Healthy") {
+			!strings.Contains(out, "my-community") || !strings.Contains(out, "plugin welcome (welcome@0.1.0) on my-community: Healthy") {
 			t.Fatalf("wait = %d\n%s\n%s", code, out, errOut)
 		}
 		if f.calls < 4 {
@@ -388,17 +472,17 @@ func TestStatusWait(t *testing.T) {
 	t.Run("rejected", func(t *testing.T) {
 		serve(&fakeStatus{statuses: []string{statusJSON(otherSHA, "Synced", "Healthy", "")},
 			history: `{"items": [{"id": 3, "time": "2026-11-21T10:00:00Z", "revision": "4f0c2d9", "target": "revision", "status": "rejected",
-			  "message": "1 validation error(s):", "details": [{"severity": "error", "file": "servers/ma-commu.yaml", "line": 12, "message": "unknown role \"x\""}]}]}`})
+			  "message": "1 validation error(s):", "details": [{"severity": "error", "file": "servers/my-community.yaml", "line": 12, "message": "unknown role \"x\""}]}]}`})
 		code, _, errOut := run(t, "status", "--wait", "--revision", sha, dir)
-		if code != 1 || !strings.Contains(errOut, "Revision 4f0c2d9 was rejected") || !strings.Contains(errOut, `servers/ma-commu.yaml:12: error: unknown role "x"`) {
+		if code != 1 || !strings.Contains(errOut, "Revision 4f0c2d9 was rejected") || !strings.Contains(errOut, `servers/my-community.yaml:12: error: unknown role "x"`) {
 			t.Errorf("rejected = %d: %s", code, errOut)
 		}
 	})
 	t.Run("degraded", func(t *testing.T) {
 		serve(&fakeStatus{statuses: []string{statusJSON(sha, "OutOfSync", "Degraded", "missing permissions")}, history: `{"items": []}`,
-			server: `{"items": [{"id": 9, "revision": "4f0c2d9", "target": "server:ma-commu", "status": "failed", "message": "create role: missing permissions"}]}`})
+			server: `{"items": [{"id": 9, "revision": "4f0c2d9", "target": "server:my-community", "status": "failed", "message": "create role: missing permissions"}]}`})
 		code, _, errOut := run(t, "status", "--wait", "--revision", sha, dir)
-		if code != 1 || !strings.Contains(errOut, "ma-commu: OutOfSync Degraded: missing permissions") ||
+		if code != 1 || !strings.Contains(errOut, "my-community: OutOfSync Degraded: missing permissions") ||
 			!strings.Contains(errOut, "last sync (failed, revision 4f0c2d9): create role: missing permissions") {
 			t.Errorf("degraded = %d: %s", code, errOut)
 		}
@@ -473,7 +557,7 @@ func TestRuntimeURLSecurity(t *testing.T) {
 	defer attacker.Close()
 	// a pull request pointing cicord.yaml at its own server
 	p := filepath.Join(dir, "cicord.yaml")
-	writeFile(t, p, strings.Replace(readFile(t, p), "https://cicord.ma-commu.example", attacker.URL, 1))
+	writeFile(t, p, strings.Replace(readFile(t, p), "https://cicord.my-community.example", attacker.URL, 1))
 	for _, args := range [][]string{{"plan", "--remote", dir}, {"status", dir}, {"sync", dir}} {
 		code, _, errOut := run(t, args...)
 		if code != 1 || !strings.Contains(errOut, "refusing to send the runtime token to a URL read from cicord.yaml") {

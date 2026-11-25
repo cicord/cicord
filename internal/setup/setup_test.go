@@ -32,12 +32,12 @@ func fakeDiscord(t *testing.T, token string, flags int, guilds []map[string]any)
 	}
 	mux.HandleFunc("GET /users/@me", func(w http.ResponseWriter, r *http.Request) {
 		if auth(w, r) {
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "111", "username": "Gardien", "avatar": "abc", "bot": true})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "111", "username": "Warden", "avatar": "abc", "bot": true})
 		}
 	})
 	mux.HandleFunc("GET /oauth2/applications/@me", func(w http.ResponseWriter, r *http.Request) {
 		if auth(w, r) {
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "999", "name": "Gardien app", "flags": flags})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "999", "name": "Warden app", "flags": flags})
 		}
 	})
 	mux.HandleFunc("GET /users/@me/guilds", func(w http.ResponseWriter, r *http.Request) {
@@ -61,13 +61,13 @@ func fakeDiscord(t *testing.T, token string, flags int, guilds []map[string]any)
 func TestHTTPProbe(t *testing.T) {
 	ctx := context.Background()
 	tok := "MTIz.fake.token-for-tests"
-	ts := fakeDiscord(t, tok, FlagGatewayGuildMembersLimited|FlagGatewayMessageContent, []map[string]any{{"id": "42", "name": "Ma Commu", "icon": "ic"}})
+	ts := fakeDiscord(t, tok, FlagGatewayGuildMembersLimited|FlagGatewayMessageContent, []map[string]any{{"id": "42", "name": "My Community", "icon": "ic"}})
 	p := &HTTPProbe{BaseURL: ts.URL}
 	id, err := p.Identify(ctx, "Bot "+tok+"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id.ApplicationID != "999" || id.BotUsername != "Gardien" || !strings.HasSuffix(id.BotAvatarURL, "/avatars/111/abc.png") {
+	if id.ApplicationID != "999" || id.BotUsername != "Warden" || !strings.HasSuffix(id.BotAvatarURL, "/avatars/111/abc.png") {
 		t.Fatalf("identity = %+v", id)
 	}
 	in := IntentsFromFlags(id.Flags)
@@ -143,7 +143,7 @@ func TestInitRepositoryGitHubPath(t *testing.T) {
 	if err != nil || !empty || hasCicord {
 		t.Fatalf("empty remote: %v %v %v", empty, hasCicord, err)
 	}
-	files, err := RepoFiles{Project: "ma-commu", ServerKey: "ma-commu", ServerYAML: []byte("x: 1\n"), BotKey: "cicord",
+	files, err := RepoFiles{Project: "my-community", ServerKey: "my-community", ServerYAML: []byte("x: 1\n"), BotKey: "cicord",
 		ApplicationID: "999", SecretRef: "DISCORD_TOKEN_CICORD", Repo: RepoConfig{Provider: ProviderGitHub, URL: "https://github.com/me/commu", Branch: "main"},
 		PublicURL: "https://cicord.example.org"}.Generate()
 	if err != nil {

@@ -330,7 +330,9 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		}
 		dto := syncRecordDTO{ID: rec.ID, Time: rec.Time, Revision: rec.Revision, Target: rec.Target,
 			Status: rec.Status, Message: rec.Message, Details: rec.Details}
-		if rec.Status != "succeeded" {
+		switch rec.Status {
+		case "succeeded", runtime.SyncRecordPaused, runtime.SyncRecordResumed, runtime.SyncRecordSkipped:
+		default:
 			dto.Error = reconcile.Humanize(rec.Message)
 		}
 		items = append(items, dto)
@@ -496,7 +498,26 @@ func (s *server) handleServerSync(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	// {"resume": true} ends a pause of enforcement first (optional body).
+	var req struct {
+		Resume bool `json:"resume"`
+	}
+	if r.ContentLength != 0 {
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	if req.Resume {
+		if _, _, err := s.resume(r, id, key); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
 	p, n, err := s.rt.SyncServer(r.Context(), key)
+	if pausedError(w, err) {
+		return
+	}
 	if err != nil {
 		failHuman(w, http.StatusServiceUnavailable, "unavailable", "sync: ", err)
 		return

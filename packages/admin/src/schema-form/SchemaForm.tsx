@@ -290,6 +290,7 @@ function ScalarControl(p: ControlProps) {
         aria-labelledby={p.label ? undefined : `${p.id}-label`}
         aria-describedby={p.describedBy}
         unknownLabel={(v) => `${v} — no such ${ref} on this server`}
+        loading={!ctx.resources}
       />
     );
   }

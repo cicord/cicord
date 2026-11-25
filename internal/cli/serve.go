@@ -53,6 +53,8 @@ type serverFlags struct {
 	githubAppKeyFile string
 	// metricsListen is the address of the Prometheus metrics listener ("" disables it; serve only).
 	metricsListen string
+	// alertWebhook is --alert-webhook (serve only; "" falls back to CICORD_ALERT_WEBHOOK).
+	alertWebhook string
 }
 
 func (f *serverFlags) register(cmd *cobra.Command, defListen string) {
@@ -312,11 +314,13 @@ Environment:
   CICORD_DISCORD_CLIENT_ID      OAuth2 client ID (default: the first bot's application ID)
   CICORD_ALLOW_PRIVATE_REGISTRIES  "true" lets the Store and plugin downloads reach private networks
   CICORD_METRICS_LISTEN         address of the Prometheus metrics listener (--metrics-listen)
+  CICORD_ALERT_WEBHOOK          webhook of the built-in alerts (--alert-webhook): Discord or JSON
 
 Bot tokens, CICORD_GIT_TOKEN, the GitHub App secrets, CICORD_RUNTIME_TOKEN,
-CICORD_WEBHOOK_SECRET and CICORD_DISCORD_CLIENT_SECRET can instead be kept in the encrypted
-secret store (cicord secret set NAME, or the setup wizard); the environment takes precedence.
-The runtime token and the webhook secret are read at startup: restart after changing them.`,
+CICORD_WEBHOOK_SECRET, CICORD_DISCORD_CLIENT_SECRET and CICORD_ALERT_WEBHOOK can instead be
+kept in the encrypted secret store (cicord secret set NAME, or the setup wizard); the
+environment takes precedence. The runtime token, the webhook secret and the alert webhook are
+read at startup: restart after changing them.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -338,6 +342,7 @@ The runtime token and the webhook secret are read at startup: restart after chan
 		"GitHub App private key file (PEM), instead of the "+gitauth.AppPrivateKeySecret+" secret (env "+gitauth.AppPrivateKeyFileEnv+")")
 	cmd.Flags().StringVar(&f.metricsListen, "metrics-listen", os.Getenv("CICORD_METRICS_LISTEN"),
 		"serve Prometheus metrics on GET /metrics of this address, without authentication, e.g. 127.0.0.1:9420 (default: disabled; env CICORD_METRICS_LISTEN)")
+	cmd.Flags().StringVar(&f.alertWebhook, "alert-webhook", "", alertWebhookFlagHelp)
 	return cmd
 }
 
@@ -485,12 +490,13 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 
 	cacheDir := registry.DefaultCacheDir()
 	reg := newMetricsRegistry()
+	alerts := newAlertNotifier(log, f.alertWebhook, resolve, public, console)
 	rt := runtime.New(runtime.Options{
 		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
 		CommitStatus: commitStatusHook(log, ghRepo, tokens, console), Metrics: reg,
-		Analytics: store.Analytics(),
+		Analytics: store.Analytics(), OnHandler: onHandler(alerts),
 	})
 	// The metrics listener first: a failure must not leave the background goroutines
 	// started below (plugin store) running.
@@ -519,6 +525,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		Catalog: cat, SecretStore: sec, Secret: resolve, PluginStore: runtimePluginStore(cat, resolve, stopping, rt.Repo),
 		Metrics: reg,
 	})
+	runAlerts(alerts, rt, stopping)
 	fmt.Fprintf(stdout, "Cicord runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, console, dataDir)
 	return runHTTP(ctx, log, ln, h, rt, stopping)
 }

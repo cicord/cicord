@@ -546,19 +546,9 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 			pl.Hint = reconcileHint(err)
 		} else {
 			rep.Plan = &p
-			switch {
-			case len(p.Changes) > 0:
-				pl.Status = StatusWarn
-				pl.Message = fmt.Sprintf("Discord differs from the configuration: %d change(s) pending.", len(p.Changes))
-				pl.Hint = "Open Sync → Plan in the admin to review them; Cicord applies them on the next sync."
-			case len(p.Blocked) > 0:
-				pl.Status = StatusWarn
-				pl.Message = fmt.Sprintf("%d change(s) are blocked.", len(p.Blocked))
-				pl.Hint = "Open Sync → Plan in the admin for the explanation."
-			default:
-				pl.Status, pl.Message = StatusOK, "Discord matches the configuration: nothing to change."
-			}
-			pl.Data = map[string]any{"changes": len(p.Changes), "blocked": len(p.Blocked)}
+			var waiting int
+			pl.Status, pl.Message, pl.Hint, waiting = planCheck(p)
+			pl.Data = map[string]any{"changes": len(p.Changes), "blocked": len(p.Blocked), "waitingForBoost": waiting}
 		}
 		add(pl)
 	}
@@ -624,4 +614,27 @@ func reconcileHint(err error) string {
 func botIntentsOf(repo *config.Repo, bot string) discord.Intents {
 	in, _ := discord.ParseIntents(repo.GatewayIntents(bot))
 	return in
+}
+
+// planCheck rates a computed plan for the diagnostics: pending changes and blocked changes
+// are warnings, except the changes that only wait for a higher boost level (declared on
+// purpose, applied once the level is reached: not drift). It also returns how many wait.
+func planCheck(p reconcile.Plan) (status, message, hint string, waiting int) {
+	for _, b := range p.Blocked {
+		if reconcile.WaitsForBoost(b) {
+			waiting++
+		}
+	}
+	switch {
+	case len(p.Changes) > 0:
+		return StatusWarn, fmt.Sprintf("Discord differs from the configuration: %d change(s) pending.", len(p.Changes)),
+			"Open Sync → Plan in the admin to review them; Cicord applies them on the next sync.", waiting
+	case len(p.Blocked) > waiting:
+		return StatusWarn, fmt.Sprintf("%d change(s) are blocked.", len(p.Blocked)-waiting),
+			"Open Sync → Plan in the admin for the explanation.", waiting
+	case waiting > 0:
+		return StatusOK, fmt.Sprintf("Discord matches the configuration; %d change(s) wait for a higher boost level.", waiting), "", waiting
+	default:
+		return StatusOK, "Discord matches the configuration: nothing to change.", "", 0
+	}
 }

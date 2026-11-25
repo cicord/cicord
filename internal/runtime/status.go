@@ -48,6 +48,9 @@ type ServerStatus struct {
 	Drift     []DriftEntry `json:"drift"`
 	// Bot is the bot used to reconcile this server.
 	Bot string `json:"bot,omitempty"`
+	// Paused is set while enforcement is paused on the server (nothing is applied; Sync
+	// still reports the drift from git).
+	Paused *PauseInfo `json:"paused,omitempty"`
 }
 
 type BotStatus struct {

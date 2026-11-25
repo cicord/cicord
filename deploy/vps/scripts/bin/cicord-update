@@ -1,0 +1,79 @@
+#!/bin/sh
+# cicord-update — automatic update of the Cicord runtime to a new release (installed by
+# 06-auto-update.sh as /usr/local/sbin/cicord-update; run daily by cicord-update.timer).
+# Logs: journalctl -t cicord-update.
+set -eu
+CICORD_LOG_TAG=cicord-update
+# shellcheck source=SCRIPTDIR/../lib/cicord-ops.sh
+. "${CICORD_OPS_LIB:-/usr/local/lib/cicord/ops.sh}"
+REPO=cicord/cicord
+IMAGE=ghcr.io/cicord/cicord
+
+policy="$(envget CICORD_AUTO_UPDATE)"; policy="${policy:-patch}"
+verify="$(envget CICORD_UPDATE_VERIFY)"; verify="${verify:-attestation}"
+current="$(envget CICORD_IMAGE)"
+case "$current" in
+  "$IMAGE":*) ;;
+  *) log "CICORD_IMAGE=$current is not a release image of $IMAGE: nothing to do"; exit 0 ;;
+esac
+cur="${current#"$IMAGE":}"; cur="${cur%%@*}"
+
+json="$(curl -fsS --max-time 30 -H 'Accept: application/vnd.github+json' \
+  "https://api.github.com/repos/$REPO/releases/latest")"
+tag="$(printf '%s' "$json" | jq -r '.tag_name // empty')"
+new="${tag#v}"
+echo "$new" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { log "latest release '$tag' is not a version: skipped"; exit 0; }
+[ "$new" != "$cur" ] || { log "up to date ($cur)"; exit 0; }
+# $new is x.y.z; a pre-release precedes its release (0.2.0-rc.1 < 0.2.0), which sort -V
+# gets wrong, so the comparison uses the x.y.z of $cur.
+curcore="${cur%%-*}"
+[ "$curcore" = "$new" ] || [ "$(printf '%s\n%s\n' "$curcore" "$new" | sort -V | tail -1)" = "$new" ] ||
+  { log "running $cur, newer than the latest release $new"; exit 0; }
+
+cmaj="${cur%%.*}"; cmin="$(echo "$cur" | cut -d. -f2)"
+nmaj="${new%%.*}"; nmin="$(echo "$new" | cut -d. -f2)"
+allowed=no
+case "$policy" in
+  patch) [ "$cmaj.$cmin" = "$nmaj.$nmin" ] && allowed=yes ;;
+  minor) [ "$cmaj" = "$nmaj" ] && allowed=yes ;;
+  off) ;;
+  *) log "unknown CICORD_AUTO_UPDATE=$policy (patch, minor or off)"; exit 1 ;;
+esac
+if [ "$allowed" != yes ]; then
+  log "Cicord $new is available (running $cur); CICORD_AUTO_UPDATE=$policy does not apply it: read https://github.com/$REPO/releases/tag/$tag and https://cicord.dev/docs/self-hosting/upgrading/"
+  exit 0
+fi
+
+author="$(printf '%s' "$json" | jq -r '.author.login // empty')"
+[ "$author" = "github-actions[bot]" ] || { log "release $tag was not created by the release workflow (author '$author'): refused"; exit 1; }
+digest="$(printf '%s' "$json" | jq -r '.body // empty' | grep -oE "$IMAGE@sha256:[0-9a-f]{64}" | head -1 | cut -d@ -f2)"
+[ -n "$digest" ] || { log "release $tag gives no image digest: refused"; exit 1; }
+case "$verify" in
+  attestation)
+    if [ ! -s /etc/cicord/github-token ] || ! command -v gh >/dev/null; then
+      log "Cicord $new is available, but its provenance cannot be verified: put a GitHub token in /etc/cicord/github-token (see https://cicord.dev/docs/self-hosting/production-vps/#9-updates)"
+      exit 1
+    fi
+    if ! out="$(GH_TOKEN="$(cat /etc/cicord/github-token)" GH_PROMPT_DISABLED=1 gh attestation verify "oci://$IMAGE@$digest" \
+      --repo "$REPO" --signer-workflow "$REPO/.github/workflows/release.yml" --source-ref "refs/tags/$tag" 2>&1)"; then
+      # gh's last line says why (no attestation, wrong workflow or ref, or a refused token).
+      log "release $tag: the build provenance of $IMAGE@$digest could not be verified, refused: $(printf '%s' "$out" | grep -v '^\s*$' | tail -1)"
+      exit 1
+    fi ;;
+  digest) log "CICORD_UPDATE_VERIFY=digest: provenance not verified, trusting the release notes" ;;
+  *) log "unknown CICORD_UPDATE_VERIFY=$verify (attestation or digest)"; exit 1 ;;
+esac
+
+log "Cicord $new is available (running $cur, $IMAGE@$digest, verified: $verify)"
+update_preflight || exit 1
+docker pull -q "$IMAGE@$digest" >/dev/null
+# A backup first (also copied off the server when CICORD_BACKUP_REMOTE is set): a failed
+# backup stops the update.
+systemctl start cicord-backup.service || { log "the backup failed: update aborted"; exit 1; }
+log "updating Cicord $cur → $new"
+if update_apply "$current" "$IMAGE:$new@$digest"; then
+  log "Cicord $new is running and passes the service check"
+  docker image prune -f >/dev/null 2>&1 || true
+  exit 0
+fi
+exit 1

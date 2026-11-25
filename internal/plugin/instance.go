@@ -827,6 +827,10 @@ type HandlerResult struct {
 	// Kind is the handler kind: start, stop, event, command, autocomplete, component, modal,
 	// route, schedule, task or subscription.
 	Kind string
+	// Name is the handler's local name, from the plugin definition: the command, the
+	// component or modal id, the event, the route key, the schedule, task or topic ("" for
+	// start and stop). It never holds user input.
+	Name string
 	// Duration runs from the call to its result, including the wait in the instance queue.
 	Duration time.Duration
 	// Queued is false when the call was refused before reaching the queue (ErrBusy, a
@@ -838,11 +842,11 @@ type HandlerResult struct {
 // observe reports a handler result to Env.OnHandler. Calls that ran no plugin code because
 // there is no handler or the instance is not serving (stopped, not started) are not
 // reported.
-func (i *Instance) observe(kind string, start time.Time, queued bool, err error) {
+func (i *Instance) observe(kind, name string, start time.Time, queued bool, err error) {
 	if i.env.OnHandler == nil || errors.Is(err, ErrNoHandler) || errors.Is(err, ErrStopped) || errors.Is(err, ErrNotStarted) {
 		return
 	}
-	i.env.OnHandler(HandlerResult{Kind: kind, Duration: time.Since(start), Queued: queued, Err: err})
+	i.env.OnHandler(HandlerResult{Kind: kind, Name: name, Duration: time.Since(start), Queued: queued, Err: err})
 }
 
 // dispatch queues a handler call. The returned channel receives exactly one result: when
@@ -855,7 +859,7 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		if inter != nil {
 			inter.finish(r.err)
 		}
-		i.observe(kind, start, queued, r.err)
+		i.observe(kind, name, start, queued, r.err)
 		out <- r
 	}
 	if err := i.checkState(kind); err != nil {

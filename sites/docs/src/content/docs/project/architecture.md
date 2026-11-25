@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: The goals of Cicord, how the runtime is put together component by component, the sync lifecycle, the CI/CD flow, the security model, the testing strategy, the source layout, and the architecture decision records behind it.
+description: The goals of Cicord, how the runtime is put together component by component, the sync lifecycle, the CI/CD flow, the security model, the testing strategy and the source layout.
 ---
 
 > **Cicord**: *CI/CD for Discord*. GitOps for Discord: servers and bots are declared in a git
@@ -39,7 +39,7 @@ source (github · git · embedded · local) ─▶ loader & validator ─▶ bui
              └─▶ bot host            one gateway session per bot    ├─▶ Discord REST + gateway
                    └─ plugin host    one QuickJS VM per instance   ─┘
 HTTP API ─ admin console · portal SDK · CLI ─▶ write-back (YAML patch + commit / pull request)
-state store (SQLite or PostgreSQL): resource map · plugin KV · audit · sessions · history
+state store (SQLite or PostgreSQL): resource map · plugin KV · audit · sessions · history · analytics
 ```
 
 | Component | Role |
@@ -48,10 +48,11 @@ state store (SQLite or PostgreSQL): resource map · plugin KV · audit · sessio
 | **Loader and validator** | JSON Schemas, then semantic checks. The same code runs in `cicord validate`, in the runtime and before every admin console edit. |
 | **Builder** | Resolves plugins (repository or `cicord.lock`), bundles TypeScript with esbuild used as a Go library, checks each bundle against its manifest. |
 | **Server reconciler** | Plans and applies, in a rate-limit-aware order, adopts by name, detects drift from gateway events. |
+| **Analytics collector** | Turns gateway events and periodic samples into hourly counts per server (no content, no member IDs). |
 | **Bot host** | One gateway session per bot with the union of its intents; syncs slash commands; routes events and interactions; hot-swaps plugin VMs on a new revision without reconnecting. |
 | **Plugin host** | QuickJS-ng compiled to WebAssembly and run by wazero (no CGO): one VM and event loop per instance with a hard memory limit, capability checks on every host call, CPU budgets with a hard stop, wall-clock budgets, automatic restart of crashed instances, auto-defer of interactions. |
 | **State store** | SQLite (pure Go) in the data directory by default, or PostgreSQL (`--database-url`); in memory for `cicord dev --sim`. |
-| **HTTP API** | Serves the admin console, the portal SDK and the CLI; OAuth, portal links, bearer tokens; CSRF protection. |
+| **HTTP API** | Serves the admin console, the portal SDK and the CLI; OAuth, portal links, bearer tokens; CSRF protection; a live event stream. |
 | **Write-back** | Patches YAML at the node level (comments kept), commits as `cicord[bot]`, pushes or opens a pull request. |
 
 The Discord library is wrapped behind Cicord's own interfaces, so the rest of the code never
@@ -97,8 +98,12 @@ See [Project → source](../../configuration/project/#specsource).
   API plus the resource map).
 - **Apply**: ordered, rate-limit-aware operations, resumable after a failure.
 - **Drift**: the bot host forwards gateway events (`CHANNEL_UPDATE`, `ROLE_DELETE`…), so manual
-  changes in Discord are detected in real time. Per server, `syncPolicy` decides: report only,
-  or `selfHeal` (revert).
+  changes in Discord are detected in real time. Per server, `syncPolicy.selfHeal` decides
+  when they are reverted: right away (and by the periodic sync every 5 minutes), or only by
+  the next revision or an explicit sync. Drift reads (runtime status, server detail) reuse the last plan until an apply, a
+  relevant gateway event or a minute passes, instead of reading the whole server from Discord
+  on each request. Changes that only wait for a higher boost level stay in the plan but are
+  not drift.
 - **Adoption** and **ownership**: a declared resource without a mapping adopts an existing
   Discord resource with the same name; only resources in the resource map are ever modified,
   and plugin-owned resources are never pruned.
@@ -147,7 +152,8 @@ backends pass the same conformance suite (`internal/state/statetest`). It holds:
 - the resource map: `(server key, kind, resource key) → Discord ID`, plus the owner (git or a
   plugin instance);
 - plugin KV storage, scoped per plugin instance;
-- the audit log (moderation and admin console actions), sessions and the sync history.
+- the audit log (moderation and admin console actions), sessions and the sync history;
+- the analytics aggregates (hourly counts, `spec.analytics.retention`, default 400 days).
 
 **Configuration lives in git, data lives in the database**: XP, warnings, tickets and member
 preferences never go to git ([ADR-0004](../decisions/0004-git-write-back/)).
@@ -156,7 +162,11 @@ preferences never go to git ([ADR-0004](../decisions/0004-git-write-back/)).
 
 `internal/api`, documented in the [HTTP API reference](../../reference/http-api/). It serves the
 admin console, the community portal SDK and the CLI (`cicord plan --remote`, `cicord status`,
-`cicord sync`), plus the simulator endpoints of `cicord dev --sim`. Authentication uses Discord
+`cicord sync`), plus the simulator endpoints of `cicord dev --sim`.
+[`GET /api/v1/events`](../../reference/http-api/events/) is a Server-Sent Events stream of
+change hints (status, sync, plugins, analytics) that carries no content: the admin console
+refetches what it shows. Prometheus metrics are served on a separate listener
+(`cicord serve --metrics-listen`), never on the API port. Authentication uses Discord
 OAuth2, portal links (`ctx.portal.link()`, scoped to one server), session tokens for embedded
 portals and the runtime bearer token; authorization is derived from Discord roles
 (`spec.access` of each server). Plugins can expose their own routes to the portal. CSRF
@@ -214,7 +224,8 @@ the sync history (`GET /api/v1/history`), and on GitHub as a `cicord/sync` commi
 
 - Shipped prebuilt inside the binary, not customized per deployment
   ([ADR-0007](../decisions/0007-generic-admin-ui/)).
-- Server overview, sync status, drift, sync history, audit log, the Store, diagnostics.
+- Server overview, sync status, the plan, drift, sync history, audit log, analytics, the
+  Store, diagnostics; refreshed live from `GET /api/v1/events` (every 30 s without it).
 - **Plugin settings pages are generated from each plugin's `config.schema.json`.** The Cicord
   schema extensions (`x-cicord-ref: channel | role | category`, `x-cicord-widget`,
   `x-cicord-access`) render pickers and restrict moderator edits.
@@ -289,7 +300,8 @@ The disgo adapter is tested separately against an HTTP test server
 ```text
 cmd/cicord/                  single binary: CLI + `cicord serve`
 internal/
-  api/                       HTTP API v1, auth, simulator endpoints, static UIs
+  analytics/                 server activity collector, queries and summaries
+  api/                       HTTP API v1, auth, event stream, simulator endpoints, static UIs
   auth/                      signed portal link tokens, random IDs
   build/                     esbuild bundling of plugins
   catalog/                   official plugins bundled in the binary
@@ -299,8 +311,9 @@ internal/
   discord/disgoadapter/      implementation over disgo rest + gateway
   gitauth/                   repository credentials: token or GitHub App, commit statuses
   importer/                  live server → servers/<key>.yaml (`cicord import`)
+  metrics/                   Prometheus instrumentation (`--metrics-listen`)
   planfmt/                   plan rendering for the CLI and pull request comments
-  plugin/                    plugin host: definitions, capabilities, budgets (qjs/: QuickJS-ng on wazero)
+  plugin/                    plugin host: definitions, capabilities, budgets (qjs/: QuickJS-ng wasm on wazero)
   reconcile/                 server plan / apply / drift
   registry/                  git registries, cicord.lock resolution, signed indexes
   runtime/                   controller: revisions, hot swap, bot host, status
@@ -310,7 +323,7 @@ internal/
   source/                    local and git sources, revisions
   state/                     store interfaces; sqlite/ and postgres/ backends, statetest/ conformance suite
   store/                     the plugin Store: sources, installs, updates
-  typegen/                   config types generated from plugin schemas
+  typegen/                   types generated from plugin config schemas and route contracts
   version/                   build version
   webui/                     embedded admin console and default portal (copied by scripts/sync-ui.sh)
   writeback/                 YAML node patching, commits, pull requests
@@ -322,31 +335,13 @@ packages/                    JS workspace (pnpm + Vite+)
   admin/                     admin console (embedded into the binary)
   create-cicord-portal/      reference portal (embedded as the default portal)
 spec/                        JSON Schemas and the SDK type contract
-examples/                    example Cicord repositories
+examples/                    example Cicord repositories (basic, showcase, embed)
+scripts/                     release, UI sync, QuickJS wasm build, official registry tooling
+deploy/vps/                  hardened single-server install
 sites/                       the landing page and this documentation
 ```
 
 ## Decisions
 
-The [architecture decision records](../decisions/) record each decision. In short:
-
-| ADR | Decision | Status |
-|---|---|---|
-| [0001](../decisions/0001-single-runtime-controller/) | **Single Go binary; the runtime is a pull-based GitOps controller** hosting N bots × M servers, hot-swapping plugin code without dropping the gateway. CI only validates and plans. | Accepted |
-| [0002](../decisions/0002-self-hosted-first/) | **Self-hosted first, SaaS-ready**: one binary or Docker image with SQLite; everything scoped by project → server/bot → plugin instance so a hosted offering stays possible. | Accepted |
-| [0003](../decisions/0003-state-in-runtime-db/) | **Reconciliation state in the runtime database**: stable keys, a resource map (no state file in git), drift from gateway events, per-server `syncPolicy`, ownership rules; `cicord adopt` and `cicord import` for recovery. | Accepted |
-| [0004](../decisions/0004-git-write-back/) | **Admin console changes become git commits** (or pull requests by path policy), YAML patched with comments kept; configuration in git, data in the database. | Accepted |
-| [0005](../decisions/0005-typescript-plugins/) | **Plugins in TypeScript**, bundled by esbuild in Go: no Node.js anywhere, Node built-ins refused, inline source maps. (Its Sobek engine is superseded by ADR-0018.) | Accepted |
-| [0006](../decisions/0006-capability-based-permissions/) | **Capability-based plugin permissions**, granted explicitly in `bot.yaml`, recorded in `cicord.lock`, checked on every host call. | Accepted |
-| [0007](../decisions/0007-generic-admin-ui/) | **Generic admin console generated from JSON Schemas**, with `x-cicord-ref`, `x-cicord-widget` and `x-cicord-access`; no per-deployment build. | Accepted |
-| [0008](../decisions/0008-community-portal-sdk/) | **Community portal as layered SDKs plus a forkable reference portal**; custom builds committed and served from the revision; token mode for other origins; plugin UI through routes, never injected JavaScript. | Accepted |
-| [0009](../decisions/0009-server-vocabulary/) | **"Server", never "guild"**, outside the Discord adapter. | Accepted |
-| [0010](../decisions/0010-plugin-instance-per-bot-server/) | **One plugin instance per (bot, server)**, with base config and per-server overrides; storage and schedules scoped to the instance. | Accepted |
-| [0011](../decisions/0011-git-registry-and-lockfile/) | **Git-based plugin registries and `cicord.lock`**, apt/Homebrew-style sources with computed trust, and a signed official index with anti-rollback serials. | Accepted |
-| [0012](../decisions/0012-discord-simulator/) | **In-process Discord simulator** behind Cicord's Discord interfaces, following Discord's observable behavior (permissions, hierarchy, intents, interaction deadlines). | Accepted |
-| [0013](../decisions/0013-licensing/) | **Licensing**: Apache-2.0 for everything (runtime, CLI, admin console, SDKs, official plugins, sites). | Accepted |
-| [0014](../decisions/0014-discord-library/) | **disgo** (its `rest` and `gateway` packages only) as the Discord library, wrapped by an adapter; static `CGO_ENABLED=0` build, no sharding. | Accepted |
-| [0015](../decisions/0015-yaml-k8s-style/) | **Kubernetes-style YAML resources** (`apiVersion`, `kind`, `metadata`, `spec`), maps keyed by stable keys, JSON Schemas for editors. | Accepted |
-| [0016](../decisions/0016-portal-as-discord-activity/) | **Portal runnable as a Discord Activity**, keeping signed links as the default. | Proposed |
-| [0017](../decisions/0017-dev-mode-with-simulator/) | **`cicord dev --sim`**: the full runtime on the simulator, seeded from YAML, loopback-only, with a Simulator panel and dev login. | Accepted |
-| [0018](../decisions/0018-quickjs-wasm-engine/) | **Plugins run on QuickJS-ng compiled to WebAssembly** (wazero, no CGO): a hard memory limit per instance, a soft then hard CPU stop that reaches native builtins, crashed instances restarted with backoff. | Accepted |
+Each design choice above is recorded, with its context and trade-offs, in the
+[architecture decision records](../decisions/).

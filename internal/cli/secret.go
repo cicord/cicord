@@ -29,30 +29,7 @@ func init() {
 func newSecretCmd() *cobra.Command {
 	var dataDir, dbFlag string
 	open := func(ctx context.Context) (*secrets.Store, func(), error) {
-		dbURL := databaseURL(dbFlag)
-		if dbURL == "" {
-			// SQLite: the database must already exist (never create one in a mistyped dir).
-			if _, err := os.Stat(filepath.Join(dataDir, stateDBFile)); err != nil {
-				return nil, nil, fmt.Errorf("no runtime state in %s (use --data-dir, or --database-url / %s for PostgreSQL): %w", dataDir, databaseURLEnv, err)
-			}
-		} else if os.Getenv(secrets.KeyEnv) == "" {
-			// PostgreSQL: the encryption key still lives in the data dir (or in
-			// CICORD_SECRET_KEY); never generate a new one here, it would not
-			// decrypt the stored secrets.
-			if _, err := os.Stat(filepath.Join(dataDir, secrets.KeyFile)); err != nil {
-				return nil, nil, fmt.Errorf("no %s in %s (use the runtime's --data-dir, or set %s): %w", secrets.KeyFile, dataDir, secrets.KeyEnv, err)
-			}
-		}
-		st, err := openStateStore(ctx, nil, dataDir, dbURL)
-		if err != nil {
-			return nil, nil, err
-		}
-		s, err := openSecrets(ctx, st, dataDir, false)
-		if err != nil {
-			st.Close()
-			return nil, nil, err
-		}
-		return s, func() { st.Close() }, nil
+		return openDataDirSecrets(ctx, dataDir, dbFlag)
 	}
 	cmd := &cobra.Command{
 		Use:   "secret",
@@ -165,6 +142,36 @@ whole PEM block (a GitHub App private key: from its BEGIN line through its END l
 		},
 	})
 	return cmd
+}
+
+// openDataDirSecrets opens the secret store of an existing runtime state: the SQLite
+// database of dataDir, or the PostgreSQL database of dbFlag / $CICORD_DATABASE_URL, with
+// the key of dataDir (or CICORD_SECRET_KEY). It never creates a state or a key.
+func openDataDirSecrets(ctx context.Context, dataDir, dbFlag string) (*secrets.Store, func(), error) {
+	dbURL := databaseURL(dbFlag)
+	if dbURL == "" {
+		// SQLite: the database must already exist (never create one in a mistyped dir).
+		if _, err := os.Stat(filepath.Join(dataDir, stateDBFile)); err != nil {
+			return nil, nil, fmt.Errorf("no runtime state in %s (use --data-dir, or --database-url / %s for PostgreSQL): %w", dataDir, databaseURLEnv, err)
+		}
+	} else if os.Getenv(secrets.KeyEnv) == "" {
+		// PostgreSQL: the encryption key still lives in the data dir (or in
+		// CICORD_SECRET_KEY); never generate a new one here, it would not
+		// decrypt the stored secrets.
+		if _, err := os.Stat(filepath.Join(dataDir, secrets.KeyFile)); err != nil {
+			return nil, nil, fmt.Errorf("no %s in %s (use the runtime's --data-dir, or set %s): %w", secrets.KeyFile, dataDir, secrets.KeyEnv, err)
+		}
+	}
+	st, err := openStateStore(ctx, nil, dataDir, dbURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	s, err := openSecrets(ctx, st, dataDir, false)
+	if err != nil {
+		st.Close()
+		return nil, nil, err
+	}
+	return s, func() { st.Close() }, nil
 }
 
 // maxSecretValue bounds a value read from stdin (a 4096-bit PEM key is ~3.3 KiB).

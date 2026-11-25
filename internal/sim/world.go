@@ -56,12 +56,21 @@ func WithInteractionDeadline(d time.Duration) Option {
 	}
 }
 
+// WithHiddenChannels makes ListChannels omit, for bots, the channels they cannot view,
+// like Discord's GET /guilds/{id}/channels ("This endpoint omits any channel your bot
+// doesn't have permission to view"). By default every channel is listed.
+func WithHiddenChannels() Option {
+	return func(w *World) { w.hideUnviewable = true }
+}
+
 // World is the simulated Discord universe. Create it with NewWorld.
 type World struct {
 	mu       sync.Mutex
 	now      func() time.Time
 	deadline time.Duration
-	lastID   uint64
+	// hideUnviewable: ListChannels omits the channels a bot cannot view (WithHiddenChannels).
+	hideUnviewable bool
+	lastID         uint64
 
 	users        map[string]*userState
 	botsByToken  map[string]*botState
@@ -477,6 +486,16 @@ func (w *World) User(userID string) (discord.User, bool) {
 		return discord.User{}, false
 	}
 	return u.user, true
+}
+
+// UserBanner returns the CDN URL of a user's profile banner ("" = none).
+func (w *World) UserBanner(userID string) string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if u := w.users[userID]; u != nil {
+		return u.bannerURL
+	}
+	return ""
 }
 
 // Presence returns the presence last set by a bot with SetPresence.

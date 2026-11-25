@@ -46,7 +46,7 @@ func newRuntimeMetrics(reg *metrics.Registry, r *Runtime) *runtimeMetrics {
 		fetchErrors: reg.NewCounter("cicord_source_fetch_errors_total",
 			"Failed fetches of the configuration source (git fetch, local snapshot)."),
 		syncs: reg.NewCounter("cicord_reconcile_syncs_total",
-			"Full reconciliations of a server (activation, periodic resync, sync button), by result: succeeded or failed.", "server", "result"),
+			"Full reconciliations of a server (activation, periodic resync with selfHeal, sync button), by result: succeeded or failed.", "server", "result"),
 		applied: reg.NewCounter("cicord_reconcile_changes_applied_total",
 			"Changes applied to Discord, by trigger: sync (full reconciliation) or self_heal (drift correction).", "server", "trigger"),
 		failed: reg.NewCounter("cicord_reconcile_changes_failed_total",

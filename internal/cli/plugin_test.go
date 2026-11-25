@@ -25,7 +25,7 @@ func TestPluginBuild(t *testing.T) {
 		t.Errorf("report = %+v", r)
 	}
 	code, out, _ = run(t, "plugin", "build", "../../examples/basic/plugins/welcome")
-	if code != 0 || !strings.Contains(out, "Plugin welcome 0.1.0") || !strings.Contains(out, "Events:\n  memberJoin") ||
+	if code != 0 || !strings.Contains(out, "Plugin welcome 0.1.1") || !strings.Contains(out, "Events:\n  memberJoin") ||
 		!strings.Contains(out, "Required intents: ServerMembers") {
 		t.Errorf("build text = %d\n%s", code, out)
 	}
@@ -107,7 +107,7 @@ func TestInitWorkflow(t *testing.T) {
 	}
 	wf := readFile(t, filepath.Join(dir, ".github", "workflows", "cicord.yml"))
 	for _, want := range []string{
-		"go install github.com/cicord/cicord/cmd/cicord@latest", "cicord validate", "cicord plan --remote --comment",
+		"go install github.com/cicord/cicord/cmd/cicord@" + cicordInstallVersion(), "cicord validate", "cicord plan --remote --comment",
 		"cicord status --wait --revision ${{ github.sha }}", "CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}",
 		"CICORD_RUNTIME_TOKEN: ${{ secrets.CICORD_RUNTIME_TOKEN }}", "pull-requests: write", "contents: read",
 	} {
@@ -115,7 +115,19 @@ func TestInitWorkflow(t *testing.T) {
 			t.Errorf("workflow misses %q:\n%s", want, wf)
 		}
 	}
-	// the example repository ships the same workflow
+	if strings.Contains(wf, "@latest") && cicordInstallVersion() != "latest" {
+		t.Errorf("workflow is not pinned to this cicord:\n%s", wf)
+	}
+	checkWorkflowYAML(t, wf)
+	// Actions pinned by commit SHA: organisations may require it (sha_pinning_required).
+	for _, line := range strings.Split(wf, "\n") {
+		if u, ok := strings.CutPrefix(strings.TrimSpace(line), "- uses: "); ok {
+			if _, ref, _ := strings.Cut(u, "@"); len(strings.Fields(ref)) == 0 || len(strings.Fields(ref)[0]) != 40 {
+				t.Errorf("action not pinned by SHA: %s", line)
+			}
+		}
+	}
+	// the example repository ships the same workflow (scripts/release.sh bumps its version)
 	if ex := readFile(t, "../../examples/basic/.github/workflows/cicord.yml"); ex != wf {
 		t.Errorf("examples/basic workflow differs from the init template:\n%s", ex)
 	}

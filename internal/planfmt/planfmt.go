@@ -9,7 +9,8 @@
 // Symbols:
 //
 //   - create   ~ update   - delete   > reorder   = adopt   # unmanage (left in Discord)
-//     ! blocked (with the reason)   note: information that needs no action
+//     ! blocked (with the reason)   ^ waits for a higher boost level (applied once
+//     reached, not drift)   note: information that needs no action
 package planfmt
 
 import (
@@ -42,7 +43,8 @@ type Change struct {
 	Fields  map[string]Field `json:"fields,omitempty"`
 }
 
-// Blocked is an operation the reconciler refuses to perform.
+// Blocked is an operation the reconciler refuses to perform. One whose reason starts with
+// "boost: " only waits for a higher boost level (WaitsForBoost).
 type Blocked struct {
 	Action  string           `json:"action"`
 	Kind    string           `json:"kind"`
@@ -51,6 +53,13 @@ type Blocked struct {
 	Reason  string           `json:"reason"`
 	Summary string           `json:"summary,omitempty"`
 	Fields  map[string]Field `json:"fields,omitempty"`
+}
+
+// WaitsForBoost reports a blocked operation that only waits for a higher server boost
+// level: declared on purpose and not drift, so it is listed and counted apart from the other blocked operations (like the admin console's "Waiting for
+// boosts").
+func (b Blocked) WaitsForBoost() bool {
+	return reconcile.WaitsForBoost(reconcile.Blocked{Reason: b.Reason})
 }
 
 // Note is information about a plan that needs no action (reconcile.Note).
@@ -110,12 +119,13 @@ func Pending(ps []Plan) bool {
 	return false
 }
 
-// Counts are the number of changes per action.
+// Counts are the number of changes per action. Blocked excludes the operations that only
+// wait for a higher boost level, counted in Boost.
 type Counts struct {
-	Create, Update, Delete, Reorder, Adopt, Unmanage, Blocked int
+	Create, Update, Delete, Reorder, Adopt, Unmanage, Blocked, Boost int
 }
 
-// Total is the number of changes (blocked operations excluded).
+// Total is the number of changes (blocked operations and boost waits excluded).
 func (c Counts) Total() int { return c.Create + c.Update + c.Delete + c.Reorder + c.Adopt + c.Unmanage }
 
 // Count tallies the changes of plans.
@@ -138,22 +148,45 @@ func Count(ps ...Plan) Counts {
 				c.Update++
 			}
 		}
-		c.Blocked += len(p.Blocked)
+		for _, b := range p.Blocked {
+			if b.WaitsForBoost() {
+				c.Boost++
+			} else {
+				c.Blocked++
+			}
+		}
 	}
 	return c
 }
 
-// SummaryLine is "Plan: 1 to create, 2 to update, 0 to delete, 1 to reorder; 1 blocked."
-// or "No changes. ..." when there is nothing to apply.
+// SummaryLine is "Plan: 1 to create, 2 to update, 0 to delete, 1 to reorder. 1 operation(s)
+// blocked. 1 change(s) wait for a higher boost level." when there are changes. Without
+// changes it says "Discord matches the configuration" only when nothing is blocked
+// (boost waits are declared on purpose and not drift, but are still mentioned):
+//
+//	No changes. Discord matches the configuration.
+//	No changes. Discord matches the configuration; 1 change(s) wait for a higher boost level.
+//	No changes can be applied: 1 operation(s) blocked.
 func SummaryLine(ps ...Plan) string {
 	c := Count(ps...)
 	blocked := ""
 	if c.Blocked > 0 {
 		blocked = fmt.Sprintf(" %d operation(s) blocked.", c.Blocked)
 	}
-	if c.Total() == 0 {
-		return "No changes. Discord matches the configuration." + blocked
+	boost := ""
+	if c.Boost > 0 {
+		boost = fmt.Sprintf(" %d change(s) wait for a higher boost level.", c.Boost)
 	}
+	if c.Total() == 0 {
+		switch {
+		case c.Blocked > 0:
+			return "No changes can be applied:" + blocked + boost
+		case c.Boost > 0:
+			return "No changes. Discord matches the configuration;" + boost
+		}
+		return "No changes. Discord matches the configuration."
+	}
+	blocked += boost
 	parts := []string{
 		fmt.Sprintf("%d to create", c.Create),
 		fmt.Sprintf("%d to update", c.Update),
@@ -190,8 +223,8 @@ func Symbol(action string) string {
 }
 
 // Lines renders one plan as lines (without the server header): one line per change
-// prefixed by its symbol, followed by indented field details, then blocked operations
-// and notes.
+// prefixed by its symbol, followed by indented field details, then blocked operations,
+// boost waits and notes.
 func Lines(p Plan) []string {
 	var out []string
 	for _, c := range p.Changes {
@@ -204,14 +237,20 @@ func Lines(p Plan) []string {
 			out = append(out, fieldLines(c.Action, c.Fields, "    ")...)
 		}
 	}
-	for _, b := range p.Blocked {
-		what := b.Summary
-		if what == "" {
-			what = strings.TrimSpace(fmt.Sprintf("%s %s %s", b.Action, b.Kind, b.Key))
-		}
-		out = append(out, fmt.Sprintf("! blocked: %s (%s)", what, b.Reason))
+	blocked := func(b Blocked, line string) {
+		out = append(out, line)
 		if b.Kind != reconcile.KindMemberRole {
 			out = append(out, fieldLines(reconcile.ActionUpdate, b.Fields, "    ")...)
+		}
+	}
+	for _, b := range p.Blocked {
+		if !b.WaitsForBoost() {
+			blocked(b, fmt.Sprintf("! blocked: %s (%s)", blockedWhat(b), b.Reason))
+		}
+	}
+	for _, b := range p.Blocked {
+		if b.WaitsForBoost() {
+			blocked(b, fmt.Sprintf("^ waits for boost: %s (%s)", blockedWhat(b), strings.TrimPrefix(b.Reason, "boost: ")))
 		}
 	}
 	for _, n := range p.Notes {
@@ -220,25 +259,40 @@ func Lines(p Plan) []string {
 	return out
 }
 
+func blockedWhat(b Blocked) string {
+	if b.Summary != "" {
+		return b.Summary
+	}
+	return strings.TrimSpace(fmt.Sprintf("%s %s %s", b.Action, b.Kind, b.Key))
+}
+
+// serverLabel is the state of one server: "no changes", "2 change(s), 1 blocked, 1
+// waiting for boosts"… The terminal form (markdown false) says "0 change(s)" next to
+// blocked operations and counts notes only when there is nothing else; the Markdown form
+// always counts them.
+func serverLabel(p Plan, markdown bool) string {
+	c := Count(p)
+	label := "no changes"
+	if c.Total() > 0 || (!markdown && c.Blocked > 0) {
+		label = fmt.Sprintf("%d change(s)", c.Total())
+	}
+	if c.Blocked > 0 {
+		label += fmt.Sprintf(", %d blocked", c.Blocked)
+	}
+	if c.Boost > 0 {
+		label += fmt.Sprintf(", %d waiting for boosts", c.Boost)
+	}
+	if len(p.Notes) > 0 && (markdown || c.Total()+c.Blocked == 0) {
+		label += fmt.Sprintf(", %d note(s)", len(p.Notes))
+	}
+	return label
+}
+
 // Text writes plans in the terminal format: a header per server, its changes, and a
 // summary line.
 func Text(w io.Writer, ps []Plan) {
 	for _, p := range ps {
-		c := Count(p)
-		head := fmt.Sprintf("Server %s: ", p.Server)
-		switch {
-		case c.Total() == 0 && c.Blocked == 0:
-			head += "no changes"
-			if len(p.Notes) > 0 {
-				head += fmt.Sprintf(", %d note(s)", len(p.Notes))
-			}
-		default:
-			head += fmt.Sprintf("%d change(s)", c.Total())
-			if c.Blocked > 0 {
-				head += fmt.Sprintf(", %d blocked", c.Blocked)
-			}
-		}
-		fmt.Fprintln(w, head)
+		fmt.Fprintf(w, "Server %s: %s\n", p.Server, serverLabel(p, false))
 		for _, l := range Lines(p) {
 			fmt.Fprintln(w, "  "+l)
 		}
@@ -299,16 +353,7 @@ func Markdown(r Result, o MarkdownOptions) string {
 	writeDiags("Warnings", warns)
 	for _, p := range r.Plans {
 		c := Count(p)
-		label := "no changes"
-		if c.Total() > 0 {
-			label = fmt.Sprintf("%d change(s)", c.Total())
-		}
-		if c.Blocked > 0 {
-			label += fmt.Sprintf(", %d blocked", c.Blocked)
-		}
-		if len(p.Notes) > 0 {
-			label += fmt.Sprintf(", %d note(s)", len(p.Notes))
-		}
+		label := serverLabel(p, true)
 		fmt.Fprintf(&b, "<details%s><summary>Server <code>%s</code>: %s</summary>\n\n", openIf(c.Total()+c.Blocked > 0), htmlEscape(p.Server), label)
 		lines := Lines(p)
 		if len(lines) > 0 {

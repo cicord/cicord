@@ -24,6 +24,9 @@ export type StepId =
 
 export type Provider = "local" | "embedded" | "github";
 
+/** The invite choice of the Server step. */
+export type Access = "admin" | "inspect";
+
 /** How the GitHub repository is accessed. */
 export type RepoAuth = "token" | "githubApp";
 
@@ -73,7 +76,10 @@ export interface SetupView {
   providers: Provider[];
   publicUrl: string;
   bot?: SetupBot;
+  /** How the bot is invited: Administrator (default) or View Channels only, to inspect first. */
+  access: Access;
   inviteUrl?: string;
+  inspectInviteUrl?: string;
   server?: SetupServer;
   repo?: {
     provider: Provider;
@@ -125,6 +131,50 @@ export interface ImportResult {
   needsConfirm: boolean;
   files?: string[];
   warnings: string[];
+}
+
+/** A category or channel as the bot sees it. */
+export interface ChannelAccess {
+  id: string;
+  key?: string;
+  name: string;
+  type: string;
+  categoryId?: string;
+  category?: string;
+  /** @everyone cannot view it. */
+  private: boolean;
+  /** The bot can view it. */
+  visible: boolean;
+}
+
+/** The read-only inspection of the chosen server (nothing is changed on Discord). */
+interface InspectReport {
+  serverId: string;
+  serverName: string;
+  key: string;
+  botName: string;
+  administrator: boolean;
+  permissions: string[];
+  rolePermissions: string[];
+  categories: ChannelAccess[];
+  channels: ChannelAccess[];
+  /** Channels the server refers to that Discord did not list (hidden from the bot). */
+  unlisted: { id: string; referencedBy: string[] }[];
+  unreadable: { part: string; name: string; needs?: string; error: string }[];
+  /** What the bot lacks to apply changes, with the YAML paths that need each permission. */
+  needs: { permission: string; sources: string[]; why: string }[];
+  hierarchy: Check;
+  ready: boolean;
+  upgradeInviteUrl?: string;
+  adminInviteUrl?: string;
+  warnings: string[];
+  reads: number;
+  writes: number;
+}
+
+export interface InspectResult {
+  report: InspectReport;
+  plan: Plan;
 }
 
 export interface Report {
@@ -186,6 +236,8 @@ export function setupApi(client: CicordClient) {
       get<{ servers: ServerSummary[] }>("/discord/servers", signal).then((r) => r.servers),
     selectServer: (serverId: string) => post<ServerResult>("/server", { serverId }),
     checkServer: () => post<ServerResult>("/server/check"),
+    access: (access: Access) => post<SetupView>("/access", { access }),
+    inspect: () => post<InspectResult>("/inspect"),
     repo: (body: RepoRequest) => post<SetupView>("/repo", body),
     import: (confirm = false) => post<ImportResult>("/import", { confirm }),
     saveOAuth: (clientSecret: string) => post<SetupView>("/oauth", { clientSecret }),
@@ -203,6 +255,7 @@ export function setupApi(client: CicordClient) {
       intents: (enabled: boolean) => post<void>("/sim/intents", { enabled }),
       invite: (low: boolean) => post<void>("/sim/invite", { low }),
       raiseRole: () => post<void>("/sim/raise-role"),
+      grantAdmin: () => post<void>("/sim/grant-admin"),
       message: () => post<void>("/sim/message"),
     },
   };

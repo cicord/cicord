@@ -62,7 +62,7 @@ const at = { bot: "helper", instance: "demo-1" };
 describe("typed plugin routes", () => {
   test("fills path parameters, query and body", async () => {
     const { calls, client } = recorder();
-    const demo = client.routes("demo", "ma-commu", at);
+    const demo = client.routes("demo", "my-community", at);
     await demo.call("GET /items", { query: { q: "a b", limit: 5 } });
     await demo.call("GET /items/:id", { params: { id: "x/1" } });
     await demo.call("POST /items/:id/votes/:choice", {
@@ -70,7 +70,7 @@ describe("typed plugin routes", () => {
       body: { weight: 2 },
     });
     await expect(demo.call("DELETE /items/:id", { params: { id: "7" } })).resolves.toBeUndefined();
-    const base = "/api/v1/portal/ma-commu/plugins/helper/demo-1";
+    const base = "/api/v1/portal/my-community/plugins/helper/demo-1";
     expect(calls).toEqual([
       { url: `${base}/items?q=a+b&limit=5`, method: "GET", body: undefined },
       { url: `${base}/items/x%2F1`, method: "GET", body: undefined },

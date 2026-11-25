@@ -142,7 +142,7 @@ func jsonPointer(tokens ...string) string {
 }
 
 // suspiciousComments finds plain (unquoted) scalars followed by a comment that starts
-// with "#" directly followed by text (e.g. `message: rendez-vous dans #général`), which
+// with "#" directly followed by text (e.g. `message: see you in #general`), which
 // YAML silently truncates. Returns (line, value, comment) triples.
 func (d *document) suspiciousComments() [][3]string {
 	var out [][3]string

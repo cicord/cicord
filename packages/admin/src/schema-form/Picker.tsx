@@ -41,6 +41,8 @@ export interface PickerProps {
   "aria-describedby"?: string;
   /** Rendered when the value is not among the options. */
   unknownLabel?: (value: string) => string;
+  /** The options are still loading: a value not among them is shown as is, not as unknown. */
+  loading?: boolean;
 }
 
 export function Picker(props: PickerProps) {
@@ -148,6 +150,10 @@ export function Picker(props: PickerProps) {
             {selected.icon}
             <span className="sf-picker-label">{selected.label}</span>
             {selected.hint ? <code className="sf-picker-hint">{selected.hint}</code> : null}
+          </span>
+        ) : value && props.loading ? (
+          <span className="sf-picker-value">
+            <code className="sf-picker-hint">{value}</code>
           </span>
         ) : value ? (
           <span className="sf-picker-value sf-picker-unknown">{unknownLabel(value)}</span>

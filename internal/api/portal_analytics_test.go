@@ -20,7 +20,7 @@ func startPortalAnalytics(t *testing.T, mode string) *env {
 		if mode == "" {
 			return
 		}
-		p := filepath.Join(dir, "servers", "ma-commu.yaml")
+		p := filepath.Join(dir, "servers", "my-community.yaml")
 		data, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)

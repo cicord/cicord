@@ -138,8 +138,8 @@ writes .github/workflows/cicord-portal.yml, which checks that the committed buil
 the sources, and src/cicord-routes.d.ts, the types of the repository's plugin routes.
 
 --from-npm (or CICORD_FROM_NPM=true) depends on the npm registry instead
-("@cicord/client": "^<version of this cicord>", no vendor/): use it once the packages are
-published (https://cicord.dev/docs/portal/custom-portal/).
+("@cicord/client": "^<version of this cicord>", no vendor/), where every release
+publishes the @cicord/* packages (https://cicord.dev/docs/portal/custom-portal/).
 
 Then: cd <dir> && pnpm install && pnpm build, set spec.portal.path: ./<dir>/dist in
 cicord.yaml, and commit <dir> (dist/ included).`,
@@ -375,11 +375,28 @@ jobs:
         working-directory: [[.Dir]]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        with:
-          go-version: stable
-      # The cicord version that generated this portal; bump it with the runtime.
-      - run: go install github.com/cicord/cicord/cmd/cicord@[[.Cicord]]
+      # The cicord release that generated this portal (its vendored @cicord/* packages); bump
+      # it with the runtime. The release binary embeds the portal kit that "portal vendor
+      # --check" compares with (a "go install" build does not). Its checksum and its build
+      # provenance (the release workflow of cicord/cicord, from that tag) are verified.
+      - name: Install cicord ([[.Cicord]], release binary)
+        working-directory: ${{ runner.temp }}
+        env:
+          CICORD_TAG: "[[.Cicord]]"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$CICORD_TAG"
+          if [ "$tag" = latest ]; then tag="$(gh release view --repo cicord/cicord --json tagName -q .tagName)"; fi
+          case "$RUNNER_ARCH" in X64) arch=amd64 ;; ARM64) arch=arm64 ;; *) echo "::error::no cicord release for $RUNNER_ARCH"; exit 1 ;; esac
+          archive="cicord_${tag#v}_linux_${arch}.tar.gz"
+          gh release download "$tag" --repo cicord/cicord --pattern "$archive" --pattern checksums.txt --clobber
+          awk -v f="$archive" '$2 == f' checksums.txt | sha256sum -c -
+          gh attestation verify "$archive" --repo cicord/cicord \
+            --signer-workflow cicord/cicord/.github/workflows/release.yml --source-ref "refs/tags/$tag"
+          mkdir -p cicord-bin && tar -xzf "$archive" -C cicord-bin cicord
+          echo "$PWD/cicord-bin" >> "$GITHUB_PATH"
+          cicord-bin/cicord version
       - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
         working-directory: .
         run: cicord portal typegen --check --out [[.Dir]]/src/cicord-routes.d.ts
@@ -592,8 +609,8 @@ func hashTree(dir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), err
 }
 
-// cicordInstallVersion is the `go install` version of this binary for the generated
-// workflow: its release tag, or latest for a development build.
+// cicordInstallVersion is the cicord release the generated workflows install: the tag
+// of this binary, or latest for a development build.
 func cicordInstallVersion() string {
 	v := version.Version
 	if v == "" || v == "dev" || strings.Contains(v, "-dev") {

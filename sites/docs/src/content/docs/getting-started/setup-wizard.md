@@ -1,17 +1,13 @@
 ---
 title: Setup wizard
-description: How the setup wizard works - setup mode, the one-time link and its security, each step and what it checks, the Verify checklist, the bundled plugin catalog, Diagnostics and the known gaps.
+description: Reference of the setup wizard - setup mode, the one-time link and its security, what each step checks and writes, Diagnostics and the known gaps.
 ---
 
-Going from "nothing" to "a server Cicord can sync" takes about ten manual steps: create an
-application, copy IDs, reset the token, turn intents on, invite the bot with the right
-permissions, move its role, set environment variables, create the repository, run the first
-sync, install a first plugin. The setup wizard guides a newcomer through all of it in the admin
-console and **verifies each step automatically**.
-
-[Quick start](../quick-start/) walks through it. This page is the reference: when the runtime
-enters setup mode, what each step checks, and how the wizard is secured. The endpoints are in
-the [HTTP API reference](../../reference/http-api/setup/).
+The setup wizard takes a newcomer from nothing to a synced server in the admin console:
+create the bot, invite it, import the server, verify everything live, install a first
+plugin. [Quick start](../quick-start/) walks through it; this page is the reference: when
+the runtime enters setup mode, what each step checks and writes, and how the wizard is
+secured. The endpoints are in the [HTTP API reference](../../reference/http-api/setup/).
 
 ## Setup mode
 
@@ -25,22 +21,26 @@ the [HTTP API reference](../../reference/http-api/setup/).
 | Otherwise                                                                                                                   | **Setup mode**.                                                                                                                                                                             |
 
 In setup mode the runtime serves only the admin console, the setup endpoints
-(`/api/v1/setup/*`), the plugin catalog (`/api/v1/catalog`) and the health endpoints:
+(`/api/v1/setup/*`), what the wizard's last steps use (the plugin catalog, the Store and
+registry endpoints, plugin install and uninstall, Diagnostics) and the health endpoints:
 `/healthz`, and `/readyz`, which answers `503 setup mode`. Every other `/api/*` and `/auth/*`
 path answers `503` with the code `setup_required`, and `/` redirects to `/admin/setup`; the
 admin console notices `setup_required` and shows the wizard. With
 [`--admin-url`](../../self-hosting/security/#admin-on-a-private-network-portal-public), only the
 health endpoints answer on the other hostnames.
 
-The runtime prints a **one-time setup link** in its log:
+The runtime prints a **one-time setup link** in its log (here `cicord dev --sim --setup`):
 
 ```text
 Cicord is not set up yet: setup mode on http://127.0.0.1:7420
   open the setup wizard: http://127.0.0.1:7420/admin/setup?token=…
+  (this link works once; restart Cicord to get a new one)
+  data: /home/me/pixel-pals/.cicord/dev
+  Discord simulator: the wizard creates a simulated bot and server for you
 ```
 
 The admin console exchanges the token for a setup session, then removes it from the address
-bar and the browser history. A restart prints a new link.
+bar and the browser history. Opened without the token, the wizard asks you to paste the link.
 
 The wizard's state (the current step and the answers, never a secret value) is kept in the
 state store (KV scope `cicord:setup`), so the wizard **resumes after a restart**: the same data
@@ -55,24 +55,22 @@ directory and a new link continue where you left off.
 ### Offline, against the simulator
 
 `cicord dev --sim --setup` runs the whole wizard against the Discord simulator. Its world has
-an `owner` user and a server "Pixel Pals" that already has roles (Admin, Moderator, Member), a
-category, text and voice channels and members, so the import adopts something real. Buttons
+an `owner` user and a server "Pixel Pals" that already has roles (Admin, Moderator, Member),
+categories (one private), text and voice channels, an AutoMod rule and members, so the import
+adopts something real. Buttons
 marked _Simulate_ stand in for discord.com: create a bot, turn the privileged intents on,
 authorize the invite (optionally with the bot's role at the bottom, to see the hierarchy
-check fail), drag the bot's role to the top, send a message. Once the files are written,
+check fail), drag the bot's role to the top, send a message. An **Inspect first** run reports the private Staff
+category as hidden and the AutoMod rule as unreadable; a _Simulate_ button then authorizes the
+Administrator invite. The simulator lists every channel to the bot,
+so the hidden ones are named; Discord leaves them out of the list. Once the files are written,
 `cicord dev --sim <dir>` runs that repository normally.
 
 ### Activation without a restart
 
-The HTTP server holds a swappable handler. When the Repository step activates the
-configuration, the runtime:
-
-1. builds the source, the write-back and the runtime;
-2. starts the runtime;
-3. waits for the first revision to be active;
-4. swaps the setup handler for the full API, with the setup endpoints still mounted.
-
-The wizard then continues on the full API.
+When the Configuration step activates the repository, the runtime starts on it in the same
+process, waits for the first revision to be active, then swaps the setup handler for the
+full API (the setup endpoints stay mounted until **Finish**).
 
 ## Security
 
@@ -102,9 +100,9 @@ The wizard then continues on the full API.
 **The secret store.** What you paste (the bot token, the GitHub token or App, the OAuth client
 secret) is stored encrypted, never written to a file: AES-256-GCM with a random nonce per
 write, the secret's name authenticated with it, ciphertexts in KV scope `cicord:secrets`, and a
-sentinel ciphertext that makes a wrong key fail at startup. The API never returns a value. The
-tests assert that the bot token and the setup token never appear in an API response, in the
-logs or in the repository. Names, key and rotation:
+sentinel ciphertext that makes a wrong key fail at startup. The API never returns a value,
+and neither the bot token nor the setup token is ever logged or written to the repository.
+Names, key and rotation:
 [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
 
 ## The steps
@@ -135,17 +133,25 @@ Numbered instructions with a link to the developer portal (New Application → B
 
 ### 3. Server
 
-The invite link asks for the scopes `bot applications.commands` and the **Administrator**
-permission (`permissions=8`). To run without Administrator, see
-[Bot permissions](../../self-hosting/bot-permissions/).
+The step first asks how the bot joins:
+
+- **Administrator (fastest)**, the default. The invite asks for the scopes
+  `bot applications.commands` and the **Administrator** permission (`permissions=8`). Cicord
+  can manage everything right away, and so can anyone holding the bot token.
+- **Inspect first (read-only)**. The invite asks for **View Channels** only
+  (`permissions=1024`). Once the server is picked, the wizard inspects it: visible and hidden
+  channels, what it could not read, what applying changes would need, and the first plan
+  (empty). Nothing is changed on Discord and nothing is saved. You can stop there. To go on,
+  authorize the report's upgrade link (exact permissions or Administrator) and click
+  **Re-check**: **Continue** unlocks once the checks below pass. See
+  [Evaluate an existing server safely](../evaluate-a-server/).
+
+To run without Administrator, see [Bot permissions](../../self-hosting/bot-permissions/).
 
 - **Live detection.** The page polls `GET /api/v1/setup/discord/servers` every 2.5 seconds,
-  which reads the bot's servers (`GET /users/@me/guilds`). The server appears once you click
-  _Authorize_: there is no ID to copy.
-- **Why REST polling, not the gateway's `GUILD_CREATE`**: polling works before the privileged
-  intents are on (an identify with disallowed intents is closed with `4014`), spends no
-  identify quota, leaves no second gateway session behind when the runtime connects, and
-  cannot miss a join that happened while Cicord was stopped.
+  which reads the bot's servers over REST (`GET /users/@me/guilds`), so it works before the
+  privileged intents are on and opens no gateway session. The server appears a few seconds
+  after you click _Authorize_; pick it with **Manage this server**: there is no ID to copy.
 - **Checks** (with Re-check): the bot is a member; it has Administrator, or the permissions
   Cicord needs; and its **highest role is above every role Cicord will manage**. On failure
   the wizard says what to do, for example "drag the role Cicord above Admin" (the highest role
@@ -155,7 +161,9 @@ permission (`permissions=8`). To run without Administrator, see
   Read Message History, Add Reactions, Manage Messages and Moderate Members. Later checks (the
   Verify step, Diagnostics) use the exact needs of the configuration and its plugins.
 
-### 4. Repository
+### 4. Configuration
+
+Where the configuration lives:
 
 - **Managed by Cicord**: a bare repository at `<data dir>/repo.git`, where every change is a
   commit.
@@ -188,7 +196,8 @@ permission (`permissions=8`). To run without Administrator, see
    - `cicord.yaml`, whose [write-back](../../concepts/write-back/) policy depends on the
      repository: every change is committed for embedded, local and git repositories; on
      GitHub, `bots/**` and `plugins/**` are committed and `servers/**` opens a pull request;
-   - `servers/<key>.yaml`;
+   - `servers/<key>.yaml`, plus the server's images (icon, emojis, stickers…) under
+     `servers/assets/<key>/`;
    - `bots/<bot>/bot.yaml`, with the token's `secretRef`, the server, `intents:
      [ServerMessages]` (for the live-event check) and no plugins;
    - `README.md` and `.gitignore`;
@@ -196,7 +205,7 @@ permission (`permissions=8`). To run without Administrator, see
 4. computes a **preflight plan** with a plan-only reconciler, before anything touches Discord.
    If it is not empty, the changes are shown and must be confirmed;
 5. closes the wizard's REST session;
-6. writes the **first commit**;
+6. writes the **first commit** (with **This folder**, the files);
 7. activates the runtime [without a restart](#activation-without-a-restart).
 
 The first plan of the running runtime is shown as proof: nothing to change.
@@ -216,11 +225,14 @@ Instructions for the application's OAuth2 page (a direct link), the **redirect U
   shows "Signed in as …".
 - The API reads the client secret on every login, so no restart is needed.
 - In the simulator, the dev login replaces this step.
-- You can skip it; `cicord serve` then shows a warning.
+- You can skip it and set `CICORD_DISCORD_CLIENT_SECRET` later. The wizard warns that once
+  you finish, the setup link no longer opens the admin console.
 
 ### 6. Verify
 
 A checklist run by the runtime, polled every 2 seconds until everything is green:
+
+![The same checks, run again at any time from Diagnostics in the admin console](../../../assets/screenshots/admin-diagnostics.webp)
 
 | Check         | What it verifies                                                                                                                 |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -257,7 +269,7 @@ onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log, annou
 ### 8. Done
 
 A summary, links to the admin console, the portal and the CLI (`cicord plan --remote`), and
-**Finish**, which completes the setup.
+**Finish and open the admin**, which completes the setup.
 
 ## Diagnostics
 
@@ -269,12 +281,10 @@ and server.
 
 ## The plugin catalog
 
-The catalog is built from the official plugins' sources, embedded with explicit patterns
-(`plugin.yaml`, `config.schema.json`, `tsconfig.json`, `src/*.ts`), so `node_modules` or build
-output can never end up in the binary. `tsconfig.json` is made portable: its `paths` entry
-pointing into the Cicord repository is dropped. `GET /api/v1/catalog` lists the plugins for
-admins. After the setup, the admin console's **Store** adds the plugins of
-[registries](../../plugins/publishing/).
+The wizard's catalog is the sources of the nine official plugins, embedded in the binary at
+build time (`plugin.yaml`, `config.schema.json`, `tsconfig.json`, `src/*.ts`; never
+`node_modules` or build output). `GET /api/v1/catalog` lists them for admins. After the
+setup, the admin console's **Store** adds the plugins of [registries](../../plugins/publishing/).
 
 ## Known gaps
 
@@ -293,11 +303,3 @@ admins. After the setup, the admin console's **Store** adds the plugins of
   persisted embedded or GitHub repository. Moving that runtime elsewhere means copying the data
   directory (it holds the repository, the state and `secret.key`).
 - The wizard manages one server and one bot. Add more by editing the repository.
-
-## Where the code is
-
-`internal/setup` (state machine, Discord probe, checks, repository, installer, simulator
-environment), `internal/secrets` (secret store), `internal/catalog` and `examples/catalog.go`
-(the bundled plugins), `internal/api/setup.go` (HTTP), `internal/cli/setup.go` (boot and
-activation), `internal/runtime/diagnostics.go`, `packages/admin/src/setup` (the wizard's UI)
-and `packages/admin/src/pages/Diagnostics.tsx`.

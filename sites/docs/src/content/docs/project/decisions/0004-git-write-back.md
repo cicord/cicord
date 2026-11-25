@@ -28,6 +28,8 @@ being the source of truth and the next sync overwrites them.
   and key order.
 - **Concurrency**: each edit is based on a SHA. If the branch moved, rebase when the patch
   applies cleanly, otherwise open a PR.
+  *Update (implementation): an edit that no longer applies on the latest head is refused
+  with `409 conflict` instead of opening a pull request.*
 - **Boundary — config in git, data in the DB.** XP, warnings, tickets, member preferences,
   moderation history and audit log are data, never committed.
 

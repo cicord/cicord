@@ -22,7 +22,7 @@ interface Sent {
 }
 type Intercept = (url: URL, init: RequestInit) => Response | undefined;
 
-function setup(path = "/admin/servers/ma-commu/store", intercept?: Intercept) {
+function setup(path = "/admin/servers/pixel-haven/store", intercept?: Intercept) {
   const runtime = createMockRuntime({ latency: 0, persist: false });
   const sent: Sent[] = [];
   const fetch: FetchLike = async (input, init) => {
@@ -65,7 +65,7 @@ const installs = (sent: Sent[]) =>
 const tableCalls = (sent: Sent[]) =>
   sent.filter((s) => s.method === "GET" && s.path === "/api/v1/store/plugins");
 
-const STORE = "/admin/servers/ma-commu/store";
+const STORE = "/admin/servers/pixel-haven/store";
 
 describe("store: browse", () => {
   test("server-side table: count, filters, search, sort, pages; fetch errors are explained", async () => {
@@ -128,7 +128,7 @@ describe("store: browse", () => {
     const name = first.querySelector(".font-medium")!.textContent;
     await user.click(first);
     expect(await screen.findByRole("heading", { level: 1, name })).toBeTruthy();
-    expect(window.location.pathname).toMatch(/\/servers\/ma-commu\/store\/[^/]+\/[^/]+$/);
+    expect(window.location.pathname).toMatch(/\/servers\/pixel-haven\/store\/[^/]+\/[^/]+$/);
   });
 
   test("detail page: permissions review, privileged intents, network, installed instances", async () => {
@@ -158,7 +158,7 @@ describe("store: browse", () => {
     const { user } = setup(`${STORE}/cicord/welcome`);
     await login(user);
     const welcome = await pluginPage("Welcome");
-    expect(await within(welcome).findByText("moderator/welcome on ma-commu")).toBeTruthy();
+    expect(await within(welcome).findByText("moderator/welcome on pixel-haven")).toBeTruthy();
     expect(within(welcome).getByRole("button", { name: "Install another instance" })).toBeTruthy();
     cleanup();
 
@@ -188,7 +188,7 @@ describe("store: install", () => {
     const { user, sent } = setup(`${STORE}/cicord/polls`);
     await login(user);
     const page = await pluginPage("Polls");
-    await user.click(await within(page).findByRole("button", { name: "Install on Ma Commu" }));
+    await user.click(await within(page).findByRole("button", { name: "Install on Pixel Haven" }));
     expect(within(page).queryByRole("checkbox")).toBeNull();
     expect(within(page).getByLabelText("Instance name")).toHaveProperty("value", "polls");
     await user.click(within(page).getByRole("button", { name: "Install" }));
@@ -210,7 +210,7 @@ describe("store: install", () => {
     const { user, sent } = setup(`${STORE}/acme/giveaways`);
     await login(user);
     const page = await pluginPage("Giveaways");
-    await user.click(await within(page).findByRole("button", { name: "Install on Ma Commu" }));
+    await user.click(await within(page).findByRole("button", { name: "Install on Pixel Haven" }));
     expect(within(page).getAllByText("Unofficial").length).toBeGreaterThan(0);
     const install = within(page).getByRole("button", { name: "Install" });
     expect(install).toHaveProperty("disabled", true);
@@ -242,7 +242,7 @@ describe("store: install", () => {
     const { user, sent, runtime } = setup(`${STORE}/acme/giveaways`);
     await login(user);
     const page = await pluginPage("Giveaways");
-    await user.click(await within(page).findByRole("button", { name: "Install on Ma Commu" }));
+    await user.click(await within(page).findByRole("button", { name: "Install on Pixel Haven" }));
     // A new version is published between the review and the install.
     const giveaways = runtime.state.registries[0]!.plugins.find((p) => p.name === "giveaways")!;
     Object.assign(giveaways, {
@@ -264,7 +264,7 @@ describe("store: install", () => {
     expect(within(page).getByText("stats.acme.dev")).toBeTruthy();
 
     // The confirmation must be given again for the new code, then the reviewed values are sent.
-    await user.click(within(page).getByRole("button", { name: "Install on Ma Commu" }));
+    await user.click(within(page).getByRole("button", { name: "Install on Pixel Haven" }));
     const confirm = within(page).getByRole("checkbox", { name: /I trust acme/ });
     expect(confirm).toHaveProperty("checked", false);
     expect(within(page).getByRole("button", { name: "Install" })).toHaveProperty("disabled", true);
@@ -284,7 +284,7 @@ describe("store: install", () => {
     await login(user);
     // xp needs MessageContent, which is off on the mock application.
     const xp = await pluginPage("XP & levels");
-    await user.click(await within(xp).findByRole("button", { name: "Install on Ma Commu" }));
+    await user.click(await within(xp).findByRole("button", { name: "Install on Pixel Haven" }));
     expect(within(xp).getByText(/Needs Message Content Intent enabled/)).toBeTruthy();
     await user.click(within(xp).getByRole("checkbox", { name: /I trust acme/ }));
     // The required channel is missing: client-side validation blocks the install.
@@ -298,7 +298,7 @@ describe("store: install", () => {
     const { user } = setup(`${STORE}/cicord/polls`);
     await login(user);
     const polls = await pluginPage("Polls");
-    await user.click(await within(polls).findByRole("button", { name: "Install on Ma Commu" }));
+    await user.click(await within(polls).findByRole("button", { name: "Install on Pixel Haven" }));
     const name = within(polls).getByLabelText("Instance name");
     await user.clear(name);
     await user.type(name, "welcome");
@@ -326,7 +326,7 @@ describe("store: install", () => {
     );
     await login(user);
     const page = await pluginPage("Polls");
-    await user.click(await within(page).findByRole("button", { name: "Install on Ma Commu" }));
+    await user.click(await within(page).findByRole("button", { name: "Install on Pixel Haven" }));
     await user.click(within(page).getByRole("button", { name: "Install" }));
     expect(await within(page).findByText("A privileged intent is off")).toBeTruthy();
     expect(
@@ -386,7 +386,7 @@ describe("store: sources", () => {
     runtime.state.storeInstalls.push({
       source: "acme",
       plugin: "giveaways",
-      server: "ma-commu",
+      server: "pixel-haven",
       bot: "moderator",
       instance: "giveaways",
     });

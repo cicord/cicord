@@ -43,20 +43,20 @@ func TestSlug(t *testing.T) {
 func TestGenerate(t *testing.T) {
 	sid := "100000000000000000"
 	snap := reconcile.Snapshot{
-		Server: discord.Server{ID: sid, Name: "Ma Commu", VerificationLevel: "low", DefaultNotifications: "onlyMentions", SystemChannelID: "20"},
+		Server: discord.Server{ID: sid, Name: "My Community", VerificationLevel: "low", DefaultNotifications: "onlyMentions", SystemChannelID: "20"},
 		Roles: []discord.Role{
 			{ID: sid, Name: "@everyone", Permissions: discord.MustPermissions("ViewChannel")},
-			{ID: "11", Name: "Modo", Position: 2, Color: 0xe67e22, Hoist: true},
+			{ID: "11", Name: "Moderator", Position: 2, Color: 0xe67e22, Hoist: true},
 			{ID: "12", Name: "Bot", Position: 3, Managed: true},
-			{ID: "13", Name: "modo", Position: 1},
+			{ID: "13", Name: "moderator", Position: 1},
 		},
 		Channels: []discord.Channel{
-			{ID: "30", Name: "Général", Type: discord.ChannelCategory, Position: 0,
+			{ID: "30", Name: "General", Type: discord.ChannelCategory, Position: 0,
 				Overwrites: []discord.Overwrite{{ID: sid, Deny: discord.MustPermissions("SendMessages")}, {ID: "12", Allow: discord.MustPermissions("SendMessages")}}},
 			{ID: "20", Name: "general", Type: discord.ChannelText, ParentID: "30", Position: 0,
 				Overwrites: []discord.Overwrite{{ID: sid, Deny: discord.MustPermissions("SendMessages")}}},
 			{ID: "21", Name: "free", Type: discord.ChannelText, ParentID: "30", Position: 1},
-			{ID: "22", Name: "Vocal", Type: discord.ChannelVoice, ParentID: "30", Position: 2, Bitrate: 64000, UserLimit: 5,
+			{ID: "22", Name: "Voice", Type: discord.ChannelVoice, ParentID: "30", Position: 2, Bitrate: 64000, UserLimit: 5,
 				Overwrites: []discord.Overwrite{{ID: "11", Type: discord.OverwriteRole, Allow: discord.MustPermissions("Connect")}}},
 		},
 	}
@@ -64,17 +64,17 @@ func TestGenerate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Key != "ma-commu" {
+	if res.Key != "my-community" {
 		t.Errorf("key = %q", res.Key)
 	}
 	sp := res.Server
-	if _, ok := sp.Roles["modo"]; !ok {
+	if _, ok := sp.Roles["moderator"]; !ok {
 		t.Errorf("roles = %v", sp.Roles)
 	}
-	if _, ok := sp.Roles["modo-2"]; !ok {
+	if _, ok := sp.Roles["moderator-2"]; !ok {
 		t.Errorf("deduped role missing: %v", sp.Roles)
 	}
-	if len(sp.Roles) != 2 || strings.Join(sp.Hierarchy, ",") != "modo,modo-2" {
+	if len(sp.Roles) != 2 || strings.Join(sp.Hierarchy, ",") != "moderator,moderator-2" {
 		t.Errorf("hierarchy = %v (managed role must be skipped)", sp.Hierarchy)
 	}
 	// category key "general" is taken: the channel gets general-2 (shared namespace)
@@ -87,10 +87,10 @@ func TestGenerate(t *testing.T) {
 	if c := sp.Channels["free"]; c.SyncWithCategory == nil || *c.SyncWithCategory {
 		t.Errorf("channel without overwrites in a category with overwrites must not sync: %+v", c)
 	}
-	if c := sp.Channels["vocal"]; c.UserLimit != 5 || c.Bitrate != 0 || c.Overwrites["modo"].Allow[0] != "Connect" {
+	if c := sp.Channels["voice"]; c.UserLimit != 5 || c.Bitrate != 0 || c.Overwrites["moderator"].Allow[0] != "Connect" {
 		t.Errorf("voice = %+v", c)
 	}
-	if sp.Profile.SystemChannel != "general-2" || sp.Profile.Name != "Ma Commu" {
+	if sp.Profile.SystemChannel != "general-2" || sp.Profile.Name != "My Community" {
 		t.Errorf("profile = %+v", sp.Profile)
 	}
 	if len(res.Resources) != 6 {
@@ -101,7 +101,7 @@ func TestGenerate(t *testing.T) {
 		t.Errorf("warnings = %v", res.Warnings)
 	}
 	y := string(res.YAML)
-	for _, want := range []string{`discordId: "100000000000000000"`, `"@everyone":`, "deny: [SendMessages]", "hierarchy: [modo, modo-2]", "syncWithCategory: false"} {
+	for _, want := range []string{`discordId: "100000000000000000"`, `"@everyone":`, "deny: [SendMessages]", "hierarchy: [moderator, moderator-2]", "syncWithCategory: false"} {
 		if !strings.Contains(y, want) {
 			t.Errorf("YAML misses %q:\n%s", want, y)
 		}
@@ -113,7 +113,7 @@ func TestGenerate(t *testing.T) {
 func TestGenerateBotOverwrite(t *testing.T) {
 	sid := "100000000000000000"
 	snap := reconcile.Snapshot{
-		Server: discord.Server{ID: sid, Name: "Ma Commu"},
+		Server: discord.Server{ID: sid, Name: "My Community"},
 		Roles: []discord.Role{
 			{ID: sid, Name: "@everyone", Permissions: discord.MustPermissions("ViewChannel")},
 			{ID: "12", Name: "Cicord", Position: 2, Managed: true},

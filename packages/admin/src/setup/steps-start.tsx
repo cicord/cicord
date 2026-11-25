@@ -1,5 +1,15 @@
 /** Wizard steps 1–3: welcome, Discord application, server. */
-import { Bot, CheckCircle2, KeyRound, Radio, ServerCog, Sparkles, Users } from "lucide-react";
+import {
+  Bot,
+  CheckCircle2,
+  Eye,
+  KeyRound,
+  Radio,
+  ServerCog,
+  ShieldAlert,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ServerAvatar, UserAvatar } from "../components/common.tsx";
 import { Callout } from "../components/errors.tsx";
@@ -10,8 +20,9 @@ import { Label } from "../components/ui/label.tsx";
 import { Switch } from "../components/ui/switch.tsx";
 import { useTranslation } from "../i18n/index.ts";
 import { cn } from "../lib/utils.ts";
-import type { Check, ServerResult, SetupApi, SetupView } from "./api.ts";
+import type { Access, Check, ServerResult, SetupApi, SetupView } from "./api.ts";
 import { useAction, usePoll } from "./hooks.ts";
+import { InspectPanel } from "./inspect.tsx";
 import {
   Checklist,
   ExternalButton,
@@ -373,14 +384,42 @@ export function ServerStep({ view, api, onView }: StepProps) {
   const checks: Check[] | undefined = result?.checks;
   const selectedId = view.server?.id;
   const ok = result?.ok ?? false;
+  const inspect = view.access === "inspect";
+  const inviteUrl = inspect ? view.inspectInviteUrl : view.inviteUrl;
+  const choose = (access: Access) => {
+    if (access !== view.access) void a.run(() => api.access(access)).then((v) => v && onView(v));
+  };
   return (
     <>
       <StepHeading title={t("setup.server.title")} lead={t("setup.server.lead")} />
+      <h2 className="text-[13px] font-semibold" id="access-label">
+        {t("setup.server.accessTitle")}
+      </h2>
+      <div
+        className="mt-3 mb-4 flex flex-col gap-2 sm:flex-row"
+        role="radiogroup"
+        aria-labelledby="access-label"
+      >
+        <Choice
+          selected={!inspect}
+          onSelect={() => choose("admin")}
+          icon={<ShieldAlert className="size-5" />}
+          title={t("setup.server.accessAdmin")}
+          text={t("setup.server.accessAdminText")}
+        />
+        <Choice
+          selected={inspect}
+          onSelect={() => choose("inspect")}
+          icon={<Eye className="size-5" />}
+          title={t("setup.server.accessInspect")}
+          text={t("setup.server.accessInspectText")}
+        />
+      </div>
       <section className="rounded-lg border bg-card p-4">
         <div className="flex flex-wrap items-center gap-2">
-          {view.inviteUrl ? (
-            <ExternalButton href={view.inviteUrl} variant="discord" size="default">
-              {t("setup.server.invite")}
+          {inviteUrl ? (
+            <ExternalButton href={inviteUrl} variant="discord" size="default">
+              {inspect ? t("setup.server.inviteInspect") : t("setup.server.invite")}
             </ExternalButton>
           ) : null}
           {view.simulator ? (
@@ -388,7 +427,7 @@ export function ServerStep({ view, api, onView }: StepProps) {
               <SimButton
                 onClick={() => void a.run(() => api.sim.invite(low)).then(() => servers.refresh())}
               >
-                {t("setup.server.simInvite")}
+                {inspect ? t("setup.server.simInviteInspect") : t("setup.server.simInvite")}
               </SimButton>
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Switch
@@ -401,7 +440,9 @@ export function ServerStep({ view, api, onView }: StepProps) {
             </>
           ) : null}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">{t("setup.server.inviteDetails")}</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {inspect ? t("setup.server.inviteDetailsInspect") : t("setup.server.inviteDetails")}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">{t("setup.server.noManage")}</p>
       </section>
 
@@ -447,11 +488,23 @@ export function ServerStep({ view, api, onView }: StepProps) {
         </ul>
       </section>
 
+      {view.server && inspect ? (
+        <InspectPanel
+          view={view}
+          api={api}
+          onUpgraded={async () => {
+            const r = await api.checkServer();
+            setResult(r);
+          }}
+        />
+      ) : null}
       {view.server ? (
         <section className="mt-6" aria-labelledby="checks-title">
           <div className="flex items-center justify-between gap-2">
             <h2 id="checks-title" className="text-[13px] font-semibold">
-              {t("setup.server.checksTitle", { name: view.server.name })}
+              {inspect
+                ? t("setup.server.checksTitleInspect", { name: view.server.name })
+                : t("setup.server.checksTitle", { name: view.server.name })}
             </h2>
             <Button variant="ghost" size="sm" loading={a.pending} onClick={recheck}>
               {t("setup.recheck")}

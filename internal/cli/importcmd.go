@@ -15,6 +15,7 @@ import (
 	"github.com/cicord/cicord/internal/importer"
 	"github.com/cicord/cicord/internal/planfmt"
 	"github.com/cicord/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/setup"
 	"github.com/cicord/cicord/internal/state"
 	"github.com/cicord/cicord/internal/state/sqlite"
 )
@@ -48,7 +49,7 @@ the local state database (--state, default .cicord/state.db), so that a later
 The bot must be a member of the server. Add the server key to a bot's spec.servers
 afterwards.`,
 		Example: `  DISCORD_TOKEN=… cicord import 112233445566778899
-  cicord import 112233445566778899 ./infra --key ma-commu --token-env DISCORD_TOKEN_MODERATOR`,
+  cicord import 112233445566778899 ./infra --key my-community --token-env DISCORD_TOKEN_MODERATOR`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := absDir(args[1:])
@@ -99,14 +100,14 @@ func runImport(cmd *cobra.Command, serverID, dir, key, tokenEnv string, force bo
 	}
 	defer sess.Close(context.WithoutCancel(ctx))
 	// With the bot member, overwrites of the bot's own managed role import as "@bot".
-	snap, err := reconcile.FetchWith(ctx, sess, serverID, sess.Self().ID, reconcile.FetchAll)
+	// The parts the bot cannot read (AutoMod, widget and welcome screen need Manage
+	// Server) are left out with a warning; the rest is imported.
+	snap, unreadable, err := setup.FetchForImport(ctx, sess, serverID, sess.Self().ID)
 	if err != nil {
-		// AutoMod, onboarding, widget… need Manage Server: import the rest
-		full := err
-		if snap, err = reconcile.Fetch(ctx, sess, serverID, sess.Self().ID); err != nil {
-			return fmt.Errorf("read server %s (is the bot a member?): %w", serverID, err)
-		}
-		fmt.Fprintf(stderr, "warning: AutoMod rules, onboarding, welcome screen, widget and expressions not read: %v\n", full)
+		return fmt.Errorf("read server %s (is the bot a member?): %w", serverID, err)
+	}
+	if msg := setup.UnreadableWarning(unreadable); msg != "" {
+		fmt.Fprintln(stderr, "warning:", msg)
 	}
 	res, err := importer.Generate(ctx, importer.Options{ServerKey: key, Snapshot: snap, Download: newDownloader()})
 	if err != nil {
@@ -230,7 +231,7 @@ The matches are shown and must be confirmed (--yes to skip; required without a
 terminal). Keys without a match are created by the next ` + "`cicord apply`" + `.
 Nothing is changed in Discord.`,
 		Example: `  cicord adopt
-  cicord adopt --server ma-commu --reset --yes`,
+  cicord adopt --server my-community --reset --yes`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := absDir(args)

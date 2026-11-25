@@ -14,21 +14,22 @@ without `limit` every instance is returned):
 
 ```json
 { "items": [ {
-  "bot": "moderator", "instance": "welcome", "server": "ma-commu",
-  "plugin": { "name": "welcome", "version": "0.1.0", "displayName": "Welcome", "description": "…",
-              "capabilities": ["discord.messages.send"], "intents": ["ServerMembers"] },
-  "config": { "channel": "general", "message": "…" },     // effective config (defaults applied)
-  "schema": { /* the plugin's config.schema.json as written */ },
-  "baseConfig": { "channel": "general" },                   // spec.plugins[].config as written
-  "override": { "message": "…" },                           // overrides.<server>.config, or null
-  "editable": ["message"],                                  // fields this user may edit (x-cicord-access)
-  "commands": [ { "name": "welcome-preview", "description": "…" } ],
-  "routes": ["GET /steps", "POST /complete"],                // portal routes
+  "bot": "cicord", "instance": "polls", "server": "showcase",
+  "plugin": { "name": "polls", "version": "0.1.1", "displayName": "Polls", "description": "Quick polls with buttons or a select menu, …",
+              "capabilities": ["discord.messages.send", "discord.messages.read", "…", "portal.routes"], "intents": [] },
+  "config": { "channels": [], "color": "#5865f2", "confirmVotes": true, "defaultHours": 24,
+              "managerRoles": ["mod"], "maxHours": 168 },             // effective config (defaults applied)
+  "schema": { … },                                                  // the plugin's config.schema.json as written
+  "baseConfig": { "defaultHours": 24, "managerRoles": ["mod"] },    // spec.plugins[].config as written
+  "override": null,                                                 // overrides.<server>.config, or null
+  "editable": ["channels", "color", "confirmVotes", "defaultHours", "managerRoles", "maxHours"],
+  "commands": [ { "name": "poll", "description": "Start a poll" }, { "name": "polls", "description": "Manage polls" } ],
+  "routes": ["GET /polls/:id"],                                     // portal routes
   "health": "Healthy", "message": "",
   "source": "cicord",       // "cicord" (official catalog), a registry name, or "local" (written in the repo)
-  "trust": "official",      // official | unofficial | local
-  "update"?: PluginUpdate   // a newer version is available (Store)
-} ], "total": 1, "offset": 0, "limit": 1, "sort": "name", "order": "asc" }
+  "trust": "official"       // official | unofficial | local
+  // "update": PluginUpdate, when a newer version is available (Store)
+}, … ], "total": 7, "offset": 0, "limit": 2, "sort": "name", "order": "asc" }
 ```
 
 - `schema` is the schema file's JSON with its key order preserved (`{"type": "object"}` when
@@ -52,7 +53,8 @@ Request: `{"config": {...}, "scope": "server" | "base", "revision": "<active rev
   unknown bot or instance on that server answers `404`.
 - `scope: "server"` (default) writes the server override (`overrides.<server>.config` in
   `bot.yaml`) as the minimal merge patch from the base config; `"base"` writes `config`.
-- `config` is the full desired config **with the fields the user sees** (defaults included).
+- `config` is the full desired config **with the fields the user sees** (defaults included):
+  a base field left out is removed for that server (`null` in the override).
   For `scope: "server"` the runtime diffs it against the base config with defaults applied and
   writes only the difference (`null` removes a base field; deletions of fields absent from the
   base are dropped); an empty difference removes the override. For `"base"`, fields that only
@@ -84,9 +86,24 @@ Request: `{"config": {...}, "scope": "server" | "base", "revision": "<active rev
 
 Response `200`:
 
+```sh
+curl -X PUT http://127.0.0.1:7420/api/v1/servers/showcase/plugins/cicord/polls/config \
+  -b cookies.txt -H 'X-Cicord-Request: 1' -H 'Content-Type: application/json' \
+  -d '{"config": {"defaultHours": 72, "managerRoles": ["mod"]}, "scope": "server", "revision": "local-e43bf5a"}'
+```
+
 ```json
-{ "mode": "commit", "revision": "9a1b2c3", "pullRequestUrl": "" }
+{ "mode": "commit", "revision": "local-ea0ac66", "pullRequestUrl": "" }
 // mode "pullRequest": revision is "" and pullRequestUrl is set; nothing is applied yet.
+```
+
+The override written to `bot.yaml`:
+
+```yaml
+      overrides:
+        showcase:
+          config:
+            defaultHours: 72
 ```
 
 ## Uninstalling

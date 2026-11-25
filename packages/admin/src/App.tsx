@@ -6,6 +6,7 @@ import { Fragment, useCallback, useEffect, useMemo, type ReactNode } from "react
 import { usePlugin, useStatus, useStoreDetail } from "./api.ts";
 import { EmptyState, Sha } from "./components/common.tsx";
 import { ErrorState } from "./components/errors.tsx";
+import { PauseBanner, PauseProvider } from "./components/pause.tsx";
 import { CicordApiError } from "@cicord/client";
 import { Badge } from "./components/ui/badge.tsx";
 import {
@@ -276,18 +277,23 @@ function Shell() {
       page = <NotFound path={path} />;
   }
 
+  // Every page of a paused server shows who paused enforcement, when and why.
+  const serverPage = navItem(route.page)?.segment !== undefined;
   return (
     <WorkspaceContext.Provider value={ws}>
-      <SidebarProvider>
-        <AppSidebar page={route.page} />
-        <SidebarInset>
-          <Header route={route} live={live} onSearch={() => setPaletteOpen(true)} />
-          <main id="main" className="flex-1">
-            {page}
-          </main>
-        </SidebarInset>
-        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-      </SidebarProvider>
+      <PauseProvider>
+        <SidebarProvider>
+          <AppSidebar page={route.page} />
+          <SidebarInset>
+            <Header route={route} live={live} onSearch={() => setPaletteOpen(true)} />
+            <main id="main" className="flex-1">
+              {serverPage ? <PauseBanner /> : null}
+              {page}
+            </main>
+          </SidebarInset>
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+        </SidebarProvider>
+      </PauseProvider>
     </WorkspaceContext.Provider>
   );
 }

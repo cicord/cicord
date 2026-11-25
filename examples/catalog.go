@@ -1,6 +1,7 @@
 // Package examples embeds the official example plugins into the cicord binary: they are
-// the bundled plugin catalog of the setup wizard and of the future Store page
-// (internal/catalog), until the plugin registry exists.
+// the bundled plugin catalog (internal/catalog) of the setup wizard and of the Store, for
+// offline and first installs. The official registry (github.com/cicord/cicord-plugins)
+// publishes the same plugins, at the same versions; github-releases is only there.
 //
 // Only the plugin sources are embedded (explicit patterns, so that node_modules or build
 // outputs never end up in the binary).

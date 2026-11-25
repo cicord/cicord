@@ -841,7 +841,17 @@ func (w *World) listChannels(a actor, serverID string) ([]discord.Channel, error
 	if s.members[a.userID] == nil {
 		return nil, forbidden("missing access to server %s", serverID)
 	}
-	return w.serverChannels(s, false), nil
+	all := w.serverChannels(s, false)
+	if !w.hideUnviewable || !a.isBot() {
+		return all, nil
+	}
+	out := all[:0]
+	for _, c := range all {
+		if w.channelPerms(w.channels[c.ID], a.userID).Has(permView) {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 // serverChannels returns the channels in Discord client order: uncategorized channels

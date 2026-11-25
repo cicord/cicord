@@ -330,10 +330,10 @@ export default definePlugin({
 	if got := h.def.RequiredIntents(); len(got) != 0 {
 		t.Errorf("intents = %v", got)
 	}
-	if err := h.inst.HandleEvent(context.Background(), discord.ServerJoinEvent{Server: discord.Server{ID: "10", Name: "Ma Commu"}}); err != nil {
+	if err := h.inst.HandleEvent(context.Background(), discord.ServerJoinEvent{Server: discord.Server{ID: "10", Name: "My Community"}}); err != nil {
 		t.Fatal(err)
 	}
-	if e := h.logged("joined"); e.Attrs["id"] != "10" || e.Attrs["name"] != "Ma Commu" {
+	if e := h.logged("joined"); e.Attrs["id"] != "10" || e.Attrs["name"] != "My Community" {
 		t.Errorf("joined = %+v", e)
 	}
 	if err := h.inst.HandleEvent(context.Background(), discord.ServerLeaveEvent{ServerID: "10"}); err != nil {

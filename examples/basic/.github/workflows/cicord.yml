@@ -18,12 +18,12 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      # Until binary releases exist.
-      - run: go install github.com/cicord/cicord/cmd/cicord@latest
+      # The cicord release that generated this repository; bump it with the runtime.
+      - run: go install github.com/cicord/cicord/cmd/cicord@v0.1.6
       - run: cicord validate
 
   plan:
@@ -34,11 +34,11 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      - run: go install github.com/cicord/cicord/cmd/cicord@latest
+      - run: go install github.com/cicord/cicord/cmd/cicord@v0.1.6
       - run: cicord plan --remote --comment
         env:
           CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}
@@ -54,10 +54,10 @@ jobs:
       group: cicord-status
       cancel-in-progress: true
     steps:
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      - run: go install github.com/cicord/cicord/cmd/cicord@latest
+      - run: go install github.com/cicord/cicord/cmd/cicord@v0.1.6
       # The runtime pulls the merged commit (webhook or polling); wait for it to be applied.
       - run: cicord status --wait --revision ${{ github.sha }} --timeout 10m
         env:

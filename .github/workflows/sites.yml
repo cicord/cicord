@@ -12,6 +12,7 @@ on:
     paths:
       - "sites/**"
       - "packages/**"
+      - "spec/schemas/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/sites.yml"
   workflow_dispatch:
@@ -53,9 +54,12 @@ jobs:
       - run: pnpm -C sites/docs build
       - name: Assemble landing (/) and docs (/docs/)
         run: |
-          mkdir -p _site/docs
+          mkdir -p _site/docs _site/schemas/v1alpha1
           cp -R sites/landing/dist/. _site/
           cp -R sites/docs/dist/. _site/docs/
+          # The JSON schemas at their $id URLs (https://cicord.dev/schemas/v1alpha1/…), for
+          # editors: # yaml-language-server: $schema=https://cicord.dev/schemas/v1alpha1/server.schema.json
+          cp spec/schemas/*.schema.json _site/schemas/v1alpha1/
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site

@@ -2,15 +2,15 @@
 apiVersion: cicord.dev/v1alpha1
 kind: Server
 metadata:
-  name: ma-commu
+  name: my-community
 spec:
   discordId: "112233445566778899"
   profile:
-    name: Ma Commu
+    name: My Community
     verificationLevel: medium
     defaultNotifications: onlyMentions
     explicitContentFilter: allMembers
-    preferredLocale: fr
+    preferredLocale: en-US
     systemChannel: general
     systemChannelFlags:
       welcomeMessages: true
@@ -41,13 +41,13 @@ spec:
       color: "#e74c3c"
       hoist: true
       permissions: [Administrator]
-    modo:
-      name: Modo
+    moderator:
+      name: Moderator
       color: "#e67e22"
       hoist: true
       permissions: [KickMembers, ModerateMembers, ManageMessages, ManageThreads]
     member:
-      name: Membre
+      name: Member
       color: "#3498db"
       permissions: [SendMessages, EmbedLinks, AttachFiles, Connect, Speak]
     # Interest roles, self-assigned on the portal (plugin "onboarding").
@@ -73,21 +73,21 @@ spec:
       name: Mobile
       color: "#1abc9c"
     ping-events:
-      name: Notifs événements
+      name: Event pings
       color: "#f1c40f"
       mentionable: true
 
-  hierarchy: [admin, modo, member, minecraft, valorant, lol, pc, console, mobile, ping-events]
+  hierarchy: [admin, moderator, member, minecraft, valorant, lol, pc, console, mobile, ping-events]
 
   categories:
     info:
-      name: Infos
+      name: Info
       position: 0
       overwrites:
         "@everyone":
           deny: [SendMessages]
     community:
-      name: Communauté
+      name: Community
       position: 1
     staff:
       name: Staff
@@ -95,28 +95,28 @@ spec:
       overwrites:
         "@everyone":
           deny: [ViewChannel]
-        modo:
+        moderator:
           allow: [ViewChannel]
 
   channels:
     rules:
-      name: règlement
+      name: rules
       type: text
       category: info
       position: 0
     announcements:
-      name: annonces
+      name: announcements
       type: announcement
       category: info
       position: 1
     general:
-      name: général
+      name: general
       type: text
       category: community
-      topic: Discussions générales
+      topic: General chat
       position: 0
     voice:
-      name: Vocal
+      name: Voice
       type: voice
       category: community
       position: 1
@@ -130,7 +130,7 @@ spec:
     admins:
       roles: [admin]
     moderators:
-      roles: [modo]
+      roles: [moderator]
 
   # Community portal (https://cicord.dev/docs/portal/custom-portal/): served at / by the runtime, no code needed.
   portal:
@@ -139,32 +139,32 @@ spec:
       accent: "#eb459e"
       logo: ../assets/logo.svg
       mode: dark
-    title: Bienvenue sur Ma Commu
-    tagline: La commu francophone des soirées jeux, tournois et lives.
+    title: Welcome to My Community
+    tagline: The community for game nights, tournaments and live streams.
     description: |
-      Ici, on joue **ensemble** : Minecraft, Valorant, League of Legends et tout ce qui passe.
+      Here we play **together**: Minecraft, Valorant, League of Legends and whatever comes next.
 
-      ## Ce que tu trouveras ici
-      - des soirées jeux chaque vendredi
-      - des tournois mensuels avec des lots
-      - une équipe de modération à l'écoute
+      ## What you'll find here
+      - game nights every Friday
+      - monthly tournaments with prizes
+      - a moderation team that listens
 
-      Lis le [règlement](https://ma-commu.example/regles) avant de poster.
+      Read the [rules](https://my-community.example/rules) before posting.
     banner: ../assets/banner.jpg
     links:
-      - label: Site web
-        url: https://ma-commu.example
+      - label: Website
+        url: https://my-community.example
         icon: website
-      - label: Chaîne YouTube
-        url: https://www.youtube.com/@ma-commu
+      - label: YouTube channel
+        url: https://www.youtube.com/@my-community
         icon: youtube
-      - label: Lives Twitch
-        url: https://www.twitch.tv/ma-commu
+      - label: Twitch streams
+        url: https://www.twitch.tv/my-community
         icon: twitch
-      - label: Règlement
-        url: https://ma-commu.example/regles
+      - label: Rules
+        url: https://my-community.example/rules
         icon: rules
     pages:
       onboarding: true
       profile: true
-    locale: fr
+    locale: en

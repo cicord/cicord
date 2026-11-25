@@ -34,7 +34,11 @@ if (!me) client.auth.login(location.href); // Discord, then back here with ?cico
 const [server] = await client.portal.servers();
 const member = await client.portal.me(server.key);              // roles…
 const levels = server.plugins.find((p) => p.plugin === "levels");
-const board = await client.plugin(server.key, levels.bot, levels.instance).get("/leaderboard");
+if (levels) {
+  const board = await client
+    .plugin(server.key, levels.bot, levels.instance)
+    .get("/leaderboard", { limit: 5 });
+}
 ```
 
 How it works:
@@ -58,8 +62,8 @@ With `@cicord/react`, `<CicordProvider>` logs the viewer out everywhere when the
   `portal.example.org` and `cicord.example.org`) need the operator's `--cors-origin` flag, which
   a pull request cannot change.
 - The token lives where you put it: `localStorage` survives reloads but is readable by any
-  script of the site (XSS); `"memory"` is safer but logs out on reload. Revoke it with
-  `client.auth.logout()`.
+  script of the site (XSS); `"memory"` is safer but logs out on reload. `client.auth.logout()`
+  revokes it.
 
 ## Hosting the reference portal elsewhere
 
@@ -72,11 +76,13 @@ bots to open the external site, set `cicord.yaml` `spec.portal.url`: it becomes 
 
 [`examples/embed`](https://github.com/cicord/cicord/tree/main/examples/embed) is a plain HTML
 page (no framework, no build) on its own origin, with its own design, that signs in (Discord,
-or the simulator's users), shows the member's roles and the public `levels` leaderboard:
+or the simulator's users), shows the member's roles and the public `levels` leaderboard. From
+a checkout of the repository:
 
 ```sh
+pnpm --filter @cicord/client build      # serve.mjs serves packages/client/dist
 # allow the fan site's origin: --cors-origin, or spec.portal.allowedOrigins in cicord.yaml
 cicord dev --sim examples/showcase --cors-origin http://localhost:5180
-node examples/embed/serve.mjs --runtime http://127.0.0.1:7420
+node examples/embed/serve.mjs --runtime http://127.0.0.1:7420   # --port 5180 by default
 open http://localhost:5180
 ```

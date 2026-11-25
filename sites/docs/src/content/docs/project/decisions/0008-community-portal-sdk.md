@@ -40,6 +40,17 @@ has (a game fan site with its own domain and design). A fixed app cannot cover t
   JavaScript injected into a portal at runtime.
 - Bot → portal links use signed, short-lived URLs (`ctx.portal.link()`).
 
+## Alternatives considered
+- **Server-driven UI** (plugins describe screens, the portal renders them): rejected. Every
+  server would look the same, and the UI description becomes a large versioned contract.
+- **Plugin JavaScript injected into the portal at run time**: never. It would run untrusted
+  code on the runtime's origin.
+- **Route types imported from plugin sources**: rejected. The plugins' `PluginConfig`
+  augmentations collide, and registry plugins live outside the repository.
+- **JSON Schemas for plugin routes**: rejected, as they describe each route twice. Kept
+  instead: a plain-TypeScript route contract, checked on the plugin side with
+  `defineRoutes<Routes>()`.
+
 ## Consequences
 - Total freedom for community developers; Cicord maintains API stability of the SDK packages.
 - The runtime HTTP API becomes a public contract and must be versioned.

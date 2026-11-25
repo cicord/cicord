@@ -506,7 +506,7 @@ export interface MemberCardProps {
   fresh?: string[];
   /** Banner color; defaults to the theme primary. */
   banner?: string;
-  /** Text under the name (e.g. "Membre depuis…"). */
+  /** Text under the name (e.g. "Member since…"). */
   caption?: ReactNode;
   /** Shown when there are no roles. */
   emptyRoles?: ReactNode;

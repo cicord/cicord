@@ -30,7 +30,7 @@ type waitFlags struct {
 
 func (w *waitFlags) register(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.BoolVar(&w.wait, "wait", false, "wait until the revision is active and every server is Synced and Healthy")
+	f.BoolVar(&w.wait, "wait", false, "wait until the revision is active, every server Synced and Healthy, every bot and plugin Healthy")
 	f.StringVar(&w.revision, "revision", "", "revision to wait for: a git SHA or a prefix of it (with --wait)")
 	f.DurationVar(&w.timeout, "timeout", 5*time.Minute, "maximum time to wait (with --wait)")
 	f.DurationVar(&w.interval, "interval", 0, "polling interval (with --wait; default 4s)")
@@ -50,11 +50,15 @@ The runtime URL is --remote=URL, else CICORD_RUNTIME_URL (https, or http on loca
 the bearer token is CICORD_RUNTIME_TOKEN. cicord.yaml spec.runtime.url is never used to send
 the token.
 
---wait polls until --revision (a SHA or a prefix; default: the active one) is active and
-every server is Synced and Healthy. It fails (exit 1) when the revision is rejected, a
-server is Degraded, or the timeout expires; the last error / history entry is printed.
-A server with blocked operations (deletionProtection, hierarchy…) stays OutOfSync, so
---wait times out on it: the drift is printed to explain why.`,
+--wait polls until --revision (a SHA or a prefix; default: the active one) is active,
+every server is Synced and Healthy and every bot and plugin instance is Healthy. It fails
+at once (exit 1) when the revision is rejected, a server, bot or plugin instance is
+Degraded or Missing (a plugin that failed to start, or crashes and restarts), or a server
+is paused (cicord pause: nothing is applied to it); what failed is printed. It also fails
+when the timeout expires. A server with blocked operations (deletionProtection,
+hierarchy…) stays OutOfSync, so --wait times out on it: the blocked changes and the drift
+are printed to explain why. Changes that only wait for a higher boost level are not
+drift: they keep the server Synced.`,
 		Example: `  cicord status
   cicord status --remote=https://cicord.example.com -o json
   cicord status --wait --revision $GITHUB_SHA --timeout 10m`,
@@ -278,19 +282,13 @@ func waitStatus(cmd *cobra.Command, c *apiClient, wf waitFlags, output string) e
 			case want != "" && !revisionMatches(want, rev.ID, rev.SHA):
 				if superseded(ctx, c, want) {
 					fmt.Fprintf(stderr, "Revision %s was activated and has since been superseded by %s.\n", want, rev.ID)
-					return checkServers(stderr, st, final)
+					return checkServers(ctx, stderr, c, st, final)
 				}
 				note(fmt.Sprintf("active revision is %s, waiting for %s", rev.ID, want))
 			default:
-				if bad := degraded(st); len(bad) > 0 {
-					fmt.Fprintf(stderr, "Revision %s is active but some servers are degraded:\n", rev.ID)
-					for _, s := range bad {
-						fmt.Fprintf(stderr, "  %s: %s %s: %s\n", s.Key, s.Sync, s.Health, s.Message)
-						if hist, herr := getHistory(ctx, c, "server:"+s.Key, 1); herr == nil && len(hist) > 0 {
-							h := hist[0]
-							fmt.Fprintf(stderr, "    last sync (%s, revision %s): %s\n", h.Status, h.Revision, h.Message)
-						}
-					}
+				if hasFailures(st) {
+					fmt.Fprintf(stderr, "Revision %s is active but not healthy:\n", rev.ID)
+					printFailures(ctx, stderr, c, st)
 					_ = final(st)
 					return exitError{1}
 				}
@@ -313,6 +311,11 @@ func waitStatus(cmd *cobra.Command, c *apiClient, wf waitFlags, output string) e
 			if haveLast {
 				if last.LastError != "" {
 					fmt.Fprintf(stderr, "Runtime last error: %s\n", last.LastError)
+				}
+				for _, s := range last.Servers {
+					if strings.Contains(s.Message, "blocked") && s.Sync != runtime.SyncSynced {
+						fmt.Fprintf(stderr, "Server %s stays OutOfSync: %s. Blocked changes need a fix in git or on Discord.\n", s.Key, s.Message)
+					}
 				}
 				_ = final(last)
 			}
@@ -337,31 +340,96 @@ func superseded(ctx context.Context, c *apiClient, want string) bool {
 	return false
 }
 
-func checkServers(stderr io.Writer, st runtime.Status, final func(runtime.Status) error) error {
-	if bad := degraded(st); len(bad) > 0 {
-		for _, s := range bad {
-			fmt.Fprintf(stderr, "  %s: %s %s: %s\n", s.Key, s.Sync, s.Health, s.Message)
-		}
+func checkServers(ctx context.Context, stderr io.Writer, c *apiClient, st runtime.Status, final func(runtime.Status) error) error {
+	if hasFailures(st) {
+		printFailures(ctx, stderr, c, st)
 		_ = final(st)
 		return exitError{1}
 	}
 	return final(st)
 }
 
-func degraded(st runtime.Status) []runtime.ServerStatus {
-	var out []runtime.ServerStatus
+// broken reports a health that fails --wait at once.
+func broken(health string) bool {
+	return health == runtime.HealthDegraded || health == runtime.HealthMissing
+}
+
+// hasFailures reports what fails --wait at once: a Degraded or Missing server, bot or
+// plugin instance, or a paused server (its revision is not applied).
+func hasFailures(st runtime.Status) bool {
 	for _, s := range st.Servers {
-		if s.Health == runtime.HealthDegraded {
-			out = append(out, s)
+		if broken(s.Health) || s.Paused != nil {
+			return true
 		}
 	}
-	return out
+	for _, b := range st.Bots {
+		if broken(b.Health) {
+			return true
+		}
+		for _, p := range b.Plugins {
+			if broken(p.Health) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// printFailures prints what hasFailures found, naming each server, bot and plugin
+// instance, with the last sync of degraded servers.
+func printFailures(ctx context.Context, stderr io.Writer, c *apiClient, st runtime.Status) {
+	for _, s := range st.Servers {
+		if s.Paused != nil {
+			fmt.Fprintf(stderr, "  %s: %s\n", s.Key, pausedLine(s))
+		}
+		if !broken(s.Health) {
+			continue
+		}
+		fmt.Fprintf(stderr, "  %s: %s %s: %s\n", s.Key, s.Sync, s.Health, s.Message)
+		if hist, herr := getHistory(ctx, c, "server:"+s.Key, 1); herr == nil && len(hist) > 0 {
+			h := hist[0]
+			fmt.Fprintf(stderr, "    last sync (%s, revision %s): %s\n", h.Status, h.Revision, h.Message)
+		}
+	}
+	for _, b := range st.Bots {
+		pluginFailed := false
+		for _, p := range b.Plugins {
+			if broken(p.Health) {
+				pluginFailed = true
+				fmt.Fprintf(stderr, "  plugin %s (bot %s) on %s: %s: %s\n", p.Instance, b.Key, p.Server, p.Health, firstLineOf(p.Message))
+			}
+		}
+		// a bot Degraded because of its plugins is already explained
+		if broken(b.Health) && (!pluginFailed || b.Health != runtime.HealthDegraded) {
+			fmt.Fprintf(stderr, "  bot %s: %s: %s\n", b.Key, b.Health, firstLineOf(b.Message))
+		}
+	}
+}
+
+// pausedLine describes the pause of a server.
+func pausedLine(s runtime.ServerStatus) string {
+	p := s.Paused
+	line := fmt.Sprintf("enforcement paused by %s since %s", p.Who(), p.At.Local().Format(time.RFC3339))
+	if p.Reason != "" {
+		line += fmt.Sprintf(" (%s)", p.Reason)
+	}
+	return line + fmt.Sprintf(": nothing is applied, %d drift; resume with `cicord resume %s`", len(s.Drift), s.Key)
 }
 
 func ready(st runtime.Status) bool {
 	for _, s := range st.Servers {
-		if s.Sync != runtime.SyncSynced || s.Health != runtime.HealthHealthy {
+		if s.Sync != runtime.SyncSynced || s.Health != runtime.HealthHealthy || s.Paused != nil {
 			return false
+		}
+	}
+	for _, b := range st.Bots {
+		if b.Health != runtime.HealthHealthy {
+			return false
+		}
+		for _, p := range b.Plugins {
+			if p.Health != runtime.HealthHealthy {
+				return false
+			}
 		}
 	}
 	return true
@@ -369,6 +437,16 @@ func ready(st runtime.Status) bool {
 
 func pendingServers(st runtime.Status) string {
 	var parts []string
+	for _, b := range st.Bots {
+		if b.Health != runtime.HealthHealthy {
+			parts = append(parts, fmt.Sprintf("bot %s (%s)", b.Key, b.Health))
+		}
+		for _, p := range b.Plugins {
+			if p.Health != runtime.HealthHealthy {
+				parts = append(parts, fmt.Sprintf("plugin %s on %s (%s)", p.Instance, p.Server, p.Health))
+			}
+		}
+	}
 	for _, s := range st.Servers {
 		if s.Sync != runtime.SyncSynced || s.Health != runtime.HealthHealthy {
 			p := fmt.Sprintf("%s (%s, %s", s.Key, s.Sync, s.Health)
@@ -444,7 +522,13 @@ func printStatus(w io.Writer, st runtime.Status) {
 		if s.Bot != "" {
 			line += " via " + s.Bot
 		}
+		if s.Paused != nil {
+			line += " PAUSED"
+		}
 		fmt.Fprintln(w, strings.TrimRight(line, " "))
+		if s.Paused != nil {
+			fmt.Fprintf(w, "    %s\n", pausedLine(s))
+		}
 		if s.Message != "" {
 			fmt.Fprintf(w, "    %s\n", s.Message)
 		}
@@ -476,7 +560,7 @@ func printStatus(w io.Writer, st runtime.Status) {
 		for _, p := range plugins {
 			pl := fmt.Sprintf("    plugin %s (%s@%s) on %s: %s", p.Instance, p.Plugin, p.Version, p.Server, p.Health)
 			if p.Message != "" {
-				pl += ": " + p.Message
+				pl += ": " + firstLineOf(p.Message) // the JSON output has the stack trace
 			}
 			fmt.Fprintln(w, pl)
 		}

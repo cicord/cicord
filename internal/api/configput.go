@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -33,7 +32,7 @@ type configPutResponse struct {
 func changedKeys(a, b map[string]any) []string {
 	var out []string
 	for k, av := range a {
-		if bv, ok := b[k]; !ok || !reflect.DeepEqual(av, bv) {
+		if bv, ok := b[k]; !ok || !writeback.JSONEqual(av, bv) {
 			out = append(out, k)
 		}
 	}
@@ -94,7 +93,7 @@ func stripDefaultsIn(root, schema, cfg, raw map[string]any, depth int) {
 		}
 		sub := config.ResolveSchemaRef(root, subRaw)
 		rv, written := raw[k]
-		if d, ok := sub["default"]; ok && !written && reflect.DeepEqual(d, v) {
+		if d, ok := sub["default"]; ok && !written && writeback.JSONEqual(d, v) {
 			delete(cfg, k)
 			continue
 		}

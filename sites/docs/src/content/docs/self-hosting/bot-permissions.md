@@ -3,10 +3,16 @@ title: Bot permissions
 description: Run the bot with Administrator or with a least-privilege role, what Cicord needs in each case, and how to keep a bot without Administrator in private channels.
 ---
 
-The setup wizard's invite link asks for **Administrator**. It is the simplest choice: Discord
-skips every permission check for an administrator. It is also the most exposed one, because
-anyone holding the bot token controls the whole server. A **least-privilege bot role** holds
-only what your configuration and plugins use, so a leaked token can do less.
+The setup wizard's default invite link asks for **Administrator**. It is the simplest choice:
+Discord skips every permission check for an administrator. It is also the most exposed one,
+because anyone holding the bot token controls the whole server. A **least-privilege bot role**
+holds only what your configuration and plugins use, so a leaked token can do less.
+
+To find out what that is for an existing server before granting anything, invite the bot with
+View Channels only and run `cicord inspect` (or the wizard's **Inspect first**). The report
+lists the exact permissions the imported configuration needs, with the YAML paths, and an
+invite link that asks for exactly those. See
+[Evaluate an existing server safely](../../getting-started/evaluate-a-server/).
 
 | | Administrator | Least-privilege role |
 | --- | --- | --- |
@@ -33,7 +39,8 @@ role.
   reports the roles it cannot touch as blocked.
 - The bot cannot see, edit or delete a channel where it lacks **View Channel**. A private
   category (`"@everyone": { deny: [ViewChannel] }`) hides itself from the bot too, unless an
-  overwrite lets the bot in.
+  overwrite lets the bot in. Discord also leaves such channels out of the bot's channel list,
+  so `cicord import` and `cicord inspect` do not see them.
 
 ## What the bot needs
 
@@ -41,7 +48,7 @@ Cicord computes the list from your configuration:
 
 | In the server YAML | The bot needs |
 | --- | --- |
-| `roles.<key>` | Manage Roles, plus every permission in its `permissions` |
+| `roles.<key>` (and its `members`) | Manage Roles, plus every permission in its `permissions` |
 | `everyone` | Manage Roles, plus every permission in its `permissions` |
 | `categories` / `channels` | View Channel and Manage Channels |
 | `overwrites` | Manage Roles, plus every permission they allow or deny (`ManageRoles` itself: Administrator) |
@@ -81,7 +88,7 @@ portal, `http.fetch`) need no permission on the server.
   for example:
 
   ```text
-  reconcile ma-commu: preflight: the bot lacks permissions this sync needs: BanMembers
+  reconcile showcase: preflight: the bot lacks permissions this sync needs: BanMembers
     needs BanMembers (roles.moderator.permissions)
   ```
 
@@ -89,6 +96,11 @@ portal, `http.fetch`) need no permission on the server.
   topic edit, but changing that role's permissions does.
 - The same check refuses a plan that would leave the bot unable to see or manage a channel it
   manages. See the next section.
+- Plugin grants are not part of the sync preflight: only the Verify step and Diagnostics check
+  them. A plugin call
+  that needs a permission the bot lacks fails when it runs, with Discord's error.
+
+![Diagnostics: the Permissions check lists what the bot would need without Administrator](../../../assets/screenshots/admin-diagnostics.webp)
 
 ## Private channels: the `@bot` target
 
@@ -133,8 +145,9 @@ itself, see [plugin-owned channels](../../plugins/api/#plugin-owned-channels).
    every role Cicord manages.
 4. Re-run Diagnostics and `cicord plan`. A missing permission is named with the YAML path that
    needs it.
-5. When you add a role permission, an overwrite or a plugin grant later, give it to the bot's
-   role first, or the next sync stops at the preflight.
+5. When you add a role permission or an overwrite later, give it to the bot's role first, or
+   the next sync stops at the preflight. When you grant a plugin a new capability, give the bot
+   what it needs (Diagnostics lists it), or the plugin's calls fail.
 
 ## Limits
 
@@ -142,5 +155,6 @@ itself, see [plugin-owned channels](../../plugins/api/#plugin-owned-channels).
 - The preflight checks server-level permissions and the channel overwrites Cicord manages. A
   failure it cannot predict, such as a Discord limit, is still reported change by change
   during the sync.
-- Plugin requirements come from the grants. A plugin that creates private channels must give
-  the bot access to them itself.
+- Plugin requirements come from the grants and are checked by the Verify step and
+  Diagnostics only. A plugin that
+  creates private channels must give the bot access to them itself.

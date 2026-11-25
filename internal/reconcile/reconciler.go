@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -34,17 +35,31 @@ type Options struct {
 	// BotUserID is the bot's user ID, used for the role hierarchy check. Empty
 	// disables the check.
 	BotUserID string
-	// Logger defaults to a discarding logger.
+	// Logger defaults to a discarding logger. The reconciler adds the server attribute.
 	Logger *slog.Logger
 	// Reason is the audit log reason sent to Discord (default "cicord sync").
 	Reason string
-	// SelfHealDelay debounces event-triggered syncs (default 2s).
+	// SelfHealDelay debounces event-triggered syncs and re-plans (default 2s).
 	SelfHealDelay time.Duration
 	// Context is the parent context of event-triggered syncs (default Background).
 	Context context.Context
 	// OnSync is called after every event-triggered (selfHeal) sync.
 	OnSync func(Plan, Result, error)
+	// OnPlan is called after every plan of the live state (Plan, Sync, Drift, selfHeal and
+	// the re-plan after a drift event without selfHeal), with the plan and its error; not
+	// when the context was canceled. It runs with the reconciler locked: it must not call
+	// the reconciler.
+	OnPlan func(Plan, error)
+	// Paused reports that enforcement is paused on the server (the runtime's emergency
+	// switch): nothing is applied. Event-triggered syncs become re-plans, and Sync and
+	// Apply stop with ErrPaused (Sync after the plan, which keeps the drift current).
+	// It is called with the reconciler's event lock held: it must not call the
+	// reconciler. Nil: never paused.
+	Paused func() bool
 }
+
+// ErrPaused is returned by Sync and Apply while Options.Paused reports a pause.
+var ErrPaused = errors.New("enforcement is paused on this server: nothing is applied until it is resumed")
 
 // Reconciler plans and applies one server. Its methods are safe for concurrent use;
 // Plan, Apply, Sync and Drift are serialized.
@@ -69,14 +84,17 @@ type Reconciler struct {
 	lastDrift   []DriftEntry
 	lastDriftAt time.Time
 	driftValid  bool
-	timer       *time.Timer
-	closed      bool
-	running     sync.WaitGroup // event-triggered syncs in flight
-	iconMem     iconState
-	imgMem      map[string]iconState
-	srvID       string
-	key         string         // server key (immutable)
-	cfg         *config.Server // copy of desired for event filtering
+	// boostWaits: the last plan had changes that wait for a boost level, so a server
+	// update (its boost tier) is relevant.
+	boostWaits bool
+	timer      *time.Timer
+	closed     bool
+	running    sync.WaitGroup // event-triggered syncs and re-plans in flight
+	iconMem    iconState
+	imgMem     map[string]iconState
+	srvID      string
+	key        string         // server key (immutable)
+	cfg        *config.Server // copy of desired for event filtering
 }
 
 // New creates a reconciler. It panics when a required option is missing.
@@ -96,7 +114,7 @@ func New(opts Options) *Reconciler {
 	if opts.Context == nil {
 		opts.Context = context.Background()
 	}
-	r := &Reconciler{opts: opts, log: opts.Logger, managed: map[string]state.ResourceKind{}, exprSeen: map[string]string{},
+	r := &Reconciler{opts: opts, log: opts.Logger.With("server", opts.Server.Metadata.Name), managed: map[string]state.ResourceKind{}, exprSeen: map[string]string{},
 		key: opts.Server.Metadata.Name}
 	r.setDesired(opts.Server)
 	return r
@@ -128,6 +146,14 @@ func (r *Reconciler) Plan(ctx context.Context) (Plan, error) {
 }
 
 func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
+	p, err := r.planLive(ctx)
+	if r.opts.OnPlan != nil && ctx.Err() == nil {
+		r.opts.OnPlan(p, err)
+	}
+	return p, err
+}
+
+func (r *Reconciler) planLive(ctx context.Context) (Plan, error) {
 	sp := &r.desired.Spec
 	mapped, err := r.opts.Resources.List(ctx, r.serverKey())
 	if err != nil {
@@ -165,6 +191,7 @@ func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
 	r.emu.Lock()
 	r.drifted = !p.Empty() || slices.ContainsFunc(p.Blocked, func(b Blocked) bool { return !waitsForBoost(b) })
 	r.lastDrift, r.lastDriftAt, r.driftValid = DriftOf(p), time.Now(), true
+	r.boostWaits = slices.ContainsFunc(p.Blocked, waitsForBoost)
 	r.seeExpressions(snap)
 	r.emu.Unlock()
 	if p.preflight != nil {
@@ -180,6 +207,9 @@ func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
 func (r *Reconciler) Apply(ctx context.Context, p Plan) (Result, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.paused() {
+		return Result{Applied: []Change{}, Failed: []Failure{}}, ErrPaused
+	}
 	return r.applyAndRefresh(ctx, p)
 }
 
@@ -192,7 +222,7 @@ func (r *Reconciler) applyAndRefresh(ctx context.Context, p Plan) (Result, error
 	r.drifted = err != nil
 	r.driftValid = false // what remains is known at the next plan
 	r.emu.Unlock()
-	r.log.Info("reconcile: applied", "server", r.serverKey(), "applied", len(res.Applied), "failed", len(res.Failed))
+	r.log.Info("reconcile: applied", "applied", len(res.Applied), "failed", len(res.Failed))
 	return res, err
 }
 
@@ -207,6 +237,11 @@ func (r *Reconciler) Sync(ctx context.Context) (Plan, Result, error) {
 	}
 	if p.Empty() {
 		return p, Result{Applied: []Change{}, Failed: []Failure{}}, nil
+	}
+	if r.paused() {
+		// Checked between the plan and the apply: a pause that arrives while a sync is
+		// planning still stops it.
+		return p, Result{Applied: []Change{}, Failed: []Failure{}}, ErrPaused
 	}
 	res, err := r.applyAndRefresh(ctx, p)
 	return p, res, err
@@ -233,7 +268,7 @@ func (r *Reconciler) Drift(ctx context.Context) ([]DriftEntry, error) {
 const driftMaxAge = time.Minute
 
 // waitsForBoost reports a blocked operation that only needs a higher server boost level:
-// declared on purpose, applied by itself once the level is reached, so not drift.
+// declared on purpose and nothing in the configuration can apply it sooner, so not drift.
 func waitsForBoost(b Blocked) bool { return strings.HasPrefix(b.Reason, prefixBoost) }
 
 // WaitsForBoost is waitsForBoost for the runtime's status message.
@@ -313,7 +348,10 @@ func (r *Reconciler) refreshManaged(mapped []state.Resource) {
 // AutoMod rules, emojis, stickers and soundboard sounds, the @everyone role (when
 // spec.everyone is set), the server profile (when spec.profile is set) or a user listed
 // in roles.*.members who joins or loses a listed role (ServerMembers intent) are relevant:
-// drift is marked and, with syncPolicy.selfHeal, a debounced Sync is scheduled. It
+// drift is marked and a debounced Sync (with syncPolicy.selfHeal) or Plan (without: the
+// drift and the plan are refreshed, nothing is applied; also while Options.Paused reports a
+// pause) is scheduled. A server update is
+// also relevant while changes wait for a boost level (the boost tier may have changed). It
 // never blocks on Discord.
 //
 // The managed set is the one seen by the last Plan/Apply, so call Plan or Sync once
@@ -336,7 +374,7 @@ func (r *Reconciler) HandleEvent(ev discord.Event) bool {
 	case discord.RoleDeleteEvent:
 		relevant = r.isManaged(e.RoleID)
 	case discord.ServerUpdateEvent:
-		relevant = sp.Profile != nil || sp.Community != nil || sp.AFK != nil
+		relevant = sp.Profile != nil || sp.Community != nil || sp.AFK != nil || r.boostWaits
 	case discord.AutoModRuleUpdateEvent:
 		relevant = r.isManaged(e.Rule.ID)
 	case discord.AutoModRuleDeleteEvent:
@@ -367,11 +405,13 @@ func (r *Reconciler) HandleEvent(ev discord.Event) bool {
 	}
 	r.drifted = true
 	r.driftValid = false
-	if sp.SyncPolicy.SelfHeal() {
-		if r.timer != nil {
-			r.timer.Stop()
-		}
+	if r.timer != nil {
+		r.timer.Stop()
+	}
+	if sp.SyncPolicy.SelfHeal() && !r.pausedLocked() {
 		r.timer = time.AfterFunc(r.opts.SelfHealDelay, r.selfHeal)
+	} else {
+		r.timer = time.AfterFunc(r.opts.SelfHealDelay, r.replan)
 	}
 	return true
 }
@@ -439,18 +479,68 @@ func (r *Reconciler) selfHeal() {
 		r.emu.Unlock()
 		return
 	}
+	if r.pausedLocked() {
+		// paused after the event was seen: re-plan only
+		r.emu.Unlock()
+		r.replan()
+		return
+	}
 	r.running.Add(1)
 	r.emu.Unlock()
 	defer r.running.Done()
 	p, res, err := r.Sync(r.opts.Context)
+	if errors.Is(err, ErrPaused) {
+		return // paused while planning: OnPlan refreshed the status, nothing was applied
+	}
 	if err != nil {
-		r.log.Warn("reconcile: selfHeal sync failed", "server", r.serverKey(), "err", err)
+		r.log.Warn("reconcile: selfHeal sync failed", "err", err)
 	} else if !p.Empty() {
-		r.log.Info("reconcile: drift reverted", "server", r.serverKey(), "changes", len(p.Changes))
+		r.log.Info("reconcile: drift reverted", "changes", len(p.Changes))
 	}
 	if r.opts.OnSync != nil {
 		r.opts.OnSync(p, res, err)
 	}
+}
+
+// replan refreshes the plan and the drift after a drift event, without applying
+// (syncPolicy.selfHeal off): the drift stays visible until a sync.
+func (r *Reconciler) replan() {
+	r.emu.Lock()
+	if r.closed {
+		r.emu.Unlock()
+		return
+	}
+	r.running.Add(1)
+	r.emu.Unlock()
+	defer r.running.Done()
+	if _, err := r.Plan(r.opts.Context); err != nil {
+		r.log.Warn("reconcile: re-plan after drift failed", "err", err)
+	}
+}
+
+// paused reports Options.Paused. Caller does not hold emu.
+func (r *Reconciler) paused() bool {
+	r.emu.Lock()
+	defer r.emu.Unlock()
+	return r.pausedLocked()
+}
+
+// pausedLocked reports Options.Paused. Caller holds emu.
+func (r *Reconciler) pausedLocked() bool { return r.opts.Paused != nil && r.opts.Paused() }
+
+// Quiesce is called after Options.Paused starts reporting a pause: a debounced selfHeal
+// sync that is scheduled becomes a re-plan, and Quiesce waits for a plan or sync in
+// flight to finish (a sync past its pause check completes its apply). When it returns,
+// nothing more is applied until the pause ends. It must not be called from OnSync or
+// OnPlan.
+func (r *Reconciler) Quiesce() {
+	r.emu.Lock()
+	if r.timer != nil && r.timer.Stop() && !r.closed {
+		r.timer = time.AfterFunc(r.opts.SelfHealDelay, r.replan)
+	}
+	r.emu.Unlock()
+	r.mu.Lock()
+	r.mu.Unlock() //nolint:staticcheck // SA2001: a barrier, waits for the plan or sync in flight
 }
 
 // Close stops pending event-triggered syncs and waits for a running one to finish

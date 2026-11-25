@@ -29,7 +29,7 @@ func buildLiveServer(t *testing.T) *simServer {
 	t.Helper()
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
-	srv := w.CreateServer("Ma Commu", owner.ID)
+	srv := w.CreateServer("My Community", owner.ID)
 	token, bot, appID := w.CreateBot("Gardien")
 	botRole := must[discord.Role](t)(w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator")))
 	ok := func(_ any, err error) {
@@ -122,15 +122,15 @@ spec:
 func TestImportValidatePlanRoundTrip(t *testing.T) {
 	s := buildLiveServer(t)
 	useSim(t, s.w, map[string]string{"DISCORD_TOKEN": s.token, "DISCORD_TOKEN_GARDIEN": s.token})
-	dir := newRepo(t, s.appID, "ma-commu")
+	dir := newRepo(t, s.appID, "my-community")
 
 	code, out, errOut := run(t, "import", s.serverID, dir)
 	if code != 0 {
 		t.Fatalf("import = %d\n%s\n%s", code, out, errOut)
 	}
-	yamlText := readFile(t, filepath.Join(dir, "servers", "ma-commu.yaml"))
+	yamlText := readFile(t, filepath.Join(dir, "servers", "my-community.yaml"))
 	for _, want := range []string{
-		"name: ma-commu", `discordId: "` + s.serverID + `"`, "systemChannel: general", "rulesChannel: reglement",
+		"name: my-community", `discordId: "` + s.serverID + `"`, "systemChannel: general", "rulesChannel: reglement",
 		"notifs-evenements:", "name: Notifs événements", "hierarchy: [modo, membre, notifs-evenements, gamers]",
 		`name: "🎮 Gamers"`, `name: "🎉-fêtes"`, "fetes:",
 		"topic: Discussions générales", "slowmode: 5", "userLimit: 10", "member:", "type: announcement",
@@ -141,10 +141,10 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 		"type: forum", "sortOrder: creationDate", "layout: list", "threadArchiveAfter: 3d", "moderated: true", `emoji: "🛡️"`,
 		"secondary: '#3498db'", "automod:\n    gros-mots:", "trigger: keyword", "timeout: 10m", "alert: staff-2", "welcomeScreen:",
 		// downloaded files
-		"icon: ./assets/ma-commu/icon.png", "image: ./assets/ma-commu/emojis/coucou.png",
+		"icon: ./assets/my-community/icon.png", "image: ./assets/my-community/emojis/coucou.png",
 	} {
 		if !strings.Contains(yamlText, want) {
-			t.Errorf("servers/ma-commu.yaml misses %q:\n%s", want, yamlText)
+			t.Errorf("servers/my-community.yaml misses %q:\n%s", want, yamlText)
 		}
 	}
 	if strings.Contains(yamlText, "Gardien") {
@@ -163,7 +163,7 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rs, _ := store.Resources().List(context.Background(), "ma-commu")
+	rs, _ := store.Resources().List(context.Background(), "my-community")
 	store.Close()
 	if len(rs) != 17 { // 4 roles + 3 categories + 8 channels + 1 AutoMod rule + 1 emoji
 		t.Errorf("resource map has %d entries: %+v", len(rs), rs)
@@ -180,12 +180,12 @@ func TestImportValidatePlanRoundTrip(t *testing.T) {
 
 	// JSON output
 	code, out, _ = run(t, "plan", dir, "-o", "json")
-	if code != 0 || !strings.Contains(out, `"valid": true`) || !strings.Contains(out, `"server": "ma-commu"`) {
+	if code != 0 || !strings.Contains(out, `"valid": true`) || !strings.Contains(out, `"server": "my-community"`) {
 		t.Errorf("plan -o json = %d\n%s", code, out)
 	}
 
 	// a change shows up (exit 2 with --detailed-exitcode) and is applied with --yes
-	p := filepath.Join(dir, "servers", "ma-commu.yaml")
+	p := filepath.Join(dir, "servers", "my-community.yaml")
 	writeFile(t, p, strings.Replace(readFile(t, p), "name: général", "name: discussions", 1))
 	code, out, _ = run(t, "plan", dir, "--detailed-exitcode")
 	if code != 2 || !strings.Contains(out, "~ rename channel #général → #discussions") || !strings.Contains(out, "Plan: 0 to create, 1 to update, 0 to delete.") {

@@ -26,14 +26,14 @@ Every response carries the collection status of the server:
 
 ```json
 "status": {
-  "enabled": true,               // spec.analytics.enabled
-  "presence": false,             // detailed presence collected (opt-in and intent granted)
-  "since": "2026-08-01T14:00:00Z", // oldest bucket stored; null before the first point
+  "enabled": true,                  // spec.analytics.enabled
+  "presence": false,                // detailed presence collected (opt-in and intent granted)
+  "since": "2026-11-25T12:00:00Z",  // oldest bucket stored; null before the first point
   "retentionDays": 400,
-  "missing": [                   // what cannot be collected now; [] when everything is
-    { "metrics": ["moderation.actions"],
-      "reason": "the bot lacks the View Audit Log permission",
-      "fix": "grant View Audit Log to the bot's role" }
+  "missing": [                      // what cannot be collected now; [] when everything is
+    { "metrics": ["presence.status", "presence.platform", "presence.activity"],
+      "reason": "detailed presence (statuses, platforms, activities) is not enabled; only Discord's approximate online count is sampled",
+      "fix": "set spec.analytics.presence: true in the server file, add ServerPresences to spec.intents in bots/cicord/bot.yaml and turn on Presence Intent in the Discord developer portal (…)" }
   ]
 }
 ```
@@ -50,9 +50,9 @@ in it.
 
 ```json
 "labels": {
-  "112233445566778899": { "name": "général", "kind": "channel" },
+  "112233445566778899": { "name": "general", "kind": "channel" },
   "223344556677889900": { "name": "Lounge", "kind": "voice" },
-  "334455667788990011": { "name": "Modo", "kind": "role", "color": "#e67e22" },
+  "334455667788990011": { "name": "Moderator", "kind": "role", "color": "#e67e22" },
   "pepe:445566778899001122": { "name": "pepe", "kind": "emoji", "imageUrl": "https://cdn.discordapp.com/emojis/445566778899001122.png" },
   "556677889900112233": { "name": "556677889900112233", "kind": "channel", "deleted": true },
   "<7d": { "name": "<7d", "kind": "label" }
@@ -78,29 +78,35 @@ covered: collection started after its first day. The previous period of `365d` r
 
 ```json
 {
-  "server": "ma-commu",
+  "server": "showcase",
   "period": "7d",
   "step": "day",
-  "from": "2026-11-18T00:00:00Z",
-  "to": "2026-11-25T00:00:00Z",
+  "from": "2026-11-19T00:00:00Z",
+  "to": "2026-11-26T00:00:00Z",
   "kpis": [
-    { "metric": "members.total", "value": 1250, "previous": 1198,
-      "spark": [[1763424000, 1201], [1763510400, 1210]] },
-    { "metric": "members.joined", "value": 64, "previous": 51, "spark": [[1763424000, 9], [1763510400, 12]] }
+    { "metric": "members.total", "value": 1, "previous": null, "spark": [[1795564800, 1]] },
+    { "metric": "messages.sent", "value": 4, "previous": null,
+      "spark": [[1795046400, 0], [1795132800, 0], [1795219200, 0], [1795305600, 0], [1795392000, 0], [1795478400, 0], [1795564800, 4]] },
+    …
   ],
   "rankings": {
-    "messages.sent": [ { "dim": "112233445566778899", "value": 3121, "previous": 2870 } ],
-    "invites.uses": []
+    "messages.sent": [ { "dim": "1575125354564026388", "value": 4, "previous": null } ],
+    "bots.commands": [ { "dim": "Cicord /rank", "value": 1, "previous": null } ],
+    "invites.uses": [],
+    …
   },
-  "heatmap": [[0, 0, 3], [1, 0, 0]],
-  "botsHeatmap": [[0, 1, 0], [0, 0, 2]],
-  "labels": { "112233445566778899": { "name": "général", "kind": "channel" } },
-  "status": { "enabled": true, "presence": false, "since": "2026-08-01T14:00:00Z", "retentionDays": 400, "missing": [] }
+  "heatmap": [[0, 0, …], …],
+  "botsHeatmap": [[0, 0, …], …],
+  "labels": {
+    "1575125354564026388": { "name": "general", "kind": "channel" },
+    "Cicord /rank": { "name": "Cicord /rank", "kind": "label" },
+    …
+  },
+  "status": { "enabled": true, "presence": false, "since": "2026-11-25T12:00:00Z", "retentionDays": 400, "missing": [ … ] }
 }
 ```
 
-(The example is abridged. There are always 12 KPIs, the 13 or 14 rankings listed below, and
-two 7 × 24 heatmaps.)
+There are always 12 KPIs, the 13 or 14 rankings listed below, and two 7 × 24 heatmaps.
 
 `kpis`, in this order:
 
@@ -162,18 +168,17 @@ Without `dim`, a metric with a dimension returns, in this order:
 
 ```json
 {
-  "server": "ma-commu",
-  "from": "2026-11-17T00:00:00Z",
-  "to": "2026-11-25T00:00:00Z",
+  "server": "showcase",
+  "from": "2026-11-23T00:00:00Z",
+  "to": "2026-11-26T00:00:00Z",
   "step": "day",
   "series": [
-    { "metric": "messages.sent", "dim": "", "points": [[1763337600, 412], [1763424000, 388]] },
-    { "metric": "messages.sent", "dim": "112233445566778899", "points": [[1763337600, 301], [1763424000, 260]] },
-    { "metric": "messages.sent", "dim": "other", "points": [[1763337600, 111], [1763424000, 128]] },
-    { "metric": "members.total", "dim": "", "points": [[1763337600, 1240], [1763424000, 1250]] }
+    { "metric": "messages.sent", "dim": "", "points": [[1795392000, 0], [1795478400, 0], [1795564800, 4]] },
+    { "metric": "messages.sent", "dim": "1575125354564026388", "points": [[1795392000, 0], [1795478400, 0], [1795564800, 4]] },
+    { "metric": "members.total", "dim": "", "points": [[1795564800, 1]] }
   ],
-  "labels": { "112233445566778899": { "name": "général", "kind": "channel" } },
-  "status": { "enabled": true, "presence": false, "since": "2026-08-01T14:00:00Z", "retentionDays": 400, "missing": [] }
+  "labels": { "1575125354564026388": { "name": "general", "kind": "channel" } },
+  "status": { … }
 }
 ```
 
@@ -187,20 +192,23 @@ Without `dim`, a metric with a dimension returns, in this order:
 {
   "metrics": [
     { "name": "members.total", "kind": "last", "unit": "members",
-      "source": "Discord's approximate member count, sampled", "collected": true },
+      "source": "human members: Discord's approximate member count minus the bot members, sampled", "collected": true },
     { "name": "messages.sent", "kind": "counter", "dim": "channel", "unit": "count",
       "source": "message events (members, not bots)", "collected": true },
     { "name": "presence.status", "kind": "last", "dim": "status", "unit": "members",
-      "source": "presence events (privileged intent)", "presence": true, "collected": false }
+      "source": "presence events (privileged intent)", "presence": true, "collected": false },
+    …
   ],
-  "status": { "enabled": true, "presence": false, "since": null, "retentionDays": 400, "missing": [] }
+  "status": { … }
 }
 ```
 
 - `kind` is `counter`, `max` or `last`. The daily distinct metrics are `last`.
 - `dim` names what the dimension holds: `channel`, `role`, `emoji`, `event`, `invite`,
-  `rule`, `command`, `action`, `account age`, `status`, `platform`, `activity`. It is absent
-  for metrics without one.
+  `rule`, `command`, `action`, `account age`, `bot`, `bot command`, `member tenure`,
+  `status`, `platform`, `activity`. It is absent for metrics without one.
+- The catalog has 45 metrics, from `members.total` to `presence.activity`; the
+  [analytics guide](../../../self-hosting/analytics/#what-is-collected) describes each one.
 - `unit` is `count`, `members`, `seconds` or `level`.
 - `collected` is false when analytics are disabled, when the metric needs presence and
   presence is not collected, or when `status.missing` lists it.

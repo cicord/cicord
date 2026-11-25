@@ -10,14 +10,14 @@ import (
 	"github.com/cicord/cicord/internal/runtime"
 )
 
-const rawCommunity = `reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request ` +
+const rawCommunity = `reconcile my-community: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request ` +
 	`(HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2}."}]}})`
 
 func TestHumanStatusJSON(t *testing.T) {
 	st := runtime.Status{
 		Version: "1", Mode: "dev", LastError: `revision abc rejected: bots/x/bot.yaml: unknown role "xbox"`,
 		Servers: []runtime.ServerStatus{
-			{Key: "ma-commu", Health: runtime.HealthDegraded, Sync: runtime.SyncOutOfSync, Message: rawCommunity, Drift: []runtime.DriftEntry{}},
+			{Key: "my-community", Health: runtime.HealthDegraded, Sync: runtime.SyncOutOfSync, Message: rawCommunity, Drift: []runtime.DriftEntry{}},
 			{Key: "other", Health: runtime.HealthHealthy, Message: "2 change(s) blocked", Drift: []runtime.DriftEntry{}},
 		},
 		Bots: []runtime.BotStatus{{Key: "b", Health: runtime.HealthMissing, Message: "not connected", Servers: []string{}, Plugins: []runtime.PluginStatus{}}},

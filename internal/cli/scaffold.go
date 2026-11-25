@@ -113,6 +113,7 @@ func newInitCmd() *cobra.Command {
 				"ApplicationID": o.appID,
 				"TokenEnv":      "DISCORD_TOKEN_" + strings.ToUpper(strings.ReplaceAll(o.bot, "-", "_")),
 				"EngineRange":   engineRange(),
+				"Cicord":        cicordInstallVersion(),
 				"Provider":      o.provider,
 				"Repo":          o.repo,
 			}
@@ -218,7 +219,7 @@ func newPluginCmd() *cobra.Command {
 			if testErr != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "\nNo unit test setup: %v.\n", testErr)
 			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "\nUnit tests (Node 24, @cicord/sdk/testing):\n    cd %s && npm install && npm test\n", args[0])
+				fmt.Fprintf(cmd.OutOrStdout(), "\nUnit tests (Node 24 or later, @cicord/sdk/testing):\n    cd %s && npm install && npm test\n", args[0])
 			}
 			where, source := "a bot", "<relative path from bot.yaml to "+args[0]+">"
 			if botFile := findBotFile(abs); botFile != "" {

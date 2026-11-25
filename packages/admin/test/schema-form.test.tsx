@@ -30,21 +30,21 @@ const onboarding = onboardingSchema as unknown as JsonSchema;
 const resources: ServerResources = {
   roles: [
     { key: "admin", id: "1", name: "Admin", color: "#e74c3c", managed: true },
-    { key: "member", id: "2", name: "Membre", color: "#3498db", managed: true },
+    { key: "member", id: "2", name: "Member", color: "#3498db", managed: true },
     { key: "minecraft", id: "3", name: "Minecraft", color: "#5b8731", managed: true },
     { key: "pc", id: "4", name: "PC", color: "#95a5a6", managed: true },
     { key: "", id: "9", name: "Old VIP", color: "#ad1457", managed: false },
   ],
   categories: [
-    { key: "info", id: "c1", name: "Infos", managed: true },
-    { key: "community", id: "c2", name: "Communauté", managed: true },
+    { key: "info", id: "c1", name: "Info", managed: true },
+    { key: "community", id: "c2", name: "Community", managed: true },
   ],
   channels: [
-    { key: "rules", id: "10", name: "règlement", type: "text", category: "info", managed: true },
+    { key: "rules", id: "10", name: "rules", type: "text", category: "info", managed: true },
     {
       key: "announcements",
       id: "11",
-      name: "annonces",
+      name: "announcements",
       type: "announcement",
       category: "info",
       managed: true,
@@ -52,7 +52,7 @@ const resources: ServerResources = {
     {
       key: "general",
       id: "12",
-      name: "général",
+      name: "general",
       type: "text",
       category: "community",
       managed: true,
@@ -63,22 +63,22 @@ const resources: ServerResources = {
 
 const welcomeConfig: JsonObject = {
   channel: "general",
-  message: "Bienvenue {member} sur {server} !",
+  message: "Welcome {member} to {server}!",
   autoRole: "member",
   dmOnboarding: true,
 };
 
 const onboardingConfig: JsonObject = {
-  title: "Bienvenue !",
+  title: "Welcome!",
   intro: "",
   steps: [
     {
-      id: "jeux",
-      title: "À quoi tu joues ?",
+      id: "games",
+      title: "What do you play?",
       multiple: true,
       options: [{ role: "minecraft", emoji: "⛏️" }],
     },
-    { id: "plateforme", title: "Plateforme", required: true, options: [{ role: "pc" }] },
+    { id: "platform", title: "Platform", required: true, options: [{ role: "pc" }] },
   ],
   completedRole: "member",
   successMessage: "OK",
@@ -117,13 +117,13 @@ describe("rendering the welcome schema", () => {
   test("renders every property with its widget, description and required marker", () => {
     render(<Harness schema={welcome} initial={welcomeConfig} />);
     const channel = screen.getByRole("combobox", { name: "Channel" });
-    expect(channel.textContent).toContain("général");
+    expect(channel.textContent).toContain("general");
     expect(screen.getByText("Channel where welcome messages are posted.")).toBeTruthy();
     // x-cicord-widget: textarea
     const message = screen.getByRole("textbox", { name: "Message" });
     expect(message.tagName).toBe("TEXTAREA");
-    expect((message as HTMLTextAreaElement).value).toBe("Bienvenue {member} sur {server} !");
-    expect(screen.getByRole("combobox", { name: "Auto role" }).textContent).toContain("Membre");
+    expect((message as HTMLTextAreaElement).value).toBe("Welcome {member} to {server}!");
+    expect(screen.getByRole("combobox", { name: "Auto role" }).textContent).toContain("Member");
     expect(screen.getByRole("switch", { name: "Dm onboarding" }).getAttribute("aria-checked")).toBe(
       "true",
     );
@@ -140,10 +140,12 @@ describe("rendering the welcome schema", () => {
     const options = screen.getAllByRole("option").map((o) => o.textContent);
     // Unmanaged channels have no key: not selectable.
     expect(options.some((o) => o?.includes("memes"))).toBe(false);
-    expect(screen.getByText("Infos")).toBeTruthy();
-    await user.click(screen.getByRole("option", { name: /annonces/ }));
+    expect(screen.getByText("Info")).toBeTruthy();
+    await user.click(screen.getByRole("option", { name: /announcements/ }));
     expect(onValue).toHaveBeenLastCalledWith({ ...welcomeConfig, channel: "announcements" });
-    expect(screen.getByRole("combobox", { name: "Channel" }).textContent).toContain("annonces");
+    expect(screen.getByRole("combobox", { name: "Channel" }).textContent).toContain(
+      "announcements",
+    );
   });
 
   test("role picker shows colors, filters by name and can be cleared when optional", async () => {
@@ -216,8 +218,8 @@ describe("rendering the onboarding schema (arrays of objects)", () => {
     render(<Harness schema={onboarding} initial={onboardingConfig} onValue={(v) => (value = v)} />);
 
     // Collapsed headers summarise each item.
-    const step1 = screen.getByRole("button", { name: /Step 1 À quoi tu joues \?/ });
-    expect(screen.getByRole("button", { name: /Step 2 Plateforme/ })).toBeTruthy();
+    const step1 = screen.getByRole("button", { name: /Step 1 What do you play\?/ });
+    expect(screen.getByRole("button", { name: /Step 2 Platform/ })).toBeTruthy();
     await user.click(step1);
     expect(step1.getAttribute("aria-expanded")).toBe("true");
     // The single option of step 1 is open and shows a role picker resolved to its name.
@@ -230,10 +232,10 @@ describe("rendering the onboarding schema (arrays of objects)", () => {
     expect((steps[0]!["options"] as Json[])[1]).toEqual({ role: "" });
 
     await user.click(screen.getByRole("button", { name: "Move step 1 down" }));
-    expect((value["steps"] as JsonObject[]).map((s) => s["id"])).toEqual(["plateforme", "jeux"]);
+    expect((value["steps"] as JsonObject[]).map((s) => s["id"])).toEqual(["platform", "games"]);
 
     await user.click(screen.getByRole("button", { name: "Remove step 2" }));
-    expect((value["steps"] as JsonObject[]).map((s) => s["id"])).toEqual(["plateforme"]);
+    expect((value["steps"] as JsonObject[]).map((s) => s["id"])).toEqual(["platform"]);
     // minItems: 1 → the last step cannot be removed.
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Remove step 1" }).disabled).toBe(
       true,
@@ -263,14 +265,14 @@ describe("rendering the onboarding schema (arrays of objects)", () => {
 describe("diff", () => {
   test("reports leaf changes with pointers", () => {
     const next = setIn(
-      setIn(onboardingConfig, ["steps", 0, "title"], "Tu joues à quoi ?"),
+      setIn(onboardingConfig, ["steps", 0, "title"], "What games do you play?"),
       ["intro"],
       "Hello",
     ) as JsonObject;
     const changes = diffConfig(onboardingConfig, next);
     expect(changes.map((c) => [c.pointer, c.kind, c.from, c.to])).toEqual([
       ["/intro", "changed", "", "Hello"],
-      ["/steps/0/title", "changed", "À quoi tu joues ?", "Tu joues à quoi ?"],
+      ["/steps/0/title", "changed", "What do you play?", "What games do you play?"],
     ]);
     expect(changedTopLevel(changes)).toEqual(["intro", "steps"]);
   });
@@ -345,12 +347,12 @@ describe("validation", () => {
 
 describe("diagnostics mapping", () => {
   test("strips bot.yaml prefixes", () => {
-    expect(configPointer("/spec/plugins/1/overrides/ma-commu/config/steps/0/title")).toBe(
+    expect(configPointer("/spec/plugins/1/overrides/pixel-haven/config/steps/0/title")).toBe(
       "/steps/0/title",
     );
     expect(configPointer("/spec/plugins/0/config")).toBe("");
     expect(configPointer("/channel")).toBe("/channel");
-    expect(cleanMessage("[server ma-commu] unknown role")).toBe("unknown role");
+    expect(cleanMessage("[server pixel-haven] unknown role")).toBe("unknown role");
   });
 
   test("maps to rendered fields, climbing to the closest known one", () => {
@@ -360,8 +362,8 @@ describe("diagnostics mapping", () => {
       [
         {
           severity: "error",
-          path: "/spec/plugins/1/overrides/ma-commu/config/steps/1/options/0/role",
-          message: '[server ma-commu] unknown role "xbox"',
+          path: "/spec/plugins/1/overrides/pixel-haven/config/steps/1/options/0/role",
+          message: '[server pixel-haven] unknown role "xbox"',
         },
         { severity: "error", path: "/spec/plugins/1/config/steps/0/nope", message: "extra field" },
         { severity: "error", path: "/spec/plugins/1/config", message: "missing steps" },
@@ -387,13 +389,13 @@ describe("markdown", () => {
         }
         placeholders
         resolveMention={(kind, id) =>
-          kind === "user" && id === "42" ? "Alice" : kind === "channel" ? "général" : undefined
+          kind === "user" && id === "42" ? "Alice" : kind === "channel" ? "general" : undefined
         }
       />,
     );
     expect(screen.getByText("Hi").tagName).toBe("STRONG");
     expect(screen.getByText("Alice", { exact: false }).textContent).toBe("@Alice");
-    expect(screen.getByText("général", { exact: false }).textContent).toBe("#général");
+    expect(screen.getByText("general", { exact: false }).textContent).toBe("#general");
     const link = screen.getByRole("link", { name: "portal" });
     expect(link.getAttribute("href")).toBe("https://example.org/onboarding?cicord_token=x");
     expect(link.getAttribute("target")).toBe("_blank");
@@ -448,7 +450,7 @@ describe("every widget kind (synthetic schema)", () => {
 
     // x-cicord-ref: category
     await user.click(screen.getByRole("combobox", { name: "Parent" }));
-    await user.click(screen.getByRole("option", { name: /Communauté/ }));
+    await user.click(screen.getByRole("option", { name: /Community/ }));
     expect(value["parent"]).toBe("community");
 
     // color: hex text input next to the native picker

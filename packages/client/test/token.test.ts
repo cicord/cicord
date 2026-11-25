@@ -38,7 +38,7 @@ const json = (body: unknown, status = 200) =>
 
 const me = {
   user: { id: "1", username: "alice", displayName: "Alice", avatarUrl: "" },
-  servers: [{ key: "ma-commu", name: "Ma Commu", role: "member" }],
+  servers: [{ key: "my-community", name: "My Community", role: "member" }],
 };
 const future = new Date(Date.now() + 3600_000).toISOString();
 const session = { token: "cicord_st_abc", expiresAt: future, me };
@@ -160,14 +160,14 @@ describe("token mode", () => {
 
 describe("portal", () => {
   const server = {
-    key: "ma-commu",
-    name: "Ma Commu",
+    key: "my-community",
+    name: "My Community",
     iconUrl: "",
-    theme: { primary: "", accent: "", logo: "/api/v1/portal/ma-commu/logo?v=1", mode: "" },
-    title: "Ma Commu",
+    theme: { primary: "", accent: "", logo: "/api/v1/portal/my-community/logo?v=1", mode: "" },
+    title: "My Community",
     tagline: "",
     description: "",
-    banner: "/api/v1/portal/ma-commu/banner?v=1",
+    banner: "/api/v1/portal/my-community/banner?v=1",
     links: [],
     pages: { onboarding: true, profile: true, leaderboard: true, tickets: true },
     locale: "",
@@ -177,11 +177,11 @@ describe("portal", () => {
   test("image URLs are absolute when the runtime is on another origin", async () => {
     const { fetch } = mockFetch(() => json({ items: [server] }));
     const [s] = await createCicordClient({ baseUrl: base, fetch }).portal.servers();
-    expect(s?.theme.logo).toBe(`${base}/api/v1/portal/ma-commu/logo?v=1`);
-    expect(s?.banner).toBe(`${base}/api/v1/portal/ma-commu/banner?v=1`);
+    expect(s?.theme.logo).toBe(`${base}/api/v1/portal/my-community/logo?v=1`);
+    expect(s?.banner).toBe(`${base}/api/v1/portal/my-community/banner?v=1`);
     const { fetch: f2 } = mockFetch(() => json(server));
-    const same = await createCicordClient({ fetch: f2 }).portal.server("ma-commu");
-    expect(same.banner).toBe("/api/v1/portal/ma-commu/banner?v=1");
+    const same = await createCicordClient({ fetch: f2 }).portal.server("my-community");
+    expect(same.banner).toBe("/api/v1/portal/my-community/banner?v=1");
   });
 
   test("isSafeUrl", () => {

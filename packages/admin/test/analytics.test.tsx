@@ -47,7 +47,7 @@ async function open(analytics: MockAnalyticsVariant = "full", user = /Owner/, pa
   window.history.replaceState(
     null,
     "",
-    `${import.meta.env.BASE_URL.replace(/\/$/, "")}/servers/ma-commu/analytics${path}`,
+    `${import.meta.env.BASE_URL.replace(/\/$/, "")}/servers/pixel-haven/analytics${path}`,
   );
   render(<App config={config} />);
   const u = userEvent.setup();
@@ -57,7 +57,7 @@ async function open(analytics: MockAnalyticsVariant = "full", user = /Owner/, pa
   const summary = async (query: string) =>
     (await (
       await runtime.fetch(
-        `/api/v1/servers/ma-commu/analytics/summary?${query.includes("=") ? query : `period=${query}`}`,
+        `/api/v1/servers/pixel-haven/analytics/summary?${query.includes("=") ? query : `period=${query}`}`,
         {},
       )
     ).json()) as AnalyticsSummary;
@@ -222,7 +222,7 @@ describe("analytics page", () => {
       "Jockie Music",
       "Cicord",
       "Dyno",
-      "Gardien",
+      "Warden",
     ]);
 
     const users = within(section).getByRole("region", { name: "Members using bots per day" });
@@ -234,7 +234,7 @@ describe("analytics page", () => {
     expect(within(first).getByText("/play", { selector: "code" })).toBeTruthy();
     expect(within(first).getByText("Jockie Music")).toBeTruthy();
     const where = within(section).getByRole("region", { name: "Where bots are used" });
-    expect(within(where).getAllByRole("listitem")[0]!.textContent).toContain("#commandes-bot");
+    expect(within(where).getAllByRole("listitem")[0]!.textContent).toContain("#bot-commands");
     const components = within(section).getByRole("region", { name: "Buttons and menus by bot" });
     expect(within(components).getAllByRole("listitem")[0]!.textContent).toContain("Cicord");
 

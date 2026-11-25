@@ -40,6 +40,27 @@ export function ChannelGlyph({ type }: { type: string | undefined }) {
             strokeLinejoin="round"
           />
         </svg>
+      ) : type === "forum" ? (
+        <svg viewBox="0 0 16 16" width="13" height="13">
+          <path
+            d="M2.5 3.5h8v5.5h-4.5l-2.5 2v-2h-1zM10.5 6h3v5.5h-1v2l-2.5-2h-3.5v-2.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : type === "media" ? (
+        <svg viewBox="0 0 16 16" width="13" height="13">
+          <path
+            d="M2.5 3.5h11v9h-11zM2.5 10.5l3.5-3.5 3 3 1.5-1.5 3 3M10.5 6.5h.01"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </svg>
       ) : (
         "#"
       )}
@@ -75,7 +96,7 @@ export function refOptions(kind: RefKind, resources: ServerResources | undefined
     }));
 }
 
-/** Display name of a reference value ("Minecraft", "#général"), when it resolves. */
+/** Display name of a reference value ("Minecraft", "#general"), when it resolves. */
 export function refLabel(
   kind: RefKind,
   value: string,

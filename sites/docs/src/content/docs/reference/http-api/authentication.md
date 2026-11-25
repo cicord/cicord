@@ -92,6 +92,17 @@ created with `auth: "token"`. See [Embedding](../../../portal/embedding/).
 - `TokenSession = {"token": "cicord_st_…", "expiresAt": "<RFC 3339>", "me": Me}`. Tokens last
   24 hours (link tokens: as long as the link session, at most 24 hours) and are stored by the
   runtime like sessions (revoked by `/auth/logout`).
+
+  ```sh
+  curl -X POST http://127.0.0.1:7420/auth/dev-login -H 'X-Cicord-Request: 1' \
+    -d '{"userId": "1575125353398009859", "mode": "token"}'
+  ```
+
+  ```json
+  { "token": "cicord_st_…", "expiresAt": "2026-11-26T12:35:26.373234Z",
+    "me": { "user": { "id": "1575125353398009859", "username": "alice", "displayName": "alice", "avatarUrl": "" },
+            "servers": [ { "key": "showcase", "name": "Cicord Showcase", "role": "member" } ] } }
+  ```
 - **Scope**: on the portal endpoints (plugin routes included) a token session has the user's
   full role on the server; everywhere else it is **at most `member`**, like link sessions, so a
   token kept by a third-party site never reaches the admin endpoints. A token is only accepted

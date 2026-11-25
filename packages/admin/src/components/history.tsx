@@ -6,10 +6,14 @@ import { groupHistory, parseTarget, type HistoryGroup } from "../lib/history.ts"
 import { cn } from "../lib/utils.ts";
 import { Sha, Time } from "./common.tsx";
 import { TechnicalDetails } from "./errors.tsx";
-import { historyMeta, HISTORY_STATES } from "./status.tsx";
+import { historyMeta, HISTORY_STATES, isFailure } from "./status.tsx";
 import { Tip } from "./ui/tooltip.tsx";
 
-const TONE_TEXT = { success: "text-success", danger: "text-danger" } as const;
+const TONE_TEXT = {
+  success: "text-success",
+  danger: "text-danger",
+  warning: "text-warning",
+} as const;
 
 function statusIcon(status: string) {
   const known = (HISTORY_STATES as readonly string[]).includes(status);
@@ -63,7 +67,7 @@ function HistoryRow({ group: g, showTarget }: { group: HistoryGroup; showTarget:
   const { t } = useTranslation();
   const meta = statusIcon(g.status);
   const Icon = meta.icon;
-  const failed = g.status !== "succeeded";
+  const failed = isFailure(g.status);
   const title = failed
     ? (g.error?.message ?? g.latest.message)
     : g.latest.message || t("status.history.succeeded.label");

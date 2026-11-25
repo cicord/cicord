@@ -15,8 +15,15 @@ repository already created by the wizard) serve only:
 - the endpoints of this page;
 - `/healthz`, and `/readyz` (`503 setup mode`).
 
-Every other `/api/*` and `/auth/*` path answers `503 setup_required` (`message`, `hint`); `/`
-redirects (`302`) to `/admin/setup`. The runtime prints a one-time link
+Every other `/api/*` and `/auth/*` path answers `503 setup_required`; `/` redirects (`302`) to
+`/admin/setup`.
+
+```json
+{"error": {"code": "setup_required", "message": "Cicord is not set up yet.",
+           "hint": "Open the setup link printed in the Cicord logs (/admin/setup?token=…)."}}
+```
+
+ The runtime prints a one-time link
 `<public url>/admin/setup?token=<token>` (`<admin url>/admin/setup?token=…` with
 `--admin-url`; the public host then only answers `/healthz` and `/readyz`, see
 [Admin host](../authentication/#admin-host---admin-url)).
@@ -25,7 +32,9 @@ redirects (`302`) to `/admin/setup`. The runtime prints a one-time link
 
 - `GET /api/v1/setup/status` (anonymous) returns
   `{"active", "completed", "authenticated", "simulator"?, "view"?: SetupView}`. `view` is set
-  only for a valid setup session. Without the wizard (normal runtime):
+  only for a valid setup session. In setup mode, before the session:
+  `{"active": true, "authenticated": false, "completed": false, "simulator": true}` (with
+  `--sim`); without the wizard (normal runtime):
   `{"active": false, "completed": true, "authenticated": false}`.
 - `POST /api/v1/setup/session` `{"token"}` returns the same shape and sets the cookie
   `cicord_setup` (HttpOnly, `SameSite=Strict`, `Secure` behind HTTPS, 24 hours).
@@ -66,10 +75,12 @@ All under `/api/v1/setup`. [`SetupView`](#shapes) is described below.
 | `POST /step` | `{"step"}` | `SetupView` |
 | `POST /discord/token` | `{"token"}` | `SetupView` |
 | `POST /discord/recheck` | | `SetupView` |
-| `GET /discord/invite` | | `{"url", "scopes": ["bot", "applications.commands"], "permissions": "Administrator"}` |
+| `GET /discord/invite` | | `{"url", "scopes": ["bot", "applications.commands"], "permissions": "Administrator" \| "ViewChannel", "access", "adminUrl", "inspectUrl"}` |
 | `GET /discord/servers` | | `{"servers": [{"id", "name", "iconUrl"?}]}` |
 | `POST /server` | `{"serverId"}` | `{"view", "checks": [Check], "ok"}` |
 | `POST /server/check` | | Same as `POST /server` |
+| `POST /access` | `{"access": "admin" \| "inspect"}` | `SetupView` |
+| `POST /inspect` | | `{"report": InspectReport, "plan": Plan}` |
 | `POST /repo` | `{"provider": "embedded" \| "github" \| "local", "url"?, "branch"?, "token"?}` | `SetupView` |
 | `POST /import` | `{"confirm"?: bool}` | `{"view", "plan": Plan \| null, "needsConfirm", "files", "warnings"}` |
 | `POST /oauth` | `{"clientSecret"}` | `SetupView` |
@@ -88,10 +99,29 @@ All under `/api/v1/setup`. [`SetupView`](#shapes) is described below.
   intents from the application flags, and stores the token encrypted under
   `DISCORD_TOKEN_<BOT>`.
 - `POST /discord/recheck` re-reads the application (privileged intents) with the stored token.
+  The `intents` check of a new simulated application:
+
+  ```json
+  { "id": "intents", "status": "warn",
+    "message": "“Message Content Intent” and “Server Members Intent” are turned off. Some official plugins need it (welcome messages need Server Members, levels need Message Content).",
+    "hint": "In the Discord Developer Portal, open your application → Bot → Privileged Gateway Intents, turn on “Message Content Intent” and “Server Members Intent”, click Save Changes, then re-check.",
+    "link": "https://discord.com/developers/applications/1575128033587625984/bot",
+    "data": { "enabled": [], "missing": ["MessageContent", "ServerMembers"] } }
+  ```
 - `GET /discord/servers` lists the servers the bot is in (`GET /users/@me/guilds`). The UI
   polls it every 2.5 seconds while the invite is open.
 - `POST /server` picks the server (it must be in that list) and checks it: `member`,
   `permissions`, `hierarchy`.
+- `POST /access` chooses the invite of the Server step: `admin` (default, `inviteUrl`,
+  Administrator) or `inspect` (`inspectInviteUrl`, View Channels only). `POST /sim/invite`
+  authorizes the chosen one.
+- `POST /inspect` imports the chosen server read-only into a temporary directory and plans it
+  through a client that refuses every change. It needs only membership. The wizard state and
+  the resource map are not touched. The report has `categories` and `channels` (each with
+  `visible` and `private`), `unlisted` (hidden channels the server refers to), `unreadable`
+  (`part`, `name`, `needs`), `needs` (`permission`, `sources`, `why`), `hierarchy` (a Check),
+  `ready`, `upgradeInviteUrl`, `adminInviteUrl`, `reads` and `writes` (always 0). `POST /step`
+  to `repository` still requires the server checks to pass.
 - `POST /repo`: `providers` in `SetupView` lists the choices of this runtime (`serve`:
   embedded, github; `dev`: local, embedded). For `github`, the remote is checked with the
   token, which is stored encrypted as `CICORD_GIT_TOKEN`.
@@ -124,6 +154,7 @@ discord.com:
 | `POST /sim/intents` | `{"enabled"}` | `204` |
 | `POST /sim/invite` | `{"serverId"?, "low"?}` | `204` (`low` puts the bot role at the bottom) |
 | `POST /sim/raise-role` | | `204` |
+| `POST /sim/grant-admin` | | `204` (the bot's role gets Administrator, as after authorizing that invite) |
 | `POST /sim/message` | | `204` (the owner sends a message) |
 
 ## Shapes
@@ -131,11 +162,13 @@ discord.com:
 ```json
 // SetupView (never contains secret values)
 { "step": "welcome|discord|server|repository|login|verify|plugin|done", "steps": [...],
-  "completed": false, "mode": "serve|dev", "simulator": false, "version": "0.1.0",
+  "completed": false, "mode": "serve|dev", "simulator": false, "version": "0.1.6",
   "intent"?: "existing|new", "providers": ["embedded", "github"], "publicUrl": "…",
   "bot"?: { "key", "secretRef", "applicationId", "applicationName", "userId", "username",
             "avatarUrl"?, "flags", "tokenStored", "portalUrl", "intents": Check },
+  "access": "admin|inspect",
   "inviteUrl"?: "https://discord.com/oauth2/authorize?client_id=…&permissions=8&scope=bot+applications.commands…",
+  "inspectInviteUrl"?: "…&permissions=1024&…",
   "server"?: { "id", "name", "iconUrl"?, "key" },
   "repo"?: { "provider", "url"?, "branch", "tokenStored"? },
   "activated": false, "revision"?: "…", "firstPlan"?: Plan,

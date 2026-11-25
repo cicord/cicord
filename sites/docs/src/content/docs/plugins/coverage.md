@@ -14,9 +14,8 @@ the manual check on real Discord: **to verify** unless noted; the
 
 The Go tests run with `go test ./...`:
 
-- **`rt/…`**: `internal/runtime/showcase_test.go` and `showcase_more_test.go`
-  (`TestShowcase*`; `rt/ReactionRoles`, `rt/AuditLog` and `rt/Announcements` cover the last
-  three plugins). The probe fixture (`internal/runtime/testdata/probe`) covers error paths a
+- **`rt/<Name>`**: `TestShowcase<Name>` in `internal/runtime/showcase_test.go` and
+  `showcase_more_test.go`. The probe fixture (`internal/runtime/testdata/probe`) covers error paths a
   real plugin never hits on purpose.
 - **`api/…`**: `internal/api/showcase_test.go` (`TestShowcaseRouteAccess`): portal routes
   through the HTTP API, which enforces the access levels.
@@ -24,7 +23,8 @@ The Go tests run with `go test ./...`:
   `typegen --check` and `cicord plugin test` for every showcase plugin.
 
 The unit tests of each plugin, written with [`@cicord/sdk/testing`](../testing/#unit-tests-with-cicordsdktesting),
-live in `examples/showcase/plugins/*/test` (`pnpm test`).
+live in `examples/showcase/plugins/*/test` (`pnpm test`) and in the official registry's
+`plugins/*/test`. github-releases is not in the showcase: its unit tests cover it.
 
 ## Events
 
@@ -108,7 +108,7 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`).
 |---|---|---|---|
 | `server.channel(key or { id })`, `server.role()` | all | rt/* | to verify |
 | `server.member()` | moderation, levels | rt/Moderation, rt/Levels | to verify |
-| `role.members()` (members holding a role; ServerMembers intent; shared 60 s listing patched by member events) | tickets `GET /staff` (0.2) | `internal/plugin` TestRoleMembers*; `internal/runtime` TestMemberList*; `internal/sim` TestListMembers; `disgoadapter` TestListMembersPages; SDK role-members tests | to verify |
+| `role.members()` (members holding a role; ServerMembers intent; shared 60 s listing patched by member events) | tickets 0.2.0 `GET /staff` (registry and bundled copy) | `internal/plugin` TestRoleMembers*; `internal/runtime` TestMemberList*; `internal/sim` TestListMembers; `disgoadapter` TestListMembersPages; SDK role-members tests | to verify |
 | `role.position`, `role.mentionable`, `server.ownerId`, `member.permissions` (server-level, no channel overwrites), `member.access` | moderation (hierarchy), polls (ping) | `internal/plugin` TestMemberPermissionsAccessAndRolePositions, TestOwnerAndAdminAccess; `disgoadapter` TestRoleAndServerFromJSON; SDK permission tests | to verify |
 | `allowedMentions` id lists (`roles: [id]`, `users: [id]`, `repliedUser`; ≤ 100 snowflakes; a type never both parsed and listed) | polls `ping` (only the pinged member or role) | rt/Polls (`sim` MessageMentions); `internal/plugin` TestAllowedMentionIDLists; `internal/sim` TestAllowedMentionsResolution; `disgoadapter` TestAllowedMentionsToWire; `internal/discord` TestAllowedMentionsValidate | to verify |
 | `server.createChannel` (category, topic, overwrites `@everyone` / role key / `member:<id>`) | tickets | rt/Tickets (visibility per member) | to verify |
@@ -135,6 +135,7 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`).
 | `CapabilityError` (`instanceof`, `.capability`) | probe `/probe-cap` | rt/ProbeErrorsAndGating | n/a |
 | A handler error gives the generic ephemeral reply | probe `/probe-throw` | rt/ProbeErrorsAndGating | to verify |
 | Sync budget: a runaway loop is aborted, the VM keeps serving | probe `/probe-spin` then `/probe-ping` | rt/ProbeErrorsAndGating | n/a |
+| Memory limit or killed code: only the instance crashes, shows `Degraded`, restarts with backoff and serves again | probe | rt/ProbeCrashRestarts | n/a |
 | Startup budget, handler timeout, `onStop` bound | none | `internal/plugin` unit tests | n/a |
 | Channel isolation (other servers) | none | `internal/plugin` unit tests | n/a |
 | Config defaults, including array items and `$ref` (and typegen agrees) | moderation `escalation[].durationMinutes`, levels `rewards[].keep`, onboarding `steps[].multiple` | rt/Moderation, rt/Levels; `internal/config` TestApplyDefaultsArraysAndRefs; `internal/typegen` TestDefaultsConformance | n/a |

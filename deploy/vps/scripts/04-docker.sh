@@ -12,6 +12,7 @@
 set -eu
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
+# shellcheck source=/dev/null
 . /etc/os-release
 export DEBIAN_FRONTEND=noninteractive
 

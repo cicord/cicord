@@ -86,7 +86,7 @@ func TestPortalImagesValidation(t *testing.T) {
 		}
 	}
 	dir := copyExample(t)
-	srv := filepath.Join(dir, "servers", "ma-commu.yaml")
+	srv := filepath.Join(dir, "servers", "my-community.yaml")
 	edit(t, srv, "logo: ../assets/logo.svg", "logo: ../assets/logo.txt")
 	edit(t, srv, "banner: ../assets/banner.jpg", "banner: ../assets/nope.png")
 	_, ds = Load(dir, LoadOptions{})
@@ -102,7 +102,7 @@ func TestPortalImagesValidation(t *testing.T) {
 	}
 
 	dir = copyExample(t)
-	srv = filepath.Join(dir, "servers", "ma-commu.yaml")
+	srv = filepath.Join(dir, "servers", "my-community.yaml")
 	edit(t, srv, "banner: ../assets/banner.jpg", "banner: ../../outside.png")
 	_, ds = Load(dir, LoadOptions{})
 	if !ds.HasErrors() || !strings.Contains(ds.Err().Error(), "must stay inside the repository") {
@@ -111,8 +111,8 @@ func TestPortalImagesValidation(t *testing.T) {
 
 	// Schema: link URLs must be http(s).
 	dir = copyExample(t)
-	srv = filepath.Join(dir, "servers", "ma-commu.yaml")
-	edit(t, srv, "url: https://ma-commu.example\n", "url: javascript:alert(1)\n")
+	srv = filepath.Join(dir, "servers", "my-community.yaml")
+	edit(t, srv, "url: https://my-community.example\n", "url: javascript:alert(1)\n")
 	_, ds = Load(dir, LoadOptions{})
 	if !ds.HasErrors() {
 		t.Fatal("javascript: link accepted")

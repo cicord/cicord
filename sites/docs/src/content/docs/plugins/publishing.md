@@ -17,13 +17,29 @@ with an `index.yaml` that lists plugins, like Go modules or Homebrew taps.
    cicord plugin publish --dry-run
    ```
 
+   ```text
+   ✓ hello 0.1.0 builds (1 command(s), 2.2 KiB bundle)
+   ✓ 0.1.0 is a new version (0 earlier release(s) in local tags)
+   • would tag v0.1.0 at 1e8b48262c66
+   Registry index entry (plugins: in the registry's index.yaml):
+     hello:
+       repo: https://github.com/acme/cicord-hello.git
+       description: Says hello
+       version: 0.1.0
+       commit: 1e8b48262c669b3191087e909ddee12c5f307af4
+   ```
+
 4. Release it and update a local checkout of the registry:
 
    ```sh
-   cicord plugin publish --push --registry ../cicord-plugins --publisher acme
+   cicord plugin publish --push --registry ../acme-registry --publisher acme
    ```
 
 5. Commit the registry change there and open a pull request.
+
+To get a plugin into the official registry, open a pull request that adds `plugins/<name>/`
+to [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins) instead (its
+`CONTRIBUTING.md` lists the review rules): maintainers release it and edit `index.yaml`.
 
 ### Several plugins in one repository
 
@@ -32,9 +48,9 @@ the [official registry](#the-official-registry). Each plugin is released with it
 `<name>/v<semver>` (`xp/v1.2.0`), and its index entry names its directory with `path`:
 
 ```sh
-cicord plugin publish plugins/xp --push --registry ../cicord-plugins
+cicord plugin publish plugins/xp --push --registry ../acme-registry
 # or from the repository root
-cicord plugin publish --path plugins/xp --push --registry ../cicord-plugins
+cicord plugin publish --path plugins/xp --push --registry ../acme-registry
 ```
 
 Only that directory must be committed, so the index of a repository that is also its own
@@ -53,18 +69,14 @@ registry (`--registry .`) can stay uncommitted while you publish several plugins
    becomes `https://host/a/b.git`; URLs with credentials are refused), `displayName`,
    `description` and `keywords` from `plugin.yaml`, `publisher`, `version` and `commit`.
    With `--registry <dir>` it adds or updates the entry in that `index.yaml`, keeping
-   comments and the fields it does not manage; an existing entry keeps its `verified` flag
-   and `publisher`, and its `repo` and `path` only change with `--replace-repo`. Without `--registry`
+   comments and the fields it does not manage; an existing entry keeps its `verified` flag,
+   its `publisher` unless `--publisher` is given, and its `repo` and `path` unless
+   `--replace-repo` is given. Without `--registry`
    (or with an https URL) it prints the entry and the steps.
 
 Everything is checked before the tag is created. `publish` never sets `verified`: registry
 maintainers do. If the registry's index is signed (`index.yaml.sig`), it warns that the
 signature is now stale: the maintainers sign again after merging.
-
-:::note
-`cicord plugin publish` validates the working tree it runs in. Building from the tagged tree is
-planned.
-:::
 
 You can also tag releases by hand (`v1.2.0`, or `xp/v1.2.0` in a monorepo) and edit
 `index.yaml` yourself.
@@ -148,14 +160,15 @@ tags `<name>/v<semver>`) and a **signed** `index.yaml` at its root. Its plugins 
 `cicord`, without any `cicord.yaml` entry, and only it can mark publishers as `verified`.
 Community plugins are submitted there by pull request (see its `CONTRIBUTING.md`).
 
-The official plugins (welcome, onboarding, tickets, polls, levels, moderation,
-reaction-roles, audit-log, announcements) live there, each released with its own tags
-(`welcome/v0.1.0`). Install one from it with `cicord plugin add cicord/<name>`, which locks it
-in `cicord.lock` like any registry plugin. Copies of the same plugins are also bundled in every
-binary, for offline and first installs: the setup wizard installs the bundled copy, and so
-does the Store unless the registry has a newer version (below). The binary embeds the registry's public
-signing key; `cicord registry list` shows the source as `(bundled with cicord) + <url> (signed
-index)`.
+The ten [official plugins](../official/) live there, each released with its own tags
+(`welcome/v0.1.0`). Install one with `cicord plugin add cicord/<name>`, which locks it in
+`cicord.lock` like any registry plugin. The binary embeds the registry's public signing key;
+`cicord registry list` shows the source as:
+
+```text
+NAME    TRUST     URL                                                                              TOKEN
+cicord  official  (bundled with cicord) + https://github.com/cicord/cicord-plugins (signed index)  -
+```
 
 `index.yaml.sig`, next to the index, is a signature envelope followed by one ed25519
 signature per signing key:
@@ -193,12 +206,13 @@ a verified official index; in any other registry it is ignored.
 ### Source `cicord` and the bundled plugins
 
 The official registry needs no `cicord.yaml` entry: its plugins are part of source `cicord`
-(the name is reserved), merged with the plugins bundled in the binary. When a plugin is in
-both, the registry version is used only if its index `version` is a valid semver **greater**
-than the bundled one; otherwise the bundled copy is used. Installing a bundled plugin copies
-it to `plugins/<name>/`; installing one from the official registry locks it in `cicord.lock`
-as `cicord/<name>`, like any registry plugin, and `cicord plugin add cicord/<name>` works the
-same way.
+(the name is reserved), merged with the nine plugins bundled in the binary (every official
+plugin except github-releases), for offline and first installs. When a plugin is in both, the
+registry version is used only if its index `version` is a valid semver **greater** than the
+bundled one; otherwise the bundled copy is used. Installing a bundled plugin (the setup
+wizard always does) copies it to `plugins/<name>/`; installing one from the official
+registry locks it in `cicord.lock` as `cicord/<name>`, like `cicord plugin add
+cicord/<name>`.
 
 If the official index cannot be read or verified, `cicord` still lists the bundled plugins
 and shows the error. A build that embeds no official public key cannot verify the index: it
@@ -217,7 +231,7 @@ nothing in the environment, `cicord.yaml` or the admin console can change what i
 | Command | Purpose |
 |---|---|
 | `cicord registry keygen --out <file>` | Create an ed25519 key pair. The private key file is mode 0600 and never overwritten (keep it out of any repository); the public key to embed in the runtime (`internal/registry` `OfficialKeys`) is printed. |
-| `cicord registry sign <dir> --key <file\|env:NAME> --registry-url <url>` | Write `index.yaml.sig` (`env:NAME` reads the key from an environment variable, such as a CI secret); commit it together with `index.yaml`. The serial defaults to the current Unix time (always above the previous one); the validity to 30 days (`--expires-in`, at most 180 days). Repeat `--key` to sign with several keys during a rotation. |
+| `cicord registry sign <dir> --key <file\|env:NAME> [--registry-url <url>]` | Write `index.yaml.sig` (`env:NAME` reads the key from an environment variable, such as a CI secret); commit it together with `index.yaml`. `--registry-url` defaults to the official registry. The serial defaults to the current Unix time (always above the previous one); the validity to 30 days (`--expires-in`, at most 180 days). Repeat `--key` to sign with several keys during a rotation. |
 | `cicord registry verify <dir> [--public-key <b64>] [--registry-url <url>]` | Check the signature, hash, registry and expiry, for the registry's CI. |
 
 - **Sign again after every change to `index.yaml`, and on a schedule.** A weekly CI job that
@@ -232,32 +246,19 @@ nothing in the environment, `cicord.yaml` or the admin console can change what i
   `official` of the KV scope `cicord:registry-serials` in its state database (for the CLI, the
   `registry-serials.json` file next to its plugin cache).
 
-### Setting up the official registry
+### The official registry's CI
 
-These are the Cicord project owner's steps. The content of `cicord/cicord-plugins` is generated
-from `examples/` by `scripts/official-registry/prepare.sh <dir>`: the official plugins with a
-standalone `tsconfig.json`, their unit tests, the vendored `@cicord/sdk`, README,
-CONTRIBUTING, CI workflows, and `index.yaml` written by `cicord plugin publish`, with local
-tags `<name>/v<version>`. Signing keys and pushes come next, in this order:
+[cicord/cicord-plugins](https://github.com/cicord/cicord-plugins) signs and checks its index
+with these commands, using the production key `10d3620231e083f8` (public key in
+`keys/official.pub` and in `internal/registry/sign.go` `OfficialKeys`):
 
-1. **Key pair**, offline, outside any repository:
-   `cicord registry keygen --out <key file>`. Keep the private key file in a password
-   manager or another offline place, with a backup.
-2. **Embed the public key** (the base64 line printed by `keygen`) in
-   `internal/registry/sign.go` `OfficialKeys` and release Cicord; commit the same public key to
-   `keys/official.pub` in cicord-plugins (its CI verifies with it). This is done for the current
-   production key, key ID `10d3620231e083f8`.
-3. **Secrets**: in cicord-plugins, create the `registry-signing` environment (deployments from
-   `main` only) and store the content of the private key file as its
-   `CICORD_REGISTRY_SIGNING_KEY` secret (the sign workflow reads it with
-   `--key env:CICORD_REGISTRY_SIGNING_KEY`). Set the `CICORD_VERSION` Actions variable to a
-   Cicord release tag: the CI builds that version of `cicord`, and the sign workflow refuses to
-   run without it (the job holding the key never builds a moving branch).
-4. **Push** the prepared repository as is, branch and tags
-   (`git push origin main && git push origin --tags`): the `commit:` fields of `index.yaml` pin
-   those exact commits, so do not re-create the history from the files.
-5. **First signature**: run the `sign` workflow (or locally
-   `cicord registry sign . --key <key file> --registry-url https://github.com/cicord/cicord-plugins`
-   and commit `index.yaml.sig`). Protect `main` (reviews required; allow the signing workflow's
-   bot to push `index.yaml.sig`): the re-sign job signs whatever is on `main`, so branch
-   protection is the real trust root.
+- the **sign** workflow runs `cicord registry sign . --key env:CICORD_REGISTRY_SIGNING_KEY`
+  after every change of `index.yaml` on `main`, every week and on demand, and commits
+  `index.yaml.sig`. The key is the `CICORD_REGISTRY_SIGNING_KEY` secret of the
+  `registry-signing` environment (deployments from `main` only), and the workflow refuses to
+  run unless the `CICORD_VERSION` variable names a Cicord release tag, so the job holding the
+  key never builds a moving branch;
+- the **verify** workflow runs `cicord registry verify` daily and fails when the signature
+  expires within 10 days.
+
+It signs whatever is on `main`: branch protection (required reviews) is the real trust root.

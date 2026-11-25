@@ -50,7 +50,7 @@ describe("mock analytics", () => {
     expect(kpi("messages.sent").previous).not.toBeNull();
     expect(Object.keys(s.rankings)).toContain("presence.activity");
     expect(s.rankings["messages.sent"]![0]!.dim).toBe("ch-general");
-    expect(s.labels["ch-general"]).toEqual({ name: "général", kind: "channel" });
+    expect(s.labels["ch-general"]).toEqual({ name: "general", kind: "channel" });
     expect(s.heatmap).toHaveLength(7);
     expect(s.heatmap[0]).toHaveLength(24);
     // Evening peak (20:00 UTC) beats the night (05:00 UTC).
@@ -65,11 +65,11 @@ describe("mock analytics", () => {
     expect(commands.length).toBe(10);
     expect(commands.every((r) => / \//.test(r.dim))).toBe(true);
     expect(new Set(commands.map((r) => r.dim.split(" /")[0]))).toEqual(
-      new Set(["Jockie Music", "Cicord", "Gardien", "Dyno"]),
+      new Set(["Jockie Music", "Cicord", "Warden", "Dyno"]),
     );
     expect(s.rankings["bots.commands.channels"]![0]!.dim).toBe("ch-bots");
-    expect(s.labels["ch-bots"]).toEqual({ name: "commandes-bot", kind: "channel" });
-    expect(s.rankings["components.used"]!.map((r) => r.dim)).toEqual(["Cicord", "Gardien"]);
+    expect(s.labels["ch-bots"]).toEqual({ name: "bot-commands", kind: "channel" });
+    expect(s.rankings["components.used"]!.map((r) => r.dim)).toEqual(["Cicord", "Warden"]);
     const tenure = Object.fromEntries(
       s.rankings["bots.commands.tenure"]!.map((r) => [r.dim, r.value]),
     );

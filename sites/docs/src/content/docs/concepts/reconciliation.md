@@ -4,32 +4,35 @@ description: How Cicord plans and applies changes, adopts existing resources, de
 ---
 
 The **server reconciler** turns the YAML of a server into Discord state. It runs inside the
-runtime on every new revision and whenever drift is detected, and behind `cicord plan` and
-`cicord apply` on the command line.
+runtime on every new revision, on drift, every 5 minutes (a plan, applied only with
+`syncPolicy.selfHeal`), on an explicit sync (**Sync now** in the admin console), and behind
+`cicord plan` and `cicord apply` on the command line.
 
 ## Plan and apply
 
 A **plan** is the ordered list of changes between the YAML and the live server. Its actions
-are `create`, `update`, `delete`, `adopt`, `reorder` and `unmanage`. Operations Cicord refuses
-are reported separately as **blocked**, with a reason; they never fail the plan.
+are `create`, `update`, `delete`, `adopt`, `reorder` and `unmanage`. What Discord would refuse
+is listed apart as **blocked**, with a reason, and never fails the plan. **Notes** need no
+action (a listed role member who has not joined yet).
 
 **Apply** runs the plan in a fixed order, aware of Discord's rate limits:
 
 1. server basics and `@everyone`;
-2. roles (adopt, create, update), then role positions, then roles given to their listed
-   `members`;
+2. roles (adopt, create, update), role positions, then roles given to their listed `members`;
 3. categories, then channels;
 4. server channel references and the Community toggle (system, AFK, rules, updates and
-   safety alerts channels), then channels that need Community;
+   safety alerts channels), then the channels that need Community;
 5. channel positions, widget, welcome screen, native onboarding;
 6. AutoMod rules, then emojis, stickers and soundboard sounds;
-7. deletions (AutoMod, expressions, channels, categories, roles) and `unmanage`.
+7. deletions (AutoMod, expressions, channels, categories, roles), then `unmanage`.
 
-Apply continues past failures. Changes that depend on a failed one fail as `unresolved`, and
-the next sync resumes. A failed apply on one server does not block the others.
+Apply continues past failures: changes that depend on a failed one fail as `unresolved`, and
+the next sync resumes (the next revision or **Sync now**; with `syncPolicy.selfHeal`, also
+the periodic sync every 5 minutes). A failure on one server does not block the others. In production the
+runtime applies every revision it activates; `cicord apply` is for development and
+bootstrapping.
 
-In production you never run apply yourself: the runtime applies every revision it
-activates. `cicord apply` exists for development and bootstrapping.
+![The Plan page: nothing to change, a banner waiting for boost level 2, and a note about a role holder who has not joined](../../../assets/screenshots/admin-plan.webp)
 
 ## Lifecycle of a revision
 
@@ -40,117 +43,123 @@ commit ─▶ fetch ─▶ validate ─▶ build ─▶ plan ─▶ apply server
 - The **active revision** only changes when validation and the plugin build succeed. A
   rejected revision leaves the previous one running.
 - Bots are **hot-swapped**: new plugin VMs start, are validated, then traffic switches per
-  bot. There is no gateway reconnect and no lost event; plugin storage persists across
-  revisions.
+  bot, without a gateway reconnect. Plugin storage persists across revisions.
 - Every activation, rejection and server sync is recorded in the **sync history** (admin
   console, `GET /api/v1/history`).
 
 Each server and bot reports a status, ArgoCD style:
 
-| Sync | Health |
-|---|---|
+| Sync                             | Health                                          |
+| -------------------------------- | ----------------------------------------------- |
 | `Synced`, `OutOfSync`, `Unknown` | `Healthy`, `Progressing`, `Degraded`, `Missing` |
 
 ## Adoption by name
 
 Pointing Cicord at an existing server does not duplicate it. A declared key without a mapping
 **adopts** an unmapped live resource of the same kind (role, category, or channel of the same
-type) with exactly the same display name. Differing fields are updated by the same change.
+type) with exactly the same display name, and updates its differing fields in the same change.
 
 - Text-like channel names are compared after Discord's normalization (lowercase, runs of
-  whitespace become `-`): `name: Général Chat` matches `#général-chat`.
-- A live resource is adopted at most once. Resources already mapped, managed roles
-  (bot and integration roles) and `@everyone` are never candidates.
-- Mappings are written as soon as a create succeeds, so a resource created by a crashed
-  apply is simply adopted on the next run.
-- Declared keys are processed in key order, and candidates in Discord ID order.
-- A display name change is an `update` (a rename), never a recreate. A key whose mapped ID no
-  longer exists in Discord is created again, and its mapping replaced.
-- Changing a key while keeping the display name and kind keeps the Discord resource: the plan
-  shows an `adopt` under the new key and an `unmanage` (`move … mapping`) for the old one. See
-  [Keys and display names](../repository-layout/#keys-and-display-names).
+  whitespace become `-`): `name: General Chat` matches `#general-chat`.
+- AutoMod rules are adopted by name and trigger; a trigger allowed once per server
+  (`mentionSpam`, `spam`, `keywordPreset`, `memberProfile`) adopts the existing rule whatever
+  its name. Emojis, stickers and sounds are adopted by name.
+- A live resource is adopted at most once. Mapped resources, managed roles (bot and
+  integration roles) and `@everyone` are never candidates. Keys are processed in key order,
+  candidates in Discord ID order.
+- Mappings are written as soon as a create succeeds, so a resource created by a crashed apply
+  is adopted on the next run. A key whose mapped ID no longer exists in Discord is created
+  again.
+- A display name change is an `update` (a rename). A key change that keeps the display name
+  and kind shows an `adopt` under the new key and an `unmanage` (`move … mapping`) for the old
+  one: see [Keys and display names](../repository-layout/#keys-and-display-names).
 
 The setup wizard and `cicord import` rely on this: the first plan after an import is empty.
-After losing the state database, `cicord adopt` rebuilds the local resource map by name, with
-confirmation.
+After losing the state database, `cicord adopt` rebuilds the local resource map by name.
 
 ## What Cicord owns
 
-- **Only mapped resources are ever modified.** Roles, channels and categories that were
-  never declared are ignored.
-- **Plugin-owned resources** (for example ticket channels created by the `tickets` plugin)
-  are recorded as owned by that plugin instance. The reconciler never touches or prunes
-  them, even with `prune: true`.
-- **Managed roles** (bot and integration roles) are never touched. `@everyone` is only
-  changed through `spec.everyone`.
-- **Permission overwrites** of a managed category or channel are owned as a whole:
-  overwrites for targets that are not in the YAML are removed.
-- **Plugin-owned mappings**: a YAML key whose mapping belongs to a plugin is blocked
-  (`ownership:`).
+- **Only mapped resources are modified.** Roles, channels and categories that were never
+  declared are ignored.
+- **Plugin-owned resources** (ticket channels of the `tickets` plugin, for example) belong to
+  their plugin instance and are never touched or pruned, even with `prune: true`. A YAML key
+  whose mapping belongs to a plugin is blocked (`ownership:`).
+- **Managed roles** (bot and integration roles) are never touched; declaring one is blocked
+  (`managed:`). `@everyone` is only changed through `spec.everyone`.
+- **Permission overwrites** of a managed category or channel are owned as a whole: overwrites
+  for targets that are not in the YAML are removed.
 
 ## Removed keys: prune and deletion protection
 
-`spec.syncPolicy` of each server decides what happens when a managed key disappears from the
-YAML:
+`spec.syncPolicy` decides what happens when a managed key disappears from the YAML:
 
-| `prune` | `deletionProtection` | Result |
-|---|---|---|
-| `false` (default) | any | `unmanage`: the mapping is dropped, the Discord resource is left as is. |
-| `true` | `true` (default) | Blocked (`deletionProtection`); the mapping is kept, so turning protection off later deletes it. |
-| `true` | `false` | `delete`. |
+| `prune`           | `deletionProtection` | Result                                                                                         |
+| ----------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
+| `false` (default) | any                  | `unmanage`: the mapping is dropped, the Discord resource is left as is.                        |
+| `true`            | `true` (default)     | Blocked (`deletionProtection`); the mapping is kept, so turning protection off deletes it later. |
+| `true`            | `false`              | `delete`.                                                                                      |
 
-`unmanage` is also used, whatever the policy, when the removed resource is already gone from
-Discord. Deletions always run last: channels, then categories, then roles (after AutoMod rules
-and expressions), and a delete only drops the mapping when it still points to the deleted ID. `cicord validate` warns when `prune: true` is combined with
-`deletionProtection: false`.
+`unmanage` is also used, whatever the policy, when the resource is already gone from Discord.
+A delete only drops the mapping when it still points to the deleted ID. `cicord validate`
+warns when `prune: true` is combined with `deletionProtection: false`.
+
+A channel whose type changed is **replaced** (created, then the old one deleted at the end)
+only with `prune: true` and `deletionProtection: false`; otherwise it is blocked
+(`type change:`).
 
 ## Blocked changes and their explanations
 
-Cicord refuses, ahead of time, what Discord would refuse at apply time, and says why. The admin
-console and `cicord plan` explain each reason:
+Cicord refuses ahead of time what Discord would refuse at apply time. Each blocked item has
+a reason, starting with one of these prefixes, explained in the admin console and by
+`cicord plan`, and the `fields` that could not be applied when known:
 
-| Reason | Example |
-|---|---|
-| `boost:` | `banner requires boost level 2; server is level 0 (0 boost(s))`. Banners, invite splash, animated icons, role icons and gradient role colors are boost-gated. |
-| `community:` | Announcement and stage channels, rules/updates/safety alerts channels, the welcome screen and native onboarding need the Community feature. |
-| `limit:` | Emoji, sticker and sound slots of the boost level; at most 6 keyword AutoMod rules and 1 of each other trigger. |
-| `deletionProtection` | A removed key while `prune: true` and protection is on. |
-| `hierarchy:` | A managed role at or above the bot's highest role, or giving such a role to a listed member. |
-| `ownership:` | A YAML key whose mapping belongs to a plugin. |
-| `managed:` | A declared role that is a bot or integration role. |
-| `type change:` | A channel whose type differs from the live one (replaced only with `prune: true` and `deletionProtection: false`). |
-| `recreate` | The trigger of an AutoMod rule or the file of an emoji cannot change in place: declare a new key. |
+| Reason               | When                                                                                                                                                                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `boost:`             | A setting needs a higher boost level, e.g. `banner requires boost level 2; server is level 0 (0 boost(s))`: banner, invite splash, animated icon, role icons, gradient role colors, and emojis, stickers or sounds beyond the slots below level 3. |
+| `community:`         | Announcement and stage channels, the rules, updates and safety alerts channels, the welcome screen and native onboarding need Community, and enabling Community needs its prerequisites.                                          |
+| `limit:`             | A final Discord limit: expression slots at boost level 3, at most 6 `keyword` AutoMod rules and 1 of each other trigger.                                                                                                          |
+| `deletionProtection` | A removed key while `prune: true` and protection is on.                                                                                                                                                                             |
+| `hierarchy:`         | A managed role at or above the bot's highest role (edit, move, delete, or giving it to a listed member).                                                                                                                           |
+| `ownership:`         | A YAML key whose mapping belongs to a plugin.                                                                                                                                                                                       |
+| `managed:`           | A declared role that is a bot or integration role.                                                                                                                                                                                  |
+| `type change:`       | A channel whose type differs from the live one, or an AutoMod rule whose trigger changed: declare a new key.                                                                                                                       |
+| `recreate:`          | The file of an emoji, sticker or sound changed: Discord cannot replace it, declare a new key.                                                                                                                                      |
 
-A plan can also carry **notes**: information that needs no action and keeps the server
-`Synced`, such as a user listed in a role's `members` who has not joined the server yet.
+`cicord plan` prints them after the changes, `! blocked: …` with the reason, and the
+boost waits apart (`^ waits for boost: …`). The summary never says Discord matches the
+configuration while something is blocked:
 
-Blocked items keep the server `OutOfSync`, and are applied by the first sync after the
-condition is met (the boost level is reached, Community is enabled…). Items that only wait for
-a boost level (`boost:`) are the exception: they are declared on purpose and nothing in the
-configuration can apply them sooner, so they stay listed as blocked in the plan but are not
-drift, and the server stays `Synced` (its status message says how many changes wait for a
-higher boost level). A blocked change carries the `fields` that could not be applied, when
-known.
+```text
+No changes can be applied: 1 operation(s) blocked.
+No changes. Discord matches the configuration; 1 change(s) wait for a higher boost level.
+```
 
-A channel whose type changed is **replaced** when `prune: true` and
-`deletionProtection: false`: the new channel is created, and the old one deleted at the end of
-the apply. Otherwise the change is blocked (`type change:`).
+Blocked items other than boost waits keep the server `OutOfSync` and are applied by the first sync after the
+condition is met (Community enabled, a role moved below the bot…): with `syncPolicy.selfHeal`
+the next periodic sync, otherwise the next revision or **Sync now**.
+
+**Boost waits are not drift.** A `boost:` item is declared on purpose and nothing in the
+configuration can apply it sooner: it stays listed in the plan (the admin's Plan page shows
+it under "Waiting for boosts"), but the server stays `Synced`, with a status message such as
+`2 change(s) wait for a higher boost level`. When the server reaches the level (a server
+update event), Cicord plans again: with `syncPolicy.selfHeal` it applies the change right
+away; otherwise the change becomes pending, the server shows `OutOfSync` with the message
+`1 change(s) to apply`, and the next revision or **Sync now** applies it.
 
 ## Ordering
 
 - **Roles**: `hierarchy` lists role keys from highest to lowest; declared roles that are not
   listed follow, in key order. Managed roles permute among the slots they occupy in the live
   order; unmanaged roles keep their place. Roles created by a plan start at the bottom. Only
-  roles below the bot's highest role can be ordered, edited or deleted: a managed role at or
-  above it is blocked (`hierarchy:`).
+  roles below the bot's highest role can be ordered, edited or deleted.
 - **Categories and channels**: categories among categories, channels within their category
   (channels without a category first), by `position` ascending (missing positions after
-  explicit ones, ties broken by key). Like in Discord, text-like and voice-like (voice,
-  stage) channels of a category are two separate groups, voice below text.
+  explicit ones, ties broken by key). Like in Discord, the text-like and the voice-like
+  (voice, stage) channels of a category are two separate groups, voice below text.
 - A `reorder` change (key `hierarchy`, `categories`, a category key, or `(none)` for the
   channels without a category) is emitted only when the relative order of managed items
-  differs. Apply recomputes positions from a fresh fetch, so the final order is right even if
-  Discord placed new items differently than predicted.
+  differs. Apply recomputes positions from a fresh fetch, so the final order is right even
+  if Discord placed new items differently than predicted.
 
 ## What is compared
 
@@ -158,74 +167,105 @@ the apply. Otherwise the change is blocked (`type change:`).
   hoist, mentionable and permissions; category and channel name and overwrites; channel
   `topic` (text, announcement, forum, media), `nsfw`, `slowmode` (text, voice, stage, forum,
   media) and `userLimit` (voice, stage).
-- **Managed only when set**: channel `bitrate` (above 0), each `profile` field, the server
-  icon, banner and splash, `everyone` (when present), each `systemChannelFlags` toggle
-  (undeclared toggles keep their live value), `afk`, the `widget` (as a whole), `community`,
-  role `colors`, `icon` and `emoji`, and the channel extras (`voiceRegion`, `videoQuality`,
-  `threadArchiveAfter`, `threadSlowmode`, forum `tags`, `defaultReaction`, `sortOrder`,
-  `layout`). A role without `colors` is solid: a live gradient is drift.
-- **Role holders** (`roles.*.members`) are additive: a listed user who is in the server and
-  lacks the role gets it (change kind `memberRole`). Unlisted holders are left alone and
-  removing a user from the list never removes the role; a listed user who is not in the
-  server is a note. Only listed users are fetched, one by one, once per plan. See
-  [Role holders](../../configuration/server/#role-holders).
+- **Managed only when set**: every other field. Channel `bitrate` above 0, each `profile`
+  field, `everyone`, each `systemChannelFlags` toggle (undeclared toggles keep their live
+  value), and each block (`afk`, `widget`, `community`, `welcomeScreen`, `onboarding`,
+  `automod`, `emojis`, `stickers`, `soundboard`). A role without `colors` is solid: a live
+  gradient is drift.
+- **Role holders** (`roles.*.members`) are additive: see
+  [Role holders](../../configuration/server/#role-holders). Only listed users are fetched,
+  one by one, once per plan.
 - **Images** (server icon, banner and splash, role icons) are files relative to the server
   YAML. Discord only exposes URLs, so the reconciler remembers the hash of the last uploaded
   file and the URL seen after the upload, and uploads again when either changes.
-- **Forum tags** are compared as a whole, in key order; live tag IDs are kept by name, then by
-  position, so a renamed tag stays the same tag.
-- **`welcomeScreen` and `onboarding`** are singletons compared as a whole. Onboarding prompt
-  and option IDs are kept by title, so members' answers stay attached.
+- **Forum tags** are compared as a whole; live tag IDs are kept by name, then by position,
+  so a renamed tag stays the same tag.
+- **`welcomeScreen` and `onboarding`** are compared as a whole. Onboarding prompt and option
+  IDs are kept by title, so members' answers stay attached.
 - **AutoMod rules, emojis, stickers and soundboard sounds** are keyed like roles: resource
-  map, adoption by name (AutoMod: name and trigger), `prune`, `deletionProtection` and
-  `unmanage` for removed keys. The trigger of a rule and the file of an expression cannot
-  change in place (blocked: `type change` or `recreate`): declare a new key. Their Discord
-  endpoints need Manage Server or Manage Expressions and are only called when the YAML
-  declares the block, or when removed keys of that kind are still mapped.
+  map, adoption, `prune`, `deletionProtection` and `unmanage`. Their Discord endpoints are
+  only called when the YAML declares the block, or when removed keys of that kind are still
+  mapped.
 
 ## Permissions
 
 - `spec.everyone.permissions` sets the `@everyone` role.
 - `overwrites` are keyed by target: `@everyone`, `@bot`, a role key or `member:<id>`. Entries
-  with empty `allow` and `deny` are ignored, and the order does not matter. `@bot` resolves to
-  the managing bot's own managed role, or to a member overwrite for the bot user when it has
-  none.
+  with empty `allow` and `deny` are ignored, and order does not matter. `@bot` resolves to the
+  managing bot's own managed role, or to a member overwrite for the bot user when it has none.
 - A channel with `syncWithCategory` gets exactly its category's desired overwrites, written
-  explicitly (a channel without a category gets none). `syncWithCategory` defaults to `true`
-  when the channel has no `overwrites`.
+  explicitly. `syncWithCategory` defaults to `true` when the channel has no `overwrites`.
 - **Permission preflight**: when the bot is neither Administrator nor the owner, the plan
-  checks what it would send the way Discord does, before anything is applied: the
-  permissions each call needs, the permissions a role gains, every overwrite bit that changes
-  (Discord only lets a bot grant what it holds, and only administrators put `ManageRoles` in
-  an overwrite), and that the bot keeps View Channel and Manage Channels in every channel it
-  edits. A failing plan names the missing permissions and their configuration paths, and
-  nothing is applied. Unchanged resources are not checked. See
-  [Bot permissions](../../self-hosting/bot-permissions/).
+  checks what it would send the way Discord does: the permissions each call needs, the
+  permissions a role gains, every overwrite bit that changes (a bot can only grant what it
+  holds, and only administrators put `ManageRoles` in an overwrite), and that the bot keeps
+  View Channel and Manage Channels in every channel it edits. A failing plan names the missing
+  permissions and their configuration paths, and nothing is applied. Unchanged resources are
+  not checked. See [Bot permissions](../../self-hosting/bot-permissions/).
 
 ## Drift and self-heal
 
-The bot host forwards gateway events (`CHANNEL_UPDATE`, `ROLE_DELETE`, server updates,
-AutoMod, emoji, sticker and soundboard events…) on managed resources to the reconciler, so a manual change in Discord is detected
-in real time. Per server, `syncPolicy.selfHeal` decides:
+The bot host forwards gateway events about managed resources to the reconciler: role,
+channel, AutoMod rule, emoji, sticker and soundboard changes, `@everyone` (when
+`spec.everyone` is set) and server updates (when `profile`, `community` or `afk` is set, or
+while changes wait for a boost level). A
+manual change in Discord marks the server `OutOfSync` right away. Per server,
+`syncPolicy.selfHeal` decides what happens to drift between revisions:
 
-- `false` (default): the drift is **reported**; the server shows `OutOfSync`.
-- `true`: the drift triggers a debounced sync that **reverts** it.
+- `false` (default): the drift is reported. About 2 seconds later (debounced) Cicord plans
+  again, without applying, so the status and the admin console show the pending changes. The
+  server stays `OutOfSync` until the next revision or an explicit sync (**Sync now**). The
+  periodic plan every 5 minutes only refreshes the drift.
+- `true`: the drift triggers a sync about 2 seconds later (debounced), which reverts it. The
+  periodic sync every 5 minutes also applies, for drift that no event reports.
 
-Members listed in a role's `members` are watched too when the bot has the privileged
+`selfHeal` only covers drift. With either value, a new revision and **Sync now** apply the
+whole configuration, and so revert every manual change. To keep a manual change, for example
+a channel locked during a raid, [pause enforcement](#emergency-pause-enforcement).
+
+![The Drift page: fields changed on Discord, expected value from git and actual value](../../../assets/screenshots/admin-drift.webp)
+
+Users listed in a role's `members` are watched too when the bot has the privileged
 `ServerMembers` intent: a listed user who joins, or loses a listed role, is drift. Without the
-intent, the periodic resync gives the role.
+intent, the role is given by the next sync that applies (the periodic sync with
+`syncPolicy.selfHeal`, otherwise the next revision or **Sync now**).
 
 The widget, the welcome screen and native onboarding have no Discord events: changes to them
-are only seen at the next plan.
+are seen at the next plan.
 
-The runtime status and the admin console read the drift from the last plan as long as no
-relevant event arrived and no change was applied, for at most a minute; the Plan page always
-reads Discord again. A new revision stops the previous one's self-heal before it changes
-anything, so the events of its own changes are never "reverted" to the previous revision.
+The runtime status and the admin console reuse the drift of the last plan until a relevant
+event arrives, a change is applied or a minute passes; the Plan page always reads Discord
+again. When a new revision is activated, the previous revision's self-heal stops before
+anything changes, so the events of the new changes are never reverted.
+
+## Emergency: pause enforcement
+
+Pausing a server stops every apply to it, whatever the trigger: a new revision, **Sync now**,
+the periodic resync or self-heal. Changes made in Discord stay, and plans and drift are still
+computed, so the console shows exactly what differs from git. Plugins keep running.
+
+- **Pause**: **Pause enforcement** on the server Overview or in the command palette (⌘K),
+  `cicord pause <server> --reason "raid"`, or `POST /api/v1/servers/{server}/pause`.
+  Moderators and admins of the server can pause. Who paused, when and why is shown in a
+  banner on every page of the server.
+- **While paused**: the status carries `paused` next to the drift (`sync` stays `Synced` or
+  `OutOfSync`). A new revision is activated but recorded as *not applied* for the server, its
+  GitHub commit status fails, `cicord status --wait` fails, and **Sync now** answers
+  `409 paused`.
+- **Resume**: **Resume…** shows the pending plan, then asks for confirmation (`cicord resume
+  <server>`). Moderators and admins can resume: it only brings back the reviewed git
+  configuration. Resuming applies nothing by itself: the next revision, **Sync now** or, with
+  `selfHeal`, the next event or periodic resync reverts the manual changes. **Resume and sync
+  now** (admins, `cicord resume --sync`) does both at once.
+
+The pause is runtime state, not git: it survives restarts and new revisions. Every pause and
+resume is written to the audit log and the sync history. `cicord apply` (the CLI applying
+without a runtime) does not see it.
 
 ## Moving the resource map
 
 Keys are mapped to Discord IDs in the runtime's database, never in git. The command line
-keeps its own map in `.cicord/state.db` (used by `cicord plan`, `cicord apply`, `cicord import`,
-`cicord adopt` and `cicord mv`). If the CLI and a runtime apply to the same servers without
-sharing that database, the runtime simply adopts the resources by name on its next sync.
+keeps its own map in `.cicord/state.db` (used by `cicord plan`, `cicord apply`,
+`cicord import`, `cicord adopt` and `cicord mv`). If the CLI and a runtime apply to the same
+servers without sharing that database, the runtime adopts the resources by name on its next
+sync.

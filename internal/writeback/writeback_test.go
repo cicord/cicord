@@ -2,6 +2,7 @@ package writeback
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,13 +24,13 @@ spec:
   applicationId: "998877665544332211"
   token:
     secretRef: DISCORD_TOKEN_MODERATOR # never commit tokens
-  servers: [ma-commu]
+  servers: [my-community]
   plugins:
     - name: welcome
       source: ../../plugins/welcome
       config:
         channel: general # where to greet
-        message: "Bienvenue !"
+        message: "Welcome!"
 `
 
 func TestSetYAMLPreservesComments(t *testing.T) {
@@ -44,14 +45,14 @@ func TestSetYAMLPreservesComments(t *testing.T) {
 		}
 	}
 	// server override, then removal
-	out, err = PluginConfigEdit("welcome", "ma-commu", map[string]any{"message": "Salut"})(out)
+	out, err = PluginConfigEdit("welcome", "my-community", map[string]any{"message": "Hi"})(out)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "overrides:\n        ma-commu:\n          config:\n            message: Salut") {
+	if !strings.Contains(string(out), "overrides:\n        my-community:\n          config:\n            message: Hi") {
 		t.Errorf("override not written:\n%s", out)
 	}
-	out, err = PluginConfigEdit("welcome", "ma-commu", nil)(out)
+	out, err = PluginConfigEdit("welcome", "my-community", nil)(out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +79,25 @@ func TestDiffMergePatch(t *testing.T) {
 	}
 	if DiffMergePatch(from, from) != nil {
 		t.Errorf("equal maps must give nil")
+	}
+}
+
+// Schema defaults are json.Number, configs decoded from JSON or YAML hold float64 or int:
+// equal numbers must not produce a patch entry, at any depth.
+func TestDiffMergePatchNumbers(t *testing.T) {
+	from := map[string]any{"maxHours": json.Number("168"), "ratio": json.Number("0.5"),
+		"sizes": []any{json.Number("1"), json.Number("2")}, "n": map[string]any{"w": json.Number("3")}}
+	to := map[string]any{"maxHours": 168.0, "ratio": 0.5, "sizes": []any{1, int64(2)}, "n": map[string]any{"w": uint64(3)}}
+	if p := DiffMergePatch(from, to); p != nil {
+		t.Errorf("equal numbers gave a patch: %v", p)
+	}
+	to["maxHours"] = 24.0
+	to["sizes"] = []any{1.0}
+	if p := DiffMergePatch(from, to); len(p) != 2 || p["maxHours"] != 24.0 {
+		t.Errorf("patch = %v", p)
+	}
+	if JSONEqual(json.Number("1"), "1") || JSONEqual(1.0, true) || !JSONEqual(nil, nil) {
+		t.Error("numbers only equal numbers")
 	}
 }
 
@@ -208,13 +228,13 @@ func TestDirWriter(t *testing.T) {
 }
 
 func TestEmojiPreserved(t *testing.T) {
-	src := "spec:\n  plugins:\n    - name: welcome\n      config:\n        message: \"Bienvenue ! 👋\"\n        emoji: \"🎯\"\n        raw: \"a\\\\U0001F3AF\"\n"
-	out, err := PluginConfigEdit("welcome", "", map[string]any{"message": "Bienvenue ! 👋", "emoji": "🎯", "raw": `a\U0001F3AF`, "x": "🛡️"})([]byte(src))
+	src := "spec:\n  plugins:\n    - name: welcome\n      config:\n        message: \"Welcome! 👋\"\n        emoji: \"🎯\"\n        raw: \"a\\\\U0001F3AF\"\n"
+	out, err := PluginConfigEdit("welcome", "", map[string]any{"message": "Welcome! 👋", "emoji": "🎯", "raw": `a\U0001F3AF`, "x": "🛡️"})([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(out)
-	for _, want := range []string{`message: "Bienvenue ! 👋"`, `emoji: "🎯"`, `raw: "a\\U0001F3AF"`, "🛡️"} {
+	for _, want := range []string{`message: "Welcome! 👋"`, `emoji: "🎯"`, `raw: "a\\U0001F3AF"`, "🛡️"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in:\n%s", want, s)
 		}

@@ -20,8 +20,8 @@ Bug reports, ideas, documentation fixes, plugins and code are all welcome.
 
 ## Prerequisites
 
-Go 1.27, Node 26 and pnpm (the version is pinned by `packageManager` in the root
-`package.json`). See [Installation](../../getting-started/installation/).
+Go 1.27 (`go.mod`), Node 26 (`.node-version`) and pnpm 12 (pinned by `packageManager` in the
+root `package.json`). See [Installation → Build from source](../../getting-started/installation/#build-from-source).
 
 ## Make targets
 
@@ -35,13 +35,12 @@ Go 1.27, Node 26 and pnpm (the version is pinned by `packageManager` in the root
 | `make test-js` | `pnpm -r test` |
 | `make vet` | `go vet ./...` |
 | `make check` | `vet` and `test`. |
+| `make lint` | The static analysis CI runs (below): golangci-lint, govulncheck, `pnpm run check`, Knip, jscpd, Semgrep, Gitleaks. |
+| `make hooks` | Once per clone: a pre-commit hook runs Gitleaks on the staged changes and refuses a commit that adds a secret. |
+| `make release VERSION=x.y.z` | Prepares a release commit ([Releasing](../releasing/)). |
 | `make clean` | Removes `bin/`. |
 
-`VERSION` (default `0.1.0`) can be overridden: `make build VERSION=0.2.0`. Also:
-
-- `make hooks`, once per clone: a pre-commit hook runs Gitleaks on the staged changes and
-  refuses a commit that adds a secret.
-- `make lint`: the static analysis CI runs (below).
+`VERSION` defaults to the current release; `make build VERSION=0.2.0` overrides it.
 
 ## JavaScript workspace
 
@@ -49,8 +48,9 @@ The JS side is a pnpm workspace (`packages/*` and `sites/*`) using Vite+ (`vp`) 
 testing, linting and formatting.
 
 ```sh
-pnpm test      # builds the packages, runs every package's tests and the example plugins' unit tests
-pnpm check     # format, lint, types, and type-checks every example plugin
+pnpm test        # builds the packages, runs every package's tests and the example plugins' unit tests
+pnpm run check   # builds, then format, lint, types, and type-checks every example plugin
+pnpm exec knip   # unused files, exports and dependencies
 pnpm exec vp test examples/showcase/plugins/polls   # one plugin's unit tests
 ```
 
@@ -58,11 +58,14 @@ pnpm exec vp test examples/showcase/plugins/polls   # one plugin's unit tests
 
 On every push to `main` and every pull request:
 
-- **Go**: `gofmt -l` (must be empty), `go vet`, `go test -race`, a static build, and
-  `cicord validate` on both examples.
+- **Go**: `gofmt -l` (must be empty), `scripts/check-docs.sh` (no Markdown documentation
+  outside `sites/docs`), `go vet`, `go test -race`, a static build, and `cicord validate` on
+  `examples/basic` and `examples/showcase`.
+- **PostgreSQL**: the state conformance suite and the CLI's PostgreSQL tests against a
+  PostgreSQL 19 service (the Go job runs them on SQLite only).
 - **JS**: `pnpm install --frozen-lockfile`, `pnpm run check` (builds every package and site,
   then format, lint, types and the example plugins) and `pnpm test`.
-- **Docker**: the container image is built (not pushed) and smoke-tested.
+- **Docker**: the container image is built (not pushed) and smoke-tested (`cicord version`).
 - **Static analysis**: golangci-lint (`.golangci.yml`: staticcheck, errcheck, gosec, dupl,
   errorlint, noctx…) and govulncheck for Go; oxlint (correctness, suspicious and perf
   categories, React hooks, jsx-a11y), [Knip](https://knip.dev) (unused files, exports and
@@ -74,7 +77,8 @@ CI fails on any finding. A justified exception is written next to the code, with
 `//nolint:<linter> // <reason>` (Go), `// oxlint-disable-next-line <rule> -- <reason>`
 (TypeScript) or `// nosemgrep: <rule-id> -- <reason>`.
 
-`sites.yml` deploys https://cicord.dev to GitHub Pages (run on demand for now).
+`sites.yml` deploys https://cicord.dev to GitHub Pages on every push to `main` that touches
+`sites/` or `packages/`, and on demand.
 Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitHub Actions.
 
 ## How things are tested
@@ -93,11 +97,12 @@ Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitH
 | Path | Content |
 |---|---|
 | `cmd/cicord/` | The single binary: CLI and `cicord serve`. |
-| `internal/` | The runtime: `api`, `build`, `cli`, `config`, `discord` (and `disgoadapter`), `plugin`, `reconcile`, `registry`, `runtime`, `sim`, `source`, `state`, `writeback`, `webui`… |
+| `internal/` | The runtime, one package per component ([source layout](../architecture/#source-layout)). |
 | `packages/` | `sdk`, `client`, `react`, `ui`, `admin` (the admin console), `create-cicord-portal` (the reference portal). |
 | `spec/` | The machine-readable contracts: the JSON Schemas of the YAML files and the SDK types. |
 | `deploy/vps/` | The hardened single-server install ([Production on a VPS](../../self-hosting/production-vps/)). |
 | `examples/` | `basic`, `showcase` and `embed`. |
+| `scripts/` | `release.sh`, `sync-ui.sh`, `build-quickjs-wasm.sh`, `check-docs.sh`, the official registry tooling. |
 | `sites/` | The landing page and this documentation (Astro): the project's only documentation. |
 
 `spec/` is normative: when the behavior and a document disagree, the schemas and

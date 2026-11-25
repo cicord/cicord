@@ -6,7 +6,7 @@
 # <version> is x.y.z, or x.y.z-rc.N for a pre-release (GitHub prerelease, npm dist-tag next).
 #
 # 1. sets <version> wherever the version is written (engine version, Makefile, Dockerfile,
-#    the packages' package.json);
+#    the packages' package.json, @cicord/cli included);
 # 2. for x.y.z, turns the CHANGELOG's [Unreleased] section into "## [x.y.z] - <today>" (it
 #    must not be empty), with a fresh empty [Unreleased] above it and the compare links at
 #    the bottom (from the previous release of the CHANGELOG, never from a pre-release). A
@@ -71,7 +71,10 @@ edit() { local f="$1"; shift; sed "$@" "$f" >"$f.tmp" && mv "$f.tmp" "$f"; }
 edit internal/version/version.go -e "s/^var Version = \"$old\"$/var Version = \"$new\"/"
 edit Makefile -e "s/^VERSION ?= $old$/VERSION ?= $new/"
 edit Dockerfile -e "s/^ARG VERSION=$old$/ARG VERSION=$new/"
-for p in sdk client react ui admin create-cicord-portal; do
+# The workflow of `cicord init` pins the release that generated it; the example ships the
+# same file (TestInitWorkflow compares them).
+edit examples/basic/.github/workflows/cicord.yml -e "s|cicord/cmd/cicord@v$old$|cicord/cmd/cicord@v$new|"
+for p in sdk client react ui cli admin create-cicord-portal; do
   f="packages/$p/package.json"
   # Only the package's own version (the first "version" key), not a dependency's.
   awk -v old="\"version\": \"$old\"" -v new="\"version\": \"$new\"" \
@@ -92,14 +95,14 @@ if [[ "$pre" == false ]]; then
 fi
 
 # Every spot must have changed: a mismatch means the file layout moved.
-for f in internal/version/version.go Makefile Dockerfile; do
+for f in internal/version/version.go Makefile Dockerfile examples/basic/.github/workflows/cicord.yml; do
   grep -qF "$new" "$f" || { echo "release: $f was not updated, check it" >&2; exit 1; }
 done
-for p in sdk client react ui admin create-cicord-portal; do
+for p in sdk client react ui cli admin create-cicord-portal; do
   grep -qF "\"version\": \"$new\"" "packages/$p/package.json" || { echo "release: packages/$p/package.json was not updated" >&2; exit 1; }
 done
 
-git add internal/version/version.go Makefile Dockerfile CHANGELOG.md packages/*/package.json
+git add internal/version/version.go Makefile Dockerfile CHANGELOG.md packages/*/package.json examples/basic/.github/workflows/cicord.yml
 git commit -q -m "chore(release): v$new"
 echo "Committed chore(release): v$new ($old → $new)."
 

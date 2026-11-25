@@ -6,14 +6,15 @@ tableOfContents:
 ---
 
 `cicord` is both the command line tool and the runtime. This page lists every command with
-the flags of `cicord <command> --help` (version 0.1.0); `--help` stays authoritative. Every
-command also accepts `-h, --help`.
+the flags of `cicord <command> --help` (version 0.1.6); `--help` stays authoritative. Every
+command also accepts `-h, --help`, and boolean flags accept `--flag=false`.
 
 | Command | Purpose |
 |---|---|
 | [`cicord init`](#cicord-init) | Scaffold a repository. |
 | [`cicord validate`](#cicord-validate) | Schema and semantic validation, offline. |
 | [`cicord import`](#cicord-import) | Generate `servers/<key>.yaml` from an existing Discord server. |
+| [`cicord inspect`](#cicord-inspect) | Inspect an existing server read-only before granting the bot more access. |
 | [`cicord mv`](#cicord-mv) | Rename a resource key without recreating the resource. |
 | [`cicord plan`](#cicord-plan) | Show what a sync would change, locally or through the runtime. |
 | [`cicord apply`](#cicord-apply) | Reconcile directly (development, bootstrap). |
@@ -22,15 +23,18 @@ command also accepts `-h, --help`.
 | [`cicord dev`](#cicord-dev) | Run the runtime locally with hot reload, on real Discord or the simulator. |
 | [`cicord status`](#cicord-status) | Revision, sync and health of a runtime; wait for a revision. |
 | [`cicord sync`](#cicord-sync) | Ask the runtime to fetch and sync now. |
-| [`cicord healthcheck`](#cicord-healthcheck) | Exit 0 when a runtime answers `/healthz` (container health checks). |
+| [`cicord pause`](#cicord-pause) | Pause enforcement on a server (emergency): nothing is applied. |
+| [`cicord resume`](#cicord-resume) | Resume enforcement, after showing the pending plan. |
+| [`cicord healthcheck`](#cicord-healthcheck) | Exit 0 when a runtime answers `/healthz` (container health checks), or with `--service` when it serves every server. |
+| [`cicord alert`](#alerts) | `test`, `send`: the webhook of the built-in alerts. |
 | [`cicord version`](#cicord-version) | Print the version. |
 | [`cicord secret`](#secrets) | `ls`, `set`, `rm`, `rotate-key`: the encrypted secret store. |
 | [`cicord plugin`](#plugins) | `new`, `sdk-types`, `build`, `typegen`, `test`, `add`, `update`, `publish`. |
 | [`cicord registry`](#registries) | `list`, `add`, `remove`, `update`, `search`, `keygen`, `sign`, `verify`. |
-| [`cicord portal`](#portal) | `init`, `build`, `typegen`: a custom community portal. |
+| [`cicord portal`](#portal) | `init`, `build`, `typegen`, `vendor`: a custom community portal. |
 | `cicord completion` | Generate the shell completion script (`bash`, `zsh`, `fish`, `powershell`). |
 
-Commands that talk to a runtime (`plan --remote`, `status`, `sync`) read its URL from
+Commands that talk to a runtime (`plan --remote`, `status`, `sync`, `pause`, `resume`) read its URL from
 `--remote=URL` or `CICORD_RUNTIME_URL` (https, or http on localhost) and the bearer token from
 `CICORD_RUNTIME_TOKEN`; never from `cicord.yaml`. Commands that work on a repository take the
 directory as an optional argument (default `.`).
@@ -47,14 +51,14 @@ cicord init [dir] [flags]
 
 | Flag | Description |
 |---|---|
-| `--application-id` `string` | Discord application ID of the bot (default: the placeholder "100000000000000002", which works with cicord dev --sim) |
-| `--server-id` `string` | Discord server ID (default: the placeholder "100000000000000001", which works with cicord dev --sim) |
+| `--application-id` `string` | Discord application ID of the bot (default "100000000000000002", a placeholder that works with cicord dev --sim) |
 | `--bot` `string` | bot key (default "bot") |
 | `--force` | overwrite existing files |
 | `--project` `string` | project key (default: directory name) |
 | `--provider` `string` | source provider: github \| git \| embedded (default: inferred from --repo, none for local-only repos) |
 | `--repo` `string` | repository URL (github / git providers) |
 | `--server` `string` | server key (default: project key) |
+| `--server-id` `string` | Discord server ID (default "100000000000000001", a placeholder that works with cicord dev --sim) |
 
 ```sh
 cicord init my-community --server-id 112233445566778899 --application-id 998877665544332211
@@ -90,7 +94,41 @@ cicord import <server-id> [dir] [flags]
 
 ```sh
 DISCORD_TOKEN=… cicord import 112233445566778899
-cicord import 112233445566778899 ./infra --key ma-commu --token-env DISCORD_TOKEN_MODERATOR
+cicord import 112233445566778899 ./infra --key my-community --token-env DISCORD_TOKEN_MODERATOR
+```
+
+The parts the bot cannot read (AutoMod, the widget and a disabled welcome screen need Manage
+Server) are left out with a warning.
+
+### `cicord inspect`
+
+Evaluate an existing server without changing it: invite the bot with View Channels only
+(`permissions=1024`), then run the command with the bot token in the environment. It writes a
+new project into `dir` (`cicord.yaml`, `servers/<key>.yaml`, `bots/<bot>/bot.yaml`, the
+downloaded files) and the resource map into `--state`. It then reports:
+
+- the categories and channels the bot can see, and the hidden ones it knows of;
+- what it could not read and why;
+- the permissions applying changes would need, with the YAML paths, and the role order;
+- the plan, which must be empty.
+
+Every Discord call goes through a read-only client. `dir` must not contain a `cicord.yaml`.
+The command exits with 1 when the plan is not empty. See
+[Evaluate an existing server safely](../../getting-started/evaluate-a-server/).
+
+```text
+cicord inspect <server-id> [dir] [flags]
+```
+
+| Flag | Description |
+|---|---|
+| `--key` `string` | server key (default: derived from the server name) |
+| `--state` `string` | local state database (resource map) (default &lt;dir&gt;/.cicord/state.db) |
+| `--token-env` `string` | environment variable holding the bot token (written as the bot's secretRef) (default "DISCORD_TOKEN") |
+
+```sh
+DISCORD_TOKEN=… cicord inspect 112233445566778899 ./my-server
+cicord inspect 112233445566778899 ./my-server --key my-community --token-env DISCORD_TOKEN_EVAL
 ```
 
 ### `cicord mv`
@@ -108,8 +146,8 @@ cicord mv <server> <role|category|channel> <old-key> <new-key> [dir] [flags]
 | `--state` `string` | local state database (resource map) (default &lt;dir&gt;/.cicord/state.db) |
 
 ```sh
-cicord mv ma-commu channel general discussions
-cicord mv ma-commu role modo moderators --dry-run
+cicord mv my-community channel general discussions
+cicord mv my-community role moderator mods --dry-run
 ```
 
 ## Plan and apply
@@ -118,10 +156,10 @@ cicord mv ma-commu role modo moderators --dry-run
 
 Compute the diff between the repository and the live servers; nothing is applied.
 
-- **Remote** (CI): `--remote` uploads the repository (`.tar.gz`, without `.git`, `node_modules`, `.cicord`, `dist`, `.env` files and the root `.gitignore` patterns) to the runtime, which validates and plans it with its own state and bots (`POST /api/v1/plan`). The URL is `--remote=URL`, else `CICORD_RUNTIME_URL` (https, or http on localhost); the token is `CICORD_RUNTIME_TOKEN`. `cicord.yaml` `spec.runtime.url` is never used to send the token.
+- **Remote** (CI): `--remote` uploads the repository (`.tar.gz`, without `.git`, `node_modules`, `.cicord`, `dist`, `.env` files, macOS `._*` and `.DS_Store` files and the root `.gitignore` patterns; the portal build at `spec.portal.path` is always included, even under `dist` or ignored) to the runtime, which validates and plans it with its own state and bots (`POST /api/v1/plan`). The URL is `--remote=URL`, else `CICORD_RUNTIME_URL` (https, or http on localhost); the token is `CICORD_RUNTIME_TOKEN`. `cicord.yaml` `spec.runtime.url` is never used to send the token.
 - **Local**: without `--remote`, the repository is planned against Discord directly with the bot tokens from the environment and the local state database (read only).
 
-`--comment` posts the plan on the pull request in GitHub Actions (`GITHUB_TOKEN`, `GITHUB_REPOSITORY`, `GITHUB_EVENT_PATH`; `GITHUB_API_URL` for GitHub Enterprise), updating the previous Cicord comment. Symbols: `+` create, `~` update, `-` delete, `>` reorder, `=` adopt, `#` stop managing, `!` blocked. Exit codes: 0 success, 1 error or invalid configuration, 2 changes pending (only with `--detailed-exitcode`).
+`--comment` posts the plan on the pull request in GitHub Actions (`GITHUB_TOKEN`, `GITHUB_REPOSITORY`, `GITHUB_EVENT_PATH`; `GITHUB_API_URL` for GitHub Enterprise), updating the previous Cicord comment. Symbols: `+` create, `~` update, `-` delete, `>` reorder, `=` adopt, `#` stop managing, `!` blocked, `^` waits for a higher boost level (not drift). Exit codes: 0 success, 1 error or invalid configuration, 2 changes pending (only with `--detailed-exitcode`).
 
 ```text
 cicord plan [dir] [flags]
@@ -162,7 +200,7 @@ cicord apply [dir] [flags]
 
 ```sh
 DISCORD_TOKEN_MODERATOR=… cicord apply
-cicord apply --server ma-commu --yes
+cicord apply --server my-community --yes
 cicord apply ./infra --state /var/lib/cicord/state.db
 ```
 
@@ -183,7 +221,7 @@ cicord adopt [dir] [flags]
 
 ```sh
 cicord adopt
-cicord adopt --server ma-commu --reset --yes
+cicord adopt --server my-community --reset --yes
 ```
 
 ## Runtime
@@ -199,6 +237,7 @@ cicord serve [dir] [flags]
 | Flag | Description |
 |---|---|
 | `--admin-url` `string` | URL of the admin console on a separate (private) hostname, e.g. a VPN; the admin UI and admin API then only answer on that host (env CICORD_ADMIN_URL) |
+| `--alert-webhook` `string` | webhook URL of the built-in alerts (Discord webhook or JSON endpoint; default: $CICORD_ALERT_WEBHOOK, else the secret store); see [Alerts](../../self-hosting/monitoring/#alerts) |
 | `--cors-origin` `strings` | external portal origin allowed with credentials (repeatable) |
 | `--data-dir` `string` | runtime state directory (database, caches, keys) |
 | `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) |
@@ -234,7 +273,7 @@ cicord dev [dir] [flags]
 
 ### `cicord status`
 
-Show the status of a runtime (`GET /api/v1/status`): the active revision, every server (sync, health, drift) and every bot with its plugin instances. Runtime URL and token as for `cicord plan --remote`. `--wait` polls until `--revision` (a SHA or prefix; default: the active one) is active and every server is `Synced` and `Healthy`; it fails when the revision is rejected, a server is `Degraded` or the timeout expires. A server with blocked operations stays `OutOfSync`, so `--wait` times out on it and prints the drift.
+Show the status of a runtime (`GET /api/v1/status`): the active revision, every server (sync, health, drift) and every bot with its plugin instances. Runtime URL and token as for `cicord plan --remote`. `--wait` polls until `--revision` (a SHA or prefix; default: the active one) is active, every server is `Synced` and `Healthy` and every bot and plugin instance is `Healthy`. It fails at once (exit 1) when the revision is rejected, a server, bot or plugin instance is `Degraded` or `Missing` (a plugin that failed to start or keeps crashing), or a server is [paused](#cicord-pause), naming what failed; and when the timeout expires. A server with blocked operations (`deletionProtection`, `hierarchy:`…) stays `OutOfSync`, so `--wait` times out on it and prints the blocked change and the drift; changes that only wait for a boost level are not drift and keep the server `Synced`.
 
 ```text
 cicord status [dir] [flags]
@@ -247,7 +286,7 @@ cicord status [dir] [flags]
 | `--remote` `string[="auto"]` | runtime URL (default: CICORD_RUNTIME_URL; https, or http on localhost) |
 | `--revision` `string` | revision to wait for: a git SHA or a prefix of it (with --wait) |
 | `--timeout` `duration` | maximum time to wait (with --wait) (default 5m0s) |
-| `--wait` | wait until the revision is active and every server is Synced and Healthy |
+| `--wait` | wait until the revision is active, every server Synced and Healthy, every bot and plugin Healthy |
 
 ```sh
 cicord status
@@ -270,11 +309,49 @@ cicord sync [dir] [flags]
 | `--remote` `string[="auto"]` | runtime URL (default: CICORD_RUNTIME_URL; https, or http on localhost) |
 | `--revision` `string` | revision to wait for: a git SHA or a prefix of it (with --wait) |
 | `--timeout` `duration` | maximum time to wait (with --wait) (default 5m0s) |
-| `--wait` | wait until the revision is active and every server is Synced and Healthy |
+| `--wait` | wait until the revision is active, every server Synced and Healthy, every bot and plugin Healthy |
 
 ```sh
 cicord sync
 cicord sync --wait --revision $(git rev-parse HEAD)
+```
+
+### `cicord pause`
+
+Pause enforcement on a server (`POST /api/v1/servers/{server}/pause`): the runtime applies nothing to it (no revision, Sync now, periodic resync or self-heal) until `cicord resume`, so changes made in Discord stay. Plans and drift are still computed; plugins keep running. The pause survives restarts. See [Emergency: pause enforcement](../../concepts/reconciliation/#emergency-pause-enforcement).
+
+```text
+cicord pause <server> [dir] [flags]
+```
+
+| Flag | Description |
+|---|---|
+| `-o, --output` `string` | output format: text \| json (default "text") |
+| `--reason` `string` | why enforcement is paused (shown in the admin console and the history, at most 500 characters) |
+| `--remote` `string[="auto"]` | runtime URL (default: CICORD_RUNTIME_URL; https, or http on localhost) |
+
+```sh
+cicord pause my-community --reason "raid: #general locked by hand"
+```
+
+### `cicord resume`
+
+Resume enforcement on a paused server (`POST /api/v1/servers/{server}/resume`). The pending plan is shown first, then a confirmation is asked (`--yes` skips it). Resuming applies nothing by itself: the next revision or sync does; `--sync` resumes and syncs now.
+
+```text
+cicord resume <server> [dir] [flags]
+```
+
+| Flag | Description |
+|---|---|
+| `-o, --output` `string` | output format: text \| json (default "text") |
+| `--remote` `string[="auto"]` | runtime URL (default: CICORD_RUNTIME_URL; https, or http on localhost) |
+| `--sync` | sync the server right after resuming (applies the plan now) |
+| `-y, --yes` | resume without asking for confirmation |
+
+```sh
+cicord resume my-community
+cicord resume my-community --yes --sync --remote=https://cicord.example.com
 ```
 
 ### `cicord healthcheck`
@@ -287,16 +364,33 @@ cicord healthcheck [flags]
 
 | Flag | Description |
 |---|---|
-| `--timeout` `duration` | maximum time for the request (default 3s) |
-| `--url` `string` | health URL to check (default "http://127.0.0.1:7420/healthz") |
+| `--admin-url` `string` | with `--service`: the runtime's admin URL (env `CICORD_ADMIN_URL`) |
+| `--data-dir` `string` | with `--service`: runtime state directory, to read the runtime token from the secret store |
+| `--database-url` `string` | with `--service`: PostgreSQL connection URL of the state store (default: `$CICORD_DATABASE_URL`) |
+| `--service` | check the service: active revision, servers Synced and Healthy, bots and plugins Healthy |
+| `--timeout` `duration` | maximum time for the request (default 3s; with `--service`, for the wait, default 5m) |
+| `--url` `string` | health URL to check (`--service`: the runtime of this URL) (default "http://127.0.0.1:7420/healthz") |
 
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=5s CMD ["/usr/local/bin/cicord", "healthcheck"]
 ```
 
+With `--service` it checks the service, not only the process: it runs `cicord status --wait`
+against the runtime of `--url` and exits 0 once the active revision is loaded, every server is
+`Synced` and `Healthy` (changes that wait for a boost level are fine), no server is paused,
+and every bot and plugin instance is `Healthy`; 1 when one of them fails or the timeout
+expires; 2 when no runtime token is available. The token is `CICORD_RUNTIME_TOKEN`, else the
+secret store of `--data-dir`. With an admin URL, the requests carry its host (the admin API
+only answers there). The [VPS updater](../../self-hosting/production-vps/#9-updates) accepts
+a new version with it:
+
+```sh
+docker exec cicord cicord healthcheck --service --data-dir /data --timeout 5m
+```
+
 ### `cicord version`
 
-Print the version and the commit the binary was built from, e.g. `cicord 0.1.0 (dee0768)`.
+Print the version and the commit the binary was built from: `cicord 0.1.6 (<commit>)` (`dev` instead of the commit for a local build).
 
 ```text
 cicord version [flags]
@@ -304,7 +398,14 @@ cicord version [flags]
 
 ## Secrets
 
-Manage the encrypted secret store of a data directory (bot tokens, `CICORD_DISCORD_CLIENT_SECRET`, `CICORD_GIT_TOKEN`, the `CICORD_GITHUB_APP_*` secrets, `CICORD_WEBHOOK_SECRET`, `CICORD_RUNTIME_TOKEN`, registry tokens). Environment variables always take precedence over stored secrets. Values are read from stdin and never printed; the runtime picks a changed bot token, webhook secret or runtime token up on its next restart. Every `cicord secret` command takes `--data-dir` (default `.cicord-data`, where `secret.key` lives) and, for a runtime on PostgreSQL, `--database-url` (default `CICORD_DATABASE_URL`). See [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
+Manage the encrypted secret store of a data directory (bot tokens, `CICORD_DISCORD_CLIENT_SECRET`, `CICORD_GIT_TOKEN`, the `CICORD_GITHUB_APP_*` secrets, `CICORD_WEBHOOK_SECRET`, `CICORD_RUNTIME_TOKEN`, registry tokens). Environment variables always take precedence over stored secrets. Values are read from stdin and never printed; the runtime picks a changed bot token, webhook secret or runtime token up on its next restart. The encryption key is `CICORD_SECRET_KEY` or the data directory's `secret.key`. See [Backups and secrets](../../self-hosting/backups-and-secrets/#the-secret-store).
+
+Flags of every `cicord secret` command:
+
+| Flag | Description |
+|---|---|
+| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") |
+| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) |
 
 ### `cicord secret ls`
 
@@ -314,11 +415,6 @@ List the stored secrets (names only).
 cicord secret ls [flags]
 ```
 
-| Flag | Description |
-|---|---|
-| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") (inherited) |
-| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) (inherited) |
-
 ### `cicord secret set`
 
 Store or rotate a secret; the value is read from stdin: one line, or a whole PEM block (a GitHub App private key, from its `-----BEGIN` line through its `-----END` line).
@@ -327,14 +423,9 @@ Store or rotate a secret; the value is read from stdin: one line, or a whole PEM
 cicord secret set NAME [flags]
 ```
 
-| Flag | Description |
-|---|---|
-| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") (inherited) |
-| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) (inherited) |
-
 ```sh
 cicord secret set DISCORD_TOKEN_CICORD --data-dir /data   # paste the token, then Enter
-cicord secret set CICORD_GITHUB_APP_PRIVATE_KEY --data-dir /data < app.private-key.pem
+cicord secret set CICORD_GITHUB_APP_PRIVATE_KEY --data-dir /data < my-app.private-key.pem
 ```
 
 ### `cicord secret rm`
@@ -345,11 +436,6 @@ Delete a stored secret.
 cicord secret rm NAME [flags]
 ```
 
-| Flag | Description |
-|---|---|
-| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") (inherited) |
-| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) (inherited) |
-
 ### `cicord secret rotate-key`
 
 Re-encrypt every secret with a new key (key file only, not `CICORD_SECRET_KEY`).
@@ -358,10 +444,46 @@ Re-encrypt every secret with a new key (key file only, not `CICORD_SECRET_KEY`).
 cicord secret rotate-key [flags]
 ```
 
+## Alerts
+
+`cicord alert` sends alerts to the webhook of the [built-in alerts](../../self-hosting/monitoring/#alerts)
+of `cicord serve`: `CICORD_ALERT_WEBHOOK` from the environment, else from the secret store of
+`--data-dir`. Exit 0 when the alert was sent, 1 when the webhook refused it or could not be
+reached, 2 when no webhook is configured. The URL is never printed.
+
 | Flag | Description |
 |---|---|
-| `--data-dir` `string` | runtime state directory (secret.key; cicord.db unless PostgreSQL is used) (default ".cicord-data") (inherited) |
-| `--database-url` `string` | PostgreSQL connection URL of the state store (default: $CICORD_DATABASE_URL; unset: SQLite in the data dir) (inherited) |
+| `--admin-url` `string` | URL of the admin console, for the alert's link (env `CICORD_ADMIN_URL`; default: `--public-url`) |
+| `--data-dir` `string` | runtime state directory (its secret store holds `CICORD_ALERT_WEBHOOK`) (default ".cicord-data") |
+| `--database-url` `string` | PostgreSQL connection URL of the state store (default: `$CICORD_DATABASE_URL`; unset: SQLite in the data dir) |
+| `--public-url` `string` | public URL of the runtime: its host names the runtime in the alert (env `CICORD_PUBLIC_URL`) |
+
+### `cicord alert test`
+
+Send a test alert: the alert drill, to check that alerts reach the right people.
+
+```sh
+docker exec cicord cicord alert test --data-dir /data
+```
+
+### `cicord alert send`
+
+Send an alert from a script (the VPS backup and update scripts use it).
+
+| Flag | Description |
+|---|---|
+| `--detail` `string` | what happened and what to do (never a secret) |
+| `--key` `string` | identifier shared by an alert and its resolution (default `script/<workflow>`) |
+| `--server` `string` | server key, when the alert is about one server |
+| `--severity` `string` | `critical` \| `warning` \| `info` (default "critical") |
+| `--state` `string` | `firing` \| `resolved` (default "firing") |
+| `--title` `string` | title of the alert (required) |
+| `--workflow` `string` | what was running, e.g. `backup` or `update` |
+
+```sh
+docker exec cicord cicord alert send --data-dir /data --severity critical \
+  --title "Backup failed" --detail "cicord.db is missing" --workflow backup
+```
 
 ## Plugins
 
@@ -512,7 +634,7 @@ cicord plugin publish plugins/polls --registry . --push   # monorepo: tag polls/
 
 ## Registries
 
-Plugin sources work like apt sources or Homebrew taps. The official plugins (source `cicord`: the copies bundled with the binary plus the signed index of [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins)) are always available; other registries are git repositories with an `index.yaml`, declared in `cicord.yaml` `spec.registries`, and are unofficial. Every `cicord registry` command takes `--dir` (the repository root, default `.`).
+Plugin sources work like apt sources or Homebrew taps. The official plugins (source `cicord`: the copies bundled with the binary plus the signed index of [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins)) are always available; other registries are git repositories with an `index.yaml`, declared in `cicord.yaml` `spec.registries`, and are unofficial: install their plugins only if you trust them. Every `cicord registry` command takes `--dir` `string` (repository root, default ".").
 
 ### `cicord registry list`
 
@@ -521,10 +643,6 @@ List the plugin sources.
 ```text
 cicord registry list [flags]
 ```
-
-| Flag | Description |
-|---|---|
-| `--dir` `string` | repository root (default ".") (inherited) |
 
 ### `cicord registry add`
 
@@ -538,7 +656,6 @@ cicord registry add <name> <url> [flags]
 |---|---|
 | `--no-check` | do not fetch the index before adding |
 | `--private` | private registry: its token is CICORD_REGISTRY_&lt;NAME&gt;_TOKEN |
-| `--dir` `string` | repository root (default ".") (inherited) |
 
 ```sh
 cicord registry add acme https://github.com/acme/cicord-plugins.git
@@ -554,10 +671,6 @@ Remove an unused registry from `cicord.yaml`.
 cicord registry remove <name> [flags]
 ```
 
-| Flag | Description |
-|---|---|
-| `--dir` `string` | repository root (default ".") (inherited) |
-
 ### `cicord registry update`
 
 Fetch the index of every registry and report what it lists.
@@ -566,10 +679,6 @@ Fetch the index of every registry and report what it lists.
 cicord registry update [flags]
 ```
 
-| Flag | Description |
-|---|---|
-| `--dir` `string` | repository root (default ".") (inherited) |
-
 ### `cicord registry search`
 
 Search the plugins of every source.
@@ -577,10 +686,6 @@ Search the plugins of every source.
 ```text
 cicord registry search [query] [flags]
 ```
-
-| Flag | Description |
-|---|---|
-| `--dir` `string` | repository root (default ".") (inherited) |
 
 ### `cicord registry keygen`
 
@@ -593,7 +698,6 @@ cicord registry keygen --out <file> [flags]
 | Flag | Description |
 |---|---|
 | `--out` `string` | file to write the private key to |
-| `--dir` `string` | repository root (default ".") (inherited) |
 
 ```sh
 cicord registry keygen --out ~/.config/cicord/registry.key
@@ -613,7 +717,6 @@ cicord registry sign <registry-dir> --key <file|env:NAME> [flags]
 | `--key` `stringArray` | private key: a file, or env:NAME for an environment variable (repeatable) |
 | `--registry-url` `string` | URL of the registry the index is for (default: the official registry) |
 | `--serial` `uint` | serial of this signature (default: current Unix time, always above the previous one) |
-| `--dir` `string` | repository root (default ".") (inherited) |
 
 ```sh
 cicord registry sign . --key ~/.config/cicord/registry.key --registry-url https://github.com/cicord/cicord-plugins
@@ -632,7 +735,6 @@ cicord registry verify <registry-dir> [flags]
 |---|---|
 | `--public-key` `stringArray` | trusted public key (base64; default: the official keys of this build) |
 | `--registry-url` `string` | registry URL the signature must name |
-| `--dir` `string` | repository root (default ".") (inherited) |
 
 ## Portal
 
@@ -640,7 +742,7 @@ A custom portal is a React app (a fork of the reference portal) committed in the
 
 ### `cicord portal init`
 
-Copy the reference portal into `[dir]` (default `portal`), with `@cicord/client`, `@cicord/react` and `@cicord/ui` vendored in `<dir>/vendor`. Inside a Cicord repository, also write `.github/workflows/cicord-portal.yml` and `src/cicord-routes.d.ts`. `--from-npm` (or `CICORD_FROM_NPM=true`) depends on npm instead, once the packages are published. Then build it, set `spec.portal.path: ./<dir>/dist` and commit it, `dist/` included.
+Copy the reference portal into `[dir]` (default `portal`), with `@cicord/client`, `@cicord/react` and `@cicord/ui` vendored in `<dir>/vendor`. Inside a Cicord repository, also write `.github/workflows/cicord-portal.yml` and `src/cicord-routes.d.ts`. `--from-npm` (or `CICORD_FROM_NPM=true`) depends on the `@cicord/*` packages of npm instead (published with each release). Then build it, set `spec.portal.path: ./<dir>/dist` and commit it, `dist/` included.
 
 ```text
 cicord portal init [dir] [flags]

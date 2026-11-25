@@ -1,28 +1,30 @@
 ---
 title: Releasing
-description: How a Cicord release is cut from a v<version> tag - the release workflows, the steps of each release, verifying binaries, images and npm packages, and the one-time setup by the owner.
+description: How a Cicord release is cut - make release, the v<version> tag and its workflows, pre-releases, verifying binaries, images and npm packages, and the repository settings releases rely on.
 ---
 
-A release is one git tag `v<version>` (`v0.1.0`; `v0.2.0-rc.1` for a pre-release). Pushing
-it starts two workflows:
+A release is one git tag `v<version>` (`v0.1.6`; `v0.2.0-rc.1` for a pre-release), on a
+commit prepared by `make release`. Pushing the tag starts two workflows:
 
 | Workflow | Publishes |
 | --- | --- |
-| [`release.yml`](https://github.com/cicord/cicord/blob/main/.github/workflows/release.yml) | the `cicord` binaries (GitHub Release), the container image `ghcr.io/cicord/cicord` |
-| [`release-npm.yml`](https://github.com/cicord/cicord/blob/main/.github/workflows/release-npm.yml) | `@cicord/sdk`, `@cicord/client`, `@cicord/react`, `@cicord/ui` on npm |
+| [`release.yml`](https://github.com/cicord/cicord/blob/main/.github/workflows/release.yml) | the `cicord` binaries (GitHub Release), the container image `ghcr.io/cicord/cicord`, the Homebrew cask (tap `cicord/homebrew-tap`) |
+| [`release-npm.yml`](https://github.com/cicord/cicord/blob/main/.github/workflows/release-npm.yml) | `@cicord/sdk`, `@cicord/client`, `@cicord/react`, `@cicord/ui`, and the binaries as `@cicord/cli` with its platform packages `@cicord/cli-<os>-<arch>`, on npm |
+
+The install script `https://cicord.dev/install.sh` (source:
+`sites/landing/public/install.sh`, tested by `sites/landing/install_test.go`) is deployed
+with the site (`sites.yml`), not by a release: it installs the latest GitHub Release.
 
 `create-cicord-portal` (the reference portal, forked with `cicord portal init`) and
 `@cicord/admin` (the admin console, embedded in `cicord`) are not published. Versions are
 semver, `0.x` while the API is `v1alpha1`.
-
-Pre-releases (`v0.2.0-rc.1`) are described in [Pre-releases](#pre-releases).
 
 ## What the workflows do
 
 **`release.yml`** (tag `v*`; Actions → release → Run workflow is a dry run that publishes
 nothing):
 
-1. `meta`: reads the version from the tag (`v0.1.0` → `0.1.0`); a `-suffix` makes it a
+1. `meta`: reads the version from the tag (`v0.1.6` → `0.1.6`); a `-suffix` makes it a
    pre-release.
 2. `build` (read-only): builds the web UIs once (`pnpm` build + `scripts/sync-ui.sh`: admin
    console, default portal, portal kit) and checks that all of them are there, checks that
@@ -38,14 +40,26 @@ nothing):
    linux/arm64 with buildx (cross-compiled, no emulation), with an SBOM and max-mode
    provenance attached by BuildKit, and pushes `ghcr.io/cicord/cicord:<version>` and
    `:sha-<commit>`, plus `:<major>.<minor>` and `:latest` for a version without suffix. It
-   then pushes a GitHub build provenance attestation of the image digest to the registry.
+   then pushes a GitHub build provenance attestation of the image digest to the registry. On
+   a dry run, `image-dry-run` builds the same image without pushing it.
 4. `release`: creates a build provenance attestation for every file listed in
    `checksums.txt` (archives and SBOMs), then the GitHub Release with the files, an
-   install/verify header and GitHub-generated notes; pre-release (not "Latest") when the tag
-   has a suffix. It runs only when `build` and `image` succeeded.
+   install/verify header that gives the image digest (the
+   [automatic VPS updates](../../self-hosting/production-vps/#9-updates) only install that
+   digest) and GitHub-generated notes; pre-release (not "Latest") when the tag has a suffix.
+   It runs only when `build` and `image` succeeded.
+5. `homebrew` (releases only, never a pre-release): GoReleaser wrote the cask
+   `dist/homebrew/Casks/cicord.rb` in `build` (`homebrew_casks` with `skip_upload`: darwin
+   and linux, amd64 and arm64, the quarantine attribute removed after install on macOS).
+   The job checks its version, that every URL is an asset of this release and every
+   SHA-256 the one of `checksums.txt`, then commits it to
+   [`cicord/homebrew-tap`](https://github.com/cicord/homebrew-tap) with the contents API.
+   Only this step gets the tap token (the environment `homebrew`'s secret
+   `HOMEBREW_TAP_TOKEN`); without it, the job logs a notice and succeeds, so a release never
+   fails on the tap. See [Homebrew tap](#homebrew-tap).
 
 **`release-npm.yml`** (same tag; Run workflow is a dry run by default): installs, builds
-and tests the packages, checks that the four versions are equal and equal to the tag, packs
+and tests the packages, checks that the five versions (`cli` included) are equal and equal to the tag, packs
 each package with `pnpm pack` (which rewrites the `workspace:` and `catalog:` specifiers;
 the job fails if one is left), then `npm publish <tarball> --access public` in dependency
 order (sdk, client, react, ui), under the dist-tag `latest`, or `next` for a version with a
@@ -54,31 +68,51 @@ suffix. Versions already on npm are skipped, so a failed run can be re-run. It u
 in the environment `npm`, and attaches provenance automatically. Never run `npm publish`
 from a package directory: `workspace:*` would be published verbatim.
 
+Then, when the repository variable `CICORD_NPM_CLI` is `true` (see
+[New npm packages](#new-npm-packages)), `@cicord/cli`, laid out like esbuild: one package per platform,
+`@cicord/cli-<os>-<arch>` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`,
+`win32-x64`; `os` and `cpu` fields, the binary in `bin/`), and `@cicord/cli` itself, whose
+`cicord` command (`packages/cli/bin/cicord.js`) runs the binary of the installed platform
+package; every platform package is an optional dependency of it at the same version. The
+binaries are never rebuilt: the job waits for the assets of the GitHub Release of the tag
+(up to 45 minutes; a manual dry run whose version has no release skips `@cicord/cli`),
+checks `checksums.txt` and the build provenance attestation of every archive
+(`--signer-workflow` `release.yml`, `--source-ref` the tag), runs the linux/amd64 binary,
+then `packages/cli/scripts/build-platform-packages.mjs` writes the packages from
+`packages/cli` and `platforms.json`. The platform packages are published first, then
+`@cicord/cli`, with the same skip and dist-tag rules.
+
 Every action is pinned to a commit SHA (tag in the comment). Only GitHub-owned actions and
 `pnpm/action-setup` are used; GoReleaser, syft and BuildKit are pinned releases (checksums or
 digest verified).
 
 ## Each release
 
-1. **Version.** Set `<version>` in:
-   - `internal/version/version.go` (`Version`, the engine version of `go install` builds;
-     the release workflow fails if it differs from the tag),
-   - `Makefile` (`VERSION ?=`) and `Dockerfile` (the two `ARG VERSION=` defaults),
-   - `packages/{sdk,client,react,ui}/package.json` (and, to keep them in step,
-     `packages/{admin,create-cicord-portal}/package.json`); `@cicord/react` depends on the
-     same `@cicord/client` version (`workspace:*`).
-2. **Changelog.** Add a `## [<version>] - <date>` section to [CHANGELOG.md](https://github.com/cicord/cicord/blob/main/CHANGELOG.md)
-   (and the link at the bottom).
-3. **Check locally:** `make all && make check`, `pnpm run check`, then
-   `goreleaser check` and a local snapshot
+1. **Changelog.** Entries go under `## [Unreleased]` in
+   [CHANGELOG.md](https://github.com/cicord/cicord/blob/main/CHANGELOG.md) as changes land.
+2. **Prepare the release commit** on an up-to-date, clean `main`:
+   ```sh
+   make release VERSION=<version>      # scripts/release.sh <version>
+   ```
+   The script refuses a version that is not greater than the current one, an existing tag,
+   another branch, a dirty tree and an empty `[Unreleased]`. It sets the version in
+   `internal/version/version.go` (the engine version of `go install` builds; the release
+   workflow fails if it differs from the tag), the `Makefile`, the `Dockerfile`, the cicord
+   version that `examples/basic/.github/workflows/cicord.yml` installs (the `cicord init`
+   workflow, pinned to the release that generated it) and the `package.json` of the seven packages (`packages/cli` included); turns `[Unreleased]` into `## [<version>] - <date>`
+   with its compare link; commits `chore(release): v<version>`; and lists the other files
+   that still name the previous version (install examples, docs). It never pushes nor tags.
+3. **Review** the commit (`git show`), update the files it listed and amend. When the build
+   or the packaging changed, check locally: `make all && make check`, `pnpm run check`,
+   `goreleaser check` and a snapshot
    (`goreleaser release --snapshot --clean --skip=publish,sbom`, then
-   `dist/cicord_<os>_<arch>*/cicord version`). For the packages:
+   `dist/cicord_<os>_<arch>*/cicord version`); for the packages,
    `cd packages/<p> && pnpm pack --dry-run`.
-4. **Commit** ("chore(release): v<version>") and push to `main`; wait for CI.
-5. **Dry runs** (recommended, required before the first release): Actions → release → Run
-   workflow, and Actions → release-npm → Run workflow ("dry-run" ticked). The first one is
-   the only place where syft, the multi-arch builder and the SBOM files run before a tag.
-   Read the archive list and the `npm publish --dry-run` output.
+4. **Push** to `main` and wait for CI.
+5. **Dry runs**, when a release workflow changed: Actions → release → Run workflow, and
+   Actions → release-npm → Run workflow ("dry-run" ticked). The first one is the only place
+   where syft, the multi-arch builder and the SBOM files run before a tag. Read the archive
+   list and the `npm publish --dry-run` output.
 6. **Tag and push:**
    ```sh
    git tag -a v<version> -m "Cicord <version>"
@@ -101,13 +135,15 @@ release: `make release VERSION=0.2.0-rc.1` prepares the commit, then tag `v0.2.0
   leading zeros) and refuses a version that is not greater than the current one by semver
   precedence: `0.2.0-rc.2 < 0.2.0-rc.10 < 0.2.0`, so it refuses an rc after its release.
 - **What is published.** A GitHub prerelease (never "Latest"), the npm packages under the
-  dist-tag `next` (`latest` does not move), and the image tags `:0.2.0-rc.1` and
-  `:sha-<commit>` only (no `:0.2`, no `:latest`). The automatic updates of the
+  dist-tag `next` (`latest` does not move; `@cicord/cli` included), and the image tags
+  `:0.2.0-rc.1` and `:sha-<commit>` only (no `:0.2`, no `:latest`). The Homebrew tap is not
+  updated, and the install script only installs it when asked
+  (`CICORD_VERSION=0.2.0-rc.1`). The automatic updates of the
   [VPS install](../../self-hosting/production-vps/#9-updates) follow the latest release, so
   they never install a pre-release, and a server running one moves to the release.
 - **Changelog.** A pre-release needs entries under `[Unreleased]` but leaves them there: they
   become the `0.2.0` section when `0.2.0` is released, with a compare link from the previous
-  release (`v0.1.1...v0.2.0`). The GitHub prerelease has the generated notes.
+  release (`v0.1.6...v0.2.0`). The GitHub prerelease has the generated notes.
 - **Engine ranges.** The `spec.engine` ranges of `cicord.yaml` and plugin manifests are
   checked by plain semver precedence, pre-releases included: `0.2.0-rc.1` sorts after every
   `0.1.x` and before `0.2.0`. So `0.2.0-rc.1` satisfies `>=0.1.0` and `>=0.1.0 <0.2.0`
@@ -128,7 +164,7 @@ release: `make release VERSION=0.2.0-rc.1` prepares the commit, then tag `v0.2.0
 
 ```sh
 sha256sum --ignore-missing -c checksums.txt           # macOS: shasum -a 256 --ignore-missing -c checksums.txt
-gh attestation verify cicord_0.1.0_linux_amd64.tar.gz --repo cicord/cicord
+gh attestation verify cicord_0.1.6_linux_amd64.tar.gz --repo cicord/cicord
 ```
 
 `gh attestation verify` checks the Sigstore-signed build provenance: the file was built by a
@@ -139,101 +175,129 @@ explicit. The SBOM of an archive is `<archive>.sbom.json` next to it.
 **Container image.**
 
 ```sh
-docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.0                     # index: amd64, arm64, attestation manifests
-docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.0 --format '{{ json .Provenance }}'
-docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.0 --format '{{ json .SBOM }}'
-gh attestation verify oci://ghcr.io/cicord/cicord:0.1.0 --repo cicord/cicord
+docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.6                     # index: amd64, arm64, attestation manifests
+docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.6 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.6 --format '{{ json .SBOM }}'
+gh attestation verify oci://ghcr.io/cicord/cicord:0.1.6 --repo cicord/cicord
 ```
 
-The GitHub attestation is also pushed to the registry (a Sigstore bundle attached to the
-image digest), so cosign v3 should be able to check it without the GitHub API (not tested
-yet; `gh attestation verify` is the reference):
+The GitHub attestation is also pushed to the registry, as a Sigstore bundle attached to the
+image digest. `docker run --rm ghcr.io/cicord/cicord:0.1.6 version` must print
+`cicord 0.1.6 (<commit>)`.
 
-```sh
-cosign verify-attestation --type slsaprovenance1 \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/cicord/cicord/.github/workflows/release.yml@refs/tags/v' \
-  ghcr.io/cicord/cicord:0.1.0
-```
-
-`docker run --rm ghcr.io/cicord/cicord:0.1.0 version` must print `cicord 0.1.0 (<commit>)`.
-
-**npm.** `npm view @cicord/client@0.1.0`; the package page on npmjs.com shows the
+**npm.** `npm view @cicord/client@0.1.6`; the package page on npmjs.com shows the
 **provenance** badge (built and signed on GitHub Actions, linked to the commit and the
 workflow run). In a project: `npm audit signatures` verifies the registry signatures and
 provenance attestations of the installed packages. In an empty directory:
-`npm install @cicord/sdk @cicord/client @cicord/react @cicord/ui`.
+`npm install @cicord/sdk @cicord/client @cicord/react @cicord/ui`, and, once `@cicord/cli`
+is published, `npx @cicord/cli@<version> version` must print `cicord <version> (<commit>)`.
 
-## One-time setup (owner)
+**Homebrew.** The tap's `Casks/cicord.rb` has the release's version and checksums;
+`brew install cicord/tap/cicord && cicord version`.
 
-In this order, before the first tag:
+**Install script.** `curl -fsSL https://cicord.dev/install.sh | sh` installs the new release
+(it verifies the checksum, and the attestation when `gh` is logged in).
 
-1. **Actions policy.** Nothing to allow-list: the release workflows use only GitHub-owned
-   actions (`actions/checkout`, `actions/setup-go`, `actions/setup-node`,
-   `actions/upload-artifact`, `actions/download-artifact`,
-   `actions/attest-build-provenance`, which calls `actions/attest`) and
-   `pnpm/action-setup`. Under Settings → Actions → General → Workflow permissions, the
-   default `GITHUB_TOKEN` permissions can stay read-only: each job asks for what it needs.
-2. **Protect the release tags** (Settings → Rules → Rulesets → New tag ruleset, target
-   `v*`): restrict creation, update and deletion to maintainers, so that only they can start
-   a release, and forbid moving a tag.
-3. **GitHub Packages (ghcr.io).** The organization must allow public packages
-   (organization Settings → Packages → Package creation: Public). The first `release.yml`
-   run creates the package `cicord` linked to the repository (the image's
-   `org.opencontainers.image.source`); if it is created private, make it public: package
-   page → Package settings → Change visibility → Public.
-4. **npm organization.** Create the npm organization `cicord` (npmjs.com → Add Organization,
-   free for public packages) with your account as owner, and enable 2FA on your account.
-   `npm view @cicord/sdk` must answer 404 (free) or show a package you own. If the scope is
-   taken, pick another one and rename the packages: the `name` of
-   `packages/{sdk,client,react,ui}/package.json`, the `@cicord/*` imports and dependencies
-   in `packages/`, `examples/` and the docs, the module name `@cicord/sdk` in
-   `internal/build` and `internal/plugin`, `sdkPackage` in `internal/cli/plugintests.go`,
-   and the package lists of `scripts/sync-ui.sh` and of `release-npm.yml`.
-5. **First publication from your machine.** npm trusted publishers can only be configured
-   on a package that exists, so publish each package once by hand (`npm login` first; npm
-   asks for your 2FA code). Two choices:
-   - **Recommended: a placeholder**, so that `0.1.0` is the first version published by CI,
-     with provenance:
-     ```sh
-     for p in sdk client react ui; do
-       d="$(mktemp -d)"
-       printf '{"name":"@cicord/%s","version":"0.0.0-bootstrap.0","description":"Placeholder: see https://github.com/cicord/cicord","license":"Apache-2.0","repository":{"type":"git","url":"git+https://github.com/cicord/cicord.git","directory":"packages/%s"}}\n' "$p" "$p" > "$d/package.json"
-       (cd "$d" && npm publish --access public --tag bootstrap)
-     done
-     ```
-     After the CI has published `0.1.0`:
-     `npm deprecate "@cicord/<p>@0.0.0-bootstrap.0" "placeholder, use a real version"` and
-     `npm dist-tag rm @cicord/<p> bootstrap` for each package.
-   - **Or publish `0.1.0` itself** from the tag: `pnpm install && pnpm -r --filter
-     "./packages/*" build`, then in each of sdk, client, react, ui (in that order):
-     `pnpm pack` and `npm publish cicord-<p>-0.1.0.tgz --access public --provenance=false`
-     (the package.json files set `publishConfig.provenance`, which only works in CI). The
-     `release-npm` run of `v0.1.0` then skips them: `0.1.0` has no provenance, the next
-     versions do.
-6. **Trusted publisher, per package** (npmjs.com → the package → Settings → Trusted
+## Repository settings
+
+The release workflows rely on these settings of `cicord/cicord`, on GitHub and npm; keep
+them when changing the workflows.
+
+- **Actions.** Only GitHub-owned actions and `pnpm/action-setup` are used, so there is nothing
+  to allow-list. The default `GITHUB_TOKEN` permissions stay read-only (Settings → Actions →
+  General): each job asks for what it needs.
+- **Release tags.** A tag ruleset on `v*` (Settings → Rules → Rulesets) restricts creation,
+  update and deletion to maintainers, so only they can start a release, and forbids moving a
+  tag.
+- **Container package.** The package `cicord` on ghcr.io is public and linked to the
+  repository (the image's `org.opencontainers.image.source`).
+- **npm.** The organization `cicord` owns the packages (`sdk`, `client`, `react`, `ui`, `cli`
+  and the five `cli-<os>-<arch>`). Each one has a trusted publisher
+  (npmjs.com → the package → Settings → Trusted Publisher → GitHub Actions: organization
+  `cicord`, repository `cicord`, workflow `release-npm.yml`, environment `npm`) and
+  Publishing access set to **Require two-factor authentication and disallow tokens**; no npm
+  token is kept anywhere. A new package must be published once by hand (with 2FA) before a
+  trusted publisher can be configured on it ([new npm packages](#new-npm-packages)).
+- **Environment `npm`** (Settings → Environments): the owner as required reviewer, so every
+  publication waits for approval, and deployments limited to the tags `v*` and the branch
+  `main`. It holds no secret.
+- **Environment `homebrew`**: deployments limited to the tags `v*`, and the secret
+  `HOMEBREW_TAP_TOKEN` ([Homebrew tap](#homebrew-tap)).
+
+### Homebrew tap
+
+One-time setup, before the first release that should update the tap (until then the
+`homebrew` job only logs a notice):
+
+1. **Create the tap**, a public repository `cicord/homebrew-tap` (the `homebrew-` prefix is
+   what makes `brew install cicord/tap/cicord` find it), default branch `main`, with a
+   README; the workflow creates `Casks/cicord.rb` on the first release:
+   ```sh
+   gh repo create cicord/homebrew-tap --public --add-readme \
+     --description "Homebrew tap of Cicord: brew install cicord/tap/cicord"
+   ```
+   Suggested README: the install command, and that `Casks/cicord.rb` is written by the
+   release workflow of `cicord/cicord` and must not be edited by hand. Disable what the tap
+   does not need (wiki, projects).
+2. **Create the token**: GitHub → Settings → Developer settings → Fine-grained personal
+   access tokens → Generate new token. Resource owner `cicord` (the organization must allow
+   fine-grained tokens, and may ask its owner to approve it), Repository access **Only select
+   repositories** → `cicord/homebrew-tap`, Permissions → Repository → **Contents: Read and
+   write** (Metadata: read-only is added automatically), nothing else. An expiration of up
+   to a year: note the date and rotate it.
+3. **Store it** in an environment of `cicord/cicord`, so only release runs can read it:
+   Settings → Environments → New environment `homebrew` → Deployment branches and tags →
+   Selected → add the tag rule `v*`; then Environment secrets → `HOMEBREW_TAP_TOKEN`. Or:
+   ```sh
+   gh secret set HOMEBREW_TAP_TOKEN --env homebrew --repo cicord/cicord
+   ```
+4. **Check** at the next release: the `homebrew` job prints the commit, and
+   `brew install cicord/tap/cicord && cicord version` works. A release that ran without the
+   token can be caught up within the artifact retention (7 days): re-run its `homebrew` job.
+
+### New npm packages
+
+`@cicord/cli` and its five platform packages are published by `release-npm.yml` once the
+repository variable `CICORD_NPM_CLI` is `true`; until then a release publishes the four SDK
+packages only. npm only lets a trusted publisher be configured on a package that
+exists, and a new trusted publisher configuration expires if it has not published within
+2 days. So, shortly before that release:
+
+1. **Publish a placeholder** of each package from your machine (`npm login` first, with 2FA),
+   so the first real version is published by CI, with provenance:
+   ```sh
+   for p in cli cli-darwin-arm64 cli-darwin-x64 cli-linux-arm64 cli-linux-x64 cli-win32-x64; do
+     d="$(mktemp -d)"
+     printf '{"name":"@cicord/%s","version":"0.0.0-bootstrap.0","description":"Placeholder: see https://github.com/cicord/cicord","license":"Apache-2.0","repository":{"type":"git","url":"git+https://github.com/cicord/cicord.git","directory":"packages/cli"}}\n' "$p" > "$d/package.json"
+     (cd "$d" && npm publish --access public --tag bootstrap)
+   done
+   ```
+2. **Trusted publisher, per package** (npmjs.com → the package → Settings → Trusted
    Publisher → GitHub Actions): organization or user `cicord`, repository `cicord`, workflow
-   filename `release-npm.yml`, environment `npm`. Then, on the same page, Publishing access →
-   **Require two-factor authentication and disallow tokens**: from then on only this
-   workflow (and you, with 2FA) can publish. Delete any npm automation or granular token
-   created for Cicord, and the old `NPM_TOKEN` repository or environment secret if one
-   exists.
-7. **GitHub environment `npm`** (Settings → Environments → New environment `npm`): add
-   yourself as required reviewer, so that every publication waits for your approval, and
-   limit deployments to the tags `v*` and the branch `main` (Deployment branches and tags →
-   Selected). It holds no secret.
+   filename `release-npm.yml`, environment `npm`. With npm 11.10 or later, the same from
+   the command line:
+   ```sh
+   for p in cli cli-darwin-arm64 cli-darwin-x64 cli-linux-arm64 cli-linux-x64 cli-win32-x64; do
+     npm trust github "@cicord/$p" --file release-npm.yml --repo cicord/cicord --env npm --allow-publish
+   done
+   ```
+   Then, on each package page, Publishing access → **Require two-factor authentication and
+   disallow tokens**.
+3. **Release** within 2 days (tag, approve the `npm` environment), then retire the
+   placeholders:
+   `npm deprecate "@cicord/<p>@0.0.0-bootstrap.0" "placeholder, use a real version"` and
+   `npm dist-tag rm @cicord/<p> bootstrap` for each package.
+4. **Turn the publish steps on**: the repository variable gates the `@cicord/cli` steps of
+   `release-npm.yml`, so set it before you tag the release of step 3:
+   ```sh
+   gh variable set CICORD_NPM_CLI --body true --repo cicord/cicord
+   ```
 
-## After the first npm publication
+## Vendored or npm packages
 
-- New portals and plugins can depend on the registry: `cicord portal init --from-npm`,
-  `cicord plugin new --from-npm` (or `CICORD_FROM_NPM=true`), which write
-  `"@cicord/client": "^<version>"` instead of `file:vendor/…` and no `vendor/`. Once you
-  are confident, make it the default (`fromNPMDefault` in `internal/cli/portal.go`) and
-  update [Custom portal](../../portal/custom-portal/) and
-  [Writing a plugin](../../plugins/writing/).
-- Existing portals switch with a one-line change per package (`"^<version>"` instead of
-  `"file:vendor/…"`), then delete the `@cicord/*` entries of `pnpm.overrides`/`overrides`
-  and `vendor/`; existing plugins replace the `@cicord/sdk` file: dependency the same way.
-- Keep the npm versions and the kit embedded in `cicord` in step: a `cicord` release embeds
-  the packages of its commit, and `--from-npm` asks for `^` that version. Both come from the
-  same tag.
+`cicord portal init` and `cicord plugin new` vendor the `@cicord/*` tarballs embedded in the
+binary by default (`vendor/`, `file:` dependencies); `cicord portal vendor` updates a
+portal's vendored copies after a `cicord` upgrade. With `--from-npm` (or
+`CICORD_FROM_NPM=true`) they depend on `"^<version>"` from npm instead. Both come from the
+same tag, so a `cicord` release and the npm packages of that version always match. See
+[Custom portal](../../portal/custom-portal/) and [Writing a plugin](../../plugins/writing/).

@@ -10,6 +10,9 @@
       "entry": [
         "examples/**/plugins/*/src/index.ts",
         "examples/**/plugins/*/src/routes.ts",
+        // The bundled tickets is the registry's released 0.2.0, byte for byte (its content hash
+        // is pinned in internal/catalog/copy.go): its module exports helpers only it uses.
+        "examples/showcase/plugins/tickets/src/tickets.ts",
         "examples/**/plugins/*/test/**/*.test.ts",
         "examples/embed/serve.mjs"
       ],
@@ -28,6 +31,13 @@
         "../../spec/sdk/cicord-sdk.d.ts"
       ],
       "project": ["src/**/*.ts", "test/**/*.ts", "scripts/*.mjs"],
+      "ignoreDependencies": ["vite"]
+    },
+    // The `cicord` command of @cicord/cli, and the script of release-npm.yml that builds the
+    // platform packages from the release binaries (scripts/build-platform-packages.mjs).
+    "packages/cli": {
+      "entry": ["scripts/*.mjs", "test/*.test.mjs"],
+      "project": ["bin/*.js", "scripts/*.mjs", "test/*.mjs"],
       "ignoreDependencies": ["vite"]
     },
     // Published entry points (package.json "exports" point at dist/).

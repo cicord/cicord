@@ -153,8 +153,9 @@ func TestImplicitOfficialSource(t *testing.T) {
 	if cicord.Error == nil || cicord.Signature != SignatureInvalid || len(cicord.Plugins) != 2 || !strings.Contains(cicord.Error.Message, "signature") {
 		t.Errorf("unsigned cicord = %+v", cicord)
 	}
+	bundled := map[string]string{"welcome": "0.1.1", "onboarding": "0.1.0"}
 	for _, p := range cicord.Plugins {
-		if p.Repo != "" || p.Version != "0.1.0" {
+		if p.Repo != "" || p.Version != bundled[p.Name] {
 			t.Errorf("a remote plugin leaked from an unsigned index: %+v", p)
 		}
 	}

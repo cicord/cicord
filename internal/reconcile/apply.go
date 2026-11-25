@@ -100,7 +100,7 @@ func (r *Reconciler) apply(ctx context.Context, p Plan) (Result, error) {
 }
 
 func (a *applier) fail(c Change, err error) {
-	a.r.log.Warn("reconcile: change failed", "server", a.r.serverKey(), "action", c.Action, "kind", c.Kind, "key", c.Key, "err", err)
+	a.r.log.Warn("reconcile: change failed", "action", c.Action, "kind", c.Kind, "key", c.Key, "err", err)
 	a.res.Failed = append(a.res.Failed, Failure{Change: c, Error: err.Error(), err: err})
 }
 
@@ -547,7 +547,8 @@ func (r *Reconciler) saveIconState(ctx context.Context, s iconState) error {
 // need the server's Community feature.
 func withCommunityHint(t discord.ChannelType, err error) error {
 	if t == discord.ChannelAnnouncement && errors.Is(err, discord.ErrBadRequest) {
-		return fmt.Errorf("%w (announcement channels require the Community feature: Server Settings → Enable Community, then sync again)", err)
+		return fmt.Errorf("%w (announcement channels require the Community feature: set community.enabled: true in the server YAML "+
+			"and Cicord enables it; if it is set, enabling it failed or Community was turned off outside Cicord)", err)
 	}
 	return err
 }

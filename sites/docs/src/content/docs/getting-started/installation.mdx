@@ -1,9 +1,9 @@
 ---
 title: Installation
-description: Install cicord from a release binary or the container image, verify what you downloaded, or build from source.
+description: Install cicord with the install script, Homebrew, npm, the container image or a verified manual download, with go install, or from source.
 ---
 
-import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+import { Steps } from "@astrojs/starlight/components";
 
 `cicord` is a single static binary: the command line tool **and** the runtime
 (`cicord serve`), with the admin console, the default community portal and the plugin
@@ -20,13 +20,104 @@ Every release (tag `v<version>`) publishes:
 | What                       | Where                                                                                                          |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Binaries                   | [GitHub Releases](https://github.com/cicord/cicord/releases): linux and darwin (amd64, arm64), windows (amd64) |
+| Install script             | `https://cicord.dev/install.sh` (Linux, macOS): installs and verifies a release binary                         |
+| Homebrew cask              | `cicord/tap/cicord` (macOS, Linux), from the release after 0.1.6                                               |
+| npm package of the binary  | `@cicord/cli` (macOS, Linux, Windows), from a later release                                                    |
 | Container image            | `ghcr.io/cicord/cicord:<version>` (linux/amd64, linux/arm64)                                                   |
 | npm packages (portal, SDK) | `@cicord/sdk`, `@cicord/client`, `@cicord/react`, `@cicord/ui`                                                 |
 
 ## Install
 
-<Tabs syncKey="install">
-<TabItem label="Release binary">
+Every method below installs the same binary, built by the release workflow. Pick one.
+
+### Install script
+
+Linux and macOS, amd64 and arm64:
+
+```sh
+curl -fsSL https://cicord.dev/install.sh | sh
+```
+
+The script downloads the archive of your platform and `checksums.txt` from the latest
+GitHub Release, checks the SHA-256 of the archive, verifies its
+[build provenance](#verify-a-download) with `gh attestation verify` when the
+[GitHub CLI](https://cli.github.com/) is installed and logged in (otherwise it says so and
+prints the command), then installs `cicord` and prints `cicord version`. It only reads the
+terminal for `sudo`. Settings, as environment variables of `sh`:
+
+| Variable             | Default                                                                          |
+| -------------------- | -------------------------------------------------------------------------------- |
+| `CICORD_VERSION`     | the latest release (pre-releases excluded); `0.1.6` or `v0.1.6`                  |
+| `CICORD_INSTALL_DIR` | `/usr/local/bin` when it is writable or `sudo` is available, else `~/.local/bin` |
+
+```sh
+curl -fsSL https://cicord.dev/install.sh | CICORD_VERSION=0.1.6 CICORD_INSTALL_DIR="$HOME/bin" sh
+```
+
+To read the script before running it: `curl -fsSL https://cicord.dev/install.sh -o install.sh`,
+then `sh install.sh`. Its source is
+[`sites/landing/public/install.sh`](https://github.com/cicord/cicord/blob/main/sites/landing/public/install.sh).
+Running it again upgrades `cicord`.
+
+### Homebrew
+
+:::note[From the release after 0.1.6]
+The tap is published by the release workflow from the next release on. Until then, use the
+install script.
+:::
+
+macOS and Linux:
+
+```sh
+brew install cicord/tap/cicord
+brew upgrade cicord                # later releases
+```
+
+`cicord/tap/cicord` is a cask of the tap [`cicord/homebrew-tap`](https://github.com/cicord/homebrew-tap),
+written by the release workflow for every release (never a pre-release). It installs the
+release archive, checked against the SHA-256 of `checksums.txt`. The binaries are not
+notarized by Apple, so on macOS the cask removes the quarantine attribute after installing.
+
+### npm
+
+:::note[From a later release]
+`@cicord/cli` is not published yet: it will be from a later release on. Until then, use the
+install script.
+:::
+
+macOS (arm64, x64), Linux (x64, arm64) and Windows (x64), with Node.js 18 or later:
+
+```sh
+npm i -g @cicord/cli
+npx @cicord/cli version            # without installing it
+```
+
+`@cicord/cli` has one optional dependency per platform, `@cicord/cli-<os>-<arch>` at the
+same version, which holds the release binary; npm only installs the one of your machine, and
+the `cicord` command runs it (same arguments, output and exit code). Do not install with
+`--omit=optional` (or `--no-optional`): the binary would be missing. The packages are
+published with [npm provenance](#verify-a-download), and the binaries in them are the release
+archives' after the workflow checked their checksums and attestations.
+
+### Container image
+
+The image `ghcr.io/cicord/cicord` is built from the repository's `Dockerfile` for
+linux/amd64 and linux/arm64: `cicord` on `gcr.io/distroless/static-debian13:nonroot` (user
+65532, no shell), with a `HEALTHCHECK` (`cicord healthcheck`). Tags: `<version>` (`0.1.6`),
+`<major>.<minor>` (`0.1`) and `latest` for releases without a pre-release suffix, and
+`sha-<commit>`.
+
+```sh
+docker pull ghcr.io/cicord/cicord:0.1.6                                      # pin the version in production
+gh attestation verify oci://ghcr.io/cicord/cicord:0.1.6 --repo cicord/cicord    # see Verify a download
+docker run --rm ghcr.io/cicord/cicord:0.1.6 version                          # the entrypoint is cicord
+```
+
+The default command is `cicord serve /repo --data-dir /data --listen :7420`, with a volume on
+`/data` and port `7420`. Running it in production is covered in
+[Deploy](../../self-hosting/deploy/#docker).
+
+### Manual download
 
 <Steps>
 
@@ -62,43 +153,19 @@ Every release (tag `v<version>`) publishes:
 
 </Steps>
 
-</TabItem>
-<TabItem label="Docker">
+### go install
 
-The image `ghcr.io/cicord/cicord` is built from the repository's `Dockerfile` for
-linux/amd64 and linux/arm64: `cicord` on `gcr.io/distroless/static-debian13:nonroot` (user
-65532, no shell), with a `HEALTHCHECK` (`cicord healthcheck`). Tags: `<version>` (`0.1.6`),
-`<major>.<minor>` (`0.1`) and `latest` for releases without a pre-release suffix, and
-`sha-<commit>`.
+```sh
+go install github.com/cicord/cicord/cmd/cicord@latest
+```
 
-<Steps>
+This builds the command line tool **without** the embedded web UIs: the admin console and
+the default portal are placeholders, `cicord portal init` has no kit, and `cicord version`
+shows the commit `dev`. It is enough for CI (`cicord validate`, `cicord plan --remote`,
+`cicord status --wait`), which is how the workflow written by `cicord init` installs it, not
+for running the runtime.
 
-1. Pull the image (pin the version in production):
-
-   ```sh
-   docker pull ghcr.io/cicord/cicord:0.1.6
-   ```
-
-2. Verify it (see [Verify a download](#verify-a-download)):
-
-   ```sh
-   gh attestation verify oci://ghcr.io/cicord/cicord:0.1.6 --repo cicord/cicord
-   ```
-
-3. The image entrypoint is `cicord`, so any command works:
-
-   ```sh
-   docker run --rm ghcr.io/cicord/cicord:0.1.6 version
-   ```
-
-</Steps>
-
-The default command is `cicord serve /repo --data-dir /data --listen :7420`, with a volume on
-`/data` and port `7420`. Running it in production is covered in
-[Deploy](../../self-hosting/deploy/#docker).
-
-</TabItem>
-<TabItem label="From source">
+### Build from source
 
 | Tool               | Needed for                                                                                                                                                   |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -121,10 +188,10 @@ The default command is `cicord serve /repo --data-dir /data --listen :7420`, wit
    make all VERSION=0.1.6
    ```
 
-   `make all` runs `make ui` (installs the JS workspace with `pnpm install
---frozen-lockfile`, builds the packages and copies the admin console, the portal and the
-   portal kit into `internal/webui`), then `make build`, which writes `bin/cicord`.
-   `VERSION` is what `cicord version` prints; the commit comes from git.
+   `make all` runs `make ui` (installs the JS workspace with `pnpm install --frozen-lockfile`,
+   builds the packages and copies the admin console, the portal and the portal kit into
+   `internal/webui`), then `make build`, which writes `bin/cicord`. `VERSION` is what
+   `cicord version` prints; the commit comes from git.
 
 3. Put `bin/cicord` on your `PATH`, or call it by its path:
 
@@ -143,16 +210,6 @@ without their unit-test setup. Use `make all` unless you only work on Go code.
 
 The same image as the release builds locally with
 `docker build -t cicord --build-arg VERSION=0.1.6 --build-arg COMMIT=$(git rev-parse --short HEAD) .`
-
-</TabItem>
-</Tabs>
-
-:::note[`go install`]
-`go install github.com/cicord/cicord/cmd/cicord@latest` builds the command line tool
-**without** the embedded web UIs: the admin console and the default portal are
-placeholders, `cicord portal init` has no kit, and `cicord version` shows the commit `dev`.
-It is enough for CI (`cicord validate`, `cicord plan --remote`), not for running the runtime.
-:::
 
 ## Verify a download
 
@@ -185,37 +242,24 @@ cicord version
 ```
 
 ```text
-cicord 0.1.6 (e6e4f37)
+cicord 0.1.6 (ebc3e05)
 ```
 
-The first part is the version, the second the git commit the binary was built from. Then
-list the commands:
-
-```sh
-cicord --help
-```
+The version, then the git commit the binary was built from. `cicord --help` lists the
+commands.
 
 ## Editor support
 
-The JSON Schemas of every file live in `spec/schemas/` of the Cicord repository. With the
-YAML language server (VS Code YAML extension and others), add a schema comment at the top
-of a file to get completion and validation:
+Every file has a JSON Schema, published at `https://cicord.dev/schemas/v1alpha1/`
+(`project`, `server`, `bot` and `plugin`; the sources are in `spec/schemas/`). With the YAML
+language server (VS Code YAML extension and others), a schema comment at the top of a file
+gives completion and validation:
 
-```yaml title="servers/ma-commu.yaml"
-# yaml-language-server: $schema=../../cicord/spec/schemas/server.schema.json
+```yaml title="servers/cicord.yaml"
+# yaml-language-server: $schema=https://cicord.dev/schemas/v1alpha1/server.schema.json
 apiVersion: cicord.dev/v1alpha1
 kind: Server
 ```
-
-The path is relative to the file; point it at your checkout of Cicord.
-
-## CI without the UIs
-
-The workflow written by `cicord init` (`.github/workflows/cicord.yml`) only needs the CLI
-(`cicord validate`, `cicord plan --remote`, `cicord status --wait`). It installs it with
-`go install github.com/cicord/cicord/cmd/cicord@latest`, which builds the command line tool
-**without** the embedded UIs. That is fine for CI, not for running the runtime. See
-[Your first change](../first-change/#run-it-in-ci).
 
 ## Next steps
 

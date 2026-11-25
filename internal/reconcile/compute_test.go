@@ -175,7 +175,7 @@ func TestComputePlan(t *testing.T) {
 		},
 		{
 			name:   "rename role",
-			mutate: func(f *fixture) { f.role("202").Name = "Membre" },
+			mutate: func(f *fixture) { f.role("202").Name = "Members" },
 			want:   []string{"update role member [name]"},
 		},
 		{

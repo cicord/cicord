@@ -23,6 +23,7 @@ spec:
         - discord.messages.read
         - discord.channels.read
         - discord.channels.manage
+        - discord.members.read
         - storage.kv
         - portal.routes
       config:

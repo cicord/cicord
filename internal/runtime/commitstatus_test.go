@@ -39,14 +39,14 @@ func (l *statusLog) take() []statusEvent {
 func TestCommitStatuses(t *testing.T) {
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
-	srv := w.CreateServer("Ma Commu", owner.ID)
-	token, bot, appID := w.CreateBot("Gardien")
+	srv := w.CreateServer("My Community", owner.ID)
+	token, bot, appID := w.CreateBot("Warden")
 	if _, err := w.AddBotToServer(srv.ID, bot.ID, discord.MustPermissions("Administrator")); err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
 	copyTree(t, "../../examples/basic", dir)
-	replaceIn(t, filepath.Join(dir, "servers/ma-commu.yaml"), `discordId: "112233445566778899"`, `discordId: "`+srv.ID+`"`)
+	replaceIn(t, filepath.Join(dir, "servers/my-community.yaml"), `discordId: "112233445566778899"`, `discordId: "`+srv.ID+`"`)
 	replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), `applicationId: "998877665544332211"`, `applicationId: "`+appID+`"`)
 	store, err := sqlite.Open(":memory:")
 	if err != nil {
@@ -98,12 +98,12 @@ func TestCommitStatuses(t *testing.T) {
 	replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "channel: nowhere", "channel: general")
 
 	// A server the bot cannot reach: failure naming the server.
-	replaceIn(t, filepath.Join(dir, "servers/ma-commu.yaml"), `discordId: "`+srv.ID+`"`, `discordId: "112233445566778800"`)
+	replaceIn(t, filepath.Join(dir, "servers/my-community.yaml"), `discordId: "`+srv.ID+`"`, `discordId: "112233445566778800"`)
 	if err := rt.Activate(ctx, gitRev("c"), false); err != nil {
 		t.Fatal(err)
 	}
 	got = statuses.take()
-	if len(got) != 2 || got[1].state != CommitFailure || !strings.HasPrefix(got[1].desc, "Server ma-commu: ") {
+	if len(got) != 2 || got[1].state != CommitFailure || !strings.HasPrefix(got[1].desc, "Server my-community: ") {
 		t.Fatalf("server failure: %+v", got)
 	}
 

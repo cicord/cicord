@@ -1,0 +1,14 @@
+#!/bin/sh
+# cicord-backup — backup of the Cicord runtime state (installed by 05-backup.sh as
+# /usr/local/sbin/cicord-backup; run daily by cicord-backup.timer).
+#
+# Writes /var/backups/cicord/cicord-<UTC timestamp>.tar.zst (0600): an online,
+# integrity-checked copy of cicord.db, repo.git and writeback/, and a MANIFEST. Never the key
+# secret.key. Then copies it off the server when CICORD_BACKUP_REMOTE is set in .env.
+# Fails (exit 1, an alert when CICORD_ALERT_WEBHOOK is configured) when the database is
+# missing, fails its integrity check, or the off-host copy fails.
+set -eu
+CICORD_LOG_TAG=cicord-backup
+# shellcheck source=SCRIPTDIR/../lib/cicord-ops.sh
+. "${CICORD_OPS_LIB:-/usr/local/lib/cicord/ops.sh}"
+backup_run

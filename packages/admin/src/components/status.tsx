@@ -4,7 +4,7 @@
  *   tone     success | warning | danger | info | neutral | violet   (same meaning everywhere)
  *   sync     Synced · Out of sync · Unknown                 (icon + label: git vs Discord)
  *   health   Healthy · Progressing · Degraded · Missing     (dot + label: is it working)
- *   history  Succeeded · Failed · Rejected                  (icon + label: what happened)
+ *   history  Succeeded · Failed · Rejected · Paused · Resumed · Not applied (what happened)
  *   action   create · update · delete · adopt · reorder · unmanage · blocked (glyph + label)
  *
  * Every badge carries a tooltip with its definition; <StatusLegend> lists them all.
@@ -15,6 +15,9 @@ import {
   CircleCheck,
   CircleDashed,
   CircleHelp,
+  CirclePause,
+  CirclePlay,
+  CircleSlash,
   CircleX,
   Link2,
   Link2Off,
@@ -53,7 +56,14 @@ const BG: Record<Tone, string> = {
 
 const SYNC_STATES = ["Synced", "OutOfSync", "Unknown"] as const;
 const HEALTH_STATES = ["Healthy", "Progressing", "Degraded", "Missing"] as const;
-export const HISTORY_STATES = ["succeeded", "failed", "rejected"] as const;
+export const HISTORY_STATES = [
+  "succeeded",
+  "failed",
+  "rejected",
+  "paused",
+  "resumed",
+  "skipped",
+] as const;
 const ACTIONS = ["create", "update", "delete", "adopt", "reorder", "unmanage", "blocked"] as const;
 
 type SyncState = (typeof SYNC_STATES)[number];
@@ -78,7 +88,15 @@ export const historyMeta: Record<HistoryState, { tone: Tone; icon: LucideIcon }>
   succeeded: { tone: "success", icon: CircleCheck },
   failed: { tone: "danger", icon: CircleX },
   rejected: { tone: "danger", icon: Ban },
+  paused: { tone: "warning", icon: CirclePause },
+  resumed: { tone: "success", icon: CirclePlay },
+  skipped: { tone: "warning", icon: CircleSlash },
 };
+
+/** A history status that reports a failure (failed, rejected), not an event. */
+export function isFailure(status: string): boolean {
+  return status === "failed" || status === "rejected";
+}
 
 const actionMeta: Record<ActionName, { tone: Tone; icon: LucideIcon }> = {
   create: { tone: "success", icon: Plus },

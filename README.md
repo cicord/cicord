@@ -13,9 +13,11 @@ with sandboxed TypeScript plugins.
 
 ```
 git push ──▶ cicord serve ──▶ Discord
-             ├─ reconciles servers (roles, categories, channels, permissions)
+             ├─ reconciles servers (roles, categories, channels, permissions, AutoMod…)
+             ├─ reports drift or reverts it (selfHeal); pause enforcement in an emergency
              ├─ runs N bots × M servers with TypeScript plugins
              ├─ admin UI (every change is a git commit or a pull request)
+             ├─ alerts to a Discord or JSON webhook
              └─ API for your community portal (React SDK)
 ```
 
@@ -28,23 +30,24 @@ Everything is on **[cicord.dev/docs](https://cicord.dev/docs/)**:
 
 | | |
 |---|---|
-| [Installation](https://cicord.dev/docs/getting-started/installation/) | Release binaries, the container image `ghcr.io/cicord/cicord`, verifying them, building from source |
-| [Quick start](https://cicord.dev/docs/getting-started/quick-start/) | The setup wizard, or a repository by hand; `cicord dev --sim` to try it offline |
+| [Installation](https://cicord.dev/docs/getting-started/installation/) | Install script, Homebrew, npm, the container image `ghcr.io/cicord/cicord`, verified downloads, building from source |
+| [Quick start](https://cicord.dev/docs/getting-started/quick-start/) | The setup wizard, or a repository by hand; `cicord dev --sim` to try it offline; [inspect an existing server](https://cicord.dev/docs/getting-started/evaluate-a-server/) read-only first |
 | [Configuration](https://cicord.dev/docs/configuration/project/) | `cicord.yaml`, servers, bots |
 | [Plugins](https://cicord.dev/docs/plugins/overview/) | The official plugins, writing, testing and publishing your own |
-| [Self-hosting](https://cicord.dev/docs/self-hosting/deploy/) | Deploying, a hardened single-server setup, security, backups, upgrading |
+| [Self-hosting](https://cicord.dev/docs/self-hosting/deploy/) | Deploying, a hardened single-server setup, security, backups and restores, monitoring and alerts, upgrading, handing an instance over |
 | [Reference](https://cicord.dev/docs/reference/cli/) | CLI, HTTP API, Discord parity |
 | [Project](https://cicord.dev/docs/project/status/) | Status, architecture, design decisions, contributing, releasing |
 
-Quick install (Linux or macOS, with the [GitHub CLI](https://cli.github.com/) to verify the
-build provenance):
+Install (Linux or macOS; the script checks the SHA-256 of the release archive and, with the
+[GitHub CLI](https://cli.github.com/) logged in, its build provenance):
 
 ```sh
-VERSION=0.1.6 OS=linux ARCH=amd64     # OS: linux | darwin, ARCH: amd64 | arm64
-gh release download "v$VERSION" --repo cicord/cicord --pattern "cicord_${VERSION}_${OS}_${ARCH}.tar.gz"
-gh attestation verify "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" --repo cicord/cicord
-tar -xzf "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" cicord && sudo install cicord /usr/local/bin/
+curl -fsSL https://cicord.dev/install.sh | sh
 ```
+
+From the release after 0.1.6: `brew install cicord/tap/cicord` (macOS, Linux); from a later
+release: `npm i -g @cicord/cli` (also Windows). Verified manual downloads, `go install` and building
+from source: [Installation](https://cicord.dev/docs/getting-started/installation/).
 
 Or the image: `docker run --rm ghcr.io/cicord/cicord:0.1.6 version`. A real-world
 configuration: the official community server's repository,

@@ -1,6 +1,6 @@
 ---
 title: "HTTP API: status and servers"
-description: The viewer (/me), runtime status with live drift and boost state, sync history, server detail, resources for pickers, plans, syncs, the audit log and server image uploads.
+description: The viewer (/me), runtime status with drift and boost state, sync history, server detail, resources for pickers, plans, syncs, pausing enforcement, the audit log and server image uploads.
 ---
 
 Part of the [HTTP API reference](../). Roles are described in
@@ -13,8 +13,8 @@ role (servers whose role cannot be resolved are skipped).
 
 ```json
 {
-  "user": { "id": "1", "username": "alice", "displayName": "Alice", "avatarUrl": "" },
-  "servers": [ { "key": "ma-commu", "name": "Ma Commu", "role": "admin" } ]
+  "user": { "id": "1575125353398009856", "username": "owner", "displayName": "owner", "avatarUrl": "" },
+  "servers": [ { "key": "showcase", "name": "Cicord Showcase", "role": "admin" } ]
 }
 ```
 
@@ -25,46 +25,63 @@ During setup, the setup session's `/me` is the user `setup`.
 
 `GET /api/v1/status` (admin or moderator) returns the visible servers only (where the caller
 is admin or moderator), the bots on them and their plugin instances on those servers, with the
-live drift of each server; `403` if there is none. Before the first revision, `revision` is
-`null`, the lists are empty and the status is returned to any authenticated caller.
+drift of each server; `403` if there is none. Before the first revision, `revision` is
+`null`, the lists are empty and the status is returned to any authenticated caller, without
+`lastError` and `bots` unless the caller uses the runtime token (`lastError` may quote the
+configuration).
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.1.6",
   "mode": "dev",                         // "serve" | "dev"
   "simulator": true,                     // the Discord simulator is in use
-  "revision": { "id": "4f0c2d9", "sha": "4f0c2d9…", "message": "…", "author": "…", "time": "…", "source": "git" },
-  "lastError": "…",                      // optional: latest rejected revision / failed fetch
+  "revision": { "id": "local-55cc940", "sha": "55cc9403b806…", "message": "working tree", "author": "local",
+                "time": "2026-11-25T12:27:46.428729Z", "source": "local" },
   "servers": [ {
-    "key": "ma-commu", "name": "Ma Commu", "discordId": "1122…",
+    "key": "showcase", "name": "Cicord Showcase", "discordId": "223344556677889900",
     "sync": "Synced",                    // Synced | OutOfSync | Unknown
     "health": "Healthy",                 // Healthy | Progressing | Degraded | Missing
-    "message": "",
-    "lastSync": "2026-11-21T10:00:00Z",  // optional: absent until the first reconcile
-    "bot": "moderator",                  // optional: the reconciling bot
-    "drift": [ { "kind": "channel", "key": "general", "field": "name", "expected": "général", "actual": "general" } ],
+    "message": "1 change(s) wait for a higher boost level",
+    "lastSync": "2026-11-25T12:27:46.457287Z",  // optional: absent until the first reconcile
+    "drift": [],                         // e.g. { "kind": "channel", "key": "general", "field": "name", "expected": "general", "actual": "general-chat" }
+    "bot": "cicord",                     // optional: the reconciling bot
     // live Discord state (runtime cache, kept current by server update events)
-    "iconUrl": "https://cdn.discordapp.com/icons/…/….png",   // "" = no icon (or not cached yet)
-    "bannerUrl": "", "splashUrl": "",
-    "boostLevel": 1,                     // premium tier 0-3
-    "boostCount": 3,                     // number of boosts
-    "features": ["ANIMATED_ICON", "INVITE_SPLASH"],  // Discord feature flags, sorted; [] when unknown
-    "community": false                   // COMMUNITY feature enabled
+    "iconUrl": "", "bannerUrl": "", "splashUrl": "",   // CDN URLs; "" = none (or not cached yet)
+    "boostLevel": 0,                     // premium tier 0-3
+    "boostCount": 0,                     // number of boosts
+    "features": ["COMMUNITY", "NEWS"],   // Discord feature flags, sorted; [] when unknown
+    "community": true,                   // COMMUNITY feature enabled
+    "paused": { "by": "discord:1575125353398009856", "byName": "owner",   // optional: enforcement paused
+                "at": "2026-11-25T12:30:02Z", "reason": "raid" }
   } ],
   "bots": [ {
-    "key": "moderator", "username": "Gardien", "userId": "…", "health": "Healthy", "message": "",
-    "servers": ["ma-commu"],
-    "plugins": [ { "instance": "welcome", "plugin": "welcome", "version": "0.1.0", "server": "ma-commu", "health": "Healthy", "message": "" } ]
+    "key": "cicord", "username": "Cicord", "userId": "1575125353398009857", "health": "Healthy", "message": "",
+    "servers": ["showcase"],
+    "plugins": [ { "instance": "tickets", "plugin": "tickets", "version": "0.2.1", "server": "showcase", "health": "Healthy", "message": "" }, … ]
   } ]
 }
 ```
 
-- `revision.id` is the short identifier (7-character SHA, or a content hash for local
-  sources), `sha` the full SHA or hash; `source` is `git` or `local`.
+- `revision.id` is the short identifier (7-character SHA, or `local-` and a short content hash
+  for a local directory), `sha` the full SHA or hash; `source` is `git` or `local`.
+- `lastError` (optional) is the latest rejected revision or failed fetch.
+- `drift` comes from the server's last plan, planned again after an apply, a relevant gateway
+  event, or a minute. Blocked changes are drift (`OutOfSync`), except those that only wait for
+  a boost level: the server stays `Synced` and `message` counts them, naming the first
+  blocked one (`2 change(s) blocked (delete channel old: … and 1 more), 1 wait for a higher
+  boost level`). `message` follows the last plan:
+  changes it found that are not applied yet (drift without `selfHeal`, a boost level just
+  reached) are counted too (`1 change(s) to apply (selfHeal is off: …)`), and a failed sync
+  keeps its error while changes remain.
 - Drift `field` `"exists"` means the resource is missing in Discord (or not created yet),
   `"order"` that a reorder is pending, `"managed"` that a mapping is about to be dropped.
 - A bot whose session is not connected is `Missing`, with the reason in `message`; it is
-  `Degraded` when one of its plugin instances is.
+  `Degraded` when one of its plugin instances is (`message` names it). An instance is
+  `Degraded` when it failed to start, after a crash while it restarts, or after three handler
+  errors in a row.
+- `paused` is set while [enforcement is paused](#pause-and-resume) on the server: nothing is
+  applied to it. `sync` keeps reporting the drift from git (`Synced` or `OutOfSync`) and
+  `health` the last plan or sync.
 - `boostLevel` and `features` drive the plan: settings that need a higher boost level or the
   Community feature are reported as `blocked` with a reason instead of failing at apply time
   (see [Boost-gated settings](../../../configuration/server/#boost-gated-settings)).
@@ -77,26 +94,32 @@ live drift of each server; `403` if there is none. Before the first revision, `r
 first:
 
 ```json
-{ "id": 42, "time": "…", "revision": "4f0c2d9", "target": "server:ma-commu",
-  "status": "succeeded", "message": "3 change(s) applied", "details": { "plan": {}, "applied": 3, "failed": 0 } }
+{ "id": 3, "time": "2026-11-25T12:27:46.457315Z", "revision": "local-55cc940", "target": "server:showcase",
+  "status": "succeeded", "message": "0 change(s) applied",
+  "details": { "applied": 0, "failed": 0, "plan": { "server": "showcase", "changes": [], "blocked": [ … ] } } }
 ```
 
 - `target` is `revision` (activation of a revision), `server:<key>` (a sync or self-heal) or
   `bot:<key>`. `status` is `succeeded`, `failed` or `rejected` (`rejected` = an invalid
-  revision). `details` is optional.
+  revision), or for a server `paused`, `resumed` and `skipped` (a revision not applied to a
+  paused server). Only `failed` and `rejected` records carry `error`. `details` is optional.
 - Visibility: `server:` records need a visible server, `bot:` records a visible server of
   that bot, and project-level records (`revision`) are only returned to callers who see every
   server. `403` when the caller sees no server, `503` before the first revision.
-- `limit` defaults to 50, at most 500 (the `target` filter applies after the limit).
+- `limit` defaults to 50, at most 500. `target` filters the query; records the caller may not
+  see are dropped afterwards, so a page can hold fewer than `limit` items.
 
 ## Servers
 
 | Method | Path | Role | Description |
 |---|---|---|---|
-| GET | `/api/v1/servers/{server}` | moderator | `ServerDetail`: the server's [status entry](#runtime-status), with live drift, plus `spec` (the Server YAML spec as JSON). |
+| GET | `/api/v1/servers/{server}` | moderator | `ServerDetail`: the server's [status entry](#runtime-status), with its drift, plus `spec` (the Server YAML spec as JSON). |
 | GET | `/api/v1/servers/{server}/resources` | moderator | [Resources](#resources) for pickers. |
 | GET | `/api/v1/servers/{server}/plan` | admin | [`Plan`](#plan) of the active revision against live Discord. |
-| POST | `/api/v1/servers/{server}/sync` | admin | Reconcile now. Returns `{"plan": Plan, "applied": n}`. |
+| POST | `/api/v1/servers/{server}/sync` | admin | Reconcile now. Returns `{"plan": Plan, "applied": n}`. `409 paused` while [enforcement is paused](#pause-and-resume), unless the body is `{"resume": true}` (resume, then sync). |
+| GET | `/api/v1/servers/{server}/pause` | moderator | `{"paused": PauseInfo \| null, "plan": Plan \| null, "planError"?}`: the pause and the plan that resuming lets apply (for moderators only while paused; `null` otherwise). |
+| POST | `/api/v1/servers/{server}/pause` | moderator | Pause enforcement. Body `{"reason"?}` (at most 500 characters). Returns `{"paused": PauseInfo, "changed": bool}`. |
+| POST | `/api/v1/servers/{server}/resume` | moderator | Resume enforcement. Returns `{"resumed": bool, "pause"?: PauseInfo}`. |
 | GET | `/api/v1/servers/{server}/audit?before=<id>&limit=50` | moderator | [`{"items": [AuditEntry]}`](#audit-log), newest first. |
 | PUT | `/api/v1/servers/{server}/assets/{kind}` | admin | Upload the server `icon`, `banner` or `splash` ([below](#server-images)). |
 | GET | `/api/v1/servers/{server}/assets/{kind}` | moderator | The image file declared in `spec.profile.<kind>` of the active revision (`404` when none), e.g. as a preview when the Discord CDN URL is unavailable. |
@@ -105,6 +128,23 @@ first:
 `plan` and `sync` failures (no bot, a Discord or reconcile error) answer `503 unavailable`, with
 the explained [error object](../#the-error-object) fields. Every sync is recorded in the audit
 log (`sync.apply`, details `{changes}`).
+
+### Pause and resume
+
+The emergency switch of a server (see
+[Emergency: pause enforcement](../../../concepts/reconciliation/#emergency-pause-enforcement)).
+While a server is paused, nothing is applied to it: not a new revision, the periodic
+resync, self-heal or a sync. Plans and drift are still computed.
+`PauseInfo = {"by", "byName"?, "at", "reason"?}`, with `by` in the audit `actor` form.
+
+- Pausing a paused server changes nothing (`changed: false`); resuming a server that is not
+  paused answers `resumed: false`. Resume applies nothing by itself.
+- A sync refused because of a pause answers `409`:
+  `{"error": {"code": "paused", "message": "enforcement is paused on server showcase by owner since …", "hint": "Resume enforcement first …"}}`.
+- Each pause and resume is recorded in the audit log (`enforcement.pause`,
+  `enforcement.resume`) and the sync history (`paused`, `resumed`), and sent on the
+  [events stream](../events/) (`status`, and `sync` with the server).
+- The pause is kept in the runtime's database: it survives restarts and new revisions.
 
 ### Resources
 
@@ -116,9 +156,9 @@ in YAML (it has a key); unmanaged resources have `key: ""`.
 
 ```json
 {
-  "roles":      [ { "key": "modo", "id": "…", "name": "Modo", "color": "#e67e22", "managed": true } ],
-  "categories": [ { "key": "community", "id": "…", "name": "Communauté", "managed": true } ],
-  "channels":   [ { "key": "general", "id": "…", "name": "général", "type": "text", "category": "community", "managed": true } ]
+  "roles":      [ { "key": "moderator", "id": "…", "name": "Moderator", "color": "#e67e22", "managed": true } ],
+  "categories": [ { "key": "community", "id": "…", "name": "Community", "managed": true } ],
+  "channels":   [ { "key": "general", "id": "…", "name": "general", "type": "text", "category": "community", "managed": true } ]
 }
 ```
 
@@ -128,17 +168,23 @@ Changes are in apply order; blocked operations are not applied (see
 [Reconciliation](../../../concepts/reconciliation/#blocked-changes-and-their-explanations)):
 
 ```json
-{ "server": "ma-commu",
+{ "server": "showcase",
   "changes": [
-    { "action": "create", "kind": "channel", "key": "general", "summary": "create text channel #général",
-      "fields": { "name": { "from": null, "to": "général" } } },
-    { "action": "update", "kind": "role", "key": "modo", "id": "…", "summary": "update role Modo",
-      "fields": { "color": { "from": "#000000", "to": "#e67e22" } } }
+    { "action": "update", "kind": "role", "key": "mod", "id": "1575125354564026369",
+      "summary": "update role \"Moderator\": color",
+      "fields": { "color": { "from": "#e67e22", "to": "#f1c40f" } } },
+    { "action": "create", "kind": "channel", "key": "help", "summary": "create forum channel #help in \"Community\"",
+      "fields": { "category": { "from": null, "to": "community" }, "name": { "from": null, "to": "help" },
+                  "type": { "from": null, "to": "forum" } } }
   ],
   "blocked": [
-    { "action": "delete", "kind": "role", "key": "old", "id": "…", "reason": "deletionProtection" },
-    { "action": "update", "kind": "channel", "key": "news", "id": "…", "reason": "type change: …",
-      "fields": { "type": { "from": "text", "to": "forum" } } }
+    { "action": "update", "kind": "server", "key": "showcase", "id": "223344556677889900",
+      "reason": "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
+      "fields": { "banner": { "from": null, "to": "./assets/banner.png" } },
+      "error": { "code": "boost_required", "message": "Banner requires boost level 2; server is level 0 (0 boost(s))",
+                 "hint": "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. Cicord applies it as soon as the level is reached.",
+                 "details": "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
+                 "resource": { "action": "update", "kind": "server", "key": "showcase" } } }
   ] }
 ```
 
@@ -166,12 +212,14 @@ Changes are in apply order; blocked operations are not applied (see
 `before` is the ID cursor of the next page; `limit` is at most 500.
 
 ```json
-{ "id": 12, "time": "…", "server": "ma-commu", "actor": "discord:1", "action": "config.update", "target": "moderator/welcome", "details": {} }
+{ "id": 1, "time": "2026-11-25T12:29:10.470788Z", "server": "showcase", "actor": "discord:1575125353398009856",
+  "action": "sync.apply", "target": "showcase", "details": { "changes": 0 } }
 ```
 
 `actor` is `"discord:<user id>"` or `"runtime-token"`; `details` is always an object. Actions
-include `sync.apply`, `server.asset`, `config.update`, `plugin.uninstall`, `store.install`,
-`plugin.update`, `registry.add`, `registry.remove` and `registry.token`.
+include `sync.apply`, `enforcement.pause`, `enforcement.resume`, `server.asset`,
+`config.update`, `plugin.uninstall`, `store.install`, `plugin.update`, `registry.add`,
+`registry.remove` and `registry.token`.
 
 ### Server images
 
@@ -191,9 +239,9 @@ bytes as body (any `Content-Type`: the bytes decide).
   pullRequestUrl}`).
 
 ```json
-{ "mode": "commit", "revision": "9a1b2c3", "pullRequestUrl": "",
-  "path": "servers/assets/ma-commu-banner.png", "value": "./assets/ma-commu-banner.png",
-  "format": "png", "width": 1920, "height": 1080,
+{ "mode": "commit", "revision": "local-0be1ea1", "pullRequestUrl": "",
+  "path": "servers/assets/showcase-icon.png", "value": "./assets/showcase-icon.png",
+  "format": "png", "width": 256, "height": 256,
   "warnings": [] }   // e.g. "the image is 300×100: Discord recommends a 16:9 image of at least 960×540"
 ```
 

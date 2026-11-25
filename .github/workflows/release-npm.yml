@@ -1,6 +1,7 @@
-# Publishes @cicord/sdk, @cicord/client, @cicord/react and @cicord/ui on npm (https://cicord.dev/docs/project/releasing/).
+# Publishes @cicord/sdk, @cicord/client, @cicord/react, @cicord/ui and the cicord binary as
+# @cicord/cli on npm (https://cicord.dev/docs/project/releasing/).
 #
-# - Tag push `v<version>` (e.g. v0.1.0, the same tag as release.yml): publishes; the four
+# - Tag push `v<version>` (e.g. v0.1.0, the same tag as release.yml): publishes; the five
 #   package.json versions must equal the tag version. A version with a -suffix
 #   (0.2.0-rc.1) is published under the dist-tag `next`, so `latest` never moves to it.
 # - Manual run (Actions → release-npm → Run workflow): a dry run by default (packs and runs
@@ -16,6 +17,14 @@
 # `workspace:*` verbatim), then each tarball is published with npm. Versions already on npm
 # are skipped, so a failed run can be re-run. create-cicord-portal and @cicord/admin are not
 # published.
+#
+# @cicord/cli (esbuild-style): one package per platform, @cicord/cli-<os>-<cpu> ("os"/"cpu"
+# fields, the binary in bin/), and @cicord/cli with a `cicord` shim and every platform package
+# as an optional dependency at the same version. The binaries are the ones of the GitHub
+# Release of the tag (release.yml), never rebuilt here: the job waits for its assets (bounded),
+# verifies checksums.txt and the build provenance attestation of every archive, then
+# packages/cli/scripts/build-platform-packages.mjs writes the packages. A manual dry run whose
+# version has no GitHub Release yet skips them.
 name: release-npm
 on:
   push:
@@ -37,9 +46,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: npm
+    # The wait for the release assets is bounded (45 minutes); the rest takes a few minutes.
+    timeout-minutes: 75
     permissions:
       contents: read
       id-token: write # npm trusted publishing (OIDC) and provenance
+      attestations: read # gh attestation verify of the release archives
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,16 +80,16 @@ jobs:
         run: |
           set -euo pipefail
           v=""
-          for p in sdk client react ui; do
+          for p in sdk client react ui cli; do
             pv=$(node -p "require('./packages/$p/package.json').version")
             if [ -n "$v" ] && [ "$pv" != "$v" ]; then
-              echo "::error::packages/$p is $pv, expected $v (the four packages are released together)"
+              echo "::error::packages/$p is $pv, expected $v (the five packages are released together)"
               exit 1
             fi
             v=$pv
           done
           if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$v" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not match the package version $v (expected v$v): bump packages/{sdk,client,react,ui}/package.json first"
+            echo "::error::tag ${GITHUB_REF_NAME} does not match the package version $v (expected v$v): bump packages/{sdk,client,react,ui,cli}/package.json first"
             exit 1
           fi
           tag=latest
@@ -113,6 +125,122 @@ jobs:
           for p in sdk client react ui; do
             name="@cicord/$p"
             # "./": without it npm reads out/<file> as a GitHub owner/repo shorthand.
+            tgz="./out/cicord-$p-$VERSION.tgz"
+            if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+              echo "$name@$VERSION is already published: skipped"
+              continue
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
+              npm publish "$tgz" --access public --tag "$DIST_TAG" --dry-run
+            else
+              npm publish "$tgz" --access public --tag "$DIST_TAG"
+            fi
+          done
+
+      # @cicord/cli: the binaries of the GitHub Release of this version (release.yml). Off until
+      # the repository variable CICORD_NPM_CLI is "true": npm only accepts a trusted publisher
+      # on a package that exists, so the packages are bootstrapped first (releasing docs, "New
+      # npm packages"); until then a release publishes the four SDK packages only.
+      - name: Release binaries (wait for the assets, verify checksums and attestations)
+        id: binaries
+        if: vars.CICORD_NPM_CLI == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          # <goos>_<goarch> of every platform package (packages/cli/platforms.json).
+          mapfile -t targets < <(node -p "Object.values(require('./packages/cli/platforms.json')).map((p) => p.goos + '_' + p.goarch).join('\\n')")
+          archives=()
+          for t in "${targets[@]}"; do
+            if [[ "$t" == windows_* ]]; then archives+=("cicord_${VERSION}_$t.zip"); else archives+=("cicord_${VERSION}_$t.tar.gz"); fi
+          done
+          assets=(checksums.txt "${archives[@]}")
+          # On a tag, release.yml creates the release after its build and image jobs: wait for
+          # it (90 × 30 s). A manual run only uses an existing release.
+          tries=1
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then tries=90; fi
+          for i in $(seq 1 "$tries"); do
+            have="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets \
+              -q 'select(.isDraft | not) | .assets[].name' 2>/dev/null || true)"
+            missing=()
+            for a in "${assets[@]}"; do
+              grep -qxF "$a" <<<"$have" || missing+=("$a")
+            done
+            if [ "${#missing[@]}" -eq 0 ]; then break; fi
+            if [ "$i" -eq "$tries" ]; then
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "::notice::no complete GitHub Release $tag (missing: ${missing[*]}): @cicord/cli is skipped by this dry run"
+                echo "ready=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo "::error::the GitHub Release $tag is missing ${missing[*]}: run release.yml for $tag first, then re-run this workflow"
+              exit 1
+            fi
+            echo "Waiting for the assets of the GitHub Release $tag (missing: ${missing[*]}), $i/$tries"
+            sleep 30
+          done
+
+          mkdir -p release bin
+          patterns=()
+          for a in "${assets[@]}"; do patterns+=(--pattern "$a"); done
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir release "${patterns[@]}"
+          cd release
+          for a in "${archives[@]}"; do
+            awk -v f="$a" '$2 == f { found = 1 } END { exit !found }' checksums.txt \
+              || { echo "::error::$a is not listed in checksums.txt"; exit 1; }
+          done
+          sha256sum --ignore-missing -c checksums.txt
+          for a in "${archives[@]}"; do
+            gh attestation verify "$a" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "refs/tags/$tag"
+          done
+
+          # bin/<goos>_<goarch>/cicord[.exe], as build-platform-packages.mjs expects them.
+          for t in "${targets[@]}"; do
+            mkdir -p "../bin/$t"
+            if [[ "$t" == windows_* ]]; then
+              unzip -j -o "cicord_${VERSION}_$t.zip" cicord.exe -d "../bin/$t"
+            else
+              tar -xzf "cicord_${VERSION}_$t.tar.gz" -C "../bin/$t" cicord
+            fi
+          done
+          got="$(../bin/linux_amd64/cicord version)"
+          echo "$got"
+          [[ "$got" == "cicord $VERSION ("* ]] || { echo "::error::the release binary is not cicord $VERSION"; exit 1; }
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Pack @cicord/cli and its platform packages
+        if: steps.binaries.outputs.ready == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          node packages/cli/scripts/build-platform-packages.mjs --version "$VERSION" --binaries bin --out out/cli
+          for d in out/cli/*/; do
+            (cd "$d" && npm pack --pack-destination ../..)
+          done
+          for f in out/cicord-cli-*.tgz; do
+            echo "── $f"
+            tar -tvzf "$f"
+          done
+
+      - name: Publish @cicord/cli (platform packages first)
+        if: steps.binaries.outputs.ready == 'true'
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: ${{ steps.version.outputs.dist-tag }}
+        run: |
+          set -euo pipefail
+          # The platform packages first: @cicord/cli's optional dependencies must exist when it
+          # becomes installable.
+          mapfile -t pkgs < <(node -p "Object.keys(require('./packages/cli/platforms.json')).map((k) => 'cli-' + k).join('\\n')")
+          for p in "${pkgs[@]}" cli; do
+            name="@cicord/$p"
             tgz="./out/cicord-$p-$VERSION.tgz"
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then
               echo "$name@$VERSION is already published: skipped"

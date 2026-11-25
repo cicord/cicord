@@ -1,9 +1,10 @@
 /** ⌘K / Ctrl+K: jump to a page, a server or a plugin instance; theme; log out. */
 import { useLogout } from "@cicord/react";
-import { LogOut, Moon, Search, Sun } from "lucide-react";
+import { CirclePause, CirclePlay, LogOut, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePlugins } from "../api.ts";
 import { PluginGlyph, ServerAvatar } from "../components/common.tsx";
+import { usePauseControls } from "../components/pause.tsx";
 import { StatusDot, syncTone } from "../components/status.tsx";
 import { Button } from "../components/ui/button.tsx";
 import {
@@ -70,7 +71,9 @@ export function CommandPalette({
   const ws = useWorkspace();
   const { theme, toggle } = useTheme();
   const logout = useLogout();
+  const pause = usePauseControls();
   const plugins = usePlugins(open ? ws.serverKey : undefined);
+  const staff = ws.role === "admin" || ws.role === "moderator";
   const go = (to: string) => {
     onOpenChange(false);
     navigate(to);
@@ -148,6 +151,31 @@ export function CommandPalette({
             ) : null}
             <CommandSeparator />
             <CommandGroup heading={t("palette.actions")}>
+              {ws.server && staff ? (
+                ws.server.paused ? (
+                  <CommandItem
+                    value="action resume enforcement unpause"
+                    onSelect={() => {
+                      onOpenChange(false);
+                      pause.openResume();
+                    }}
+                  >
+                    <CirclePlay />
+                    {t("palette.resume", { name: ws.server.name })}
+                  </CommandItem>
+                ) : (
+                  <CommandItem
+                    value="action pause enforcement emergency raid lock stop sync"
+                    onSelect={() => {
+                      onOpenChange(false);
+                      pause.openPause();
+                    }}
+                  >
+                    <CirclePause className="text-warning" />
+                    {t("palette.pause", { name: ws.server.name })}
+                  </CommandItem>
+                )
+              ) : null}
               <CommandItem
                 value="action theme toggle dark light"
                 onSelect={() => {

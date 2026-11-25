@@ -1,7 +1,7 @@
 {
   "name": "create-cicord-portal",
   "version": "0.1.6",
-  "description": "Reference Cicord community portal (React + Vite+), meant to be forked: `pnpm create cicord-portal my-portal`.",
+  "description": "Reference Cicord community portal (React + Vite+), meant to be forked. Not published on npm: scaffold it with `cicord portal init`.",
   "license": "Apache-2.0",
   "bin": {
     "create-cicord-portal": "./bin/create-cicord-portal.mjs"

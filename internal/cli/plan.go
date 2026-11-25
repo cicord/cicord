@@ -53,7 +53,8 @@ state database (--state, default .cicord/state.db; read only, never created).
 Enterprise), updating the previous Cicord comment instead of adding a new one.
 
 Symbols: + create, ~ update, - delete, > reorder, = adopt (existing resource with the
-same name), # stop managing (left in Discord), ! blocked (with the reason).
+same name), # stop managing (left in Discord), ! blocked (with the reason), ^ waits for
+a higher boost level (applied by itself once the server reaches it, not drift).
 
 Exit codes: 0 success, 1 error or invalid configuration, 2 changes pending (only with
 --detailed-exitcode).`,
@@ -285,7 +286,7 @@ resources by name on its next sync.
 
 Without a terminal, --yes is required.`,
 		Example: `  DISCORD_TOKEN_MODERATOR=… cicord apply
-  cicord apply --server ma-commu --yes
+  cicord apply --server my-community --yes
   cicord apply ./infra --state /var/lib/cicord/state.db`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

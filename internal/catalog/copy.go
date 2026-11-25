@@ -31,6 +31,8 @@ var released = map[string]map[string][]string{
 		"sha256-Vc5USPwpH2u+lnQSZpc7phHFxtp6xb5jmy/BFXbVPJ8=",
 		"sha256-IhSR6HcCZguQ2/K/IBs/QDYn80hXjSlOw9ylu8ySBT0=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-Qu8O4XciIsmOm++fjfDAgTVtduweA/ZZ0+tiv8jPG1c=", // lint fixes (oxlint, knip), lib ES2023
+	}, "0.1.1": {
+		"sha256-5XF4vJJotjSWOCOStlDuA5Dcfj/tFaSGQ9OZLKlsjxo=", // English DM, button and /welcome-stats reply; strict tsconfig like the registry
 	}},
 	"onboarding": {"0.1.0": {
 		"sha256-MKVQjq2L+jA2skWMdzZCUozF1n3y59TwnxOVjEPuqNg=",
@@ -41,6 +43,10 @@ var released = map[string]map[string][]string{
 		"sha256-L5+NgFlgHE/P0n5n8GyrW+DumWbmKl+n5jRpVWNrOP8=",
 		"sha256-UzOujz9ctRAfYIJ3JtqJCqRC3A6lgzhX35cCk0eW3Ao=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-/cNsyw6flhPR1uZWzMn9E8jhud2cSnwSbEfR/7x5J5Y=", // lint fixes (oxlint, knip), lib ES2023
+	}, "0.2.0": {
+		"sha256-M4KXV5edLR6OyUjOJnpOAIWTVZrIPjbfyAOJx9RYqAI=", // the registry's 0.2.0: member and staff portal routes, labels
+	}, "0.2.1": {
+		"sha256-WdDIfvxP78ZUa1AyWc9KNJxPgnq3xJZMBvx1zPtLNus=", // lint fixes (toSorted)
 	}},
 	"polls": {"0.1.0": {
 		"sha256-J2By/eEG8diCTxf6xekJyQyBzyn+qX9wskGmRmVptBs=",
@@ -70,6 +76,8 @@ var released = map[string]map[string][]string{
 		"sha256-LYyxabLe8FGcnQMgyAmsAnMbyPYicoJDvZSG7KHeiNY=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-Gs1W7MLFa0O9He5W6DMMOBInDtQQ01Ihel0V8qxXj/Q=", // lint fixes (oxlint, knip), lib ES2023
 		"sha256-8X7CpCN3vtquk22aCr4v8kMeLS2fRAGguYFsiBSrySo=", // channel.message()
+	}, "0.1.1": {
+		"sha256-nANu7psYPMYoORK1gMGvnZMvMjkdKRyAQvPFjNoAKRA=", // same code as 0.1.0 above (channel.message()), released under 0.1.1 to match the registry
 	}},
 	"audit-log": {"0.1.0": {
 		"sha256-CqUKC4C6sA9vNJBI0tClq77TpE8X7PgJGsq0Jyz1YjQ=",

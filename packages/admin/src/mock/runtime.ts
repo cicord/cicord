@@ -13,6 +13,7 @@ import type {
   Json,
   Message,
   MessageRow,
+  PauseInfo,
   Revision,
   SyncRecord,
   User,
@@ -36,6 +37,7 @@ import {
   schemas,
   SERVER_ID,
   SERVER_KEY,
+  SERVER_NAME,
   serverSpec,
   unmanagedChannels,
   unmanagedRoles,
@@ -47,7 +49,7 @@ import { createMockAnalytics, type MockAnalyticsVariant } from "./analytics.ts";
 
 // Discord user IDs of the mock plan's role holders (built here: literal "role/<id>" keys
 // look like secrets to the gitleaks pre-commit hook).
-const leaId = "112233445566778900";
+const leahId = "112233445566778900";
 const absentId = "998877665544332211";
 
 type Obj = { [key: string]: Json };
@@ -110,6 +112,8 @@ interface MockState {
    * of official plugins); the latest version is the one of the source. Absent: the latest.
    */
   versions?: Record<string, MockVersion>;
+  /** Enforcement paused on the server (POST /servers/{server}/pause), absent otherwise. */
+  paused?: PauseInfo;
 }
 
 interface MockVersion {
@@ -130,17 +134,16 @@ interface StoreInstall {
   instance: string;
 }
 
-const STORAGE = "cicord-admin:mock:v2";
+const STORAGE = "cicord-admin:mock:v3";
 
 const firstLine = (s: string) => s.split("\n")[0]!;
 
 /** What the runtime reports for an announcement channel on a server without Community. */
-const COMMUNITY_RAW =
-  'reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2, 4, 6, 13, 14, 15}."}]}}) (announcement channels require the Community feature: Server Settings → Enable Community, then sync again)';
+const COMMUNITY_RAW = `reconcile ${SERVER_KEY}: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2, 4, 6, 13, 14, 15}."}]}}) (announcement channels require the Community feature: set community.enabled: true in the server YAML and Cicord enables it; if it is set, enabling it failed or Community was turned off outside Cicord)`;
 const COMMUNITY_ERROR: HumanError = {
   code: "community_required",
   message: "Announcement and stage channels need the Community feature",
-  hint: "Enable Community in Discord (Server Settings → Enable Community), then sync again. Or change the channel type in the YAML.",
+  hint: "Declare community: {enabled: true, rulesChannel, updatesChannel} in the server YAML and Cicord enables Community at the next sync. If it is already declared, enabling it failed or it was turned off outside Cicord: check the sync history, or enable it in Discord (Server Settings → Enable Community), then sync again. Or change the channel type in the YAML.",
   details: COMMUNITY_RAW,
   discordCode: 50035,
   httpStatus: 400,
@@ -170,7 +173,7 @@ function seed(): MockState {
     id: "4f0c2d9",
     sha: "4f0c2d9e8b1a7c6d5e4f3a2b1c0d9e8f7a6b5c4d",
     message: "feat(onboarding): add the notifications step",
-    author: "Léa",
+    author: "Leah",
     time: ago(42),
     source: "git",
   };
@@ -184,14 +187,14 @@ function seed(): MockState {
     users: Object.values(users),
     members: [
       { userId: owner.id, nick: "", roles: ["r-admin"] },
-      { userId: users.mina.id, nick: "", roles: ["r-modo", "r-member"] },
-      { userId: bot.id, nick: "", roles: ["r-gardien"] },
+      { userId: users.mina.id, nick: "", roles: ["r-mod", "r-member"] },
+      { userId: bot.id, nick: "", roles: ["r-warden"] },
     ],
     messages: [
       message(
         bot,
         "ch-rules",
-        "**Bienvenue sur Ma Commu !**\n\n1. Sois bienveillant\n2. Pas de spam\n3. Les pings `@everyone` sont réservés au staff",
+        `**Welcome to ${SERVER_NAME}!**\n\n1. Be kind\n2. No spam\n3. \`@everyone\` pings are for staff only`,
         {
           createdAt: ago(60 * 24 * 3),
           id: "m-rules",
@@ -202,7 +205,7 @@ function seed(): MockState {
                 {
                   type: "button",
                   customId: "rules:accept",
-                  label: "J'accepte le règlement",
+                  label: "I accept the rules",
                   style: "success",
                   url: "",
                   emoji: "✅",
@@ -210,7 +213,7 @@ function seed(): MockState {
                 {
                   type: "button",
                   customId: "rules:more",
-                  label: "En savoir plus",
+                  label: "Learn more",
                   style: "secondary",
                   url: "",
                 },
@@ -219,7 +222,7 @@ function seed(): MockState {
           ],
         },
       ),
-      message(users.mina, "ch-general", "Hello tout le monde, soirée Valorant ce soir à 21h ?", {
+      message(users.mina, "ch-general", "Hey all, Valorant night tonight at 9pm? Who's in?", {
         createdAt: ago(30),
         id: "m-1",
       }),
@@ -311,7 +314,7 @@ function seed(): MockState {
         id: 5,
         time: ago(60 * 5),
         server: SERVER_KEY,
-        actor: "github:lea",
+        actor: "github:leah",
         action: "revision.reject",
         target: "a91e7c3",
         details: { reason: "invalid config" },
@@ -628,7 +631,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     const m = member(userId);
     if (!m) return null;
     if (m.roles.includes("r-admin")) return "admin";
-    if (m.roles.includes("r-modo")) return "moderator";
+    if (m.roles.includes("r-mod")) return "moderator";
     return "member";
   }
 
@@ -638,7 +641,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     const role = accessRole(user.id);
     return {
       user,
-      servers: role ? [{ key: SERVER_KEY, name: "Ma Commu", role }] : [],
+      servers: role ? [{ key: SERVER_KEY, name: SERVER_NAME, role }] : [],
     };
   };
 
@@ -725,8 +728,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
             kind: "channel",
             key: "general",
             field: "topic",
-            expected: "Discussions générales",
-            actual: "discussions random",
+            expected: "Chat about anything",
+            actual: "random stuff",
           },
           { kind: "role", key: "valorant", field: "color", expected: "#ff4655", actual: "#e91e63" },
         ]
@@ -734,7 +737,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
 
   const serverStatus = () => ({
     key: SERVER_KEY,
-    name: "Ma Commu",
+    name: SERVER_NAME,
     discordId: SERVER_ID,
     sync: state.drift ? "OutOfSync" : "Synced",
     health: state.failing ? "Degraded" : "Healthy",
@@ -749,6 +752,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     boostCount: 3,
     features: ["ANIMATED_ICON", "INVITE_SPLASH"],
     community: false,
+    ...(state.paused ? { paused: state.paused } : {}),
   });
 
   const plan = () => ({
@@ -759,8 +763,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
             action: "update",
             kind: "channel",
             key: "general",
-            summary: "update text channel #général",
-            fields: { topic: { from: "discussions random", to: "Discussions générales" } },
+            summary: "update text channel #general",
+            fields: { topic: { from: "random stuff", to: "Chat about anything" } },
           },
           {
             action: "update",
@@ -773,13 +777,13 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
             action: "reorder",
             kind: "channel",
             key: "community",
-            summary: "reorder 2 channels in Communauté",
+            summary: "reorder 2 channels in Community",
           },
           {
             action: "adopt",
             kind: "role",
             key: "ping-events",
-            summary: "adopt existing role Notifs événements",
+            summary: "adopt existing role Event Pings",
             fields: { mentionable: { from: false, to: true } },
           },
         ]
@@ -801,14 +805,14 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       {
         action: "update",
         kind: "memberRole",
-        key: `admin/${leaId}`,
-        id: leaId,
+        key: `admin/${leahId}`,
+        id: leahId,
         reason: 'hierarchy: role "Admin" is at or above the bot\'s highest role',
-        summary: 'give role "Admin" to @Léa (112233445566778900)',
+        summary: `give role "Admin" to @Leah (${leahId})`,
         error: {
           code: "hierarchy",
           message:
-            "Cannot give role “Admin” to @Léa: the role is at or above the bot's highest role",
+            "Cannot give role “Admin” to @Leah: the role is at or above the bot's highest role",
           hint: "Move the bot's role above Admin in Server settings → Roles.",
           details: 'hierarchy: role "Admin" is at or above the bot\'s highest role',
         },
@@ -816,13 +820,13 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       {
         action: "update",
         kind: "server",
-        key: "ma-commu",
+        key: SERVER_KEY,
         reason: "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
         fields: { banner: { from: null, to: "../assets/banner.png" } },
         error: {
           code: "boost_required",
           message: "Banner requires boost level 2; server is level 0 (0 boost(s))",
-          hint: "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. Cicord applies it as soon as the level is reached.",
+          hint: "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. Once the level is reached, Cicord applies it right away with syncPolicy.selfHeal; otherwise it shows as a pending change until the next revision or Sync now.",
           details: "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
         },
       },
@@ -830,8 +834,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     notes: [
       {
         kind: "memberRole",
-        key: `modo/${absentId}`,
-        message: `${absentId} is listed in roles.modo.members but is not a member of the server: they get the role when they join.`,
+        key: `mod/${absentId}`,
+        message: `${absentId} is listed in roles.mod.members but is not a member of the server: they get the role when they join.`,
       },
     ],
   });
@@ -847,7 +851,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     bots: [
       {
         key: "moderator",
-        username: "Gardien",
+        username: bot.username,
         userId: bot.id,
         health: "Healthy",
         message: "",
@@ -1020,6 +1024,72 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     });
   }
 
+  function serverRecord(recordStatus: SyncRecord["status"], text: string) {
+    state.history.unshift({
+      id: state.history.length + 1,
+      time: new Date().toISOString(),
+      revision: state.revision.id,
+      target: `server:${SERVER_KEY}`,
+      status: recordStatus,
+      message: text,
+    });
+  }
+
+  /** POST /servers/{server}/pause: nothing is applied until it is resumed. */
+  function pause(viewer: string, reason: string): Response {
+    if (state.paused) return json({ paused: state.paused, changed: false });
+    if (reason.length > 500)
+      return fail(400, "invalid", "the reason is longer than 500 characters");
+    const user = userById(viewer);
+    const info: PauseInfo = {
+      by: `discord:${viewer}`,
+      at: new Date().toISOString(),
+      ...(user ? { byName: user.displayName || user.username } : {}),
+      ...(reason.trim() ? { reason: reason.trim() } : {}),
+    };
+    state.paused = info;
+    serverRecord(
+      "paused",
+      `enforcement paused by ${info.byName ?? info.by}${info.reason ? `: ${info.reason}` : ""}`,
+    );
+    addAudit(info.by, "enforcement.pause", SERVER_KEY, { reason: info.reason ?? "" });
+    changed();
+    return json({ paused: info, changed: true });
+  }
+
+  /** Ends the pause; returns it (undefined when the server was not paused). */
+  function resume(viewer: string): PauseInfo | undefined {
+    const prev = state.paused;
+    if (!prev) return undefined;
+    delete state.paused;
+    const user = userById(viewer);
+    serverRecord(
+      "resumed",
+      `enforcement resumed by ${user?.displayName || user?.username || viewer} (paused by ${prev.byName ?? prev.by})`,
+    );
+    addAudit(`discord:${viewer}`, "enforcement.resume", SERVER_KEY, {
+      pausedBy: prev.by,
+      pausedAt: prev.at,
+      reason: prev.reason ?? "",
+    });
+    changed();
+    return prev;
+  }
+
+  function pausedError(): Response {
+    const p = state.paused!;
+    return json(
+      {
+        error: {
+          code: "paused",
+          message: `enforcement is paused on server ${SERVER_KEY} by ${p.byName ?? p.by} since ${p.at}${p.reason ? ` (${p.reason})` : ""}: nothing is applied until it is resumed`,
+          hint: `Resume enforcement first (POST /api/v1/servers/${SERVER_KEY}/resume, cicord resume ${SERVER_KEY}), or send {"resume": true} with this sync.`,
+        },
+      },
+      409,
+    );
+  }
+
   function addAudit(actor: string, action: string, target: string, details: Obj) {
     const id = Math.max(0, ...state.audit.map((a) => a.id)) + 1;
     state.audit.unshift({
@@ -1112,7 +1182,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
   // ───────────────────────────────────────────── simulated plugins
 
   const render = (template: string, memberMention: string) =>
-    template.replaceAll("{member}", memberMention).replaceAll("{server}", "Ma Commu");
+    template.replaceAll("{member}", memberMention).replaceAll("{server}", SERVER_NAME);
 
   function portalLink(path: string, userId: string) {
     return `${window.location.origin}${path}?cicord_token=mock-${userId}-${Date.now().toString(36)}`;
@@ -1134,7 +1204,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       const dm = message(
         bot,
         `dm-${userId}`,
-        "Bienvenue sur **Ma Commu** ! Choisis tes rôles en 30 secondes :",
+        `Welcome to **${SERVER_NAME}**! Pick your roles in 30 seconds:`,
         {
           components: [
             {
@@ -1143,7 +1213,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
                 {
                   type: "button",
                   customId: "",
-                  label: "Commencer",
+                  label: "Get started",
                   style: "link",
                   url: portalLink("/onboarding", userId),
                 },
@@ -1230,7 +1300,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         return json(result(reply(render(jsonText(cfg["message"]), `<@${target}>`))));
       }
       case "welcome-stats":
-        return json(result(reply(`${state.welcomed} membres accueillis.`)));
+        return json(result(reply(`${state.welcomed} members welcomed.`)));
       case "onboarding": {
         const cfg = configOf("onboarding");
         const row: MessageRow = {
@@ -1258,7 +1328,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     const customId = jsonText(body["customId"]);
     const channelId = jsonText(body["channelId"]);
     if (customId === "rules:accept") {
-      const m = message(bot, channelId, "Merci, bonne visite sur **Ma Commu** ! 🎉", {
+      const m = message(bot, channelId, `Thanks, enjoy your stay at **${SERVER_NAME}**! 🎉`, {
         ephemeral: true,
       });
       state.messages.push(m);
@@ -1266,10 +1336,10 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       return json(result(m));
     }
     if (customId === "rules:more") {
-      const m = message(bot, channelId, "Le règlement complet est épinglé dans <#ch-rules>.", {
+      const m = message(bot, channelId, "The full rules are pinned in <#ch-rules>.", {
         ephemeral: true,
       });
-      const follow = message(bot, channelId, "Une question ? Ping un <@&r-modo>.", {
+      const follow = message(bot, channelId, "Got a question? Ping a <@&r-mod>.", {
         ephemeral: true,
       });
       state.messages.push(m, follow);
@@ -1292,7 +1362,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       {
         id: SERVER_ID,
         key: SERVER_KEY,
-        name: "Ma Commu",
+        name: SERVER_NAME,
         ownerId: users.owner.id,
         channels: [
           ...categories.map((c, i) => ({ id: c.id, name: c.name, type: "category", position: i })),
@@ -1548,7 +1618,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (missing.length)
       return explained(409, {
         code: "intents",
-        message: `${p.displayName} needs a privileged intent that is turned off. ${missing.join(", ")} is off for Gardien`,
+        message: `${p.displayName} needs a privileged intent that is turned off. ${missing.join(", ")} is off for ${bot.username}`,
         hint: "Turn it on in the Discord developer portal (Bot → Privileged Gateway Intents), save, then update again.",
         link: "https://discord.com/developers/applications/900/bot",
       });
@@ -1784,7 +1854,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (missing.length)
       return explained(409, {
         code: "intents",
-        message: `${p.displayName} needs the ${missing.join(", ")} privileged intent, which is off for Gardien`,
+        message: `${p.displayName} needs the ${missing.join(", ")} privileged intent, which is off for ${bot.username}`,
         hint: "Turn it on in the Discord developer portal (Bot → Privileged Gateway Intents), save, then install again.",
         link: "https://discord.com/developers/applications/900/bot",
       });
@@ -2039,13 +2109,17 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
               ranAt: new Date().toISOString(),
               ok: false,
               checks: [
-                { id: "token", status: "ok", message: "Connected as Gardien." },
+                { id: "token", status: "ok", message: `Connected as ${bot.username}.` },
                 {
                   id: "intents",
                   status: "ok",
                   message: "The privileged intents Cicord uses are enabled.",
                 },
-                { id: "member", status: "ok", message: "Gardien is a member of Ma Commu." },
+                {
+                  id: "member",
+                  status: "ok",
+                  message: `${bot.username} is a member of ${SERVER_NAME}.`,
+                },
                 {
                   id: "permissions",
                   status: "ok",
@@ -2054,7 +2128,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
                 {
                   id: "hierarchy",
                   status: "ok",
-                  message: "The role “Gardien” is above every role Cicord manages.",
+                  message: `The role “${bot.username}” is above every role Cicord manages.`,
                 },
                 { id: "commands", status: "ok", message: "2 slash command(s) registered." },
                 {
@@ -2078,8 +2152,25 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
             }),
           true,
         );
+      if (method === "GET" && rest === "/pause")
+        // moderators get the plan only while paused (the plan endpoint is admin-only)
+        return staff((v) =>
+          json({
+            paused: state.paused ?? null,
+            plan: state.paused || accessRole(v) === "admin" ? plan() : null,
+          }),
+        );
+      if (method === "POST" && rest === "/pause")
+        return staff((v) => pause(v, jsonText(body["reason"])));
+      if (method === "POST" && rest === "/resume")
+        return staff((v) => {
+          const prev = resume(v);
+          return json(prev ? { resumed: true, pause: prev } : { resumed: false });
+        });
       if (method === "POST" && rest === "/sync")
         return staff((v) => {
+          if (state.paused && body["resume"] !== true) return pausedError();
+          if (body["resume"] === true) resume(v);
           const p = plan();
           const applied = p.changes.length;
           state.drift = false;

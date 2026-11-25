@@ -182,6 +182,45 @@ export interface ServerStatus {
   features?: string[];
   /** The `COMMUNITY` feature is enabled. */
   community?: boolean;
+  /**
+   * Set while enforcement is paused on the server (emergency switch): nothing is applied
+   * to it. `sync` still reports the drift from git.
+   */
+  paused?: PauseInfo;
+}
+
+/** Who paused enforcement on a server, when and why. */
+export interface PauseInfo {
+  /** Actor: `discord:<user id>` or `runtime-token`. */
+  by: string;
+  /** Display name of the Discord user, when known. */
+  byName?: string;
+  at: Timestamp;
+  reason?: string;
+}
+
+/** `GET /servers/{server}/pause`: the pause, and the plan that resuming lets apply. */
+export interface PauseState {
+  /** `null` when the server is not paused. */
+  paused: PauseInfo | null;
+  /** The pending plan; `null` when it cannot be computed (`planError` says why). */
+  plan: Plan | null;
+  planError?: string;
+}
+
+/** `POST /servers/{server}/pause`. */
+export interface PauseResult {
+  paused: PauseInfo;
+  /** `false` when the server was already paused (nothing changed). */
+  changed: boolean;
+}
+
+/** `POST /servers/{server}/resume`. */
+export interface ResumeResult {
+  /** `false` when the server was not paused. */
+  resumed: boolean;
+  /** The pause that ended. */
+  pause?: PauseInfo;
 }
 
 /** Server images editable from the admin UI (`PUT /servers/{server}/assets/{kind}`). */
@@ -193,9 +232,9 @@ export interface ServerAssetResult {
   mode: "commit" | "pullRequest" | (string & {});
   revision: string;
   pullRequestUrl: string;
-  /** Repository path of the written file, e.g. `servers/assets/ma-commu-icon.png`. */
+  /** Repository path of the written file, e.g. `servers/assets/my-community-icon.png`. */
   path: string;
-  /** Value set in `spec.profile.<kind>`, e.g. `./assets/ma-commu-icon.png`. */
+  /** Value set in `spec.profile.<kind>`, e.g. `./assets/my-community-icon.png`. */
   value: string;
   format: "png" | "jpeg" | "gif" | "webp" | (string & {});
   width: number;
@@ -239,7 +278,17 @@ export interface RuntimeStatus {
   bots: BotStatus[];
 }
 
-export type SyncRecordStatus = "succeeded" | "failed" | "rejected";
+/**
+ * `paused` / `resumed`: enforcement was paused / resumed on the server; `skipped`: a
+ * revision was not applied to a paused server.
+ */
+export type SyncRecordStatus =
+  | "succeeded"
+  | "failed"
+  | "rejected"
+  | "paused"
+  | "resumed"
+  | "skipped";
 
 export interface SyncRecord {
   id: number;

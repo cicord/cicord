@@ -150,6 +150,10 @@ export class QueryCache {
       entry.promise = undefined;
       if (entry.listeners.size > 0 && entry.fn) {
         pending.push(this.fetch(key, entry.fn, { force: true }).catch(() => undefined));
+      } else if (entry.listeners.size > 0) {
+        // Observed but never fetched here (a disabled query): keep the entry and its
+        // listeners, drop the stale data, and tell them so they fetch again when enabled.
+        this.#set(entry, IDLE);
       } else {
         this.#entries.delete(hash);
       }

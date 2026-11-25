@@ -14,8 +14,8 @@ func accessEnv(owner string) func(*Env) {
 	return func(env *Env) {
 		r := newFakeResolver()
 		r.roles["10"] = discord.Role{ID: "10", Name: "@everyone", Permissions: discord.MustPermissions("ViewChannel", "SendMessages")}
-		r.roles["200"] = discord.Role{ID: "200", Name: "Membre", Position: 1, Mentionable: true}
-		r.roles["201"] = discord.Role{ID: "201", Name: "Modo", Position: 5, Permissions: discord.MustPermissions("ModerateMembers", "KickMembers")}
+		r.roles["200"] = discord.Role{ID: "200", Name: "Member", Position: 1, Mentionable: true}
+		r.roles["201"] = discord.Role{ID: "201", Name: "Moderator", Position: 5, Permissions: discord.MustPermissions("ModerateMembers", "KickMembers")}
 		r.roles["202"] = discord.Role{ID: "202", Name: "Admin", Position: 9, Permissions: discord.MustPermissions("Administrator")}
 		env.Resolver = r
 		env.OwnerID = func() string { return owner }

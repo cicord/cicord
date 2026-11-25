@@ -78,10 +78,17 @@ func startExample(t *testing.T) *env {
 // startExampleWith is startExample with a hook run on the world before the runtime starts.
 func startExampleWith(t *testing.T, prepare func(w *sim.World, appID string)) *env {
 	t.Helper()
+	return startExampleResync(t, prepare, nil, -1)
+}
+
+// startExampleResync is startExampleWith with an edit of the copied repository before the
+// runtime starts and a periodic resync interval (negative: none).
+func startExampleResync(t *testing.T, prepare func(w *sim.World, appID string), edit func(dir string), resync time.Duration) *env {
+	t.Helper()
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
-	srv := w.CreateServer("Ma Commu", owner.ID)
-	token, bot, appID := w.CreateBot("Gardien")
+	srv := w.CreateServer("My Community", owner.ID)
+	token, bot, appID := w.CreateBot("Warden")
 	if prepare != nil {
 		prepare(w, appID)
 	}
@@ -91,8 +98,11 @@ func startExampleWith(t *testing.T, prepare func(w *sim.World, appID string)) *e
 
 	dir := t.TempDir()
 	copyTree(t, "../../examples/basic", dir)
-	replaceIn(t, filepath.Join(dir, "servers/ma-commu.yaml"), `discordId: "112233445566778899"`, `discordId: "`+srv.ID+`"`)
+	replaceIn(t, filepath.Join(dir, "servers/my-community.yaml"), `discordId: "112233445566778899"`, `discordId: "`+srv.ID+`"`)
 	replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), `applicationId: "998877665544332211"`, `applicationId: "`+appID+`"`)
+	if edit != nil {
+		edit(dir)
+	}
 
 	src, err := source.NewLocal(dir, t.TempDir())
 	if err != nil {
@@ -111,7 +121,7 @@ func startExampleWith(t *testing.T, prepare func(w *sim.World, appID string)) *e
 	rt := New(Options{
 		Source: src, Connector: w, Store: store, Mode: "dev", Simulator: true,
 		Secrets:   func(n string) (string, bool) { return token, n == "DISCORD_TOKEN_MODERATOR" },
-		PortalURL: "http://localhost:7420", Logger: logger, ResyncInterval: -1,
+		PortalURL: "http://localhost:7420", Logger: logger, ResyncInterval: resync,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -154,13 +164,13 @@ func TestExampleEndToEnd(t *testing.T) {
 	}
 
 	// The reconciler created the declared channels and roles.
-	general, ok := w.ChannelByName(e.serverID, "général")
+	general, ok := w.ChannelByName(e.serverID, "general")
 	if !ok {
-		t.Fatalf("channel général not created: %+v", w.Channels(e.serverID))
+		t.Fatalf("channel general not created: %+v", w.Channels(e.serverID))
 	}
-	memberRole, ok := w.RoleByName(e.serverID, "Membre")
+	memberRole, ok := w.RoleByName(e.serverID, "Member")
 	if !ok {
-		t.Fatal("role Membre not created")
+		t.Fatal("role Member not created")
 	}
 	// Slash commands of both plugins were registered.
 	names := map[string]bool{}
@@ -178,7 +188,7 @@ func TestExampleEndToEnd(t *testing.T) {
 	}
 	e.waitFor("welcome message", func() bool {
 		for _, m := range w.Messages(general.ID) {
-			if strings.Contains(m.Content, "<@"+alice.ID+">") && strings.HasPrefix(m.Content, "Salut") {
+			if strings.Contains(m.Content, "<@"+alice.ID+">") && strings.HasPrefix(m.Content, "Hi ") {
 				return true
 			}
 		}
@@ -225,7 +235,7 @@ func TestExampleEndToEnd(t *testing.T) {
 
 	// Portal route of the onboarding plugin.
 	m, _ := w.Member(e.serverID, alice.ID)
-	resp, route, err := e.rt.HandleRoute(context.Background(), "ma-commu", "moderator", "onboarding", "GET", "/steps",
+	resp, route, err := e.rt.HandleRoute(context.Background(), "my-community", "moderator", "onboarding", "GET", "/steps",
 		plugin.RouteRequest{Viewer: &plugin.RouteViewer{User: alice, Member: &m}})
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +251,7 @@ func TestExampleEndToEnd(t *testing.T) {
 
 	// Hot reload: edit the config; the new revision is activated without reconnecting.
 	rev1, _ := e.rt.Revision()
-	replaceIn(t, filepath.Join(e.dir, "bots/moderator/bot.yaml"), "Salut {member}", "Yo {member}")
+	replaceIn(t, filepath.Join(e.dir, "bots/moderator/bot.yaml"), "Hi {member}", "Yo {member}")
 	e.waitFor("new revision", func() bool { r, _ := e.rt.Revision(); return r.SHA != rev1.SHA })
 	bob := w.CreateUser("bob")
 	if err := w.AddMember(e.serverID, bob.ID); err != nil {

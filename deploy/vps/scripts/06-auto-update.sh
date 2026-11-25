@@ -2,8 +2,9 @@
 # 06-auto-update.sh — automatic updates of the Cicord runtime to new releases (idempotent).
 # Run as root: sudo sh 06-auto-update.sh
 #
-# Installs /usr/local/sbin/cicord-update and a systemd timer (daily, around 05:30 UTC: after
-# the 03:30 backup and the 04:00 unattended-upgrades reboot window). Each run:
+# Installs /usr/local/sbin/cicord-update (bin/cicord-update, with lib/cicord-ops.sh as
+# /usr/local/lib/cicord/ops.sh) and a systemd timer (daily, around 05:30 UTC: after the 03:30
+# backup and the 04:00 unattended-upgrades reboot window). Each run:
 #   1. reads the running image from /opt/cicord/.env (CICORD_IMAGE); an image that is not a
 #      release of ghcr.io/cicord/cicord (a build from source) is left alone;
 #   2. asks GitHub for the latest release of cicord/cicord and applies CICORD_AUTO_UPDATE:
@@ -20,15 +21,27 @@
 #                               and no permissions. Without it, updates are refused.
 #        digest                 the release notes' digest only (weaker: trusts the release
 #                               text, not a signature)
-#      and pulls the image BY THAT DIGEST, so what runs is byte for byte what was verified;
-#   4. backs up (cicord-backup.service), switches CICORD_IMAGE to <image>:<version>@<digest>,
-#      restarts the runtime and waits for it to be healthy; otherwise it puts the previous
-#      image back (a patch release does not change data formats; a backup is there anyway).
+#   4. checks that the running version passes the service check (below): if it does not
+#      (a degraded plugin, a paused server…), the update waits, so that a new version is
+#      never rolled back for a problem it did not cause;
+#   5. pulls the image BY THAT DIGEST, backs up (cicord-backup.service: a failed backup
+#      stops the update), stops the runtime and copies cicord.db, switches CICORD_IMAGE to
+#      <image>:<version>@<digest> and starts it;
+#   6. keeps it only if the Docker health check passes within 3 minutes AND the service
+#      check passes within 5 (CICORD_UPDATE_CHECK=service, the default; `health` skips it):
+#      `cicord healthcheck --service` inside the container, i.e. `cicord status --wait`
+#      with the runtime token: the active revision is loaded, every server is Synced (boost
+#      waits are fine) and not paused, every bot and plugin instance is Healthy. A runtime
+#      token is stored when there is none (a random one, used by the check only);
+#   7. otherwise rolls back to the previous image digest; if the new version migrated the
+#      database (schema_migrations changed), the copy of step 5 is restored first (an older
+#      binary refuses a newer schema; what the new version wrote is lost), and an alert is
+#      sent through the runtime's alert webhook.
 # Logs: journalctl -t cicord-update. Run it now: sudo systemctl start cicord-update.service
 set -eu
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
-apt-get -y -q install curl jq >/dev/null
+apt-get -y -q install curl jq sqlite3 >/dev/null
 # GitHub CLI from GitHub's apt repository (gh attestation verify).
 if ! command -v gh >/dev/null; then
   install -d -m 0755 /etc/apt/keyrings
@@ -40,100 +53,10 @@ if ! command -v gh >/dev/null; then
 fi
 install -d -m 0700 /etc/cicord
 
-cat > /usr/local/sbin/cicord-update <<'EOF'
-#!/bin/sh
-set -eu
-DIR=/opt/cicord
-ENV="$DIR/.env"
-REPO=cicord/cicord
-IMAGE=ghcr.io/cicord/cicord
-log() { logger -t cicord-update -- "$*"; echo "$*"; }
-compose() { docker compose --project-directory "$DIR" -f "$DIR/compose.yaml" --env-file "$ENV" "$@"; }
-setenv() { # setenv NAME VALUE: replace the line in .env, keeping its mode (0600)
-  tmp="$(mktemp "$DIR/.env.XXXXXX")"
-  sed "s|^$1=.*|$1=$2|" "$ENV" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$ENV"
-}
-healthy() { # wait up to 3 minutes for the container's health check
-  i=0
-  while [ $i -lt 36 ]; do
-    [ "$(docker inspect -f '{{.State.Health.Status}}' cicord 2>/dev/null)" = healthy ] && return 0
-    sleep 5; i=$((i + 1))
-  done
-  return 1
-}
-
-policy="$(sed -n 's/^CICORD_AUTO_UPDATE=//p' "$ENV")"; policy="${policy:-patch}"
-verify="$(sed -n 's/^CICORD_UPDATE_VERIFY=//p' "$ENV")"; verify="${verify:-attestation}"
-current="$(sed -n 's/^CICORD_IMAGE=//p' "$ENV")"
-case "$current" in
-  "$IMAGE":*) ;;
-  *) log "CICORD_IMAGE=$current is not a release image of $IMAGE: nothing to do"; exit 0 ;;
-esac
-cur="${current#"$IMAGE":}"; cur="${cur%%@*}"
-
-json="$(curl -fsS --max-time 30 -H 'Accept: application/vnd.github+json' \
-  "https://api.github.com/repos/$REPO/releases/latest")"
-tag="$(printf '%s' "$json" | jq -r '.tag_name // empty')"
-new="${tag#v}"
-echo "$new" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { log "latest release '$tag' is not a version: skipped"; exit 0; }
-[ "$new" != "$cur" ] || { log "up to date ($cur)"; exit 0; }
-# $new is x.y.z; a pre-release precedes its release (0.2.0-rc.1 < 0.2.0), which sort -V
-# gets wrong, so the comparison uses the x.y.z of $cur.
-curcore="${cur%%-*}"
-[ "$curcore" = "$new" ] || [ "$(printf '%s\n%s\n' "$curcore" "$new" | sort -V | tail -1)" = "$new" ] ||
-  { log "running $cur, newer than the latest release $new"; exit 0; }
-
-cmaj="${cur%%.*}"; cmin="$(echo "$cur" | cut -d. -f2)"
-nmaj="${new%%.*}"; nmin="$(echo "$new" | cut -d. -f2)"
-allowed=no
-case "$policy" in
-  patch) [ "$cmaj.$cmin" = "$nmaj.$nmin" ] && allowed=yes ;;
-  minor) [ "$cmaj" = "$nmaj" ] && allowed=yes ;;
-  off) ;;
-  *) log "unknown CICORD_AUTO_UPDATE=$policy (patch, minor or off)"; exit 1 ;;
-esac
-if [ "$allowed" != yes ]; then
-  log "Cicord $new is available (running $cur); CICORD_AUTO_UPDATE=$policy does not apply it: read https://github.com/$REPO/releases/tag/$tag and https://cicord.dev/docs/self-hosting/upgrading/"
-  exit 0
-fi
-
-author="$(printf '%s' "$json" | jq -r '.author.login // empty')"
-[ "$author" = "github-actions[bot]" ] || { log "release $tag was not created by the release workflow (author '$author'): refused"; exit 1; }
-digest="$(printf '%s' "$json" | jq -r '.body // empty' | grep -oE "$IMAGE@sha256:[0-9a-f]{64}" | head -1 | cut -d@ -f2)"
-[ -n "$digest" ] || { log "release $tag gives no image digest: refused"; exit 1; }
-case "$verify" in
-  attestation)
-    if [ ! -s /etc/cicord/github-token ] || ! command -v gh >/dev/null; then
-      log "Cicord $new is available, but its provenance cannot be verified: put a GitHub token in /etc/cicord/github-token (see https://cicord.dev/docs/self-hosting/production-vps/#9-updates)"
-      exit 1
-    fi
-    if ! out="$(GH_TOKEN="$(cat /etc/cicord/github-token)" GH_PROMPT_DISABLED=1 gh attestation verify "oci://$IMAGE@$digest" \
-      --repo "$REPO" --signer-workflow "$REPO/.github/workflows/release.yml" --source-ref "refs/tags/$tag" 2>&1)"; then
-      # gh's last line says why (no attestation, wrong workflow or ref, or a refused token).
-      log "release $tag: the build provenance of $IMAGE@$digest could not be verified, refused: $(printf '%s' "$out" | grep -v '^\s*$' | tail -1)"
-      exit 1
-    fi ;;
-  digest) log "CICORD_UPDATE_VERIFY=digest: provenance not verified, trusting the release notes" ;;
-  *) log "unknown CICORD_UPDATE_VERIFY=$verify (attestation or digest)"; exit 1 ;;
-esac
-
-log "updating Cicord $cur → $new ($IMAGE@$digest, verified: $verify)"
-docker pull -q "$IMAGE@$digest" >/dev/null
-systemctl start cicord-backup.service
-setenv CICORD_IMAGE "$IMAGE:$new@$digest"
-compose up -d cicord >/dev/null 2>&1 || true   # a failed start is caught by the health check
-if healthy; then
-  log "Cicord $new is running"
-  docker image prune -f >/dev/null 2>&1 || true
-  exit 0
-fi
-log "Cicord $new is not healthy: rolling back to $current"
-setenv CICORD_IMAGE "$current"
-compose up -d cicord >/dev/null 2>&1 || true
-if healthy; then log "rolled back to $cur"; else log "rollback to $cur is not healthy either: check the server"; fi
-exit 1
-EOF
-chmod 700 /usr/local/sbin/cicord-update
+HERE="$(cd "$(dirname "$0")" && pwd)"
+install -d -m 0755 /usr/local/lib/cicord
+install -m 0644 "$HERE/lib/cicord-ops.sh" /usr/local/lib/cicord/ops.sh
+install -m 0700 "$HERE/bin/cicord-update" /usr/local/sbin/cicord-update
 
 cat > /etc/systemd/system/cicord-update.service <<'EOF'
 [Unit]

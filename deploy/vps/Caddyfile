@@ -33,7 +33,9 @@
 	respond @private 404
 
 	reverse_proxy cicord:7420 {
-		# Server-sent events and long plans.
+		# Bounds on reading from and writing to the runtime. The longest public request is a
+		# CI plan (POST /api/v1/plan: the repository upload, then a plan of every server
+		# against Discord). No event stream is public: /api/v1/events is a 404 above.
 		transport http {
 			read_timeout 5m
 			write_timeout 5m

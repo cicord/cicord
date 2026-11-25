@@ -66,7 +66,7 @@ test("/hello replies with the default greeting", async () => {
 });
 ```
 
-This is the test `cicord plugin new` writes. Run it from the plugin directory:
+This is the first test `cicord plugin new` writes. Run it from the plugin directory:
 
 ```sh
 npm install && npm test      # or: pnpm install && pnpm test
@@ -78,32 +78,43 @@ extensions on relative imports, `import type` for types, no `enum` or `namespace
 `node:assert` where the examples below use `expect`; the rest applies as is. Prefer Vitest?
 `npm i -D vitest` and replace the test script with `vitest run`.
 
-The same harness with Vitest, adapted from the official
-[`onboarding.test.ts`](https://github.com/cicord/cicord/blob/main/examples/basic/plugins/onboarding/test/onboarding.test.ts)
-(the examples of the Cicord repository import `vite-plus/test`, Vitest's API):
+The same harness with Vitest, from the official
+[`onboarding.test.ts`](https://github.com/cicord/cicord-plugins/blob/main/plugins/onboarding/test/onboarding.test.ts)
+(shortened; the plugins import `vite-plus/test`, Vitest's API):
 
 ```ts
-import { callRoute, createTestContext, runCommand } from "@cicord/sdk/testing";
+import { callRoute, createTestContext } from "@cicord/sdk/testing";
 import { expect, test } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
 
-const t = createTestContext({
-  config,
-  schema, // the runtime's defaults (steps[].multiple…)
-  grants: ["discord.roles.assign", "storage.kv", "portal.routes", "portal.links"],
-  roles: { pc: { name: "PC" }, member: { name: "Membre" } },
-  members: [{ id: "1", username: "alice", roles: ["pc"] }],
+const config = {
+  steps: [{ id: "platform", title: "Platform", required: true, options: [{ role: "pc" }, { role: "console" }] }],
+  completedRole: "member",
+};
+
+function setup(memberRoles: string[] = []) {
+  return createTestContext({
+    config,
+    schema, // applies the config defaults like the runtime (e.g. steps[].multiple)
+    grants: ["discord.roles.assign", "storage.kv", "portal.routes", "portal.links"],
+    roles: { member: { name: "Member" }, pc: { name: "PC" }, console: { name: "Console" } },
+    members: [{ id: "1", username: "alice", roles: memberRoles }],
+  });
+}
+
+test("GET /steps requires a member", async () => {
+  expect((await callRoute(plugin, setup(), "GET /steps")).status).toBe(401);
+  expect((await callRoute(plugin, setup(), "GET /steps", { viewer: "999" })).status).toBe(403);
 });
 
-test("GET /steps", async () => {
-  const res = await callRoute(plugin, t, "GET /steps", { viewer: "1" });
-  expect(res.status).toBe(200);
-});
-
-test("/onboarding replies with a link", async () => {
-  const r = await runCommand(plugin, t, "onboarding", { user: "1" });
-  expect(r.replies).toHaveLength(1);
+test("POST /complete adds the picked roles", async () => {
+  const t = setup(["console"]);
+  const res = await callRoute(plugin, t, "POST /complete", {
+    viewer: "1",
+    body: { answers: { platform: ["pc"] } },
+  });
+  expect(res.body).toMatchObject({ completed: true, added: ["pc", "member"], removed: ["console"] });
 });
 ```
 
@@ -173,8 +184,17 @@ requested capability and one instance of the plugin, then runs a short script: a
 invoked once. Messages, DMs and replies are printed.
 
 ```sh
+# in a checkout of cicord/cicord-plugins
 cicord plugin test plugins/welcome
 cicord plugin test plugins/onboarding --config plugins/onboarding/test/config.yaml
+```
+
+```text
+Starting the plugin on the simulator…
+ok   instance onboarding started
+ok   commands registered: /onboarding
+ok   /onboarding: "Pick your roles on the community portal:" [button "Open onboarding"] (ephemeral)
+PASS
 ```
 
 The test fails when the plugin does not build, its config does not validate, the instance

@@ -1,6 +1,11 @@
 import type { HumanError, SyncRecord } from "@cicord/client";
 import { errorOf } from "./errors.ts";
 
+/** failed and rejected records report a failure; the others (succeeded, paused…) events. */
+function isFailureStatus(status: SyncRecord["status"]): boolean {
+  return status === "failed" || status === "rejected";
+}
+
 /** Consecutive identical history records, newest first. */
 export interface HistoryGroup {
   /** Stable React key (id of the newest record). */
@@ -19,7 +24,7 @@ export interface HistoryGroup {
 }
 
 function signature(r: SyncRecord): string {
-  if (r.status === "succeeded") return `ok:${r.message}`;
+  if (!isFailureStatus(r.status)) return `ok:${r.message}`;
   const e = r.error;
   return e ? `${e.code}:${e.message}` : `raw:${r.message}`;
 }
@@ -54,7 +59,7 @@ export function groupHistory(records: readonly SyncRecord[]): HistoryGroup[] {
       records: [r],
       count: 1,
       revisions: r.revision ? [r.revision] : [],
-      error: r.status === "succeeded" ? null : errorOf(r),
+      error: isFailureStatus(r.status) ? errorOf(r) : null,
     };
     open.set(r.target, { sig, group });
     groups.push(group);
@@ -62,7 +67,7 @@ export function groupHistory(records: readonly SyncRecord[]): HistoryGroup[] {
   return groups;
 }
 
-/** "server:ma-commu" → { kind: "server", key: "ma-commu" }. */
+/** "server:pixel-haven" → { kind: "server", key: "pixel-haven" }. */
 export function parseTarget(target: string): {
   kind: "server" | "bot" | "revision" | "other";
   key: string;

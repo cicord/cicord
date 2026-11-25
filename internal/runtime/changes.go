@@ -9,7 +9,8 @@ import (
 const (
 	// ChangeStatus: the runtime status (revision, bots, servers' health, last error).
 	ChangeStatus = "status"
-	// ChangeSync: a sync record (history, a server's sync state and drift).
+	// ChangeSync: a sync record (history, a server's sync state and drift), or drift seen in a
+	// gateway event (with the server: its sync state, plan, resources and drift).
 	ChangeSync = "sync"
 	// ChangePlugins: a plugin instance's health (crash, restart).
 	ChangePlugins = "plugins"

@@ -113,7 +113,7 @@ of them at once:
 `POST /api/v1/servers/{server}/store/install` request:
 
 ```json
-{ "source": "acme", "plugin": "xp", "bot"?: "gardien", "instance"?: "xp", "config"?: {…},
+{ "source": "acme", "plugin": "xp", "bot"?: "moderator", "instance"?: "xp", "config"?: {…},
   "version"?: "1.2.0", "commit"?: "<sha>", "integrity"?: "sha256-…", "confirmUnofficial"?: false }
 ```
 
@@ -152,7 +152,7 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
   "instances": [{ "server", "bot", "instance", "range"?: "^1.0.0", "newRange"?: "^2.0.0",
                   "grantsAdded": [], "grantsRemoved": [], "diagnostics": [Diagnostic] }],
   "files"?: { "changed": [], "added": [], "removed": [] },   // bundled copies (plugin-relative)
-  "modified": false, "repoChanged": false, "servers": ["ma-commu"], "configValid": true,
+  "modified": false, "repoChanged": false, "servers": ["my-community"], "configValid": true,
   "missingAdmin": [], "restricted": [{ "server", "instances": 2 }] }
 ```
 

@@ -174,7 +174,9 @@ func classify(h *HumanError, raw, text, discordMsg string) {
 		} else {
 			h.Message = "This setting needs the Community feature"
 		}
-		h.Hint = "Enable Community in Discord (Server Settings → Enable Community), then sync again. Or change the channel type in the YAML."
+		h.Hint = "Declare community: {enabled: true, rulesChannel, updatesChannel} in the server YAML and Cicord enables Community at the next sync. " +
+			"If it is already declared, enabling it failed or it was turned off outside Cicord: check the sync history, or enable it in Discord " +
+			"(Server Settings → Enable Community), then sync again. Or change the channel type in the YAML."
 
 	case reIntents.MatchString(text) || strings.Contains(lower, "privileged intents") || strings.Contains(lower, "disallowed intents"):
 		h.Code = ErrCodeIntentsDisallowed
@@ -383,7 +385,7 @@ func ExplainBlocked(b Blocked) *HumanError {
 	case strings.HasPrefix(reason, prefixBoost):
 		h.Code = ErrCodeBoostRequired
 		h.Message = capitalize(strings.TrimPrefix(reason, prefixBoost))
-		h.Hint = "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. Cicord applies it as soon as the level is reached."
+		h.Hint = "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. Once the level is reached, Cicord applies it right away with syncPolicy.selfHeal; otherwise it shows as a pending change until the next revision or Sync now."
 	case strings.HasPrefix(reason, prefixCommunity):
 		h.Code = ErrCodeCommunityRequired
 		h.Message = capitalize(strings.TrimPrefix(reason, prefixCommunity))

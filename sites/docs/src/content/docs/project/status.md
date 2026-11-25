@@ -1,61 +1,110 @@
 ---
 title: Status and roadmap
-description: What works today, what is next, and what is waiting on the project owner.
+description: What works in Cicord 0.1.6, what is on main for the next release, what is next, and what is further out.
 ---
 
-Cicord is **v1alpha1, pre-release**: `0.x` releases (binaries, the container image
-`ghcr.io/cicord/cicord` and the `@cicord/*` npm packages, see
-[Installation](../../getting-started/installation/) and the
-[changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md)) may still change formats
-and APIs. This page is the project's living tracker: it is updated as work lands. No dates are
-promised.
+Cicord **0.1.6** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
+(binaries, the container image `ghcr.io/cicord/cicord` and the `@cicord/*` npm packages, see
+[Installation](../../getting-started/installation/)) may still change formats and APIs. The
+[changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md) lists what each release
+changed. This page is updated as work lands; no dates are promised.
 
 ## What works today
 
 - **Configuration**: loader and validator (JSON Schemas plus semantic checks), local and git
   sources (GitHub, any git remote, an embedded repository) with revisions and hot swap.
 - **Server reconciler**: plan, apply, drift and self-heal, adoption by name, deletion
-  protection, and parity with most Discord server settings: Community, AutoMod, native
-  onboarding and welcome screen, role icons and gradients, forum settings, emojis, stickers and
-  soundboard sounds, with boost and Community gating explained in the plan. See
+  protection, key renames (`cicord mv`), role holders declared in git (`roles.<key>.members`),
+  a permission preflight for bots without Administrator, and parity with most Discord server
+  settings: Community, AutoMod, native onboarding and welcome screen, role icons and gradients,
+  forum settings, emojis, stickers and soundboard sounds. Changes that need a higher boost
+  level wait in the plan, with the reason, without counting as drift. See
   [Discord parity](../../reference/discord-parity/).
 - **Bots and plugins**: one runtime for N bots across M servers; a TypeScript plugin host on
   QuickJS-ng compiled to WebAssembly (one VM per instance, 64 MiB of memory, CPU and
   wall-clock budgets with a hard stop, host-side quotas, crashed instances restarted with
   backoff) with capabilities, KV storage, slash commands (subcommands and groups,
-  autocomplete, string length limits), components, modals, schedules, tasks, server join and
-  leave events, fetching a message by ID, cross-plugin events, plugin-owned channels and typed
-  portal routes. See [Testing and limits](../../plugins/testing/).
-- **Nine official plugins**, published in the signed official registry
-  [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins) and bundled in the binary,
-  all exercised end to end on the simulator.
+  autocomplete), components, modals, schedules, tasks, server join and leave events,
+  messages with their embeds, the members of a role, cross-plugin events, plugin-owned
+  channels and typed portal routes. See [Testing and limits](../../plugins/testing/).
+- **Official plugins**: ten in the signed official registry
+  [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins), nine of them also bundled
+  in the binary (all but `github-releases`), exercised end to end on the simulator.
 - **Git write-back**: commits and GitHub pull requests, with per-path policies.
 - **GitHub access** with a token or a **GitHub App** (short-lived installation tokens scoped to
   the configuration repository), and a `cicord/sync` commit status on every evaluated commit.
 - **State store**: SQLite in the data directory or PostgreSQL, held to one conformance suite,
   with a [backup and restore guide](../../self-hosting/backups-and-secrets/) for both.
-- **Admin console**: status, plans, history, audit log, generated plugin settings, the Store,
-  diagnostics, the simulator panel; light and dark themes.
+- **Admin console**: status, plans, history, audit log, server analytics (bot usage
+  included), generated plugin settings, the Store, diagnostics, the simulator panel; live
+  refresh through `GET /api/v1/events`; light and dark themes.
+- **Server analytics**: hourly counts per server (members, joins, messages, voice, reactions,
+  invites, moderation, commands, opt-in presence), no content and no member IDs; optional
+  server-wide stats on the community portal. See [Server analytics](../../self-hosting/analytics/).
 - **Setup wizard**: from nothing to a synced server, with live checks, an encrypted secret
-  store and an import that produces an empty first plan.
+  store, a token or GitHub App for the repository, and an import that produces an empty
+  first plan.
 - **Plugin Store**: the official plugins (bundled, and from the signed official registry), git
   registries (including private ones and monorepos with one directory and tag series per
   plugin), computed trust, permission review, install, update and uninstall,
   `cicord plugin publish`, and `cicord registry keygen|sign|verify` for signed indexes.
 - **Community portal**: the SDK (`@cicord/client`, `@cicord/react`, `@cicord/ui`), the reference
-  portal, no-code customization, custom portals served from the repository, embedding in token
-  mode.
+  portal, no-code customization, custom portals served from the repository (with
+  `cicord portal vendor` to update their vendored packages), embedding in token mode.
 - **Self-hosting**: a separate, private admin URL (the admin console and admin API only answer
-  there), `cicord healthcheck` for containers, and a
+  there), `cicord healthcheck` for containers, Prometheus metrics on a dedicated listener
+  (`--metrics-listen`, see [Monitoring](../../self-hosting/monitoring/)), and a
   [hardened single-server deployment](../../self-hosting/production-vps/) (Docker, Caddy,
-  Tailscale, automatic updates, daily backups) that runs the official community server.
+  Tailscale, automatic updates checked against the signed build provenance, daily backups)
+  that runs the official community server.
 - **CLI**: `init`, `validate`, `plan` (local and remote, with pull request comments), `apply`,
-  `status`, `sync`, `healthcheck`, `import`, `adopt`, `mv`, `dev`, `serve`, `secret`,
-  `registry`, `plugin`, `portal`.
+  `status`, `sync`, `healthcheck`, `import`, `inspect`, `adopt`, `mv`, `pause`, `resume`,
+  `dev`, `serve`, `secret`, `alert`, `registry`, `plugin`, `portal`, `version` (`inspect`,
+  `pause`, `resume` and `alert` are unreleased).
+- **Releases**: a tag `v<version>` builds reproducible binaries for Linux, macOS and Windows
+  (with SBOMs and build provenance attestations), the multi-arch image and the npm packages
+  with provenance; release candidates (`x.y.z-rc.N`) go to the npm dist-tag `next`. See
+  [Releasing](../releasing/).
 - **Validated on a real Discord server**: reconciliation, slash commands, onboarding roles,
   drift and sync, OAuth login, the setup wizard end to end, and the parity checklist
   (Community, AutoMod, native onboarding, icon upload, widget, welcome screen, emoji upload,
   boost gating).
+
+## Unreleased (after 0.1.6)
+
+On `main`, in the next release (see the
+[changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md)):
+
+- **Emergency pause**: `cicord pause` / `cicord resume`, the admin console and
+  `POST /api/v1/servers/{server}/pause|resume` stop every apply to a server, for moderators
+  and admins. See [Emergency: pause enforcement](../../concepts/reconciliation/#emergency-pause-enforcement).
+- **Inspect first**: `cicord inspect` and the wizard's **Inspect first** evaluate a live server
+  with a View Channels bot, read-only. See [Evaluate an existing server](../../getting-started/evaluate-a-server/).
+- **Built-in alerts** to a Discord or JSON webhook, `cicord alert test|send`. See
+  [Alerts](../../self-hosting/monitoring/#alerts).
+- **Stricter health gates**: `cicord status --wait`, `cicord healthcheck --service` and the
+  `cicord/sync` commit status fail on a degraded plugin, an offline bot or a paused server.
+  `selfHeal: false` now only reports drift: the periodic resync no longer applies.
+- **Operations**: VPS updates kept only when the service check passes (rollback otherwise),
+  backups that fail loudly and copy off-host, `07-restore.sh` and a timed recovery drill, and
+  [Handing over an instance](../../self-hosting/handoff/).
+- **Install script** `https://cicord.dev/install.sh` (live now); Homebrew
+  (`cicord/tap/cicord`) from this release on, npm (`@cicord/cli`) from a later one.
+- JSON schemas published at `https://cicord.dev/schemas/v1alpha1/`.
+
+## Waiting on the project owner
+
+- A live migration drill on a real Discord test server with a second person: an ordinary
+  member joins, staff channels stay private, a ticket is opened and answered by staff, and a
+  reviewed configuration change is applied then reverted with the channel keeping its ID.
+- The commercial terms for handing an instance over to a customer (outside these docs; the
+  technical side is in [Handing over an instance](../../self-hosting/handoff/)).
+- Setting up the Homebrew tap (`cicord/homebrew-tap`) before the next release, and the six
+  `@cicord/cli` npm packages with their trusted publishers, then `CICORD_NPM_CLI=true`
+  ([New npm packages](../releasing/#new-npm-packages)).
+- Updating the `cicord-portal.yml` workflow of
+  [cicord/cicord-community](https://github.com/cicord/cicord-community) to the generated one
+  (verified release binary).
 
 ## Next
 
@@ -63,17 +112,15 @@ promised.
   member joins (this needs a second account).
 - Real Discord, still untested: stickers (multipart uploads), soundboard sounds, role gradient
   colors and role icons (they need boosts).
-- Route contracts for the tickets, moderation and announcements plugins.
+- Typed route contracts (`spec.routes.types`) for the moderation and announcements plugins.
 - SDK gaps found while writing the official plugins: more events (channel, role, ban, with
   their actor), message content before edits and deletions, time zones (`Intl`) in the plugin
   host, removing other users' reactions, user/role/mentionable/channel select menus (Discord
-  types 5 to 8, with default values, channel types and resolved values). (Fetching a message by ID, subcommands,
-  autocomplete, server join/leave events, role positions, member permissions and
-  allowedMentions id lists are done.)
-- Discord parity: invites and webhooks, a holographic role style preset, live updates of the
-  plan page, drift detection for widget, onboarding and welcome screen.
-- Setup wizard: a webhook step, the GitHub App instead of a personal access token (created from
-  a manifest), several servers and bots, a Store step with registries on top of the catalog.
+  types 5 to 8, with default values, channel types and resolved values).
+- Discord parity: invites and webhooks, a holographic role style preset, drift detection for
+  widget, onboarding and welcome screen.
+- Setup wizard: a webhook step, creating the GitHub App from a manifest, several servers and
+  bots, a Store step with registries on top of the catalog.
 - `cicord plugin publish` building from the tagged tree; `cicord mv` against a remote runtime
   (a mapping move endpoint; the reconciler already detects renames).
 - Fixes: the admin console login loses the deep link (it returns to `/admin/` instead of the
@@ -85,31 +132,16 @@ promised.
   fakes.
 - Internal: reuse the runtime's manifest checks and write-back helpers in the CLI instead of
   duplicating them.
+- Portals and plugins depending on the npm packages by default instead of vendored tarballs
+  (`--from-npm` today, see [Releasing](../releasing/#vendored-or-npm-packages)).
+- `go install` with the embedded web UIs; the CI workflow written by `cicord init`
+  downloading the verified release binary (like `cicord-portal.yml`) instead of `go install`
+  (its actions are already pinned by SHA and cicord by version).
 
 ## Production hardening
 
-- Observability: a Prometheus `/metrics` endpoint, plugin error history, alerting hooks.
+- Observability: plugin error history.
 - A security review: plugin sandbox escapes, YAML fuzzing, link token reuse.
-
-## Waiting on the owner
-
-These steps need decisions or accounts from the project owner:
-
-- **The first release, v0.1.0**: the [one-time setup](../releasing/#one-time-setup-owner)
-  (a tag ruleset for `v*`, the public container package, the npm organization `cicord` with a
-  first publication of each package, trusted publishing and "disallow tokens" for
-  `@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui`, the `npm` environment),
-  then the tag.
-
-## Releases
-
-- Done: the release pipeline. A tag `v<version>` builds the binaries for Linux, macOS and
-  Windows (GoReleaser, reproducible, with SBOMs and build provenance attestations), the
-  multi-arch image `ghcr.io/cicord/cicord` and the npm packages with provenance (trusted
-  publishing). See [Releasing](../releasing/)
-  and [Installation](../../getting-started/installation/).
-- Later: `go install` with the embedded web UIs; the CI workflow written by `cicord init`
-  downloading the release binary instead of `go install`.
 
 ## Further out
 

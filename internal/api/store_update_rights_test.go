@@ -19,9 +19,9 @@ func TestStoreUpdateNeedsAdminEverywhere(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s := strings.Replace(string(data), "servers: [ma-commu]", "servers: [ma-commu, annexe]", 1)
+		s := strings.Replace(string(data), "servers: [my-community]", "servers: [my-community, annexe]", 1)
 		for _, n := range []string{"welcome", "onboarding"} {
-			s = strings.Replace(s, "      source: ../../plugins/"+n+"\n", "      source: ../../plugins/"+n+"\n      servers: [ma-commu]\n", 1)
+			s = strings.Replace(s, "      source: ../../plugins/"+n+"\n", "      source: ../../plugins/"+n+"\n      servers: [my-community]\n", 1)
 		}
 		writeTestFile(t, p, s)
 	})
@@ -36,7 +36,7 @@ func TestStoreUpdateNeedsAdminEverywhere(t *testing.T) {
 	release(t, pluginDir, map[string]string{"plugin.yaml": strings.Replace(helloManifest, "version: 1.0.0", "version: 1.1.0", 1)}, "v1.1.0")
 	owner.expect(200, "POST", "/api/v1/store/refresh", nil)
 
-	// An admin of ma-commu only (the admin role there, nothing on annexe).
+	// An admin of my-community only (the admin role there, nothing on annexe).
 	u := e.world.CreateUser("local-admin")
 	if err := e.world.AddMember(e.serverID(), u.ID); err != nil {
 		t.Fatal(err)
@@ -55,10 +55,10 @@ func TestStoreUpdateNeedsAdminEverywhere(t *testing.T) {
 	for _, path := range []string{"/api/v1/store", "/api/v1/store/plugins?source=acme", "/api/v1/store/acme/hello"} {
 		body := string(c.expect(200, "GET", path, nil).body)
 		if strings.Contains(body, "annexe") {
-			t.Errorf("%s shows the annexe instance to a ma-commu admin:\n%s", path, body)
+			t.Errorf("%s shows the annexe instance to a my-community admin:\n%s", path, body)
 		}
 		if !strings.Contains(body, `"instance":"hello"`) {
-			t.Errorf("%s hides the ma-commu instance:\n%s", path, body)
+			t.Errorf("%s hides the my-community instance:\n%s", path, body)
 		}
 	}
 

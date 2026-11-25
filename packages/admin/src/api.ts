@@ -7,6 +7,7 @@ import type {
   AuditEntry,
   PluginInstance,
   Message,
+  PauseState,
   Plan,
   ServerDetail,
   RuntimeStatus,
@@ -28,6 +29,7 @@ export const keys = {
   server: (key: string) => ["admin", "server", key] as const,
   resources: (key: string) => ["admin", "server", key, "resources"] as const,
   plan: (key: string) => ["admin", "server", key, "plan"] as const,
+  pause: (key: string) => ["admin", "server", key, "pause"] as const,
   audit: (key: string, before: string) => ["admin", "server", key, "audit", before] as const,
   /** Prefix of every analytics query of a server (refresh). */
   analytics: (key: string) => ["admin", "server", key, "analytics"] as const,
@@ -85,6 +87,14 @@ export function usePlan(key: string, enabled = true): QueryResult<Plan> {
   // (enabled = false for moderators: the plan endpoint is admin-only)
   const { client } = useCicord();
   return useCicordQuery(keys.plan(key), (signal) => client.admin.plan(key, { signal }), {
+    enabled,
+  });
+}
+
+/** `GET /servers/{server}/pause` (moderator): the pause and the plan resuming lets apply. */
+export function usePauseState(key: string, enabled = true): QueryResult<PauseState> {
+  const { client } = useCicord();
+  return useCicordQuery(keys.pause(key), (signal) => client.admin.pauseState(key, { signal }), {
     enabled,
   });
 }

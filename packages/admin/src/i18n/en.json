@@ -89,7 +89,9 @@
     "plugins": "Plugins",
     "actions": "Actions",
     "lightTheme": "Switch to light theme",
-    "darkTheme": "Switch to dark theme"
+    "darkTheme": "Switch to dark theme",
+    "pause": "Pause enforcement on {{name}}",
+    "resume": "Resume enforcement on {{name}}"
   },
   "legend": {
     "open": "Status legend",
@@ -146,6 +148,18 @@
       "rejected": {
         "label": "Rejected",
         "description": "The revision is invalid; the runtime kept the last valid one."
+      },
+      "paused": {
+        "label": "Paused",
+        "description": "Enforcement was paused on the server: nothing is applied to it until it is resumed."
+      },
+      "resumed": {
+        "label": "Resumed",
+        "description": "Enforcement was resumed: the next revision or sync applies the configuration again."
+      },
+      "skipped": {
+        "label": "Not applied",
+        "description": "The revision was activated, but not applied to this server because enforcement is paused."
       }
     },
     "action": {
@@ -350,7 +364,7 @@
     },
     "boost": {
       "title": "Waiting for boosts",
-      "text": "These changes need a higher server boost level. Cicord applies them as soon as the level is reached; the server stays in sync meanwhile."
+      "text": "These changes need a higher server boost level; the server stays in sync meanwhile. Once the level is reached, Cicord applies them right away with selfHeal; otherwise they show as pending until the next revision or Sync now."
     }
   },
   "history": {
@@ -441,7 +455,7 @@
       "title": "Sync policy",
       "description": "How Cicord reconciles Discord with git.",
       "selfHeal": "Self-heal",
-      "selfHealHelp": "Revert changes made on Discord as soon as they are seen.",
+      "selfHealHelp": "On: changes made on Discord are reverted as soon as they are seen (gateway events and the periodic resync). Off: they are shown as drift until the next revision or Sync now. Nothing is reverted while enforcement is paused.",
       "prune": "Prune",
       "pruneHelp": "Delete resources removed from the YAML (otherwise they are only unmanaged).",
       "deletionProtection": "Deletion protection",
@@ -1199,7 +1213,56 @@
       "noManage": "You need the “Manage Server” permission on a server to add a bot to it. Usually the server owner does it.",
       "checksTitle": "Checks on {{name}}",
       "simRaise": "Simulate: drag the bot role to the top",
-      "allGood": "Everything is in place."
+      "allGood": "Everything is in place.",
+      "accessTitle": "How should the bot join?",
+      "accessAdmin": "Administrator (fastest)",
+      "accessAdminText": "Cicord can manage everything right away. Anyone holding the bot token controls the whole server.",
+      "accessInspect": "Inspect first (read-only)",
+      "accessInspectText": "The bot joins with View Channels only. Review what Cicord sees and the first plan, with no change on Discord, then grant more or stop.",
+      "inviteInspect": "Open the inspection invite",
+      "inviteDetailsInspect": "Asks for the “bot” and “applications.commands” scopes with the View Channels permission only.",
+      "checksTitleInspect": "Before Cicord can manage {{name}}",
+      "simInviteInspect": "Simulate: authorize the inspection invite"
+    },
+    "inspect": {
+      "title": "Inspection of {{name}}",
+      "lead": "Read-only: Cicord imported the server into a temporary copy and planned it. Nothing is saved yet.",
+      "run": "Inspect the server",
+      "rerun": "Inspect again",
+      "running": "Reading the server…",
+      "nothingChanged": "Nothing was changed on Discord: {{reads}} read calls, {{writes}} write calls.",
+      "admin": "The bot is Administrator: it sees and can change everything.",
+      "permissions": "The bot's role grants: {{names}}.",
+      "visible": "Visible to the bot",
+      "visibleCount": "{{categories}} categories, {{channels}} channels",
+      "hidden": "Hidden from the bot",
+      "hiddenNone": "None: as Administrator, the bot can view every category and channel.",
+      "hiddenLead": "Listed by Discord, but the bot cannot open them or read their messages:",
+      "unlisted_one": "{{count}} channel the server refers to is not listed ({{refs}}).",
+      "unlisted_other": "{{count}} channels the server refers to are not listed ({{refs}}).",
+      "omitted": "Discord leaves the channels a bot cannot view out of the channel list: private channels the bot is not allowed in may be missing here and are not imported. To manage one, allow View Channel and Manage Channels to the bot's role in it, then inspect again.",
+      "private": "private",
+      "noCategory": "No category",
+      "unreadable": "Not read",
+      "unreadableNone": "Nothing: every part of the server was read.",
+      "unreadableLead": "Left out of the configuration, so Cicord would not manage them. Grant the permission and inspect again to include them.",
+      "needsTitle": "To apply changes, the bot would also need",
+      "needsNone": "Nothing: the bot already has every permission this configuration needs.",
+      "neededBy": "Needed by {{paths}}",
+      "access": "Bot access",
+      "plan": "First plan",
+      "planEmpty": "No changes: Cicord would adopt everything as it is.",
+      "planIncomplete_one": "{{count}} change, because the bot cannot see a channel the server refers to. Do not apply it: let the bot view that channel and inspect again.",
+      "planIncomplete_other": "{{count}} changes, because the bot cannot see channels the server refers to. Do not apply them: let the bot view those channels and inspect again.",
+      "planChanges_one": "{{count}} change (unexpected, please report it).",
+      "planChanges_other": "{{count}} changes (unexpected, please report them).",
+      "stopTitle": "You can stop here",
+      "stopText": "Nothing was changed on Discord and no configuration was saved. To remove the bot, kick it from the server in Discord.",
+      "upgradeTitle": "Continue: give the bot more access",
+      "upgradeText": "Authorize one of these links for the same server (it updates the bot's role), then re-check.",
+      "upgradeExact": "Invite with these permissions",
+      "upgradeAdmin": "Invite with Administrator",
+      "simGrant": "Simulate: authorize the Administrator invite"
     },
     "repo": {
       "title": "Where should Cicord keep your configuration?",
@@ -2026,6 +2089,46 @@
         "custom": "status"
       }
     }
+  },
+  "pause": {
+    "pause": "Pause enforcement",
+    "resume": "Resume…",
+    "banner": {
+      "title": "Enforcement is paused",
+      "by": "Paused by {{name}}",
+      "reason": "Reason:",
+      "text": "Cicord applies nothing to this server: changes made on Discord stay, new revisions and syncs wait.",
+      "noDrift": "Discord matches git.",
+      "drift_one": "{{count}} field differs from git.",
+      "drift_other": "{{count}} fields differ from git."
+    },
+    "dialog": {
+      "title": "Pause enforcement?",
+      "text": "Use it during an emergency, e.g. a raid: Cicord stops applying the configuration to this server until it is resumed, so the changes you make on Discord (a locked channel) stay. Plans and drift keep being computed. Every pause is in the audit log and the history.",
+      "reason": "Reason (optional)",
+      "reasonPlaceholder": "Raid: #general locked by hand"
+    },
+    "resumeDialog": {
+      "title": "Resume enforcement?",
+      "text": "Cicord applies the configuration again: the next revision or sync applies this plan and reverts what changed on Discord during the pause.",
+      "plan": "Pending plan",
+      "noPlan": "The pending plan cannot be computed",
+      "notPaused": "This server is not paused.",
+      "confirm": "Resume enforcement",
+      "resumeSync": "Resume and sync now"
+    },
+    "toast": {
+      "paused": "Enforcement paused",
+      "already": "Already paused by {{name}}",
+      "pauseFailed": "Could not pause enforcement",
+      "resumed": "Enforcement resumed",
+      "resumedSynced_one": "Enforcement resumed: {{count}} change applied",
+      "resumedSynced_other": "Enforcement resumed: {{count}} changes applied",
+      "notPaused": "The server was not paused",
+      "resumeFailed": "Could not resume enforcement"
+    },
+    "badge": "Paused",
+    "badgeHint": "Enforcement is paused: nothing is applied to this server until it is resumed."
   },
   "live": {
     "reconnecting": "Reconnecting…",

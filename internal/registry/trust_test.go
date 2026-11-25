@@ -122,7 +122,7 @@ func TestTokensScopedToHost(t *testing.T) {
 	}
 	regs := []config.Registry{{Name: "a", URL: "https://a.example/r.git", SecretRef: "CICORD_REGISTRY_A_TOKEN"},
 		{Name: "b", URL: "https://b.example/r.git"},
-		{Name: "evil", URL: "https://evil.example/r.git", SecretRef: "DISCORD_TOKEN_GARDIEN"},
+		{Name: "evil", URL: "https://evil.example/r.git", SecretRef: "DISCORD_TOKEN_WARDEN"},
 		{Name: "evil2", URL: "https://evil2.example/r.git", SecretRef: "CICORD_REGISTRY_A_TOKEN"}}
 	ctx = WithRegistryTokens(t.Context(), regs, func(n string) (string, bool) { return "x", true })
 	if AuthFor(ctx, "https://a.example/p.git") == nil || AuthFor(ctx, "https://b.example/p.git") != nil {

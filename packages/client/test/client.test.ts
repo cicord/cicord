@@ -39,7 +39,7 @@ const json = (body: unknown, status = 200) =>
 
 const me = {
   user: { id: "1", username: "alice", displayName: "Alice", avatarUrl: "" },
-  servers: [{ key: "ma-commu", name: "Ma Commu", role: "admin" }],
+  servers: [{ key: "my-community", name: "My Community", role: "admin" }],
 };
 
 describe("transport", () => {
@@ -79,7 +79,7 @@ describe("transport", () => {
     );
     const client = createCicordClient({ fetch });
     const error = await client.admin
-      .updatePluginConfig("ma-commu", "moderator", "welcome", { config: {}, revision: "abc" })
+      .updatePluginConfig("my-community", "moderator", "welcome", { config: {}, revision: "abc" })
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(CicordApiError);
     expect(error).toMatchObject({
@@ -105,7 +105,7 @@ describe("transport", () => {
         503,
       ),
     );
-    await expect(createCicordClient({ fetch }).admin.sync("ma-commu")).rejects.toMatchObject({
+    await expect(createCicordClient({ fetch }).admin.sync("my-community")).rejects.toMatchObject({
       code: "unavailable",
       hint: "Enable Community",
       details: "sync: raw",
@@ -170,7 +170,7 @@ describe("auth", () => {
     const { fetch, calls } = mockFetch(() => json(me));
     const client = createCicordClient({ fetch });
     const location = {
-      href: "https://portal.example/onboarding?server=ma-commu&cicord_token=abc.def#top",
+      href: "https://portal.example/onboarding?server=my-community&cicord_token=abc.def#top",
     };
     const history = {
       state: null,
@@ -180,7 +180,11 @@ describe("auth", () => {
     };
     const first = client.auth.exchangeLinkToken({ location, history });
     const second = client.auth.exchangeLinkToken({ location, history });
-    expect(history.replaceState).toHaveBeenCalledWith(null, "", "/onboarding?server=ma-commu#top");
+    expect(history.replaceState).toHaveBeenCalledWith(
+      null,
+      "",
+      "/onboarding?server=my-community#top",
+    );
     await expect(first).resolves.toEqual(me);
     await expect(second).resolves.toEqual(me);
     expect(calls).toHaveLength(1);
@@ -206,35 +210,41 @@ describe("auth", () => {
 
 describe("portal & plugins", () => {
   test("portal calls", async () => {
-    const server = { key: "ma-commu", name: "Ma Commu", iconUrl: "", theme: {}, plugins: [] };
+    const server = {
+      key: "my-community",
+      name: "My Community",
+      iconUrl: "",
+      theme: {},
+      plugins: [],
+    };
     const { fetch, calls } = mockFetch((c) =>
       c.url.endsWith("/servers") ? json({ items: [server] }) : json(server),
     );
     const client = createCicordClient({ fetch });
     await expect(client.portal.servers()).resolves.toEqual([server]);
-    await client.portal.server("ma-commu");
-    await client.portal.me("ma commu");
-    await client.portal.analytics("ma-commu");
-    await client.portal.analytics("ma-commu", "7d");
+    await client.portal.server("my-community");
+    await client.portal.me("my community");
+    await client.portal.analytics("my-community");
+    await client.portal.analytics("my-community", "7d");
     expect(calls.map((c) => c.url)).toEqual([
       "/api/v1/portal/servers",
-      "/api/v1/portal/ma-commu",
-      "/api/v1/portal/ma%20commu/me",
-      "/api/v1/portal/ma-commu/analytics?period=30d",
-      "/api/v1/portal/ma-commu/analytics?period=7d",
+      "/api/v1/portal/my-community",
+      "/api/v1/portal/my%20community/me",
+      "/api/v1/portal/my-community/analytics?period=30d",
+      "/api/v1/portal/my-community/analytics?period=7d",
     ]);
   });
 
   test("plugin routes", async () => {
     const { fetch, calls } = mockFetch(() => json({ ok: true }));
-    const routes = createCicordClient({ fetch }).plugin("ma-commu", "moderator", "onboarding");
+    const routes = createCicordClient({ fetch }).plugin("my-community", "moderator", "onboarding");
     await routes.get("/steps", { lang: "fr" });
     await routes.post("complete", { answers: { jeux: ["minecraft"] } });
     await routes.delete("/x");
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
-      "GET /api/v1/portal/ma-commu/plugins/moderator/onboarding/steps?lang=fr",
-      "POST /api/v1/portal/ma-commu/plugins/moderator/onboarding/complete",
-      "DELETE /api/v1/portal/ma-commu/plugins/moderator/onboarding/x",
+      "GET /api/v1/portal/my-community/plugins/moderator/onboarding/steps?lang=fr",
+      "POST /api/v1/portal/my-community/plugins/moderator/onboarding/complete",
+      "DELETE /api/v1/portal/my-community/plugins/moderator/onboarding/x",
     ]);
     expect(calls[1]?.headers.get("Content-Type")).toBe("application/json");
     expect(calls[1]?.body).toEqual({ answers: { jeux: ["minecraft"] } });
@@ -249,6 +259,15 @@ describe("portal & plugins", () => {
 });
 
 describe("admin & machine", () => {
+  test("pause, resume and sync with resume send their bodies", async () => {
+    const { fetch, calls } = mockFetch(() => json({}));
+    const client = createCicordClient({ fetch });
+    await client.admin.pause("s", { reason: "raid" });
+    await client.admin.sync("s", { resume: true });
+    await client.admin.sync("s");
+    expect(calls.map((c) => c.body)).toEqual([{ reason: "raid" }, { resume: true }, undefined]);
+  });
+
   test("admin endpoints", async () => {
     const { fetch, calls } = mockFetch(() => json({ items: [] }));
     const client = createCicordClient({ fetch });
@@ -258,6 +277,10 @@ describe("admin & machine", () => {
     await client.admin.resources("s");
     await client.admin.plan("s");
     await client.admin.sync("s");
+    await client.admin.sync("s", { resume: true });
+    await client.admin.pauseState("s");
+    await client.admin.pause("s", { reason: "raid" });
+    await client.admin.resume("s");
     await client.admin.audit("s", { before: 12, limit: 50 });
     await client.admin.plugins("s");
     await client.admin.updatePluginConfig("s", "b", "i", {
@@ -272,11 +295,15 @@ describe("admin & machine", () => {
       "GET /api/v1/servers/s/resources",
       "GET /api/v1/servers/s/plan",
       "POST /api/v1/servers/s/sync",
+      "POST /api/v1/servers/s/sync",
+      "GET /api/v1/servers/s/pause",
+      "POST /api/v1/servers/s/pause",
+      "POST /api/v1/servers/s/resume",
       "GET /api/v1/servers/s/audit?before=12&limit=50",
       "GET /api/v1/servers/s/plugins",
       "PUT /api/v1/servers/s/plugins/b/i/config",
     ]);
-    expect(calls[8]?.body).toEqual({ config: { a: 1 }, scope: "base", revision: "r" });
+    expect(calls[12]?.body).toEqual({ config: { a: 1 }, scope: "base", revision: "r" });
   });
 
   test("paged plugin list, single instance and uninstall", async () => {
@@ -377,7 +404,7 @@ describe("store & registries", () => {
       integrity: "sha256-abc",
       confirmUnofficial: true,
     };
-    await expect(client.store.install("ma commu", request)).resolves.toMatchObject({
+    await expect(client.store.install("my community", request)).resolves.toMatchObject({
       instance: "xp",
       mode: "commit",
     });
@@ -385,7 +412,7 @@ describe("store & registries", () => {
       "GET /api/v1/store",
       "POST /api/v1/store/refresh",
       "GET /api/v1/store/acme/x%2Fp",
-      "POST /api/v1/servers/ma%20commu/store/install",
+      "POST /api/v1/servers/my%20community/store/install",
     ]);
     expect(calls[3]?.body).toEqual(request);
     // CSRF header on the state-changing calls.
@@ -440,13 +467,13 @@ describe("store & registries", () => {
     await expect(client.store.update("acme", "xp", request)).resolves.toEqual(result);
     await client.store.update("cicord", "welcome", { version: "0.2.0", force: true });
     await client.store.plugins({ updates: true });
-    await client.admin.pluginsPage("ma-commu", { updates: true, limit: 25 });
+    await client.admin.pluginsPage("my-community", { updates: true, limit: 25 });
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       "GET /api/v1/store/acme/xp/update",
       "POST /api/v1/store/acme/xp/update",
       "POST /api/v1/store/cicord/welcome/update",
       "GET /api/v1/store/plugins?updates=true",
-      "GET /api/v1/servers/ma-commu/plugins?limit=25&updates=true",
+      "GET /api/v1/servers/my-community/plugins?limit=25&updates=true",
     ]);
     expect(calls[1]?.body).toEqual(request);
     expect(calls[2]?.body).toEqual({ version: "0.2.0", force: true });
@@ -729,7 +756,7 @@ describe("analytics", () => {
   test("summary, series and catalog URLs and query encoding", async () => {
     const { fetch, calls } = mockFetch(() => json({ status }));
     const client = createCicordClient({ fetch });
-    await client.analytics.summary("ma commu", "90d");
+    await client.analytics.summary("my community", "90d");
     await client.analytics.summary("s");
     await client.analytics.summary("s", { period: "7d" });
     await client.analytics.summary("s", {
@@ -746,7 +773,7 @@ describe("analytics", () => {
     await client.analytics.series("s", { metrics: ["voice.seconds"], dim: "ch:1" });
     await client.analytics.catalog("s");
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
-      "GET /api/v1/servers/ma%20commu/analytics/summary?period=90d",
+      "GET /api/v1/servers/my%20community/analytics/summary?period=90d",
       "GET /api/v1/servers/s/analytics/summary?period=30d",
       "GET /api/v1/servers/s/analytics/summary?period=7d",
       "GET /api/v1/servers/s/analytics/summary?from=2026-11-20T10%3A30%3A00Z&to=2026-11-21T08%3A00%3A00Z",

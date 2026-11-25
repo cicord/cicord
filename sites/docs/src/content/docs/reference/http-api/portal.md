@@ -31,12 +31,17 @@ the server opts in with [`spec.analytics.portal`](../../../configuration/server/
 
 ```json
 {
-  "server": "ma-commu", "period": "30d",
-  "from": "2026-10-27T00:00:00Z", "to": "2026-11-26T00:00:00Z", "since": "2026-08-01T14:00:00Z",
-  "kpis": [{ "metric": "messages.sent", "value": 3121, "previous": 2870, "spark": [[1763424000, 98]] }],
-  "topChannels": [{ "id": "112233445566778899", "name": "général", "value": 1840 }],
-  "topBotCommands": [{ "bot": "Cicord", "command": "/rank", "value": 212 }],
-  "heatmap": [[0, 0, 3], [1, 0, 0]]
+  "server": "showcase", "period": "7d",
+  "from": "2026-11-19T00:00:00Z", "to": "2026-11-26T00:00:00Z", "since": "2026-11-25T12:00:00Z",
+  "kpis": [
+    { "metric": "members.total", "value": 1, "previous": null, "spark": [[1795564800, 1]] },
+    { "metric": "messages.sent", "value": 4, "previous": null,
+      "spark": [[1795046400, 0], [1795132800, 0], [1795219200, 0], [1795305600, 0], [1795392000, 0], [1795478400, 0], [1795564800, 4]] },
+    …
+  ],
+  "topChannels": [{ "id": "1575125354564026388", "name": "general", "value": 4 }],
+  "topBotCommands": [{ "bot": "Cicord", "command": "/rank", "value": 1 }],
+  "heatmap": [[0, 0, …], …]   // 7 rows of 24 hours
 }
 ```
 
@@ -59,15 +64,17 @@ the server opts in with [`spec.analytics.portal`](../../../configuration/server/
 "Servers with a portal" are servers that declare `spec.portal` or run a plugin with routes.
 
 ```json
-{ "key": "ma-commu", "name": "Ma Commu", "iconUrl": "",
-  "theme": { "primary": "#5865f2", "accent": "#eb459e", "logo": "/api/v1/portal/ma-commu/logo?v=3f2a9c1", "mode": "dark" },
-  "title": "Bienvenue sur Ma Commu", "tagline": "La commu francophone des soirées jeux…",
-  "description": "Ici, on joue **ensemble**…", "banner": "/api/v1/portal/ma-commu/banner?v=3f2a9c1",
-  "links": [ { "label": "Site web", "url": "https://ma-commu.example", "icon": "website" } ],
+{ "key": "my-community", "name": "My Community", "iconUrl": "",
+  "theme": { "primary": "#5865f2", "accent": "#eb459e", "logo": "/api/v1/portal/my-community/logo?v=local-b24ab87", "mode": "dark" },
+  "title": "Welcome to My Community", "tagline": "The community for game nights, tournaments and live streams.",
+  "description": "Here we play **together**: Minecraft, Valorant, League of…", "banner": "/api/v1/portal/my-community/banner?v=local-b24ab87",
+  "links": [ { "label": "Website", "url": "https://my-community.example", "icon": "website" }, … ],
   "pages": { "onboarding": true, "profile": true, "leaderboard": true, "tickets": true },
-  "locale": "fr",
+  "locale": "en",
   "plugins": [ { "bot": "moderator", "instance": "onboarding", "plugin": "onboarding", "routes": ["GET /steps", "POST /complete"] } ] }
 ```
+
+This is `examples/basic` served by `cicord dev --sim`.
 
 - `theme` always has its four fields (`""` = unset). `theme.logo` is the logo endpoint (with
   `?v=<revision id>`, so caches follow new commits) or an absolute URL; `mode` is `light`,

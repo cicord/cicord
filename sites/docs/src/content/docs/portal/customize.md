@@ -4,54 +4,55 @@ description: Theme the reference portal and change its texts, banner, links, pag
 ---
 
 Everything on this page is declared in a server's YAML under `spec.portal`, reviewed in git
-like any change, and served by `GET /api/v1/portal/<server>` (the `PortalServer` object). A
-custom portal built on the SDK gets the same options for free.
+like any change, and served by `GET /api/v1/portal/<server>` (the `PortalServer` object), so a
+custom portal built on the SDK gets the same options.
 
 ## Theme
 
-```yaml title="servers/ma-commu.yaml"
+```yaml title="servers/my-community.yaml"
 spec:
   portal:
     theme:
       primary: "#5865f2"        # buttons, links, focus
       accent: "#eb459e"         # highlights
       logo: ../assets/logo.svg  # relative to this file: png, jpg, gif, webp, avif or svg
-      mode: dark                # light | dark | system (default)
+      mode: dark                # light | dark | system (follows the visitor); unset: dark
 ```
 
 `@cicord/ui` derives every color from `primary` and `accent`, with a contrast check for the
-chosen mode. The logo is served by `GET /api/v1/portal/<server>/logo`, versioned by revision
-(a new commit busts the cache), with `Content-Security-Policy: sandbox`, so an SVG can never
-run script.
+chosen mode. The logo (10 MB at most) is served by `GET /api/v1/portal/<server>/logo`,
+versioned by revision (a new commit busts the cache), with `Content-Security-Policy: sandbox`,
+so an SVG can never run script.
 
 `cicord validate` reports a logo outside the repository, behind a symbolic link or of an
-unsupported type as an **error**, and a missing file as a **warning**.
+unsupported type as an **error**, and a missing file as a **warning** (the portal does not show
+it).
 
 ## Texts, banner, links, pages and language
 
-```yaml title="servers/ma-commu.yaml"
+```yaml title="servers/my-community.yaml"
 spec:
   portal:
-    title: Bienvenue sur Ma Commu           # home headline (default: the server name)
-    tagline: La commu des soirées jeux.     # one sentence under it
+    title: Welcome to My Community          # home headline (default: the server name)
+    tagline: The community for game nights. # one sentence under it
     description: |                          # Markdown subset, see below
-      Ici, on joue **ensemble**.
+      Here we play **together**.
 
-      ## Ce que tu trouveras ici
-      - des soirées jeux chaque vendredi
-      - des tournois mensuels
+      ## What you'll find here
+      - game nights every Friday
+      - monthly tournaments
 
-      Lis le [règlement](https://ma-commu.example/regles).
+      Read the [rules](https://my-community.example/rules).
     banner: ../assets/banner.jpg            # wide header image, same rules as the logo
     links:                                  # up to 12, http(s) only
-      - { label: Site web, url: "https://ma-commu.example", icon: website }
-      - { label: YouTube, url: "https://www.youtube.com/@ma-commu", icon: youtube }
+      - { label: Website, url: "https://my-community.example", icon: website }
+      - { label: YouTube, url: "https://www.youtube.com/@my-community", icon: youtube }
     pages:                                  # pages of the reference portal (default: true)
       onboarding: true
       profile: true
       leaderboard: true                     # needs the levels plugin
       tickets: false                        # needs the tickets plugin (moderators only)
-    locale: fr                              # en | fr (default: the browser language)
+    locale: en                              # en | fr (default: the browser language)
 ```
 
 - **`description`** supports paragraphs, `#` to `###` headings, `-` and `1.` lists, `>`
@@ -62,12 +63,13 @@ spec:
   `calendar`, `shop`.
 - **`pages`**: a disabled page disappears from the navigation and its URL answers "not
   found". Pages that need a plugin (`leaderboard` → `levels`, `tickets` → `tickets`,
-  `onboarding` → `onboarding`) only appear when the server runs that plugin.
+  `onboarding` → `onboarding`) only appear when the server runs that plugin. Home and
+  Developers cannot be turned off.
 - **`locale`**: the interface language of the reference portal, `en` or `fr`. Without it the
   browser language is used when supported, else English.
 
-[`examples/basic/servers/ma-commu.yaml`](https://github.com/cicord/cicord/blob/main/examples/basic/servers/ma-commu.yaml)
-uses every option. The full field list is in the [Server reference](../../configuration/server/#portal).
+[`examples/basic/servers/my-community.yaml`](https://github.com/cicord/cicord/blob/main/examples/basic/servers/my-community.yaml)
+uses these options. The full field list is in the [Server reference](../../configuration/server/#portal).
 
 ## Several servers
 

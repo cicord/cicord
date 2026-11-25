@@ -13,7 +13,7 @@ import (
 func TestMvRewritesReferences(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, "../../examples/basic", dir)
-	srvFile := filepath.Join(dir, "servers", "ma-commu.yaml")
+	srvFile := filepath.Join(dir, "servers", "my-community.yaml")
 	botFile := filepath.Join(dir, "bots", "moderator", "bot.yaml")
 	srvBefore, botBefore := readFile(t, srvFile), readFile(t, botFile)
 
@@ -22,11 +22,11 @@ func TestMvRewritesReferences(t *testing.T) {
 	writeFile(t, filepath.Join(dir, ".cicord", ".keep"), "")
 	store := must[*sqlite.Store](t)(sqlite.Open(statePath))
 	ctx := context.Background()
-	store.Resources().Put(ctx, state.Resource{Server: "ma-commu", Kind: state.KindRole, Key: "modo", ID: "111111111111111111", Owner: state.OwnerGit})
+	store.Resources().Put(ctx, state.Resource{Server: "my-community", Kind: state.KindRole, Key: "moderator", ID: "111111111111111111", Owner: state.OwnerGit})
 	store.Close()
 
 	// dry run: nothing written
-	code, out, errOut := run(t, "mv", "ma-commu", "role", "modo", "moderation", dir, "--dry-run")
+	code, out, errOut := run(t, "mv", "my-community", "role", "moderator", "moderation", dir, "--dry-run")
 	if code != 0 || !strings.Contains(out, "Dry run") {
 		t.Fatalf("dry run = %d\n%s\n%s", code, out, errOut)
 	}
@@ -35,30 +35,30 @@ func TestMvRewritesReferences(t *testing.T) {
 	}
 
 	// role: key, hierarchy, access, overwrite target (the bot config does not reference it)
-	code, out, errOut = run(t, "mv", "ma-commu", "role", "modo", "moderation", dir)
+	code, out, errOut = run(t, "mv", "my-community", "role", "moderator", "moderation", dir)
 	if code != 0 {
 		t.Fatalf("mv role = %d\n%s\n%s", code, out, errOut)
 	}
 	srv := readFile(t, srvFile)
 	want := strings.NewReplacer(
-		"    modo:\n      name: Modo", "    moderation:\n      name: Modo",
-		"hierarchy: [admin, modo,", "hierarchy: [admin, moderation,",
-		"        modo:\n          allow: [ViewChannel]", "        moderation:\n          allow: [ViewChannel]",
-		"      roles: [modo]", "      roles: [moderation]",
+		"    moderator:\n      name: Moderator", "    moderation:\n      name: Moderator",
+		"hierarchy: [admin, moderator,", "hierarchy: [admin, moderation,",
+		"        moderator:\n          allow: [ViewChannel]", "        moderation:\n          allow: [ViewChannel]",
+		"      roles: [moderator]", "      roles: [moderation]",
 	).Replace(srvBefore)
 	if srv != want {
 		t.Errorf("server YAML after mv role:\n%s", srv)
 	}
 	store = must[*sqlite.Store](t)(sqlite.Open(statePath))
-	r, err := store.Resources().Get(ctx, "ma-commu", state.KindRole, "moderation")
-	_, oldErr := store.Resources().Get(ctx, "ma-commu", state.KindRole, "modo")
+	r, err := store.Resources().Get(ctx, "my-community", state.KindRole, "moderation")
+	_, oldErr := store.Resources().Get(ctx, "my-community", state.KindRole, "moderator")
 	store.Close()
 	if err != nil || r.ID != "111111111111111111" || oldErr == nil {
 		t.Errorf("state mapping: %+v %v, old still there: %v", r, err, oldErr == nil)
 	}
 
 	// role referenced by plugin configs through x-cicord-ref (onboarding steps, nested in arrays)
-	code, out, errOut = run(t, "mv", "ma-commu", "role", "minecraft", "mc", dir)
+	code, out, errOut = run(t, "mv", "my-community", "role", "minecraft", "mc", dir)
 	if code != 0 {
 		t.Fatalf("mv minecraft = %d\n%s\n%s", code, out, errOut)
 	}
@@ -73,7 +73,7 @@ func TestMvRewritesReferences(t *testing.T) {
 	// channel: key, profile.systemChannel, welcome's config (base) — emojis and comments kept
 	botBefore = readFile(t, botFile)
 	srvBefore = readFile(t, srvFile)
-	code, out, errOut = run(t, "mv", "ma-commu", "channel", "general", "discussions", dir)
+	code, out, errOut = run(t, "mv", "my-community", "channel", "general", "discussions", dir)
 	if code != 0 {
 		t.Fatalf("mv channel = %d\n%s\n%s", code, out, errOut)
 	}
@@ -82,19 +82,19 @@ func TestMvRewritesReferences(t *testing.T) {
 	}
 	if got := readFile(t, srvFile); got != strings.NewReplacer(
 		"    systemChannel: general", "    systemChannel: discussions",
-		"    general:\n      name: général", "    discussions:\n      name: général",
+		"    general:\n      name: general", "    discussions:\n      name: general",
 	).Replace(srvBefore) {
 		t.Errorf("server YAML after mv channel:\n%s", got)
 	}
 
 	// category: channel references
 	srvBefore = readFile(t, srvFile)
-	if code, out, errOut := run(t, "mv", "ma-commu", "categories", "info", "infos", dir); code != 0 {
+	if code, out, errOut := run(t, "mv", "my-community", "categories", "info", "about", dir); code != 0 {
 		t.Fatalf("mv category = %d\n%s\n%s", code, out, errOut)
 	}
 	if got := readFile(t, srvFile); got != strings.NewReplacer(
-		"    info:\n      name: Infos", "    infos:\n      name: Infos",
-		"      category: info\n", "      category: infos\n",
+		"    info:\n      name: Info", "    about:\n      name: Info",
+		"      category: info\n", "      category: about\n",
 	).Replace(srvBefore) {
 		t.Errorf("server YAML after mv category:\n%s", got)
 	}
@@ -104,11 +104,11 @@ func TestMvRewritesReferences(t *testing.T) {
 
 	// errors
 	for name, args := range map[string][]string{
-		"unknown key":  {"mv", "ma-commu", "role", "nope", "x", dir},
-		"existing key": {"mv", "ma-commu", "role", "admin", "mc", dir},
-		"shared ns":    {"mv", "ma-commu", "channel", "rules", "staff", dir},
-		"invalid key":  {"mv", "ma-commu", "role", "admin", "Admin!", dir},
-		"unknown kind": {"mv", "ma-commu", "emoji", "a", "b", dir},
+		"unknown key":  {"mv", "my-community", "role", "nope", "x", dir},
+		"existing key": {"mv", "my-community", "role", "admin", "mc", dir},
+		"shared ns":    {"mv", "my-community", "channel", "rules", "staff", dir},
+		"invalid key":  {"mv", "my-community", "role", "admin", "Admin!", dir},
+		"unknown kind": {"mv", "my-community", "emoji", "a", "b", dir},
 		"unknown srv":  {"mv", "nope", "role", "admin", "b", dir},
 	} {
 		if code, _, _ := run(t, args...); code != 1 {
@@ -121,23 +121,23 @@ func TestMvSharedBaseConfigWarns(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, "../../examples/basic", dir)
 	// a second server for the same bot: welcome's base config is shared
-	srv := readFile(t, filepath.Join(dir, "servers", "ma-commu.yaml"))
-	srv = strings.Replace(srv, "name: ma-commu", "name: other", 1)
+	srv := readFile(t, filepath.Join(dir, "servers", "my-community.yaml"))
+	srv = strings.Replace(srv, "name: my-community", "name: other", 1)
 	srv = strings.Replace(srv, `discordId: "112233445566778899"`, `discordId: "112233445566778800"`, 1)
 	writeFile(t, filepath.Join(dir, "servers", "other.yaml"), srv)
 	bf := filepath.Join(dir, "bots", "moderator", "bot.yaml")
-	writeFile(t, bf, strings.Replace(readFile(t, bf), "servers: [ma-commu]", "servers: [ma-commu, other]", 1))
-	before, srvBefore := readFile(t, bf), readFile(t, filepath.Join(dir, "servers", "ma-commu.yaml"))
-	code, _, errOut := run(t, "mv", "ma-commu", "channel", "general", "discussions", dir)
+	writeFile(t, bf, strings.Replace(readFile(t, bf), "servers: [my-community]", "servers: [my-community, other]", 1))
+	before, srvBefore := readFile(t, bf), readFile(t, filepath.Join(dir, "servers", "my-community.yaml"))
+	code, _, errOut := run(t, "mv", "my-community", "channel", "general", "discussions", dir)
 	if code != 1 || !strings.Contains(errOut, "plugin welcome also runs on other") || !strings.Contains(errOut, "nothing written") {
 		t.Errorf("shared base config = %d: %s", code, errOut)
 	}
-	if readFile(t, bf) != before || readFile(t, filepath.Join(dir, "servers", "ma-commu.yaml")) != srvBefore {
+	if readFile(t, bf) != before || readFile(t, filepath.Join(dir, "servers", "my-community.yaml")) != srvBefore {
 		t.Error("files written although the rename was refused")
 	}
 	// --force renames the server key and leaves the shared config: validation then fails
-	code, _, errOut = run(t, "mv", "ma-commu", "channel", "general", "discussions", dir, "--force")
-	if code != 1 || readFile(t, bf) != before || readFile(t, filepath.Join(dir, "servers", "ma-commu.yaml")) == srvBefore {
+	code, _, errOut = run(t, "mv", "my-community", "channel", "general", "discussions", dir, "--force")
+	if code != 1 || readFile(t, bf) != before || readFile(t, filepath.Join(dir, "servers", "my-community.yaml")) == srvBefore {
 		t.Errorf("--force = %d: %s", code, errOut)
 	}
 }

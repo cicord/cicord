@@ -83,7 +83,7 @@ func (s *scheduler) runCron(ctx context.Context, now time.Time) {
 			c, cancel := context.WithTimeout(ctx, time.Minute)
 			defer cancel()
 			err := j.inst.inst().RunSchedule(c, j.name)
-			j.inst.setHealth(err)
+			s.r.handlerDone(j.inst, err)
 			if err != nil {
 				s.r.log.Warn("schedule failed", "instance", j.inst.id(), "schedule", j.name, "err", err)
 			}
@@ -121,7 +121,7 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 			c, cancel := context.WithTimeout(ctx, time.Minute)
 			defer cancel()
 			err := inst.inst().RunTask(c, t.Name, t.Payload)
-			inst.setHealth(err)
+			s.r.handlerDone(inst, err)
 			if err != nil {
 				s.r.log.Warn("task failed", "instance", inst.id(), "task", t.Name, "err", err)
 			}

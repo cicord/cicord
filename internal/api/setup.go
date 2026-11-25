@@ -55,6 +55,8 @@ func (s *server) setupRoutes(h func(string, func(http.ResponseWriter, *http.Requ
 	h("GET /api/v1/setup/discord/servers", w(s.handleSetupServers))
 	h("POST /api/v1/setup/server", w(s.handleSetupServer))
 	h("POST /api/v1/setup/server/check", w(s.handleSetupServerCheck))
+	h("POST /api/v1/setup/access", w(s.handleSetupAccess))
+	h("POST /api/v1/setup/inspect", w(s.handleSetupInspect))
 	h("POST /api/v1/setup/repo", w(s.handleSetupRepo))
 	h("POST /api/v1/setup/import", w(s.handleSetupImport))
 	h("POST /api/v1/setup/oauth", w(s.handleSetupOAuth))
@@ -69,6 +71,7 @@ func (s *server) setupRoutes(h func(string, func(http.ResponseWriter, *http.Requ
 	h("POST /api/v1/setup/sim/intents", w(s.handleSetupSimIntents))
 	h("POST /api/v1/setup/sim/invite", w(s.handleSetupSimInvite))
 	h("POST /api/v1/setup/sim/raise-role", w(s.handleSetupSimRaise))
+	h("POST /api/v1/setup/sim/grant-admin", w(s.handleSetupSimGrantAdmin))
 	h("POST /api/v1/setup/sim/message", w(s.handleSetupSimMessage))
 	h("/api/v1/setup/", notFoundHandler)
 }
@@ -280,7 +283,35 @@ func (s *server) handleSetupInvite(w http.ResponseWriter, r *http.Request, wz *s
 		s.failSetup(w, &setup.Error{Status: http.StatusConflict, Code: "conflict", Message: "No Discord application is configured yet.", Hint: "Paste the bot token first."})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"url": v.InviteURL, "scopes": []string{"bot", "applications.commands"}, "permissions": "Administrator"})
+	out := map[string]any{"url": v.InviteURL, "scopes": []string{"bot", "applications.commands"}, "permissions": "Administrator",
+		"access": v.Access, "adminUrl": v.InviteURL, "inspectUrl": v.InspectInviteURL}
+	if v.Access == setup.AccessInspect {
+		out["url"], out["permissions"] = v.InspectInviteURL, "ViewChannel"
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *server) handleSetupAccess(w http.ResponseWriter, r *http.Request, wz *setup.Wizard) {
+	var body struct {
+		Access string `json:"access"`
+	}
+	if err := s.decodeJSON(w, r, &body); err != nil {
+		s.fail(w, err)
+		return
+	}
+	v, err := wz.SetAccess(r.Context(), body.Access)
+	s.viewResult(w, v, err)
+}
+
+// handleSetupInspect runs the read-only inspection of the chosen server: nothing is
+// changed on Discord and nothing is stored.
+func (s *server) handleSetupInspect(w http.ResponseWriter, r *http.Request, wz *setup.Wizard) {
+	rep, err := wz.Inspect(r.Context())
+	if err != nil {
+		s.failSetup(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"report": rep, "plan": humanPlan(rep.Plan)})
 }
 
 func (s *server) handleSetupServers(w http.ResponseWriter, r *http.Request, wz *setup.Wizard) {
@@ -540,6 +571,13 @@ func (s *server) handleSetupSimRaise(w http.ResponseWriter, r *http.Request, wz 
 		return
 	}
 	s.simAction(w, wz.SimRaiseRole(r.Context()))
+}
+
+func (s *server) handleSetupSimGrantAdmin(w http.ResponseWriter, r *http.Request, wz *setup.Wizard) {
+	if s.simEnv(w, wz) == nil {
+		return
+	}
+	s.simAction(w, wz.SimGrantAdministrator(r.Context()))
 }
 
 func (s *server) handleSetupSimMessage(w http.ResponseWriter, r *http.Request, wz *setup.Wizard) {

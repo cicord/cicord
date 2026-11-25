@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -137,6 +138,9 @@ func extractTarGz(r io.Reader, dst string) error {
 		if strings.HasPrefix(name, "/") || strings.Contains(name, "\\") || !filepath.IsLocal(filepath.FromSlash(strings.TrimSuffix(name, "/"))) {
 			return fmt.Errorf("unsafe path %q", h.Name)
 		}
+		if MacOSJunk(path.Base(strings.TrimSuffix(name, "/"))) {
+			continue // the body is skipped by the next tr.Next()
+		}
 		target := filepath.FromSlash(strings.TrimSuffix(name, "/")) // relative to root
 		switch h.Typeflag {
 		case tar.TypeDir:
@@ -179,6 +183,13 @@ func extractTarGz(r io.Reader, dst string) error {
 			return fmt.Errorf("%s: only regular files and directories are allowed", h.Name)
 		}
 	}
+}
+
+// MacOSJunk reports the metadata files macOS puts into archives and folders, never part of
+// a repository: AppleDouble "._<name>" files (extended attributes, which tar on macOS adds
+// next to every file and are not valid YAML) and ".DS_Store".
+func MacOSJunk(base string) bool {
+	return strings.HasPrefix(base, "._") || base == ".DS_Store"
 }
 
 // findRepoRoot accepts cicord.yaml at the root or inside a single top-level directory.

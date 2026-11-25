@@ -130,8 +130,11 @@ type PluginState struct {
 
 // State is the persisted wizard progress. It never contains secret values.
 type State struct {
-	Step            string          `json:"step"`
-	Intent          string          `json:"intent,omitempty"` // "new" | "existing"
+	Step   string `json:"step"`
+	Intent string `json:"intent,omitempty"` // "new" | "existing"
+	// Access is how the bot is invited: AccessAdmin (default) or AccessInspect (View
+	// Channels only, to inspect the server before granting more).
+	Access          string          `json:"access,omitempty"`
 	Bot             *BotState       `json:"bot,omitempty"`
 	Server          *ServerChoice   `json:"server,omitempty"`
 	Repo            *RepoConfig     `json:"repo,omitempty"`
@@ -406,15 +409,19 @@ type View struct {
 	Providers []string `json:"providers"`
 	PublicURL string   `json:"publicUrl"`
 
-	Bot       *BotView        `json:"bot,omitempty"`
-	InviteURL string          `json:"inviteUrl,omitempty"`
-	Server    *ServerChoice   `json:"server,omitempty"`
-	Repo      *RepoView       `json:"repo,omitempty"`
-	Activated bool            `json:"activated"`
-	Revision  string          `json:"revision,omitempty"`
-	FirstPlan *reconcile.Plan `json:"firstPlan,omitempty"`
-	Login     LoginView       `json:"login"`
-	Plugin    *PluginState    `json:"plugin,omitempty"`
+	Bot *BotView `json:"bot,omitempty"`
+	// Access is AccessAdmin or AccessInspect; InviteURL asks for Administrator and
+	// InspectInviteURL for View Channels only.
+	Access           string          `json:"access"`
+	InviteURL        string          `json:"inviteUrl,omitempty"`
+	InspectInviteURL string          `json:"inspectInviteUrl,omitempty"`
+	Server           *ServerChoice   `json:"server,omitempty"`
+	Repo             *RepoView       `json:"repo,omitempty"`
+	Activated        bool            `json:"activated"`
+	Revision         string          `json:"revision,omitempty"`
+	FirstPlan        *reconcile.Plan `json:"firstPlan,omitempty"`
+	Login            LoginView       `json:"login"`
+	Plugin           *PluginState    `json:"plugin,omitempty"`
 }
 
 // BotView describes the configured bot.
@@ -449,14 +456,19 @@ type LoginView struct {
 	FromEnv bool `json:"fromEnv"`
 }
 
+// Invite choices of the Server step.
+const (
+	// AccessAdmin invites the bot with Administrator: the fast path, Cicord can manage
+	// everything right away (and so can anyone holding the token).
+	AccessAdmin = "admin"
+	// AccessInspect invites the bot with View Channels only: the server is inspected and
+	// planned read-only before any broader permission is granted.
+	AccessInspect = "inspect"
+)
+
 // InviteURL is the OAuth2 URL that adds the bot to a server with Administrator.
 func InviteURL(appID string) string {
-	q := url.Values{}
-	q.Set("client_id", appID)
-	q.Set("scope", "bot applications.commands")
-	q.Set("permissions", "8")
-	q.Set("integration_type", "0")
-	return "https://discord.com/oauth2/authorize?" + q.Encode()
+	return InviteURLWith(appID, discord.MustPermissions("Administrator"))
 }
 
 // Status returns the wizard view.
@@ -471,11 +483,16 @@ func (w *Wizard) Status(ctx context.Context) (View, error) {
 func (w *Wizard) view(ctx context.Context, s State) View {
 	v := View{Step: s.Step, Steps: Steps, Completed: s.Completed, Mode: w.opts.Mode, Simulator: w.opts.Sim != nil,
 		Version: version.Version, Intent: s.Intent, Providers: w.opts.Providers, PublicURL: w.opts.PublicURL,
-		Server: s.Server, Activated: s.Activated, Revision: s.Revision, FirstPlan: s.FirstPlan, Plugin: s.Plugin}
+		Server: s.Server, Activated: s.Activated, Revision: s.Revision, FirstPlan: s.FirstPlan, Plugin: s.Plugin,
+		Access: AccessAdmin}
+	if s.Access == AccessInspect {
+		v.Access = AccessInspect
+	}
 	if b := s.Bot; b != nil {
 		v.Bot = &BotView{BotState: *b, TokenStored: w.opts.Secrets.Has(ctx, b.SecretRef), PortalURL: PortalBotURL(b.ApplicationID),
 			Intents: IntentsCheck(b.ApplicationID, b.Flags, 0, RecommendedIntents)}
 		v.InviteURL = InviteURL(b.ApplicationID)
+		v.InspectInviteURL = InspectInviteURL(b.ApplicationID)
 	}
 	if r := s.Repo; r != nil {
 		v.Repo = w.repoView(ctx, *r)
@@ -525,6 +542,21 @@ func (w *Wizard) SetIntent(ctx context.Context, intent string) (View, error) {
 	})
 }
 
+// SetAccess records the invite choice of the Server step: AccessAdmin (Administrator,
+// the default) or AccessInspect (View Channels only, then Inspect before granting more).
+func (w *Wizard) SetAccess(ctx context.Context, access string) (View, error) {
+	if access != AccessAdmin && access != AccessInspect {
+		return View{}, errorf(http.StatusBadRequest, "invalid", "", `access must be %q or %q`, AccessAdmin, AccessInspect)
+	}
+	return w.update(ctx, func(s *State) error {
+		if s.Activated {
+			return errorf(http.StatusConflict, "conflict", "", "The configuration is already active.")
+		}
+		s.Access = access
+		return nil
+	})
+}
+
 // Goto moves to a step whose prerequisites are met.
 func (w *Wizard) Goto(ctx context.Context, step string) (View, error) {
 	if !slices.Contains(Steps, step) {
@@ -540,14 +572,8 @@ func (w *Wizard) Goto(ctx context.Context, step string) (View, error) {
 			return View{}, errorf(http.StatusConflict, "conflict", "Pick the server first.", "No server is selected yet.")
 		}
 		if !s.Activated {
-			checks, err := w.serverChecks(ctx, s)
-			if err != nil {
+			if err := w.requireServerChecks(ctx, s); err != nil {
 				return View{}, err
-			}
-			for _, c := range checks {
-				if c.Blocking() {
-					return View{}, &Error{Status: http.StatusConflict, Code: "conflict", Message: c.Message, Hint: c.Hint}
-				}
 			}
 		}
 	}
@@ -572,6 +598,22 @@ func (w *Wizard) Goto(ctx context.Context, step string) (View, error) {
 		s.Step = step
 		return nil
 	})
+}
+
+// requireServerChecks fails with the first blocking server check (permissions, role
+// order): the wizard does not go past the Server step, nor import and activate, with a
+// bot that cannot manage the server (an inspection bot with View Channels only).
+func (w *Wizard) requireServerChecks(ctx context.Context, s State) error {
+	checks, err := w.serverChecks(ctx, s)
+	if err != nil {
+		return err
+	}
+	for _, c := range checks {
+		if c.Blocking() {
+			return &Error{Status: http.StatusConflict, Code: "conflict", Message: c.Message, Hint: c.Hint}
+		}
+	}
+	return nil
 }
 
 // ───────────────────────────────────────────────────────────── Discord application
@@ -837,6 +879,11 @@ func (w *Wizard) ChooseRepo(ctx context.Context, req RepoRequest) (View, error) 
 		return View{}, err
 	} else if s.RepoInitialized {
 		return View{}, errorf(http.StatusConflict, "conflict", "", "The repository is already created.")
+	} else if s.Access == AccessInspect && !s.Activated && s.Server != nil {
+		// After an inspection, the bot's access must be upgraded first (Server step).
+		if err := w.requireServerChecks(ctx, s); err != nil {
+			return View{}, err
+		}
 	}
 	branch := strings.TrimSpace(req.Branch)
 	if branch == "" {
@@ -925,18 +972,20 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 	}
 	res := ImportResult{}
 	if !s.RepoInitialized {
+		// Activation registers commands and syncs: an inspection bot (View Channels only)
+		// must be upgraded first, whatever the client calls.
+		if s.Access == AccessInspect {
+			if err := w.requireServerChecks(ctx, s); err != nil {
+				return ImportResult{}, err
+			}
+		}
 		sess, err := w.session(ctx, s)
 		if err != nil {
 			return ImportResult{}, err
 		}
-		// Everything the importer knows (AutoMod, onboarding, widget, welcome screen,
-		// expressions); those endpoints need Manage Server, so fall back to the core.
-		snap, err := reconcile.FetchWith(ctx, sess, s.Server.ID, s.Bot.UserID, reconcile.FetchAll)
-		var partial error
-		if err != nil {
-			partial = err
-			snap, err = reconcile.Fetch(ctx, sess, s.Server.ID, s.Bot.UserID)
-		}
+		// Everything the importer knows; the parts the bot cannot read (AutoMod, widget
+		// and welcome screen need Manage Server) are left out with a warning.
+		snap, unreadable, err := FetchForImport(ctx, sess, s.Server.ID, s.Bot.UserID)
 		if err != nil {
 			return ImportResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not read the server from Discord.",
 				Hint: "Check that the bot is still in the server (Server step), then try again.", Details: err.Error()}
@@ -946,8 +995,8 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 			return ImportResult{}, err
 		}
 		res.Warnings = gen.Warnings
-		if partial != nil {
-			res.Warnings = append(res.Warnings, "AutoMod, onboarding, widget and welcome screen were not imported: "+partial.Error())
+		if msg := UnreadableWarning(unreadable); msg != "" {
+			res.Warnings = append(res.Warnings, msg)
 		}
 		files, err := RepoFiles{Project: s.Server.Key, ServerKey: gen.Key, ServerYAML: gen.YAML, BotKey: s.Bot.Key,
 			ApplicationID: s.Bot.ApplicationID, SecretRef: s.Bot.SecretRef, Repo: *s.Repo, PublicURL: publicURLForRepo(w.opts)}.Generate()
@@ -1038,6 +1087,48 @@ func (w *Wizard) Import(ctx context.Context, confirm bool) (ImportResult, error)
 		res.Plan = &first
 	}
 	return res, nil
+}
+
+// Inspect reads the chosen server read-only and reports what the bot can see, what it
+// could not read and what applying changes would need, with the plan of the imported
+// configuration (empty). Nothing is changed on Discord and nothing is stored: the
+// configuration is generated in a temporary directory, the resource map in memory, and
+// the wizard state is not touched. It works with the inspection invite (View Channels).
+func (w *Wizard) Inspect(ctx context.Context) (*InspectReport, error) {
+	s, err := w.state(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s.Activated {
+		return nil, errorf(http.StatusConflict, "conflict", "", "The configuration is already active.")
+	}
+	if s.Bot == nil || s.Server == nil {
+		return nil, errorf(http.StatusConflict, "conflict", "Pick the server first.", "No server is selected yet.")
+	}
+	sess, err := w.session(ctx, s)
+	if err != nil {
+		return nil, err
+	}
+	tmp, err := os.MkdirTemp("", "cicord-inspect-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	rep, err := Inspect(ctx, InspectOptions{Client: sess, ServerID: s.Server.ID, BotUserID: s.Bot.UserID, BotName: s.Bot.Username,
+		ServerKey: s.Server.Key, BotKey: s.Bot.Key, ApplicationID: s.Bot.ApplicationID, SecretRef: s.Bot.SecretRef,
+		Dir: tmp, Download: w.opts.Download, Extra: BaselineRequirements()})
+	switch {
+	case errors.Is(err, ErrIncompleteView):
+		// The report says why the plan is not empty (channels the bot cannot see).
+	case errors.Is(err, ErrNotEmptyPlan):
+		return rep, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid", Message: "The imported configuration does not match the server (please report this bug).",
+			Hint: "Nothing was changed on Discord.", Details: err.Error()}
+	case err != nil:
+		return nil, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not inspect the server.",
+			Hint: "Check that the bot is still in the server, then try again. Nothing was changed on Discord.", Details: err.Error()}
+	}
+	rep.Files = nil // generated in a temporary directory, removed
+	return rep, nil
 }
 
 func publicURLForRepo(o Options) string {
@@ -1343,9 +1434,10 @@ func (w *Wizard) SimSetIntents(ctx context.Context, enabled bool) error {
 	return w.opts.Sim.SetIntents(s.Bot.ApplicationID, in)
 }
 
-// SimInvite simulates authorizing the invite on a simulated server.
+// SimInvite simulates authorizing the invite link of the chosen access (Administrator,
+// or View Channels for an inspection) on a simulated server.
 func (w *Wizard) SimInvite(ctx context.Context, serverID string, low bool) error {
-	_, tok, err := w.simBot(ctx)
+	s, tok, err := w.simBot(ctx)
 	if err != nil {
 		return err
 	}
@@ -1354,7 +1446,24 @@ func (w *Wizard) SimInvite(ctx context.Context, serverID string, low bool) error
 			serverID = ss[0].ID
 		}
 	}
-	return w.opts.Sim.Invite(tok, serverID, low)
+	perms := discord.MustPermissions("Administrator")
+	if s.Access == AccessInspect {
+		perms = InspectPermissions
+	}
+	return w.opts.Sim.InviteWith(tok, serverID, perms, low)
+}
+
+// SimGrantAdministrator simulates authorizing the Administrator invite again after an
+// inspection (the bot's role gets Administrator).
+func (w *Wizard) SimGrantAdministrator(ctx context.Context) error {
+	s, tok, err := w.simBot(ctx)
+	if err != nil {
+		return err
+	}
+	if s.Server == nil {
+		return errorf(http.StatusConflict, "conflict", "", "Pick the server first.")
+	}
+	return w.opts.Sim.SetBotPermissions(tok, s.Server.ID, discord.MustPermissions("Administrator"))
 }
 
 // SimRaiseRole simulates dragging the bot role to the top.

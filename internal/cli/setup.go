@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cicord/cicord/internal/alert"
 	"github.com/cicord/cicord/internal/api"
 	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/catalog"
@@ -153,6 +154,7 @@ type runtimeEnv struct {
 	runtimeTok string
 	appKeyFile string            // --github-app-key-file
 	metrics    *metrics.Registry // --metrics-listen (nil: the metrics are not served)
+	alertHook  string            // --alert-webhook (serve)
 }
 
 // build creates the source, writer and runtime for a repository chosen in the wizard.
@@ -206,13 +208,18 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 		return nil, nil, nil, "", err
 	}
 	cacheDir := registry.DefaultCacheDir()
+	var alerts *alert.Notifier
+	if e.mode == "serve" {
+		alerts = newAlertNotifier(e.log, e.alertHook, e.resolve, e.public, e.console())
+	}
 	rt := runtime.New(runtime.Options{
 		Source: src, Connector: e.connector, Store: e.store, Secrets: e.resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, e.resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: e.public, Mode: e.mode, Simulator: e.world != nil,
 		AllowPrivateNetworks: e.world != nil, Logger: e.log, CommitStatus: commitStatusHook(e.log, ghRepo, tokens, e.console()),
-		Metrics: e.metrics, Analytics: e.store.Analytics(),
+		Metrics: e.metrics, Analytics: e.store.Analytics(), OnHandler: onHandler(alerts),
 	})
+	runAlerts(alerts, rt, e.stopping)
 	return rt, writer, src, branch, nil
 }
 
@@ -384,7 +391,8 @@ func runServeSetup(ctx context.Context, stdout io.Writer, log *slog.Logger, absD
 	resolve := secrets.Resolver(sec, nil)
 	runtimeTok, _ := resolve("CICORD_RUNTIME_TOKEN")
 	e := &runtimeEnv{log: log, mode: "serve", dataDir: dataDir, dir: absDir, public: public, admin: f.adminURL, cors: f.corsOrigins, store: store,
-		secrets: sec, resolve: resolve, stopping: make(chan struct{}), runtimeTok: runtimeTok, appKeyFile: f.githubAppKeyFile}
+		secrets: sec, resolve: resolve, stopping: make(chan struct{}), runtimeTok: runtimeTok, appKeyFile: f.githubAppKeyFile,
+		alertHook: f.alertWebhook}
 	e.connector, e.probe = serveDiscord(log)
 	// Metrics: the build, Go and process metrics at once, the runtime and API ones once a
 	// configuration is active (the wizard's, or the one it created on an earlier start).

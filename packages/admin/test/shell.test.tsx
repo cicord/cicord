@@ -77,21 +77,21 @@ describe("layout", () => {
 
     await user.click(within(nav).getByRole("link", { name: "Plan" }));
     const crumbs = await screen.findByRole("navigation", { name: "Breadcrumb" });
-    expect(within(crumbs).getByText("Ma Commu")).toBeTruthy();
+    expect(within(crumbs).getByText("Pixel Haven")).toBeTruthy();
     expect(within(crumbs).getByText("Sync")).toBeTruthy();
     expect(within(crumbs).getByText("Plan").getAttribute("aria-current")).toBe("page");
     expect(within(nav).getByRole("link", { name: "Plan" }).getAttribute("aria-current")).toBe(
       "page",
     );
 
-    await user.click(within(nav).getByRole("button", { name: /Server: Ma Commu/ }));
+    await user.click(within(nav).getByRole("button", { name: /Server: Pixel Haven/ }));
     const menu = await screen.findByRole("menu");
-    expect(within(menu).getByText("ma-commu")).toBeTruthy();
+    expect(within(menu).getByText("pixel-haven")).toBeTruthy();
   });
 
   test("⌘K palette jumps to pages and plugins", async () => {
     const { user } = await start();
-    await screen.findByRole("heading", { level: 1, name: "Ma Commu" });
+    await screen.findByRole("heading", { level: 1, name: "Pixel Haven" });
     await user.keyboard("{Meta>}k{/Meta}");
     const dialog = await screen.findByRole("dialog", { name: "Command palette" });
     await user.type(within(dialog).getByRole("combobox"), "audit");
@@ -102,7 +102,9 @@ describe("layout", () => {
     const again = await screen.findByRole("dialog", { name: "Command palette" });
     await user.click(await within(again).findByRole("option", { name: /Welcome/ }));
     await waitFor(() =>
-      expect(window.location.pathname).toMatch(/\/servers\/ma-commu\/plugins\/moderator\/welcome$/),
+      expect(window.location.pathname).toMatch(
+        /\/servers\/pixel-haven\/plugins\/moderator\/welcome$/,
+      ),
     );
     expect(await screen.findByRole("region", { name: "Welcome settings" })).toBeTruthy();
   });
@@ -121,7 +123,7 @@ describe("layout", () => {
   });
 
   test("history page groups failures; status legend explains states", async () => {
-    const { user } = await start("/servers/ma-commu/history");
+    const { user } = await start("/servers/pixel-haven/history");
     expect(await screen.findByText("Failed 4 times")).toBeTruthy();
     await user.click(screen.getByRole("radio", { name: "Bots" }));
     await waitFor(() => expect(screen.queryByText("Failed 4 times")).toBeNull());
@@ -133,7 +135,7 @@ describe("layout", () => {
   });
 
   test("server settings and drift pages read the server spec", async () => {
-    const { user } = await start("/servers/ma-commu/settings");
+    const { user } = await start("/servers/pixel-haven/settings");
     expect(await screen.findByRole("heading", { level: 1, name: "Server settings" })).toBeTruthy();
     expect(screen.getByText("Deletion protection")).toBeTruthy();
     await user.click(screen.getByRole("link", { name: /^Drift/ }));
@@ -143,8 +145,8 @@ describe("layout", () => {
 
   test("an explained sync failure becomes a friendly toast, never raw JSON", async () => {
     const raw =
-      'sync: reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[]}})';
-    const { user } = await start("/servers/ma-commu/plan", (url, init) =>
+      'sync: reconcile pixel-haven: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[]}})';
+    const { user } = await start("/servers/pixel-haven/plan", (url, init) =>
       init.method === "POST" && url.pathname.endsWith("/sync")
         ? new Response(
             JSON.stringify({
@@ -197,15 +199,15 @@ describe("server switcher while the status loads", () => {
   }
 
   test("a deep link shows placeholders and the server name, never the raw key", async () => {
-    const { release, nav } = await startHeld("/servers/ma-commu/store");
-    const switcher = within(nav).getByRole("button", { name: /^Server: Ma Commu/ });
+    const { release, nav } = await startHeld("/servers/pixel-haven/store");
+    const switcher = within(nav).getByRole("button", { name: /^Server: Pixel Haven/ });
     expect(switcher.getAttribute("aria-busy")).toBe("true");
     expect(switcher.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
-    expect(switcher.textContent).toContain("Ma Commu");
-    expect(switcher.textContent).not.toContain("ma-commu");
+    expect(switcher.textContent).toContain("Pixel Haven");
+    expect(switcher.textContent).not.toContain("pixel-haven");
     expect(switcher.textContent).not.toContain("Pick a server");
     const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(within(crumbs).getByText("Ma Commu")).toBeTruthy();
+    expect(within(crumbs).getByText("Pixel Haven")).toBeTruthy();
 
     release();
     await waitFor(() => expect(switcher.getAttribute("aria-busy")).toBeNull());

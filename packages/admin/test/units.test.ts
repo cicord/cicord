@@ -6,14 +6,16 @@ import { cleanMessage, describeError, errorOf, explainRaw } from "../src/lib/err
 import { groupHistory, parseTarget } from "../src/lib/history.ts";
 
 const RAW =
-  'reconcile ma-commu: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2}."}]}})';
+  'reconcile pixel-haven: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[{"code":"BASE_TYPE_CHOICES","message":"Value must be one of {0, 2}."}]}})';
 
 describe("i18n", () => {
   test("plurals, interpolation and relative time", () => {
     expect(i18n.t("sync.toast.applied", { count: 1 })).toBe("Applied 1 change");
     expect(i18n.t("sync.toast.applied", { count: 4 })).toBe("Applied 4 changes");
     expect(i18n.t("history.repeated", { status: "Failed", count: 4 })).toBe("Failed 4 times");
-    expect(i18n.t("switcher.label", { name: "Ma Commu" })).toBe("Server: Ma Commu. Switch server");
+    expect(i18n.t("switcher.label", { name: "Pixel Haven" })).toBe(
+      "Server: Pixel Haven. Switch server",
+    );
     const now = Date.parse("2026-11-21T10:00:00Z");
     expect(formatRelative("2026-11-21T09:48:00Z", now)).toBe("12 minutes ago");
     expect(formatRelative("2026-11-21T09:59:58Z", now)).toBe("just now");
@@ -72,11 +74,11 @@ describe("error mapping", () => {
       new CicordApiError({
         code: "forbidden",
         status: 403,
-        message: "requires the admin role on server ma-commu",
+        message: "requires the admin role on server pixel-haven",
       }),
     );
     expect(forbidden.title).toBe("Not available with your role");
-    expect(forbidden.message).toBe("requires the admin role on server ma-commu");
+    expect(forbidden.message).toBe("requires the admin role on server pixel-haven");
     expect(forbidden.hint).toMatch(/spec.access/);
 
     expect(
@@ -180,7 +182,7 @@ describe("history grouping", () => {
     const a = { ...rec(2, "failed", "x"), error: { code: "missing_permissions", message: "A" } };
     const b = { ...rec(1, "failed", "x"), error: { code: "missing_permissions", message: "B" } };
     expect(groupHistory([a, b])).toHaveLength(2);
-    expect(parseTarget("server:ma-commu")).toEqual({ kind: "server", key: "ma-commu" });
+    expect(parseTarget("server:pixel-haven")).toEqual({ kind: "server", key: "pixel-haven" });
     expect(parseTarget("revision")).toEqual({ kind: "revision", key: "" });
   });
 });

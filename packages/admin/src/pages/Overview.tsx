@@ -19,6 +19,7 @@ import {
 import { LiveSummary } from "../components/discord.tsx";
 import { ErrorState, HumanErrorCallout } from "../components/errors.tsx";
 import { HistoryList } from "../components/history.tsx";
+import { PauseButton, PausedBadge } from "../components/pause.tsx";
 import {
   HealthBadge,
   StatusDot,
@@ -102,6 +103,7 @@ export function OverviewPage({ serverKey }: { serverKey: string }) {
           <>
             <SyncBadge sync={s.sync} />
             <HealthBadge health={s.health} />
+            {s.paused ? <PausedBadge /> : null}
             <RoleBadge role={ws.role} />
             <span className="text-xs text-muted-foreground">
               <Mono>{s.key}</Mono>
@@ -118,7 +120,8 @@ export function OverviewPage({ serverKey }: { serverKey: string }) {
                 <span className="hidden sm:inline">{t("legend.open")}</span>
               </Button>
             </StatusLegend>
-            {ws.isAdmin ? <SyncButton serverKey={s.key} /> : null}
+            <PauseButton />
+            {ws.isAdmin && !s.paused ? <SyncButton serverKey={s.key} /> : null}
           </>
         }
       />

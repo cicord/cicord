@@ -38,7 +38,7 @@ func loadExample(t *testing.T) (*config.Server, string) {
 	if repo == nil || diags.HasErrors() {
 		t.Fatalf("load example: %v", diags.Errors())
 	}
-	s := *repo.Servers["ma-commu"] // shallow copy; maps are not mutated by tests below without cloning
+	s := *repo.Servers["my-community"] // shallow copy; maps are not mutated by tests below without cloning
 	return &s, repo.Root
 }
 
@@ -54,6 +54,13 @@ func newEnvWith(t *testing.T, desired *config.Server, root string, perms discord
 	owner := w.CreateUser("owner")
 	token, bot, app := w.CreateBot("cicord")
 	srv := w.CreateServer("Fresh", owner.ID, sim.WithGeneralChannel())
+	// The new server's default #general would be adopted by the example's #general:
+	// rename it so it stays an unmanaged channel.
+	if def, ok := w.ChannelByName(srv.ID, "general"); ok {
+		if _, err := w.AdminUpdateChannel(def.ID, discord.ChannelParams{Name: new("lobby")}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := w.AddBotToServer(srv.ID, bot.ID, perms); err != nil {
 		t.Fatal(err)
 	}
@@ -132,10 +139,10 @@ func TestSyncExample(t *testing.T) {
 
 	// server profile
 	s, _ := e.w.Server(e.srv.ID)
-	if s.Name != "Ma Commu" || s.VerificationLevel != "medium" || s.DefaultNotifications != "onlyMentions" {
+	if s.Name != "My Community" || s.VerificationLevel != "medium" || s.DefaultNotifications != "onlyMentions" {
 		t.Errorf("server = %+v", s)
 	}
-	if s.SystemChannelID != e.channel("général").ID || s.RulesChannelID != e.channel("règlement").ID {
+	if s.SystemChannelID != e.channel("general").ID || s.RulesChannelID != e.channel("rules").ID {
 		t.Errorf("system/rules channel = %s/%s", s.SystemChannelID, s.RulesChannelID)
 	}
 	// @everyone
@@ -144,20 +151,20 @@ func TestSyncExample(t *testing.T) {
 		t.Errorf("@everyone permissions = %v", every.Permissions.Names())
 	}
 	// roles: hierarchy below the bot's role
-	admin, modo, member := e.role("Admin"), e.role("Modo"), e.role("Membre")
+	admin, moderator, member := e.role("Admin"), e.role("Moderator"), e.role("Member")
 	botRole := e.role("cicord")
-	if botRole.Position <= admin.Position || admin.Position <= modo.Position || modo.Position <= member.Position {
-		t.Errorf("positions bot=%d admin=%d modo=%d member=%d", botRole.Position, admin.Position, modo.Position, member.Position)
+	if botRole.Position <= admin.Position || admin.Position <= moderator.Position || moderator.Position <= member.Position {
+		t.Errorf("positions bot=%d admin=%d moderator=%d member=%d", botRole.Position, admin.Position, moderator.Position, member.Position)
 	}
 	if admin.Color != 0xe74c3c || !admin.Hoist || admin.Permissions != discord.MustPermissions("Administrator") {
 		t.Errorf("admin = %+v", admin)
 	}
 	// channels
-	info, community, staff := e.channel("Infos"), e.channel("Communauté"), e.channel("Staff")
+	info, community, staff := e.channel("Info"), e.channel("Community"), e.channel("Staff")
 	if info.Position >= community.Position || community.Position >= staff.Position {
 		t.Errorf("category positions %d %d %d", info.Position, community.Position, staff.Position)
 	}
-	rules, ann, general, voice, staffChat := e.channel("règlement"), e.channel("annonces"), e.channel("général"), e.channel("Vocal"), e.channel("staff")
+	rules, ann, general, voice, staffChat := e.channel("rules"), e.channel("announcements"), e.channel("general"), e.channel("Voice"), e.channel("staff")
 	if rules.ParentID != info.ID || ann.ParentID != info.ID || general.ParentID != community.ID || voice.ParentID != community.ID || staffChat.ParentID != staff.ID {
 		t.Error("wrong parents")
 	}
@@ -167,7 +174,7 @@ func TestSyncExample(t *testing.T) {
 	if rules.Position > ann.Position {
 		t.Errorf("rules (%d) should be above announcements (%d)", rules.Position, ann.Position)
 	}
-	if general.Topic != "Discussions générales" {
+	if general.Topic != "General chat" {
 		t.Errorf("topic = %q", general.Topic)
 	}
 	// synced overwrites
@@ -177,12 +184,12 @@ func TestSyncExample(t *testing.T) {
 	if !e.w.Permissions(e.srv.ID, staffChat.ID, e.bot.ID).Has(discord.MustPermissions("ViewChannel")) {
 		t.Error("bot should see staff-chat (administrator)")
 	}
-	// the pre-existing unmanaged #general channel is untouched
-	if g := e.channel("general"); g.ParentID != "" {
-		t.Errorf("unmanaged #general moved: %+v", g)
+	// the pre-existing unmanaged #lobby channel is untouched
+	if g := e.channel("lobby"); g.ParentID != "" {
+		t.Errorf("unmanaged #lobby moved: %+v", g)
 	}
 	// mapping recorded
-	list, _ := e.store.Resources().List(ctx, "ma-commu")
+	list, _ := e.store.Resources().List(ctx, "my-community")
 	if len(list) != len(e.desired.Spec.Roles)+len(e.desired.Spec.Categories)+len(e.desired.Spec.Channels) {
 		t.Errorf("resource map has %d entries", len(list))
 	}
@@ -210,7 +217,7 @@ func TestSyncIcon(t *testing.T) {
 	prof := *d.Spec.Profile
 	prof.Icon = "assets/icon.png"
 	d.Spec.Profile = &prof
-	d.File = "servers/ma-commu.yaml"
+	d.File = "servers/my-community.yaml"
 	e := newEnv(t, &d, dir)
 	r := e.reconciler(e.session)
 	if _, _, err := r.Sync(context.Background()); err != nil {
@@ -232,8 +239,8 @@ func TestAdoptExisting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cat, _ := e.w.AdminCreateChannel(e.srv.ID, discord.ChannelParams{Name: new("Communauté"), Type: discord.ChannelCategory})
-	gen, _ := e.w.AdminCreateChannel(e.srv.ID, discord.ChannelParams{Name: new("général"), Type: discord.ChannelText})
+	cat, _ := e.w.AdminCreateChannel(e.srv.ID, discord.ChannelParams{Name: new("Community"), Type: discord.ChannelCategory})
+	gen, _ := e.w.AdminCreateChannel(e.srv.ID, discord.ChannelParams{Name: new("general"), Type: discord.ChannelText})
 	r := e.reconciler(e.session)
 	p, err := r.Plan(context.Background())
 	if err != nil {
@@ -252,7 +259,7 @@ func TestAdoptExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.mustEmptyPlan(r)
-	if got := e.channel("général"); got.ID != gen.ID || got.ParentID != cat.ID || got.Topic != "Discussions générales" {
+	if got := e.channel("general"); got.ID != gen.ID || got.ParentID != cat.ID || got.Topic != "General chat" {
 		t.Errorf("adopted channel = %+v", got)
 	}
 	n := 0
@@ -284,7 +291,7 @@ func TestDriftAndSelfHeal(t *testing.T) {
 		if r.DriftPending() {
 			t.Fatal("no drift expected")
 		}
-		gen := e.channel("général")
+		gen := e.channel("general")
 		if _, err := e.w.AdminUpdateChannel(gen.ID, discord.ChannelParams{Name: new("general-chat")}); err != nil {
 			t.Fatal(err)
 		}
@@ -296,7 +303,7 @@ func TestDriftAndSelfHeal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(d) != 1 || d[0].Key != "general" || d[0].Field != "name" || d[0].Expected != "général" || d[0].Actual != "general-chat" {
+		if len(d) != 1 || d[0].Key != "general" || d[0].Field != "name" || d[0].Expected != "general" || d[0].Actual != "general-chat" {
 			t.Fatalf("drift = %+v", d)
 		}
 		time.Sleep(60 * time.Millisecond)
@@ -304,7 +311,7 @@ func TestDriftAndSelfHeal(t *testing.T) {
 			t.Fatal("selfHeal is off: the change must not be reverted")
 		}
 		// unmanaged resources produce no drift
-		other := e.channel("general")
+		other := e.channel("lobby")
 		r.Plan(ctx)
 		e.w.AdminUpdateChannel(other.ID, discord.ChannelParams{Topic: new("x")})
 		e.w.WaitIdle()
@@ -336,17 +343,17 @@ func TestDriftAndSelfHeal(t *testing.T) {
 		e.w.WaitIdle()
 		drain(synced)
 
-		gen := e.channel("général")
-		modo := e.role("Modo")
+		gen := e.channel("general")
+		moderator := e.role("Moderator")
 		e.w.AdminUpdateChannel(gen.ID, discord.ChannelParams{Name: new("hacked")})
-		e.w.AdminUpdateRole(e.srv.ID, modo.ID, discord.RoleParams{Permissions: new(discord.MustPermissions("Administrator"))})
-		e.w.AdminDeleteChannel(e.channel("Vocal").ID)
+		e.w.AdminUpdateRole(e.srv.ID, moderator.ID, discord.RoleParams{Permissions: new(discord.MustPermissions("Administrator"))})
+		e.w.AdminDeleteChannel(e.channel("Voice").ID)
 		e.w.WaitIdle()
 		waitFor(t, synced, func() bool {
 			c, ok := e.w.Channel(gen.ID)
-			m, _ := e.w.Role(e.srv.ID, modo.ID)
-			_, voice := e.w.ChannelByName(e.srv.ID, "Vocal")
-			return ok && c.Name == "général" && m.Permissions == discord.MustPermissions("KickMembers", "ModerateMembers", "ManageMessages", "ManageThreads") && voice
+			m, _ := e.w.Role(e.srv.ID, moderator.ID)
+			_, voice := e.w.ChannelByName(e.srv.ID, "Voice")
+			return ok && c.Name == "general" && m.Permissions == discord.MustPermissions("KickMembers", "ModerateMembers", "ManageMessages", "ManageThreads") && voice
 		})
 		e.w.WaitIdle()
 		e.mustEmptyPlan(r)
@@ -565,11 +572,11 @@ func TestPruneAndOwnership(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		e.store.Resources().Put(ctx, state.Resource{Server: "ma-commu", Kind: state.KindChannel, Key: "ticket-1", ID: tk.ID, Owner: "plugin:moderator/tickets"})
+		e.store.Resources().Put(ctx, state.Resource{Server: "my-community", Kind: state.KindChannel, Key: "ticket-1", ID: tk.ID, Owner: "plugin:moderator/tickets"})
 		d := without(e.desired, "voice")
 		d.Spec.SyncPolicy = config.SyncPolicy{PruneP: &prune, DeletionProtectionP: &protect}
 		e.desired = d
-		return e, e.channel("Vocal").ID, tk.ID
+		return e, e.channel("Voice").ID, tk.ID
 	}
 
 	t.Run("no prune: stop managing", func(t *testing.T) {
@@ -612,7 +619,7 @@ func TestPruneAndOwnership(t *testing.T) {
 			t.Fatal("plugin-owned channel deleted")
 		}
 		e.mustEmptyPlan(r)
-		if _, err := e.store.Resources().Get(ctx, "ma-commu", state.KindChannel, "voice"); !errors.Is(err, state.ErrNotFound) {
+		if _, err := e.store.Resources().Get(ctx, "my-community", state.KindChannel, "voice"); !errors.Is(err, state.ErrNotFound) {
 			t.Fatalf("mapping not removed: %v", err)
 		}
 	})
@@ -663,7 +670,7 @@ func TestTypeChangeReplace(t *testing.T) {
 	if _, _, err := e.reconciler(e.session).Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	old := e.channel("annonces")
+	old := e.channel("announcements")
 	d := *e.desired
 	d.Spec.Channels = map[string]config.Channel{}
 	for k, v := range e.desired.Spec.Channels {
@@ -682,7 +689,7 @@ func TestTypeChangeReplace(t *testing.T) {
 	if _, ok := e.w.Channel(old.ID); ok {
 		t.Fatal("old channel not deleted")
 	}
-	if c := e.channel("annonces"); c.Type != discord.ChannelText || c.ParentID != e.channel("Infos").ID {
+	if c := e.channel("announcements"); c.Type != discord.ChannelText || c.ParentID != e.channel("Info").ID {
 		t.Fatalf("replacement = %+v", c)
 	}
 	e.mustEmptyPlan(r)
@@ -696,16 +703,16 @@ func TestReorderRepair(t *testing.T) {
 	if _, _, err := r.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	modo := e.role("Modo")
-	// an unmanaged role placed between Admin and Modo keeps its place
+	moderator := e.role("Moderator")
+	// an unmanaged role placed between Admin and Moderator keeps its place
 	booster, _ := e.w.AdminCreateRole(e.srv.ID, discord.RoleParams{Name: new("Booster")})
-	e.w.AdminSetRolePositions(e.srv.ID, []discord.RolePosition{{ID: booster.ID, Position: modo.Position + 1}})
-	// someone swaps Admin and Modo, and the two channels of "Infos"
-	admin, modo := e.role("Admin"), e.role("Modo")
-	e.w.AdminSetRolePositions(e.srv.ID, []discord.RolePosition{{ID: admin.ID, Position: modo.Position}, {ID: modo.ID, Position: admin.Position}})
-	rules, ann := e.channel("règlement"), e.channel("annonces")
+	e.w.AdminSetRolePositions(e.srv.ID, []discord.RolePosition{{ID: booster.ID, Position: moderator.Position + 1}})
+	// someone swaps Admin and Moderator, and the two channels of "Info"
+	admin, moderator := e.role("Admin"), e.role("Moderator")
+	e.w.AdminSetRolePositions(e.srv.ID, []discord.RolePosition{{ID: admin.ID, Position: moderator.Position}, {ID: moderator.ID, Position: admin.Position}})
+	rules, ann := e.channel("rules"), e.channel("announcements")
 	e.w.AdminSetChannelPositions(e.srv.ID, []discord.ChannelPosition{{ID: rules.ID, Position: ann.Position}, {ID: ann.ID, Position: rules.Position}})
-	if e.role("Modo").Position < e.role("Admin").Position {
+	if e.role("Moderator").Position < e.role("Admin").Position {
 		t.Fatal("setup: swap failed")
 	}
 
@@ -722,11 +729,11 @@ func TestReorderRepair(t *testing.T) {
 		t.Fatalf("plan:\n%s", p)
 	}
 	e.mustEmptyPlan(r)
-	a, b, m := e.role("Admin"), e.role("Booster"), e.role("Modo")
+	a, b, m := e.role("Admin"), e.role("Booster"), e.role("Moderator")
 	if a.Position <= b.Position || b.Position <= m.Position {
-		t.Errorf("positions admin=%d booster=%d modo=%d", a.Position, b.Position, m.Position)
+		t.Errorf("positions admin=%d booster=%d moderator=%d", a.Position, b.Position, m.Position)
 	}
-	if e.channel("règlement").Position > e.channel("annonces").Position {
+	if e.channel("rules").Position > e.channel("announcements").Position {
 		t.Error("channels not reordered")
 	}
 }

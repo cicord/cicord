@@ -42,7 +42,8 @@ Tailscale tailnet, Caddy for the public portal, backups), follow
       creates `/data` that way) and back it up: it holds sessions, plugin data, the secret
       store and its key.
 - [ ] Review **`spec.access`** (admins and moderators) of each server, and use `writeBack`
-      policies with `pullRequest` for structural changes.
+      policies with `pullRequest` for what should be reviewed (`servers/**`: the server images
+      uploaded in the admin console).
 - [ ] Review what each plugin is **granted** in `bot.yaml`, and treat plugins from unofficial
       registries as third-party code.
 - [ ] Harden the **Discord side** too: a private bot, 2FA for moderation, least-privilege
@@ -53,8 +54,9 @@ Tailscale tailnet, Caddy for the public portal, backups), follow
 **HTTP API**
 
 - Every unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) needs the `X-Cicord-Request` header or
-  an `Authorization` header, and an `Origin` that is the public URL, the admin URL or an allowed
-  CORS origin. `/hooks/*` is exempt and HMAC-authenticated.
+  an `Authorization` header; when it carries an `Origin`, that origin must be the public URL,
+  the admin URL or an allowed CORS origin (`403` otherwise). `/hooks/*` is exempt and
+  HMAC-authenticated.
 - Session cookies are HttpOnly and `SameSite=Lax` (`Secure` over HTTPS). Sessions last 7 days.
 - Portal link sessions are limited to one server and to the member role outside the portal
   endpoints; token-mode sessions (embedded portals) work on every endpoint but are capped at
@@ -65,7 +67,6 @@ Tailscale tailnet, Caddy for the public portal, backups), follow
 - The admin console is served with `X-Frame-Options: DENY`; every response has
   `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`.
 - The OAuth `state` is random, single-use and bound to the browser.
-
 - With `--admin-url`, the admin console and the admin API answer `404` on every host but the
   admin one ([below](#admin-on-a-private-network-portal-public)).
 
@@ -122,7 +123,7 @@ tailnet  ── tailscale serve (https://cicord.example.ts.net) ┘
 cicord serve /srv/cicord --data-dir /var/lib/cicord --listen 127.0.0.1:7420 \
   --public-url https://community.example.org \
   --admin-url https://cicord.example.ts.net      # or CICORD_ADMIN_URL
-tailscale serve --bg 7420                        # HTTPS on the tailnet name → 127.0.0.1:7420
+tailscale serve --bg --https=443 http://127.0.0.1:7420   # HTTPS on the tailnet name
 ```
 
 ```text title="Caddyfile"
@@ -139,12 +140,10 @@ What changes with `--admin-url`:
   and `https://cicord.example.ts.net/auth/callback` as OAuth2 redirects of the login
   application. The setup wizard checks both and names the missing ones.
 - **Logins stay on their host.** A request whose `Host` is the admin hostname (compared
-  case-insensitively and with its port; no port means the default port of the admin URL's
-  scheme) uses the admin URL for the OAuth redirect URI and the `Secure` cookie flag; every
-  other host uses the public URL. A login started on the admin hostname therefore uses the
-  admin callback, one started anywhere else the public callback, and the OAuth state stays on
-  the host the login started from. Cookies have no `Domain`, so a portal session is never sent
-  to the admin hostname and the reverse: sign in on each.
+  case-insensitively, with its port; no port means the default port of the admin URL's
+  scheme) uses the admin URL for the OAuth callback and the `Secure` cookie flag; every other
+  host uses the public URL. Cookies have no `Domain`, so a portal session is never sent to the
+  admin hostname and the reverse: sign in on each.
 - **Admin routes only answer on the admin host.** On any other `Host`, the admin console
   (`/admin`, `/admin/*`) and every API endpoint except `/api/v1/me`, `/api/v1/portal/**`,
   `/api/v1/sync` and `/api/v1/plan` answer `404`, like an unknown route: status, history,
@@ -190,10 +189,7 @@ it manages. What it implies:
 - its role must stay **above every role Cicord manages** (the wizard and the Diagnostics page
   check it). Members whose highest role is below the bot's cannot edit the bot's role.
 
-Without Administrator, the bot needs exactly the permissions your configuration and plugins
-use, and a `"@bot"` overwrite on the private channels it manages: `cicord plan` and every sync
-check this first and stop, before changing anything, naming what is missing. See
-[Bot permissions](../bot-permissions/) for the least-privilege setup.
+To run the bot without Administrator, see [Bot permissions](../bot-permissions/).
 
 **A private bot.** In the [Developer Portal](https://discord.com/developers/applications), so
 that nobody else can add your bot to a server: **Installation → Install Link: None** first,

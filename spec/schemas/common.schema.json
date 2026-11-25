@@ -73,7 +73,7 @@
       "uniqueItems": true
     },
     "intent": {
-      "description": "Gateway intent, Cicord naming. See https://cicord.dev/docs/configuration/server/ for the mapping.",
+      "description": "Gateway intent, Cicord naming. See https://cicord.dev/docs/plugins/writing/#intents for the events that need each one.",
       "enum": [
         "Servers", "ServerMembers", "ServerModeration", "ServerExpressions", "ServerIntegrations",
         "ServerWebhooks", "ServerInvites", "ServerVoiceStates", "ServerPresences", "ServerMessages",
@@ -84,7 +84,7 @@
       ]
     },
     "capability": {
-      "description": "Plugin capability. See https://cicord.dev/docs/configuration/server/ for what each one allows.",
+      "description": "Plugin capability. See https://cicord.dev/docs/plugins/writing/#capabilities-and-grants for what each one allows.",
       "enum": [
         "discord.messages.read", "discord.messages.send", "discord.messages.manage",
         "discord.reactions.manage", "discord.members.read", "discord.members.manage",

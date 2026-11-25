@@ -143,44 +143,37 @@ metric is collected right now.
 
 ## Intents and permissions
 
-Analytics read the events of the bot that manages the server, so each group depends on a
-gateway intent of that bot ([Gateway intents](../../configuration/bot/#gateway-intents)), and
-a few depend on a bot permission too:
+Analytics read the gateway events of the bot that **collects** the server: the first bot, by
+key, that lists it in `spec.servers`. When analytics are enabled, the runtime adds the
+non-privileged intents they need to that bot itself (`ServerMessages`,
+`ServerMessageReactions`, `ServerVoiceStates`, `ServerInvites`, `ServerModeration`,
+`AutoModerationExecution`). What you provide is the rest:
 
-| Metrics | Needs |
+| Metrics | Need |
 |---|---|
-| `members.total`, `members.online`, boosts | Nothing (`Servers`, always enabled); without `ServerMembers` they include the bots |
-| `members.bots`, `members.joined*`, `members.left`, `members.roles.*`, `onboarding.completed` | `ServerMembers` (privileged) |
-| `messages.*`, `members.active.chat` | `ServerMessages` |
-| `messages.attachments`, `polls.created` | `ServerMessages` and `MessageContent` (privileged): without it, Discord sends messages without their attachments and polls |
-| `reactions.added` | `ServerMessageReactions` |
-| `threads.created` | `Servers` |
-| `voice.*`, `stage.seconds`, `members.active.voice` | `ServerVoiceStates` |
-| `events.interested` | `ServerScheduledEvents` |
-| `moderation.actions` | `ServerModeration` and the **View Audit Log** permission |
-| `automod.*` | `AutoModerationExecution` and the **Manage Server** permission |
-| `invites.uses`, `invites.created` | `ServerInvites` and the **Manage Server** permission (to read invite use counts) |
-| `commands.used`, `components.used`, `bots.commands.tenure` | Nothing (interactions reach the bot without an intent) |
-| `bots.commands`, `bots.commands.channels`, `members.active.bots` | Nothing for Cicord's bots; `ServerMessages` for other bots (their replies) |
+| `members.bots`, `members.joined*`, `members.left`, `members.roles.*`, `onboarding.completed` | `ServerMembers` (privileged) in the bot's `spec.intents`; without it, `members.total` and `members.online` include the bots |
+| `messages.attachments`, `polls.created` | `MessageContent` (privileged): without it, Discord sends messages without their attachments and polls |
+| `moderation.actions` | The **View Audit Log** permission |
+| `invites.uses`, `automod.*` | The **Manage Server** permission (invite use counts, AutoMod executions) |
 | `presence.*` | `ServerPresences` (privileged) and `spec.analytics.presence: true` |
 
-The bot also needs **View Channel** in a channel to receive its events: a private channel
-the bot cannot see is not counted.
+Everything else needs nothing more. The bot also needs **View Channel** in a channel to
+receive its events: a private channel the bot cannot see is not counted. Commands of other
+bots are seen in the channels where the collecting bot reads their public replies.
 
-When something is missing, the group is **not collected** and the rest still is. The
-dashboard and the API's `status.missing` name the metrics concerned, the reason (a missing
-intent or permission) and the fix. The catalog reports those metrics as
-`"collected": false`. Points recorded before keep showing.
+When something is missing, those metrics are **not collected** and the rest still is. The
+dashboard and the API's `status.missing` name the metrics concerned, the reason and the fix;
+the catalog reports them as `"collected": false`. Points recorded before keep showing.
 
 Privileged intents must also be enabled in the Discord developer portal (Bot → Privileged
-Gateway Intents). Keep presence off unless you need it: it is the most sensitive data and the
-most gateway traffic.
+Gateway Intents; see [Gateway intents](../../configuration/bot/#gateway-intents)). Keep
+presence off unless you need it: it is the most sensitive data and the most gateway traffic.
 
 ## Configuration
 
 `spec.analytics` in the [server file](../../configuration/server/#analytics):
 
-```yaml title="servers/ma-commu.yaml"
+```yaml title="servers/my-community.yaml"
 spec:
   analytics:
     enabled: true     # default: analytics are collected when the block is absent
@@ -195,11 +188,16 @@ spec:
   values). Older points are deleted.
 - `presence: true` aggregates statuses, platforms and activities, with the `ServerPresences`
   intent.
-- `portal: members` (or `public`) shows the community what happens on the server, in the
-  [community portal](../../portal/overview/): members, joins, active members per day,
-  messages, voice time, reactions, bot commands, the busiest channels and hours. Only
-  channels `@everyone` can see are named, and nothing is per member
-  ([`GET /api/v1/portal/{server}/analytics`](../../reference/http-api/portal/#activity)).
+- `portal` shares a curated view with the community, through
+  [`GET /api/v1/portal/{server}/analytics`](../../reference/http-api/portal/#activity):
+  `members` for the signed-in members of the server (`401` signed out, `403` for others),
+  `public` for anyone; `off`, or `enabled: false`, answers `404`. It covers the last 7, 30 or
+  90 days: members, joins, active members, messages, voice time, reactions, bot commands and
+  members using bots, the top 5 channels by messages, the top 8 bot commands and a weekday ×
+  hour heatmap of messages. Only channels `@everyone` can see are named, and nothing is per
+  member. The reference portal does not show it: a custom portal does, with
+  `usePortalAnalytics` (see the
+  [Cicord community portal](../../portal/custom-portal/#example-the-cicord-community-portal)).
 
 ## Retention and storage
 
@@ -215,10 +213,14 @@ spec:
 The analytics page of a server in the admin console (moderators and admins, on the
 [admin host](../security/#admin-on-a-private-network-portal-public) when you use one) shows:
 
+![The Analytics page of a demo community: headline numbers with their change over the previous period, and the members chart](../../../assets/screenshots/admin-analytics.webp)
+
 - the headline numbers of the last 7, 30, 90 or 365 days (calendar days in UTC, today
-  included), each compared with the period before: members, joins, leaves, net growth,
-  active members (average per day), messages, voice time, online members (average of the
-  samples), reactions, commands and moderation actions, with a sparkline per day;
+  included) or of a **custom range** (dates and times, widened to whole UTC hours, up to 400
+  days), each compared with the period before: members, joins, leaves, net growth, active
+  members (average per day), messages, voice time, online members (average of the samples),
+  reactions, commands and moderation actions, with a sparkline per day (per hour for a range
+  under two days);
 - rankings: channels by messages and by voice time, emojis, invites, commands, moderation
   actions, AutoMod rules, roles added, account ages of new members, bot commands, channels
   where bots are used, and activities when presence is on;

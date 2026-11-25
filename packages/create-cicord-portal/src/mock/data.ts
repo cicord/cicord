@@ -1,5 +1,5 @@
 /**
- * Mock data mirroring examples/basic: servers/ma-commu.yaml (roles, portal theme) and the
+ * Mock data mirroring examples/basic: servers/my-community.yaml (roles, portal theme) and the
  * `onboarding` instance of bots/moderator/bot.yaml.
  */
 import type { PortalServer, User } from "@cicord/client";
@@ -34,32 +34,32 @@ const banner = `data:image/svg+xml;utf8,${encodeURIComponent(
 )}`;
 
 export const portalServer: PortalServer = {
-  key: "ma-commu",
-  name: "Ma Commu",
+  key: "my-community",
+  name: "My Community",
   iconUrl: "",
   // `?mode=light|system` previews the other palettes in mock mode.
   theme: { primary: "#5865f2", accent: "#eb459e", logo, mode: mockMode() },
-  title: "Bienvenue sur Ma Commu",
-  tagline: "La commu francophone des soirées jeux, tournois et lives.",
+  title: "Welcome to My Community",
+  tagline: "The community for game nights, tournaments and live streams.",
   description: [
-    "Ici, on joue **ensemble** : Minecraft, Valorant, League of Legends et tout ce qui passe.",
+    "Here we play **together**: Minecraft, Valorant, League of Legends and whatever comes next.",
     "",
-    "## Ce que tu trouveras ici",
-    "- des soirées jeux chaque vendredi",
-    "- des tournois mensuels avec des lots",
-    "- une équipe de modération à l'écoute",
+    "## What you'll find here",
+    "- game nights every Friday",
+    "- monthly tournaments with prizes",
+    "- a moderation team that listens",
     "",
-    "Lis le [règlement](https://ma-commu.example/regles) avant de poster.",
+    "Read the [rules](https://my-community.example/rules) before posting.",
   ].join("\n"),
   banner,
   links: [
-    { label: "Site web", url: "https://ma-commu.example", icon: "website" },
-    { label: "Chaîne YouTube", url: "https://www.youtube.com/@ma-commu", icon: "youtube" },
-    { label: "Lives Twitch", url: "https://www.twitch.tv/ma-commu", icon: "twitch" },
-    { label: "Règlement", url: "https://ma-commu.example/regles", icon: "rules" },
+    { label: "Website", url: "https://my-community.example", icon: "website" },
+    { label: "YouTube channel", url: "https://www.youtube.com/@my-community", icon: "youtube" },
+    { label: "Twitch streams", url: "https://www.twitch.tv/my-community", icon: "twitch" },
+    { label: "Rules", url: "https://my-community.example/rules", icon: "rules" },
   ],
   pages: { onboarding: true, profile: true, leaderboard: true, tickets: true },
-  locale: "fr",
+  locale: "en",
   plugins: [
     {
       bot: "moderator",
@@ -78,14 +78,14 @@ export const portalServer: PortalServer = {
 };
 
 export const leaderboard = [
-  ["1001", "Léa", 14, 18420],
-  ["1002", "Nico", 12, 15210],
-  ["1003", "Inès", 11, 13980],
-  ["1004", "Hugo", 9, 9340],
-  ["1005", "Camille", 8, 8120],
-  ["1006", "Yanis", 6, 5230],
-  ["1007", "Sarah", 5, 4410],
-  ["1008", "Malo", 3, 1980],
+  ["1001", "Alex", 14, 18420],
+  ["1002", "Sam", 12, 15210],
+  ["1003", "Jordan", 11, 13980],
+  ["1004", "Taylor", 9, 9340],
+  ["1005", "Casey", 8, 8120],
+  ["1006", "Riley", 6, 5230],
+  ["1007", "Morgan", 5, 4410],
+  ["1008", "Jamie", 3, 1980],
 ].map(([userId, displayName, level, xp], i) => ({
   rank: i + 1,
   userId: userId as string,
@@ -98,40 +98,40 @@ export const leaderboard = [
 export const tickets = [
   {
     id: "42",
-    subject: "Problème d'accès au salon Valorant",
+    subject: "Can't access the Valorant channel",
     status: "open" as const,
-    author: { id: "1005", displayName: "Camille" },
+    author: { id: "1005", displayName: "Casey" },
     createdAt: "2026-11-20T18:12:00Z",
   },
   {
     id: "41",
-    subject: "Signalement : spam en vocal",
+    subject: "Report: spam in voice chat",
     status: "open" as const,
-    author: { id: "1007", displayName: "Sarah" },
+    author: { id: "1007", displayName: "Morgan" },
     createdAt: "2026-11-19T21:40:00Z",
   },
   {
     id: "37",
-    subject: "Idée de tournoi Minecraft",
+    subject: "Minecraft tournament idea",
     status: "closed" as const,
-    author: { id: "1002", displayName: "Nico" },
+    author: { id: "1002", displayName: "Sam" },
     createdAt: "2026-11-12T09:05:00Z",
   },
 ];
 
-export const user: User = { id: "1001", username: "lea.gg", displayName: "Léa", avatarUrl: "" };
+export const user: User = { id: "1001", username: "alex.gg", displayName: "Alex", avatarUrl: "" };
 
 export const roles: Record<string, { id: string; name: string; color: string }> = {
   admin: { id: "r1", name: "Admin", color: "#e74c3c" },
-  modo: { id: "r2", name: "Modo", color: "#e67e22" },
-  member: { id: "r3", name: "Membre", color: "#3498db" },
+  moderator: { id: "r2", name: "Moderator", color: "#e67e22" },
+  member: { id: "r3", name: "Member", color: "#3498db" },
   minecraft: { id: "r4", name: "Minecraft", color: "#5b8731" },
   valorant: { id: "r5", name: "Valorant", color: "#ff4655" },
   lol: { id: "r6", name: "League of Legends", color: "#c89b3c" },
   pc: { id: "r7", name: "PC", color: "#95a5a6" },
   console: { id: "r8", name: "Console", color: "#9b59b6" },
   mobile: { id: "r9", name: "Mobile", color: "#1abc9c" },
-  "ping-events": { id: "r10", name: "Notifs événements", color: "#f1c40f" },
+  "ping-events": { id: "r10", name: "Event pings", color: "#f1c40f" },
 };
 
 interface StepConfig {
@@ -150,30 +150,34 @@ export const onboardingConfig: {
   completedRole?: string;
   successMessage: string;
 } = {
-  title: "Bienvenue sur Ma Commu !",
+  title: "Welcome to My Community!",
   intro:
-    "Trois petites questions pour personnaliser ton expérience. Tu pourras changer d'avis quand tu veux avec /onboarding.",
+    "Three quick questions to tailor the server to you. You can change your answers any time with /onboarding.",
   steps: [
     {
-      id: "jeux",
-      title: "À quoi tu joues ?",
-      description: "Tu auras accès aux salons et aux pings de tes jeux.",
+      id: "games",
+      title: "What do you play?",
+      description: "You'll get the channels and pings of your games.",
       multiple: true,
       options: [
-        { role: "minecraft", emoji: "⛏️", description: "Survie, créatif et serveur de la commu" },
-        { role: "valorant", emoji: "🎯", description: "Ranked, customs et tournois" },
+        {
+          role: "minecraft",
+          emoji: "⛏️",
+          description: "Survival, creative and the community server",
+        },
+        { role: "valorant", emoji: "🎯", description: "Ranked, customs and tournaments" },
         {
           role: "lol",
           label: "League of Legends",
           emoji: "🛡️",
-          description: "Flex, ARAM et Clash",
+          description: "Flex, ARAM and Clash",
         },
       ],
     },
     {
-      id: "plateforme",
-      title: "Tu joues surtout sur…",
-      description: "Pour trouver des coéquipiers sur la même plateforme.",
+      id: "platform",
+      title: "Where do you mostly play?",
+      description: "To find teammates on the same platform.",
       required: true,
       options: [
         { role: "pc", emoji: "🖥️" },
@@ -182,19 +186,19 @@ export const onboardingConfig: {
       ],
     },
     {
-      id: "notifs",
-      title: "On te prévient pour les événements ?",
-      description: "Soirées jeux, tournois et lives de la commu. Zéro spam, promis.",
+      id: "notifications",
+      title: "Should we ping you for events?",
+      description: "Game nights, tournaments and community streams. No spam, promise.",
       options: [
         {
           role: "ping-events",
-          label: "Oui, ping-moi !",
+          label: "Yes, ping me!",
           emoji: "🔔",
-          description: "Tu seras mentionné à chaque nouvel événement",
+          description: "You'll be mentioned for every new event",
         },
       ],
     },
   ],
   completedRole: "member",
-  successMessage: "C'est tout bon ! Tes rôles sont à jour, file dire bonjour dans #général.",
+  successMessage: "All set! Your roles are up to date, come say hi in #general.",
 };

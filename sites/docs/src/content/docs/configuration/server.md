@@ -5,17 +5,21 @@ description: Reference of servers/<key>.yaml - profile, roles, categories, chann
 
 A **Server** file, `servers/<key>.yaml`, is the desired state of one Discord server. Schema:
 [`spec/schemas/server.schema.json`](https://github.com/cicord/cicord/blob/main/spec/schemas/server.schema.json).
-How it is applied is described in [Reconciliation](../../concepts/reconciliation/).
+How it is applied: [Reconciliation](../../concepts/reconciliation/). Complete files:
+[`examples/basic`](https://github.com/cicord/cicord/blob/main/examples/basic/servers/my-community.yaml),
+[`examples/showcase`](https://github.com/cicord/cicord/blob/main/examples/showcase/servers/showcase.yaml)
+and the [community server](https://github.com/cicord/cicord-community/blob/main/servers/cicord.yaml),
+which the examples below come from.
 
-```yaml title="servers/ma-commu.yaml"
+```yaml title="servers/my-community.yaml (examples/basic, shortened)"
 apiVersion: cicord.dev/v1alpha1
 kind: Server
 metadata:
-  name: ma-commu
+  name: my-community
 spec:
   discordId: "112233445566778899"
   profile:
-    name: Ma Commu
+    name: My Community
     verificationLevel: medium
     explicitContentFilter: allMembers
     systemChannel: general
@@ -24,209 +28,234 @@ spec:
     permissions: [ViewChannel, ReadMessageHistory, AddReactions, UseApplicationCommands]
   roles:
     admin: { name: Admin, color: "#e74c3c", hoist: true, permissions: [Administrator] }
-    modo: { name: Modo, color: "#e67e22", hoist: true, permissions: [KickMembers, ModerateMembers, ManageMessages] }
-    member: { name: Membre, color: "#3498db", permissions: [SendMessages, EmbedLinks, AttachFiles, Connect, Speak] }
-  hierarchy: [admin, modo, member]
+    moderator: { name: Moderator, color: "#e67e22", hoist: true, permissions: [KickMembers, ModerateMembers, ManageMessages, ManageThreads] }
+    member: { name: Member, color: "#3498db", permissions: [SendMessages, EmbedLinks, AttachFiles, Connect, Speak] }
+  hierarchy: [admin, moderator, member]
   categories:
-    community: { name: Communauté, position: 1 }
+    community: { name: Community, position: 1 }
     staff:
       name: Staff
       position: 2
       overwrites:
         "@everyone": { deny: [ViewChannel] }
-        modo: { allow: [ViewChannel] }
+        moderator: { allow: [ViewChannel] }
   channels:
-    general: { name: général, type: text, category: community, topic: Discussions générales }
-    voice: { name: Vocal, type: voice, category: community, userLimit: 10 }
+    general: { name: general, type: text, category: community, topic: General chat, position: 0 }
+    voice: { name: Voice, type: voice, category: community, userLimit: 10, position: 1 }
     staff-chat: { name: staff, type: text, category: staff }
   access:
     admins: { roles: [admin] }
-    moderators: { roles: [modo] }
+    moderators: { roles: [moderator] }
 ```
 
 Keys (`admin`, `general`…) match `^[a-z][a-z0-9-]{0,62}$` and never change; display names
-(`name:`) can. All references below are **keys** of the same server.
+(`name:`) can. Every reference is a **key** of the same server. Each block is managed only
+when present: what is compared is listed in
+[Reconciliation](../../concepts/reconciliation/#what-is-compared).
 
 ## Top level
 
-| Field | Type | Description |
-|---|---|---|
-| `discordId` | Discord ID, **required** | The server's ID (17 to 20 digits, as a string). |
-| `profile` | object | Name, icon, banner, verification, notifications, system channel… |
-| `syncPolicy` | object | Drift, pruning and deletion protection. |
-| `everyone` | `{ permissions }` | Permissions of the `@everyone` role. Managed only when present. |
-| `roles` | map of key → role | Roles. |
-| `hierarchy` | list of role keys | Role order, highest first. Managed roles not listed follow, in key order. |
-| `categories` | map of key → category | Categories. |
-| `channels` | map of key → channel | Channels. |
-| `afk` | object | Inactive voice channel. |
-| `widget` | object | Server widget. |
-| `community` | object | The Community feature and its channels. |
-| `automod` | map of key → rule | AutoMod rules. |
-| `onboarding` | object | Discord's native onboarding. |
-| `welcomeScreen` | object | Welcome screen of Community servers. |
-| `emojis`, `stickers`, `soundboard` | maps | Expressions, from files in the repository. |
-| `access` | object | Who can use the admin console for this server. |
-| `portal` | object | The server's community portal. |
-| `analytics` | object | Activity analytics of the server (on by default). |
+| Field                              | Description                                                                   |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| `discordId`                        | **Required.** The server's ID (17 to 20 digits, as a string).                 |
+| [`profile`](#profile)              | Name, images, verification, notifications, system channel.                     |
+| [`syncPolicy`](#syncpolicy)        | Self-heal, pruning and deletion protection.                                   |
+| `everyone`                         | `{ permissions }` of the `@everyone` role.                                    |
+| [`roles`](#roles)                  | Map of key → role.                                                            |
+| `hierarchy`                        | Role keys, highest first. Declared roles not listed follow, in key order.     |
+| [`categories`](#categories)        | Map of key → category.                                                        |
+| [`channels`](#channels)            | Map of key → channel.                                                         |
+| [`afk`, `widget`](#afk-and-widget) | Inactive voice channel, server widget.                                        |
+| [`community`](#community)          | The Community feature and its channels.                                       |
+| [`automod`](#automod)              | Map of key → AutoMod rule.                                                    |
+| [`onboarding`](#onboarding-native) | Discord's native onboarding.                                                  |
+| [`welcomeScreen`](#welcomescreen)  | Welcome screen of Community servers.                                          |
+| [`emojis`, `stickers`, `soundboard`](#emojis-stickers-and-soundboard) | Expressions, from files in the repository. |
+| [`access`](#access)                | Admins and moderators of this server in the admin console.                    |
+| [`portal`](#portal)                | The server's page on the community portal.                                    |
+| [`analytics`](#analytics)          | Activity analytics (on when absent).                                          |
 
 ## References
 
-Every reference is a **key**, checked by `cicord validate`:
+`cicord validate` checks every reference:
 
-| Field | Refers to |
-|---|---|
-| `channels.<key>.category` | `categories.<key>` of the same server |
-| `profile.systemChannel`, `profile.rulesChannel` (deprecated), `community.*Channel`, `afk.channel`, `widget.channel`, `automod.*.actions.alert`, `automod.*.exemptChannels[]`, `onboarding.defaultChannels[]`, `onboarding.prompts[].options[].channels[]`, `welcomeScreen.channels[].channel` | `channels.<key>` |
-| `hierarchy[]`, `access.*.roles[]`, `automod.*.exemptRoles[]`, `onboarding.prompts[].options[].roles[]`, `emojis.*.roles[]` | `roles.<key>` |
-| [overwrite](#permission-overwrites) targets | `@everyone`, `@bot`, `roles.<key>`, or `member:<discord id>` |
-| a bot's `spec.servers[]`, `plugins[].servers[]`, `plugins[].overrides.<key>` | `servers/<key>.yaml` |
-| plugin config fields with `x-cicord-ref` | a key of the given kind on **every** server the instance runs on |
+| Field                                                                                                                                                  | Refers to                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `channels.*.category`                                                                                                                                  | a category                                                   |
+| `profile.systemChannel`, `community.rulesChannel`, `community.updatesChannel`, `community.safetyAlertsChannel`                                         | a text channel                                               |
+| `afk.channel`                                                                                                                                          | a voice channel                                              |
+| `automod.*.actions.alert`                                                                                                                              | a text or announcement channel                               |
+| `widget.channel`, `automod.*.exemptChannels[]`, `onboarding.defaultChannels[]`, `onboarding.prompts[].options[].channels[]`, `welcomeScreen.channels[].channel` | a channel                                                    |
+| `hierarchy[]`, `access.*.roles[]`, `automod.*.exemptRoles[]`, `onboarding.prompts[].options[].roles[]`, `emojis.*.roles[]`                             | a role                                                       |
+| [overwrite](#permission-overwrites) targets                                                                                                            | `@everyone`, `@bot`, a role, or `member:<discord id>`        |
+| a bot's `spec.servers[]`, `plugins[].servers[]`, `plugins[].overrides.<key>`                                                                           | `servers/<key>.yaml`                                         |
+| plugin config fields with `x-cicord-ref`                                                                                                               | a key of the given kind on **every** server the instance runs on |
 
 ## `syncPolicy`
 
-| Field | Default | Effect |
-|---|---|---|
-| `selfHeal` | `false` | `true`: revert manual changes made in Discord instead of only reporting drift. |
-| `prune` | `false` | Delete resources that were managed and have been removed from the YAML. |
-| `deletionProtection` | `true` | Refuse every deletion, even with `prune: true`. |
+| Field                | Default | Effect                                                                                                    |
+| -------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| `selfHeal`           | `false` | Drift (a change made in Discord): `true` reverts it within seconds and at the periodic sync (every 5 minutes); `false` only reports it, the server stays `OutOfSync` until the next revision or **Sync now**. Either way a new revision and **Sync now** apply the whole configuration. |
+| `prune`              | `false` | Delete resources that were managed and have been removed from the YAML (otherwise they are unmanaged).   |
+| `deletionProtection` | `true`  | Refuse every deletion, even with `prune: true`.                                                           |
+
+To keep a manual change during an emergency (a channel locked during a raid), pause
+enforcement on the server instead: nothing is applied until it is resumed. See
+[Drift and self-heal](../../concepts/reconciliation/#drift-and-self-heal),
+[Emergency: pause enforcement](../../concepts/reconciliation/#emergency-pause-enforcement) and
+[Removed keys](../../concepts/reconciliation/#removed-keys-prune-and-deletion-protection).
 
 ## `profile`
 
-Each field is managed only when set.
+```yaml title="servers/cicord.yaml (community server)"
+profile:
+  name: Cicord
+  icon: ../assets/icon.png
+  banner: ../assets/banner.png # boost level 2: waits in the plan until the server reaches it
+  description: The community of Cicord, GitOps for Discord.
+  verificationLevel: medium
+  explicitContentFilter: allMembers
+  defaultNotifications: onlyMentions
+  preferredLocale: en-US
+  systemChannel: general
+  systemChannelFlags:
+    welcomeMessages: false # the welcome plugin greets new members
+    boostMessages: true
+    setupTips: false
+```
 
-| Field | Type | Description |
-|---|---|---|
-| `name` | string (2–100) | Server name. |
-| `description` | string (≤ 120) | Shown for Community and Discovery servers. |
-| `icon` | relative path | Server icon. An animated (GIF) icon needs boost level 1. |
-| `banner` | relative path | Banner image (png, jpg, gif, webp). Needs boost level 2. |
-| `splash` | relative path | Invite background (png, jpg, webp). Needs boost level 1. |
-| `verificationLevel` | `none` \| `low` \| `medium` \| `high` \| `highest` | |
-| `defaultNotifications` | `allMessages` \| `onlyMentions` | |
-| `explicitContentFilter` | `disabled` \| `membersWithoutRoles` \| `allMembers` | Sensitive media scanning. Community servers require `allMembers`. |
-| `preferredLocale` | Discord locale (`fr`, `en-US`, `es-419`…) | Community language. |
-| `premiumProgressBar` | boolean | Show the boost progress bar. |
-| `systemChannel` | channel key | Where system messages are sent. |
-| `systemChannelFlags` | object of booleans | `welcomeMessages`, `welcomeStickerReplies`, `boostMessages`, `setupTips`, `roleSubscriptionMessages`, `roleSubscriptionStickerReplies` (`true` = sent). Unset toggles keep their live value. |
-| `rulesChannel` | channel key | **Deprecated**: use `community.rulesChannel`. |
+| Field                   | Type                                                  | Description                                                                                                                                                             |
+| ----------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                  | string (2–100)                                        | Server name.                                                                                                                                                            |
+| `description`           | string (≤ 120)                                        | Shown for Community and Discovery servers.                                                                                                                              |
+| `icon`                  | relative path (≤ 10 MiB)                              | Server icon. An animated (GIF) icon needs boost level 1.                                                                                                                |
+| `banner`                | relative path (≤ 10 MiB)                              | Banner image (png, jpg, gif, webp). Boost level 2; animated: level 3.                                                                                                  |
+| `splash`                | relative path (≤ 10 MiB)                              | Invite background (png, jpg, webp). Boost level 1.                                                                                                                     |
+| `verificationLevel`     | `none` \| `low` \| `medium` \| `high` \| `highest`    |                                                                                                                                                                         |
+| `defaultNotifications`  | `allMessages` \| `onlyMentions`                       |                                                                                                                                                                         |
+| `explicitContentFilter` | `disabled` \| `membersWithoutRoles` \| `allMembers`   | Sensitive media scanning. Community servers require `allMembers`.                                                                                                       |
+| `preferredLocale`       | Discord locale (`fr`, `en-US`, `es-419`…)             | Community language.                                                                                                                                                     |
+| `premiumProgressBar`    | boolean                                               | Show the boost progress bar.                                                                                                                                            |
+| `systemChannel`         | text channel key                                      | Where system messages are sent.                                                                                                                                         |
+| `systemChannelFlags`    | booleans (`true` = sent)                              | `welcomeMessages`, `welcomeStickerReplies`, `boostMessages`, `setupTips`, `roleSubscriptionMessages`, `roleSubscriptionStickerReplies`. Unset toggles keep their live value. |
+| `rulesChannel`          | channel key                                           | **Deprecated** alias of `community.rulesChannel`.                                                                                                                       |
 
-Image paths are relative to the server file. They are re-uploaded when the file's hash or the
-live image changes. Admins can also upload the icon, banner and splash from the admin
-console's server settings, which commits the file.
+Each field is managed only when set. Image paths are relative to the server file and are
+uploaded again when the file or the live image changes. Admins can also upload the icon,
+banner and splash from the admin console's server settings, which commits the file.
 
 ## Roles
 
-```yaml
+```yaml title="servers/cicord.yaml (community server)"
 roles:
-  mod:
-    name: Mod
-    colors: { primary: "#5865f2", secondary: "#eb459e" }   # gradient (boost level 2)
-    emoji: "🛡️"                                            # role icon (boost level 2)
+  moderator:
+    name: Moderator
+    color: "#eb459e"
     hoist: true
+    permissions: [KickMembers, BanMembers, ModerateMembers, ManageMessages, ManageThreads,
+                  ManageNicknames, ViewAuditLog, MuteMembers, DeafenMembers, MoveMembers]
+  changelog-ping:
+    name: Changelog ping
     mentionable: false
-    permissions: [KickMembers, ModerateMembers, ManageMessages]
 ```
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `name` | string (1–100), **required** | | Display name. |
-| `color` | `#rrggbb` | none | Solid color (shorthand of `colors.primary`). |
-| `colors` | `{ primary, secondary?, tertiary? }` | | Gradient role style; `secondary` needs boost level 2. |
-| `hoist` | boolean | `false` | Display members separately. |
-| `mentionable` | boolean | `false` | |
-| `icon` | relative path | | Role icon image (png, jpg, webp, ≤ 256 KiB). Boost level 2. |
-| `emoji` | string | | Unicode emoji role icon. Boost level 2. Exclusive with `icon`. |
-| `permissions` | list of permissions | `[]` | See [permission names](#permission-names). |
-| `members` | list of Discord user IDs (17–20 digits, no duplicates) | | Users who must hold the role. See [role holders](#role-holders). |
+| Field         | Type                                 | Default | Description                                                                           |
+| ------------- | ------------------------------------ | ------- | ------------------------------------------------------------------------------------- |
+| `name`        | string (1–100), **required**         |         | Display name.                                                                         |
+| `color`       | `#rrggbb`                            | none    | Solid color (shorthand of `colors.primary`).                                          |
+| `colors`      | `{ primary, secondary?, tertiary? }` |         | Gradient role style. `secondary` (boost level 2) is needed for `tertiary`.            |
+| `hoist`       | boolean                              | `false` | Display members separately.                                                           |
+| `mentionable` | boolean                              | `false` |                                                                                       |
+| `icon`        | relative path (≤ 256 KiB)            |         | Role icon image (png, jpg, webp). Boost level 2.                                      |
+| `emoji`       | unicode emoji                        |         | Emoji role icon. Boost level 2. Exclusive with `icon`.                                |
+| `permissions` | list of [permissions](#permission-names) | `[]` |                                                                                       |
+| `members`     | list of Discord user IDs, unique     |         | Users who must hold the role: see [Role holders](#role-holders).                      |
 
 Name, color, hoist, mentionable and permissions are always managed: the YAML value is applied
-even when it is the zero value. A role without `colors` is solid: a live gradient is drift.
+even when it is the zero value. A role without `colors` is solid, and setting both `color` and
+`colors.primary` to different values is an error.
 
 ### Role holders
 
-`members` gives a role to the users you list, so staff roles live in git with the rest:
+`members` gives a role to the users you list, so staff roles are reviewed in git:
 
 ```yaml
 roles:
   maintainer:
     name: Maintainer
-    color: "#9b59b6"
-    hoist: true
-    permissions: [ManageMessages, ManageThreads, ModerateMembers]
+    permissions: [ManageServer, ManageRoles, ManageChannels, ManageMessages]
     members:
-      - "112233445566778899"   # Alice
-      - "998877665544332211"   # Bob, not in the server yet
+      - "112233445566778899" # Alice
+      - "998877665544332211" # Bob, not in the server yet
 ```
 
-It is **additive**:
-
-- Each listed user who is in the server gets the role when they lack it. The plan shows
-  `give role "Maintainer" to @Alice (112233445566778899)`.
-- Cicord does not list a role's members. People who hold the role but are not listed keep it,
+- **Additive**: each listed user who is in the server and lacks the role gets it (plan:
+  `give role "Maintainer" to @Alice (112233445566778899)`). Holders who are not listed keep it,
   and **removing a user from the list never removes the role**: take it away in Discord.
-- A listed user who is not in the server is a plan **note**, not an error or drift, so you can
-  list staff before they join. They get the role at the first sync after they join: right
-  away when the bot has the `ServerMembers` intent (in its
-  [`spec.intents`](../bot/#gateway-intents)) and `syncPolicy.selfHeal: true`, otherwise at
-  the next periodic resync.
-- A listed member who lacks the role is drift. `selfHeal` gives it back when someone takes it
-  away (the `ServerMembers` intent is needed to see that live; the periodic resync always
-  catches it).
-- The bot can only give roles below its highest role, and needs `ManageRoles`. A role at or
-  above it is blocked (`hierarchy:`), like any other change to that role.
+- A listed user who is not in the server is a plan **note**, not an error or drift. They get
+  the role at the first sync after they join: right away with the bot's `ServerMembers`
+  intent ([`spec.intents`](../bot/#gateway-intents)) and `syncPolicy.selfHeal: true`,
+  otherwise at the next sync that applies (the periodic sync with `selfHeal: true`, else the
+  next revision or **Sync now**). The same goes for a listed member whose role was taken away.
+- The bot needs `ManageRoles` and can only give roles below its highest role; a role at or
+  above it is blocked (`hierarchy:`).
 - Each listed user costs one Discord API read per plan: list staff, not the whole community
-  (for self-assigned roles, use the onboarding or a plugin).
+  (self-assigned roles belong to the onboarding or a plugin).
 
 ## Categories
 
-| Field | Type | Description |
-|---|---|---|
-| `name` | string (1–100), **required** | |
-| `position` | integer ≥ 0 | Order among categories (ascending; missing positions after explicit ones; ties by key). |
-| `overwrites` | [overwrites](#permission-overwrites) | |
+| Field        | Type                                  | Description                                                                              |
+| ------------ | ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `name`       | string (1–100), **required**          |                                                                                          |
+| `position`   | integer ≥ 0                           | Order among categories (ascending; missing positions after explicit ones; ties by key). |
+| `overwrites` | [overwrites](#permission-overwrites)  |                                                                                          |
+
+A key cannot be both a category and a channel.
 
 ## Channels
 
-```yaml
+```yaml title="servers/cicord.yaml (community server)"
 channels:
   help:
     name: help
     type: forum
-    category: community
-    guidelines: Search before asking.
+    category: support
+    position: 0
+    guidelines: One post per question. Search first, then tell us your Cicord version.
     tags:
       question: { name: Question, emoji: "❓" }
-      solved: { name: Solved, moderated: true }
-    defaultReaction: "👍"
-    sortOrder: creationDate
+      bug: { name: Bug, emoji: "🐛" }
+      solved: { name: Solved, emoji: "✅" }
+    sortOrder: latestActivity
     layout: list
+    threadArchiveAfter: 1w
 ```
 
-| Field | Type | Applies to | Description |
-|---|---|---|---|
-| `name` | string (1–100), **required** | all | Text-like names are compared after Discord's normalization. |
-| `type` | `text` \| `voice` \| `announcement` \| `stage` \| `forum` \| `media`, **required** | | Cannot change in place (see [blocked changes](../../concepts/reconciliation/#blocked-changes-and-their-explanations)). Announcement and stage channels need Community. |
-| `category` | category key | all | |
-| `position` | integer ≥ 0 | all | Order inside the category. |
-| `topic` | string (≤ 1024) | text, announcement, forum, media | |
-| `nsfw` | boolean (`false`) | all | |
-| `slowmode` | seconds (0–21600) | text, voice, stage, forum, media | Seconds between messages per member. |
-| `bitrate` | integer ≥ 8000 | voice, stage | Managed when > 0. |
-| `userLimit` | 0–99 | voice, stage | |
-| `syncWithCategory` | boolean | all | Inherit the category's overwrites. Defaults to `true` when the channel has no `overwrites`. |
-| `overwrites` | [overwrites](#permission-overwrites) | all | |
-| `voiceRegion` | `automatic` or a region id | voice, stage | E.g. `rotterdam`, `us-east`. |
-| `videoQuality` | `auto` \| `full` | voice, stage | Camera quality. |
-| `threadArchiveAfter` | `1h` \| `24h` \| `3d` \| `1w` | channels with threads | Default "hide after inactivity" of new threads. |
-| `threadSlowmode` | seconds (0–21600) | channels with threads | Default slowmode of new threads. |
-| `tags` | map of key → `{ name, emoji?, moderated? }` (≤ 20) | forum, media | Post tags. Live tag IDs are kept on rename. |
-| `defaultReaction` | emoji | forum, media | A unicode emoji, or a custom emoji as `name:id`. |
-| `sortOrder` | `latestActivity` \| `creationDate` | forum, media | |
-| `layout` | `list` \| `gallery` | forum | |
-| `guidelines` | string (≤ 4096) | forum, media | Post guidelines (alias of `topic`). |
+| Field                | Type                                                                               | Applies to                       | Description                                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `name`               | string (1–100), **required**                                                       | all                              | Text-like names are compared after Discord's normalization (lowercase, spaces become `-`).                          |
+| `type`               | `text` \| `voice` \| `announcement` \| `stage` \| `forum` \| `media`, **required** | all                              | Cannot change in place (see [blocked changes](../../concepts/reconciliation/#blocked-changes-and-their-explanations)). Announcement and stage need Community. |
+| `category`           | category key                                                                       | all                              |                                                                                                                     |
+| `position`           | integer ≥ 0                                                                        | all                              | Order inside the category; text-like and voice-like channels are ordered separately.                                |
+| `topic`              | string (≤ 1024)                                                                    | text, announcement, forum, media |                                                                                                                     |
+| `nsfw`               | boolean (`false`)                                                                  | all                              |                                                                                                                     |
+| `slowmode`           | seconds (0–21600)                                                                  | text, voice, stage, forum, media | Seconds between messages per member.                                                                                |
+| `bitrate`            | integer ≥ 8000                                                                     | voice, stage                     | Managed when set.                                                                                                   |
+| `userLimit`          | 0–99                                                                               | voice, stage                     |                                                                                                                     |
+| `syncWithCategory`   | boolean                                                                            | all                              | Use the category's overwrites. Defaults to `true` when the channel has no `overwrites`; `true` needs a category and no `overwrites`. |
+| `overwrites`         | [overwrites](#permission-overwrites)                                               | all                              |                                                                                                                     |
+| `voiceRegion`        | `automatic` or a region id (`rotterdam`, `us-east`…)                                | voice, stage                     |                                                                                                                     |
+| `videoQuality`       | `auto` \| `full`                                                                   | voice, stage                     | Camera quality.                                                                                                     |
+| `threadArchiveAfter` | `1h` \| `24h` \| `3d` \| `1w`                                                      | text, announcement, forum, media | Default "hide after inactivity" of new threads.                                                                     |
+| `threadSlowmode`     | seconds (0–21600)                                                                  | text, announcement, forum, media | Default slowmode of new threads.                                                                                    |
+| `tags`               | map of key → `{ name (≤ 20), emoji?, moderated? }` (≤ 20 tags)                     | forum, media                     | Post tags, with unique names. Live tag IDs are kept on rename.                                                      |
+| `defaultReaction`    | emoji                                                                              | forum, media                     | A unicode emoji, or a custom emoji as `name:id`.                                                                    |
+| `sortOrder`          | `latestActivity` \| `creationDate`                                                 | forum, media                     |                                                                                                                     |
+| `layout`             | `list` \| `gallery`                                                                | forum                            |                                                                                                                     |
+| `guidelines`         | string (≤ 4096)                                                                    | forum, media                     | Post guidelines: an alias of `topic` (set one or the other).                                                        |
 
-Threads are ignored by the reconciler.
+Setting a field on a channel type it does not apply to is a validation error. Threads are
+ignored by the reconciler.
 
 ## Permission overwrites
 
@@ -234,20 +263,22 @@ Threads are ignored by the reconciler.
 key, or `member:<discord id>`. Each target has `allow` and `deny` lists; a permission in
 neither is inherited.
 
-```yaml
-overwrites:
-  "@everyone": { deny: [ViewChannel] }
-  modo: { allow: [ViewChannel, ManageMessages] }
-  "@bot": { allow: [ViewChannel] }
-  "member:112233445566778899": { allow: [ViewChannel] }
+```yaml title="servers/cicord.yaml (community server)"
+categories:
+  team:
+    name: Staff
+    position: 5
+    overwrites:
+      "@everyone": { deny: [ViewChannel] }
+      maintainer: { allow: [ViewChannel, SendMessages, EmbedLinks, AttachFiles] }
+      moderator: { allow: [ViewChannel, SendMessages, EmbedLinks, AttachFiles] }
+      "@bot": { allow: [ViewChannel, SendMessages, EmbedLinks, ReadMessageHistory] }
 ```
 
 `@bot` is the managing bot's own role, the managed role Discord created when the bot was
 invited. A bot that is not Administrator needs it in every private category or channel, or
-it locks itself out. See [bot permissions](../../self-hosting/bot-permissions/#private-channels-the-bot-target).
-
-Overwrites of a managed category or channel are owned as a whole: targets that are not in the
-YAML are removed. A channel with `syncWithCategory` gets exactly its category's overwrites.
+it locks itself out: see [bot permissions](../../self-hosting/bot-permissions/#private-channels-the-bot-target).
+Overwrites are owned as a whole: targets that are not in the YAML are removed.
 
 ### Permission names
 
@@ -264,83 +295,87 @@ Cicord names permissions in PascalCase, saying **server** where Discord says gui
 `ViewCreatorMonetizationAnalytics`, `UseSoundboard`, `CreateExpressions`, `CreateEvents`,
 `UseExternalSounds`, `SendVoiceMessages`, `SendPolls`, `UseExternalApps`.
 
-The names that differ from Discord's API are `ManageServer` (`MANAGE_GUILD`),
-`ViewServerInsights` (`VIEW_GUILD_INSIGHTS`), `ManageExpressions`
+They map 1:1 to Discord's SCREAMING_SNAKE_CASE names, except `ManageServer`
+(`MANAGE_GUILD`), `ViewServerInsights` (`VIEW_GUILD_INSIGHTS`), `ManageExpressions`
 (`MANAGE_GUILD_EXPRESSIONS`), `CreateExpressions` (`CREATE_GUILD_EXPRESSIONS`),
-`SendTTSMessages` and `UseVAD`; the others map 1:1 to SCREAMING_SNAKE_CASE.
+`SendTTSMessages` (`SEND_TTS_MESSAGES`) and `UseVAD` (`USE_VAD`).
 
 ## `afk` and `widget`
 
-| Field | Type | Description |
-|---|---|---|
-| `afk.channel` | channel key | Voice channel inactive members are moved to. |
-| `afk.timeout` | `60` \| `300` \| `900` \| `1800` \| `3600` | Seconds of inactivity. |
-| `widget.enabled` | boolean, **required** | Server widget (Server Settings → Widget). |
-| `widget.channel` | channel key | Invite channel of the widget. |
+| Field            | Type                                      | Description                                 |
+| ---------------- | ----------------------------------------- | ------------------------------------------- |
+| `afk.channel`    | voice channel key                         | Where inactive members are moved.           |
+| `afk.timeout`    | `60` \| `300` \| `900` \| `1800` \| `3600` | Seconds of inactivity.                      |
+| `widget.enabled` | boolean, **required**                     | Server widget (Server Settings → Widget).   |
+| `widget.channel` | channel key                               | Invite channel of the widget.               |
 
 ## `community`
 
-```yaml
+```yaml title="servers/cicord.yaml (community server)"
 profile:
-  verificationLevel: low          # at least low
+  verificationLevel: medium # at least low
   explicitContentFilter: allMembers
 community:
   enabled: true
   rulesChannel: rules
-  updatesChannel: mod-news
-  safetyAlertsChannel: mod-news
+  updatesChannel: discord-updates
+  safetyAlertsChannel: mod-log
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `enabled` | boolean, **required** | Toggles the `COMMUNITY` feature. |
-| `rulesChannel` | text channel key | Required to enable Community. |
-| `updatesChannel` | text channel key | Where Discord posts moderator news. Required to enable Community. |
-| `safetyAlertsChannel` | text channel key | Receives safety alerts (raids, spam). |
+| Field                 | Type                  | Description                                                     |
+| --------------------- | --------------------- | --------------------------------------------------------------- |
+| `enabled`             | boolean, **required** | Toggles the `COMMUNITY` feature.                                |
+| `rulesChannel`        | text channel key      | Required to enable Community.                                   |
+| `updatesChannel`      | text channel key      | Where Discord posts moderator news. Required to enable Community. |
+| `safetyAlertsChannel` | text channel key      | Receives safety alerts (raids, spam).                           |
 
 Enabling Community also needs `profile.verificationLevel` at least `low` and
-`profile.explicitContentFilter: allMembers`, and text channels for the rules and updates
-(created by the same plan if needed). `cicord validate` reports a missing prerequisite and
-the plan blocks the change with the full list. The toggle, the channels and the verification
-and filter changes are sent in one request, once the channels exist; channels that need
-Community are created right after it is enabled, in the same sync. Disabling Community sends
-the live mutable features without `COMMUNITY`.
-
-`profile.rulesChannel` is a deprecated alias of `community.rulesChannel`: validation warns,
-and setting both to different keys is an error.
+`profile.explicitContentFilter: allMembers`; the plan blocks the change with the list of what
+is missing. The toggle, its channels and those profile fields are sent in one request once the
+channels exist, and the channels that need Community are created right after, in the same
+sync. `profile.rulesChannel` is a deprecated alias of `community.rulesChannel`.
 
 ## `automod`
 
-```yaml
+```yaml title="servers/cicord.yaml (community server)"
 automod:
-  bad-words:
-    name: Bad words
+  mention-spam:
+    name: Mention spam
+    trigger: mentionSpam
+    mentionLimit: 5
+    mentionRaidProtection: true
+    actions:
+      block: { message: Too many mentions in one message. }
+      alert: mod-log
+      timeout: 1h
+    exemptRoles: [maintainer, moderator]
+  scams:
+    name: Scam phrases
     trigger: keyword
-    keywords: [darn, "heck*"]
-    actions: { block: { message: "Language!" }, alert: mod-log, timeout: 10m }
-    exemptRoles: [mod]
+    keywords: [free nitro, nitro giveaway, steam gift card]
+    actions:
+      block: { message: This message looks like a known scam. }
+      alert: mod-log
+      timeout: 10m
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `name` | string (1–100), **required** | |
-| `trigger` | `keyword` \| `keywordPreset` \| `mentionSpam` \| `spam` \| `memberProfile`, **required** | Up to 6 `keyword` rules, 1 of each other trigger. Cannot change in place: use a new key. |
-| `enabled` | boolean (`true`) | |
-| `keywords` | list (≤ 1000, each ≤ 60) | `keyword`, `memberProfile`: words or phrases (`*` wildcards). |
-| `regex` | list (≤ 10, each ≤ 260) | `keyword`, `memberProfile`: Rust-flavoured regular expressions. |
-| `allowList` | list (≤ 1000) | Exceptions (`keyword`, `keywordPreset`, `memberProfile`). |
-| `presets` | list of `profanity` \| `sexualContent` \| `slurs` | `keywordPreset`. |
-| `mentionLimit` | 1–50 | `mentionSpam`: unique role and user mentions allowed per message. |
-| `mentionRaidProtection` | boolean | `mentionSpam`: also detect mention raids. |
-| `actions.block.message` | string (≤ 150) | Block the message (for `memberProfile`: block the member's interactions); the text is shown to the member. |
-| `actions.alert` | channel key | Channel that receives an alert. |
-| `actions.timeout` | duration (`60s`, `10m`, `1h`, `1d`, `1w`, ≤ 4 weeks) | Time the member out (`keyword`, `mentionSpam`). |
-| `exemptRoles` | role keys (≤ 20) | |
-| `exemptChannels` | channel keys (≤ 50) | |
+| Field                   | Type                                                                                       | Description                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `name`                  | string (1–100), **required**                                                               |                                                                                                              |
+| `trigger`               | `keyword` \| `keywordPreset` \| `mentionSpam` \| `spam` \| `memberProfile`, **required**   | Up to 6 `keyword` rules, 1 of each other trigger. Cannot change in place: use a new key.                    |
+| `enabled`               | boolean (`true`)                                                                           |                                                                                                              |
+| `keywords`              | list (≤ 1000, each ≤ 60)                                                                   | `keyword`, `memberProfile`: words or phrases (`*` wildcards). These rules need `keywords` or `regex`.        |
+| `regex`                 | list (≤ 10, each ≤ 260)                                                                    | `keyword`, `memberProfile`: Rust-flavoured regular expressions.                                              |
+| `allowList`             | list (≤ 1000, each ≤ 60)                                                                   | Exceptions (`keyword`, `keywordPreset`, `memberProfile`).                                                    |
+| `presets`               | list of `profanity` \| `sexualContent` \| `slurs`                                          | `keywordPreset`, required.                                                                                   |
+| `mentionLimit`          | 1–50                                                                                       | `mentionSpam`: unique role and user mentions allowed per message.                                           |
+| `mentionRaidProtection` | boolean                                                                                    | `mentionSpam`: also detect mention raids. A `mentionSpam` rule needs this or `mentionLimit`.                 |
+| `actions`               | object, **required** (at least one action)                                                 | `block.message` (≤ 150): block the message (for `memberProfile`, the member's interactions) and show the text; `alert`: channel key that receives an alert; `timeout`: duration (`60s`, `10m`, `1h`, `1d`, `1w`, ≤ 4 weeks), `keyword` and `mentionSpam` only. |
+| `exemptRoles`           | role keys (≤ 20)                                                                           |                                                                                                              |
+| `exemptChannels`        | channel keys (≤ 50)                                                                        |                                                                                                              |
 
-Rules are keyed like roles and adopted by name and trigger. A once-per-server trigger
-(`mentionSpam`, `spam`, `keywordPreset`, `memberProfile`) adopts the existing rule whatever
-its name. On a Community server the mention spam rule cannot be deleted: set
+Rules are keyed like roles and [adopted](../../concepts/reconciliation/#adoption-by-name) by
+name and trigger. On a Community server the mention spam rule cannot be deleted: set
 `enabled: false` instead.
 
 ## `onboarding` (native)
@@ -349,44 +384,59 @@ Discord's own onboarding, shown in the Discord client to new members of a Commun
 It complements the Cicord [onboarding plugin](../../plugins/official/#onboarding), which runs on
 the portal.
 
-```yaml
+```yaml title="servers/cicord.yaml (community server)"
 onboarding:
   enabled: true
-  defaultChannels: [rules, general, news, help, memes, events, lounge]
+  defaultChannels: [welcome, rules, announcements, changelog, general, showcase, off-topic, help,
+                    development, plugins]
   prompts:
-    - key: games
-      title: What do you play?
+    - key: interests
+      title: What brings you here?
       options:
-        - { title: Minecraft, emoji: "⛏️", roles: [minecraft], channels: [minecraft] }
+        - { title: Writing plugins, description: Get the Plugin author role, emoji: "🧩", roles: [plugin-author] }
+        - { title: Hanging out, description: The voice lounge, emoji: "🎧", channels: [lounge] }
 ```
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | boolean, **required** | | |
-| `mode` | `default` \| `advanced` | `default` | `default`: only default channels count toward Discord's requirements; `advanced`: questions count too. |
-| `defaultChannels` | channel keys | | Channels every new member sees. In default mode Discord needs at least 7, 5 of which let `@everyone` send messages, all open to `@everyone`. |
-| `prompts[]` | list (≤ 15) | | Questions. |
-| `prompts[].key` | key, **required** | | Stable key of the question (answers stay attached). |
-| `prompts[].title` | string (1–100), **required** | | |
-| `prompts[].type` | `multipleChoice` \| `dropdown` | `multipleChoice` | |
-| `prompts[].singleSelect` | boolean | `false` | |
-| `prompts[].required` | boolean | `false` | |
-| `prompts[].inOnboarding` | boolean | `true` | `false`: only in Channels & Roles. |
-| `prompts[].options[]` | list (1–50), **required** | | `title` (required, ≤ 50), `description` (≤ 100), `emoji`, `roles` (role keys granted), `channels` (channel keys shown). |
+| Field                    | Type                           | Default          | Description                                                                                                           |
+| ------------------------ | ------------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                | boolean, **required**          |                  | Needs Community.                                                                                                      |
+| `mode`                   | `default` \| `advanced`        | `default`        | `default`: only default channels count toward Discord's requirements; `advanced`: answers' channels count too.       |
+| `defaultChannels`        | channel keys                   |                  | Channels every new member sees.                                                                                       |
+| `prompts[]`              | list (≤ 15)                    |                  | Questions.                                                                                                            |
+| `prompts[].key`          | key, **required**, unique      |                  | Stable key of the question (answers stay attached).                                                                   |
+| `prompts[].title`        | string (1–100), **required**   |                  |                                                                                                                       |
+| `prompts[].type`         | `multipleChoice` \| `dropdown` | `multipleChoice` |                                                                                                                       |
+| `prompts[].singleSelect` | boolean                        | `false`          |                                                                                                                       |
+| `prompts[].required`     | boolean                        | `false`          |                                                                                                                       |
+| `prompts[].inOnboarding` | boolean                        | `true`           | `false`: only in Channels & Roles.                                                                                    |
+| `prompts[].options[]`    | list (1–50), **required**      |                  | `title` (required, ≤ 50), `description` (≤ 100), `emoji`, `roles` (role keys granted), `channels` (channel keys shown); at least one role or channel. |
+
+`cicord validate` applies Discord's rules to an enabled onboarding: in `default` mode, at
+least 7 default channels; when `spec.everyone` is declared, every default channel open to
+`@everyone` (voice and stage: with Connect), and 5 of the counted channels where `@everyone`
+can send messages.
 
 ## `welcomeScreen`
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | boolean | `true` | |
-| `description` | string (≤ 140) | | |
-| `channels[]` | list (≤ 5) | | `channel` (key, required), `description` (1–42, required), `emoji`. |
+| Field         | Type           | Default | Description                                                          |
+| ------------- | -------------- | ------- | -------------------------------------------------------------------- |
+| `enabled`     | boolean        | `true`  | Needs Community.                                                     |
+| `description` | string (≤ 140) |         |                                                                      |
+| `channels[]`  | list (≤ 5)     |         | `channel` (key, required), `description` (1–42, required), `emoji`. |
 
-The welcome screen and onboarding are compared as a whole. Both need Community.
+```yaml title="servers/cicord.yaml (community server)"
+welcomeScreen:
+  enabled: true
+  description: GitOps for Discord - declare your server in git, review changes, let Cicord apply them.
+  channels:
+    - { channel: rules, description: Read the rules, emoji: "📜" }
+    - { channel: help, description: Ask a question, emoji: "❓" }
+```
 
 ## Emojis, stickers and soundboard
 
-Expressions are declared from files of the repository and keyed like roles.
+Expressions are declared from files of the repository, relative to the server file, and keyed
+like roles.
 
 ```yaml
 emojis:
@@ -397,93 +447,92 @@ soundboard:
   horn: { name: Horn, sound: ./assets/horn.ogg, volume: 0.6 }
 ```
 
-| Kind | Fields |
-|---|---|
-| `emojis.<key>` | `name` (required, `[A-Za-z0-9_]{2,32}`), `image` (required: png, jpg, gif or webp, ≤ 256 KiB), `roles` (only these role keys can use it). |
-| `stickers.<key>` | `name` (required, 2–30), `description` (≤ 100), `emoji` (required: related emoji name for suggestions), `file` (required: png, apng, gif or Lottie json, ≤ 512 KiB). |
-| `soundboard.<key>` | `name` (required, 2–32), `sound` (required: mp3 or ogg, ≤ 512 KiB, 5.2 s), `volume` (0–1, default `1`), `emoji`. |
+| Kind               | Fields                                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `emojis.<key>`     | `name` (required, `[A-Za-z0-9_]{2,32}`, unique), `image` (required: png, jpg, gif or webp, ≤ 256 KiB), `roles` (only these role keys can use it).            |
+| `stickers.<key>`   | `name` (required, 2–30), `description` (≤ 100), `emoji` (required: related emoji name for suggestions), `file` (required: png, apng, gif or Lottie json, ≤ 512 KiB). |
+| `soundboard.<key>` | `name` (required, 2–32), `sound` (required: mp3 or ogg, ≤ 512 KiB; Discord accepts at most 5.2 s), `volume` (0–1, default `1`), `emoji`.                    |
 
-Slots depend on the boost level (emojis 50/100/150/250 static plus as many animated,
-stickers 5/15/30/60, sounds 8/24/36/48); extra items are blocked in the plan. A changed file
-cannot be updated in place: declare a new key. `cicord import` downloads existing expressions
-into `servers/assets/<server>/`.
+Slots depend on the boost level: emojis 50/100/150/250 static plus as many animated,
+stickers 5/15/30/60, sounds 8/24/36/48. A changed file cannot be updated in place: declare a
+new key. `cicord import` downloads existing expressions into `servers/assets/<server>/`.
 
 ## Boost-gated settings
 
-The planner reads the live boost level and features. Instead of failing on apply, settings
-Discord would refuse are **blocked in the plan with a reason**:
+The planner reads the live boost level and features. What Discord would refuse is
+[blocked in the plan](../../concepts/reconciliation/#blocked-changes-and-their-explanations)
+instead of failing on apply:
 
-| Setting | Needs | Discord feature |
-|---|---|---|
-| `profile.banner` | Boost level 2 (animated: level 3) | `BANNER` |
-| `profile.splash` | Boost level 1 | `INVITE_SPLASH` |
-| animated `profile.icon` | Boost level 1 | `ANIMATED_ICON` |
-| `roles.*.icon`, `roles.*.emoji` | Boost level 2 | `ROLE_ICONS` |
-| `roles.*.colors.secondary` (gradient) | Boost level 2 (the primary color is still applied) | `ENHANCED_ROLE_COLORS` |
-| Announcement and stage channels, Community channels, welcome screen, native onboarding | Community (live, or enabled by the same plan) | `COMMUNITY` |
-| Emojis, stickers, sounds beyond the slots | A higher boost level | |
+| Setting                                                                               | Needs                                                  | Discord feature        |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------ | ---------------------- |
+| animated `profile.icon`                                                               | Boost level 1                                          | `ANIMATED_ICON`        |
+| `profile.splash`                                                                      | Boost level 1                                          | `INVITE_SPLASH`        |
+| `profile.banner`                                                                      | Boost level 2 (animated: level 3)                      | `BANNER`               |
+| `roles.*.icon`, `roles.*.emoji`                                                       | Boost level 2                                          | `ROLE_ICONS`           |
+| `roles.*.colors.secondary` (gradient)                                                 | Boost level 2; the primary color is applied meanwhile  | `ENHANCED_ROLE_COLORS` |
+| Emojis, stickers, sounds beyond the slots                                             | A higher boost level                                   |                        |
+| Announcement and stage channels, Community channels, welcome screen, native onboarding | Community (live, or enabled by the same plan)          | `COMMUNITY`            |
 
-A feature flag is enough (partnered or verified servers get some without boosts). Blocked
-items are applied by the first sync after the condition is met.
+A feature flag is enough (partnered or verified servers get some without boosts). Settings
+that wait for a boost level keep the server `Synced` and are applied by the first sync after
+the level is reached.
 
 ## `access`
 
-| Field | Type | Description |
-|---|---|---|
-| `admins.roles`, `admins.users` | role keys, Discord user IDs | Admins of this server in the admin console. The owner is always admin. |
-| `moderators.roles`, `moderators.users` | role keys, Discord user IDs | Moderators. |
+| Field                                  | Type                        | Description                                                            |
+| -------------------------------------- | --------------------------- | ---------------------------------------------------------------------- |
+| `admins.roles`, `admins.users`         | role keys, Discord user IDs | Admins of this server in the admin console. The owner is always admin. |
+| `moderators.roles`, `moderators.users` | role keys, Discord user IDs | Moderators.                                                            |
 
-See [Access and roles](../../concepts/access-and-roles/).
+What each role can do: [Access and roles](../../concepts/access-and-roles/).
 
 ## `portal`
 
-Declaring `portal` publishes the server on the community portal.
+Declaring `portal` publishes the server on the community portal. Details and examples:
+[Customize from YAML](../../portal/customize/).
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `theme.primary` | `#rrggbb` | | Buttons, links, focus. |
-| `theme.accent` | `#rrggbb` | | Highlights. |
-| `theme.logo` | relative path | | png, jpg, gif, webp, avif or svg, inside the repository. |
-| `theme.mode` | `light` \| `dark` \| `system` | `system` | |
-| `title` | string (1–100) | server name | Home page headline. |
-| `tagline` | string (≤ 200) | | One sentence under the title. |
-| `description` | string (≤ 4000) | | Markdown subset. Raw HTML is shown as text. |
-| `banner` | relative path | | Wide header image, same rules as the logo. |
-| `links[]` | list (≤ 12) | | `label` (1–60), `url` (http(s), ≤ 500), `icon` (default `link`). |
-| `pages` | `{ onboarding, profile, leaderboard, tickets }` booleans | all `true` | Pages of the default portal. |
-| `locale` | `en` \| `fr` | browser language | Interface language of the default portal. |
-
-Details and examples: [Customize from YAML](../../portal/customize/).
+| Field           | Type                                                      | Default          | Description                                                                                                                            |
+| --------------- | --------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `theme.primary` | `#rrggbb`                                                 |                  | Buttons, links, focus.                                                                                                                 |
+| `theme.accent`  | `#rrggbb`                                                 |                  | Highlights.                                                                                                                            |
+| `theme.logo`    | relative path                                             |                  | png, jpg, gif, webp, avif or svg, inside the repository.                                                                               |
+| `theme.mode`    | `light` \| `dark` \| `system`                             | `dark`           | `system` follows the visitor's light or dark preference.                                                                               |
+| `title`         | string (1–100)                                            | server name      | Home page headline.                                                                                                                    |
+| `tagline`       | string (≤ 200)                                            |                  | One sentence under the title.                                                                                                          |
+| `description`   | string (≤ 4000)                                           |                  | Markdown subset. Raw HTML is shown as text.                                                                                            |
+| `banner`        | relative path                                             |                  | Wide header image, same rules as the logo.                                                                                             |
+| `links[]`       | list (≤ 12)                                               |                  | `label` (1–60), `url` (http(s), ≤ 500), `icon`: `link` (default), `website`, `discord`, `youtube`, `twitch`, `x`, `bluesky`, `mastodon`, `instagram`, `tiktok`, `github`, `reddit`, `steam`, `rules`, `calendar` or `shop`. |
+| `pages`         | `{ onboarding, profile, leaderboard, tickets }` booleans  | all `true`       | Pages of the default portal.                                                                                                           |
+| `locale`        | `en` \| `fr`                                              | browser language | Interface language of the default portal.                                                                                              |
 
 ## `analytics`
 
-Activity analytics of the server: aggregated counts of members, messages, voice, reactions,
-invites, moderation and commands, shown on the server's analytics dashboard in the admin
-console. They are collected when the block is absent. What is collected, the privacy
-guarantees and the intents each group needs: [Server analytics](../../self-hosting/analytics/).
+Aggregated activity counts (members, messages, voice, reactions, invites, moderation,
+commands) shown on the admin console's Analytics page. They are collected when the block is
+absent. What is collected, the privacy guarantees and the intents each group needs:
+[Server analytics](../../self-hosting/analytics/).
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | boolean | `true` | `false` stops collection for this server. Points already recorded stay until retention removes them. |
-| `retention` | `<n>d` | `400d` | How long points are kept, in days. |
-| `presence` | boolean | `false` | Also aggregate member statuses, platforms and activities. Needs the privileged `ServerPresences` intent. Without it, only Discord's approximate online count is sampled. |
-| `portal` | `off` \| `members` \| `public` | `off` | Share server-wide activity in the community portal ([`GET /api/v1/portal/{server}/analytics`](../../reference/http-api/portal/#activity)): to the signed-in members of the server, or to anyone. Only channels everyone can see are named; nothing per member. |
-
-```yaml
-spec:
-  analytics:
-    retention: 90d
-    presence: true
+```yaml title="servers/cicord.yaml (community server)"
+analytics:
+  presence: true # needs the ServerPresences intent
+  portal: members
 ```
+
+| Field       | Type                             | Default | Description                                                                                                                                                                                                                   |
+| ----------- | -------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`   | boolean                          | `true`  | `false` stops collection for this server. Points already recorded stay until retention removes them.                                                                                                                         |
+| `retention` | `<n>d` (1–9999)                  | `400d`  | How long points are kept, in days.                                                                                                                                                                                            |
+| `presence`  | boolean                          | `false` | Also aggregate member statuses, platforms and activities. Needs the privileged `ServerPresences` intent; without it, only Discord's approximate online count is sampled.                                                     |
+| `portal`    | `off` \| `members` \| `public`   | `off`   | Share server-wide activity on the community portal ([`GET /api/v1/portal/{server}/analytics`](../../reference/http-api/portal/#activity)), to the signed-in members of the server or to anyone. Only channels everyone can see are named; nothing per member. |
 
 ## Annotations for the simulator
 
-With `cicord dev --sim`, the server annotations `sim.cicord.dev/boosts: "<n>"` and
+With `cicord dev --sim`, the annotations `sim.cicord.dev/boosts: "<n>"` and
 `sim.cicord.dev/features: "A,B"` seed the simulated boost count and feature flags:
 
 ```yaml
 metadata:
-  name: ma-commu
+  name: my-community
   annotations:
     sim.cicord.dev/boosts: "7"
 ```
@@ -491,11 +540,24 @@ metadata:
 ## Validation
 
 Beyond the [JSON Schema](https://github.com/cicord/cicord/blob/main/spec/schemas/server.schema.json),
-`cicord validate` fails when `metadata.name` does not match the file name or is duplicated,
-when a [reference](#references) does not resolve, or when enabled Community lacks a rules or
-updates channel, has a verification level below `low` or a content filter other than
-`allMembers`. It warns when Community is enabled without setting those two profile fields,
-when a setting needs Community but `community.enabled` is not `true`, when
-`profile.rulesChannel` is used, and when `prune: true` is combined with
-`deletionProtection: false`. Role `members` must be Discord user IDs (17 to 20 digits), each
-listed once per role.
+`cicord validate` fails when:
+
+- `metadata.name` does not match the file name, or two servers share a `discordId`;
+- a [reference](#references) does not resolve or points to the wrong channel type, or a key is
+  both a category and a channel;
+- a channel sets a field of another channel type, `syncWithCategory: true` without a category
+  or with `overwrites`, `topic` and `guidelines` together, or two tags with the same name;
+- a role sets both `icon` and `emoji`, a `color` that differs from `colors.primary`, or
+  `colors.tertiary` without `colors.secondary`;
+- an AutoMod rule exceeds the per-trigger limit, uses a field or action its trigger does not
+  support, has no action, or has an invalid regular expression;
+- enabled Community lacks a rules or updates channel, or sets a verification level below
+  `low` or a content filter other than `allMembers`; a setting needs Community while
+  `community.enabled` is `false`;
+- enabled onboarding breaks Discord's [default channel rules](#onboarding-native), repeats a
+  question key, or has an answer without role or channel;
+- a referenced file is missing or above its size limit, or two emojis share a name.
+
+It warns when Community is enabled without those two profile fields, when a setting needs
+Community but `community` is not declared, when `profile.rulesChannel` is used, and when
+`prune: true` is combined with `deletionProtection: false`.

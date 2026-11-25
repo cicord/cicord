@@ -22,10 +22,10 @@ func TestLoadExample(t *testing.T) {
 	if ds.HasErrors() {
 		t.Fatalf("unexpected errors:\n%v", ds.Err())
 	}
-	if repo.Project.Metadata.Name != "ma-commu" {
+	if repo.Project.Metadata.Name != "my-community" {
 		t.Errorf("project name = %q", repo.Project.Metadata.Name)
 	}
-	srv := repo.Servers["ma-commu"]
+	srv := repo.Servers["my-community"]
 	if srv == nil || len(srv.Spec.Roles) < 3 || len(srv.Spec.Channels) < 5 || len(srv.Spec.Categories) < 3 {
 		t.Fatalf("server not loaded correctly: %+v", srv)
 	}
@@ -44,10 +44,10 @@ func TestLoadExample(t *testing.T) {
 	if inst.Name == "" {
 		t.Fatalf("welcome instance missing: %+v", repo.Instances)
 	}
-	if inst.ID() != "moderator/welcome/ma-commu" {
+	if inst.ID() != "moderator/welcome/my-community" {
 		t.Errorf("instance id = %q", inst.ID())
 	}
-	if got := inst.Config["message"]; !strings.HasPrefix(got.(string), "Salut") {
+	if got := inst.Config["message"]; !strings.HasPrefix(got.(string), "Hi ") {
 		t.Errorf("override not applied: %v", got)
 	}
 	if inst.Config["channel"] != "general" || inst.Config["dmOnboarding"] != true {
@@ -148,22 +148,22 @@ func TestLoadErrors(t *testing.T) {
 		want  string
 		wantL int // expected line (0 = don't check)
 	}{
-		{"unknown category", "servers/ma-commu.yaml", "category: community\n      topic", "category: nope\n      topic", `unknown category "nope"`, 0},
-		{"unknown role in hierarchy", "servers/ma-commu.yaml", "hierarchy: [admin, modo, member", "hierarchy: [admin, modo, ghost", `unknown role "ghost"`, 0},
-		{"unknown overwrite role", "servers/ma-commu.yaml", "        modo:\n          allow: [ViewChannel]", "        ghost:\n          allow: [ViewChannel]", `unknown role "ghost"`, 0},
-		{"bad permission", "servers/ma-commu.yaml", "permissions: [Administrator]", "permissions: [Godmode]", "/spec/roles/admin/permissions/0", 0},
-		{"key mismatch", "servers/ma-commu.yaml", "  name: ma-commu", "  name: other", "must match the file name", 0},
+		{"unknown category", "servers/my-community.yaml", "category: community\n      topic", "category: nope\n      topic", `unknown category "nope"`, 0},
+		{"unknown role in hierarchy", "servers/my-community.yaml", "hierarchy: [admin, moderator, member", "hierarchy: [admin, moderator, ghost", `unknown role "ghost"`, 0},
+		{"unknown overwrite role", "servers/my-community.yaml", "        moderator:\n          allow: [ViewChannel]", "        ghost:\n          allow: [ViewChannel]", `unknown role "ghost"`, 0},
+		{"bad permission", "servers/my-community.yaml", "permissions: [Administrator]", "permissions: [Godmode]", "/spec/roles/admin/permissions/0", 0},
+		{"key mismatch", "servers/my-community.yaml", "  name: my-community", "  name: other", "must match the file name", 0},
 		{"missing grant", "bots/moderator/bot.yaml", "        - storage.kv\n", "", "not granted: storage.kv", 0},
-		{"unknown server", "bots/moderator/bot.yaml", "servers: [ma-commu]", "servers: [ghost]", `unknown server "ghost"`, 0},
+		{"unknown server", "bots/moderator/bot.yaml", "servers: [my-community]", "servers: [ghost]", `unknown server "ghost"`, 0},
 		{"config schema", "bots/moderator/bot.yaml", "dmOnboarding: true", "dmOnboarding: yes-please", "dmOnboarding", 0},
 		{"config ref", "bots/moderator/bot.yaml", "channel: general", "channel: nowhere", `unknown channel "nowhere"`, 0},
-		{"override ref", "bots/moderator/bot.yaml", "            message:", "            autoRole: ghost\n            message:", `[server ma-commu] unknown role "ghost"`, 0},
+		{"override ref", "bots/moderator/bot.yaml", "            message:", "            autoRole: ghost\n            message:", `[server my-community] unknown role "ghost"`, 0},
 		{"secret in token", "bots/moderator/bot.yaml", "secretRef: DISCORD_TOKEN_MODERATOR", "secretRef: my-token", "/spec/token/secretRef", 0},
 		{"engine", "cicord.yaml", `engine: ">=0.1.0 <0.2.0"`, `engine: ">=9.0.0"`, "requires Cicord", 0},
 		{"plugin capability unknown", "plugins/welcome/plugin.yaml", "    - storage.kv", "    - storage.everything", "/spec/capabilities", 0},
-		{"wrong kind", "servers/ma-commu.yaml", "kind: Server", "kind: Guild", `expected kind "Server"`, 0},
-		{"role member not a snowflake", "servers/ma-commu.yaml", "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"12345\"]", "/spec/roles/admin/members/0", 0},
-		{"role member duplicated", "servers/ma-commu.yaml", "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"123456789012345678\", \"123456789012345678\"]", "/spec/roles/admin/members", 0},
+		{"wrong kind", "servers/my-community.yaml", "kind: Server", "kind: Guild", `expected kind "Server"`, 0},
+		{"role member not a snowflake", "servers/my-community.yaml", "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"12345\"]", "/spec/roles/admin/members/0", 0},
+		{"role member duplicated", "servers/my-community.yaml", "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"123456789012345678\", \"123456789012345678\"]", "/spec/roles/admin/members", 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -191,12 +191,12 @@ func TestLoadErrors(t *testing.T) {
 
 func TestRoleMembers(t *testing.T) {
 	dir := copyExample(t)
-	edit(t, filepath.Join(dir, "servers/ma-commu.yaml"), "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"123456789012345678\", \"98765432109876543\"]")
+	edit(t, filepath.Join(dir, "servers/my-community.yaml"), "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"123456789012345678\", \"98765432109876543\"]")
 	repo, ds := Load(dir, LoadOptions{EngineVersion: "0.1.0"})
 	if ds.HasErrors() {
 		t.Fatal(ds.Err())
 	}
-	got := repo.Servers["ma-commu"].Spec.Roles["admin"].Members
+	got := repo.Servers["my-community"].Spec.Roles["admin"].Members
 	if len(got) != 2 || got[0] != "123456789012345678" || got[1] != "98765432109876543" {
 		t.Errorf("members = %v", got)
 	}
@@ -230,7 +230,7 @@ func TestMergePatchAndDefaults(t *testing.T) {
 
 func TestTruncatedStringWarning(t *testing.T) {
 	dir := copyExample(t)
-	edit(t, filepath.Join(dir, "bots/moderator/bot.yaml"), `message: "Bienvenue {member} sur {server} ! 👋"`, `message: Bienvenue, passe dans #général`)
+	edit(t, filepath.Join(dir, "bots/moderator/bot.yaml"), `message: "Welcome {member} to {server}! 👋"`, `message: Welcome, come to #general`)
 	_, ds := Load(dir, LoadOptions{})
 	for _, d := range ds {
 		if d.Severity == SeverityWarning && strings.Contains(d.Message, "YAML reads as a comment") && d.Line > 0 {
@@ -247,7 +247,7 @@ func TestOnboardingEveryoneAccess(t *testing.T) {
 	onboarding := "  onboarding:\n    enabled: true\n    defaultChannels: [rules, announcements, general, voice, c1, c2, c3]\n    prompts:\n      - {key: games, title: Games, options: [{title: Minecraft, roles: [minecraft]}]}\n\n  syncPolicy:"
 	load := func(everyone string) []string {
 		dir := copyExample(t)
-		f := filepath.Join(dir, "servers/ma-commu.yaml")
+		f := filepath.Join(dir, "servers/my-community.yaml")
 		edit(t, f, "    staff-chat:\n", extra)
 		edit(t, f, "  syncPolicy:", onboarding)
 		edit(t, f, "permissions: [ViewChannel, ReadMessageHistory, AddReactions, UseApplicationCommands]", everyone)
@@ -290,7 +290,7 @@ func TestRegistriesValidation(t *testing.T) {
 	dir = copyExample(t)
 	p = filepath.Join(dir, "cicord.yaml")
 	data, _ = os.ReadFile(p)
-	data = append(data, []byte("  registries:\n    - name: steal\n      url: https://evil.example/r.git\n      secretRef: DISCORD_TOKEN_GARDIEN\n")...)
+	data = append(data, []byte("  registries:\n    - name: steal\n      url: https://evil.example/r.git\n      secretRef: DISCORD_TOKEN_MODERATOR\n")...)
 	if err := os.WriteFile(p, data, 0o644); err != nil {
 		t.Fatal(err)
 	}

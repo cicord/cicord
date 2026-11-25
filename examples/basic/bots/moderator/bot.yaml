@@ -8,13 +8,13 @@ spec:
   token:
     secretRef: DISCORD_TOKEN_MODERATOR
   profile:
-    username: Gardien
+    username: Warden
   presence:
     status: online
     activity:
       type: watching
-      name: la commu
-  servers: [ma-commu]
+      name: the community
+  servers: [my-community]
   plugins:
     - name: welcome
       source: ../../plugins/welcome
@@ -28,13 +28,13 @@ spec:
         - storage.kv
       config:
         channel: general
-        message: "Bienvenue {member} sur {server} ! 👋"
+        message: "Welcome {member} to {server}! 👋"
         autoRole: member
         dmOnboarding: true
       overrides:
-        ma-commu:
+        my-community:
           config:
-            message: "Salut {member}, bienvenue sur {server} ! Passe lire le règlement."
+            message: "Hi {member}, welcome to {server}! Take a minute to read the rules."
     - name: onboarding
       source: ../../plugins/onboarding
       grants:
@@ -43,27 +43,27 @@ spec:
         - portal.routes
         - portal.links
       config:
-        title: Bienvenue sur Ma Commu !
-        intro: Trois petites questions pour personnaliser ton expérience. Tu pourras changer d'avis quand tu veux avec /onboarding.
+        title: Welcome to My Community!
+        intro: Three quick questions to tailor the server to you. You can change your answers any time with /onboarding.
         steps:
-          - id: jeux
-            title: À quoi tu joues ?
-            description: Tu auras accès aux salons et aux pings de tes jeux.
+          - id: games
+            title: What do you play?
+            description: You'll get the channels and pings of your games.
             multiple: true
             options:
               - role: minecraft
                 emoji: "⛏️"
-                description: Survie, créatif et serveur de la commu
+                description: Survival, creative and the community server
               - role: valorant
                 emoji: "🎯"
-                description: Ranked, customs et tournois
+                description: Ranked, customs and tournaments
               - role: lol
                 label: League of Legends
                 emoji: "🛡️"
-                description: Flex, ARAM et Clash
-          - id: plateforme
-            title: Tu joues surtout sur…
-            description: Pour trouver des coéquipiers sur la même plateforme.
+                description: Flex, ARAM and Clash
+          - id: platform
+            title: Where do you mostly play?
+            description: To find teammates on the same platform.
             required: true
             options:
               - role: pc
@@ -72,15 +72,15 @@ spec:
                 emoji: "🎮"
               - role: mobile
                 emoji: "📱"
-          - id: notifs
-            title: On te prévient pour les événements ?
-            description: Soirées jeux, tournois et lives de la commu. Zéro spam, promis.
+          - id: notifications
+            title: Should we ping you for events?
+            description: Game nights, tournaments and community streams. No spam, promise.
             options:
               - role: ping-events
-                label: Oui, ping-moi !
+                label: Yes, ping me!
                 emoji: "🔔"
-                description: Tu seras mentionné à chaque nouvel événement
+                description: You'll be mentioned for every new event
         completedRole: member
-        successMessage: "C'est tout bon ! Tes rôles sont à jour, file dire bonjour dans #général."
-        linkMessage: "Choisis tes rôles sur le portail de la commu :"
-        buttonLabel: Choisir mes rôles
+        successMessage: "All set! Your roles are up to date, come say hi in #general."
+        linkMessage: "Pick your roles on the community portal:"
+        buttonLabel: Pick my roles
