@@ -1394,3 +1394,16 @@ export interface WriteResult {
   revision?: string;
   pullRequestUrl?: string;
 }
+
+// ─────────────────────────────────────────────────────────── live events (GET /events)
+
+/**
+ * An event of `GET /api/v1/events`: `hello` first (runtime version and revision), then
+ * change hints. A hint carries no content: refetch what you display.
+ */
+export type AdminEvent =
+  | { type: "hello"; version: string; revision: string }
+  /** The runtime is shutting down (restart, update): reconnect. */
+  | { type: "stopping" }
+  | { type: "status" }
+  | { type: "sync" | "plugins" | "analytics"; server?: string };

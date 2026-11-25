@@ -7,6 +7,7 @@ import {
   type ServerSentEvent,
 } from "./sse.ts";
 import type {
+  AdminEvent,
   AddRegistryRequest,
   AnalyticsCatalog,
   AnalyticsSeries,
@@ -612,6 +613,45 @@ export class CicordClient {
   // ─────────────────────────────────────────────────────────── admin (§3–§5)
 
   readonly admin = {
+    /**
+     * Subscribes to `GET /events` (SSE, moderator): `hello` on every (re)connection, then
+     * change hints for the runtime (`status`) and the servers you moderate (`sync`,
+     * `plugins`, `analytics`). Reconnects automatically; call `close()` to stop.
+     */
+    subscribe: (
+      onEvent: (event: AdminEvent) => void,
+      options: Omit<EventStreamOptions, "onEvent"> = {},
+    ): EventStream =>
+      this.events("/events", {
+        ...options,
+        onEvent: (e) => {
+          let data: Record<string, unknown> = {};
+          try {
+            data = JSON.parse(e.data || "{}") as Record<string, unknown>;
+          } catch {
+            return;
+          }
+          const server = typeof data.server === "string" ? data.server : undefined;
+          switch (e.event) {
+            case "hello":
+              onEvent({
+                type: "hello",
+                version: typeof data.version === "string" ? data.version : "",
+                revision: typeof data.revision === "string" ? data.revision : "",
+              });
+              break;
+            case "status":
+            case "stopping":
+              onEvent({ type: e.event });
+              break;
+            case "sync":
+            case "plugins":
+            case "analytics":
+              onEvent(server === undefined ? { type: e.event } : { type: e.event, server });
+              break;
+          }
+        },
+      }),
     /** `GET /status` (admin, moderator) — visible servers only. */
     status: (options?: CallOptions): Promise<RuntimeStatus> =>
       this.#api<RuntimeStatus>("GET", "/status", options),

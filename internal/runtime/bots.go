@@ -233,6 +233,7 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 			r.dropBot(h.key)
 		}
 	}
+	r.notify(ChangeStatus, "")
 }
 
 func (r *Runtime) dropBot(key string) {

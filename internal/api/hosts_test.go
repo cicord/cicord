@@ -224,6 +224,7 @@ func TestAdminHostRoutes(t *testing.T) {
 		{"GET", "/api/v1/servers/ma-commu"},
 		{"GET", "/api/v1/servers/ma-commu/plugins"},
 		{"GET", "/api/v1/servers/ma-commu/diagnostics"},
+		{"GET", "/api/v1/events"},
 		{"GET", "/api/v1/servers/ma-commu/analytics/summary"},
 		{"GET", "/api/v1/servers/ma-commu/analytics/series"},
 		{"GET", "/api/v1/servers/ma-commu/analytics/catalog"},

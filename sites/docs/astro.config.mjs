@@ -118,6 +118,7 @@ export default defineConfig({
                 { label: "Setup wizard", slug: "reference/http-api/setup" },
                 { label: "Store", slug: "reference/http-api/store" },
                 { label: "Analytics", slug: "reference/http-api/analytics" },
+                { label: "Live events", slug: "reference/http-api/events" },
               ],
             },
             { label: "Discord parity", slug: "reference/discord-parity" },

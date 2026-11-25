@@ -6,6 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- The admin console is live: `GET /api/v1/events` (Server-Sent Events, moderators) sends
+  change hints (status, sync, plugin crashes and restarts, new analytics points) and the
+  console refetches what it shows. A runtime update is noticed (a "Reload" notice with the
+  new version), a restart shows "Reconnecting…", and without the stream the console
+  refreshes every 30 s and when the tab comes back. `@cicord/client`:
+  `client.admin.subscribe`, and `idleTimeoutMs` for event streams.
+
 ## [0.1.3] - 2026-11-25
 
 ### Added

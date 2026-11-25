@@ -3,6 +3,8 @@ package analytics
 import (
 	"context"
 	"log/slog"
+	"maps"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -109,6 +111,9 @@ type CollectorOptions struct {
 	FlushInterval  time.Duration
 	SampleInterval time.Duration
 	InviteDebounce time.Duration
+	// OnWrite, when set, is called with each server whose points were written by a
+	// flush (live refresh of the admin console).
+	OnWrite func(server string)
 }
 
 // Collector turns gateway events and periodic samples into hourly aggregates. It
@@ -342,6 +347,7 @@ func (c *Collector) Flush(ctx context.Context) {
 	if c.opts.Store == nil {
 		return
 	}
+	written := map[string]bool{}
 	for _, kind := range []state.AnalyticsKind{state.AnalyticsCounter, state.AnalyticsGaugeMax, state.AnalyticsGaugeLast} {
 		pts := batches[kind]
 		if len(pts) == 0 {
@@ -352,9 +358,18 @@ func (c *Collector) Flush(ctx context.Context) {
 			c.mu.Lock()
 			c.buf.restore(kind, pts)
 			c.mu.Unlock()
+			continue
+		}
+		for _, p := range pts {
+			written[p.Server] = true
 		}
 	}
 	c.flushActive(ctx, pending)
+	if c.opts.OnWrite != nil {
+		for _, server := range slices.Sorted(maps.Keys(written)) {
+			c.opts.OnWrite(server)
+		}
+	}
 }
 
 // sampleDue samples every enabled, connected server whose last sample is older than

@@ -1,6 +1,7 @@
 import type { Me } from "@cicord/client";
 import { CicordProvider, cicordKeys, useCicord, useLogout, useMe } from "@cicord/react";
 import { Loader2, LogOut, Moon, Sun } from "lucide-react";
+import { toast } from "sonner";
 import { Fragment, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { usePlugin, useStatus, useStoreDetail } from "./api.ts";
 import { EmptyState, Sha } from "./components/common.tsx";
@@ -47,6 +48,7 @@ import { DiagnosticsPage } from "./pages/Diagnostics.tsx";
 import { SetupPage } from "./setup/SetupPage.tsx";
 import { Link, navigate, useLocation } from "./router.tsx";
 import { AppSidebar } from "./shell/AppSidebar.tsx";
+import { useAdminLive, type AdminLive } from "./shell/live.ts";
 import {
   CommandPalette,
   CommandPaletteButton,
@@ -197,6 +199,9 @@ function Shell() {
   const ws = useWorkspaceState(route);
   const [paletteOpen, setPaletteOpen] = useCommandPalette();
   const staff = me.servers.filter((s) => s.role === "admin" || s.role === "moderator");
+  const config = useAdminConfig();
+  const live = useAdminLive(!config.mock && staff.length > 0);
+  useUpdateNotice(live.updatedTo);
 
   // "/" (and "/login" after signing in) lands on the current server's overview.
   useEffect(() => {
@@ -276,7 +281,7 @@ function Shell() {
       <SidebarProvider>
         <AppSidebar page={route.page} />
         <SidebarInset>
-          <Header route={route} onSearch={() => setPaletteOpen(true)} />
+          <Header route={route} live={live} onSearch={() => setPaletteOpen(true)} />
           <main id="main" className="flex-1">
             {page}
           </main>
@@ -307,7 +312,29 @@ function useDetailLabel(route: Route): string | undefined {
   return undefined;
 }
 
-function Header({ route, onSearch }: { route: Route; onSearch: () => void }) {
+/** Tells once that the runtime was updated, with a button that loads the new console. */
+function useUpdateNotice(version: string | undefined) {
+  const { t } = useTranslation();
+  useEffect(() => {
+    if (!version) return;
+    toast(t("live.updated", { version }), {
+      id: "cicord-update",
+      description: t("live.updatedHint"),
+      duration: Number.POSITIVE_INFINITY,
+      action: { label: t("live.reload"), onClick: () => window.location.reload() },
+    });
+  }, [version, t]);
+}
+
+function Header({
+  route,
+  live,
+  onSearch,
+}: {
+  route: Route;
+  live: AdminLive;
+  onSearch: () => void;
+}) {
   const { t } = useTranslation();
   const ws = useWorkspace();
   const config = useAdminConfig();
@@ -363,6 +390,16 @@ function Header({ route, onSearch }: { route: Route; onSearch: () => void }) {
         </BreadcrumbList>
       </Breadcrumb>
       {config.mock ? <Badge tone="violet">{t("app.mock")}</Badge> : null}
+      {live.connection === "reconnecting" ? (
+        <Tip content={t("live.reconnectingHint")}>
+          <span tabIndex={0} role="status" className="inline-flex">
+            <Badge tone="warning">
+              <Loader2 className="animate-spin" aria-hidden="true" />
+              {t("live.reconnecting")}
+            </Badge>
+          </span>
+        </Tip>
+      ) : null}
       {rev ? (
         <Tip content={t("header.revision", { message: rev.message.split("\n")[0] ?? "" })}>
           <span className="hidden items-center lg:inline-flex" tabIndex={0}>

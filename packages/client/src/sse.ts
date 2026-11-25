@@ -20,6 +20,12 @@ export interface EventStreamOptions {
   retryMs?: number;
   /** Stop after the first disconnection instead of reconnecting. */
   once?: boolean;
+  /**
+   * Reconnect when nothing (event or comment) arrives for this long, in ms: a proxy can
+   * keep the connection open after the server went away. Use it with a server that sends
+   * keep-alive comments more often (Cicord's streams: every 25 s). Default: no limit.
+   */
+  idleTimeoutMs?: number;
   signal?: AbortSignal;
 }
 
@@ -112,17 +118,33 @@ export function openEventStream(
   const run = async (): Promise<void> => {
     while (!controller.signal.aborted) {
       const parser = new SseParser(options.onEvent);
+      // One controller per connection: the idle watchdog ends it without closing the stream.
+      const attempt = new AbortController();
+      const endAttempt = (): void => attempt.abort();
+      controller.signal.addEventListener("abort", endAttempt, { once: true });
+      let idle: ReturnType<typeof setTimeout> | undefined;
+      let timedOut = false;
+      const arm = (): void => {
+        if (options.idleTimeoutMs === undefined) return;
+        clearTimeout(idle);
+        idle = setTimeout(() => {
+          timedOut = true;
+          attempt.abort();
+        }, options.idleTimeoutMs);
+      };
       try {
         const headers = new Headers(init.headers);
         headers.set("Accept", "text/event-stream");
         if (lastEventId) headers.set("Last-Event-ID", lastEventId);
-        const response = await fetcher(url, { ...init, headers, signal: controller.signal });
+        arm();
+        const response = await fetcher(url, { ...init, headers, signal: attempt.signal });
         if (!response.ok || !response.body) {
           throw new Error(`event stream ${url}: HTTP ${response.status}`);
         }
         options.onOpen?.();
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
         for (;;) {
+          arm();
           const { value, done } = await reader.read();
           if (done) break;
           parser.push(value);
@@ -133,7 +155,14 @@ export function openEventStream(
           options.onError?.(new Error(`event stream ${url}: disconnected`));
       } catch (error) {
         if (controller.signal.aborted) break;
-        options.onError?.(error);
+        options.onError?.(
+          timedOut
+            ? new Error(`event stream ${url}: nothing received for ${options.idleTimeoutMs} ms`)
+            : error,
+        );
+      } finally {
+        clearTimeout(idle);
+        controller.signal.removeEventListener("abort", endAttempt);
       }
       if (options.once) break;
       await sleep(retryMs, controller.signal);

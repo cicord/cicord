@@ -226,6 +226,7 @@ func (s *server) routes() {
 	h("GET /api/v1/me", s.handleMe)
 	h("GET /api/v1/status", s.handleStatus)
 	h("GET /api/v1/history", s.handleHistory)
+	h("GET /api/v1/events", s.handleEvents)
 	h("GET /api/v1/servers/{server}", s.handleServer)
 	h("GET /api/v1/servers/{server}/resources", s.handleResources)
 	h("GET /api/v1/servers/{server}/plan", s.handlePlan)
@@ -366,7 +367,7 @@ func (s *server) middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if r.URL.Path != "/api/v1/sim/events" {
+		if r.URL.Path != "/api/v1/sim/events" && r.URL.Path != "/api/v1/events" {
 			ctx, cancel := context.WithTimeout(r.Context(), s.opts.RequestTimeout)
 			defer cancel()
 			r = r.WithContext(ctx)

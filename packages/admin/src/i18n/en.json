@@ -1982,5 +1982,12 @@
         "custom": "status"
       }
     }
+  },
+  "live": {
+    "reconnecting": "Reconnecting…",
+    "reconnectingHint": "Live updates are paused: the runtime is unreachable (restarting or network). The console retries and refreshes every 30 s meanwhile.",
+    "updated": "Cicord was updated to {{version}}",
+    "updatedHint": "Reload to use the console of the new version.",
+    "reload": "Reload"
   }
 }

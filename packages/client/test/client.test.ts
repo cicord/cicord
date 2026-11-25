@@ -6,6 +6,7 @@ import {
   onboardingApi,
   SseParser,
   type FetchLike,
+  type AdminEvent,
   type ServerSentEvent,
 } from "../src/index.ts";
 
@@ -626,6 +627,67 @@ describe("simulator", () => {
       { event: "change", data: "{}", id: "" },
       { event: "change", data: "a\nb", id: "7" },
     ]);
+  });
+
+  test("admin.subscribe parses hello and change hints", async () => {
+    const encoder = new TextEncoder();
+    const fetch: FetchLike = async (url) => {
+      expect(url).toMatch(/\/api\/v1\/events$/);
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              'event: hello\ndata: {"version":"0.1.4","revision":"abc"}\n\n' +
+                "event: status\ndata: {}\n\n" +
+                'event: sync\ndata: {"server":"main"}\n\n' +
+                'event: analytics\ndata: {"server":"main"}\n\n' +
+                "event: plugins\ndata: not json\n\n" +
+                "event: stopping\ndata: {}\n\n" +
+                "event: unknown\ndata: {}\n\n",
+            ),
+          );
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    };
+    const client = createCicordClient({ fetch });
+    const events: AdminEvent[] = [];
+    const stream = client.admin.subscribe((e) => events.push(e), { once: true });
+    await stream.closed;
+    expect(events).toEqual([
+      { type: "hello", version: "0.1.4", revision: "abc" },
+      { type: "status" },
+      { type: "sync", server: "main" },
+      { type: "analytics", server: "main" },
+      { type: "stopping" },
+    ]);
+  });
+
+  test("SSE reconnects when the connection stays silent (idleTimeoutMs)", async () => {
+    let calls = 0;
+    const fetch: FetchLike = async (_url, init) => {
+      calls++;
+      // Never sends anything; ends only when aborted (a proxy holding a dead connection).
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          init.signal?.addEventListener("abort", () => controller.error(new Error("aborted")));
+        },
+      });
+      return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    };
+    const client = createCicordClient({ fetch });
+    const errors: string[] = [];
+    const stream = client.events("/events", {
+      onEvent() {},
+      onError: (e) => errors.push(String(e)),
+      retryMs: 1,
+      idleTimeoutMs: 20,
+    });
+    await vi.waitFor(() => expect(calls).toBeGreaterThanOrEqual(2));
+    stream.close();
+    await stream.closed;
+    expect(errors[0]).toMatch(/nothing received for 20 ms/);
   });
 
   test("SSE reconnects after errors until closed", async () => {

@@ -158,6 +158,7 @@ Roles are per server: see [Roles](authentication/#roles).
 | GET | `/api/v1/me` | signed in | [The user and the servers where they have a role](servers/#me). |
 | GET | `/api/v1/status` | moderator | [Revision, servers and bots](servers/#runtime-status). |
 | GET | `/api/v1/history` | moderator | [Sync history](servers/#sync-history). |
+| GET | `/api/v1/events` | moderator | [Live change hints (Server-Sent Events)](events/). |
 
 ### Servers
 

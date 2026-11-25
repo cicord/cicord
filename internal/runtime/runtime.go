@@ -103,6 +103,8 @@ type Runtime struct {
 
 	collector     *analytics.Collector // nil when Options.Analytics is nil
 	analyticsDone <-chan struct{}      // closed after the collector's last flush
+
+	changes changeHub // GET /api/v1/events
 }
 
 // active is an activated revision.
@@ -203,7 +205,8 @@ func New(opts Options) *Runtime {
 		if opts.Store != nil {
 			kv = opts.Store.KV(analyticsKVScope)
 		}
-		r.collector = analytics.NewCollector(analytics.CollectorOptions{Store: opts.Analytics, KV: kv, Logger: opts.Logger})
+		r.collector = analytics.NewCollector(analytics.CollectorOptions{Store: opts.Analytics, KV: kv, Logger: opts.Logger,
+			OnWrite: func(server string) { r.notify(ChangeAnalytics, server) }})
 	}
 	return r
 }
@@ -258,14 +261,19 @@ func (r *Runtime) tryFetchAndSync(ctx context.Context) {
 
 func (r *Runtime) setErr(msg string) {
 	r.mu.Lock()
+	changed := r.lastErr != msg
 	r.lastErr = msg
 	r.mu.Unlock()
+	if changed {
+		r.notify(ChangeStatus, "")
+	}
 }
 
 func (r *Runtime) record(ctx context.Context, rec state.SyncRecord) {
 	if _, err := r.opts.Store.Syncs().Record(ctx, rec); err != nil {
 		r.log.Warn("record sync", "err", err)
 	}
+	r.notifySync(rec.Target)
 }
 
 // RejectedError is returned by Activate when a revision fails validation or build.
@@ -982,6 +990,7 @@ func (r *Runtime) supervise(host *botHost, srt *serverRT, irt *instanceRT) {
 		}
 		for {
 			irt.degraded(fmt.Sprintf("%v (restarting in %s)", cause, delay))
+			r.notify(ChangePlugins, srt.key)
 			r.log.Error("plugin instance crashed, restarting", "instance", irt.id(), "err", cause, "in", delay)
 			select {
 			case <-irt.quit:
@@ -1006,6 +1015,7 @@ func (r *Runtime) supervise(host *botHost, srt *serverRT, irt *instanceRT) {
 		}
 		upSince = time.Now()
 		irt.setHealth(nil)
+		r.notify(ChangePlugins, srt.key)
 		r.log.Info("plugin instance restarted", "instance", irt.id())
 	}
 }
