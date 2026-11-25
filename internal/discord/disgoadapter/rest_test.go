@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -457,5 +458,49 @@ func TestListRolesBreaksPositionTies(t *testing.T) {
 		if got[name] != pos {
 			t.Errorf("%s position = %d, want %d (all: %v)", name, got[name], pos, got)
 		}
+	}
+}
+
+func TestListMembersPages(t *testing.T) {
+	f := newFakeDiscord(t)
+	// 1000 members on the first page (ids 1..1000, 7 is a bot), then 2 more.
+	f.handle("GET /guilds/1/members", func(w http.ResponseWriter, r *http.Request) {
+		var page []map[string]any
+		switch r.URL.Query().Get("after") {
+		case "0":
+			for i := 1; i <= 1000; i++ {
+				page = append(page, map[string]any{"user": map[string]any{"id": strconv.Itoa(i), "username": "u", "bot": i == 7},
+					"roles": []string{"50"}, "joined_at": "2026-01-02T03:04:05Z"})
+			}
+		case "1000":
+			page = append(page, map[string]any{"user": map[string]any{"id": "1001", "username": "u"}, "nick": "N", "roles": []string{}},
+				map[string]any{"user": map[string]any{"id": "1002", "username": "u", "bot": true}})
+		default:
+			t.Errorf("unexpected after=%q", r.URL.Query().Get("after"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(page)
+	})
+	s := f.connect(t)
+	ms, err := s.(discord.MemberLister).ListMembers(context.Background(), "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1002 || ms[0].User.ID != "1" || !ms[0].HasRole("50") || ms[0].ServerID != "1" || ms[1001].User.ID != "1002" || ms[1000].Nick != "N" {
+		t.Fatalf("members = %d, first %+v, last %+v", len(ms), ms[0], ms[len(ms)-1])
+	}
+	for _, rec := range f.all()[2:] {
+		if !strings.Contains(rec.URI, "limit=1000") {
+			t.Errorf("request %s: no limit=1000", rec.URI)
+		}
+	}
+	bots, err := s.(discord.AnalyticsReader).ListServerBots(context.Background(), "1")
+	if err != nil || !reflect.DeepEqual(bots, []string{"7", "1002"}) {
+		t.Fatalf("bots = %v, %v", bots, err)
+	}
+
+	f.json("GET /guilds/2/members", 403, `{"message":"Missing Access","code":50001}`)
+	if _, err := s.(discord.MemberLister).ListMembers(context.Background(), "2"); !errors.Is(err, discord.ErrForbidden) {
+		t.Errorf("403 = %v", err)
 	}
 }

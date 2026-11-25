@@ -294,7 +294,11 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL,
 		Config: in.Config, Grants: in.Grants, NetworkAllow: network, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
 		MessageContent: slices.Contains(m.Spec.Intents, "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
-		Discord: host.session, Resolver: srt.cache,
+		ServerMembers: slices.Contains(m.Spec.Intents, "ServerMembers"),
+		Discord:       host.session, Resolver: srt.cache,
+		Members: func(ctx context.Context) ([]discord.Member, error) {
+			return srt.cache.members.List(ctx, host.session, srt.cfg.Spec.DiscordID)
+		},
 		OwnerID: func() string { return srt.cache.Server().OwnerID }, Access: pluginAccess(srt.cfg.Spec.Access),
 		KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources: ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},

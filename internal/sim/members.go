@@ -138,6 +138,33 @@ func (w *World) getMember(a actor, serverID, userID string) (discord.Member, err
 	return cloneMember(*m), nil
 }
 
+// listMembers is GET /guilds/{id}/members, every page: the members in ascending user ID
+// order. Like Discord, a bot whose application does not have the privileged ServerMembers
+// intent enabled is refused (403 Missing Access), and so is a server the bot is not in.
+func (w *World) listMembers(a actor, serverID string) ([]discord.Member, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s, err := w.server(serverID)
+	if err != nil {
+		return nil, err
+	}
+	if s.members[a.userID] == nil {
+		return nil, forbidden("missing access to server %s", serverID)
+	}
+	if b := w.botsByUser[a.userID]; b != nil && !b.privileged.Has(intentMembers) {
+		return nil, forbidden("missing access: listing the members of server %s needs the ServerMembers intent", serverID)
+	}
+	if len(s.members) > discord.MaxListedMembers {
+		return nil, badRequest("server %s has more than %d members", serverID, discord.MaxListedMembers)
+	}
+	out := make([]discord.Member, 0, len(s.members))
+	for _, m := range s.members {
+		out = append(out, cloneMember(*m))
+	}
+	sort.Slice(out, func(i, j int) bool { return snowLess(out[i].User.ID, out[j].User.ID) })
+	return out, nil
+}
+
 func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberParams, reason string) (discord.Member, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

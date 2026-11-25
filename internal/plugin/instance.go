@@ -52,8 +52,15 @@ type Env struct {
 	// without the intent, except for the bot's own messages, messages that mention the bot
 	// and DMs. Gateway intents are unioned per bot, so this keeps the gating per plugin.
 	MessageContent bool
+	// ServerMembers reports that the plugin declares the ServerMembers intent in plugin.yaml,
+	// which role.members() requires (it lists the server's members).
+	ServerMembers bool
 
-	Discord  discord.Client
+	Discord discord.Client
+	// Members lists every member of the server for role.members(), usually from a short-lived
+	// cache shared by the server's instances. nil: Discord is asked on every call (it must
+	// implement discord.MemberLister).
+	Members  func(ctx context.Context) ([]discord.Member, error)
 	Resolver Resolver // may be nil (nothing resolves)
 	// OwnerID returns the server owner's user id, "" when unknown (nil: unknown). It is
 	// called on every use, so an ownership transfer is seen at once.

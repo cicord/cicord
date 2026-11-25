@@ -156,14 +156,23 @@
     });
   }
 
+  const RoleProto = {
+    async members(options) {
+      const o = options || {};
+      const list = await acall("role.members", { role: { id: this.id }, limit: o.limit, after: o.after === undefined ? undefined : String(o.after) });
+      return freeze(list.map(mkMember));
+    },
+  };
+  freeze(RoleProto);
+
   function mkRole(d) {
     if (!d) return undefined;
-    return freeze({
+    return freeze(Object.assign(Object.create(RoleProto), {
       id: d.id, key: d.key || undefined, name: d.name || "", color: d.color || undefined, mention: d.mention,
       // Unknown (role not cached): left undefined, never guessed.
       position: typeof d.position === "number" ? d.position : undefined,
       mentionable: typeof d.mentionable === "boolean" ? d.mentionable : undefined,
-    });
+    }));
   }
 
   function mkAttachment(d) {

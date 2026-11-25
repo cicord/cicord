@@ -113,8 +113,11 @@ test("/onboarding replies with a link", async () => {
 
 - **Options**: `config`; `schema` (its defaults are applied like the runtime does;
   `applyDefaults(schema, config)` is exported too); `grants` (when given, calls without the
-  grant throw `CapabilityError`); `plugin`, `bot`, `server`; `roles` and `channels` keyed by
-  resource key; `members`; `portalUrl`; and `fetch(url, init)`, the fake `ctx.http.fetch`.
+  grant throw `CapabilityError`); `intents` (plugin.yaml `spec.intents`: when given,
+  `role.members()` throws without `ServerMembers`, like the runtime); `plugin`, `bot`,
+  `server`; `roles` and `channels` keyed by resource key; `members` (`role.members()` lists
+  those holding the role, in user id order); `portalUrl`; and `fetch(url, init)`, the fake
+  `ctx.http.fetch`.
   For permission checks, roles take `position` (default 1, 2, 3… in declaration order),
   `mentionable` and `permissions`; `server` takes `ownerId` and `everyonePermissions`; and
   `access: { admins, moderators }` (`{ users?, roles? }`, role keys) sets `member.access`.

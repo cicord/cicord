@@ -65,6 +65,34 @@ moderate the owner, staff (moderator or admin access) can only be moderated by a
 the moderator's highest role must be strictly above the target's; anything it cannot verify
 is refused.
 
+### Members of a role
+
+`role.members()` lists the members holding a role, for example the staff a ticket can be
+assigned to:
+
+```ts
+const staff = await ctx.server.role("staff").members({ limit: 1000 });
+const next = await ctx.server.role("staff").members({ limit: 1000, after: staff.at(-1)?.id });
+```
+
+| | |
+|---|---|
+| Signature | `role.members(options?: { limit?: number; after?: Snowflake }): Promise<Member[]>` |
+| Order | Ascending user id; `after` returns the holders after that user id (to page past `limit`) |
+| `limit` | Default 100, at most 1000 (an integer, else a `TypeError`) |
+| Needs | The `discord.members.read` capability and the **`ServerMembers` intent** in plugin.yaml `spec.intents` |
+| Errors | An unknown role key throws in `ctx.server.role()`; `@everyone` and a missing intent throw; a Discord refusal (Server Members Intent off in the developer portal) rejects |
+
+Discord has no "members of a role" endpoint: the runtime lists the server's members
+(`GET /guilds/{id}/members`, 1000 per request, at most 100,000 members) and filters them.
+The listing is shared by the plugins of the server, reused for up to 60 seconds and kept
+current in between by member joins, updates and leaves, so repeated calls are cheap; the first
+call on a large server takes one request per 1000 members. The intent cannot be seen in the
+plugin's definition, so it is checked when `members()` is called; `cicord plugin build` does not
+warn about a declared `ServerMembers` without member handlers when the plugin has
+`discord.members.read`. In tests, `createTestContext({ intents: [...] })` applies the same
+check.
+
 ## Events
 
 From the official `welcome` plugin (intent `ServerMembers`):

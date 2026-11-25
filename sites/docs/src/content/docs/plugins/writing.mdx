@@ -235,7 +235,7 @@ granted throws a `CapabilityError` whose `capability` field names the missing on
 | `discord.messages.send`               | `channel.send()`, `message.reply()`                                      |
 | `discord.messages.manage`             | Edit or delete other authors' messages                                   |
 | `discord.reactions.manage`            | `message.react()`                                                        |
-| `discord.members.read`                | `ctx.server.member()`                                                    |
+| `discord.members.read`                | `ctx.server.member()`, `role.members()` (with the `ServerMembers` intent) |
 | `discord.members.manage`              | `member.setNickname()`                                                   |
 | `discord.members.moderate`            | `member.timeout()`, `kick()`, `ban()`                                    |
 | `discord.roles.assign`                | `member.addRole()`, `removeRole()`                                       |
@@ -279,6 +279,12 @@ intent is a build error.
 | `memberJoin`, `memberLeave`, `memberUpdate`       | `ServerMembers` (privileged)                                                  |
 | `messageCreate`, `messageUpdate`, `messageDelete` | `ServerMessages`; add `MessageContent` (privileged) to read `message.content` |
 | `reactionAdd`, `reactionRemove`                   | `ServerMessageReactions`                                                      |
+
+One call needs an intent too: `role.members()` lists the server's members, which Discord
+only allows with `ServerMembers` (privileged). A call cannot be seen at build time, so the
+runtime checks it when `members()` is called and throws when plugin.yaml does not declare
+`ServerMembers`; `cicord plugin build` does not report a declared `ServerMembers` as unused
+when the plugin has `discord.members.read`. See [Members of a role](../api/#members-of-a-role).
 
 **Message content is gated per plugin.** A bot connects with the union of its plugins'
 intents, but a plugin that does not declare `MessageContent` itself still gets an empty

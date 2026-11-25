@@ -15,7 +15,10 @@ import (
 
 // Gateway payloads and REST reads of the server activity analytics.
 
-var _ discord.AnalyticsReader = (*session)(nil)
+var (
+	_ discord.AnalyticsReader = (*session)(nil)
+	_ discord.MemberLister    = (*session)(nil)
+)
 
 // ───────────────────────────────────────────────────────────── wire
 
@@ -266,36 +269,66 @@ func (s *session) GetServerCounts(ctx context.Context, serverID string) (discord
 	}, nil
 }
 
+// memberPage is the page size of GET /guilds/{id}/members (Discord's maximum).
+const memberPage = 1000
+
 // maxMemberPages bounds ListServerBots (1000 members per page).
 const maxMemberPages = 1000
 
-// ListServerBots is GET /guilds/{id}/members?limit=1000, page after page.
-func (s *session) ListServerBots(ctx context.Context, serverID string) ([]string, error) {
-	if err := checkIDs("ListServerBots", serverID); err != nil {
-		return nil, err
-	}
-	var bots []string
+// eachMember is GET /guilds/{id}/members?limit=1000, page after page (ascending user ID),
+// calling fn for every member. More than maxPages pages is an error.
+func (s *session) eachMember(ctx context.Context, op, serverID string, maxPages int, fn func(wireMember)) error {
 	after := "0"
-	for range maxMemberPages {
+	for range maxPages {
 		var page []wireMember
-		q := discordapi.QueryValues{"limit": 1000, "after": after}
-		if err := s.do(ctx, "ListServerBots", rest.GetMembers.Compile(q, serverID), nil, &page); err != nil {
-			return nil, err
+		q := discordapi.QueryValues{"limit": memberPage, "after": after}
+		if err := s.do(ctx, op, rest.GetMembers.Compile(q, serverID), nil, &page); err != nil {
+			return err
 		}
 		for _, m := range page {
 			if m.User == nil {
 				continue
 			}
-			if m.User.Bot {
-				bots = append(bots, m.User.ID)
-			}
+			fn(m)
 			after = m.User.ID // members come in ascending user ID order
 		}
-		if len(page) < 1000 {
-			return bots, nil
+		if len(page) < memberPage {
+			return nil
 		}
 	}
-	return nil, fmt.Errorf("ListServerBots: server %s has more than %d members", serverID, maxMemberPages*1000)
+	return fmt.Errorf("%s: server %s has more than %d members", op, serverID, maxPages*memberPage)
+}
+
+// ListServerBots lists every member (eachMember) and keeps the bots.
+func (s *session) ListServerBots(ctx context.Context, serverID string) ([]string, error) {
+	if err := checkIDs("ListServerBots", serverID); err != nil {
+		return nil, err
+	}
+	var bots []string
+	err := s.eachMember(ctx, "ListServerBots", serverID, maxMemberPages, func(m wireMember) {
+		if m.User.Bot {
+			bots = append(bots, m.User.ID)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return bots, nil
+}
+
+// ListMembers lists every member (eachMember), at most discord.MaxListedMembers.
+func (s *session) ListMembers(ctx context.Context, serverID string) ([]discord.Member, error) {
+	if err := checkIDs("ListMembers", serverID); err != nil {
+		return nil, err
+	}
+	var out []discord.Member
+	err := s.eachMember(ctx, "ListMembers", serverID, discord.MaxListedMembers/memberPage, func(m wireMember) {
+		out = append(out, memberFromWire(serverID, m, nil))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ListScheduledEventInterest is GET /guilds/{id}/scheduled-events?with_user_count=true.

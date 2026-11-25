@@ -21,6 +21,9 @@ type serverCache struct {
 	channels map[string]discord.Channel
 	roles    map[string]discord.Role
 	server   discord.Server
+
+	// members is the member listing of role.members() (its own lock).
+	members *memberList
 }
 
 type resourceRef struct {
@@ -34,6 +37,7 @@ func newServerCache(key, id string) *serverCache {
 		idToKey:  map[string]resourceRef{},
 		channels: map[string]discord.Channel{},
 		roles:    map[string]discord.Role{},
+		members:  newMemberList(),
 	}
 }
 
@@ -86,6 +90,7 @@ func (c *serverCache) Refresh(ctx context.Context, cl discord.Client, rm state.R
 
 // Observe updates live resources from gateway events.
 func (c *serverCache) Observe(ev discord.Event) {
+	c.members.Observe(ev)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	switch e := ev.(type) {

@@ -39,6 +39,19 @@ func TestPluginBuild(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "error: a handler needs the ServerMembers intent") {
 		t.Errorf("missing intent = %d\n%s", code, out)
 	}
+	// an intent no handler needs is a warning, except ServerMembers with discord.members.read
+	// (role.members())
+	ob := t.TempDir()
+	copyDir(t, "../../examples/basic/plugins/onboarding", ob)
+	om := filepath.Join(ob, "plugin.yaml")
+	writeFile(t, om, strings.Replace(readFile(t, om), "  config:\n", "  intents: [ServerMembers]\n  config:\n", 1))
+	if code, out, _ := run(t, "plugin", "build", ob); code != 0 || !strings.Contains(out, "warning: plugin.yaml declares the ServerMembers intent, which no handler needs") {
+		t.Errorf("unused intent = %d\n%s", code, out)
+	}
+	writeFile(t, om, strings.Replace(readFile(t, om), "    - storage.kv\n", "    - storage.kv\n    - discord.members.read\n", 1))
+	if code, out, _ := run(t, "plugin", "build", ob); code != 0 || strings.Contains(out, "warning:") {
+		t.Errorf("ServerMembers with discord.members.read = %d\n%s", code, out)
+	}
 	// a syntax error is reported with its location
 	writeFile(t, filepath.Join(dir, "src", "index.ts"), "export default {\n")
 	if code, out, _ := run(t, "plugin", "build", dir); code != 1 || !strings.Contains(out, "src/index.ts:") {

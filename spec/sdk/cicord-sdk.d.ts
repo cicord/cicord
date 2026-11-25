@@ -180,6 +180,17 @@ export interface Role {
   readonly position?: number;
   /** Whether anyone may mention the role. `undefined` when the role is not known. */
   readonly mentionable?: boolean;
+  /**
+   * The members holding the role, in ascending user id order: at most `limit` (default 100,
+   * at most 1000), those after the user id `after` (to page past `limit`). Discord has no
+   * "members of a role" endpoint: the runtime lists the server's members (1000 per request,
+   * at most 100,000 members; the listing is shared by the server's plugins, reused for up to
+   * 60 s and kept current by member events) and filters them. Throws for `@everyone`.
+   * plugin.yaml must declare the ServerMembers intent (checked at call time).
+   * @capability discord.members.read
+   * @intent ServerMembers
+   */
+  members(options?: { limit?: number; after?: Snowflake }): Promise<Member[]>;
 }
 
 export interface Channel {

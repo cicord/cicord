@@ -194,7 +194,10 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 		// in channel.messages() history.
 		readsContent := in == "MessageContent" && (def.HasEvent("messageCreate") || def.HasEvent("messageUpdate") ||
 			slices.Contains(m.Spec.Capabilities, "discord.messages.read"))
-		if !slices.Contains(def.RequiredIntents(), in) && !readsContent {
+		// ServerMembers is also what role.members() needs (checked when it is called: a
+		// call cannot be seen in the definition).
+		listsMembers := in == "ServerMembers" && slices.Contains(m.Spec.Capabilities, "discord.members.read")
+		if !slices.Contains(def.RequiredIntents(), in) && !readsContent && !listsMembers {
 			r.Warnings = append(r.Warnings, fmt.Sprintf("plugin.yaml declares the %s intent, which no handler needs", in))
 		}
 	}

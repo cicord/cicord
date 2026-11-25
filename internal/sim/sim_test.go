@@ -1150,3 +1150,39 @@ func TestReturnedValuesAreCopies(t *testing.T) {
 		t.Fatal("state aliased caller slices")
 	}
 }
+
+func TestListMembers(t *testing.T) {
+	f := newFixture(t, fixtureOpts{})
+	ms, err := f.sess.ListMembers(ctx, f.srv.ID)
+	isErr(t, err, nil)
+	if len(ms) != 3 {
+		t.Fatalf("members = %+v", ms)
+	}
+	for i := 1; i < len(ms); i++ {
+		if !snowLess(ms[i-1].User.ID, ms[i].User.ID) {
+			t.Fatalf("not in user ID order: %v then %v", ms[i-1].User.ID, ms[i].User.ID)
+		}
+	}
+	var bot discord.Member
+	for _, m := range ms {
+		if m.User.ID == f.bot.ID {
+			bot = m
+		}
+	}
+	if !bot.HasRole(f.botRole.ID) || !bot.User.Bot {
+		t.Fatalf("bot member = %+v", bot)
+	}
+	// A copy: changing it does not change the world.
+	ms[0].RoleIDs = append(ms[0].RoleIDs, "x")
+	if m, _ := f.w.Member(f.srv.ID, ms[0].User.ID); m.HasRole("x") {
+		t.Fatal("ListMembers returned the world's member")
+	}
+	// Without the privileged ServerMembers intent in the developer portal: 403, like Discord.
+	isErr(t, f.w.SetPrivilegedIntents(f.appID, discord.MustIntents("MessageContent")), nil)
+	_, err = f.sess.ListMembers(ctx, f.srv.ID)
+	isErr(t, err, discord.ErrForbidden)
+	// Not in the server.
+	other := f.w.CreateServer("Other", f.owner.ID)
+	_, err = f.sess.ListMembers(ctx, other.ID)
+	isErr(t, err, discord.ErrForbidden)
+}

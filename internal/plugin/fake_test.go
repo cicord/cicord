@@ -182,6 +182,20 @@ func (f *fakeDiscord) GetMember(ctx context.Context, serverID, userID string) (d
 	return m, nil
 }
 
+// ListMembers returns f.members in map order (the host sorts).
+func (f *fakeDiscord) ListMembers(ctx context.Context, serverID string) ([]discord.Member, error) {
+	if err := f.record(ctx, "ListMembers", serverID); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]discord.Member, 0, len(f.members))
+	for _, m := range f.members {
+		out = append(out, m)
+	}
+	return out, nil
+}
+
 func (f *fakeDiscord) CreateDM(ctx context.Context, userID string) (discord.Channel, error) {
 	if err := f.record(ctx, "CreateDM", userID); err != nil {
 		return discord.Channel{}, err

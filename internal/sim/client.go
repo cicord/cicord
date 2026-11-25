@@ -151,6 +151,14 @@ func (c *Client) GetMember(ctx context.Context, serverID, userID string) (discor
 	return c.w.getMember(c.a, serverID, userID)
 }
 
+// ListMembers lists every member of a server (discord.MemberLister).
+func (c *Client) ListMembers(ctx context.Context, serverID string) ([]discord.Member, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return c.w.listMembers(c.a, serverID)
+}
+
 func (c *Client) UpdateMember(ctx context.Context, serverID, userID string, p discord.MemberParams, reason string) (discord.Member, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.Member{}, err

@@ -935,6 +935,27 @@ type Client interface {
 	CreateFollowup(ctx context.Context, applicationID, token string, m MessageCreate) (Message, error)
 }
 
+// MemberLister is implemented by clients able to list every member of a server. Discord
+// has no "members of a role" endpoint: callers list the members and filter them. The
+// Discord API pages GET /guilds/{id}/members by 1000 members per request (MaxListedMembers
+// at most) and answers ErrForbidden when the application does not have the privileged
+// ServerMembers intent enabled in the developer portal.
+type MemberLister interface {
+	// ListMembers returns the server's members in ascending user ID order.
+	ListMembers(ctx context.Context, serverID string) ([]Member, error)
+}
+
+// MaxListedMembers bounds ListMembers: a larger server is an error, not a partial list.
+const MaxListedMembers = 100_000
+
+// SnowflakeLess compares two snowflakes (decimal IDs without leading zeros) numerically.
+func SnowflakeLess(a, b string) bool {
+	if len(a) != len(b) {
+		return len(a) < len(b)
+	}
+	return a < b
+}
+
 // Session is one bot identity: REST client + gateway connection.
 type Session interface {
 	Client

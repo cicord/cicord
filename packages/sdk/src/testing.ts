@@ -109,6 +109,11 @@ export interface TestContextOptions {
   ) => TestFetchResponse | Promise<TestFetchResponse>;
   /** Granted capabilities. Omit to allow everything. */
   grants?: string[];
+  /**
+   * Intents declared in plugin.yaml (`spec.intents`). Omit to allow everything; when given,
+   * `role.members()` throws without ServerMembers, like the host.
+   */
+  intents?: string[];
   plugin?: { name?: string; version?: string; instance?: string };
   bot?: { key?: string; username?: string };
   server?: {
@@ -396,6 +401,12 @@ function makeUser(init: {
   };
 }
 
+/** User id order of `role.members()`: numeric for snowflakes, else by string. */
+function idLess(a: string, b: string): boolean {
+  if (/^\d+$/.test(a) && /^\d+$/.test(b)) return BigInt(a) < BigInt(b);
+  return a < b;
+}
+
 // ───────────────────────────────────────────────────────────── context
 
 export function createTestContext(options: TestContextOptions = {}): TestHarness {
@@ -423,9 +434,28 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
 
   const roles = new Map<string, Role>();
   const rolePermissions = new Map<string, readonly Permission[]>(); // role id → permissions
+  // Methods on a prototype, like the host: a Role's own properties are its data (toEqual and
+  // JSON.stringify see only them).
+  const roleProto: Pick<Role, "members"> = {
+    async members(this: Role, opts = {}) {
+      need("discord.members.read");
+      if (options.intents && !options.intents.includes("ServerMembers"))
+        throw new Error(
+          "role.members() needs the ServerMembers intent: declare it in plugin.yaml (spec.intents)",
+        );
+      const limit = opts.limit ?? 100;
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+        throw new TypeError("role.members(): limit must be an integer between 1 and 1000");
+      const after = opts.after;
+      const held = [...members.values()]
+        .filter((m) => m.hasRole({ id: this.id }) && (after === undefined || idLess(after, m.id)))
+        .toSorted((a, b) => (idLess(a.id, b.id) ? -1 : idLess(b.id, a.id) ? 1 : 0));
+      return Object.freeze(held.slice(0, limit)) as Member[];
+    },
+  };
   for (const [key, r] of Object.entries(options.roles ?? {})) {
     const id = r.id ?? `role-${key}`;
-    roles.set(key, {
+    const role: Role = Object.assign(Object.create(roleProto) as Pick<Role, "members">, {
       id,
       key,
       name: r.name,
@@ -434,6 +464,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       position: r.position ?? roles.size + 1,
       mentionable: r.mentionable ?? false,
     });
+    roles.set(key, role);
     rolePermissions.set(id, r.permissions ?? []);
   }
   const ownerId = options.server?.ownerId;

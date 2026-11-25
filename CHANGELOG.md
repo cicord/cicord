@@ -19,6 +19,15 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ### Added
 
+- Plugin SDK: `role.members({ limit?, after? })` lists the members holding a role
+  (`ctx.server.role("staff").members()`), in user id order, at most 1000 per call (default
+  100). It needs `discord.members.read` and the `ServerMembers` intent in plugin.yaml
+  (checked at call time; `cicord plugin build` no longer reports that intent as unused for a
+  plugin with `discord.members.read`). Discord has no such endpoint: the runtime lists the
+  server's members (at most 100,000) and filters them; the listing is shared by the
+  server's plugins, reused for 60 s and kept current by member events. The simulator lists
+  members too (refused without the ServerMembers intent, like Discord) and the testing
+  harness supports it, with a new `intents` option.
 - `roles.<key>.members`: Discord user IDs who must hold a role, so staff roles are declared
   in git. Additive: listed members who lack the role get it (plan change kind `memberRole`,
   `give role "Maintainer" to @Alice (…)`), unlisted holders keep it, and removing a user from

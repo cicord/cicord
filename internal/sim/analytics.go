@@ -13,7 +13,10 @@ import (
 // presences, invites and their uses, scheduled events, audit log entries and AutoMod
 // executions.
 
-var _ discord.AnalyticsReader = (*Client)(nil)
+var (
+	_ discord.AnalyticsReader = (*Client)(nil)
+	_ discord.MemberLister    = (*Client)(nil)
+)
 
 var (
 	intentVoiceStates    = discord.MustIntents("ServerVoiceStates")
