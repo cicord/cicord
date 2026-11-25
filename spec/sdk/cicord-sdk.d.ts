@@ -205,6 +205,8 @@ export interface Channel {
   readonly key?: string;
   readonly name: string;
   readonly type: "text" | "voice" | "announcement" | "stage" | "forum" | "media" | "thread" | "category" | "dm";
+  /** Id of the channel's category; `undefined` when it has none (or it is not known). */
+  readonly categoryId?: Snowflake;
   readonly mention: string;
 }
 
@@ -258,6 +260,14 @@ export interface Member {
   ban(options?: { reason?: string; deleteMessagesSeconds?: number }): Promise<void>;
   /** Direct message. @capability discord.dm.send */
   send(message: MessageInput): Promise<Message>;
+  /**
+   * Move the member, who must be connected to voice, to a voice channel. The bot needs Move
+   * Members, and Connect in the destination (whose user limit does not apply to moves).
+   * @capability discord.voice.move
+   */
+  moveTo(channel: ChannelRef | Channel, reason?: string): Promise<void>;
+  /** Disconnect the member from voice. @capability discord.voice.move */
+  disconnect(reason?: string): Promise<void>;
 }
 
 export interface CreateChannelOptions {
@@ -271,6 +281,43 @@ export interface CreateChannelOptions {
    * access without Administrator).
    */
   overwrites?: Record<string, { allow?: Permission[]; deny?: Permission[] }>;
+  /** Voice channels: maximum number of connected members, 0–99 (0, the default, is no limit). */
+  userLimit?: number;
+  /** Voice channels: bits per second, 8000–384000 (above 96000 needs server boosts). */
+  bitrate?: number;
+}
+
+/**
+ * A change to one overwrite target of `server.editChannel()`: `allow` and `deny` set these
+ * permissions (taking them out of the other side), `clear` makes them neutral again
+ * (inherited). The target's other permissions are kept.
+ */
+export interface OverwritePatch {
+  allow?: Permission[];
+  deny?: Permission[];
+  clear?: Permission[];
+}
+
+export interface EditChannelOptions {
+  name?: string;
+  topic?: string;
+  /** Voice channels: 0–99 (0 is no limit). */
+  userLimit?: number;
+  /** Voice channels: 8000–384000. */
+  bitrate?: number;
+  /**
+   * Overwrites to change, keyed by target like `CreateChannelOptions.overwrites`; `null`
+   * removes a target's overwrite. Targets not listed are kept, including what the channel
+   * got from its category:
+   *
+   * ```ts
+   * // Lock a room without touching who may see it.
+   * await ctx.server.editChannel(room, { overwrites: { "@everyone": { deny: ["Connect"] } } });
+   * ```
+   */
+  overwrites?: Record<string, OverwritePatch | null>;
+  /** Audit log reason. */
+  reason?: string;
 }
 
 export interface Server {
@@ -289,11 +336,26 @@ export interface Server {
   member(userId: Snowflake): Promise<Member | undefined>;
   /**
    * Create a channel owned by this plugin instance (e.g. a ticket). The reconciler never
-   * prunes plugin-owned channels. @capability discord.channels.manage
+   * prunes plugin-owned channels. A channel created in a category without `overwrites` gets
+   * the category's (Discord syncs it). @capability discord.channels.manage
    */
   createChannel(options: CreateChannelOptions): Promise<TextChannel>;
+  /**
+   * Edit a channel owned by this plugin instance (created by `createChannel`); overwrites
+   * are patched, see `EditChannelOptions`. @capability discord.channels.manage
+   */
+  editChannel(ref: ChannelRef | Channel, options: EditChannelOptions): Promise<TextChannel>;
   /** Delete a channel owned by this plugin instance. @capability discord.channels.manage */
-  deleteChannel(ref: ChannelRef, reason?: string): Promise<void>;
+  deleteChannel(ref: ChannelRef | Channel, reason?: string): Promise<void>;
+  /**
+   * The members connected to a voice channel, in ascending user id order (bots included).
+   * Read from the runtime's voice states, which the gateway sends when the server becomes
+   * available: until then (just after a start or a reconnect) it throws rather than answer
+   * "nobody". plugin.yaml must declare the ServerVoiceStates intent (checked at call time).
+   * @capability discord.members.read
+   * @intent ServerVoiceStates
+   */
+  voiceMembers(channel: ChannelRef | Channel): Promise<Member[]>;
 }
 
 // ───────────────────────────────────────────────────────────── interactions
@@ -663,6 +725,30 @@ export declare function defineRoutes<Routes extends { [K in keyof Routes]: Route
 
 // ───────────────────────────────────────────────────────────── plugin definition
 
+/**
+ * A member joined, left or moved between voice channels, or changed their voice state
+ * (mute, deafen, stream, camera). Compare `channel` and `previous` to tell them apart.
+ */
+export interface VoiceStateUpdate {
+  readonly user: User;
+  /** The member (Discord sends it with every voice state of a server). */
+  readonly member?: Member;
+  /** The voice channel the member is in now; `undefined` when they left voice. */
+  readonly channel?: Channel;
+  /**
+   * The voice channel they were in before this update, from the runtime's voice states;
+   * `undefined` when they were not in voice, or when the runtime does not know (an update
+   * that arrives just after a start or a reconnect).
+   */
+  readonly previous?: Channel;
+  readonly selfMute: boolean;
+  readonly selfDeaf: boolean;
+  /** Streaming (Go Live). */
+  readonly streaming: boolean;
+  /** Camera on. */
+  readonly video: boolean;
+}
+
 export interface EventHandlers {
   /** @intent ServerMembers */
   memberJoin?(ctx: Context, member: Member): Awaitable<void>;
@@ -684,6 +770,8 @@ export interface EventHandlers {
   reactionAdd?(ctx: Context, reaction: { message: Message; user: User; emoji: string }): Awaitable<void>;
   /** @intent ServerMessageReactions — same partial `message` as reactionAdd. */
   reactionRemove?(ctx: Context, reaction: { message: Message; user: User; emoji: string }): Awaitable<void>;
+  /** @intent ServerVoiceStates */
+  voiceStateUpdate?(ctx: Context, update: VoiceStateUpdate): Awaitable<void>;
   /**
    * The bot joined the server (invited again after a removal, for instance) while
    * connected; not sent for servers loading after a connection or an outage. Like every

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ const (
 	capChannelsRead    = "discord.channels.read"
 	capChannelsManage  = "discord.channels.manage"
 	capThreadsManage   = "discord.threads.manage"
+	capVoiceMove       = "discord.voice.move"
 	capDMSend          = "discord.dm.send"
 	capKV              = "storage.kv"
 	capScheduler       = "scheduler"
@@ -56,6 +58,8 @@ var capabilityPermissions = map[string]discord.Permissions{
 	capChannelsManage:  discord.MustPermissions("ViewChannel", "ManageChannels", "ManageRoles"),
 	capThreadsManage: discord.MustPermissions("ViewChannel", "CreatePublicThreads", "CreatePrivateThreads",
 		"ManageThreads", "SendMessagesInThreads"),
+	// Moving a member needs MoveMembers, and Connect in the destination channel.
+	capVoiceMove: discord.MustPermissions("ViewChannel", "Connect", "MoveMembers"),
 }
 
 // CapabilityPermissions returns the Discord permissions the bot needs for a granted
@@ -116,10 +120,13 @@ func init() {
 		"member.kick":          opMemberKick,
 		"member.ban":           opMemberBan,
 		"member.send":          opMemberSend,
+		"member.moveTo":        opMemberMoveTo,
 		"server.member":        opServerMember,
+		"server.voiceMembers":  opServerVoiceMembers,
 		"role.members":         opRoleMembers,
 		"server.createChannel": opServerCreateChannel,
 		"server.deleteChannel": opServerDeleteChannel,
+		"server.editChannel":   opServerEditChannel,
 		"kv.get":               opKVGet,
 		"kv.set":               opKVSet,
 		"kv.delete":            opKVDelete,
@@ -856,6 +863,41 @@ func opMemberSend(i *Instance, _ *invocation, args json.RawMessage) (func(contex
 	}, nil
 }
 
+// opMemberMoveTo moves a member connected to voice to a voice channel, or disconnects
+// them (disconnect: true).
+func opMemberMoveTo(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capVoiceMove); err != nil {
+		return nil, err
+	}
+	a, err := decode[struct {
+		UserID     string `json:"userId"`
+		Channel    ref    `json:"channel"`
+		Disconnect bool   `json:"disconnect"`
+		Reason     string `json:"reason"`
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkSnowflake("user", a.UserID); err != nil {
+		return nil, err
+	}
+	target := ""
+	if !a.Disconnect {
+		if target, err = i.resolve(state.KindChannel, a.Channel); err != nil {
+			return nil, err
+		}
+	}
+	return func(ctx context.Context) (any, error) {
+		if target != "" {
+			if _, err := i.channelScope(ctx, target); err != nil {
+				return nil, err
+			}
+		}
+		_, err := i.env.Discord.UpdateMember(ctx, i.env.ServerID, a.UserID, discord.MemberParams{VoiceChannelID: &target}, a.Reason)
+		return nil, err
+	}, nil
+}
+
 // ───────────────────────────────────────────────────────────── server
 
 func opServerMember(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
@@ -951,6 +993,64 @@ func opRoleMembers(i *Instance, _ *invocation, args json.RawMessage) (func(conte
 	}, nil
 }
 
+// errVoiceStatesUnknown: the runtime has not received the server's voice states yet (the
+// gateway sends them when the server becomes available). An empty answer would be a lie.
+var errVoiceStatesUnknown = errors.New("server.voiceMembers(): the voice states of the server are not known yet " +
+	"(the gateway has not sent them): try again later")
+
+// opServerVoiceMembers lists the members connected to a voice channel, from the runtime's
+// voice state cache (no Discord endpoint lists them).
+func opServerVoiceMembers(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capMembersRead); err != nil {
+		return nil, err
+	}
+	if !i.env.ServerVoiceStates {
+		return nil, errors.New("server.voiceMembers() needs the ServerVoiceStates intent: declare it in plugin.yaml (spec.intents)")
+	}
+	a, err := decode[struct {
+		Ref ref `json:"ref"`
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	id, err := i.resolve(state.KindChannel, a.Ref)
+	if err != nil {
+		return nil, err
+	}
+	if i.env.VoiceStates == nil {
+		return nil, errVoiceStatesUnknown
+	}
+	states, known := i.env.VoiceStates()
+	if !known {
+		return nil, errVoiceStatesUnknown
+	}
+	var in []discord.VoiceState
+	for _, st := range states {
+		if st.ChannelID == id {
+			in = append(in, st)
+		}
+	}
+	sort.Slice(in, func(x, y int) bool { return discord.SnowflakeLess(in[x].UserID, in[y].UserID) })
+	return func(ctx context.Context) (any, error) {
+		out := make([]memberDTO, 0, len(in))
+		for _, st := range in {
+			m := st.Member
+			if m == nil || m.User.ID == "" {
+				got, err := i.env.Discord.GetMember(ctx, i.env.ServerID, st.UserID)
+				if errors.Is(err, discord.ErrNotFound) {
+					continue // left the server
+				}
+				if err != nil {
+					return nil, err
+				}
+				m = &got
+			}
+			out = append(out, i.memberDTO(*m))
+		}
+		return out, nil
+	}, nil
+}
+
 // owner is the ResourceMap owner of plugin-created resources.
 func (i *Instance) owner() string { return "plugin:" + i.env.BotKey + "/" + i.env.InstanceName }
 
@@ -959,10 +1059,12 @@ func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 		return nil, err
 	}
 	a, err := decode[struct {
-		Name       string `json:"name"`
-		Type       string `json:"type"`
-		Category   ref    `json:"category"`
-		Topic      string `json:"topic"`
+		Name       string   `json:"name"`
+		Type       string   `json:"type"`
+		Category   ref      `json:"category"`
+		Topic      string   `json:"topic"`
+		UserLimit  *float64 `json:"userLimit"`
+		Bitrate    *float64 `json:"bitrate"`
 		Overwrites map[string]struct {
 			Allow []string `json:"allow"`
 			Deny  []string `json:"deny"`
@@ -995,6 +1097,9 @@ func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 	if a.Topic != "" {
 		p.Topic = &a.Topic
 	}
+	if p.UserLimit, p.Bitrate, err = voiceSettings("createChannel", p.Type == discord.ChannelVoice, a.UserLimit, a.Bitrate); err != nil {
+		return nil, err
+	}
 	if len(a.Overwrites) > 0 {
 		targets := make([]string, 0, len(a.Overwrites))
 		for t := range a.Overwrites {
@@ -1004,26 +1109,9 @@ func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 		ows := make([]discord.Overwrite, 0, len(targets))
 		for _, target := range targets {
 			spec := a.Overwrites[target]
-			ow := discord.Overwrite{Type: discord.OverwriteRole}
-			switch {
-			case target == "@everyone":
-				ow.ID = i.env.ServerID
-			case strings.HasPrefix(target, "member:"):
-				ow.ID, ow.Type = strings.TrimPrefix(target, "member:"), discord.OverwriteMember
-				if err := checkSnowflake("member", ow.ID); err != nil {
-					return nil, err
-				}
-			case strings.HasPrefix(target, "role:"):
-				ow.ID = strings.TrimPrefix(target, "role:")
-				if err := checkSnowflake("role", ow.ID); err != nil {
-					return nil, err
-				}
-			default:
-				id, err := i.resolve(state.KindRole, ref{Key: target, set: true})
-				if err != nil {
-					return nil, fmt.Errorf("createChannel(): overwrite target %q: %w (use @everyone, a role key, role:<id> or member:<id>)", target, err)
-				}
-				ow.ID = id
+			ow, err := i.overwriteTarget("createChannel", target)
+			if err != nil {
+				return nil, err
 			}
 			if ow.Allow, err = discord.ParsePermissions(spec.Allow); err != nil {
 				return nil, argErr("createChannel(): overwrite %q: %v", target, err)
@@ -1057,6 +1145,199 @@ func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 	}, nil
 }
 
+// overwriteTarget parses an overwrite target of createChannel / editChannel: "@everyone",
+// a role key, "role:<id>" or "member:<id>".
+func (i *Instance) overwriteTarget(fn, target string) (discord.Overwrite, error) {
+	ow := discord.Overwrite{Type: discord.OverwriteRole}
+	switch {
+	case target == "@everyone":
+		ow.ID = i.env.ServerID
+	case strings.HasPrefix(target, "member:"):
+		ow.ID, ow.Type = strings.TrimPrefix(target, "member:"), discord.OverwriteMember
+		if err := checkSnowflake("member", ow.ID); err != nil {
+			return ow, err
+		}
+	case strings.HasPrefix(target, "role:"):
+		ow.ID = strings.TrimPrefix(target, "role:")
+		if err := checkSnowflake("role", ow.ID); err != nil {
+			return ow, err
+		}
+	default:
+		id, err := i.resolve(state.KindRole, ref{Key: target, set: true})
+		if err != nil {
+			return ow, fmt.Errorf("%s(): overwrite target %q: %w (use @everyone, a role key, role:<id> or member:<id>)", fn, target, err)
+		}
+		ow.ID = id
+	}
+	return ow, nil
+}
+
+// Voice channel settings (Discord's limits; the highest bitrates need server boosts).
+const (
+	maxUserLimit = 99
+	minBitrate   = 8000
+	maxBitrate   = 384000
+)
+
+// voiceSettings validates userLimit (0 = no limit) and bitrate, which only voice channels
+// have.
+func voiceSettings(fn string, voice bool, userLimit, bitrate *float64) (*int, *int, error) {
+	var ul, br *int
+	if userLimit != nil {
+		v := *userLimit
+		if !voice {
+			return nil, nil, argErr("%s(): userLimit is only for voice channels", fn)
+		}
+		if v != float64(int(v)) || v < 0 || v > maxUserLimit {
+			return nil, nil, argErr("%s(): userLimit must be an integer between 0 (no limit) and %d", fn, maxUserLimit)
+		}
+		n := int(v)
+		ul = &n
+	}
+	if bitrate != nil {
+		v := *bitrate
+		if !voice {
+			return nil, nil, argErr("%s(): bitrate is only for voice channels", fn)
+		}
+		if v != float64(int(v)) || v < minBitrate || v > maxBitrate {
+			return nil, nil, argErr("%s(): bitrate must be an integer between %d and %d (bits per second)", fn, minBitrate, maxBitrate)
+		}
+		n := int(v)
+		br = &n
+	}
+	return ul, br, nil
+}
+
+// overwritePatch changes one overwrite target of editChannel: allow and deny set those
+// bits (taking them out of the other side), clear makes them neutral. Other bits and
+// other targets are kept.
+type overwritePatch struct {
+	Allow []string `json:"allow"`
+	Deny  []string `json:"deny"`
+	Clear []string `json:"clear"`
+}
+
+// ownedChannel checks that the plugin instance owns a channel (it created it).
+func (i *Instance) ownedChannel(ctx context.Context, fn, id string) (state.Resource, error) {
+	if i.env.Resources == nil {
+		return state.Resource{}, fmt.Errorf("%s(): channel ownership is not available (no resource map)", fn)
+	}
+	r, err := i.env.Resources.GetByID(ctx, i.env.ServerKey, id)
+	if errors.Is(err, state.ErrNotFound) || (err == nil && r.Owner != i.owner()) {
+		return r, fmt.Errorf("%s(): channel %s is not owned by this plugin instance", fn, id)
+	}
+	return r, err
+}
+
+// opServerEditChannel edits a channel owned by the plugin instance. Overwrites are
+// patched (overwritePatch, null removes a target), so that the overwrites a channel got
+// from its category, or from other edits, are kept.
+func opServerEditChannel(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capChannelsManage); err != nil {
+		return nil, err
+	}
+	a, err := decode[struct {
+		Ref        ref                        `json:"ref"`
+		Name       *string                    `json:"name"`
+		Topic      *string                    `json:"topic"`
+		UserLimit  *float64                   `json:"userLimit"`
+		Bitrate    *float64                   `json:"bitrate"`
+		Overwrites map[string]*overwritePatch `json:"overwrites"`
+		Reason     string                     `json:"reason"`
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	id, err := i.resolve(state.KindChannel, a.Ref)
+	if err != nil {
+		return nil, err
+	}
+	if a.Name != nil && (*a.Name == "" || len([]rune(*a.Name)) > 100) {
+		return nil, argErr("editChannel(): name must be 1-100 characters")
+	}
+	if a.Topic != nil && len([]rune(*a.Topic)) > 1024 {
+		return nil, argErr("editChannel(): topic must be at most 1024 characters")
+	}
+	// Overwrite targets and bits are parsed here (sorted: deterministic errors).
+	type patch struct {
+		ow                 discord.Overwrite
+		remove             bool
+		allow, deny, clear discord.Permissions
+	}
+	targets := make([]string, 0, len(a.Overwrites))
+	for t := range a.Overwrites {
+		targets = append(targets, t)
+	}
+	sort.Strings(targets)
+	patches := make([]patch, 0, len(targets))
+	for _, target := range targets {
+		ow, err := i.overwriteTarget("editChannel", target)
+		if err != nil {
+			return nil, err
+		}
+		pt := patch{ow: ow, remove: a.Overwrites[target] == nil}
+		if spec := a.Overwrites[target]; spec != nil {
+			for _, f := range []struct {
+				dst   *discord.Permissions
+				names []string
+			}{{&pt.allow, spec.Allow}, {&pt.deny, spec.Deny}, {&pt.clear, spec.Clear}} {
+				if *f.dst, err = discord.ParsePermissions(f.names); err != nil {
+					return nil, argErr("editChannel(): overwrite %q: %v", target, err)
+				}
+			}
+			if pt.allow&pt.deny != 0 || (pt.allow|pt.deny)&pt.clear != 0 {
+				return nil, argErr("editChannel(): overwrite %q: a permission is in more than one of allow, deny and clear", target)
+			}
+		}
+		patches = append(patches, pt)
+	}
+	reason := a.Reason
+	if reason == "" {
+		reason = "cicord: edited by plugin " + i.env.PluginName + " (" + i.env.InstanceName + ")"
+	}
+	return func(ctx context.Context) (any, error) {
+		if _, err := i.ownedChannel(ctx, "editChannel", id); err != nil {
+			return nil, err
+		}
+		cur, err := i.env.Discord.GetChannel(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		p := discord.ChannelParams{Name: a.Name, Topic: a.Topic}
+		if p.UserLimit, p.Bitrate, err = voiceSettings("editChannel", cur.Type == discord.ChannelVoice || cur.Type == discord.ChannelStage, a.UserLimit, a.Bitrate); err != nil {
+			return nil, err
+		}
+		if len(patches) > 0 {
+			ows := append([]discord.Overwrite(nil), cur.Overwrites...)
+			for _, pt := range patches {
+				idx := slices.IndexFunc(ows, func(o discord.Overwrite) bool { return o.ID == pt.ow.ID && o.Type == pt.ow.Type })
+				if pt.remove {
+					if idx >= 0 {
+						ows = slices.Delete(ows, idx, idx+1)
+					}
+					continue
+				}
+				if idx < 0 {
+					ows = append(ows, pt.ow)
+					idx = len(ows) - 1
+				}
+				o := &ows[idx]
+				o.Allow = (o.Allow &^ (pt.deny | pt.clear)) | pt.allow
+				o.Deny = (o.Deny &^ (pt.allow | pt.clear)) | pt.deny
+				if o.Allow == 0 && o.Deny == 0 && o.Type == discord.OverwriteMember {
+					ows = slices.Delete(ows, idx, idx+1) // an empty member overwrite is noise
+				}
+			}
+			p.Overwrites = &ows
+		}
+		ch, err := i.env.Discord.UpdateChannel(ctx, id, p, reason)
+		if err != nil {
+			return nil, err
+		}
+		return i.channelDTOFrom(ch), nil
+	}, nil
+}
+
 func opServerDeleteChannel(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	if err := i.require(capChannelsManage); err != nil {
 		return nil, err
@@ -1076,10 +1357,7 @@ func opServerDeleteChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 		return nil, errors.New("deleteChannel(): channel ownership is not available (no resource map)")
 	}
 	return func(ctx context.Context) (any, error) {
-		r, err := i.env.Resources.GetByID(ctx, i.env.ServerKey, id)
-		if errors.Is(err, state.ErrNotFound) || (err == nil && r.Owner != i.owner()) {
-			return nil, fmt.Errorf("deleteChannel(): channel %s is not owned by this plugin instance", id)
-		}
+		r, err := i.ownedChannel(ctx, "deleteChannel", id)
 		if err != nil {
 			return nil, err
 		}

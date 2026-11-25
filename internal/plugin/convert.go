@@ -39,6 +39,8 @@ type channelDTO struct {
 	Key  string `json:"key,omitempty"`
 	Name string `json:"name"`
 	Type string `json:"type"`
+	// CategoryID is the channel's category ("" = none, or not known).
+	CategoryID string `json:"categoryId,omitempty"`
 }
 
 type memberDTO struct {
@@ -211,7 +213,8 @@ func channelTypeName(t discord.ChannelType) string {
 }
 
 func (i *Instance) channelDTOFrom(ch discord.Channel) channelDTO {
-	return channelDTO{ID: ch.ID, Name: ch.Name, Type: channelTypeName(ch.Type), Key: i.resolverKey(ch.ID, state.KindChannel, state.KindCategory)}
+	return channelDTO{ID: ch.ID, Name: ch.Name, Type: channelTypeName(ch.Type), Key: i.resolverKey(ch.ID, state.KindChannel, state.KindCategory),
+		CategoryID: ch.ParentID}
 }
 
 func (i *Instance) channelDTO(id string) channelDTO {
@@ -405,6 +408,17 @@ type eventDTO struct {
 	Channel  *channelDTO `json:"channel,omitempty"`
 	Emoji    string      `json:"emoji,omitempty"`
 	Server   *serverDTO  `json:"server,omitempty"`
+	Voice    *voiceDTO   `json:"voice,omitempty"`
+}
+
+// voiceDTO is the voiceStateUpdate event: where the member is now and was before.
+type voiceDTO struct {
+	Channel   *channelDTO `json:"channel,omitempty"`
+	Previous  *channelDTO `json:"previous,omitempty"`
+	SelfMute  bool        `json:"selfMute"`
+	SelfDeaf  bool        `json:"selfDeaf"`
+	Streaming bool        `json:"streaming"`
+	Video     bool        `json:"video"`
 }
 
 // serverDTO is the server of serverJoin / serverLeave (only id for a leave).
@@ -459,6 +473,25 @@ func (i *Instance) eventDTO(ev discord.Event) eventDTO {
 		d.Server = &serverDTO{ID: e.Server.ID, Name: e.Server.Name, IconURL: e.Server.IconURL}
 	case discord.ServerLeaveEvent:
 		d.Server = &serverDTO{ID: e.ServerID}
+	case discord.VoiceStateUpdateEvent:
+		st := e.State
+		u := i.userDTO(discord.User{ID: st.UserID, Bot: st.Bot})
+		if st.Member != nil && st.Member.User.ID == st.UserID {
+			m := i.memberDTO(*st.Member)
+			d.Member, u = &m, m.User
+		}
+		d.User = &u
+		v := &voiceDTO{SelfMute: st.SelfMute, SelfDeaf: st.SelfDeaf, Streaming: st.SelfStream, Video: st.SelfVideo}
+		if st.ChannelID != "" {
+			i.markServerChannel(st.ChannelID)
+			ch := i.channelDTO(st.ChannelID)
+			v.Channel = &ch
+		}
+		if e.Previous != nil && e.Previous.ChannelID != "" {
+			ch := i.channelDTO(e.Previous.ChannelID)
+			v.Previous = &ch
+		}
+		d.Voice = v
 	}
 	return d
 }

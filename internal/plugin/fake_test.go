@@ -208,9 +208,46 @@ func (f *fakeDiscord) CreateChannel(ctx context.Context, serverID string, p disc
 		return discord.Channel{}, err
 	}
 	ch := discord.Channel{ID: f.id(), ServerID: serverID, Name: *p.Name, Type: p.Type}
+	applyChannelParams(&ch, p)
 	f.mu.Lock()
 	f.channels[ch.ID] = ch
 	f.mu.Unlock()
+	return ch, nil
+}
+
+func applyChannelParams(ch *discord.Channel, p discord.ChannelParams) {
+	if p.Name != nil {
+		ch.Name = *p.Name
+	}
+	if p.ParentID != nil {
+		ch.ParentID = *p.ParentID
+	}
+	if p.Topic != nil {
+		ch.Topic = *p.Topic
+	}
+	if p.UserLimit != nil {
+		ch.UserLimit = *p.UserLimit
+	}
+	if p.Bitrate != nil {
+		ch.Bitrate = *p.Bitrate
+	}
+	if p.Overwrites != nil {
+		ch.Overwrites = append([]discord.Overwrite(nil), *p.Overwrites...)
+	}
+}
+
+func (f *fakeDiscord) UpdateChannel(ctx context.Context, id string, p discord.ChannelParams, reason string) (discord.Channel, error) {
+	if err := f.record(ctx, "UpdateChannel", id, p, reason); err != nil {
+		return discord.Channel{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ch, ok := f.channels[id]
+	if !ok {
+		return discord.Channel{}, discord.ErrNotFound
+	}
+	applyChannelParams(&ch, p)
+	f.channels[id] = ch
 	return ch, nil
 }
 
@@ -548,7 +585,7 @@ func (l *logRecorder) Messages() []string {
 var allGrants = []string{
 	capMessagesRead, capMessagesSend, capMessagesManage, capReactions, capMembersRead,
 	capMembersManage, capMembersModerate, capRolesAssign, capChannelsRead, capChannelsManage,
-	capThreadsManage, capDMSend, capKV, capScheduler, capHTTPFetch, capPortalRoutes,
+	capThreadsManage, capVoiceMove, capDMSend, capKV, capScheduler, capHTTPFetch, capPortalRoutes,
 	capPortalLinks, capEventsPublish, capEventsSubscribe,
 }
 

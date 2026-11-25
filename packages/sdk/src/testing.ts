@@ -18,6 +18,10 @@
  * follows the reply/defer/update/followUp/showModal rules of the runtime; `runAutocomplete`
  * returns the choices of an option's autocomplete handler. Other handlers (events, tasks, schedules, subscriptions) are plain functions:
  * call them with `harness.ctx`, e.g. `await plugin.tasks!.close!(t.ctx, { id: "1" })`.
+ *
+ * Voice: `harness.setVoice(userId, channel)` connects, moves or (with `null`) disconnects a
+ * member and returns the `VoiceStateUpdate` to pass to a `voiceStateUpdate` handler;
+ * `member.moveTo()` / `disconnect()` update the same voice states (`voiceMoves` records them).
  */
 import type {
   AutocompleteChoice,
@@ -28,6 +32,7 @@ import type {
   ComponentInteraction,
   Context,
   CreateChannelOptions,
+  EditChannelOptions,
   Interaction,
   Json,
   KV,
@@ -46,6 +51,7 @@ import type {
   SubcommandDefinition,
   TextChannel,
   User,
+  VoiceStateUpdate,
 } from "@cicord/sdk";
 import { CapabilityError } from "./index.js";
 
@@ -73,6 +79,8 @@ export interface TestChannelInit {
   name: string;
   type?: Channel["type"];
   id?: string;
+  /** Category id (`channel.categoryId`). */
+  categoryId?: string;
 }
 
 export interface TestMemberInit {
@@ -172,6 +180,19 @@ export interface ModerationAction {
   nickname?: string | null;
 }
 
+/** A permission overwrite of a channel created (and edited) by the plugin. */
+export interface TestOverwrite {
+  allow: Permission[];
+  deny: Permission[];
+}
+
+export interface VoiceMove {
+  member: string;
+  /** Destination channel id; `null` for `disconnect()`. */
+  channel: string | null;
+  reason?: string;
+}
+
 export interface RoleChange {
   member: string;
   role: string;
@@ -196,6 +217,10 @@ export interface TestHarness {
   /** Channels created with `ctx.server.createChannel()` (resolvable by `{ id }`). */
   readonly createdChannels: { channel: TextChannel; options: CreateChannelOptions }[];
   readonly deletedChannels: { id: string; reason?: string }[];
+  /** `ctx.server.editChannel()` calls, in order. */
+  readonly editedChannels: { id: string; options: EditChannelOptions }[];
+  /** `member.moveTo()` / `member.disconnect()` calls, in order. */
+  readonly voiceMoves: VoiceMove[];
   readonly threads: { parent: string; name: string; private: boolean; fromMessage?: string }[];
   /** `ctx.http.fetch()` requests. */
   readonly requests: { url: string; init: Parameters<Context["http"]["fetch"]>[1] }[];
@@ -210,6 +235,20 @@ export interface TestHarness {
   channel(ref: string): TextChannel | undefined;
   /** Removes a member (e.g. before calling a memberLeave handler). */
   removeMember(userId: string): void;
+  /**
+   * Connects a member to a voice channel (key or id), moves them, or disconnects them
+   * (`null`), and returns the update a `voiceStateUpdate` handler receives (`previous` is
+   * where they were).
+   */
+  setVoice(userId: string, channel: string | null): VoiceStateUpdate;
+  /** The voice channel id a member is connected to. */
+  voiceChannel(userId: string): string | undefined;
+  /**
+   * The overwrites of a channel created by the plugin, after its edits, keyed by target
+   * (`"@everyone"`, a role key, `"role:<id>"`, `"member:<id>"`). Category overwrites are not
+   * modelled.
+   */
+  overwrites(channelId: string): Record<string, TestOverwrite>;
 }
 
 // ───────────────────────────────────────────────────────────── helpers
@@ -427,6 +466,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const moderation: ModerationAction[] = [];
   const createdChannels: TestHarness["createdChannels"] = [];
   const deletedChannels: TestHarness["deletedChannels"] = [];
+  const editedChannels: TestHarness["editedChannels"] = [];
+  const voiceMoves: VoiceMove[] = [];
+  const voice = new Map<string, string>(); // user id → voice channel id
+  const channelOverwrites = new Map<string, Map<string, TestOverwrite>>(); // created channel id → target → overwrite
   const threads: TestHarness["threads"] = [];
   const requests: TestHarness["requests"] = [];
   const kvData = new Map<string, Json>();
@@ -543,6 +586,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       ...(key ? { key } : {}),
       name: init.name,
       type: init.type ?? "text",
+      ...(init.categoryId ? { categoryId: init.categoryId } : {}),
       mention: `<#${id}>`,
       async send(input) {
         need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
@@ -668,6 +712,26 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
           register(undefined, { name: "dm", type: "dm", id: `dm-${user.id}` });
         return post(dm, input, `dm:${user.id}`);
       },
+      async moveTo(ref, reason) {
+        need("discord.voice.move");
+        if (ref === null || ref === undefined)
+          throw new TypeError(
+            "moveTo: a voice channel is required (use disconnect() to disconnect)",
+          );
+        const target = findChannel(typeof ref === "string" ? ref : { id: ref.id });
+        if (!target) throw new Error(`unknown channel ${JSON.stringify(ref)}`);
+        if (target.type !== "voice" && target.type !== "stage")
+          throw new Error(`channel ${target.id} is not a voice channel`);
+        if (!voice.has(user.id)) throw new Error("target user is not connected to voice");
+        voice.set(user.id, target.id);
+        voiceMoves.push({ member: user.id, channel: target.id, ...(reason ? { reason } : {}) });
+      },
+      async disconnect(reason) {
+        need("discord.voice.move");
+        if (!voice.has(user.id)) throw new Error("target user is not connected to voice");
+        voice.delete(user.id);
+        voiceMoves.push({ member: user.id, channel: null, ...(reason ? { reason } : {}) });
+      },
     };
     members.set(user.id, member);
     return member;
@@ -676,6 +740,56 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
 
   const findChannel = (ref: string | { id: string }): TextChannel | undefined =>
     typeof ref === "string" ? channels.get(ref) : channels.get(ref.id);
+
+  const voiceSettings = (
+    fn: string,
+    isVoice: boolean,
+    opts: { userLimit?: number; bitrate?: number },
+  ) => {
+    if (opts.userLimit !== undefined) {
+      if (!isVoice) throw new TypeError(`${fn}(): userLimit is only for voice channels`);
+      if (!Number.isInteger(opts.userLimit) || opts.userLimit < 0 || opts.userLimit > 99)
+        throw new TypeError(`${fn}(): userLimit must be an integer between 0 (no limit) and 99`);
+    }
+    if (opts.bitrate !== undefined) {
+      if (!isVoice) throw new TypeError(`${fn}(): bitrate is only for voice channels`);
+      if (!Number.isInteger(opts.bitrate) || opts.bitrate < 8000 || opts.bitrate > 384000)
+        throw new TypeError(`${fn}(): bitrate must be an integer between 8000 and 384000`);
+    }
+  };
+  const checkTarget = (fn: string, target: string): void => {
+    if (target === "@everyone" || /^(role|member):/.test(target)) return;
+    if (!roles.has(target)) throw new Error(`${fn}(): overwrite target "${target}": unknown role`);
+  };
+  const ownedChannel = (fn: string, ref: string | { id: string }): TextChannel => {
+    const channel = findChannel(ref);
+    if (!channel || !createdChannels.some((c) => c.channel.id === channel.id))
+      throw new Error(
+        `${fn}(): channel ${JSON.stringify(ref)} is not owned by this plugin instance`,
+      );
+    return channel;
+  };
+  const refOf = (ref: string | { id: string }) => (typeof ref === "string" ? ref : { id: ref.id });
+  const voiceUpdate = (
+    userId: string,
+    channelId: string | undefined,
+    previousId: string | undefined,
+  ): VoiceStateUpdate => {
+    const member = members.get(userId);
+    const user = member?.user ?? makeUser({ id: userId });
+    const channel = channelId ? channels.get(channelId) : undefined;
+    const previous = previousId ? channels.get(previousId) : undefined;
+    return Object.freeze({
+      user,
+      ...(member ? { member } : {}),
+      ...(channel ? { channel } : {}),
+      ...(previous ? { previous } : {}),
+      selfMute: false,
+      selfDeaf: false,
+      streaming: false,
+      video: false,
+    });
+  };
 
   const serverKey = options.server?.key ?? "test-server";
   const server: Server = {
@@ -701,26 +815,92 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     },
     async createChannel(opts) {
       need("discord.channels.manage");
-      if (opts.category !== undefined && !findChannel(opts.category))
-        throw new Error(`unknown category ${JSON.stringify(opts.category)}`);
-      for (const target of Object.keys(opts.overwrites ?? {})) {
-        if (target === "@everyone" || /^(role|member):/.test(target)) continue;
-        if (!roles.has(target))
-          throw new Error(`createChannel(): overwrite target "${target}": unknown role`);
+      let categoryId: string | undefined;
+      if (opts.category !== undefined) {
+        const category = findChannel(opts.category);
+        // A category id that is not declared is accepted, like the host ({ id } of an unmanaged one).
+        if (!category && typeof opts.category === "string")
+          throw new Error(`unknown category ${JSON.stringify(opts.category)}`);
+        categoryId = category?.id ?? (opts.category as { id: string }).id;
       }
-      const channel = register(undefined, { name: opts.name, type: opts.type ?? "text" });
+      for (const target of Object.keys(opts.overwrites ?? {})) checkTarget("createChannel", target);
+      voiceSettings("createChannel", opts.type === "voice", opts);
+      const channel = register(undefined, {
+        name: opts.name,
+        type: opts.type ?? "text",
+        ...(categoryId ? { categoryId } : {}),
+      });
       createdChannels.push({ channel, options: opts });
+      const ows = new Map<string, TestOverwrite>();
+      for (const [target, o] of Object.entries(opts.overwrites ?? {}))
+        ows.set(target, { allow: [...(o.allow ?? [])], deny: [...(o.deny ?? [])] });
+      channelOverwrites.set(channel.id, ows);
+      return channel;
+    },
+    async editChannel(ref, opts) {
+      need("discord.channels.manage");
+      const channel = ownedChannel("editChannel", refOf(ref));
+      if (opts.name !== undefined && (opts.name === "" || Array.from(opts.name).length > 100))
+        throw new TypeError("editChannel(): name must be 1-100 characters");
+      voiceSettings("editChannel", channel.type === "voice" || channel.type === "stage", opts);
+      const ows = channelOverwrites.get(channel.id) ?? new Map<string, TestOverwrite>();
+      for (const [target, patch] of Object.entries(opts.overwrites ?? {})) {
+        checkTarget("editChannel", target);
+        if (patch === null) {
+          ows.delete(target);
+          continue;
+        }
+        const allow = patch.allow ?? [],
+          deny = patch.deny ?? [],
+          clear = patch.clear ?? [];
+        if (
+          allow.some((p) => deny.includes(p) || clear.includes(p)) ||
+          deny.some((p) => clear.includes(p))
+        )
+          throw new TypeError(
+            `editChannel(): overwrite "${target}": a permission is in more than one of allow, deny and clear`,
+          );
+        const cur = ows.get(target) ?? { allow: [], deny: [] };
+        const next: TestOverwrite = {
+          allow: [
+            ...cur.allow.filter((p) => !deny.includes(p) && !clear.includes(p)),
+            ...allow.filter((p) => !cur.allow.includes(p)),
+          ],
+          deny: [
+            ...cur.deny.filter((p) => !allow.includes(p) && !clear.includes(p)),
+            ...deny.filter((p) => !cur.deny.includes(p)),
+          ],
+        };
+        if (target.startsWith("member:") && next.allow.length === 0 && next.deny.length === 0)
+          ows.delete(target);
+        else ows.set(target, next);
+      }
+      channelOverwrites.set(channel.id, ows);
+      if (opts.name !== undefined) (channel as { name: string }).name = opts.name;
+      editedChannels.push({ id: channel.id, options: opts });
       return channel;
     },
     async deleteChannel(ref, reason) {
       need("discord.channels.manage");
-      const channel = findChannel(ref);
-      if (!channel || !createdChannels.some((c) => c.channel.id === channel.id))
-        throw new Error(
-          `deleteChannel(): channel ${JSON.stringify(ref)} is not owned by this plugin instance`,
-        );
+      const channel = ownedChannel("deleteChannel", refOf(ref));
       channels.delete(channel.id);
+      for (const [userId, at] of voice) if (at === channel.id) voice.delete(userId); // disconnected
       deletedChannels.push({ id: channel.id, ...(reason ? { reason } : {}) });
+    },
+    async voiceMembers(ref) {
+      need("discord.members.read");
+      if (options.intents && !options.intents.includes("ServerVoiceStates"))
+        throw new Error(
+          "server.voiceMembers() needs the ServerVoiceStates intent: declare it in plugin.yaml (spec.intents)",
+        );
+      const channel = findChannel(refOf(ref));
+      if (!channel) throw new Error(`unknown channel ${JSON.stringify(ref)}`);
+      const ids = [...voice].filter(([, at]) => at === channel.id).map(([id]) => id);
+      const list = ids
+        .map((id) => members.get(id))
+        .filter((m): m is Member => m !== undefined)
+        .toSorted((a, b) => (idLess(a.id, b.id) ? -1 : idLess(b.id, a.id) ? 1 : 0));
+      return Object.freeze(list) as Member[];
     },
   };
 
@@ -859,6 +1039,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     moderation,
     createdChannels,
     deletedChannels,
+    editedChannels,
+    voiceMoves,
     threads,
     requests,
     kv: kvData,
@@ -868,6 +1050,29 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     channel: (ref) => channels.get(ref),
     removeMember: (id) => {
       members.delete(id);
+    },
+    setVoice(userId, ref) {
+      const previous = voice.get(userId);
+      let next: string | undefined;
+      if (ref !== null) {
+        const channel = channels.get(ref);
+        if (!channel) throw new Error(`setVoice: unknown channel ${JSON.stringify(ref)}`);
+        if (channel.type !== "voice" && channel.type !== "stage")
+          throw new Error(`setVoice: channel ${channel.id} is not a voice channel`);
+        next = channel.id;
+        voice.set(userId, next);
+      } else {
+        voice.delete(userId);
+      }
+      return voiceUpdate(userId, next, previous);
+    },
+    voiceChannel: (userId) => voice.get(userId),
+    overwrites(channelId) {
+      const ows = channelOverwrites.get(channelId);
+      if (!ows) throw new Error(`overwrites: channel ${channelId} was not created by the plugin`);
+      return Object.fromEntries(
+        [...ows].map(([k, o]) => [k, { allow: [...o.allow], deny: [...o.deny] }]),
+      );
     },
   };
 }

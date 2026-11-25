@@ -152,14 +152,15 @@ func (d *Definition) DiscordCommands() []discord.Command {
 // ───────────────────────────────────────────────────────────── intents
 
 var eventIntents = map[string][]string{
-	"memberJoin":     {"ServerMembers"},
-	"memberLeave":    {"ServerMembers"},
-	"memberUpdate":   {"ServerMembers"},
-	"messageCreate":  {"ServerMessages"},
-	"messageUpdate":  {"ServerMessages"},
-	"messageDelete":  {"ServerMessages"},
-	"reactionAdd":    {"ServerMessageReactions"},
-	"reactionRemove": {"ServerMessageReactions"},
+	"memberJoin":       {"ServerMembers"},
+	"memberLeave":      {"ServerMembers"},
+	"memberUpdate":     {"ServerMembers"},
+	"messageCreate":    {"ServerMessages"},
+	"messageUpdate":    {"ServerMessages"},
+	"messageDelete":    {"ServerMessages"},
+	"reactionAdd":      {"ServerMessageReactions"},
+	"reactionRemove":   {"ServerMessageReactions"},
+	"voiceStateUpdate": {"ServerVoiceStates"},
 	// Servers is always enabled (config.Repo.GatewayIntents): nothing to declare.
 	"serverJoin":  {},
 	"serverLeave": {},
@@ -218,6 +219,8 @@ func EventName(ev discord.Event) string {
 		return "serverJoin"
 	case discord.ServerLeaveEvent:
 		return "serverLeave"
+	case discord.VoiceStateUpdateEvent:
+		return "voiceStateUpdate"
 	}
 	return ""
 }

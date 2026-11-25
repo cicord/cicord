@@ -205,6 +205,7 @@
     c.key = d.key || undefined;
     c.name = d.name || "";
     c.type = d.type || "text";
+    c.categoryId = d.categoryId || undefined;
     c.mention = "<#" + d.id + ">";
     return freeze(c);
   }
@@ -237,6 +238,9 @@
     m.createdAt = d.createdAt ? new Date(d.createdAt) : new Date(NaN);
     return freeze(m);
   }
+
+  // A ResourceRef, or an object with an id (a Channel, a Role…), as the host reads it.
+  const refIn = (ref) => (ref !== null && typeof ref === "object" ? { id: ref.id } : ref);
 
   const memberRoles = new WeakMap();
   const rolesOf = (m) => memberRoles.get(m) || [];
@@ -272,6 +276,13 @@
     },
     async send(message) {
       return mkMessage(await acall("member.send", { userId: this.id, message: msgIn(message) }));
+    },
+    async moveTo(channel, reason) {
+      if (channel === null || channel === undefined) throw new TypeError("moveTo: a voice channel is required (use disconnect() to disconnect)");
+      await acall("member.moveTo", { userId: this.id, channel: refIn(channel), reason });
+    },
+    async disconnect(reason) {
+      await acall("member.moveTo", { userId: this.id, disconnect: true, reason });
     },
     toString() { return this.mention; },
   };
@@ -422,7 +433,15 @@
         return mkChannel(await acall("server.createChannel", options));
       },
       async deleteChannel(ref, reason) {
-        await acall("server.deleteChannel", { ref: ref && typeof ref === "object" ? { id: ref.id } : ref, reason });
+        await acall("server.deleteChannel", { ref: refIn(ref), reason });
+      },
+      async editChannel(ref, options) {
+        if (!options || typeof options !== "object") throw new TypeError("editChannel: options are required");
+        return mkChannel(await acall("server.editChannel", Object.assign({}, options, { ref: refIn(ref) })));
+      },
+      async voiceMembers(ref) {
+        const list = await acall("server.voiceMembers", { ref: refIn(ref) });
+        return freeze(list.map(mkMember));
       },
     });
 
@@ -627,6 +646,19 @@
       case "reactionRemove": return [freeze({ message: mkMessage(d.message), user: mkUser(d.user), emoji: d.emoji })];
       case "serverJoin": return [freeze({ id: d.server.id, name: d.server.name || "", iconUrl: d.server.iconUrl || undefined })];
       case "serverLeave": return [freeze({ id: d.server.id })];
+      case "voiceStateUpdate": {
+        const v = d.voice || {};
+        return [freeze({
+          user: mkUser(d.user),
+          member: d.member ? mkMember(d.member) : undefined,
+          channel: v.channel ? mkChannel(v.channel) : undefined,
+          previous: v.previous ? mkChannel(v.previous) : undefined,
+          selfMute: !!v.selfMute,
+          selfDeaf: !!v.selfDeaf,
+          streaming: !!v.streaming,
+          video: !!v.video,
+        })];
+      }
     }
     return [];
   }

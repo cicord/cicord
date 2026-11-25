@@ -141,6 +141,8 @@ func voiceStateFromWire(serverID string, v wireVoiceState) discord.VoiceState {
 		if out.UserID == "" {
 			out.UserID = v.Member.User.ID
 		}
+		m := memberFromWire(out.ServerID, *v.Member, nil)
+		out.Member = &m
 	}
 	return out
 }
@@ -232,10 +234,10 @@ func serverAvailable(d []byte) (discord.ServerAvailableEvent, error) {
 	ev := discord.ServerAvailableEvent{ServerID: g.ID}
 	// The voice states of GUILD_CREATE are partial (no member): the members array,
 	// which includes every member in voice, tells the bots.
-	bots := map[string]bool{}
+	members := map[string]wireMember{}
 	for _, m := range g.Members {
-		if m.User != nil && m.User.Bot {
-			bots[m.User.ID] = true
+		if m.User != nil {
+			members[m.User.ID] = m
 		}
 	}
 	for _, v := range g.VoiceStates {
@@ -243,7 +245,11 @@ func serverAvailable(d []byte) (discord.ServerAvailableEvent, error) {
 			continue
 		}
 		st := voiceStateFromWire(g.ID, v)
-		st.Bot = st.Bot || bots[st.UserID]
+		if m, ok := members[st.UserID]; ok && st.Member == nil {
+			st.Bot = st.Bot || m.User.Bot
+			dm := memberFromWire(g.ID, m, nil)
+			st.Member = &dm
+		}
 		ev.VoiceStates = append(ev.VoiceStates, st)
 	}
 	for _, p := range g.Presences {

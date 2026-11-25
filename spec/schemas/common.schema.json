@@ -89,7 +89,7 @@
         "discord.messages.read", "discord.messages.send", "discord.messages.manage",
         "discord.reactions.manage", "discord.members.read", "discord.members.manage",
         "discord.members.moderate", "discord.roles.assign", "discord.channels.read",
-        "discord.channels.manage", "discord.threads.manage", "discord.dm.send",
+        "discord.channels.manage", "discord.threads.manage", "discord.voice.move", "discord.dm.send",
         "storage.kv", "scheduler", "http.fetch", "portal.routes", "portal.links",
         "events.publish", "events.subscribe"
       ]

@@ -198,7 +198,9 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 		// ServerMembers is also what role.members() needs (checked when it is called: a
 		// call cannot be seen in the definition).
 		listsMembers := in == "ServerMembers" && slices.Contains(m.Spec.Capabilities, "discord.members.read")
-		if !slices.Contains(def.RequiredIntents(), in) && !readsContent && !listsMembers {
+		// ServerVoiceStates is also what server.voiceMembers() needs (checked at call time).
+		listsVoice := in == "ServerVoiceStates" && slices.Contains(m.Spec.Capabilities, "discord.members.read")
+		if !slices.Contains(def.RequiredIntents(), in) && !readsContent && !listsMembers && !listsVoice {
 			r.Warnings = append(r.Warnings, fmt.Sprintf("plugin.yaml declares the %s intent, which no handler needs", in))
 		}
 	}
