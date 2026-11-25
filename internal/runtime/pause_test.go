@@ -115,6 +115,27 @@ func (d *drill) waitFor(what string, cond func() bool) {
 	d.t.Fatalf("timeout waiting for %s; status: %+v", what, d.rt.Status())
 }
 
+// commitState describes what recheckCommitStatus looks at, for a failing test.
+func (d *drill) commitState() string {
+	d.rt.syncMu.Lock()
+	defer d.rt.syncMu.Unlock()
+	a := d.rt.Active()
+	out := fmt.Sprintf("commit=%s/%s active=%s", d.rt.commit.sha, d.rt.commit.state, a.rev.SHA)
+	for key, s := range a.servers {
+		s.mu.Lock()
+		_, paused := d.rt.Paused(key)
+		out += fmt.Sprintf(" server %s applied=%v health=%s paused=%v;", key, s.applied, s.health, paused)
+		s.mu.Unlock()
+	}
+	out += fmt.Sprintf(" bots=%v", d.rt.botFailures(a.repo))
+	for _, i := range a.instances {
+		i.mu.Lock()
+		out += fmt.Sprintf(" %s=%s", i.id(), i.health)
+		i.mu.Unlock()
+	}
+	return out
+}
+
 func (d *drill) server() ServerStatus {
 	for _, s := range d.rt.Status().Servers {
 		if s.Key == "my-community" {
@@ -300,10 +321,14 @@ func runDrill(t *testing.T, selfHeal bool) {
 	// With selfHeal, the sync that applies may be the self-heal one armed by the resume, still
 	// reporting in its own goroutine when the resync returns: wait for the report.
 	var got []statusEvent
-	d.waitFor("the commit status after resume and sync", func() bool {
+	deadline := time.Now().Add(15 * time.Second)
+	for len(got) == 0 && time.Now().Before(deadline) {
 		got = append(got, d.statuses.take()...)
-		return len(got) > 0
-	})
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(got) == 0 {
+		t.Fatalf("no commit status after resume and sync: %s", d.commitState())
+	}
 	if len(got) != 1 || got[0].state != CommitSuccess || got[0].sha != sha {
 		t.Fatalf("commit status after resume and sync: %+v", got)
 	}
