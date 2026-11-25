@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/typegen"
-	"github.com/cicord/cicord/internal/version"
 	"github.com/cicord/cicord/internal/webui"
 )
 
@@ -45,7 +45,7 @@ func newPortalCmd() *cobra.Command {
 repository. Its build output is committed too and served by the runtime at / instead of
 the default portal (cicord.yaml spec.portal.path). See https://cicord.dev/docs/portal/custom-portal/.`,
 	}
-	cmd.AddCommand(newPortalInitCmd(), newPortalBuildCmd(), newPortalTypegenCmd(), newPortalVendorCmd())
+	cmd.AddCommand(newPortalInitCmd(), newPortalBuildCmd(), newPortalTypegenCmd(), newPortalUpgradeCmd(), newPortalVendorCmd())
 	return cmd
 }
 
@@ -119,58 +119,74 @@ type portalPackageJSON struct {
 }
 
 // portalPnpmSettings are the pnpm settings of a portal, written to its
-// pnpm-workspace.yaml: the @cicord/* overrides make @cicord/react's dependency on
-// @cicord/client resolve to the vendored tarball, not to the npm registry.
+// pnpm-workspace.yaml. In a vendored portal, the @cicord/* overrides make @cicord/react's
+// dependency on @cicord/client resolve to the vendored tarball, not to the npm registry.
 type portalPnpmSettings struct {
 	Overrides           map[string]string `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	PeerDependencyRules map[string]any    `json:"peerDependencyRules,omitempty" yaml:"peerDependencyRules,omitempty"`
 }
 
 func newPortalInitCmd() *cobra.Command {
-	var force, fromNPM bool
+	var force, vendor, fromNPM bool
 	cmd := &cobra.Command{
 		Use:   "init [dir]",
 		Short: "Scaffold a custom portal from the reference portal (default dir: portal)",
-		Long: `Copies the reference community portal into [dir] (default "portal"), with the
-@cicord/client, @cicord/react and @cicord/ui packages vendored in <dir>/vendor (file:
-dependencies: no npm publication needed). When [dir] is inside a Cicord repository, also
-writes .github/workflows/cicord-portal.yml, which checks that the committed build matches
-the sources, and src/cicord-routes.d.ts, the types of the repository's plugin routes.
+		Long: `Copies the reference community portal into [dir] (default "portal"). It depends on
+@cicord/client, @cicord/react and @cicord/ui from npm, at the exact version of this cicord
+("@cicord/client": "<version>"): every release publishes them, with provenance. When [dir]
+is inside a Cicord repository, also writes .github/workflows/cicord-portal.yml, which checks
+that the committed build matches the sources and that the packages are this cicord's
+version, and src/cicord-routes.d.ts, the types of the repository's plugin routes.
 
---from-npm (or CICORD_FROM_NPM=true) depends on the npm registry instead
-("@cicord/client": "^<version of this cicord>", no vendor/), where every release
-publishes the @cicord/* packages (https://cicord.dev/docs/portal/custom-portal/).
+--vendor (offline or air-gapped builds) vendors the packages embedded in this binary in
+<dir>/vendor instead (file: dependencies, and pnpm overrides keeping them there): installing
+needs no registry access for them. A development build of cicord, whose version is not on
+npm, always vendors. ` + "`cicord portal upgrade`" + ` keeps either kind of portal on the version
+of cicord (https://cicord.dev/docs/portal/custom-portal/).
 
 Then: cd <dir> && pnpm install && pnpm build, set spec.portal.path: ./<dir>/dist in
-cicord.yaml, and commit <dir> (dist/ included).`,
+cicord.yaml, and commit <dir> (pnpm-lock.yaml and dist/ included).`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "portal"
 			if len(args) == 1 {
 				dir = args[0]
 			}
-			return portalInit(cmd.OutOrStdout(), dir, force, fromNPM)
+			return portalInit(cmd.OutOrStdout(), dir, force, vendor)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "write into a non-empty directory / overwrite files")
-	cmd.Flags().BoolVar(&fromNPM, "from-npm", fromNPMDefault(), "depend on the @cicord/* packages of the npm registry instead of vendoring the embedded tarballs")
+	cmd.Flags().BoolVar(&vendor, "vendor", false, "vendor the @cicord/* packages embedded in this binary instead of depending on npm (offline builds)")
+	// npm became the default: --from-npm is still accepted, and does nothing.
+	cmd.Flags().BoolVar(&fromNPM, "from-npm", false, "depend on the npm packages (the default)")
+	_ = cmd.Flags().MarkDeprecated("from-npm", "npm is the default; --vendor vendors the embedded packages")
 	return cmd
 }
 
-// fromNPMDefault is the default of --from-npm: CICORD_FROM_NPM=true (or 1).
+// fromNPMDefault is the default of `cicord plugin new --from-npm`: CICORD_FROM_NPM=true (or 1).
 func fromNPMDefault() bool {
 	v := strings.ToLower(os.Getenv("CICORD_FROM_NPM"))
 	return v == "1" || v == "true"
 }
 
-func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
+func portalInit(w io.Writer, dir string, force, vendor bool) error {
 	kit, err := portalKit()
 	if err != nil {
 		return err
 	}
-	pkgs, err := readKitPackages(kit)
-	if err != nil {
-		return err
+	v := cicordVersion()
+	devNote := ""
+	if !vendor && !isReleaseVersion(v) {
+		vendor = true
+		devNote = fmt.Sprintf("Note: this cicord (%s) is a development build, whose @cicord/* packages are not on npm:\n"+
+			"the ones embedded in it are vendored in %s/vendor instead. With a cicord release,\n"+
+			"`cicord portal upgrade --to-npm %s` moves the portal to npm.\n", v, dir, dir)
+	}
+	var pkgs []kitPackage
+	if vendor {
+		if pkgs, err = readKitPackages(kit); err != nil {
+			return err
+		}
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -237,26 +253,36 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 		settings.PeerDependencyRules = pj.Pnpm.PeerDependencyRules
 	}
 	pj.Pnpm = nil
-	for _, p := range pkgs {
-		_, dep := pj.Dependencies[p.Name]
-		_, devDep := pj.DevDependencies[p.Name]
+	for _, name := range portalSDKPackages {
+		_, dep := pj.Dependencies[name]
+		_, devDep := pj.DevDependencies[name]
 		if !dep && !devDep {
-			continue // e.g. @cicord/sdk, embedded for `cicord plugin new`
+			continue
 		}
-		spec := "^" + p.Version // the npm registry: same version as the embedded kit
-		if !fromNPM {
+		// npm: the exact version of this cicord, released with it (no range: the portal's
+		// SDK is the runtime's, `cicord portal upgrade --check` verifies it).
+		spec := v
+		if vendor {
+			i := slices.IndexFunc(pkgs, func(p kitPackage) bool { return p.Name == name })
+			if i < 0 {
+				return fmt.Errorf("this cicord binary embeds no %s package", name)
+			}
+			p := pkgs[i]
 			if err := write("vendor/"+p.File, p.Data); err != nil {
 				return err
 			}
 			spec = "file:vendor/" + p.File
 			// @cicord/react depends on @cicord/client by version: resolve it to the vendored
 			// tarball too.
-			settings.Overrides[p.Name] = spec
+			settings.Overrides[name] = spec
+		} else {
+			// The template's own overrides of @cicord/* (if any) would win over the version.
+			delete(settings.Overrides, name)
 		}
 		if devDep {
-			pj.DevDependencies[p.Name] = spec
+			pj.DevDependencies[name] = spec
 		} else {
-			pj.Dependencies[p.Name] = spec
+			pj.Dependencies[name] = spec
 		}
 	}
 	pj.Overrides = settings.Overrides
@@ -332,6 +358,14 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 			fmt.Fprintln(w, "  created .github/workflows/cicord-portal.yml")
 		}
 	}
+	source := "@cicord/client, @cicord/react and @cicord/ui " + v + " from npm"
+	if vendor {
+		source = "the @cicord/* packages vendored in " + filepath.ToSlash(filepath.Join(dir, "vendor"))
+	}
+	fmt.Fprintf(w, "  depends on %s\n", source)
+	if devNote != "" {
+		fmt.Fprint(w, "\n"+devNote)
+	}
 	fmt.Fprintf(w, `
 Next steps:
   cd %[1]s && pnpm install && pnpm build    (or: cicord portal build)
@@ -375,10 +409,12 @@ jobs:
         working-directory: [[.Dir]]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The cicord release that generated this portal (its vendored @cicord/* packages); bump
-      # it with the runtime. The release binary embeds the portal kit that "portal vendor
-      # --check" compares with (a "go install" build does not). Its checksum and its build
-      # provenance (the release workflow of cicord/cicord, from that tag) are verified.
+      # The cicord release whose @cicord/* packages the portal depends on: bump it with the
+      # runtime, after "cicord portal upgrade". "portal upgrade --check" compares the portal
+      # with this binary: the exact npm version in package.json, or for a vendored portal the
+      # tarballs of the portal kit that the release binary embeds (a "go install" build does
+      # not). Its checksum and its build provenance (the release workflow of cicord/cicord,
+      # from that tag) are verified.
       - name: Install cicord ([[.Cicord]], release binary)
         working-directory: ${{ runner.temp }}
         env:
@@ -400,9 +436,9 @@ jobs:
       - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
         working-directory: .
         run: cicord portal typegen --check --out [[.Dir]]/src/cicord-routes.d.ts
-      - name: The vendored @cicord/* packages are this cicord's (vendor/)
+      - name: The @cicord/* packages are this cicord's version (package.json, vendor/)
         working-directory: .
-        run: cicord portal vendor --check [[.Dir]]
+        run: cicord portal upgrade --check [[.Dir]]
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: 12
@@ -612,9 +648,9 @@ func hashTree(dir string) (string, error) {
 // cicordInstallVersion is the cicord release the generated workflows install: the tag
 // of this binary, or latest for a development build.
 func cicordInstallVersion() string {
-	v := version.Version
-	if v == "" || v == "dev" || strings.Contains(v, "-dev") {
+	v := cicordVersion()
+	if !isReleaseVersion(v) {
 		return "latest"
 	}
-	return "v" + strings.TrimPrefix(v, "v")
+	return "v" + v
 }

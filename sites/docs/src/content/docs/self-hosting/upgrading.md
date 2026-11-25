@@ -78,15 +78,18 @@ other install:
   [official registry](../../plugins/publishing/#the-official-registry) (`cicord/<name>` in
   `cicord.lock`) update like any registry plugin, independently of the binary; check their
   `engine` range.
-- **A custom portal** vendors the `@cicord/*` packages of the binary that wrote it: run
-  `cicord portal vendor`, then `cicord portal build`, and bump the cicord version installed by
-  `cicord-portal.yml` (see [Upgrading cicord](../../portal/custom-portal/#upgrading-cicord)).
-  A portal on npm (`--from-npm`) bumps its `@cicord/*` versions instead.
+- **A custom portal** depends on the `@cicord/*` packages of the binary that wrote it, at its
+  exact version (from npm, or vendored with `--vendor`): run `cicord portal upgrade`, then
+  `pnpm install` in the portal and `cicord portal build`, commit, and bump the cicord version
+  installed by `cicord-portal.yml` (see
+  [Upgrading cicord](../../portal/custom-portal/#upgrading-cicord)). A vendored portal moves
+  to npm with `cicord portal upgrade --to-npm`
+  ([how](../../portal/custom-portal/#from-the-vendored-tarballs-to-npm)).
 - **Plugins scaffolded by `cicord plugin new`** vendor `@cicord/sdk` the same way, unless they
   were created with `--from-npm`. Re-run `cicord plugin new` in a scratch directory to pick up
-  the new tarball, or switch to the npm package, published with each release
-  ([how](../../portal/custom-portal/#from-the-vendored-tarballs-to-npm)); an upgrade is then a
-  version bump in `package.json`.
+  the new tarball, or switch to the npm package, published with each release (in
+  `package.json`, `"@cicord/sdk": "<version>"` instead of `file:vendor/…`, then delete
+  `vendor/`); an upgrade is then a version bump in `package.json`.
 - **The state database** is migrated by the runtime itself at startup, and an older binary
   refuses a database migrated by a newer one (`database schema version N is newer than this
   binary supports`): a rollback by image alone does not work after a migration. Keep the

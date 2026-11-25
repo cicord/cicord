@@ -76,7 +76,9 @@ func TestFromNPM(t *testing.T) {
 		t.Error("vendor/ written with --from-npm")
 	}
 
-	t.Setenv("CICORD_FROM_NPM", "true") // same as --from-npm
+	// Portals use npm by default, at the exact version of cicord (CICORD_FROM_NPM changes nothing).
+	t.Setenv("CICORD_FROM_NPM", "true")
+	useVersion(t, "0.1.8")
 	portal := filepath.Join(t.TempDir(), "portal")
 	if code, _, stderr := run(t, "portal", "init", portal); code != 0 {
 		t.Fatal(stderr)
@@ -90,7 +92,7 @@ func TestFromNPM(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, n := range []string{"@cicord/client", "@cicord/react", "@cicord/ui"} {
-		if pj.Dependencies[n] != "^0.1.0" || pj.Overrides[n] != "" || pj.Pnpm.Overrides[n] != "" {
+		if pj.Dependencies[n] != "0.1.8" || pj.Overrides[n] != "" || pj.Pnpm.Overrides[n] != "" {
 			t.Errorf("%s = %q (overrides %q %q)", n, pj.Dependencies[n], pj.Overrides[n], pj.Pnpm.Overrides[n])
 		}
 	}

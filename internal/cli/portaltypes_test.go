@@ -127,7 +127,7 @@ func TestPortalInitWritesRouteTypes(t *testing.T) {
 	useKit(t, minimalKit(t), nil)
 	// Outside a repository: an empty registry replaces the template's file.
 	dir := filepath.Join(t.TempDir(), "site")
-	if code, _, stderr := run(t, "portal", "init", dir); code != 0 {
+	if code, _, stderr := run(t, "portal", "init", dir, "--vendor"); code != 0 {
 		t.Fatal(stderr)
 	}
 	got := readFile(t, filepath.Join(dir, "src", "cicord-routes.d.ts"))

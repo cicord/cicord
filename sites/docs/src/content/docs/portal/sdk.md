@@ -1,6 +1,6 @@
 ---
 title: SDK packages
-description: "@cicord/client, @cicord/react, @cicord/ui and create-cicord-portal: what each package does, from npm or vendored by the cicord binary."
+description: "@cicord/client, @cicord/react, @cicord/ui and create-cicord-portal: what each package does, from npm (the default) or vendored by the cicord binary."
 ---
 
 The portal SDK is a set of layered packages. Use only `@cicord/client` from a plain web page, add
@@ -11,11 +11,14 @@ portal. All of them are **Apache-2.0**.
 `@cicord/sdk`, `@cicord/client`, `@cicord/react` and `@cicord/ui` are published on npm with each
 Cicord release, at the same version as the binary (ESM and `.d.ts` builds, with
 [npm provenance](../../getting-started/installation/#verify-a-download)):
-`pnpm add @cicord/client`. By default, `cicord portal init` and `cicord plugin new`
-**vendor** the copies embedded in the `cicord` binary as `file:` dependencies, which needs
-no registry access. `--from-npm` (or `CICORD_FROM_NPM=true`) depends on npm instead
-(`"^<version of cicord>"`); see
-[switching an existing portal](../custom-portal/#from-the-vendored-tarballs-to-npm).
+`pnpm add @cicord/client`. `cicord portal init` depends on them at the exact version of the
+`cicord` binary (`"@cicord/client": "0.1.8"`), and `cicord portal upgrade` follows cicord
+upgrades. `cicord portal init --vendor` (offline or air-gapped builds) **vendors** the copies
+embedded in the binary as `file:` dependencies instead, which needs no registry access;
+`cicord portal upgrade --to-npm`
+[moves such a portal to npm](../custom-portal/#from-the-vendored-tarballs-to-npm).
+`cicord plugin new` still vendors `@cicord/sdk` unless given `--from-npm` (or
+`CICORD_FROM_NPM=true`).
 :::
 
 ## `@cicord/client`

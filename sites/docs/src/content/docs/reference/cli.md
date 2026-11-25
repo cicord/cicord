@@ -31,7 +31,7 @@ command also accepts `-h, --help`, and boolean flags accept `--flag=false`.
 | [`cicord secret`](#secrets) | `ls`, `set`, `rm`, `rotate-key`: the encrypted secret store. |
 | [`cicord plugin`](#plugins) | `new`, `sdk-types`, `build`, `typegen`, `test`, `add`, `update`, `publish`. |
 | [`cicord registry`](#registries) | `list`, `add`, `remove`, `update`, `search`, `keygen`, `sign`, `verify`. |
-| [`cicord portal`](#portal) | `init`, `build`, `typegen`, `vendor`: a custom community portal. |
+| [`cicord portal`](#portal) | `init`, `build`, `typegen`, `upgrade`: a custom community portal. |
 | `cicord completion` | Generate the shell completion script (`bash`, `zsh`, `fish`, `powershell`). |
 
 Commands that talk to a runtime (`plan --remote`, `status`, `sync`, `pause`, `resume`) read its URL from
@@ -742,7 +742,7 @@ A custom portal is a React app (a fork of the reference portal) committed in the
 
 ### `cicord portal init`
 
-Copy the reference portal into `[dir]` (default `portal`), with `@cicord/client`, `@cicord/react` and `@cicord/ui` vendored in `<dir>/vendor`. Inside a Cicord repository, also write `.github/workflows/cicord-portal.yml` and `src/cicord-routes.d.ts`. `--from-npm` (or `CICORD_FROM_NPM=true`) depends on the `@cicord/*` packages of npm instead (published with each release). Then build it, set `spec.portal.path: ./<dir>/dist` and commit it, `dist/` included.
+Copy the reference portal into `[dir]` (default `portal`), depending on `@cicord/client`, `@cicord/react` and `@cicord/ui` from npm at the exact version of this cicord (`"@cicord/client": "0.1.8"`, published with each release). Inside a Cicord repository, also write `.github/workflows/cicord-portal.yml` and `src/cicord-routes.d.ts`. `--vendor` (offline or air-gapped builds) vendors the packages embedded in the binary in `<dir>/vendor` instead (`file:` dependencies and pnpm overrides); a development build, whose version is not on npm, always vendors and says so. `--from-npm`, the former opt-in, is accepted and does nothing. Then `pnpm install` (it writes `pnpm-lock.yaml`), build it, set `spec.portal.path: ./<dir>/dist` and commit it, `pnpm-lock.yaml` and `dist/` included.
 
 ```text
 cicord portal init [dir] [flags]
@@ -751,7 +751,7 @@ cicord portal init [dir] [flags]
 | Flag | Description |
 |---|---|
 | `--force` | write into a non-empty directory / overwrite files |
-| `--from-npm` | depend on the @cicord/* packages of the npm registry instead of vendoring the embedded tarballs |
+| `--vendor` | vendor the @cicord/* packages embedded in this binary instead of depending on npm (offline builds) |
 
 ### `cicord portal build`
 
@@ -784,9 +784,28 @@ cicord portal typegen --check
 cicord portal typegen examples/showcase --out packages/create-cicord-portal/src/cicord-routes.d.ts
 ```
 
+### `cicord portal upgrade`
+
+Set `@cicord/client`, `@cicord/react` and `@cicord/ui` of a custom portal to the version of this cicord, the way the portal gets them: from npm, their versions in `package.json` become this cicord's exact version (in place); vendored (`portal init --vendor`), the tarballs in `vendor/` are replaced with the ones embedded in this cicord, `package.json` and `pnpm-workspace.yaml` point at them (in place) and the old ones are deleted. Nothing else changes. Then run `pnpm install` in the portal, `cicord portal build`, and commit. `[dir]` is the portal's directory, by default the nearest one with a `package.json` above `spec.portal.path` (or `./portal`). `--check` changes nothing and fails when the packages are not this cicord's version, in either mode (`cicord-portal.yml` runs it); a development build cannot check npm versions. `--to-npm` moves a vendored portal to npm: the three dependencies are set to this version, their overrides in `pnpm-workspace.yaml` and `package.json` are deleted, and so is `vendor/`. See [Upgrading cicord](../../portal/custom-portal/#upgrading-cicord).
+
+```text
+cicord portal upgrade [dir] [flags]
+```
+
+| Flag | Description |
+|---|---|
+| `--check` | fail when the @cicord/* packages are not this cicord's version (changes nothing) |
+| `--to-npm` | move a vendored portal to the npm packages (deletes vendor/ and the @cicord/* overrides) |
+
+```sh
+cicord portal upgrade
+cicord portal upgrade --check portal   # CI
+cicord portal upgrade --to-npm         # vendor/ → npm
+```
+
 ### `cicord portal vendor`
 
-Update the vendored `@cicord/*` packages of a custom portal (`vendor/`, written by `cicord portal init`) to the ones embedded in this cicord: the tarballs are replaced, `package.json` and `pnpm-workspace.yaml` point at them (in place) and the old ones are deleted. `[dir]` is the portal's directory, by default the nearest one with a `package.json` above `spec.portal.path` (or `./portal`). A portal that depends on the npm registry is left alone. See [Upgrading cicord](../../portal/custom-portal/#upgrading-cicord).
+Deprecated alias of [`cicord portal upgrade`](#cicord-portal-upgrade), hidden from `cicord portal --help`: same arguments and flags, plus a deprecation notice on stderr. Workflows written by older releases run `cicord portal vendor --check portal`, which keeps passing.
 
 ```text
 cicord portal vendor [dir] [flags]
@@ -794,9 +813,5 @@ cicord portal vendor [dir] [flags]
 
 | Flag | Description |
 |---|---|
-| `--check` | fail when the vendored packages are not this version's (changes nothing) |
-
-```sh
-cicord portal vendor
-cicord portal vendor --check   # CI
-```
+| `--check` | fail when the @cicord/* packages are not this cicord's version (changes nothing) |
+| `--to-npm` | move a vendored portal to the npm packages (deletes vendor/ and the @cicord/* overrides) |

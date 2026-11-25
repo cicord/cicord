@@ -21,7 +21,8 @@ function usage(code) {
 Creates a Cicord community portal (React + Vite+) in <directory>.
 Put it in the "portal/" directory of your Cicord repository and set cicord.yaml
 spec.portal.path: ./portal/dist to have the runtime serve its committed build.
-Inside a Cicord repository, prefer \`cicord portal init\` (vendors the @cicord/* packages).`);
+Inside a Cicord repository, prefer \`cicord portal init\` (pins the @cicord/* packages to
+its own version and writes the CI workflow).`);
   process.exit(code);
 }
 
@@ -70,7 +71,8 @@ const siblingVersion = (name) => {
     "@cicord/sdk": "sdk",
   }[name];
   const file = dir ? join(template, "..", dir, "package.json") : undefined;
-  if (file && existsSync(file)) return `^${JSON.parse(readFileSync(file, "utf8")).version}`;
+  // The exact version: the @cicord/* packages are released together, at the cicord version.
+  if (file && existsSync(file)) return JSON.parse(readFileSync(file, "utf8")).version;
   return "latest";
 };
 

@@ -4,8 +4,8 @@
 for `cicord portal init` and `cicord plugin new`:
 
 - `packages/*.tgz` — `pnpm pack` tarballs of `@cicord/client`, `@cicord/react` and `@cicord/ui`
-  (vendored into new portals) and `@cicord/sdk` (vendored into new plugins for their unit
-  tests), until the packages are published on npm;
+  (vendored into portals by `cicord portal init --vendor` and `cicord portal upgrade`) and
+  `@cicord/sdk` (vendored into new plugins for their unit tests);
 - `template/` — the reference portal (`packages/create-cicord-portal`), as written by its
   `create-cicord-portal` bin.
 

@@ -50,7 +50,8 @@ changed. This page is updated as work lands; no dates are promised.
   `cicord plugin publish`, and `cicord registry keygen|sign|verify` for signed indexes.
 - **Community portal**: the SDK (`@cicord/client`, `@cicord/react`, `@cicord/ui`), the reference
   portal, no-code customization, custom portals served from the repository (with
-  `cicord portal vendor` to update their vendored packages), embedding in token mode.
+  the npm packages at the version of cicord, `cicord portal upgrade` to follow it), embedding
+  in token mode.
 - **Self-hosting**: a separate, private admin URL (the admin console and admin API only answer
   there), `cicord healthcheck` for containers, Prometheus metrics on a dedicated listener
   (`--metrics-listen`, see [Monitoring](../../self-hosting/monitoring/)), and a
@@ -137,8 +138,9 @@ change):
   fakes.
 - Internal: reuse the runtime's manifest checks and write-back helpers in the CLI instead of
   duplicating them.
-- Portals and plugins depending on the npm packages by default instead of vendored tarballs
-  (`--from-npm` today, see [Releasing](../releasing/#vendored-or-npm-packages)).
+- Plugins depending on the npm `@cicord/sdk` by default instead of the vendored tarball, like
+  portals (`cicord plugin new --from-npm` today, see
+  [Releasing](../releasing/#vendored-or-npm-packages)).
 - `go install` with the embedded web UIs; the CI workflow written by `cicord init`
   downloading the verified release binary (like `cicord-portal.yml`) instead of `go install`
   (its actions are already pinned by SHA and cicord by version).

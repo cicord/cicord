@@ -33,7 +33,7 @@ The runtime then serves **your build** at `/`, from the active revision.
 4. **Commit everything**, the build included:
 
    ```sh
-   git add portal .github cicord.yaml   # sources, pnpm-lock.yaml, vendor/ AND dist/
+   git add portal .github cicord.yaml   # sources, pnpm-lock.yaml AND dist/
    ```
 
 5. From then on, `cicord portal build` (from the repository root) installs when
@@ -55,9 +55,8 @@ The reference portal is React 19 with Vite+.
     - mock/ an in-browser fake runtime for `pnpm dev`
     - cicord-routes.d.ts the types of the repository's plugin routes
   - test/ Vitest and Testing Library, against the mock
-  - vendor/ `@cicord/client`, `@cicord/react`, `@cicord/ui` tarballs, from the cicord binary
-  - package.json `file:` dependencies on vendor/
-  - pnpm-workspace.yaml overrides that keep `@cicord/*` on vendor/
+  - package.json `@cicord/client`, `@cicord/react`, `@cicord/ui` at the version of cicord
+  - pnpm-workspace.yaml pnpm settings (the Vite+ override of `vite`)
 - .github/
   - workflows/
     - cicord-portal.yml rebuilds and checks the committed build
@@ -67,39 +66,61 @@ The reference portal is React 19 with Vite+.
 The workflow and `cicord-routes.d.ts` are only written when the directory is inside a Cicord
 repository. `--force` writes into a non-empty directory.
 
-By default the `@cicord/*` packages are **vendored**: the tarballs embedded in the `cicord`
-binary are written to `vendor/` and referenced as `file:` dependencies. `@cicord/react`
+The `@cicord/*` packages come from **npm**, at the **exact version** of the `cicord` that
+wrote the portal (`"@cicord/client": "0.1.8"`, no range): every release publishes them at its
+own version, with provenance, so the portal's SDK is the runtime's. `pnpm install` resolves
+them from the registry and writes `pnpm-lock.yaml`; commit it (the CI installs with
+`--frozen-lockfile`). `cicord portal upgrade --check` verifies the versions (see below).
+
+**Offline or air-gapped builds**: `cicord portal init --vendor` writes the tarballs embedded in
+the `cicord` binary to `vendor/` instead, referenced as `file:` dependencies. `@cicord/react`
 depends on `@cicord/client` by version, so `pnpm-workspace.yaml` overrides it to the vendored
 tarball too (pnpm reads overrides there, not in `package.json`): nothing comes from the npm
-registry. `grep "@cicord/client@" portal/pnpm-lock.yaml` only shows `file:vendor/…` entries.
-
-`cicord portal init --from-npm` (or `CICORD_FROM_NPM=true`) depends on the packages published
-on npm instead (`"@cicord/client": "^<version of cicord>"`, same for react and ui), with no
-`vendor/` and no `@cicord/*` overrides.
+registry, and `grep "@cicord/client@" portal/pnpm-lock.yaml` only shows `file:vendor/…`
+entries. A development build of cicord, whose version is not on npm, always vendors, and says
+so.
 
 ### Upgrading cicord
 
-The vendored tarballs are those of the `cicord` that wrote them. After upgrading cicord, bring
-them to the new version:
+The `@cicord/*` packages of a portal are those of the `cicord` that wrote it. After upgrading
+cicord, bring them to the new version:
 
 ```sh
-cicord portal vendor          # or: cicord portal vendor portal
+cicord portal upgrade         # or: cicord portal upgrade portal
 cd portal && pnpm install && cd ..
 cicord portal build
+git add portal                # package.json, pnpm-lock.yaml, dist/ (and vendor/)
 ```
 
-`cicord portal vendor` replaces the `@cicord/*` tarballs in `vendor/` with the ones embedded in
-the binary, points `package.json` and `pnpm-workspace.yaml` at them (nothing else changes) and
-deletes the old ones. `cicord portal vendor --check` changes nothing and fails when they differ.
-Also bump the cicord version that `cicord-portal.yml` installs. A portal on the npm registry
-(`--from-npm`) is left alone: bump its `^` ranges yourself.
+`cicord portal upgrade` keeps the way the portal gets its packages. On npm, it sets the three
+versions in `package.json` to the version of this `cicord`. Vendored, it replaces the
+tarballs in `vendor/` with the ones embedded in the binary, points `package.json` and
+`pnpm-workspace.yaml` at them and deletes the old ones. Nothing else changes.
+`cicord portal upgrade --check` changes nothing and fails when the packages are not this
+cicord's version, in either mode: `cicord-portal.yml` runs it. Also bump the cicord version
+that `cicord-portal.yml` installs (`CICORD_TAG`); the command reminds you when it lags behind.
+
+`cicord portal vendor`, the former name of the command, is a deprecated alias: workflows that
+run `cicord portal vendor --check portal` keep passing.
 
 ### From the vendored tarballs to npm
 
-In `portal/package.json`, replace each `"file:vendor/…"` by a version range (`"^<version of cicord>"`), delete
-the `@cicord/*` entries of the overrides (`portal/pnpm-workspace.yaml`, and `package.json` if
-it has any), delete `vendor/`, then `pnpm install`. `cicord plugin new --from-npm` does the
-same for `@cicord/sdk` in a plugin.
+A portal created before npm became the default (or with `--vendor`) moves to npm in one
+command, with a cicord release:
+
+```sh
+cicord portal upgrade --to-npm   # or: cicord portal upgrade --to-npm portal
+cd portal && pnpm install && cd ..
+cicord portal build
+git add -A portal                # package.json, pnpm-workspace.yaml, pnpm-lock.yaml, dist/, the deleted vendor/
+```
+
+`--to-npm` sets the three dependencies to the version of this `cicord`, deletes the
+`@cicord/*` overrides of `pnpm-workspace.yaml` and `package.json` (the other overrides, like
+Vite+'s, stay) and deletes `vendor/`; the rest of `package.json` is kept byte for byte. In
+`cicord-portal.yml`, replace `cicord portal vendor --check` by `cicord portal upgrade --check`
+(the old step keeps working). Plugins scaffolded by `cicord plugin new` still vendor
+`@cicord/sdk` unless created with `--from-npm`.
 
 ### The Developers page
 
@@ -122,9 +143,10 @@ revision).
 The generated `.github/workflows/cicord-portal.yml` runs on pull requests and pushes that touch
 `portal/`, `plugins/`, `bots/` or `cicord.lock`. It installs the release binary of the cicord
 version that generated it, after verifying its checksum and build provenance
-(`gh attestation verify`): a `go install` build has no portal kit to compare the vendored
-packages with. It checks the route types
-(`cicord portal typegen --check`) and the vendored packages (`cicord portal vendor --check`),
+(`gh attestation verify`): its version is the one the `@cicord/*` packages must have, and it
+embeds the portal kit that vendored packages are compared with (a `go install` build does
+not). It checks the route types (`cicord portal typegen --check`) and the `@cicord/*` packages
+(`cicord portal upgrade --check`),
 runs the portal's tests, rebuilds it and **fails when the committed `dist/` differs from the
 fresh build**, so reviewers only need to read `src/`. Locally, `cicord portal build --check`
 does the same for the build.
@@ -212,7 +234,7 @@ it elsewhere (`--out`), is left alone.
 The output depends only on the repository (plugin names, versions, sources as written in
 `bot.yaml`, routes and contracts), never on the cicord version that wrote it: the cicord
 release pinned in `cicord-portal.yml` checks a file written by a newer runtime, byte for byte.
-The other generated check, `cicord portal vendor --check`, depends only on that release, not on
+The other generated check, `cicord portal upgrade --check`, depends only on that release, not on
 the plugins.
 
 A plugin the generated file does not list falls back to the contracts of the official plugins

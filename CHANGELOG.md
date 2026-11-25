@@ -6,6 +6,33 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Changed
+
+- Custom portals use the npm packages by default. `cicord portal init` writes
+  `"@cicord/client": "<version of cicord>"` (and the same for `@cicord/react` and
+  `@cicord/ui`): the exact version, with no range, no `vendor/` and no `@cicord/*` overrides.
+  `pnpm install` resolves them from the registry, where every release publishes them with
+  provenance. `--vendor` keeps the former layout for offline or air-gapped builds
+  (`vendor/`, `file:` dependencies, pnpm overrides). A development build, whose version is not
+  on npm, always vendors and says so. `--from-npm` is still accepted and does nothing.
+- `cicord portal upgrade [dir]` sets a portal's `@cicord/*` packages to the version of the
+  running cicord, in the mode the portal uses. On npm it rewrites the versions in
+  `package.json`; vendored, it swaps the tarballs, as `portal vendor` did. It then prints the
+  next steps: `pnpm install`, `cicord portal build`, commit, and bumping `CICORD_TAG` in
+  `cicord-portal.yml` when it lags behind. `--check` fails when the versions differ, in either
+  mode (`^` ranges included). `--to-npm` moves a vendored portal to npm in one command: it
+  rewrites the three dependencies, deletes their overrides from `pnpm-workspace.yaml` and
+  `package.json` and deletes `vendor/`, and the rest of both files is kept as is. The
+  `cicord-portal.yml` written by `portal init` runs `cicord portal upgrade --check <dir>`.
+- `create-cicord-portal` writes the exact version of the `@cicord/*` packages, not a `^` range.
+
+### Deprecated
+
+- `cicord portal vendor`: use `cicord portal upgrade`. It is kept as an alias with the same
+  arguments and flags, hidden from `--help`, and prints a deprecation notice on stderr. The
+  `cicord portal vendor --check portal` step of existing `cicord-portal.yml` workflows keeps
+  passing, vendored or on npm.
+
 ## [0.1.8] - 2026-11-25
 
 ### Changed

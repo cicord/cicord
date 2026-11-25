@@ -91,7 +91,7 @@ same commit or pull request, so the repository's CI passes without a manual fix:
   `cicord portal typegen --check` expects byte for byte, whatever cicord version CI pins (the
   file never names a cicord version). See [Custom portal → Typed plugin
   routes](../../portal/custom-portal/#kept-up-to-date-by-the-admins-store).
-- Nothing else needs it: `cicord portal vendor --check` depends on the cicord release only,
+- Nothing else needs it: `cicord portal upgrade --check` depends on the cicord release only,
   the committed portal build does not change with types, and `cicord validate` runs on the new
   revision before anything is written. Plugin settings changes never change routes.
 

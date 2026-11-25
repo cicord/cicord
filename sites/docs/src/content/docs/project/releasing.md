@@ -295,9 +295,15 @@ exists, and a new trusted publisher configuration expires if it has not publishe
 
 ## Vendored or npm packages
 
-`cicord portal init` and `cicord plugin new` vendor the `@cicord/*` tarballs embedded in the
-binary by default (`vendor/`, `file:` dependencies); `cicord portal vendor` updates a
-portal's vendored copies after a `cicord` upgrade. With `--from-npm` (or
-`CICORD_FROM_NPM=true`) they depend on `"^<version>"` from npm instead. Both come from the
-same tag, so a `cicord` release and the npm packages of that version always match. See
+`cicord portal init` depends on `@cicord/client`, `@cicord/react` and `@cicord/ui` from npm,
+at the exact version of the binary (`"0.1.8"`, no range); with `--vendor` (offline or
+air-gapped builds) it vendors the tarballs embedded in the binary instead (`vendor/`, `file:`
+dependencies), and a development build, whose version is not on npm, always does.
+`cicord portal upgrade` sets a portal's packages to the version of the running `cicord`, in
+the mode it uses; `--check` (run by `cicord-portal.yml`) fails when they differ, and
+`--to-npm` moves a vendored portal to npm. `cicord portal vendor` is its deprecated alias.
+`cicord plugin new` still vendors `@cicord/sdk` by default; `--from-npm` (or
+`CICORD_FROM_NPM=true`) depends on `"^<version>"` from npm. The tarballs and the npm packages
+come from the same tag, so a `cicord` release and the npm packages of that version always
+match: a release must publish them (`release-npm.yml`) for new portals to install. See
 [Custom portal](../../portal/custom-portal/) and [Writing a plugin](../../plugins/writing/).
