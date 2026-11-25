@@ -3,7 +3,7 @@ title: Releasing
 description: How a Cicord release is cut - make release, the v<version> tag and its workflows, pre-releases, verifying binaries, images and npm packages, and the repository settings releases rely on.
 ---
 
-A release is one git tag `v<version>` (`v0.1.8`; `v0.2.0-rc.1` for a pre-release), on a
+A release is one git tag `v<version>` (`v0.1.9`; `v0.2.0-rc.1` for a pre-release), on a
 commit prepared by `make release`. Pushing the tag starts two workflows:
 
 | Workflow | Publishes |
@@ -24,7 +24,7 @@ semver, `0.x` while the API is `v1alpha1`.
 **`release.yml`** (tag `v*`; Actions → release → Run workflow is a dry run that publishes
 nothing):
 
-1. `meta`: reads the version from the tag (`v0.1.8` → `0.1.8`); a `-suffix` makes it a
+1. `meta`: reads the version from the tag (`v0.1.9` → `0.1.9`); a `-suffix` makes it a
    pre-release.
 2. `build` (read-only): builds the web UIs once (`pnpm` build + `scripts/sync-ui.sh`: admin
    console, default portal, portal kit) and checks that all of them are there, checks that
@@ -143,7 +143,7 @@ release: `make release VERSION=0.2.0-rc.1` prepares the commit, then tag `v0.2.0
   they never install a pre-release, and a server running one moves to the release.
 - **Changelog.** A pre-release needs entries under `[Unreleased]` but leaves them there: they
   become the `0.2.0` section when `0.2.0` is released, with a compare link from the previous
-  release (`v0.1.8...v0.2.0`). The GitHub prerelease has the generated notes.
+  release (`v0.1.9...v0.2.0`). The GitHub prerelease has the generated notes.
 - **Engine ranges.** The `spec.engine` ranges of `cicord.yaml` and plugin manifests are
   checked by plain semver precedence, pre-releases included: `0.2.0-rc.1` sorts after every
   `0.1.x` and before `0.2.0`. So `0.2.0-rc.1` satisfies `>=0.1.0` and `>=0.1.0 <0.2.0`
@@ -164,7 +164,7 @@ release: `make release VERSION=0.2.0-rc.1` prepares the commit, then tag `v0.2.0
 
 ```sh
 sha256sum --ignore-missing -c checksums.txt           # macOS: shasum -a 256 --ignore-missing -c checksums.txt
-gh attestation verify cicord_0.1.8_linux_amd64.tar.gz --repo cicord/cicord
+gh attestation verify cicord_0.1.9_linux_amd64.tar.gz --repo cicord/cicord
 ```
 
 `gh attestation verify` checks the Sigstore-signed build provenance: the file was built by a
@@ -175,17 +175,17 @@ explicit. The SBOM of an archive is `<archive>.sbom.json` next to it.
 **Container image.**
 
 ```sh
-docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.8                     # index: amd64, arm64, attestation manifests
-docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.8 --format '{{ json .Provenance }}'
-docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.8 --format '{{ json .SBOM }}'
-gh attestation verify oci://ghcr.io/cicord/cicord:0.1.8 --repo cicord/cicord
+docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.9                     # index: amd64, arm64, attestation manifests
+docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.9 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect ghcr.io/cicord/cicord:0.1.9 --format '{{ json .SBOM }}'
+gh attestation verify oci://ghcr.io/cicord/cicord:0.1.9 --repo cicord/cicord
 ```
 
 The GitHub attestation is also pushed to the registry, as a Sigstore bundle attached to the
-image digest. `docker run --rm ghcr.io/cicord/cicord:0.1.8 version` must print
-`cicord 0.1.8 (<commit>)`.
+image digest. `docker run --rm ghcr.io/cicord/cicord:0.1.9 version` must print
+`cicord 0.1.9 (<commit>)`.
 
-**npm.** `npm view @cicord/client@0.1.8`; the package page on npmjs.com shows the
+**npm.** `npm view @cicord/client@0.1.9`; the package page on npmjs.com shows the
 **provenance** badge (built and signed on GitHub Actions, linked to the commit and the
 workflow run). In a project: `npm audit signatures` verifies the registry signatures and
 provenance attestations of the installed packages. In an empty directory:
@@ -296,7 +296,7 @@ exists, and a new trusted publisher configuration expires if it has not publishe
 ## Vendored or npm packages
 
 `cicord portal init` depends on `@cicord/client`, `@cicord/react` and `@cicord/ui` from npm,
-at the exact version of the binary (`"0.1.8"`, no range); with `--vendor` (offline or
+at the exact version of the binary (`"0.1.9"`, no range); with `--vendor` (offline or
 air-gapped builds) it vendors the tarballs embedded in the binary instead (`vendor/`, `file:`
 dependencies), and a development build, whose version is not on npm, always does.
 `cicord portal upgrade` sets a portal's packages to the version of the running `cicord`, in

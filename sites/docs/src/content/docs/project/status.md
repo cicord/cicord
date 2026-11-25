@@ -1,9 +1,9 @@
 ---
 title: Status and roadmap
-description: What works in Cicord 0.1.8, what is new in 0.1.7 and 0.1.8, what is next, and what is further out.
+description: What works in Cicord 0.1.9, what is new in recent releases, what is next, and what is further out.
 ---
 
-Cicord **0.1.8** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
+Cicord **0.1.9** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
 (binaries, the container image `ghcr.io/cicord/cicord` and the `@cicord/*` npm packages, see
 [Installation](../../getting-started/installation/)) may still change formats and APIs. The
 [changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md) lists what each release
@@ -70,6 +70,12 @@ changed. This page is updated as work lands; no dates are promised.
   drift and sync, OAuth login, the setup wizard end to end, and the parity checklist
   (Community, AutoMod, native onboarding, icon upload, widget, welcome screen, emoji upload,
   boost gating).
+
+## New in 0.1.9
+
+- Custom portals use the `@cicord/*` packages from npm, pinned to the cicord version, instead
+  of vendored tarballs; `cicord portal upgrade` bumps them (`--to-npm` converts a vendored
+  portal, `--vendor` keeps tarballs for offline builds).
 
 ## New in 0.1.8
 

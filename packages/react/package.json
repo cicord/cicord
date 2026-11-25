@@ -1,6 +1,6 @@
 {
   "name": "@cicord/react",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "React bindings for Cicord community portals: provider, data hooks and headless components (<OnboardingFlow>).",
   "keywords": [
     "cicord",

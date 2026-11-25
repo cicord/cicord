@@ -1,6 +1,6 @@
 # Cicord developer tasks.
 GO ?= go
-VERSION ?= 0.1.8
+VERSION ?= 0.1.9
 LDFLAGS := -s -w -X github.com/cicord/cicord/internal/version.Version=$(VERSION) -X github.com/cicord/cicord/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
 .PHONY: all build ui test test-go test-js vet lint check clean hooks release
@@ -47,6 +47,6 @@ clean:
 hooks:
 	git config core.hooksPath .githooks
 
-## release: prepare the release commit of VERSION (versions + CHANGELOG), e.g. make release VERSION=0.1.8 (never pushes nor tags)
+## release: prepare the release commit of VERSION (versions + CHANGELOG), e.g. make release VERSION=0.1.9 (never pushes nor tags)
 release:
 	scripts/release.sh $(VERSION)

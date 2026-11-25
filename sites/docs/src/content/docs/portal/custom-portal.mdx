@@ -67,7 +67,7 @@ The workflow and `cicord-routes.d.ts` are only written when the directory is ins
 repository. `--force` writes into a non-empty directory.
 
 The `@cicord/*` packages come from **npm**, at the **exact version** of the `cicord` that
-wrote the portal (`"@cicord/client": "0.1.8"`, no range): every release publishes them at its
+wrote the portal (`"@cicord/client": "0.1.9"`, no range): every release publishes them at its
 own version, with provenance, so the portal's SDK is the runtime's. `pnpm install` resolves
 them from the registry and writes `pnpm-lock.yaml`; commit it (the CI installs with
 `--frozen-lockfile`). `cicord portal upgrade --check` verifies the versions (see below).

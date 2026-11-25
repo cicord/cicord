@@ -6,7 +6,7 @@ tableOfContents:
 ---
 
 `cicord` is both the command line tool and the runtime. This page lists every command with
-the flags of `cicord <command> --help` (version 0.1.8); `--help` stays authoritative. Every
+the flags of `cicord <command> --help` (version 0.1.9); `--help` stays authoritative. Every
 command also accepts `-h, --help`, and boolean flags accept `--flag=false`.
 
 | Command | Purpose |
@@ -390,7 +390,7 @@ docker exec cicord cicord healthcheck --service --data-dir /data --timeout 5m
 
 ### `cicord version`
 
-Print the version and the commit the binary was built from: `cicord 0.1.8 (<commit>)` (`dev` instead of the commit for a local build).
+Print the version and the commit the binary was built from: `cicord 0.1.9 (<commit>)` (`dev` instead of the commit for a local build).
 
 ```text
 cicord version [flags]
@@ -742,7 +742,7 @@ A custom portal is a React app (a fork of the reference portal) committed in the
 
 ### `cicord portal init`
 
-Copy the reference portal into `[dir]` (default `portal`), depending on `@cicord/client`, `@cicord/react` and `@cicord/ui` from npm at the exact version of this cicord (`"@cicord/client": "0.1.8"`, published with each release). Inside a Cicord repository, also write `.github/workflows/cicord-portal.yml` and `src/cicord-routes.d.ts`. `--vendor` (offline or air-gapped builds) vendors the packages embedded in the binary in `<dir>/vendor` instead (`file:` dependencies and pnpm overrides); a development build, whose version is not on npm, always vendors and says so. `--from-npm`, the former opt-in, is accepted and does nothing. Then `pnpm install` (it writes `pnpm-lock.yaml`), build it, set `spec.portal.path: ./<dir>/dist` and commit it, `pnpm-lock.yaml` and `dist/` included.
+Copy the reference portal into `[dir]` (default `portal`), depending on `@cicord/client`, `@cicord/react` and `@cicord/ui` from npm at the exact version of this cicord (`"@cicord/client": "0.1.9"`, published with each release). Inside a Cicord repository, also write `.github/workflows/cicord-portal.yml` and `src/cicord-routes.d.ts`. `--vendor` (offline or air-gapped builds) vendors the packages embedded in the binary in `<dir>/vendor` instead (`file:` dependencies and pnpm overrides); a development build, whose version is not on npm, always vendors and says so. `--from-npm`, the former opt-in, is accepted and does nothing. Then `pnpm install` (it writes `pnpm-lock.yaml`), build it, set `spec.portal.path: ./<dir>/dist` and commit it, `pnpm-lock.yaml` and `dist/` included.
 
 ```text
 cicord portal init [dir] [flags]
