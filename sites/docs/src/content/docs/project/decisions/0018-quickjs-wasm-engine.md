@@ -81,7 +81,10 @@ limit (768 KiB) makes QuickJS throw a `RangeError` before that.
   entry checks the flag: a load and a branch), and the build script adds the check to the
   loops that can run long without a call (`string_cmp`, used per position by the naive
   O(n·m) string searches, and the BigInt row helpers). The guest traps, the instance
-  crashes. wazero's `WithCloseOnContextDone` was measured and rejected: it leaves the guest
+  crashes. Every 65536 checks the guest also calls Go: wazero's compiled code cannot be
+  preempted, and without that call a garbage collection started during a long native
+  builtin waited for the guest with every goroutine stopped, the kill included (fixed in
+  0.1.2, about 4% more CPU). wazero's `WithCloseOnContextDone` was measured and rejected: it leaves the guest
   for Go at every wasm loop iteration, which made CPU-bound plugin code 3.7 times slower
   than on Sobek.
 - After a soft stop, microtasks still queued run in a second turn charged to the same
