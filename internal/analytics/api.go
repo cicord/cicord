@@ -122,12 +122,16 @@ type Summary struct {
 	// Rankings over the period, top 10 each: messages per channel, voice time per
 	// channel, reactions per emoji, invite uses per invite, commands, moderation
 	// actions per action, AutoMod triggers per rule, roles added, account ages of
-	// joins, and (with presence) activities. Keyed by metric name.
+	// joins, bot commands (bot and command), channels of bot commands, tenure of the
+	// members using Cicord's commands, components per bot, and (with presence)
+	// activities. Keyed by metric name.
 	Rankings map[string][]Ranked `json:"rankings"`
 
 	// Heatmap is human messages per weekday and hour (UTC) over the period:
 	// Heatmap[weekday][hour], weekday 0 = Monday.
 	Heatmap [7][24]float64 `json:"heatmap"`
+	// BotsHeatmap is bot commands (bots.commands) per weekday and hour, like Heatmap.
+	BotsHeatmap [7][24]float64 `json:"botsHeatmap"`
 
 	Labels map[string]Label `json:"labels"`
 	Status Status           `json:"status"`

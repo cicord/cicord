@@ -107,8 +107,28 @@ dashboard shows its top values, the rest as "other", and the total.
 
 | Metric | Kind | Dimension | Unit | Source |
 |---|---|---|---|---|
-| `commands.used` | counter | command | count | Application command interactions handled by the runtime (slash, user and message commands) |
-| `components.used` | counter | — | count | Button and select menu interactions |
+| `commands.used` | counter | command | count | Application command interactions handled by the runtime (slash, user and message commands), with the subcommand (`ticket close`) |
+| `components.used` | counter | bot | count | Button and select menu interactions with Cicord's bots |
+
+### How members use the bots
+
+Every bot of the server counts, not only Cicord's: what is used, where, when, and by whom
+in aggregate. Discord only sends an interaction to the bot it belongs to, so the commands
+of other bots (a music bot, a moderation bot…) are counted from their **replies**: a bot's
+public reply to a command carries the command's name and who used it. A command answered
+only privately (an ephemeral reply) or not answered is not seen. Cicord's own bots are
+counted from their interactions, every command.
+
+| Metric | Kind | Dimension | Unit | Source |
+|---|---|---|---|---|
+| `bots.commands` | counter | bot command (`Jockie Music /play`) | count | Commands used, by bot and command |
+| `bots.commands.channels` | counter | channel | count | Channels where bot commands are used |
+| `bots.commands.tenure` | counter | member tenure (`<1d`, `<7d`, `<30d`, `<1y`, `>=1y`) | count | How long the members using Cicord's commands have been in the server |
+| `members.active.bots` | daily distinct | — | members | Distinct members who used a bot command in the day (also counted in `members.active`) |
+
+The "why" cannot be read from Discord; the dashboard answers it from these: when
+(weekday × hour), where (channel), who (newcomers or long-time members) and what (which
+command of which bot). As everywhere, only counts are kept: never who used which command.
 
 ### Presence (opt-in)
 
@@ -140,7 +160,8 @@ a few depend on a bot permission too:
 | `moderation.actions` | `ServerModeration` and the **View Audit Log** permission |
 | `automod.*` | `AutoModerationExecution` and the **Manage Server** permission |
 | `invites.uses`, `invites.created` | `ServerInvites` and the **Manage Server** permission (to read invite use counts) |
-| `commands.used`, `components.used` | Nothing (interactions reach the bot without an intent) |
+| `commands.used`, `components.used`, `bots.commands.tenure` | Nothing (interactions reach the bot without an intent) |
+| `bots.commands`, `bots.commands.channels`, `members.active.bots` | Nothing for Cicord's bots; `ServerMessages` for other bots (their replies) |
 | `presence.*` | `ServerPresences` (privileged) and `spec.analytics.presence: true` |
 
 The bot also needs **View Channel** in a channel to receive its events: a private channel
@@ -193,9 +214,12 @@ The analytics page of a server in the admin console (moderators and admins, on t
   active members (average per day), messages, voice time, online members (average of the
   samples), reactions, commands and moderation actions, with a sparkline per day;
 - rankings: channels by messages and by voice time, emojis, invites, commands, moderation
-  actions, AutoMod rules, roles added, account ages of new members, and activities when
-  presence is on;
-- a weekday × hour heatmap of messages (UTC);
+  actions, AutoMod rules, roles added, account ages of new members, bot commands, channels
+  where bots are used, and activities when presence is on;
+- weekday × hour heatmaps of messages and of bot commands (UTC);
+- a bot usage section: commands over time by bot, members using bots per day, the top
+  commands and channels, and how long the members using Cicord's commands have been in the
+  server;
 - charts of any metric by hour, day or week, split by channel, role, emoji…
 
 Channel, role and emoji IDs are shown with their current name. A channel or role that no

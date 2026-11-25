@@ -595,6 +595,10 @@ func cloneMessage(m discord.Message) discord.Message {
 		m.Attachments = append([]discord.Attachment{}, m.Attachments...)
 	}
 	m.EditedAt = cloneTime(m.EditedAt)
+	if m.Interaction != nil {
+		a := *m.Interaction
+		m.Interaction = &a
+	}
 	if m.StickerIDs != nil {
 		m.StickerIDs = append([]string{}, m.StickerIDs...)
 	}

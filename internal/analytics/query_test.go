@@ -607,6 +607,8 @@ func TestSummaryCustomRange(t *testing.T) {
 	qCounter(t, a, analytics.MessagesSent, "111", from.Add(2*time.Hour), 2)
 	qCounter(t, a, analytics.MessagesSent, "111", to, 9) // after the range
 	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersBots, "", from.Add(time.Hour), 3)
+	qCounter(t, a, analytics.BotsCommands, "Jockie Music /play", from.Add(2*time.Hour), 4)
+	qCounter(t, a, analytics.BotsCommands, "Cicord /ticket open", from.Add(2*time.Hour), 1)
 
 	s, err := r.SummaryFor(ctx, "main", analytics.SummaryRequest{Period: analytics.CustomPeriod, From: from, To: to}, analytics.Status{Enabled: true})
 	qMust(t, err)
@@ -619,6 +621,13 @@ func TestSummaryCustomRange(t *testing.T) {
 	}
 	if b := qKPI(t, s, analytics.MembersBots); b.Value != 3 {
 		t.Errorf("members.bots = %+v", b)
+	}
+	if rk := s.Rankings[analytics.BotsCommands]; len(rk) != 2 || rk[0].Dim != "Jockie Music /play" || rk[0].Value != 4 {
+		t.Errorf("bots.commands ranking = %+v", rk)
+	}
+	at := from.Add(2 * time.Hour)
+	if v := s.BotsHeatmap[(int(at.Weekday())+6)%7][at.Hour()]; v != 5 {
+		t.Errorf("bots heatmap at %s = %v, want 5", at, v)
 	}
 	// Two days or more: daily sparklines.
 	s, err = r.SummaryFor(ctx, "main", analytics.SummaryRequest{Period: analytics.CustomPeriod, From: qDay(-3), To: qDay(0)}, analytics.Status{Enabled: true})

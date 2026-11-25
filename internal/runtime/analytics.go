@@ -72,9 +72,13 @@ func (r *Runtime) configureAnalytics(a *active) {
 		servers = append(servers, cs)
 	}
 	var botUsers []string
+	names := map[string]string{}
 	for _, h := range r.hosts() {
-		botUsers = append(botUsers, h.session.Self().ID)
+		self := h.session.Self()
+		botUsers = append(botUsers, self.ID)
+		names[h.key] = self.Username
 	}
+	r.collector.SetBotNames(names)
 	r.collector.Configure(servers, botUsers)
 }
 

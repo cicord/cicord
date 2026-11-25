@@ -370,6 +370,21 @@ type wireMessage struct {
 	MessageReference *wireReceivedReference `json:"message_reference,omitempty"`
 	StickerItems     []wireStickerItem      `json:"sticker_items,omitempty"`
 	Poll             *struct{}              `json:"poll,omitempty"`
+	// Interaction is deprecated by Discord in favour of interaction_metadata but still
+	// sent, and it alone has the command's name.
+	Interaction         *wireMessageInteraction  `json:"interaction,omitempty"`
+	InteractionMetadata *wireInteractionMetadata `json:"interaction_metadata,omitempty"`
+}
+
+type wireMessageInteraction struct {
+	Type int      `json:"type"`
+	Name string   `json:"name"`
+	User wireUser `json:"user"`
+}
+
+type wireInteractionMetadata struct {
+	Type int      `json:"type"`
+	User wireUser `json:"user"`
 }
 
 type wireReceivedReference struct {

@@ -287,6 +287,12 @@ func (w *World) respondInteraction(a actor, interactionID, token string, r disco
 		return fail(notFound("unknown channel %s", ix.ChannelID))
 	}
 	botUser := w.users[st.bot.userID].user
+	// A reply to a command says which command it answers (Discord's message interaction).
+	var answers *discord.MessageInteraction
+	if ix.Type == discord.InteractionCommand {
+		path, _ := ix.CommandPath()
+		answers = &discord.MessageInteraction{Type: ix.Type, Name: strings.Join(path, " "), UserID: ix.User.ID}
+	}
 	ephemeralFor := func(flags discord.MessageFlags) string {
 		if flags&discord.MessageFlagEphemeral != 0 {
 			return ix.User.ID
@@ -301,14 +307,14 @@ func (w *World) respondInteraction(a actor, interactionID, token string, r disco
 		if err := validateMessage(*r.Data); err != nil {
 			return fail(err)
 		}
-		ms := w.newMessage(c, botUser, *r.Data, ephemeralFor(r.Data.Flags))
+		ms := w.newMessage(c, botUser, *r.Data, ephemeralFor(r.Data.Flags), answers)
 		st.originalID, st.ephemeral = ms.msg.ID, ms.ephemeral
 	case discord.ResponseDeferredMessage:
 		var flags discord.MessageFlags
 		if r.Data != nil {
 			flags = r.Data.Flags & discord.MessageFlagEphemeral
 		}
-		ms := w.newMessage(c, botUser, discord.MessageCreate{Flags: flags | msgFlagLoading}, ephemeralFor(flags))
+		ms := w.newMessage(c, botUser, discord.MessageCreate{Flags: flags | msgFlagLoading}, ephemeralFor(flags), answers)
 		st.originalID, st.ephemeral, st.loading = ms.msg.ID, ms.ephemeral, true
 	case discord.ResponseDeferredUpdate, discord.ResponseUpdateMessage:
 		if !componentLike {

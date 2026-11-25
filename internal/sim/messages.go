@@ -187,7 +187,7 @@ func validateModal(m *discord.Modal) error {
 
 // newMessage stores a message (no checks) and emits MessageCreate unless ephemeral.
 // Caller holds w.mu.
-func (w *World) newMessage(c *channelState, author discord.User, m discord.MessageCreate, ephemeralFor string) *messageState {
+func (w *World) newMessage(c *channelState, author discord.User, m discord.MessageCreate, ephemeralFor string, answers ...*discord.MessageInteraction) *messageState {
 	msg := discord.Message{
 		ID:         w.newID(),
 		ChannelID:  c.ch.ID,
@@ -199,6 +199,10 @@ func (w *World) newMessage(c *channelState, author discord.User, m discord.Messa
 		Flags:      m.Flags,
 		CreatedAt:  w.now(),
 		ReplyToID:  m.ReplyTo,
+	}
+	if len(answers) > 0 && answers[0] != nil {
+		a := *answers[0]
+		msg.Interaction = &a
 	}
 	if s := w.servers[c.ch.ServerID]; s != nil {
 		if mem := s.members[author.ID]; mem != nil {

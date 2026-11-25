@@ -62,6 +62,11 @@ func (c *Collector) event(s *collected, ev discord.Event, now time.Time) {
 		}
 		if m.Author.Bot || m.WebhookID != "" {
 			c.count(s, MessagesSentBots, m.ChannelID, now, 1)
+			// Another bot's reply to a command: which command, used by whom. Cicord's
+			// bots count their commands from the interactions they receive.
+			if it := m.Interaction; it != nil && it.Type == discord.InteractionCommand && it.Name != "" && !c.botUsers[m.Author.ID] {
+				c.botCommand(s, m.Author.Username, it.Name, m.ChannelID, it.UserID, now)
+			}
 			return
 		}
 		c.count(s, MessagesSent, m.ChannelID, now, 1)
@@ -153,15 +158,35 @@ func (c *Collector) event(s *collected, ev discord.Event, now time.Time) {
 	}
 }
 
-// interaction counts commands and components (any bot of the server). Caller holds c.mu.
-func (c *Collector) interaction(s *collected, it discord.Interaction, now time.Time) {
+// interaction counts the commands and components of one of Cicord's bots (botName).
+// Caller holds c.mu.
+func (c *Collector) interaction(s *collected, botName string, it discord.Interaction, now time.Time) {
 	switch it.Type {
 	case discord.InteractionCommand:
 		path, _ := it.CommandPath()
-		c.count(s, CommandsUsed, strings.Join(path, " "), now, 1)
-		c.markActive(s, interactionUser(it), now, ActiveSetAll)
+		name := strings.Join(path, " ")
+		c.count(s, CommandsUsed, name, now, 1)
+		c.botCommand(s, botName, name, it.ChannelID, interactionUser(it), now)
+		if it.Member != nil && !it.Member.JoinedAt.IsZero() {
+			c.count(s, BotsCommandTenure, ageBucket(now.Sub(it.Member.JoinedAt)), now, 1)
+		}
 	case discord.InteractionComponent:
-		c.count(s, ComponentsUsed, "", now, 1)
+		c.count(s, ComponentsUsed, botName, now, 1)
+	}
+}
+
+// botCommand counts a command used with a bot: what, where, and the member as active
+// (daily distinct). Caller holds c.mu.
+func (c *Collector) botCommand(s *collected, bot, command, channelID, userID string, now time.Time) {
+	if bot == "" {
+		bot = "?"
+	}
+	c.count(s, BotsCommands, bot+" /"+command, now, 1)
+	if channelID != "" {
+		c.count(s, BotsCommandChannels, channelID, now, 1)
+	}
+	if userID != "" && !c.isBot(s, userID) {
+		c.markActive(s, userID, now, ActiveSetBots, ActiveSetAll)
 	}
 }
 
@@ -196,7 +221,12 @@ func AccountAgeBucket(userID string, now time.Time) string {
 	if created.IsZero() {
 		return AccountAgeBuckets[len(AccountAgeBuckets)-1]
 	}
-	switch age := now.Sub(created); {
+	return ageBucket(now.Sub(created))
+}
+
+// ageBucket is the AccountAgeBuckets bucket of a duration.
+func ageBucket(age time.Duration) string {
+	switch {
 	case age < 24*time.Hour:
 		return AccountAgeBuckets[0]
 	case age < 7*24*time.Hour:

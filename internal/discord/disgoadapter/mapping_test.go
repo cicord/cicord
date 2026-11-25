@@ -376,6 +376,33 @@ func TestMessageFromWire(t *testing.T) {
 	}
 }
 
+// TestMessageInteraction: a bot's reply to a command says which one (the deprecated
+// interaction field, still sent, has the name; interaction_metadata only the user).
+func TestMessageInteraction(t *testing.T) {
+	decode := func(raw string) discord.Message {
+		t.Helper()
+		var w wireMessage
+		if err := json.Unmarshal([]byte(raw), &w); err != nil {
+			t.Fatal(err)
+		}
+		return messageFromWire(w)
+	}
+	m := decode(`{"id":"1","channel_id":"10","author":{"id":"900","username":"Jockie Music","bot":true},"type":20,
+	 "interaction":{"id":"5","type":2,"name":"play song","user":{"id":"6","username":"ann"}},
+	 "interaction_metadata":{"id":"5","type":2,"user":{"id":"6","username":"ann"}}}`)
+	if m.Interaction == nil || *m.Interaction != (discord.MessageInteraction{Type: discord.InteractionCommand, Name: "play song", UserID: "6"}) {
+		t.Errorf("interaction = %+v", m.Interaction)
+	}
+	m = decode(`{"id":"2","channel_id":"10","author":{"id":"900","username":"Jockie Music","bot":true},
+	 "interaction_metadata":{"id":"5","type":3,"user":{"id":"6"}}}`)
+	if m.Interaction == nil || *m.Interaction != (discord.MessageInteraction{Type: discord.InteractionComponent, UserID: "6"}) {
+		t.Errorf("metadata only = %+v", m.Interaction)
+	}
+	if m = decode(`{"id":"3","channel_id":"10","author":{"id":"6"}}`); m.Interaction != nil {
+		t.Errorf("plain message = %+v", m.Interaction)
+	}
+}
+
 func TestCommandsToWire(t *testing.T) {
 	cmds := []discord.Command{{
 		Name: "warn", Description: "Warn a member",

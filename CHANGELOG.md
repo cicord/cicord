@@ -8,6 +8,13 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ### Added
 
+- Analytics of how members use the bots, every bot of the server: commands by bot and
+  command (`bots.commands`; other bots are counted from their public replies to commands),
+  the channels where they are used, distinct members using bots per day
+  (`members.active.bots`), how long the members using Cicord's commands have been in the
+  server, buttons and menus per bot, and a weekday × hour heatmap of bot commands. The
+  admin's Analytics page has a Bot usage section.
+
 - The admin console is live: `GET /api/v1/events` (Server-Sent Events, moderators) sends
   change hints (status, sync, plugin crashes and restarts, new analytics points) and the
   console refetches what it shows. A runtime update is noticed (a "Reload" notice with the

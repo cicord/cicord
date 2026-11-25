@@ -80,7 +80,13 @@ const (
 
 	// Bot and commands
 	CommandsUsed   = "commands.used"   // counter, dim: command name (slash, user, message commands)
-	ComponentsUsed = "components.used" // counter: button and select menu interactions
+	ComponentsUsed = "components.used" // counter, dim: bot name (button and select menu interactions)
+
+	// How members use the bots (every bot of the server, Cicord's and others)
+	BotsCommands        = "bots.commands"          // counter, dim: "<bot> /<command>"
+	BotsCommandChannels = "bots.commands.channels" // counter, dim: channel ID where commands are used
+	BotsCommandTenure   = "bots.commands.tenure"   // counter, dim: time since the member joined the server (Cicord's bots)
+	MembersActiveBots   = "members.active.bots"    // daily distinct members who used a bot command
 
 	// Presence (spec.analytics.presence: true and the ServerPresences intent)
 	PresenceStatus   = "presence.status"   // gauge last, dim: online, idle, dnd
@@ -131,7 +137,12 @@ var Catalog = []Metric{
 	{Name: AutoModBlocked, Kind: state.AnalyticsCounter, Unit: "count", Source: "AutoMod action execution events that blocked a message"},
 
 	{Name: CommandsUsed, Kind: state.AnalyticsCounter, Dim: "command", Unit: "count", Source: "application command interactions handled by the runtime"},
-	{Name: ComponentsUsed, Kind: state.AnalyticsCounter, Unit: "count", Source: "button and select menu interactions"},
+	{Name: ComponentsUsed, Kind: state.AnalyticsCounter, Dim: "bot", Unit: "count", Source: "button and select menu interactions of Cicord's bots"},
+
+	{Name: BotsCommands, Kind: state.AnalyticsCounter, Dim: "bot command", Unit: "count", Source: "commands of every bot: Cicord's from their interactions, other bots' from their replies (a command answered only privately, ephemeral, is not seen)"},
+	{Name: BotsCommandChannels, Kind: state.AnalyticsCounter, Dim: "channel", Unit: "count", Source: "channels where bot commands are used (every bot)"},
+	{Name: BotsCommandTenure, Kind: state.AnalyticsCounter, Dim: "member tenure", Unit: "count", Source: "commands of Cicord's bots by how long the member has been in the server"},
+	{Name: MembersActiveBots, Kind: state.AnalyticsGaugeLast, Unit: "members", Source: "distinct members who used a bot command in the day (every bot)"},
 
 	{Name: PresenceStatus, Kind: state.AnalyticsGaugeLast, Dim: "status", Unit: "members", Source: "presence events (privileged intent)", Presence: true},
 	{Name: PresencePlatform, Kind: state.AnalyticsGaugeLast, Dim: "platform", Unit: "members", Source: "presence events (privileged intent)", Presence: true},
@@ -148,7 +159,8 @@ func Lookup(name string) (Metric, bool) {
 	return Metric{}, false
 }
 
-// Account age buckets of MembersJoinedByAge, youngest first.
+// Account age buckets of MembersJoinedByAge (and member tenure buckets of
+// BotsCommandTenure), youngest first.
 var AccountAgeBuckets = []string{"<1d", "<7d", "<30d", "<1y", ">=1y"}
 
 // Daily active sets (state.Analytics MarkActive) and the metric each one rolls up into.
@@ -156,6 +168,7 @@ const (
 	ActiveSetAll   = "all"
 	ActiveSetChat  = "chat"
 	ActiveSetVoice = "voice"
+	ActiveSetBots  = "bots"
 )
 
 // ActiveSetMetrics maps each active set to its daily distinct-count metric.
@@ -163,4 +176,5 @@ var ActiveSetMetrics = map[string]string{
 	ActiveSetAll:   MembersActive,
 	ActiveSetChat:  MembersActiveChat,
 	ActiveSetVoice: MembersActiveVoice,
+	ActiveSetBots:  MembersActiveBots,
 }

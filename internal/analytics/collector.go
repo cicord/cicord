@@ -126,7 +126,8 @@ type Collector struct {
 	mu       sync.Mutex
 	servers  map[string]*collected // by Discord ID
 	byKey    map[string]*collected
-	botUsers map[string]bool // user IDs of the runtime's bots (their audit entries are GitOps)
+	botUsers map[string]bool   // user IDs of the runtime's bots (their audit entries are GitOps)
+	botNames map[string]string // bot key → Discord username (SetBotNames)
 	// snapshots keeps the last ServerAvailableEvent of every bot and server, replayed
 	// when a server gets its collecting bot (the gateway connects before Configure).
 	snapshots map[string]discord.ServerAvailableEvent
@@ -196,6 +197,14 @@ func NewCollector(opts CollectorOptions) *Collector {
 
 func (c *Collector) now() time.Time { return c.opts.Now().UTC() }
 
+// SetBotNames gives the Discord usernames of Cicord's bots by bot key (the "bot"
+// dimension of the bot usage metrics; the key is used when unknown).
+func (c *Collector) SetBotNames(names map[string]string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.botNames = maps.Clone(names)
+}
+
 // Configure sets the servers to collect and the user IDs of the runtime's bots. The
 // state of servers that stay (same key, same collecting bot) is kept.
 func (c *Collector) Configure(servers []CollectorServer, botUserIDs []string) {
@@ -264,7 +273,11 @@ func (c *Collector) Handle(bot string, ev discord.Event) {
 	now := c.now()
 	// Interactions only reach the application they belong to: every bot counts its own.
 	if e, ok := ev.(discord.InteractionCreateEvent); ok {
-		c.interaction(s, e.Interaction, now)
+		name := c.botNames[bot]
+		if name == "" {
+			name = bot
+		}
+		c.interaction(s, name, e.Interaction, now)
 		return
 	}
 	// Every other event reaches every bot of the server: only the collecting bot counts.

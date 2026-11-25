@@ -901,6 +901,12 @@ func messageFromWire(w wireMessage) discord.Message {
 	for _, st := range w.StickerItems {
 		m.StickerIDs = append(m.StickerIDs, st.ID)
 	}
+	switch {
+	case w.Interaction != nil:
+		m.Interaction = &discord.MessageInteraction{Type: discord.InteractionType(w.Interaction.Type), Name: w.Interaction.Name, UserID: w.Interaction.User.ID}
+	case w.InteractionMetadata != nil:
+		m.Interaction = &discord.MessageInteraction{Type: discord.InteractionType(w.InteractionMetadata.Type), UserID: w.InteractionMetadata.User.ID}
+	}
 	if w.Member != nil && w.GuildID != "" {
 		mem := memberFromWire(w.GuildID, *w.Member, &w.Author)
 		m.Member = &mem

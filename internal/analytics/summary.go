@@ -29,6 +29,7 @@ var SummaryKPIs = []string{
 var SummaryRankings = []string{
 	MessagesSent, VoiceSeconds, ReactionsAdded, MembersInvitedBy, CommandsUsed,
 	ModerationActions, AutoModTriggers, MembersRoleAdded, MembersJoinedByAge,
+	BotsCommands, BotsCommandChannels, BotsCommandTenure, ComponentsUsed,
 }
 
 // kpiMode is how a KPI reduces hourly totals over a range.
@@ -197,6 +198,7 @@ func (r *Reader) SummaryFor(ctx context.Context, server string, req SummaryReque
 			metrics = append(metrics, k)
 		}
 	}
+	metrics = append(metrics, BotsCommands) // the bot usage heatmap
 	tot, err := r.totals(ctx, server, metrics, prev, to)
 	if err != nil {
 		return Summary{}, err
@@ -229,10 +231,15 @@ func (r *Reader) SummaryFor(ctx context.Context, server string, req SummaryReque
 		out.KPIs = append(out.KPIs, kpi)
 	}
 
-	// Heatmap: human messages per weekday and hour.
+	// Heatmaps: human messages, and bot commands, per weekday and hour.
 	for _, h := range tot[MessagesSent] {
 		if !h.Bucket.Before(from) && h.Bucket.Before(to) {
 			out.Heatmap[isoWeekday(h.Bucket)][h.Bucket.Hour()] += h.Value
+		}
+	}
+	for _, h := range tot[BotsCommands] {
+		if !h.Bucket.Before(from) && h.Bucket.Before(to) {
+			out.BotsHeatmap[isoWeekday(h.Bucket)][h.Bucket.Hour()] += h.Value
 		}
 	}
 

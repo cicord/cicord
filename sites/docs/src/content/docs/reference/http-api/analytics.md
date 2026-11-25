@@ -93,13 +93,14 @@ covered: collection started after its first day. The previous period of `365d` r
     "invites.uses": []
   },
   "heatmap": [[0, 0, 3], [1, 0, 0]],
+  "botsHeatmap": [[0, 1, 0], [0, 0, 2]],
   "labels": { "112233445566778899": { "name": "général", "kind": "channel" } },
   "status": { "enabled": true, "presence": false, "since": "2026-08-01T14:00:00Z", "retentionDays": 400, "missing": [] }
 }
 ```
 
-(The example is abridged. There are always 12 KPIs, the 9 or 10 rankings listed below, and a
-7 × 24 heatmap.)
+(The example is abridged. There are always 12 KPIs, the 13 or 14 rankings listed below, and
+two 7 × 24 heatmaps.)
 
 `kpis`, in this order:
 
@@ -120,13 +121,16 @@ have the steps with data.
 
 `rankings` has the top 10 of `messages.sent` (channels), `voice.seconds` (channels),
 `reactions.added` (emojis), `invites.uses` (invites), `commands.used`, `moderation.actions`
-(actions), `automod.triggers` (rules), `members.roles.added` (roles) and
-`members.joined.age` (account ages), plus `presence.activity` when `status.presence` is true.
+(actions), `automod.triggers` (rules), `members.roles.added` (roles),
+`members.joined.age` (account ages), `bots.commands` (bot and command),
+`bots.commands.channels` (channels), `bots.commands.tenure` (member tenures) and
+`components.used` (bots), plus `presence.activity` when `status.presence` is true.
 Counters are ranked by their sum, gauges by their highest value. Each entry's `previous` is
 its value over the previous period (`0` if it did not appear, `null` when not covered).
 
 `heatmap[weekday][hour]` is human messages (`messages.sent`) per weekday and UTC hour over
-the period, weekday `0` = Monday.
+the period, weekday `0` = Monday. `botsHeatmap` is the same for bot commands
+(`bots.commands`).
 
 ## Series
 

@@ -667,6 +667,19 @@ type Message struct {
 	// System is true for system messages (member joined, boost, pin…), which are not
 	// written by their author.
 	System bool
+	// Interaction is set on a bot's reply to an application command: which command, used
+	// by whom (received messages only; Discord sends it for every bot, so the analytics
+	// see the commands of bots other than Cicord's).
+	Interaction *MessageInteraction
+}
+
+// MessageInteraction is the command a message answers.
+type MessageInteraction struct {
+	Type InteractionType
+	// Name is the command's name with its subcommand group and subcommand
+	// ("ticket close"); "" when Discord did not send it.
+	Name   string
+	UserID string
 }
 
 type ListMessagesParams struct {

@@ -104,7 +104,8 @@ func TestCollectorEventMapping(t *testing.T) {
 		AutoModBlocked:      {"": 1},
 		InvitesCreated:      {"": 1},
 		CommandsUsed:        {"ticket close": 1, "ping": 1},
-		ComponentsUsed:      {"": 1},
+		ComponentsUsed:      {"alpha": 1}, // the bot key: no SetBotNames in this test
+		BotsCommands:        {"alpha /ping": 1, "beta /ticket close": 1},
 	}
 	for metric, dims := range want {
 		got := f.store.dims("main", metric)
@@ -590,5 +591,50 @@ func TestAttachmentsAndPollsNeedMessageContent(t *testing.T) {
 	}
 	if f.store.sum("main", MessagesSent) != 1 || f.store.sum("main", MessagesReplies) != 1 || f.store.sum("main", MessagesStickers) != 1 {
 		t.Errorf("messages, replies and stickers need no MessageContent: %s", f.store.dump())
+	}
+}
+
+// TestBotUsage: how members use the bots. Cicord's bots count from their interactions
+// (with the member's tenure), other bots from their replies to commands; Cicord's own
+// replies are not counted twice, and bots using bots are not active members.
+func TestBotUsage(t *testing.T) {
+	f := newCollectorFixture(t)
+	f.c.SetBotNames(map[string]string{"alpha": "Cicord"})
+	now := f.clock.Now()
+	member := &discord.Member{ServerID: "1", User: discord.User{ID: "5"}, JoinedAt: now.Add(-3 * 24 * time.Hour)}
+	f.c.Handle("alpha", discord.InteractionCreateEvent{Interaction: discord.Interaction{ServerID: "1", ChannelID: "10",
+		Type: discord.InteractionCommand, Member: member, CommandName: "ticket",
+		Options: []discord.InteractionOption{{Name: "open", Type: discord.OptionSubcommand}}}})
+	f.c.Handle("alpha", discord.InteractionCreateEvent{Interaction: discord.Interaction{ServerID: "1", ChannelID: "10",
+		Type: discord.InteractionComponent, Member: member, CustomID: "x"}})
+	reply := func(author discord.User, it *discord.MessageInteraction) discord.Event {
+		return discord.MessageCreateEvent{Message: discord.Message{ServerID: "1", ChannelID: "11", Author: author, Interaction: it}}
+	}
+	music := discord.User{ID: "900", Username: "Jockie Music", Bot: true}
+	f.c.Handle("alpha", reply(music, &discord.MessageInteraction{Type: discord.InteractionCommand, Name: "play", UserID: "6"}))
+	f.c.Handle("alpha", reply(music, &discord.MessageInteraction{Type: discord.InteractionCommand, Name: "play", UserID: "7"}))
+	// A reply without a command name (interaction_metadata only), a component reply,
+	// Cicord's own reply (counted from its interaction) and a bot using a bot.
+	f.c.Handle("alpha", reply(music, &discord.MessageInteraction{Type: discord.InteractionCommand, UserID: "6"}))
+	f.c.Handle("alpha", reply(music, &discord.MessageInteraction{Type: discord.InteractionComponent, Name: "x", UserID: "6"}))
+	f.c.Handle("alpha", reply(discord.User{ID: "600", Username: "Cicord", Bot: true}, &discord.MessageInteraction{Type: discord.InteractionCommand, Name: "ticket open", UserID: "5"}))
+	f.c.Handle("alpha", reply(music, &discord.MessageInteraction{Type: discord.InteractionCommand, Name: "skip", UserID: "601"}))
+	f.c.Flush(ctx)
+
+	want := map[string]map[string]float64{
+		BotsCommands:        {"Cicord /ticket open": 1, "Jockie Music /play": 2, "Jockie Music /skip": 1},
+		BotsCommandChannels: {"10": 1, "11": 3},
+		BotsCommandTenure:   {"<7d": 1},
+		ComponentsUsed:      {"Cicord": 1},
+		CommandsUsed:        {"ticket open": 1},
+	}
+	for metric, dims := range want {
+		if got := f.store.dims("main", metric); fmt.Sprint(got) != fmt.Sprint(dims) {
+			t.Errorf("%s = %v, want %v", metric, got, dims)
+		}
+	}
+	day := dayOf(now)
+	if n, _ := f.store.CountActive(ctx, "main", ActiveSetBots, day); n != 3 { // 5, 6, 7 (not the bot 601)
+		t.Errorf("members using bots = %d, want 3", n)
 	}
 }
