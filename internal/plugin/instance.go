@@ -907,6 +907,13 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 	}
 
 	go func() {
+		ended := func() invResult {
+			cause := context.Cause(inv.ctx)
+			if errors.Is(cause, ErrHandlerTimeout) {
+				cause = fmt.Errorf("%s %q: %w after %s", kind, name, ErrHandlerTimeout, timeout)
+			}
+			return invResult{err: cause}
+		}
 		var r invResult
 		select {
 		case r = <-inv.done:
@@ -914,12 +921,15 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 			select {
 			case r = <-inv.done:
 			default:
-				cause := context.Cause(inv.ctx)
-				if errors.Is(cause, ErrHandlerTimeout) {
-					cause = fmt.Errorf("%s %q: %w after %s", kind, name, ErrHandlerTimeout, timeout)
-				}
-				r = invResult{err: cause}
+				r = ended()
 			}
+		}
+		// A handler that fails once its invocation ended (timeout, cancellation) usually
+		// fails because of it: its host calls return "no longer running". Report why it
+		// ended, not the plugin's error; a handler that succeeded at the deadline keeps its
+		// result.
+		if r.err != nil && inv.ctx.Err() != nil {
+			r = ended()
 		}
 		stopCaller()
 		i.forget(inv)
