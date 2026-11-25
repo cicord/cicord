@@ -35,7 +35,7 @@ Every release (tag `v<version>`) publishes:
    [Releases](https://github.com/cicord/cicord/releases) page):
 
    ```sh
-   VERSION=0.1.2 OS=linux ARCH=amd64     # OS: linux | darwin, ARCH: amd64 | arm64
+   VERSION=0.1.3 OS=linux ARCH=amd64     # OS: linux | darwin, ARCH: amd64 | arm64
    gh release download "v$VERSION" --repo cicord/cicord \
      --pattern "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" --pattern checksums.txt
    ```
@@ -67,7 +67,7 @@ Every release (tag `v<version>`) publishes:
 
 The image `ghcr.io/cicord/cicord` is built from the repository's `Dockerfile` for
 linux/amd64 and linux/arm64: `cicord` on `gcr.io/distroless/static-debian13:nonroot` (user
-65532, no shell), with a `HEALTHCHECK` (`cicord healthcheck`). Tags: `<version>` (`0.1.2`),
+65532, no shell), with a `HEALTHCHECK` (`cicord healthcheck`). Tags: `<version>` (`0.1.3`),
 `<major>.<minor>` (`0.1`) and `latest` for releases without a pre-release suffix, and
 `sha-<commit>`.
 
@@ -76,19 +76,19 @@ linux/amd64 and linux/arm64: `cicord` on `gcr.io/distroless/static-debian13:nonr
 1. Pull the image (pin the version in production):
 
    ```sh
-   docker pull ghcr.io/cicord/cicord:0.1.2
+   docker pull ghcr.io/cicord/cicord:0.1.3
    ```
 
 2. Verify it (see [Verify a download](#verify-a-download)):
 
    ```sh
-   gh attestation verify oci://ghcr.io/cicord/cicord:0.1.2 --repo cicord/cicord
+   gh attestation verify oci://ghcr.io/cicord/cicord:0.1.3 --repo cicord/cicord
    ```
 
 3. The image entrypoint is `cicord`, so any command works:
 
    ```sh
-   docker run --rm ghcr.io/cicord/cicord:0.1.2 version
+   docker run --rm ghcr.io/cicord/cicord:0.1.3 version
    ```
 
 </Steps>
@@ -108,7 +108,7 @@ The default command is `cicord serve /repo --data-dir /data --listen :7420`, wit
 
 <Steps>
 
-1. Clone the repository (or a release tag: `--branch v0.1.2`) and enter it:
+1. Clone the repository (or a release tag: `--branch v0.1.3`) and enter it:
 
    ```sh
    git clone https://github.com/cicord/cicord.git
@@ -118,7 +118,7 @@ The default command is `cicord serve /repo --data-dir /data --listen :7420`, wit
 2. Build everything:
 
    ```sh
-   make all VERSION=0.1.2
+   make all VERSION=0.1.3
    ```
 
    `make all` runs `make ui` (installs the JS workspace with `pnpm install
@@ -142,7 +142,7 @@ without their unit-test setup. Use `make all` unless you only work on Go code.
 :::
 
 The same image as the release builds locally with
-`docker build -t cicord --build-arg VERSION=0.1.2 --build-arg COMMIT=$(git rev-parse --short HEAD) .`
+`docker build -t cicord --build-arg VERSION=0.1.3 --build-arg COMMIT=$(git rev-parse --short HEAD) .`
 
 </TabItem>
 </Tabs>
@@ -185,7 +185,7 @@ cicord version
 ```
 
 ```text
-cicord 0.1.2 (e6e4f37)
+cicord 0.1.3 (e6e4f37)
 ```
 
 The first part is the version, the second the git commit the binary was built from. Then
