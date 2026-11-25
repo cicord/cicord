@@ -51,7 +51,7 @@ RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod go mod download
 COPY . .
 COPY --from=ui /src/internal/webui ./internal/webui
 ARG TARGETOS TARGETARCH
-ARG VERSION=0.1.3
+ARG VERSION=0.1.4
 ARG COMMIT=dev
 RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod \
     --mount=type=cache,id=cicord-gobuild,target=/root/.cache/go-build \
@@ -62,7 +62,7 @@ RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod \
 
 # ───────────────────────────────────────────────────────────── runtime
 FROM gcr.io/distroless/static-debian13:nonroot
-ARG VERSION=0.1.3
+ARG VERSION=0.1.4
 ARG COMMIT=dev
 LABEL org.opencontainers.image.title="cicord" \
       org.opencontainers.image.version="${VERSION}" \
