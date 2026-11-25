@@ -1,6 +1,6 @@
 {
   "name": "@cicord/ui",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Styled React components for Cicord community portals, driven by the server theme.",
   "keywords": [
     "cicord",

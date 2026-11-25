@@ -1,9 +1,9 @@
 ---
 title: Status and roadmap
-description: What works in Cicord 0.1.9, what is new in recent releases, what is next, and what is further out.
+description: What works in Cicord 0.1.10, what is new in recent releases, what is next, and what is further out.
 ---
 
-Cicord **0.1.9** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
+Cicord **0.1.10** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
 (binaries, the container image `ghcr.io/cicord/cicord` and the `@cicord/*` npm packages, see
 [Installation](../../getting-started/installation/)) may still change formats and APIs. The
 [changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md) lists what each release
@@ -70,6 +70,13 @@ changed. This page is updated as work lands; no dates are promised.
   drift and sync, OAuth login, the setup wizard end to end, and the parity checklist
   (Community, AutoMod, native onboarding, icon upload, widget, welcome screen, emoji upload,
   boost gating).
+
+## New in 0.1.10
+
+- Official plugin **voice-rooms**: voice channels on demand ("join to create"), with owner
+  commands (`/voice rename`, `limit`, `lock`, `permit`, `kick`, `transfer`, `claim`).
+- Plugin SDK voice APIs: the `voiceStateUpdate` event, `voiceMembers()`, `member.moveTo()` /
+  `disconnect()` (`discord.voice.move`) and `editChannel()` for plugin-owned channels.
 
 ## New in 0.1.9
 

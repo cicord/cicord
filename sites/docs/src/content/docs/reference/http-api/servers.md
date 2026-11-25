@@ -32,7 +32,7 @@ configuration).
 
 ```json
 {
-  "version": "0.1.9",
+  "version": "0.1.10",
   "mode": "dev",                         // "serve" | "dev"
   "simulator": true,                     // the Discord simulator is in use
   "revision": { "id": "local-55cc940", "sha": "55cc9403b806…", "message": "working tree", "author": "local",
