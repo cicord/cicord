@@ -12,6 +12,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/cicord/cicord/internal/webui"
 )
 
@@ -84,26 +86,39 @@ func TestPortalInit(t *testing.T) {
 		Name            string
 		Dependencies    map[string]string
 		DevDependencies map[string]string
-		Pnpm            struct{ Overrides map[string]string }
+		Pnpm            map[string]any
 		Overrides       map[string]string
 	}
-	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(repo, "portal/package.json"))), &pj); err != nil {
+	raw := readFile(t, filepath.Join(repo, "portal/package.json"))
+	if err := json.Unmarshal([]byte(raw), &pj); err != nil {
 		t.Fatal(err)
 	}
-	if raw := readFile(t, filepath.Join(repo, "portal/package.json")); !strings.Contains(raw, `"tsc --noEmit && vp build"`) || !strings.Contains(raw, "peerDependencyRules") {
-		t.Errorf("package.json scripts escaped or peer rules missing:\n%s", raw)
+	if !strings.Contains(raw, `"tsc --noEmit && vp build"`) {
+		t.Errorf("package.json scripts escaped:\n%s", raw)
+	}
+	if pj.Pnpm != nil {
+		t.Errorf("package.json keeps pnpm settings (ignored by pnpm 10+): %v", pj.Pnpm)
 	}
 	if pj.Name != "fans-portal" || pj.Dependencies["react"] != "^19.2.0" {
 		t.Errorf("package.json = %+v", pj)
 	}
+	// pnpm reads overrides from pnpm-workspace.yaml: @cicord/react's dependency on
+	// @cicord/client must resolve to the vendored tarball, not to the npm registry.
+	var ws struct {
+		Overrides           map[string]string `yaml:"overrides"`
+		PeerDependencyRules map[string]any    `yaml:"peerDependencyRules"`
+	}
+	if err := yaml.Unmarshal([]byte(readFile(t, filepath.Join(repo, "portal/pnpm-workspace.yaml"))), &ws); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"client", "react", "ui"} {
 		want := "file:vendor/cicord-" + name + "-0.1.0.tgz"
-		if pj.Dependencies["@cicord/"+name] != want || pj.Pnpm.Overrides["@cicord/"+name] != want || pj.Overrides["@cicord/"+name] != want {
-			t.Errorf("@cicord/%s = %q / %q / %q", name, pj.Dependencies["@cicord/"+name], pj.Pnpm.Overrides["@cicord/"+name], pj.Overrides["@cicord/"+name])
+		if pj.Dependencies["@cicord/"+name] != want || ws.Overrides["@cicord/"+name] != want || pj.Overrides["@cicord/"+name] != want {
+			t.Errorf("@cicord/%s = %q / %q / %q", name, pj.Dependencies["@cicord/"+name], ws.Overrides["@cicord/"+name], pj.Overrides["@cicord/"+name])
 		}
 	}
-	if pj.Pnpm.Overrides["vite"] != "npm:@voidzero-dev/vite-plus-core@0.2.7" {
-		t.Errorf("vite override lost: %v", pj.Pnpm.Overrides)
+	if ws.Overrides["vite"] != "npm:@voidzero-dev/vite-plus-core@0.2.7" || ws.PeerDependencyRules == nil {
+		t.Errorf("vite override or peer rules lost: %+v", ws)
 	}
 	wf := readFile(t, filepath.Join(repo, ".github/workflows/cicord-portal.yml"))
 	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "cicord portal typegen --check --out portal/src/cicord-routes.d.ts"} {

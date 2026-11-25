@@ -8,16 +8,25 @@ import { defineConfig } from "vite-plus";
 const runtime = process.env["CICORD_RUNTIME_URL"] ?? "http://127.0.0.1:7420";
 const runtimeOrigin = new URL(runtime).origin;
 
+// The dev server's port: strict, so that it never moves to another port, which would no
+// longer match the origins below and make every unsafe request fail without a clear cause.
+const port = 5174;
+const devOrigins = new Set([`http://localhost:${port}`, `http://127.0.0.1:${port}`]);
+
 // The runtime only answers loopback Host headers in dev and rejects unsafe requests whose
 // Origin is not its own (CSRF protection). The dev server is a trusted same-machine proxy:
-// keep Host as is (localhost:5174 is loopback) and present requests as same-origin.
+// keep Host as is (localhost is loopback) and present the dev page's own requests as
+// same-origin. Any other Origin (another site in the browser) is passed through unchanged,
+// so the runtime still rejects it.
 const proxyTo = {
   target: runtime,
   changeOrigin: false,
   // `unknown`: the proxy types need @types/node, which a forked portal may not install.
   configure: (proxy: unknown) => {
     (proxy as ProxyLike).on("proxyReq", (req) => {
-      if (req.getHeader("origin")) req.setHeader("origin", runtimeOrigin);
+      const origin = req.getHeader("origin");
+      if (typeof origin === "string" && devOrigins.has(origin))
+        req.setHeader("origin", runtimeOrigin);
     });
   },
 };
@@ -37,7 +46,8 @@ export default defineConfig(({ mode }) => ({
   base: "/",
   plugins: [react()],
   server: {
-    port: 5174,
+    port,
+    strictPort: true,
     ...(mode === "mock"
       ? {}
       : {

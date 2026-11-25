@@ -6,6 +6,17 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Fixed
+
+- `cicord portal init`: with pnpm 10 and later, the `@cicord/*` overrides written to
+  `package.json` were ignored, so `@cicord/react` pulled `@cicord/client` from the npm
+  registry next to the vendored tarball. They are now written to `pnpm-workspace.yaml`.
+- The reference portal's dev proxy presented every request as same-origin to the runtime,
+  defeating its CSRF origin check during `pnpm dev:runtime`; it now only does so for the dev
+  page's own origin, and the dev server no longer moves to another port when 5174 is busy.
+- The generated `cicord-portal.yml` used pnpm 10 and installed `cicord@latest`; it now uses
+  pnpm 12 and the version of `cicord` that generated it.
+
 ### Added
 
 - `roles.<key>.members`: Discord user IDs who must hold a role, so staff roles are declared

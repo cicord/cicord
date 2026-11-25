@@ -63,8 +63,11 @@ The reference portal is React 19 with Vite+.
 </FileTree>
 
 By default the `@cicord/*` packages are vendored: the tarballs embedded in the `cicord` binary
-are written to `vendor/` and referenced as `file:` dependencies (plus `pnpm.overrides`, because
-`@cicord/react` depends on `@cicord/client` by version). `cicord portal init --from-npm` (or
+are written to `vendor/` and referenced as `file:` dependencies, plus overrides in
+`portal/pnpm-workspace.yaml` (where pnpm reads them; it ignores a `pnpm` field of
+`package.json`): `@cicord/react` depends on `@cicord/client` by version, and the override makes
+that dependency resolve to the vendored tarball too, never to the npm registry. Check it with
+`grep "@cicord/client@" portal/pnpm-lock.yaml`: only `file:vendor/…` entries. `cicord portal init --from-npm` (or
 `CICORD_FROM_NPM=true`) depends on the packages published on npm instead,
 `"@cicord/client": "^<version of cicord>"` (same for react and ui), with no `vendor/` and no
 `@cicord/*` overrides. `--force` writes into a non-empty directory.
@@ -72,7 +75,8 @@ are written to `vendor/` and referenced as `file:` dependencies (plus `pnpm.over
 ### From the vendored tarballs to npm
 
 An existing portal switches with one line per package in `portal/package.json`: replace
-`"file:vendor/…"` by the version (`"^0.1.0"`), delete the `@cicord/*` entries of the overrides,
+`"file:vendor/…"` by the version (`"^0.1.0"`), delete the `@cicord/*` entries of the overrides
+(`portal/pnpm-workspace.yaml` and `package.json`),
 delete `vendor/`, then `pnpm install`. `cicord plugin new --from-npm` does the same for
 `@cicord/sdk` in a plugin.
 

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
@@ -21,9 +22,11 @@ import (
 	"text/template"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/typegen"
+	"github.com/cicord/cicord/internal/version"
 	"github.com/cicord/cicord/internal/webui"
 )
 
@@ -108,12 +111,19 @@ type portalPackageJSON struct {
 	Scripts         map[string]string `json:"scripts"`
 	Dependencies    map[string]string `json:"dependencies"`
 	DevDependencies map[string]string `json:"devDependencies"`
-	Pnpm            struct {
-		Overrides           map[string]string `json:"overrides,omitempty"`
-		PeerDependencyRules map[string]any    `json:"peerDependencyRules,omitempty"`
-	} `json:"pnpm"`
-	// Overrides is npm's equivalent of pnpm.overrides.
+	// Pnpm is read from the template only: pnpm 10+ ignores package.json "pnpm" settings
+	// in favour of pnpm-workspace.yaml, where init writes them (portalPnpmSettings).
+	Pnpm *portalPnpmSettings `json:"pnpm,omitempty"`
+	// Overrides is npm's equivalent of pnpm's overrides.
 	Overrides map[string]string `json:"overrides,omitempty"`
+}
+
+// portalPnpmSettings are the pnpm settings of a portal, written to its
+// pnpm-workspace.yaml: the @cicord/* overrides make @cicord/react's dependency on
+// @cicord/client resolve to the vendored tarball, not to the npm registry.
+type portalPnpmSettings struct {
+	Overrides           map[string]string `json:"overrides,omitempty" yaml:"overrides,omitempty"`
+	PeerDependencyRules map[string]any    `json:"peerDependencyRules,omitempty" yaml:"peerDependencyRules,omitempty"`
 }
 
 func newPortalInitCmd() *cobra.Command {
@@ -221,9 +231,12 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 	if pj.Dependencies == nil {
 		pj.Dependencies = map[string]string{}
 	}
-	if pj.Pnpm.Overrides == nil {
-		pj.Pnpm.Overrides = map[string]string{}
+	settings := portalPnpmSettings{Overrides: map[string]string{}}
+	if pj.Pnpm != nil {
+		maps.Copy(settings.Overrides, pj.Pnpm.Overrides)
+		settings.PeerDependencyRules = pj.Pnpm.PeerDependencyRules
 	}
+	pj.Pnpm = nil
 	for _, p := range pkgs {
 		_, dep := pj.Dependencies[p.Name]
 		_, devDep := pj.DevDependencies[p.Name]
@@ -238,7 +251,7 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 			spec = "file:vendor/" + p.File
 			// @cicord/react depends on @cicord/client by version: resolve it to the vendored
 			// tarball too.
-			pj.Pnpm.Overrides[p.Name] = spec
+			settings.Overrides[p.Name] = spec
 		}
 		if devDep {
 			pj.DevDependencies[p.Name] = spec
@@ -246,10 +259,17 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 			pj.Dependencies[p.Name] = spec
 		}
 	}
-	pj.Overrides = pj.Pnpm.Overrides
-	if strings.HasPrefix(pj.Pnpm.Overrides["vite"], "npm:") && pj.Pnpm.PeerDependencyRules == nil {
+	pj.Overrides = settings.Overrides
+	if strings.HasPrefix(settings.Overrides["vite"], "npm:") && settings.PeerDependencyRules == nil {
 		// Vite+ replaces vite with its core build: let plugins that peer-depend on vite accept it.
-		pj.Pnpm.PeerDependencyRules = map[string]any{"allowAny": []string{"vite"}, "allowedVersions": map[string]string{"vite": "*"}}
+		settings.PeerDependencyRules = map[string]any{"allowAny": []string{"vite"}, "allowedVersions": map[string]string{"vite": "*"}}
+	}
+	ws, err := yaml.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	if err := write("pnpm-workspace.yaml", append([]byte("# pnpm settings of the portal (pnpm reads overrides here, not in package.json).\n"), ws...)); err != nil {
+		return err
 	}
 	var data bytes.Buffer
 	enc := json.NewEncoder(&data)
@@ -300,7 +320,7 @@ func portalInit(w io.Writer, dir string, force, fromNPM bool) error {
 			fmt.Fprintln(w, "  kept   .github/workflows/cicord-portal.yml (exists)")
 		} else {
 			var buf bytes.Buffer
-			if err := portalWorkflow.Execute(&buf, map[string]string{"Dir": rel}); err != nil {
+			if err := portalWorkflow.Execute(&buf, map[string]string{"Dir": rel, "Cicord": cicordInstallVersion()}); err != nil {
 				return err
 			}
 			if err := os.MkdirAll(filepath.Dir(wf), 0o755); err != nil {
@@ -358,14 +378,14 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      # Until binary releases exist.
-      - run: go install github.com/cicord/cicord/cmd/cicord@latest
+      # The cicord version that generated this portal; bump it with the runtime.
+      - run: go install github.com/cicord/cicord/cmd/cicord@[[.Cicord]]
       - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
         working-directory: .
         run: cicord portal typegen --check --out [[.Dir]]/src/cicord-routes.d.ts
       - uses: pnpm/action-setup@v6
         with:
-          version: 10
+          version: 12
       - uses: actions/setup-node@v7
         with:
           node-version: 26
@@ -567,4 +587,14 @@ func hashTree(dir string) (string, error) {
 		return nil
 	})
 	return hex.EncodeToString(h.Sum(nil)), err
+}
+
+// cicordInstallVersion is the `go install` version of this binary for the generated
+// workflow: its release tag, or latest for a development build.
+func cicordInstallVersion() string {
+	v := version.Version
+	if v == "" || v == "dev" || strings.Contains(v, "-dev") {
+		return "latest"
+	}
+	return "v" + strings.TrimPrefix(v, "v")
 }
