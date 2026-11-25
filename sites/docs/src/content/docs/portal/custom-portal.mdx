@@ -72,6 +72,23 @@ that dependency resolve to the vendored tarball too, never to the npm registry. 
 `"@cicord/client": "^<version of cicord>"` (same for react and ui), with no `vendor/` and no
 `@cicord/*` overrides. `--force` writes into a non-empty directory.
 
+### Upgrading cicord
+
+The vendored tarballs are those of the `cicord` that wrote them. After upgrading cicord, bring
+them to the new version:
+
+```sh
+cicord portal vendor          # or: cicord portal vendor portal
+cd portal && pnpm install && cd ..
+cicord portal build
+```
+
+`cicord portal vendor` replaces the `@cicord/*` tarballs in `vendor/` with the ones embedded in
+the binary, points `package.json` and `pnpm-workspace.yaml` at them (in place: nothing else
+changes) and deletes the old ones. `cicord portal vendor --check` changes nothing and fails
+when they differ: the generated `cicord-portal.yml` runs it, with the cicord version it pins.
+A portal on the npm registry (`--from-npm`) is left alone: bump its `^` ranges yourself.
+
 ### From the vendored tarballs to npm
 
 An existing portal switches with one line per package in `portal/package.json`: replace

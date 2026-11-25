@@ -121,7 +121,7 @@ func TestPortalInit(t *testing.T) {
 		t.Errorf("vite override or peer rules lost: %+v", ws)
 	}
 	wf := readFile(t, filepath.Join(repo, ".github/workflows/cicord-portal.yml"))
-	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "cicord portal typegen --check --out portal/src/cicord-routes.d.ts"} {
+	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "cicord portal typegen --check --out portal/src/cicord-routes.d.ts", "cicord portal vendor --check portal"} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow misses %q:\n%s", want, wf)
 		}
@@ -168,5 +168,69 @@ func TestEmbeddedKitIsConsistent(t *testing.T) {
 		if !names[n] {
 			t.Errorf("kit misses %s (%v)", n, names)
 		}
+	}
+}
+
+// TestPortalVendor: after a cicord upgrade, `portal vendor` swaps the vendored tarballs
+// for this binary's and rewrites their references in place; --check gates CI.
+func TestPortalVendor(t *testing.T) {
+	kitAt := func(v string) fstest.MapFS {
+		return fstest.MapFS{
+			"packages/cicord-client-" + v + ".tgz": {Data: fakeTgz(t, `{"name":"@cicord/client","version":"`+v+`"}`)},
+			"packages/cicord-react-" + v + ".tgz":  {Data: fakeTgz(t, `{"name":"@cicord/react","version":"`+v+`"}`)},
+			"packages/cicord-ui-" + v + ".tgz":     {Data: fakeTgz(t, `{"name":"@cicord/ui","version":"`+v+`"}`)},
+			"template/package.json": {Data: []byte(`{"name":"portal","private":true,"version":"0.0.0","type":"module",
+				"scripts":{"build":"vp build"},
+				"dependencies":{"@cicord/client":"^0.1.0","@cicord/react":"^0.1.0","@cicord/ui":"^0.1.0","react":"^19.2.0"}}`)},
+			"template/index.html": {Data: []byte("<html></html>")},
+		}
+	}
+	useKit(t, kitAt("0.1.0"), nil)
+	dir := filepath.Join(t.TempDir(), "portal")
+	if code, _, errOut := run(t, "portal", "init", dir); code != 0 {
+		t.Fatalf("init: %s", errOut)
+	}
+	if code, out, _ := run(t, "portal", "vendor", dir, "--check"); code != 0 || !strings.Contains(out, "this version's") {
+		t.Fatalf("fresh portal --check = %d %s", code, out)
+	}
+
+	useKit(t, kitAt("0.1.1"), nil)
+	if code, out, errOut := run(t, "portal", "vendor", dir, "--check"); code == 0 || !strings.Contains(out, "@cicord/client 0.1.0 → 0.1.1") || !strings.Contains(errOut, "run `cicord portal vendor`") {
+		t.Fatalf("stale --check = %d %s %s", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "vendor", "cicord-client-0.1.1.tgz")); err == nil {
+		t.Fatal("--check wrote a tarball")
+	}
+	if code, out, errOut := run(t, "portal", "vendor", dir); code != 0 || !strings.Contains(out, "Updated") {
+		t.Fatalf("vendor = %d %s %s", code, out, errOut)
+	}
+	for _, f := range []string{"package.json", "pnpm-workspace.yaml"} {
+		got := readFile(t, filepath.Join(dir, f))
+		if strings.Contains(got, "0.1.0.tgz") || !strings.Contains(got, "file:vendor/cicord-react-0.1.1.tgz") {
+			t.Errorf("%s:\n%s", f, got)
+		}
+	}
+	if !strings.Contains(readFile(t, filepath.Join(dir, "package.json")), `"react": "^19.2.0"`) {
+		t.Error("package.json: other dependencies changed")
+	}
+	entries, _ := os.ReadDir(filepath.Join(dir, "vendor"))
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, " ") != "cicord-client-0.1.1.tgz cicord-react-0.1.1.tgz cicord-ui-0.1.1.tgz" {
+		t.Errorf("vendor/ = %v", names)
+	}
+	if code, out, _ := run(t, "portal", "vendor", dir, "--check"); code != 0 {
+		t.Errorf("--check after vendor = %d %s", code, out)
+	}
+
+	// A portal on the npm registry is left alone.
+	npm := filepath.Join(t.TempDir(), "npm-portal")
+	if code, _, errOut := run(t, "portal", "init", npm, "--from-npm"); code != 0 {
+		t.Fatalf("init --from-npm: %s", errOut)
+	}
+	if code, out, _ := run(t, "portal", "vendor", npm); code != 0 || !strings.Contains(out, "nothing to do") {
+		t.Errorf("npm portal = %d %s", code, out)
 	}
 }

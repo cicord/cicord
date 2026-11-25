@@ -6,6 +6,11 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- `cicord portal vendor [dir]` updates the vendored `@cicord/*` packages of a custom portal
+  to the running cicord (`--check` for CI; the generated `cicord-portal.yml` runs it).
+
 ### Fixed
 
 - `cicord plugin publish` rewrote the repository URL of an existing index entry in its own

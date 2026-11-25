@@ -681,3 +681,20 @@ cicord portal typegen
 cicord portal typegen --check
 cicord portal typegen examples/showcase --out packages/create-cicord-portal/src/cicord-routes.d.ts
 ```
+
+### `cicord portal vendor`
+
+Update the vendored `@cicord/*` packages of a custom portal (`vendor/`, written by `cicord portal init`) to the ones embedded in this cicord: the tarballs are replaced, `package.json` and `pnpm-workspace.yaml` point at them (in place) and the old ones are deleted. `[dir]` is the portal's directory, by default the nearest one with a `package.json` above `spec.portal.path` (or `./portal`). A portal that depends on the npm registry is left alone. See [Upgrading cicord](../../portal/custom-portal/#upgrading-cicord).
+
+```text
+cicord portal vendor [dir] [flags]
+```
+
+| Flag | Description |
+|---|---|
+| `--check` | fail when the vendored packages are not this version's (changes nothing) |
+
+```sh
+cicord portal vendor
+cicord portal vendor --check   # CI
+```

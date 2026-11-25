@@ -45,7 +45,7 @@ func newPortalCmd() *cobra.Command {
 repository. Its build output is committed too and served by the runtime at / instead of
 the default portal (cicord.yaml spec.portal.path). See https://cicord.dev/docs/portal/custom-portal/.`,
 	}
-	cmd.AddCommand(newPortalInitCmd(), newPortalBuildCmd(), newPortalTypegenCmd())
+	cmd.AddCommand(newPortalInitCmd(), newPortalBuildCmd(), newPortalTypegenCmd(), newPortalVendorCmd())
 	return cmd
 }
 
@@ -383,6 +383,9 @@ jobs:
       - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
         working-directory: .
         run: cicord portal typegen --check --out [[.Dir]]/src/cicord-routes.d.ts
+      - name: The vendored @cicord/* packages are this cicord's (vendor/)
+        working-directory: .
+        run: cicord portal vendor --check [[.Dir]]
       - uses: pnpm/action-setup@v6
         with:
           version: 12
