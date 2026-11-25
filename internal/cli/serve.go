@@ -492,6 +492,14 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		CommitStatus: commitStatusHook(log, ghRepo, tokens, console), Metrics: reg,
 		Analytics: store.Analytics(),
 	})
+	// The metrics listener first: a failure must not leave the background goroutines
+	// started below (plugin store) running.
+	stopMetrics, err := startMetrics(ctx, log, f.metricsListen, reg)
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
+	defer stopMetrics()
 	stopping := make(chan struct{})
 	// Machine secrets: the environment first, then the encrypted secret store (cicord secret set).
 	runtimeToken, _ := resolve("CICORD_RUNTIME_TOKEN")
@@ -511,12 +519,6 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		Catalog: cat, SecretStore: sec, Secret: resolve, PluginStore: runtimePluginStore(cat, resolve, stopping, rt.Repo),
 		Metrics: reg,
 	})
-	stopMetrics, err := startMetrics(ctx, log, f.metricsListen, reg)
-	if err != nil {
-		_ = ln.Close()
-		return err
-	}
-	defer stopMetrics()
 	fmt.Fprintf(stdout, "Cicord runtime listening on %s\n  admin UI: %s/admin/\n  data: %s\n", public, console, dataDir)
 	return runHTTP(ctx, log, ln, h, rt, stopping)
 }
