@@ -122,3 +122,34 @@ func channelByID(cs []discord.Channel, id string) (discord.Channel, bool) {
 	}
 	return discord.Channel{}, false
 }
+
+// TestPublicChannelsOf: @everyone's view of channels; a public thread follows its
+// parent, a private thread is never named, even in a public channel.
+func TestPublicChannelsOf(t *testing.T) {
+	const sid = "100"
+	view := discord.MustPermissions("ViewChannel")
+	roles := []discord.Role{{ID: sid, Permissions: view}}
+	channels := []discord.Channel{
+		{ID: "1", Name: "general", Type: discord.ChannelText},
+		{ID: "2", Name: "staff", Type: discord.ChannelText, Overwrites: []discord.Overwrite{{ID: sid, Deny: view}}},
+		{ID: "3", Name: "help-thread", Type: discord.ChannelPublicThread, ParentID: "1"},
+		{ID: "4", Name: "secret", Type: discord.ChannelPrivateThread, ParentID: "1"},
+		{ID: "5", Name: "staff-thread", Type: discord.ChannelPublicThread, ParentID: "2"},
+		{ID: "6", Name: "orphan", Type: discord.ChannelPublicThread, ParentID: "999"},
+		{ID: "7", Name: "opened", Type: discord.ChannelText, Overwrites: []discord.Overwrite{{ID: sid, Allow: view}}},
+	}
+	isPublic := publicChannelsOf(roles, channels, sid)
+	for id, want := range map[string]bool{"1": true, "2": false, "3": true, "4": false, "5": false, "6": false, "7": true, "404": false} {
+		if _, ok := isPublic(id); ok != want {
+			t.Errorf("channel %s public = %v, want %v", id, ok, want)
+		}
+	}
+	// @everyone without ViewChannel: only channels that allow it explicitly.
+	isPublic = publicChannelsOf([]discord.Role{{ID: sid}}, channels, sid)
+	if _, ok := isPublic("1"); ok {
+		t.Error("general public without @everyone ViewChannel")
+	}
+	if _, ok := isPublic("7"); !ok {
+		t.Error("explicit allow not public")
+	}
+}

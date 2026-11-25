@@ -208,14 +208,19 @@ func (s *server) handlePortalAnalytics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// publicChannels tells whether @everyone can see a channel (its category's or parent's
-// overwrites are already on the channel; a thread follows its parent) and gives its
-// current name, from the runtime's live cache.
+// publicChannels tells whether @everyone can see a channel (its category's overwrites
+// are already on the channel; a public thread follows its parent, a private thread is
+// never public) and gives its current name, from the runtime's live cache.
 func publicChannels(rt *runtime.Runtime, server, serverID string) func(string) (string, bool) {
 	roles, channels, _, ok := rt.ServerResources(server)
 	if !ok {
 		return func(string) (string, bool) { return "", false }
 	}
+	return publicChannelsOf(roles, channels, serverID)
+}
+
+// publicChannelsOf is publicChannels on given roles and channels.
+func publicChannelsOf(roles []discord.Role, channels []discord.Channel, serverID string) func(string) (string, bool) {
 	var everyone discord.Permissions
 	for _, ro := range roles {
 		if ro.ID == serverID {
@@ -240,6 +245,9 @@ func publicChannels(rt *runtime.Runtime, server, serverID string) func(string) (
 		c, ok := byID[id]
 		if !ok {
 			return "", false
+		}
+		if c.Type == discord.ChannelPrivateThread {
+			return "", false // invited members only, whatever its parent
 		}
 		target := c
 		if channelLabelKind(c.Type) == "thread" {
