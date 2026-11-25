@@ -13,6 +13,19 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ### Fixed
 
+- Right after a new revision was applied, the previous revision's self-heal could revert one
+  of its changes (the gateway events of the new changes reached it before it stopped), and
+  the new revision healed it forward again. The previous reconcilers now stop before the
+  new revision changes anything.
+- A server whose only blocked changes wait for a boost level (e.g. a banner below level 2)
+  stayed `OutOfSync` forever; they are still listed as blocked in the plan but are no longer
+  drift, and the status message says they wait for a higher boost level.
+- The runtime status and the server detail read the whole server from Discord on every
+  request (a plan each, about 2 s, up to 10 s when Discord throttled), which the live admin
+  console multiplied; they now reuse the last plan's drift until an apply, a relevant event
+  or a minute passes. The admin's sync dialog no longer waits for every page to refresh
+  before closing.
+
 - The `cicord-portal.yml` workflow written by `cicord portal init` referenced actions by tag,
   which organisations requiring SHA pinning refuse (the workflow does not start); they are
   now pinned by commit SHA.

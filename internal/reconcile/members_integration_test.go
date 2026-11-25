@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cicord/cicord/internal/config"
@@ -188,5 +189,54 @@ func TestRoleMembersSelfHeal(t *testing.T) {
 	e.w.WaitIdle()
 	if r.DriftPending() {
 		t.Error("an unlisted member joining is not drift")
+	}
+}
+
+// readCounter counts the role listings of a plan (one per Discord read of the server).
+type readCounter struct {
+	discord.Client
+	n atomic.Int32
+}
+
+func (c *readCounter) ListRoles(ctx context.Context, serverID string) ([]discord.Role, error) {
+	c.n.Add(1)
+	return c.Client.ListRoles(ctx, serverID)
+}
+
+// TestDriftReusesTheLastPlan: Drift (read by the runtime status and the admin console on
+// every refresh) reuses the last plan instead of reading the whole server again, until an
+// apply or a relevant gateway event.
+func TestDriftReusesTheLastPlan(t *testing.T) {
+	desired, root := loadExample(t)
+	ctx := context.Background()
+	e := newEnv(t, desired, root)
+	reads := &readCounter{Client: e.session}
+	r := e.reconciler(reads)
+	if _, _, err := r.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Plan(ctx); err != nil { // the plan after the apply
+		t.Fatal(err)
+	}
+	before := reads.n.Load()
+	for range 3 {
+		if d, err := r.Drift(ctx); err != nil || len(d) != 0 {
+			t.Fatalf("drift = %v, %v", d, err)
+		}
+	}
+	if n := reads.n.Load() - before; n != 0 {
+		t.Fatalf("Drift read the server %d times while nothing changed", n)
+	}
+	// A relevant event (a managed role edited in Discord) makes the next Drift plan again.
+	role := e.role("Admin")
+	role.Hoist = !role.Hoist
+	if !r.HandleEvent(discord.RoleUpdateEvent{ServerID: e.srv.ID, Role: role}) {
+		t.Fatal("role update not relevant")
+	}
+	if _, err := r.Drift(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if reads.n.Load() == before {
+		t.Error("Drift reused the plan after a relevant event")
 	}
 }

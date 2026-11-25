@@ -245,10 +245,13 @@ func TestParityFullSyncIdempotent(t *testing.T) {
 	if _, err := admin.UpdateServerWidget(ctx, e.srv.ID, discord.ServerWidget{}, ""); err != nil {
 		t.Fatal(err)
 	}
-	drift, err := r.Drift(ctx)
+	// A fresh plan sees changes made behind the reconciler's back (here no gateway event
+	// reaches it; Drift alone may reuse the last plan for up to driftMaxAge).
+	fresh, err := r.Plan(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	drift := DriftOf(fresh)
 	seen := map[string]bool{}
 	for _, d := range drift {
 		seen[d.Kind+"."+d.Field] = true
@@ -346,10 +349,11 @@ func TestParityBoostGating(t *testing.T) {
 	if mod := e.role("Mod"); mod.Color != 0x112233 || mod.Colors.Secondary != 0 {
 		t.Errorf("mod = %+v", mod)
 	}
-	// a blocked plan has no changes left but stays OutOfSync (drift)
+	// What only waits for a boost level stays blocked in the plan (with its reason) but is
+	// not drift: the server is in sync until the level is reached.
 	p2, _ := r.Plan(ctx)
-	if !p2.Empty() || len(p2.Blocked) != 3 || len(DriftOf(p2)) == 0 {
-		t.Fatalf("plan at level 0:\n%s", p2)
+	if !p2.Empty() || len(p2.Blocked) != 3 || len(DriftOf(p2)) != 0 || r.DriftPending() {
+		t.Fatalf("plan at level 0 (drift %v, pending %v):\n%s", DriftOf(p2), r.DriftPending(), p2)
 	}
 
 	if err := e.w.SetBoosts(e.srv.ID, 7); err != nil {

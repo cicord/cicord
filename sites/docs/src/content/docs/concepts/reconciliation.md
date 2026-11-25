@@ -125,8 +125,12 @@ A plan can also carry **notes**: information that needs no action and keeps the 
 `Synced`, such as a user listed in a role's `members` who has not joined the server yet.
 
 Blocked items keep the server `OutOfSync`, and are applied by the first sync after the
-condition is met (the boost level is reached, Community is enabled…). A blocked change carries
-the `fields` that could not be applied, when known.
+condition is met (the boost level is reached, Community is enabled…). Items that only wait for
+a boost level (`boost:`) are the exception: they are declared on purpose and nothing in the
+configuration can apply them sooner, so they stay listed as blocked in the plan but are not
+drift, and the server stays `Synced` (its status message says how many changes wait for a
+higher boost level). A blocked change carries the `fields` that could not be applied, when
+known.
 
 A channel whose type changed is **replaced** when `prune: true` and
 `deletionProtection: false`: the new channel is created, and the old one deleted at the end of
@@ -213,6 +217,11 @@ intent, the periodic resync gives the role.
 
 The widget, the welcome screen and native onboarding have no Discord events: changes to them
 are only seen at the next plan.
+
+The runtime status and the admin console read the drift from the last plan as long as no
+relevant event arrived and no change was applied, for at most a minute; the Plan page always
+reads Discord again. A new revision stops the previous one's self-heal before it changes
+anything, so the events of its own changes are never "reverted" to the previous revision.
 
 ## Moving the resource map
 

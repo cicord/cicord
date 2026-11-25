@@ -408,6 +408,17 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		log.Warn(d.String())
 	}
 
+	// The old revision's reconcilers stop healing now (and a heal in flight finishes): the
+	// syncs below change Discord, and the gateway events of those changes would make them
+	// revert the servers to the old desired state right after the swap.
+	if cur != nil {
+		for _, s := range cur.servers {
+			if s.rec != nil {
+				s.rec.Close()
+			}
+		}
+	}
+
 	// 2. servers: reconcile with the first connected bot that lists them
 	var serverFailures []string // "server: reason", for the commit status
 	for _, key := range sortedKeys(repo.Servers) {
@@ -540,7 +551,20 @@ func (r *Runtime) syncServer(ctx context.Context, rev source.Revision, rt *serve
 	case err != nil:
 		rt.health, rt.message = HealthDegraded, err.Error()
 	case len(plan.Blocked) > 0:
-		rt.health, rt.message = HealthHealthy, fmt.Sprintf("%d change(s) blocked", len(plan.Blocked))
+		boost := 0
+		for _, b := range plan.Blocked {
+			if reconcile.WaitsForBoost(b) {
+				boost++
+			}
+		}
+		switch {
+		case boost == len(plan.Blocked):
+			rt.health, rt.message = HealthHealthy, fmt.Sprintf("%d change(s) wait for a higher boost level", boost)
+		case boost > 0:
+			rt.health, rt.message = HealthHealthy, fmt.Sprintf("%d change(s) blocked, %d wait for a higher boost level", len(plan.Blocked)-boost, boost)
+		default:
+			rt.health, rt.message = HealthHealthy, fmt.Sprintf("%d change(s) blocked", len(plan.Blocked))
+		}
 	default:
 		rt.health, rt.message = HealthHealthy, ""
 	}

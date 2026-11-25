@@ -99,11 +99,12 @@ export function SyncButton({ serverKey, size }: { serverKey: string; size?: "sm"
             : undefined,
         );
       }
-      await cache.invalidate(["admin"]);
     } catch (e) {
       toastError(e, t("sync.toast.failed"));
-      await cache.invalidate(["admin"]);
     } finally {
+      // Close at once: the pages refresh in the background (a slow query, e.g. a server
+      // plan read from Discord, must not hold the dialog open).
+      void cache.invalidate(["admin"]);
       setBusy(false);
       setOpen(false);
     }

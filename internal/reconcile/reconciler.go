@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -61,14 +62,21 @@ type Reconciler struct {
 	// fingerprint): their gateway events carry the whole list of the server.
 	exprSeen map[string]string
 	drifted  bool
-	timer    *time.Timer
-	closed   bool
-	running  sync.WaitGroup // event-triggered syncs in flight
-	iconMem  iconState
-	imgMem   map[string]iconState
-	srvID    string
-	key      string         // server key (immutable)
-	cfg      *config.Server // copy of desired for event filtering
+	// lastDrift is the drift of the last plan, reused by Drift while nothing relevant
+	// happened (no apply, no relevant gateway event) and it is younger than driftMaxAge:
+	// the runtime status and the admin console read it often, a plan reads the whole
+	// server from Discord.
+	lastDrift   []DriftEntry
+	lastDriftAt time.Time
+	driftValid  bool
+	timer       *time.Timer
+	closed      bool
+	running     sync.WaitGroup // event-triggered syncs in flight
+	iconMem     iconState
+	imgMem      map[string]iconState
+	srvID       string
+	key         string         // server key (immutable)
+	cfg         *config.Server // copy of desired for event filtering
 }
 
 // New creates a reconciler. It panics when a required option is missing.
@@ -155,7 +163,8 @@ func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
 	}
 	r.refreshManaged(mapped)
 	r.emu.Lock()
-	r.drifted = !p.Empty() || len(p.Blocked) > 0
+	r.drifted = !p.Empty() || slices.ContainsFunc(p.Blocked, func(b Blocked) bool { return !waitsForBoost(b) })
+	r.lastDrift, r.lastDriftAt, r.driftValid = DriftOf(p), time.Now(), true
 	r.seeExpressions(snap)
 	r.emu.Unlock()
 	if p.preflight != nil {
@@ -181,6 +190,7 @@ func (r *Reconciler) applyAndRefresh(ctx context.Context, p Plan) (Result, error
 	}
 	r.emu.Lock()
 	r.drifted = err != nil
+	r.driftValid = false // what remains is known at the next plan
 	r.emu.Unlock()
 	r.log.Info("reconcile: applied", "server", r.serverKey(), "applied", len(res.Applied), "failed", len(res.Failed))
 	return res, err
@@ -204,12 +214,30 @@ func (r *Reconciler) Sync(ctx context.Context) (Plan, Result, error) {
 
 // Drift returns the differences between the desired and the live state.
 func (r *Reconciler) Drift(ctx context.Context) ([]DriftEntry, error) {
+	r.emu.Lock()
+	if r.driftValid && time.Since(r.lastDriftAt) < driftMaxAge {
+		out := slices.Clone(r.lastDrift)
+		r.emu.Unlock()
+		return out, nil
+	}
+	r.emu.Unlock()
 	p, err := r.Plan(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return DriftOf(p), nil
 }
+
+// driftMaxAge bounds how long Drift reuses the last plan's drift (changes Cicord does not
+// observe through gateway events, e.g. made while the bot was offline).
+const driftMaxAge = time.Minute
+
+// waitsForBoost reports a blocked operation that only needs a higher server boost level:
+// declared on purpose, applied by itself once the level is reached, so not drift.
+func waitsForBoost(b Blocked) bool { return strings.HasPrefix(b.Reason, prefixBoost) }
+
+// WaitsForBoost is waitsForBoost for the runtime's status message.
+func WaitsForBoost(b Blocked) bool { return waitsForBoost(b) }
 
 // DriftOf converts a plan into drift entries: one per differing field of each change
 // and of each blocked operation (a blocked delete is "exists: false/true").
@@ -239,8 +267,12 @@ func DriftOf(p Plan) []DriftEntry {
 			out = append(out, DriftEntry{Kind: c.Kind, Key: c.Key, Field: f, Expected: fc.To, Actual: fc.From})
 		}
 	}
-	// blocked operations are differences too (status stays OutOfSync)
+	// blocked operations are differences too (status stays OutOfSync), except those that
+	// only wait for a boost level
 	for _, b := range p.Blocked {
+		if waitsForBoost(b) {
+			continue
+		}
 		if b.Action == ActionDelete {
 			out = append(out, DriftEntry{Kind: b.Kind, Key: b.Key, Field: "exists", Expected: false, Actual: true})
 			continue
@@ -334,6 +366,7 @@ func (r *Reconciler) HandleEvent(ev discord.Event) bool {
 		return false
 	}
 	r.drifted = true
+	r.driftValid = false
 	if sp.SyncPolicy.SelfHeal() {
 		if r.timer != nil {
 			r.timer.Stop()
