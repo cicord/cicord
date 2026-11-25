@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -158,6 +159,24 @@ func TestStackOverflowIsRangeError(t *testing.T) {
 func TestKillStopsNativeBuiltins(t *testing.T) {
 	v := newTestVM(t, Config{}, nil)
 	time.AfterFunc(50*time.Millisecond, v.Interrupt)
+	time.AfterFunc(100*time.Millisecond, v.Kill)
+	start := time.Now()
+	_, _, err := v.Call(context.Background(), "run", `const s = "ab".repeat(1e6); for (let i = 0; i < 1e6; i++) s.indexOf("zz")`)
+	if !errors.Is(err, ErrKilled) {
+		t.Fatalf("err = %v", err)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("kill took %s", d)
+	}
+}
+
+// TestKillDuringGarbageCollection: wazero's compiled code cannot be preempted, so a stop
+// of the world started while the guest runs native builtins waited for the guest, with the
+// goroutine that kills it stopped too (the process froze for the whole loop). The guest
+// calls Go every CICORD_YIELD_EVERY kill checks, which lets the collection and the kill run.
+func TestKillDuringGarbageCollection(t *testing.T) {
+	v := newTestVM(t, Config{}, nil)
+	time.AfterFunc(30*time.Millisecond, runtime.GC)
 	time.AfterFunc(100*time.Millisecond, v.Kill)
 	start := time.Now()
 	_, _, err := v.Call(context.Background(), "run", `const s = "ab".repeat(1e6); for (let i = 0; i < 1e6; i++) s.indexOf("zz")`)

@@ -29,6 +29,11 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ### Fixed
 
+- A plugin running a long loop of native builtins (string searches, for example) could
+  freeze the whole process: a garbage collection that started meanwhile waited for the
+  plugin, with every goroutine stopped, the CPU-limit kill included. The engine now calls
+  Go every 65536 function entries, which lets the collection and the kill run (about 4%
+  more CPU on plugin code).
 - A pre-release engine (`0.2.0-rc.1`) refused every repository and plugin: `spec.engine`
   ranges are now checked by semver precedence, pre-releases included, so `0.2.0-rc.1`
   satisfies `>=0.1.0` and `>=0.1.0 <0.2.0` but not `>=0.2.0` (use `>=0.2.0-0`). Repositories

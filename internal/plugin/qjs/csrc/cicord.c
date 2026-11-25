@@ -20,7 +20,8 @@
 // engine is built with -finstrument-function-entry-bare (every C function entry checks the
 // flag, a load and a branch) and the build script adds the check to the loops that can run
 // long without a call (string search, BigInt multiplication rows); see
-// scripts/build-quickjs-wasm.sh.
+// scripts/build-quickjs-wasm.sh. Every 65536 checks the guest also calls Go, so a garbage
+// collection never waits for a long native builtin (cicord_kill.h).
 //
 // Memory: JS allocations go through malloc functions that enforce the limit given to
 // cq_init and set a sticky out-of-memory flag when it is hit (plugin code can catch the
@@ -79,6 +80,14 @@ static struct {
 enum { I_RUN = 0, I_STOP = 1, I_KILL = 2 };
 
 volatile int32_t cicord_kill;
+uint32_t cicord_ticks;
+
+// cicord_yield calls Go (see cicord_kill.h): a preemption point for the Go runtime, and a
+// kill check that does not depend on the flag.
+__attribute__((no_instrument_function)) void cicord_yield(void) {
+	if (host_interrupt() == I_KILL)
+		__builtin_trap();
+}
 
 __attribute__((no_instrument_function)) void __cyg_profile_func_enter_bare(void) { CICORD_KILL_CHECK(); }
 
