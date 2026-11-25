@@ -477,6 +477,10 @@ export type AnalyticsMetric =
   | "automod.blocked"
   | "commands.used"
   | "components.used"
+  | "bots.commands"
+  | "bots.commands.channels"
+  | "bots.commands.tenure"
+  | "members.active.bots"
   | "presence.status"
   | "presence.platform"
   | "presence.activity";
@@ -615,10 +619,17 @@ export interface AnalyticsSummary {
    * of the samples), reactions.added, commands.used, moderation.actions.
    */
   kpis: AnalyticsKpi[];
-  /** Top 10 per metric name over the period. */
+  /**
+   * Top 10 per metric name over the period: messages.sent, voice.seconds, reactions.added,
+   * invites.uses, commands.used, moderation.actions, automod.triggers, members.roles.added,
+   * members.joined.age, bots.commands (`"<bot> /<command>"`), bots.commands.channels,
+   * bots.commands.tenure, components.used (per bot) and, with presence, presence.activity.
+   */
   rankings: Record<string, AnalyticsRanked[]>;
   /** Human messages per weekday and hour (UTC): `heatmap[weekday][hour]`, weekday 0 = Monday. */
   heatmap: number[][];
+  /** Bot commands (`bots.commands`) per weekday and hour (UTC), shaped like `heatmap`. */
+  botsHeatmap: number[][];
   labels: Record<string, AnalyticsLabel>;
   status: AnalyticsStatus;
 }

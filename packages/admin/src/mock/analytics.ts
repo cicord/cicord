@@ -4,7 +4,7 @@
  * from a seeded hash, never stored (sessionStorage could not hold them). A growing community
  * with weekly seasonality and evening peaks (UTC), a partnership that brings a wave of joins,
  * a raid that ends in bans, a few busy channels, custom emojis, invites, commands, voice and
- * presence.
+ * presence, and the bots members use (Cicord's own, a music bot, a moderation bot).
  *
  * Variants: `full` (everything collected), `noPresence` (no privileged presence intent and
  * no ViewAuditLog permission: `status.missing`, collection started 45 days ago), `empty`
@@ -196,6 +196,53 @@ const COMMANDS = plain([
   ["8ball", 2],
 ]);
 
+/** Commands of every bot of the server, "<bot> /<command>" (Cicord and Gardien run on Cicord). */
+const BOT_COMMANDS = plain([
+  ["Jockie Music /play", 28],
+  ["Cicord /rank", 18],
+  ["Cicord /ticket open", 12],
+  ["Jockie Music /skip", 12],
+  ["Cicord /poll", 8],
+  ["Jockie Music /queue", 6],
+  ["Gardien /verify", 6],
+  ["Cicord /onboarding", 5],
+  ["Dyno /warn", 4],
+  ["Cicord /giveaway", 3],
+  ["Jockie Music /stop", 3],
+  ["Dyno /timeout", 2],
+  ["Dyno /ban", 0.6],
+]);
+/** Share of the bot commands that are Cicord's bots' (the only ones with a member tenure). */
+const CICORD_SHARE =
+  BOT_COMMANDS.filter((c) => /^(Cicord|Gardien) \//.test(c.id)).reduce((a, c) => a + c.weight, 0) /
+  BOT_COMMANDS.reduce((a, c) => a + c.weight, 0);
+
+const BOT_CHANNELS: Dim[] = [
+  ch("ch-bots", "commandes-bot", 34),
+  ch("ch-music", "musique", 24),
+  ch("ch-general", "général", 12),
+  ch("ch-help", "aide", 10),
+  ch("ch-verify", "vérification", 6),
+  ch("ch-staff", "staff", 5),
+  ch("ch-valo", "valorant", 3),
+  ch("ch-mc", "minecraft", 2),
+];
+
+/** Time since the member joined, for Cicord's commands: newcomers use the bots most. */
+const TENURES = plain([
+  ["<1d", 15],
+  ["<7d", 22],
+  ["<30d", 25],
+  ["<1y", 24],
+  [">=1y", 14],
+]);
+
+/** Buttons and select menus, per Cicord bot. */
+const COMPONENT_BOTS = plain([
+  ["Cicord", 76],
+  ["Gardien", 24],
+]);
+
 const MOD_ACTIONS = plain([
   ["message_delete", 44],
   ["timeout", 20],
@@ -290,6 +337,10 @@ const DIMS: Record<string, Dim[]> = {
   "moderation.actions": MOD_ACTIONS,
   "automod.triggers": AUTOMOD,
   "commands.used": COMMANDS,
+  "components.used": COMPONENT_BOTS,
+  "bots.commands": BOT_COMMANDS,
+  "bots.commands.channels": BOT_CHANNELS,
+  "bots.commands.tenure": TENURES,
   "presence.status": STATUSES,
   "presence.platform": PLATFORMS,
   "presence.activity": ACTIVITIES,
@@ -445,7 +496,40 @@ const CATALOG: MetricDef[] = [
     "application command interactions handled by the runtime",
     "command",
   ),
-  m("components.used", "counter", "count", "button and select menu interactions"),
+  m(
+    "components.used",
+    "counter",
+    "count",
+    "button and select menu interactions of Cicord's bots",
+    "bot",
+  ),
+  m(
+    "bots.commands",
+    "counter",
+    "count",
+    "commands of every bot: Cicord's from their interactions, other bots' from their replies (a command answered only privately, ephemeral, is not seen)",
+    "bot command",
+  ),
+  m(
+    "bots.commands.channels",
+    "counter",
+    "count",
+    "channels where bot commands are used (every bot)",
+    "channel",
+  ),
+  m(
+    "bots.commands.tenure",
+    "counter",
+    "count",
+    "commands of Cicord's bots by how long the member has been in the server",
+    "member tenure",
+  ),
+  m(
+    "members.active.bots",
+    "daily",
+    "members",
+    "distinct members who used a bot command in the day (every bot)",
+  ),
   m("presence.status", "last", "members", PRESENCE_SOURCE, "status", true),
   m("presence.platform", "last", "members", PRESENCE_SOURCE, "platform", true),
   m(
@@ -708,6 +792,11 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
         return msgs * 0.055;
       case "components.used":
         return msgs * 0.08;
+      case "bots.commands":
+      case "bots.commands.channels":
+        return msgs * 0.11;
+      case "bots.commands.tenure":
+        return msgs * 0.11 * CICORD_SHARE;
       case "voice.seconds":
       case "voice.sessions":
       case "voice.streaming":
@@ -803,6 +892,10 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     "moderation.actions",
     "automod.triggers",
     "commands.used",
+    "components.used",
+    "bots.commands",
+    "bots.commands.channels",
+    "bots.commands.tenure",
     "members.roles.added",
     "members.roles.removed",
   ]);
@@ -906,6 +999,7 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     const r = rand(hash(metric), d);
     if (metric === "members.active.chat") return Math.round(active * (0.78 + 0.04 * r));
     if (metric === "members.active.voice") return Math.round(active * (0.28 + 0.04 * r));
+    if (metric === "members.active.bots") return Math.round(active * (0.19 + 0.04 * r));
     return Math.round(active);
   }
 
@@ -1077,6 +1171,10 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
       "automod.triggers",
       "members.roles.added",
       "members.joined.age",
+      "bots.commands",
+      "bots.commands.channels",
+      "bots.commands.tenure",
+      "components.used",
       ...(presence ? ["presence.activity"] : []),
     ];
     const labels: Record<string, AnalyticsLabel> = {};
@@ -1099,13 +1197,16 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
       for (const e of entries) if (LABELS[e.dim]) labels[e.dim] = LABELS[e.dim]!;
     }
 
-    const heatmap = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
-    for (let t = cur.from; t < cur.to; t += HOUR) {
-      const v = hourly("messages.sent", "", t, now);
-      if (!v) continue;
-      const date = new Date(t * 1000);
-      heatmap[(date.getUTCDay() + 6) % 7]![date.getUTCHours()]! += v;
-    }
+    const heatmapOf = (metric: string) => {
+      const grid = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+      for (let t = cur.from; t < cur.to; t += HOUR) {
+        const v = hourly(metric, "", t, now);
+        if (!v) continue;
+        const date = new Date(t * 1000);
+        grid[(date.getUTCDay() + 6) % 7]![date.getUTCHours()]! += v;
+      }
+      return grid;
+    };
 
     return {
       status: 200,
@@ -1117,7 +1218,8 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
         step,
         kpis,
         rankings,
-        heatmap,
+        heatmap: heatmapOf("messages.sent"),
+        botsHeatmap: heatmapOf("bots.commands"),
         labels,
         status,
       },

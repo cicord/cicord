@@ -1,4 +1,9 @@
-import { createCicordClient, type AnalyticsSummary, type FetchLike } from "@cicord/client";
+import {
+  createCicordClient,
+  type AnalyticsSeries,
+  type AnalyticsSummary,
+  type FetchLike,
+} from "@cicord/client";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
@@ -13,7 +18,9 @@ import {
   formatNumber,
   formatRange,
   fromLocalInput,
+  groupByBot,
   parseActivity,
+  parseBotCommand,
   rangeProblem,
   splitLinks,
   stepFor,
@@ -200,6 +207,62 @@ describe("analytics page", () => {
     ]);
   });
 
+  test("bot usage: commands by bot, members per day, rankings, tenure, when", async () => {
+    const { user, summary } = await open();
+    const s = await summary("30d");
+    await kpis();
+    const section = screen.getByRole("region", { name: "Bot usage" });
+    const over = within(section).getByRole("region", { name: "Bot commands over time" });
+    expect(within(over).getByText(/only privately is not seen/)).toBeTruthy();
+    await user.click(within(over).getByRole("button", { name: "Table" }));
+    const header = within(within(over).getByRole("table")).getAllByRole("columnheader");
+    // Grouped by bot, busiest first.
+    expect(header.map((h) => h.textContent)).toEqual([
+      "Date",
+      "Jockie Music",
+      "Cicord",
+      "Dyno",
+      "Gardien",
+    ]);
+
+    const users = within(section).getByRole("region", { name: "Members using bots per day" });
+    expect(within(users).getByText(/a day on average/)).toBeTruthy();
+
+    const top = within(section).getByRole("region", { name: "Top bot commands" });
+    const first = within(top).getAllByRole("listitem")[0]!;
+    expect(s.rankings["bots.commands"]![0]!.dim).toBe("Jockie Music /play");
+    expect(within(first).getByText("/play", { selector: "code" })).toBeTruthy();
+    expect(within(first).getByText("Jockie Music")).toBeTruthy();
+    const where = within(section).getByRole("region", { name: "Where bots are used" });
+    expect(within(where).getAllByRole("listitem")[0]!.textContent).toContain("#commandes-bot");
+    const components = within(section).getByRole("region", { name: "Buttons and menus by bot" });
+    expect(within(components).getAllByRole("listitem")[0]!.textContent).toContain("Cicord");
+
+    const tenure = within(section).getByRole("region", { name: "Tenure of members using Cicord" });
+    const buckets = within(tenure).getAllByRole("listitem");
+    expect(buckets.map((b) => b.firstElementChild!.textContent)).toEqual([
+      "Joined less than a day ago",
+      "Joined less than a week ago",
+      "Joined less than a month ago",
+      "Joined less than a year ago",
+      "Joined a year ago or more",
+    ]);
+    expect(buckets[0]!.textContent).toMatch(/%/);
+
+    const when = within(section).getByRole("region", { name: "When members use bots" });
+    expect(within(when).getByRole("group", { name: /^When members use bots/ })).toBeTruthy();
+    expect(screen.queryByText("No bot command used in this period")).toBeNull();
+  });
+
+  test("bot usage: nothing used in the period", async () => {
+    // A week before collection started: every number is zero.
+    await open("full", /Owner/, "?from=2025-01-01T00:00:00Z&to=2025-01-08T00:00:00Z");
+    await kpis();
+    const section = await screen.findByRole("region", { name: "Bot usage" });
+    expect(within(section).getByText("No bot command used in this period")).toBeTruthy();
+    expect(within(section).queryByRole("region", { name: "Top bot commands" })).toBeNull();
+  });
+
   test("a year has no previous period to compare with", async () => {
     await open("full", /Owner/, "?period=365d");
     const region = await kpis();
@@ -285,6 +348,58 @@ describe("analytics helpers", () => {
     expect(niceTicks(3800, 4384)).toEqual([3800, 4000, 4200, 4400]);
     expect(niceTicks(-23, 41, 3)).toEqual([-25, 0, 25, 50]);
     expect(parseActivity("listening:Spotify")).toEqual({ type: "listening", name: "Spotify" });
+  });
+
+  test("bot commands: split into bot and command, grouped per bot", () => {
+    expect(parseBotCommand("Jockie Music /play")).toEqual({
+      bot: "Jockie Music",
+      command: "/play",
+    });
+    expect(parseBotCommand("Cicord /ticket open")).toEqual({
+      bot: "Cicord",
+      command: "/ticket open",
+    });
+    expect(parseBotCommand("AC/DC /rock")).toEqual({ bot: "AC/DC", command: "/rock" });
+    expect(parseBotCommand("Mystery")).toEqual({ bot: "Mystery", command: "" });
+
+    const t0 = Date.UTC(2026, 10, 1) / 1000;
+    const buckets = [t0, t0 + 86400, t0 + 2 * 86400];
+    const serie = (dim: string, values: (number | null)[]) => ({
+      metric: "bots.commands",
+      dim,
+      points: values.flatMap((v, i) => (v === null ? [] : [[buckets[i]!, v] as [number, number]])),
+    });
+    const series: AnalyticsSeries = {
+      server: "s",
+      from: "2026-11-01T00:00:00Z",
+      to: "2026-11-04T00:00:00Z",
+      step: "day",
+      series: [
+        serie("", [20, 31, 8]),
+        serie("Jockie Music /play", [5, 10, 2]),
+        serie("Cicord /ticket open", [4, 6, 1]),
+        serie("Jockie Music /skip", [3, 4, 0]),
+        serie("Cicord /poll", [2, 2, 1]),
+        serie("Dyno /warn", [1, 1, 0]),
+        serie("other", [5, 8, 4]),
+        // Another metric's dims are ignored.
+        { metric: "members.active.bots", dim: "", points: [[t0, 9]] },
+      ],
+      labels: {},
+      status: { enabled: true, presence: true, since: null, retentionDays: 400, missing: [] },
+    };
+    expect(groupByBot(series, buckets, "bots.commands")).toEqual([
+      { bot: "Jockie Music", values: [8, 14, 2] },
+      { bot: "Cicord", values: [6, 8, 2] },
+      { bot: "Dyno", values: [1, 1, 0] },
+      { bot: "other", values: [5, 8, 4] },
+    ]);
+    // Bots beyond the limit join "other".
+    expect(groupByBot(series, buckets, "bots.commands", 1)).toEqual([
+      { bot: "Jockie Music", values: [8, 14, 2] },
+      { bot: "other", values: [12, 17, 6] },
+    ]);
+    expect(groupByBot(series, buckets, "messages.sent")).toEqual([]);
   });
 
   test("links in text: http(s) URLs, trailing punctuation and unbalanced parentheses excluded", () => {

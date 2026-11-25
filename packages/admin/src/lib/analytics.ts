@@ -12,7 +12,10 @@ import type {
 
 export const PERIODS: readonly AnalyticsPeriod[] = ["7d", "30d", "90d", "365d"];
 
-/** Account age buckets of `members.joined.age`, youngest first. */
+/**
+ * Account age buckets of `members.joined.age`, youngest first; also the member tenure
+ * buckets of `bots.commands.tenure` (time since the member joined the server).
+ */
 export const ACCOUNT_AGES = ["<1d", "<7d", "<30d", "<1y", ">=1y"] as const;
 
 const STEP_SECONDS: Record<AnalyticsStep, number> = { hour: 3600, day: 86400, week: 604800 };
@@ -62,6 +65,20 @@ export function mainSeriesParams(summary: AnalyticsSummary): AnalyticsSeriesPara
     to: summary.to,
     step: stepFor(daysOf(summary)),
     top: 6,
+  };
+}
+
+/**
+ * Bot usage over time, on the main series' buckets. Every top dimension the API allows, so
+ * that grouping the `"<bot> /<command>"` dimensions by bot leaves little in "other".
+ */
+export function botsSeriesParams(summary: AnalyticsSummary): AnalyticsSeriesParams {
+  return {
+    metrics: ["bots.commands", "members.active.bots"],
+    from: summary.from,
+    to: summary.to,
+    step: stepFor(daysOf(summary)),
+    top: 50,
   };
 }
 
@@ -257,6 +274,51 @@ export function labelOf(labels: Record<string, AnalyticsLabel>, dim: string): st
 export function parseActivity(dim: string): { type: string; name: string } {
   const i = dim.indexOf(":");
   return i < 0 ? { type: "", name: dim } : { type: dim.slice(0, i), name: dim.slice(i + 1) };
+}
+
+/**
+ * A `bots.commands` dimension: "Jockie Music /play" → { bot: "Jockie Music", command:
+ * "/play" }, "Cicord /ticket open" → { bot: "Cicord", command: "/ticket open" }. Split at
+ * the first " /" (a command path has none); without one, the whole dimension is the bot.
+ */
+export function parseBotCommand(dim: string): { bot: string; command: string } {
+  const i = dim.indexOf(" /");
+  return i < 0 ? { bot: dim, command: "" } : { bot: dim.slice(0, i), command: dim.slice(i + 1) };
+}
+
+/** Most bots charted apart; the rest join "other" (the chart has 8 colours). */
+const MAX_BOTS = 7;
+
+/**
+ * Series of a `"<bot> /<command>"` metric summed per bot, busiest bot first, then `"other"`
+ * (the API's other commands, and the bots beyond `max`). Empty buckets stay null.
+ */
+export function groupByBot(
+  series: AnalyticsSeries,
+  buckets: number[],
+  metric: string,
+  max = MAX_BOTS,
+): { bot: string; values: (number | null)[] }[] {
+  const add = (a: (number | null)[], b: (number | null)[]) =>
+    a.map((v, i) => (v === null && b[i] === null ? null : (v ?? 0) + (b[i] ?? 0)));
+  const bots = new Map<string, (number | null)[]>();
+  let other: (number | null)[] | null = null;
+  for (const dim of dimsOf(series, metric)) {
+    const values = valuesOf(series, buckets, metric, dim);
+    if (dim === "other") {
+      other = other ? add(other, values) : values;
+      continue;
+    }
+    const { bot } = parseBotCommand(dim);
+    const sum = bots.get(bot);
+    bots.set(bot, sum ? add(sum, values) : values);
+  }
+  const ranked = [...bots]
+    .map(([bot, values]) => ({ bot, values }))
+    .toSorted((a, b) => sumOf(b.values) - sumOf(a.values));
+  for (const rest of ranked.slice(max)) other = other ? add(other, rest.values) : rest.values;
+  const out = ranked.slice(0, max);
+  return other && sumOf(other) > 0 ? [...out, { bot: "other", values: other }] : out;
 }
 
 /** Custom emoji dims are "name:id"; unicode emojis are the emoji itself. */

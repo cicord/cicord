@@ -58,6 +58,47 @@ describe("mock analytics", () => {
     expect(s.status).toMatchObject({ enabled: true, presence: true, missing: [] });
   });
 
+  test("bot usage: commands per bot, channels, tenure skewed to newcomers, evening heatmap", () => {
+    const { summary, series, a } = mock();
+    const s = summary("period=30d");
+    const commands = s.rankings["bots.commands"]!;
+    expect(commands.length).toBe(10);
+    expect(commands.every((r) => / \//.test(r.dim))).toBe(true);
+    expect(new Set(commands.map((r) => r.dim.split(" /")[0]))).toEqual(
+      new Set(["Jockie Music", "Cicord", "Gardien", "Dyno"]),
+    );
+    expect(s.rankings["bots.commands.channels"]![0]!.dim).toBe("ch-bots");
+    expect(s.labels["ch-bots"]).toEqual({ name: "commandes-bot", kind: "channel" });
+    expect(s.rankings["components.used"]!.map((r) => r.dim)).toEqual(["Cicord", "Gardien"]);
+    const tenure = Object.fromEntries(
+      s.rankings["bots.commands.tenure"]!.map((r) => [r.dim, r.value]),
+    );
+    expect(Object.keys(tenure).toSorted()).toEqual(["<1d", "<1y", "<30d", "<7d", ">=1y"]);
+    expect(tenure["<30d"]!).toBeGreaterThan(tenure[">=1y"]!);
+    // Only Cicord's bots have a tenure: fewer than every bot's commands.
+    const total = (m: string) => s.rankings[m]!.reduce((x, r) => x + r.value, 0);
+    expect(total("bots.commands.tenure")).toBeLessThan(total("bots.commands.channels"));
+    expect(s.botsHeatmap).toHaveLength(7);
+    expect(s.botsHeatmap[0]).toHaveLength(24);
+    expect(s.botsHeatmap[2]![20]!).toBeGreaterThan(s.botsHeatmap[2]![5]! * 3);
+
+    const r = series(
+      "metrics=bots.commands,members.active.bots,members.active&from=2026-11-01T00:00:00Z&to=2026-11-24T00:00:00Z&step=day&top=50",
+    );
+    expect(r.series.filter((x) => x.metric === "bots.commands" && x.dim === "other")).toEqual([]);
+    const daily = (m: string) => r.series.find((x) => x.metric === m)!.points;
+    const bots = daily("members.active.bots");
+    const all = daily("members.active");
+    expect(bots).toHaveLength(23);
+    expect(bots.every(([, v], i) => v > 0 && v < all[i]![1])).toBe(true);
+    const catalog = (a.catalog() as { body: AnalyticsCatalog }).body.metrics;
+    const dim = (name: string) => catalog.find((x) => x.name === name)?.dim;
+    expect(dim("bots.commands")).toBe("bot command");
+    expect(dim("bots.commands.tenure")).toBe("member tenure");
+    expect(dim("components.used")).toBe("bot");
+    expect(catalog.find((x) => x.name === "members.active.bots")).toMatchObject({ kind: "last" });
+  });
+
   test("custom range: rounded outward to hours, hourly sparks under 2 days, same-length previous", () => {
     const { summary } = mock();
     const s = summary("from=2026-11-23T10:20:00Z&to=2026-11-24T08:05:00Z");

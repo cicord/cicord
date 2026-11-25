@@ -1,6 +1,6 @@
 /**
  * Analytics of a server: headline numbers against the previous period, then members,
- * messages, voice, engagement rankings and presence. One period selector (a preset or a
+ * messages, voice, engagement rankings, bot usage and presence. One period selector (a preset or a
  * custom range, kept in the URL) scopes everything; while a new period loads, the previous
  * render stays at reduced opacity.
  */
@@ -18,6 +18,7 @@ import { useCicord } from "@cicord/react";
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Bot,
   CalendarRange,
   ChartColumn,
   EyeOff,
@@ -57,6 +58,7 @@ import {
   MAX_RANGE_DAYS,
   PERIODS,
   averageOf,
+  botsSeriesParams,
   bucketsOf,
   deltaOf,
   dimsOf,
@@ -68,6 +70,7 @@ import {
   formatPercent,
   formatRange,
   fromLocalInput,
+  groupByBot,
   hourLabel,
   inProgressFrom,
   isCustomEmoji,
@@ -75,6 +78,7 @@ import {
   mainSeriesParams,
   missingFor,
   parseActivity,
+  parseBotCommand,
   rangeProblem,
   splitLinks,
   sumOf,
@@ -111,6 +115,7 @@ interface Data {
   summary: AnalyticsSummary;
   main: AnalyticsSeries;
   fine: AnalyticsSeries;
+  bots: AnalyticsSeries;
 }
 
 /** What the page shows: a preset period, or a custom range (RFC 3339 UTC). */
@@ -151,22 +156,28 @@ export function AnalyticsPage({ serverKey }: { serverKey: string }) {
     () => (summary.data ? fineSeriesParams(summary.data) : null),
     [summary.data],
   );
+  const botsParams = useMemo(
+    () => (summary.data ? botsSeriesParams(summary.data) : null),
+    [summary.data],
+  );
   const main = useAnalyticsSeries(serverKey, mainParams);
   const fine = useAnalyticsSeries(serverKey, fineParams);
+  const bots = useAnalyticsSeries(serverKey, botsParams);
 
   // The last complete render: kept (dimmed) while another period loads.
   const [shown, setShown] = useState<Data | null>(null);
   useEffect(() => {
-    if (summary.data && main.data && fine.data)
-      setShown({ summary: summary.data, main: main.data, fine: fine.data });
-  }, [summary.data, main.data, fine.data]);
+    if (summary.data && main.data && fine.data && bots.data)
+      setShown({ summary: summary.data, main: main.data, fine: fine.data, bots: bots.data });
+  }, [summary.data, main.data, fine.data, bots.data]);
   const current =
-    summary.data && main.data && fine.data
-      ? { summary: summary.data, main: main.data, fine: fine.data }
+    summary.data && main.data && fine.data && bots.data
+      ? { summary: summary.data, main: main.data, fine: fine.data, bots: bots.data }
       : null;
   const data = current ?? shown;
-  const stale = !current || summary.isFetching || main.isFetching || fine.isFetching;
-  const error = summary.error ?? main.error ?? fine.error;
+  const stale =
+    !current || summary.isFetching || main.isFetching || fine.isFetching || bots.isFetching;
+  const error = summary.error ?? main.error ?? fine.error ?? bots.error;
   const refresh = () => void cache.invalidate(keys.analytics(serverKey));
 
   const header = (
@@ -267,6 +278,7 @@ export function AnalyticsPage({ serverKey }: { serverKey: string }) {
         <MessagesSection data={data} />
         <VoiceSection data={data} />
         <EngagementSection summary={data.summary} />
+        <BotsSection data={data} />
         <PresenceSection data={data} />
       </div>
     </Page>
@@ -1149,20 +1161,12 @@ function EngagementSection({ summary }: { summary: AnalyticsSummary }) {
   const plain = (dim: string) => labelOf(labels, dim);
   const dimLabel = useDimLabel(labels);
 
-  const ages = r("members.joined.age");
-  const ageTotal = ages.reduce((a, x) => a + x.value, 0) || 1;
-  const ageItems: RankItem[] = (ages.length ? ACCOUNT_AGES : []).map((age, k) => {
-    const value = ages.find((x) => x.dim === age)?.value ?? 0;
-    return {
-      key: age,
-      name: t(`analytics.ages.${ageKey(age)}`),
-      label: <span>{t(`analytics.ages.${ageKey(age)}`)}</span>,
-      value,
-      display: num(value),
-      extra: formatPercent(value / ageTotal, lng),
-      color: ordinalColor(k, ACCOUNT_AGES.length),
-    };
-  });
+  const ageItems = ageBuckets(
+    r("members.joined.age"),
+    (age) => t(`analytics.ages.${age}`),
+    num,
+    lng,
+  );
 
   const cards: { metric: string; title: string; description?: string; items: RankItem[] }[] = [
     {
@@ -1264,6 +1268,32 @@ function ageKey(age: string): "day" | "week" | "month" | "year" | "older" {
   );
 }
 
+/**
+ * The five age buckets (account age of joins, tenure of members), youngest first, each with
+ * its share, on the ordinal ramp. Empty when nothing was recorded.
+ */
+function ageBuckets(
+  ranked: AnalyticsRanked[],
+  name: (key: ReturnType<typeof ageKey>) => string,
+  format: (v: number) => string,
+  lng: string,
+): RankItem[] {
+  const total = ranked.reduce((a, x) => a + x.value, 0) || 1;
+  return (ranked.length ? ACCOUNT_AGES : []).map((age, k) => {
+    const value = ranked.find((x) => x.dim === age)?.value ?? 0;
+    const label = name(ageKey(age));
+    return {
+      key: age,
+      name: label,
+      label: <span>{label}</span>,
+      value,
+      display: format(value),
+      extra: formatPercent(value / total, lng),
+      color: ordinalColor(k, ACCOUNT_AGES.length),
+    };
+  });
+}
+
 function NotCollected({ reason }: { reason: string }) {
   const { t } = useTranslation();
   return (
@@ -1273,6 +1303,195 @@ function NotCollected({ reason }: { reason: string }) {
         <LinkText text={reason} />
       </p>
     </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────── bot usage
+
+/** "/play" in bold, then the bot, muted. */
+function BotCommandLabel({ dim }: { dim: string }) {
+  const { bot, command } = parseBotCommand(dim);
+  return (
+    <span className="flex min-w-0 items-baseline gap-1.5">
+      <Mono className="truncate font-medium text-foreground">{command || bot}</Mono>
+      {command ? <span className="shrink-0 text-xs text-muted-foreground">{bot}</span> : null}
+    </span>
+  );
+}
+
+function BotsSection({ data }: { data: Data }) {
+  const { t, i18n } = useTranslation();
+  const lng = i18n.language;
+  const { summary, bots } = data;
+  const status = summary.status;
+  const title = t("analytics.sections.bots");
+  const missing = missingFor(status, "bots.commands");
+  const b = bucketsOf(bots);
+  const num = (v: number) => formatNumber(v, lng);
+  const axis = (v: number) => formatNumber(v, lng, true);
+  const r = (metric: string) => summary.rankings[metric] ?? [];
+  const dimLabel = useDimLabel({ ...summary.labels, ...bots.labels });
+
+  const days = weekdays(lng);
+  const longDays = weekdays(lng, "long");
+  const hours = Array.from({ length: 24 }, (_, h) => hourLabel(h, lng));
+  // Older runtimes send no bot heatmap.
+  const heat =
+    summary.botsHeatmap?.length === 7 ? summary.botsHeatmap : days.map(() => hours.map(() => 0));
+
+  const byBot = groupByBot(bots, b, "bots.commands").map((g, i) => ({
+    key: `bots.commands:${g.bot}`,
+    label: g.bot === "other" ? t("analytics.other") : g.bot,
+    color: g.bot === "other" ? OTHER_COLOR : SERIES_COLORS[i]!,
+    values: g.values,
+  }));
+  const commandsCard = useTimeCard(t("analytics.bots.title"), bots, byBot, num, "bar");
+  const users = serie(bots, b, "members.active.bots", t("analytics.bots.users"), "var(--chart-1)");
+  const usersCard = useTimeCard(t("analytics.bots.usersTitle"), bots, [users], num, "line");
+  // The day in progress would drag the average down.
+  const partial = inProgressFrom(b, bots.step);
+  const average =
+    averageOf(partial > 0 ? users.values.slice(0, partial) : users.values) ??
+    averageOf(users.values);
+
+  const used =
+    byBot.some((s) => sumOf(s.values) > 0) ||
+    sumOf(users.values) > 0 ||
+    heat.some((row) => row.some((v) => v > 0)) ||
+    ["bots.commands", "bots.commands.channels", "bots.commands.tenure", "components.used"].some(
+      (m) => r(m).length > 0,
+    );
+
+  if (missing || !used)
+    return (
+      <Section title={title}>
+        <Card>
+          {missing ? (
+            <NotCollected reason={missing.reason} />
+          ) : (
+            <EmptyState icon={<Bot />} title={t("analytics.bots.empty.title")}>
+              {t("analytics.bots.empty.text")}
+            </EmptyState>
+          )}
+        </Card>
+      </Section>
+    );
+
+  const empty = t("analytics.rankings.empty");
+  const cards: { metric: string; title: string; description: string; items: RankItem[] }[] = [
+    {
+      metric: "bots.commands",
+      title: t("analytics.bots.commands"),
+      description: t("analytics.bots.commandsDescription"),
+      items: rankItems(
+        r("bots.commands"),
+        (d) => {
+          const { bot, command } = parseBotCommand(d);
+          return command ? `${command} (${bot})` : bot;
+        },
+        num,
+        lng,
+        (d) => <BotCommandLabel dim={d} />,
+      ),
+    },
+    {
+      metric: "bots.commands.channels",
+      title: t("analytics.bots.channels"),
+      description: t("analytics.bots.channelsDescription"),
+      items: rankItems(r("bots.commands.channels"), dimLabel, num, lng),
+    },
+    {
+      metric: "components.used",
+      title: t("analytics.bots.components"),
+      description: t("analytics.bots.componentsDescription"),
+      items: rankItems(r("components.used"), (d) => labelOf(summary.labels, d), num, lng),
+    },
+    {
+      metric: "bots.commands.tenure",
+      title: t("analytics.bots.tenure"),
+      description: t("analytics.bots.tenureDescription"),
+      items: ageBuckets(r("bots.commands.tenure"), (k) => t(`analytics.tenure.${k}`), num, lng),
+    },
+  ];
+
+  const usersMissing = missingFor(status, "members.active.bots");
+  return (
+    <Section title={title}>
+      <ChartCard
+        title={t("analytics.bots.title")}
+        description={t("analytics.bots.description")}
+        legend={commandsCard.legend}
+        table={commandsCard.table}
+      >
+        <TimeChart
+          kind="bars"
+          buckets={b}
+          step={bots.step}
+          series={byBot}
+          format={num}
+          formatAxis={axis}
+          label={t("analytics.bots.title")}
+          height={220}
+        />
+      </ChartCard>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard
+          title={t("analytics.bots.usersTitle")}
+          description={
+            average === null
+              ? t("analytics.bots.usersDescription")
+              : t("analytics.bots.usersAverage", { value: num(average) })
+          }
+          table={usersMissing ? undefined : usersCard.table}
+        >
+          {usersMissing ? (
+            <NotCollected reason={usersMissing.reason} />
+          ) : (
+            <TimeChart
+              kind="line"
+              buckets={b}
+              step={bots.step}
+              series={[users]}
+              format={num}
+              formatAxis={axis}
+              label={t("analytics.bots.usersTitle")}
+            />
+          )}
+        </ChartCard>
+        <ChartCard
+          title={t("analytics.bots.heatmap.title")}
+          description={t("analytics.bots.heatmap.description")}
+          table={{
+            caption: t("analytics.bots.heatmap.title"),
+            columns: [t("analytics.heatmap.day"), ...hours],
+            rows: heat.map((row, i) => ({ key: i, cells: [longDays[i]!, ...row.map(num)] })),
+          }}
+        >
+          <Heatmap
+            grid={heat}
+            rows={days}
+            columns={hours}
+            format={(v) => t("analytics.bots.heatmap.value", { value: num(v) })}
+            label={t("analytics.bots.heatmap.title")}
+            scaleLabel={[t("analytics.heatmap.fewer"), t("analytics.heatmap.more")]}
+          />
+        </ChartCard>
+      </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        {cards.map((c) => {
+          const m = missingFor(status, c.metric);
+          return (
+            <ChartCard key={c.metric} title={c.title} description={c.description}>
+              {m ? (
+                <NotCollected reason={m.reason} />
+              ) : (
+                <RankBars items={c.items} label={c.title} empty={empty} />
+              )}
+            </ChartCard>
+          );
+        })}
+      </div>
+    </Section>
   );
 }
 

@@ -1866,6 +1866,7 @@
       "messages": "Messages",
       "voice": "Voice",
       "engagement": "Engagement",
+      "bots": "Bot usage",
       "presence": "Presence"
     },
     "members": {
@@ -1934,12 +1935,44 @@
       "automod": "AutoMod triggers",
       "vsPrevious": "Change vs the previous period"
     },
+    "bots": {
+      "title": "Bot commands over time",
+      "description": "Commands of every bot of the server, by bot. Other bots are counted when they reply publicly: a command answered only privately is not seen.",
+      "users": "Members using bots",
+      "usersTitle": "Members using bots per day",
+      "usersDescription": "Distinct members who used a command of any bot, per day.",
+      "usersAverage": "Distinct members who used a command of any bot: {{value}} a day on average.",
+      "commands": "Top bot commands",
+      "commandsDescription": "Commands of every bot, with the bot that answers them.",
+      "channels": "Where bots are used",
+      "channelsDescription": "Channels where members use bot commands.",
+      "components": "Buttons and menus by bot",
+      "componentsDescription": "Clicks on the buttons and select menus of Cicord's bots.",
+      "tenure": "Tenure of members using Cicord",
+      "tenureDescription": "How long members had been in the server when they used a command of Cicord's bots.",
+      "heatmap": {
+        "title": "When members use bots",
+        "description": "Bot commands per weekday and hour, in UTC, over the period.",
+        "value": "{{value}} commands"
+      },
+      "empty": {
+        "title": "No bot command used in this period",
+        "text": "Commands appear here as members use them: Cicord's bots always, other bots when they reply publicly."
+      }
+    },
     "ages": {
       "day": "Under a day",
       "week": "Under a week",
       "month": "Under a month",
       "year": "Under a year",
       "older": "A year or more"
+    },
+    "tenure": {
+      "day": "Joined less than a day ago",
+      "week": "Joined less than a week ago",
+      "month": "Joined less than a month ago",
+      "year": "Joined less than a year ago",
+      "older": "Joined a year ago or more"
     },
     "actions": {
       "ban": "Bans",
