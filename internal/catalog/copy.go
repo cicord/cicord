@@ -90,7 +90,7 @@ var released = map[string]map[string][]string{
 		"sha256-DrtE6XadcqWmQCFnNizgQoMsgjJIlGo6l/yFJjpv8Zo=", // lint fixes (oxlint, knip), lib ES2023
 	}},
 	"voice-rooms": {"0.1.0": {
-		"sha256-uL6pZTiV73przMhhxvze+RBz3/K9t6nGCK9/vanjXV4=", // join-to-create voice rooms (voiceStateUpdate, editChannel, voiceMembers, moveTo)
+		"sha256-XfwG2yJFC9y2Bw4tDoh9XO95vKTUVFX6wo+eXgImNc4=", // join-to-create voice rooms (voiceStateUpdate, editChannel, voiceMembers, moveTo)
 	}},
 }
 

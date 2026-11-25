@@ -383,6 +383,9 @@ Each hub:
   can still join a locked room. `permit` and `kick` are member overwrites, which win over
   role overwrites.
 - **One room per member and hub**: joining the hub again moves the owner back to their room.
+- **Ownership follows the hub's roles**: `transfer` and `claim` only give a room to a member
+  with one of its hub's `allowedRoles` (or to the staff), so a guest let into a guild room
+  cannot take it over.
 
 ```yaml
 - name: voice-rooms
