@@ -138,9 +138,45 @@ roles:
 | `icon` | relative path | | Role icon image (png, jpg, webp, ≤ 256 KiB). Boost level 2. |
 | `emoji` | string | | Unicode emoji role icon. Boost level 2. Exclusive with `icon`. |
 | `permissions` | list of permissions | `[]` | See [permission names](#permission-names). |
+| `members` | list of Discord user IDs (17–20 digits, no duplicates) | | Users who must hold the role. See [role holders](#role-holders). |
 
 Name, color, hoist, mentionable and permissions are always managed: the YAML value is applied
 even when it is the zero value. A role without `colors` is solid: a live gradient is drift.
+
+### Role holders
+
+`members` gives a role to the users you list, so staff roles live in git with the rest:
+
+```yaml
+roles:
+  maintainer:
+    name: Maintainer
+    color: "#9b59b6"
+    hoist: true
+    permissions: [ManageMessages, ManageThreads, ModerateMembers]
+    members:
+      - "112233445566778899"   # Alice
+      - "998877665544332211"   # Bob, not in the server yet
+```
+
+It is **additive**:
+
+- Each listed user who is in the server gets the role when they lack it. The plan shows
+  `give role "Maintainer" to @Alice (112233445566778899)`.
+- Cicord does not list a role's members. People who hold the role but are not listed keep it,
+  and **removing a user from the list never removes the role**: take it away in Discord.
+- A listed user who is not in the server is a plan **note**, not an error or drift, so you can
+  list staff before they join. They get the role at the first sync after they join: right
+  away when the bot has the `ServerMembers` intent (in its
+  [`spec.intents`](../bot/#gateway-intents)) and `syncPolicy.selfHeal: true`, otherwise at
+  the next periodic resync.
+- A listed member who lacks the role is drift. `selfHeal` gives it back when someone takes it
+  away (the `ServerMembers` intent is needed to see that live; the periodic resync always
+  catches it).
+- The bot can only give roles below its highest role, and needs `ManageRoles`. A role at or
+  above it is blocked (`hierarchy:`), like any other change to that role.
+- Each listed user costs one Discord API read per plan: list staff, not the whole community
+  (for self-assigned roles, use the onboarding or a plugin).
 
 ## Categories
 
@@ -461,4 +497,5 @@ updates channel, has a verification level below `low` or a content filter other 
 `allMembers`. It warns when Community is enabled without setting those two profile fields,
 when a setting needs Community but `community.enabled` is not `true`, when
 `profile.rulesChannel` is used, and when `prune: true` is combined with
-`deletionProtection: false`.
+`deletionProtection: false`. Role `members` must be Discord user IDs (17 to 20 digits), each
+listed once per role.

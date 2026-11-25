@@ -16,7 +16,8 @@ are reported separately as **blocked**, with a reason; they never fail the plan.
 **Apply** runs the plan in a fixed order, aware of Discord's rate limits:
 
 1. server basics and `@everyone`;
-2. roles (adopt, create, update), then role positions;
+2. roles (adopt, create, update), then role positions, then roles given to their listed
+   `members`;
 3. categories, then channels;
 4. server channel references and the Community toggle (system, AFK, rules, updates and
    safety alerts channels), then channels that need Community;
@@ -114,11 +115,14 @@ console and `cicord plan` explain each reason:
 | `community:` | Announcement and stage channels, rules/updates/safety alerts channels, the welcome screen and native onboarding need the Community feature. |
 | `limit:` | Emoji, sticker and sound slots of the boost level; at most 6 keyword AutoMod rules and 1 of each other trigger. |
 | `deletionProtection` | A removed key while `prune: true` and protection is on. |
-| `hierarchy:` | A managed role at or above the bot's highest role. |
+| `hierarchy:` | A managed role at or above the bot's highest role, or giving such a role to a listed member. |
 | `ownership:` | A YAML key whose mapping belongs to a plugin. |
 | `managed:` | A declared role that is a bot or integration role. |
 | `type change:` | A channel whose type differs from the live one (replaced only with `prune: true` and `deletionProtection: false`). |
 | `recreate` | The trigger of an AutoMod rule or the file of an emoji cannot change in place: declare a new key. |
+
+A plan can also carry **notes**: information that needs no action and keeps the server
+`Synced`, such as a user listed in a role's `members` who has not joined the server yet.
 
 Blocked items keep the server `OutOfSync`, and are applied by the first sync after the
 condition is met (the boost level is reached, Community is enabled…). A blocked change carries
@@ -156,6 +160,11 @@ the apply. Otherwise the change is blocked (`type change:`).
   role `colors`, `icon` and `emoji`, and the channel extras (`voiceRegion`, `videoQuality`,
   `threadArchiveAfter`, `threadSlowmode`, forum `tags`, `defaultReaction`, `sortOrder`,
   `layout`). A role without `colors` is solid: a live gradient is drift.
+- **Role holders** (`roles.*.members`) are additive: a listed user who is in the server and
+  lacks the role gets it (change kind `memberRole`). Unlisted holders are left alone and
+  removing a user from the list never removes the role; a listed user who is not in the
+  server is a note. Only listed users are fetched, one by one, once per plan. See
+  [Role holders](../../configuration/server/#role-holders).
 - **Images** (server icon, banner and splash, role icons) are files relative to the server
   YAML. Discord only exposes URLs, so the reconciler remembers the hash of the last uploaded
   file and the URL seen after the upload, and uploads again when either changes.
@@ -197,6 +206,10 @@ in real time. Per server, `syncPolicy.selfHeal` decides:
 
 - `false` (default): the drift is **reported**; the server shows `OutOfSync`.
 - `true`: the drift triggers a debounced sync that **reverts** it.
+
+Members listed in a role's `members` are watched too when the bot has the privileged
+`ServerMembers` intent: a listed user who joins, or loses a listed role, is drift. Without the
+intent, the periodic resync gives the role.
 
 The widget, the welcome screen and native onboarding have no Discord events: changes to them
 are only seen at the next plan.

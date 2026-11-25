@@ -145,15 +145,21 @@ Changes are in apply order; blocked operations are not applied (see
 - `action`: `create`, `update`, `delete`, `adopt`, `reorder` or `unmanage` (`adopt`: an
   existing resource with the same name becomes managed; `unmanage`: a removed key is dropped
   from the resource map without touching Discord).
-- `kind`: `server`, `role`, `category`, `channel` or `everyone`.
+- `kind`: `server`, `role`, `category`, `channel`, `everyone`, `memberRole` (a role given to
+  a member listed in `roles.<key>.members`; key `<role key>/<user id>`, `id` the user ID,
+  field `assigned`) or a [parity](../../discord-parity/) kind (`widget`, `automod`,
+  `onboarding`, `welcomeScreen`, `emoji`, `sticker`, `sound`).
 - `id` (optional): the Discord ID of an existing resource. `fields` (optional): `from` → `to`
   of each field (strings, numbers, booleans, permission name lists, overwrite maps, key
   lists).
 - `reorder` keys: `hierarchy` (roles), `categories`, a category key (its channels) or `(none)`
   (channels without a category).
-- `blocked[]` = `{action, kind, key, id?, reason, fields?, error?}`: `fields` are the
-  differences that could not be applied, when known; `error` is the explained
+- `blocked[]` = `{action, kind, key, id?, reason, summary?, fields?, error?}`: `fields` are
+  the differences that could not be applied, when known; `summary` describes the operation
+  when the kind and key do not (`memberRole`); `error` is the explained
   [error object](../#the-error-object).
+- `notes[]` (omitted when empty) = `{kind, key, message}`: information that needs no action,
+  e.g. a user listed in a role's `members` who is not in the server yet. Notes are not drift.
 
 ### Audit log
 

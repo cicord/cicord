@@ -65,6 +65,7 @@ configuration.
 | Gradient and holographic colors | Yes | `roles.*.colors`; boost level 2. `color` stays the solid shorthand. |
 | Role icon image | Yes | `roles.*.icon`; boost level 2. |
 | Role icon emoji | Yes | `roles.*.emoji`; exclusive with `icon`. |
+| Role holders | Yes | `roles.*.members`: listed users get the role; additive, unlisted holders keep it. |
 | `@everyone` permissions | Yes | `everyone.permissions` |
 | Linked roles (role connections) | Not yet | Application-level metadata. |
 
