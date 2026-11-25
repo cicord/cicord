@@ -121,6 +121,14 @@ func TestPortalInit(t *testing.T) {
 		t.Errorf("vite override or peer rules lost: %+v", ws)
 	}
 	wf := readFile(t, filepath.Join(repo, ".github/workflows/cicord-portal.yml"))
+	// Actions pinned by commit SHA: organisations may require it (sha_pinning_required).
+	for _, line := range strings.Split(wf, "\n") {
+		if u, ok := strings.CutPrefix(strings.TrimSpace(line), "- uses: "); ok {
+			if _, ref, _ := strings.Cut(u, "@"); len(strings.Fields(ref)) == 0 || len(strings.Fields(ref)[0]) != 40 {
+				t.Errorf("action not pinned by SHA: %s", line)
+			}
+		}
+	}
 	for _, want := range []string{"working-directory: portal", "pnpm install --frozen-lockfile", "git status --porcelain -- dist", `paths: ["portal/**", "plugins/**"`, "cicord portal typegen --check --out portal/src/cicord-routes.d.ts", "cicord portal vendor --check portal"} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow misses %q:\n%s", want, wf)

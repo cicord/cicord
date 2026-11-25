@@ -374,8 +374,8 @@ jobs:
       run:
         working-directory: [[.Dir]]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
       # The cicord version that generated this portal; bump it with the runtime.
@@ -386,10 +386,10 @@ jobs:
       - name: The vendored @cicord/* packages are this cicord's (vendor/)
         working-directory: .
         run: cicord portal vendor --check [[.Dir]]
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: 12
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
           cache: pnpm
