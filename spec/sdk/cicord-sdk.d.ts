@@ -142,6 +142,12 @@ export interface Message {
   readonly member?: Member;
   readonly channel: TextChannel;
   readonly attachments: readonly Attachment[];
+  /**
+   * The message's embeds (what a bot posted as rich content), in the shape a plugin sends
+   * them. Emptied like `content` without the MessageContent intent (the bot's own messages
+   * excepted).
+   */
+  readonly embeds: readonly Readonly<Embed>[];
   readonly createdAt: Date;
   /** @capability discord.messages.send */
   reply(message: MessageInput): Promise<Message>;

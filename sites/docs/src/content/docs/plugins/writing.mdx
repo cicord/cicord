@@ -288,8 +288,10 @@ when the plugin has `discord.members.read`. See [Members of a role](../api/#memb
 
 **Message content is gated per plugin.** A bot connects with the union of its plugins'
 intents, but a plugin that does not declare `MessageContent` itself still gets an empty
-`message.content` (and no `attachments`), in events and in `channel.messages()`, unless the
-message is the bot's own, mentions the bot or is a DM. Declare it only when the plugin
+`message.content` (and no `attachments` nor `embeds`), in events and in `channel.messages()`,
+unless the message is the bot's own, mentions the bot or is a DM. `message.embeds` has the
+shape of the embeds a plugin sends (title, description, color `#rrggbb`, fields, author,
+footer, image, thumbnail). Declare it only when the plugin
 reads what people write (the official `levels` plugin does, to ignore very short messages); a
 plugin that only needs who posted and when (flood protection, ticket activity) does not.
 

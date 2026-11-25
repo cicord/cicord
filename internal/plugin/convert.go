@@ -68,7 +68,69 @@ type messageDTO struct {
 	Member      *memberDTO      `json:"member,omitempty"`
 	Channel     channelDTO      `json:"channel"`
 	Attachments []attachmentDTO `json:"attachments"`
+	Embeds      []embedDTO      `json:"embeds"`
 	CreatedAt   string          `json:"createdAt,omitempty"`
+}
+
+// embedDTO is a received embed, in the shape of the SDK's Embed (the one plugins send).
+type embedDTO struct {
+	Title       string          `json:"title,omitempty"`
+	Description string          `json:"description,omitempty"`
+	URL         string          `json:"url,omitempty"`
+	Color       string          `json:"color,omitempty"`
+	Timestamp   string          `json:"timestamp,omitempty"`
+	Fields      []embedFieldDTO `json:"fields,omitempty"`
+	Author      *embedAuthorDTO `json:"author,omitempty"`
+	Footer      *embedFooterDTO `json:"footer,omitempty"`
+	Image       *embedURLDTO    `json:"image,omitempty"`
+	Thumbnail   *embedURLDTO    `json:"thumbnail,omitempty"`
+}
+
+type embedFieldDTO struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Inline bool   `json:"inline,omitempty"`
+}
+
+type embedAuthorDTO struct {
+	Name    string `json:"name"`
+	URL     string `json:"url,omitempty"`
+	IconURL string `json:"iconUrl,omitempty"`
+}
+
+type embedFooterDTO struct {
+	Text    string `json:"text"`
+	IconURL string `json:"iconUrl,omitempty"`
+}
+
+type embedURLDTO struct {
+	URL string `json:"url"`
+}
+
+func embedDTOFrom(e discord.Embed) embedDTO {
+	out := embedDTO{Title: e.Title, Description: e.Description, URL: e.URL}
+	if e.Color != 0 {
+		out.Color = fmt.Sprintf("#%06x", e.Color&0xffffff)
+	}
+	if e.Timestamp != nil {
+		out.Timestamp = jsTime(*e.Timestamp)
+	}
+	for _, f := range e.Fields {
+		out.Fields = append(out.Fields, embedFieldDTO{Name: f.Name, Value: f.Value, Inline: f.Inline})
+	}
+	if a := e.Author; a != nil {
+		out.Author = &embedAuthorDTO{Name: a.Name, URL: a.URL, IconURL: a.IconURL}
+	}
+	if f := e.Footer; f != nil {
+		out.Footer = &embedFooterDTO{Text: f.Text, IconURL: f.IconURL}
+	}
+	if e.ImageURL != "" {
+		out.Image = &embedURLDTO{URL: e.ImageURL}
+	}
+	if e.ThumbURL != "" {
+		out.Thumbnail = &embedURLDTO{URL: e.ThumbURL}
+	}
+	return out
 }
 
 func jsTime(t time.Time) string {
@@ -264,7 +326,8 @@ func (i *Instance) messageDTO(m discord.Message) messageDTO {
 	author := i.userDTO(m.Author)
 	dto := messageDTO{
 		ID: m.ID, Content: m.Content, Author: &author, Channel: i.channelDTO(m.ChannelID),
-		Attachments: make([]attachmentDTO, 0, len(m.Attachments)), CreatedAt: jsTime(m.CreatedAt),
+		Attachments: make([]attachmentDTO, 0, len(m.Attachments)), Embeds: make([]embedDTO, 0, len(m.Embeds)),
+		CreatedAt: jsTime(m.CreatedAt),
 	}
 	if m.Member != nil {
 		mem := *m.Member
@@ -280,6 +343,9 @@ func (i *Instance) messageDTO(m discord.Message) messageDTO {
 	}
 	for _, a := range m.Attachments {
 		dto.Attachments = append(dto.Attachments, attachmentDTOFrom(a))
+	}
+	for _, e := range m.Embeds {
+		dto.Embeds = append(dto.Embeds, embedDTOFrom(e))
 	}
 	return dto
 }

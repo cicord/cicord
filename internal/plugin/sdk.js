@@ -233,6 +233,7 @@
     m.member = d.member ? mkMember(d.member) : undefined;
     m.channel = mkChannel(d.channel);
     m.attachments = freeze((d.attachments || []).map(mkAttachment));
+    m.embeds = freeze((d.embeds || []).map((e) => freeze(e)));
     m.createdAt = d.createdAt ? new Date(d.createdAt) : new Date(NaN);
     return freeze(m);
   }

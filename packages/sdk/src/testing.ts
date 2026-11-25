@@ -494,6 +494,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       author,
       channel,
       attachments: [],
+      embeds: typeof input === "string" ? [] : (input.embeds ?? []).map((e) => ({ ...e })),
       createdAt: new Date(),
       async reply(reply) {
         need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
@@ -1072,6 +1073,7 @@ function fakeInteraction(
         },
       },
       attachments: [],
+      embeds: [],
       createdAt: new Date(),
       reply: async () => {
         throw new Error("not supported in tests: pass `channel` in the call");

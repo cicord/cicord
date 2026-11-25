@@ -1071,7 +1071,9 @@ import { definePlugin } from "@cicord/sdk";
 export default definePlugin({
   events: {
     async messageCreate(ctx, msg) {
-      ctx.log.info("seen", { content: msg.content, attachments: msg.attachments.length });
+      const e = msg.embeds[0];
+      ctx.log.info("seen", { content: msg.content, attachments: msg.attachments.length, embeds: msg.embeds.length,
+        embed: e ? [e.description, e.footer?.text, e.color, e.fields?.[0]?.value].join("|") : "" });
     },
   },
 });`, func(e *Env) { e.MessageContent = false })
@@ -1087,7 +1089,9 @@ export default definePlugin({
 	for k, c := range cases {
 		msg := discord.Message{ID: fmt.Sprint(900 + k), ChannelID: "100", ServerID: "10", Content: c.content,
 			Author:      discord.User{ID: c.author, Username: "u"},
-			Attachments: []discord.Attachment{{ID: "5", Filename: "a.png", URL: "https://cdn/a.png", Size: 1}}}
+			Attachments: []discord.Attachment{{ID: "5", Filename: "a.png", URL: "https://cdn/a.png", Size: 1}},
+			Embeds: []discord.Embed{{Description: "reply", Color: 0x5865f2, Footer: &discord.EmbedFooter{Text: "— Ann (via portal)"},
+				Fields: []discord.EmbedField{{Name: "n", Value: "v"}}}}}
 		if err := h.inst.HandleEvent(context.Background(), discord.MessageCreateEvent{Message: msg}); err != nil {
 			t.Fatal(err)
 		}
@@ -1105,6 +1109,14 @@ export default definePlugin({
 		}
 		if fmt.Sprint(e.Attrs["attachments"]) != wantAtt {
 			t.Errorf("%s: attachments = %v, want %s", c.name, e.Attrs["attachments"], wantAtt)
+		}
+		// Embeds are gated like the content, and keep the shape plugins send.
+		wantEmbed := "reply|— Ann (via portal)|#5865f2|v"
+		if c.want == "" {
+			wantEmbed = ""
+		}
+		if fmt.Sprint(e.Attrs["embeds"]) != wantAtt || fmt.Sprint(e.Attrs["embed"]) != wantEmbed {
+			t.Errorf("%s: embeds = %v %q, want %s %q", c.name, e.Attrs["embeds"], e.Attrs["embed"], wantAtt, wantEmbed)
 		}
 	}
 }
