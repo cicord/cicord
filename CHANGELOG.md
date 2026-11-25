@@ -6,6 +6,12 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Fixed
+
+- `cicord plugin publish` rewrote the repository URL of an existing index entry in its own
+  spelling (e.g. with `.git`), adding noise to the index diff; an equivalent URL now keeps
+  the index's spelling.
+
 ## [0.1.5] - 2026-11-25
 
 ### Fixed

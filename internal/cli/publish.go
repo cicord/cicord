@@ -427,6 +427,9 @@ func planIndexUpdate(dir, name string, entry registry.IndexEntry, replaceRepo bo
 			return nil, fmt.Errorf("%s already lists %s with the repository %s (not %s): use --replace-repo if it moved",
 				file, name, registry.Redact(old.Repo), entry.Repo)
 		}
+		if config.NormalizeRegistryURL(old.Repo) == config.NormalizeRegistryURL(entry.Repo) {
+			entry.Repo = old.Repo // same repository: keep the index's spelling (.git, slash)
+		}
 		if old.Path != entry.Path && !replaceRepo {
 			return nil, fmt.Errorf("%s already lists %s in the directory %q of its repository (not %q): use --replace-repo if it moved",
 				file, name, old.Path, entry.Path)

@@ -273,3 +273,25 @@ func TestPluginPublishMonorepo(t *testing.T) {
 		}
 	}
 }
+
+// An update keeps the index's spelling of the same repository (publish reads the remote
+// URL, often with .git): no noise in the index diff.
+func TestPlanIndexUpdateKeepsRepoSpelling(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "index.yaml"), `plugins:
+  xp:
+    repo: https://github.com/acme/xp
+    path: plugins/xp
+    version: 0.1.0
+    commit: 1111111111111111111111111111111111111111
+`)
+	plan, err := planIndexUpdate(dir, "xp", registry.IndexEntry{Repo: "https://github.com/acme/xp.git", Path: "plugins/xp",
+		Version: "0.2.0", Commit: "2222222222222222222222222222222222222222"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(plan.content)
+	if !strings.Contains(got, "repo: https://github.com/acme/xp\n") || strings.Contains(got, "xp.git") || !strings.Contains(got, "version: 0.2.0") {
+		t.Errorf("index =\n%s", got)
+	}
+}
