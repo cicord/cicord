@@ -72,22 +72,39 @@ not, and complements Discord's [native onboarding](../../configuration/server/#o
 
 ## tickets
 
-Members open a ticket from a panel button and a short form; staff and the member talk in a
-private channel only they can see; closing it posts a summary to the staff log. Ticket
-channels are **plugin-owned**: the reconciler never touches or prunes them.
+Members open a ticket from a panel button and a short form, or from the community portal;
+staff and the member talk in a private channel only they can see; closing it posts a
+summary to the staff log. Staff run the queue from the portal too: assignment, priority,
+labels, replies, close and reopen. Ticket channels are **plugin-owned**: the reconciler
+never touches or prunes them.
 
 - **Commands**: `/ticket-panel [channel]` (Manage Channels) posts the panel.
-- **Portal routes**: `GET /tickets`, `GET /tickets/:id` (moderators).
+- **Portal routes** (typed route contract):
+  - members: `GET /tickets/mine`, `GET /tickets/mine/:id` (their own tickets, with the
+    timeline), `POST /tickets` (open one: subject, description, optional label; `409 limit`
+    beyond `maxOpenPerMember`);
+  - staff: `GET /tickets?status=&assignee=&priority=&label=`, `GET /tickets/:id` (with the
+    last 50 messages of the ticket channel, read on demand, never stored), `GET /staff`
+    (every holder of a staff role), `POST /tickets/:id/assign` (`me`, a staff member or
+    `null`), `PATCH /tickets/:id` (priority, label), `POST /tickets/:id/close` (optional
+    reason), `POST /tickets/:id/reopen` (recreates the channel when needed),
+    `POST /tickets/:id/messages` (the bot posts the reply, signed "— name (via portal)").
+  Staff are the members of `staffRoles`, the server owner and the server's admins; a
+  Cicord moderator without a staff role gets `403` on the staff routes.
 - **Capabilities**: `discord.messages.send`, `discord.messages.read`,
-  `discord.channels.read`, `discord.channels.manage`, `storage.kv`, `portal.routes`.
-- **Intents**: `ServerMessages` (last activity only, never the content).
+  `discord.channels.read`, `discord.channels.manage`, `discord.members.read`, `storage.kv`,
+  `portal.routes`.
+- **Intents**: `ServerMessages` (last activity), `MessageContent` (the conversation shown to
+  staff in the portal, read on demand), `ServerMembers` (listing the staff for assignment).
+  The last two are privileged: enable them in the Discord developer portal.
 
 | Setting | Default | Description |
 |---|---|---|
 | `panelChannel` (required) | | Default channel of the panel. |
 | `category` | | Category ticket channels are created in. |
-| `staffRoles` | `[]` | Roles that see every ticket and can close them. |
+| `staffRoles` | `[]` | Roles that see every ticket, can close them and run the queue from the portal. |
 | `logChannel` | | Receives a summary of each closed ticket. |
+| `labels` *(moderator)* | question, bug, self-hosting, plugin, other | Up to 25 `{key, name, emoji?}` to sort tickets (set from the portal). |
 | `panel` *(moderator)* | | `title`, `description`, `buttonLabel`, `color` of the panel message. |
 | `welcomeMessage` *(moderator)* | `Hi {member}, thanks for reaching out! {staff} will be with you shortly.` | Placeholders `{member}`, `{staff}`, `{subject}`, `{number}`. |
 | `channelName` | `ticket-{number}` | Placeholders `{number}`, `{member}`. |
