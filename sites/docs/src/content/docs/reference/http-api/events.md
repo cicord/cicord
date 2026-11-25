@@ -22,7 +22,7 @@ access checks.
 
 | Event | Data | Meaning |
 |---|---|---|
-| `hello` | `{"version": "0.1.7", "revision": "local-df15894"}` | Sent first, on every connection. A client that sees another `version` than the one it loaded runs outdated code: the admin console offers to reload. |
+| `hello` | `{"version": "0.1.8", "revision": "local-df15894"}` | Sent first, on every connection. A client that sees another `version` than the one it loaded runs outdated code: the admin console offers to reload. |
 | `status` | `{}` | The runtime status changed: revision, bot connections, a server's health or status message, last error ([`GET /api/v1/status`](../servers/#runtime-status)). |
 | `sync` | `{"server": "my-community"}` | A sync was recorded, or a gateway event showed drift on the server: the history, and the server's sync state, plan, resources and drift. Without `server`: a revision (activated or rejected). |
 | `plugins` | `{"server": "my-community"}` | A plugin instance of the server crashed or restarted. |
@@ -33,7 +33,7 @@ access checks.
 ```text
 id: 1
 event: hello
-data: {"version":"0.1.7","revision":"local-df15894"}
+data: {"version":"0.1.8","revision":"local-df15894"}
 
 id: 2
 event: sync

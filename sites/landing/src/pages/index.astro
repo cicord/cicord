@@ -233,7 +233,7 @@ const officialRegistryOnly = ["github-releases"];
           </div>
           <p class="hero__status">
             <span class="pill">Pre-release</span>
-            <span>Cicord 0.1.7, API <code>v1alpha1</code>. Formats and APIs may still change.</span>
+            <span>Cicord 0.1.8, API <code>v1alpha1</code>. Formats and APIs may still change.</span>
           </p>
         </div>
       </div>
@@ -655,13 +655,12 @@ const officialRegistryOnly = ["github-releases"];
           Install <code>cicord</code>, then either connect a real server with the setup wizard or
           try everything offline against the simulator. The
           <a href={links.install}>installation guide</a> covers Windows, the container image,
-          verifying a download and building from source. Homebrew works too; npm comes with a
-          later release.
+          verifying a download and building from source. Homebrew and npm work too.
         </p>
         <aside class="notice" aria-labeledby="status-title">
           <h3 id="status-title">Status: pre-release</h3>
           <p>
-            Cicord 0.1.7 implements the API <code>v1alpha1</code>. The runtime, the reconciler, the
+            Cicord 0.1.8 implements the API <code>v1alpha1</code>. The runtime, the reconciler, the
             plugin host, the simulator, the admin console and the portal SDK work end to end, and
             run the official community server, but file formats and APIs may still change between
             <code>0.x</code> releases. Expect rough edges, and report them on GitHub.
@@ -677,7 +676,7 @@ const officialRegistryOnly = ["github-releases"];
           <p class="cmd__title">1. Install cicord</p>
           <p class="cmd__note">Linux or macOS. Verifies the checksum, and the provenance with gh.</p>
           <pre><code><span class="p">curl -fsSL https://cicord.dev/install.sh | sh</span>
-<span class="t-com"># or: brew install cicord/tap/cicord</span></code></pre>
+<span class="t-com"># or: brew install cicord/tap/cicord, or: npm i -g @cicord/cli</span></code></pre>
         </div>
         <div class="cmd">
           <p class="cmd__title">2a. Connect a real server</p>

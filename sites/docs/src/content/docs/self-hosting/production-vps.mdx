@@ -281,13 +281,13 @@ workflow built. Each release's notes give the digest; read it and check the imag
 provenance from your workstation:
 
 ```sh
-VERSION=0.1.7
+VERSION=0.1.8
 gh release view "v$VERSION" --repo cicord/cicord --json body --jq .body \
   | grep -oE 'ghcr.io/cicord/cicord@sha256:[0-9a-f]{64}'
 gh attestation verify "oci://ghcr.io/cicord/cicord:$VERSION" --repo cicord/cicord
 ```
 
-Set tag and digest together: `CICORD_IMAGE=ghcr.io/cicord/cicord:0.1.7@sha256:…`. The image is
+Set tag and digest together: `CICORD_IMAGE=ghcr.io/cicord/cicord:0.1.8@sha256:…`. The image is
 multi-arch (linux/amd64, linux/arm64). Other checks (SBOM, `cosign`) are in
 [Installation](../../getting-started/installation/#verify-a-download).
 

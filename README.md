@@ -45,11 +45,11 @@ Install (Linux or macOS; the script checks the SHA-256 of the release archive an
 curl -fsSL https://cicord.dev/install.sh | sh
 ```
 
-From 0.1.7: `brew install cicord/tap/cicord` (macOS, Linux); from a later
-release: `npm i -g @cicord/cli` (also Windows). Verified manual downloads, `go install` and building
+Or `brew install cicord/tap/cicord` (macOS, Linux), or `npm i -g @cicord/cli` (also
+Windows). Verified manual downloads, `go install` and building
 from source: [Installation](https://cicord.dev/docs/getting-started/installation/).
 
-Or the image: `docker run --rm ghcr.io/cicord/cicord:0.1.7 version`. A real-world
+Or the image: `docker run --rm ghcr.io/cicord/cicord:0.1.8 version`. A real-world
 configuration: the official community server's repository,
 [cicord/cicord-community](https://github.com/cicord/cicord-community).
 

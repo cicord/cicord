@@ -1,9 +1,9 @@
 ---
 title: Status and roadmap
-description: What works in Cicord 0.1.7, what is new in 0.1.7, what is next, and what is further out.
+description: What works in Cicord 0.1.8, what is new in 0.1.7 and 0.1.8, what is next, and what is further out.
 ---
 
-Cicord **0.1.7** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
+Cicord **0.1.8** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
 (binaries, the container image `ghcr.io/cicord/cicord` and the `@cicord/*` npm packages, see
 [Installation](../../getting-started/installation/)) may still change formats and APIs. The
 [changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md) lists what each release
@@ -70,6 +70,14 @@ changed. This page is updated as work lands; no dates are promised.
   (Community, AutoMod, native onboarding, icon upload, widget, welcome screen, emoji upload,
   boost gating).
 
+## New in 0.1.8
+
+- The Store and Plugins pages offer the same actions: **Update to X** when an update exists,
+  otherwise **Open**; installing another instance is a secondary action.
+- A Store install, update or uninstall, and `cicord plugin add` / `update`, regenerate a custom
+  portal's route types in the same change, so the pull request passes the portal CI.
+- Install with `curl -fsSL https://cicord.dev/install.sh | sh`, Homebrew or npm (`@cicord/cli`).
+
 ## New in 0.1.7
 
 Highlights (the [changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md) has every
@@ -99,10 +107,6 @@ change):
   reviewed configuration change is applied then reverted with the channel keeping its ID.
 - The commercial terms for handing an instance over to a customer (outside these docs; the
   technical side is in [Handing over an instance](../../self-hosting/handoff/)).
-- The Homebrew tap token (`HOMEBREW_TAP_TOKEN`, see [Homebrew tap](../releasing/#homebrew-tap)),
-  and the six `@cicord/cli` npm packages with their trusted publishers, then
-  `CICORD_NPM_CLI=true`
-  ([New npm packages](../releasing/#new-npm-packages)).
 - Updating the `cicord-portal.yml` workflow of
   [cicord/cicord-community](https://github.com/cicord/cicord-community) to the generated one
   (verified release binary).
