@@ -325,14 +325,14 @@ exactly the image the release workflow built, or an image you build from source.
 check the image's build provenance from your workstation:
 
 ```sh
-VERSION=0.1.5
+VERSION=0.1.6
 gh release view "v$VERSION" --repo cicord/cicord --json body --jq .body \
   | grep -oE 'ghcr.io/cicord/cicord@sha256:[0-9a-f]{64}'          # the digest
 gh attestation verify "oci://ghcr.io/cicord/cicord:$VERSION" --repo cicord/cicord
 ```
 
 Then set it in `/opt/cicord/.env`, tag and digest together:
-`CICORD_IMAGE=ghcr.io/cicord/cicord:0.1.5@sha256:…`. Docker pulls by the digest, and the
+`CICORD_IMAGE=ghcr.io/cicord/cicord:0.1.6@sha256:…`. Docker pulls by the digest, and the
 image is multi-arch (linux/amd64, linux/arm64): the server gets its own architecture. See
 [Installation](../../getting-started/installation/#verify-a-download) for the other checks
 (SBOM, `cosign`).

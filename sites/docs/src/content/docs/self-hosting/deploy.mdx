@@ -205,9 +205,9 @@ linux/arm64), with SBOM and build provenance attestations. Pull the release, ver
 name used below:
 
 ```sh
-docker pull ghcr.io/cicord/cicord:0.1.5
-gh attestation verify oci://ghcr.io/cicord/cicord:0.1.5 --repo cicord/cicord
-docker tag ghcr.io/cicord/cicord:0.1.5 cicord
+docker pull ghcr.io/cicord/cicord:0.1.6
+gh attestation verify oci://ghcr.io/cicord/cicord:0.1.6 --repo cicord/cicord
+docker tag ghcr.io/cicord/cicord:0.1.6 cicord
 ```
 
 To build the same image from a checkout instead (the root `Dockerfile` builds the web UIs
@@ -215,7 +215,7 @@ with Node 26 and the pnpm of `packageManager`, then `cicord` with `CGO_ENABLED=0
 `gcr.io/distroless/static-debian13:nonroot`):
 
 ```sh
-docker build -t cicord --build-arg VERSION=0.1.5 --build-arg COMMIT=$(git rev-parse --short HEAD) .
+docker build -t cicord --build-arg VERSION=0.1.6 --build-arg COMMIT=$(git rev-parse --short HEAD) .
 ```
 
 The image runs `cicord serve /repo --data-dir /data --listen :7420` as user 65532 on a distroless
@@ -248,7 +248,7 @@ works too.
 ```yaml title="compose.yaml"
 services:
   cicord:
-    image: ghcr.io/cicord/cicord:0.1.5 # or build: .
+    image: ghcr.io/cicord/cicord:0.1.6 # or build: .
     restart: unless-stopped
     command:
       [
