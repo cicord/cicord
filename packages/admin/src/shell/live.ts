@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { keys } from "../api.ts";
 
 /** live: connected; reconnecting: the stream dropped (runtime restarting, network). */
-export type LiveConnection = "connecting" | "live" | "reconnecting";
+type LiveConnection = "connecting" | "live" | "reconnecting";
 
 export interface AdminLive {
   connection: LiveConnection;
