@@ -341,6 +341,10 @@
       "ownership": "Another owner (a plugin) manages this resource.",
       "managed": "Integration roles cannot be edited.",
       "typechange": "Discord cannot change a channel's type in place."
+    },
+    "notes": {
+      "title": "Notes",
+      "text": "Nothing to apply: information about the declared configuration."
     }
   },
   "history": {

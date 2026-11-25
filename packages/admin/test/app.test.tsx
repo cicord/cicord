@@ -107,6 +107,11 @@ describe("overview & server", () => {
     const blocked = screen.getByRole("region", { name: "Blocked" });
     expect(within(blocked).getByText(/deletion protection is on/)).toBeTruthy();
     expect(within(blocked).getByText(/syncPolicy.deletionProtection: false/)).toBeTruthy();
+    // A refused role assignment reads as what it is, not as its key.
+    expect(within(blocked).getByText(/give role "Admin" to @Léa/)).toBeTruthy();
+    expect(within(blocked).queryByText("admin/112233445566778900")).toBeNull();
+    const notes = screen.getByRole("region", { name: "Notes" });
+    expect(within(notes).getByText(/is not a member of the server/)).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Sync now" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Apply the plan to Discord?" });

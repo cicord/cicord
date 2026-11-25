@@ -14,6 +14,7 @@ import {
   CircleHelp,
   GitCompareArrows,
   History,
+  Info,
   Lock,
   RefreshCw,
   RotateCw,
@@ -337,7 +338,11 @@ function PlanView({ plan }: { plan: Plan }) {
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <ActionBadge action={b.action} />
                     <span className="text-xs text-muted-foreground">{kindLabel(b.kind)}</span>
-                    <Mono className="text-foreground">{b.key}</Mono>
+                    {b.summary ? (
+                      <span className="text-[13px] text-foreground">{b.summary}</span>
+                    ) : (
+                      <Mono className="text-foreground">{b.key}</Mono>
+                    )}
                   </div>
                   <p className="text-[13px] font-medium">{e.message}</p>
                   {e.hint ? <p className="text-[13px] text-muted-foreground">{e.hint}</p> : null}
@@ -350,6 +355,28 @@ function PlanView({ plan }: { plan: Plan }) {
                 </li>
               );
             })}
+          </ul>
+        </Card>
+      ) : null}
+      {plan.notes && plan.notes.length > 0 ? (
+        <Card role="region" aria-label={t("plan.notes.title")}>
+          <CardHeader className="py-2.5">
+            <Info className="mt-1 size-4 text-info" aria-hidden="true" />
+            <div>
+              <CardTitle>{t("plan.notes.title")}</CardTitle>
+              <CardDescription>{t("plan.notes.text")}</CardDescription>
+            </div>
+            <span className="ml-auto tabular text-[13px] leading-6 text-muted-foreground">
+              {plan.notes.length}
+            </span>
+          </CardHeader>
+          <ul className="divide-y">
+            {plan.notes.map((n, i) => (
+              <li key={`${n.key}-${i}`} className="flex flex-col gap-1 px-4 py-3">
+                <span className="text-xs text-muted-foreground">{kindLabel(n.kind)}</span>
+                <p className="text-[13px]">{n.message}</p>
+              </li>
+            ))}
           </ul>
         </Card>
       ) : null}

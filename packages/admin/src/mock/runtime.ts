@@ -45,6 +45,11 @@ import {
 } from "./data.ts";
 import { createMockAnalytics, type MockAnalyticsVariant } from "./analytics.ts";
 
+// Discord user IDs of the mock plan's role holders (built here: literal "role/<id>" keys
+// look like secrets to the gitleaks pre-commit hook).
+const leaId = "112233445566778900";
+const absentId = "998877665544332211";
+
 type Obj = { [key: string]: Json };
 
 interface Member {
@@ -792,6 +797,28 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           details: "deletionProtection",
           resource: { action: "delete", kind: "role", key: "VIP 2023" },
         },
+      },
+      {
+        action: "update",
+        kind: "memberRole",
+        key: `admin/${leaId}`,
+        id: leaId,
+        reason: 'hierarchy: role "Admin" is at or above the bot\'s highest role',
+        summary: 'give role "Admin" to @Léa (112233445566778900)',
+        error: {
+          code: "hierarchy",
+          message:
+            "Cannot give role “Admin” to @Léa: the role is at or above the bot's highest role",
+          hint: "Move the bot's role above Admin in Server settings → Roles.",
+          details: 'hierarchy: role "Admin" is at or above the bot\'s highest role',
+        },
+      },
+    ],
+    notes: [
+      {
+        kind: "memberRole",
+        key: `modo/${absentId}`,
+        message: `${absentId} is listed in roles.modo.members but is not a member of the server: they get the role when they join.`,
       },
     ],
   });

@@ -371,6 +371,18 @@ export interface PlanBlocked {
   fields?: Record<string, PlanFieldChange>;
   /** `reason` explained. */
   error?: HumanError;
+  /** The refused operation for humans, when kind and key alone do not say it (memberRole). */
+  summary?: string;
+}
+
+/**
+ * Information that needs no action: the server stays in sync (e.g. a user listed in
+ * `roles.<key>.members` who has not joined the server yet).
+ */
+export interface PlanNote {
+  kind: PlanKind;
+  key: string;
+  message: string;
 }
 
 /** Diff between the desired and the live state of one server; changes are in apply order. */
@@ -378,6 +390,8 @@ export interface Plan {
   server: string;
   changes: PlanChange[];
   blocked: PlanBlocked[];
+  /** Absent when there is none. */
+  notes?: PlanNote[];
 }
 
 export interface SyncResult {
