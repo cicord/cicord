@@ -8,6 +8,8 @@ import {
 } from "./sse.ts";
 import type {
   AdminEvent,
+  PortalAnalytics,
+  PortalAnalyticsPeriod,
   AddRegistryRequest,
   AnalyticsCatalog,
   AnalyticsSeries,
@@ -534,6 +536,19 @@ export class CicordClient {
     /** `GET /portal/{server}/me` — the viewer as a member of the server. */
     me: (server: string, options?: CallOptions): Promise<PortalMe> =>
       this.#api<PortalMe>("GET", `/portal/${seg(server)}/me`, options),
+    /**
+     * `GET /portal/{server}/analytics?period=` — server-wide activity for the portal, when
+     * the server opts in (`spec.analytics.portal`: members or public; 404 otherwise).
+     */
+    analytics: (
+      server: string,
+      period: PortalAnalyticsPeriod = "30d",
+      options?: CallOptions,
+    ): Promise<PortalAnalytics> =>
+      this.#api<PortalAnalytics>("GET", `/portal/${seg(server)}/analytics`, {
+        query: { period },
+        ...options,
+      }),
   };
 
   /** Runtime-relative image URLs (logo, banner) resolved against `baseUrl` (embedded portals). */

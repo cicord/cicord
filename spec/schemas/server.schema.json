@@ -335,6 +335,11 @@
           "type": "boolean",
           "default": false,
           "description": "Also aggregate member presences (statuses, platforms, activities such as games played). Needs the privileged Presence intent: enable it in the Discord developer portal and add ServerPresences to the bot's intents."
+        },
+        "portal": {
+          "enum": ["off", "members", "public"],
+          "default": "off",
+          "description": "Show server-wide activity aggregates in the community portal (GET /api/v1/portal/{server}/analytics): off, members (signed-in members of the server) or public (anyone). Only channels everyone can see are named; nothing per member."
         }
       },
       "additionalProperties": false

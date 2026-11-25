@@ -192,6 +192,7 @@ Roles are per server: see [Roles](authentication/#roles).
 | GET | `/api/v1/portal/{server}` | none | One `PortalServer`. |
 | GET | `/api/v1/portal/{server}/logo`, `/banner` | none | The theme logo and banner images. |
 | GET | `/api/v1/portal/{server}/me` | member | The viewer's member, roles and role on the server. |
+| GET | `/api/v1/portal/{server}/analytics` | per server | [Server-wide activity, when shared](portal/#activity). |
 | ANY | `/api/v1/portal/{server}/plugins/{bot}/{instance}/{path…}` | per route | [Plugin routes](portal/#plugin-routes). |
 
 ### Machine endpoints (CLI and CI)

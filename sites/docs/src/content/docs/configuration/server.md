@@ -431,6 +431,7 @@ guarantees and the intents each group needs: [Server analytics](../../self-hosti
 | `enabled` | boolean | `true` | `false` stops collection for this server. Points already recorded stay until retention removes them. |
 | `retention` | `<n>d` | `400d` | How long points are kept, in days. |
 | `presence` | boolean | `false` | Also aggregate member statuses, platforms and activities. Needs the privileged `ServerPresences` intent. Without it, only Discord's approximate online count is sampled. |
+| `portal` | `off` \| `members` \| `public` | `off` | Share server-wide activity in the community portal ([`GET /api/v1/portal/{server}/analytics`](../../reference/http-api/portal/#activity)): to the signed-in members of the server, or to anyone. Only channels everyone can see are named; nothing per member. |
 
 ```yaml
 spec:

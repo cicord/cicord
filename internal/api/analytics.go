@@ -163,3 +163,95 @@ func channelLabelKind(t discord.ChannelType) string {
 	}
 	return "channel"
 }
+
+// handlePortalAnalytics answers GET /api/v1/portal/{server}/analytics (the community
+// portal's activity view), when spec.analytics.portal allows it: 404 when off, the
+// signed-in members of the server for "members", anyone for "public".
+func (s *server) handlePortalAnalytics(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("server")
+	if err := s.requireRuntime(); err != nil {
+		s.fail(w, err)
+		return
+	}
+	cfg, ok := s.rt.ServerConfig(key)
+	if !ok || s.opts.Analytics == nil {
+		notFoundHandler(w, r)
+		return
+	}
+	switch cfg.Spec.AnalyticsPortal() {
+	case "public":
+	case "members":
+		id, err := s.requireAuth(r)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		ro, m, err := s.roleIn(r.Context(), id, key, true)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if ro < roleMember || m == nil {
+			s.fail(w, httpErr(http.StatusForbidden, "forbidden", "you are not a member of this server"))
+			return
+		}
+	default:
+		notFoundHandler(w, r)
+		return
+	}
+	rd := &analytics.Reader{Store: s.opts.Analytics}
+	out, err := rd.Portal(r.Context(), key, r.URL.Query().Get("period"), publicChannels(s.rt, key, cfg.Spec.DiscordID))
+	if err != nil {
+		s.failAnalytics(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// publicChannels tells whether @everyone can see a channel (its category's or parent's
+// overwrites are already on the channel; a thread follows its parent) and gives its
+// current name, from the runtime's live cache.
+func publicChannels(rt *runtime.Runtime, server, serverID string) func(string) (string, bool) {
+	roles, channels, _, ok := rt.ServerResources(server)
+	if !ok {
+		return func(string) (string, bool) { return "", false }
+	}
+	var everyone discord.Permissions
+	for _, ro := range roles {
+		if ro.ID == serverID {
+			everyone = ro.Permissions
+		}
+	}
+	byID := make(map[string]discord.Channel, len(channels))
+	for _, c := range channels {
+		byID[c.ID] = c
+	}
+	view := discord.MustPermissions("ViewChannel")
+	visible := func(c discord.Channel) bool {
+		p := everyone
+		for _, o := range c.Overwrites {
+			if o.ID == serverID {
+				p = (p &^ o.Deny) | o.Allow
+			}
+		}
+		return p&view != 0
+	}
+	return func(id string) (string, bool) {
+		c, ok := byID[id]
+		if !ok {
+			return "", false
+		}
+		target := c
+		if channelLabelKind(c.Type) == "thread" {
+			if parent, ok := byID[c.ParentID]; ok {
+				target = parent
+			} else {
+				return "", false
+			}
+		}
+		if !visible(target) {
+			return "", false
+		}
+		return c.Name, true
+	}
+}

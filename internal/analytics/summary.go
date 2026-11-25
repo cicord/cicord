@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/cicord/cicord/internal/state"
@@ -47,7 +48,7 @@ func kpiModeOf(metric string) kpiMode {
 	switch metric {
 	case MembersTotal, MembersBots:
 		return kpiLast
-	case MembersActive:
+	case MembersActive, MembersActiveBots:
 		return kpiDailyAvg
 	case MembersOnline:
 		return kpiSampleAvg
@@ -166,6 +167,11 @@ func (r *Reader) Summary(ctx context.Context, server, period string, status Stat
 // step ended. Sparklines are per day, or per hour for a custom range shorter than two
 // days.
 func (r *Reader) SummaryFor(ctx context.Context, server string, req SummaryRequest, status Status) (Summary, error) {
+	return r.summarize(ctx, server, req, status, SummaryKPIs)
+}
+
+// summarize is SummaryFor with the KPIs to compute (the portal has its own list).
+func (r *Reader) summarize(ctx context.Context, server string, req SummaryRequest, status Status, kpis []string) (Summary, error) {
 	from, to := req.From, req.To
 	period := req.Period
 	if period != CustomPeriod {
@@ -193,18 +199,26 @@ func (r *Reader) SummaryFor(ctx context.Context, server string, req SummaryReque
 
 	// Hourly totals of the KPI metrics over both periods.
 	var metrics []string
-	for _, k := range SummaryKPIs {
-		if k != MembersNet {
+	for _, k := range kpis {
+		switch k {
+		case MembersNet:
+			metrics = append(metrics, MembersJoined, MembersLeft)
+		case BotsCommands, MessagesSent:
+		default:
 			metrics = append(metrics, k)
 		}
 	}
-	metrics = append(metrics, BotsCommands) // the bot usage heatmap
-	tot, err := r.totals(ctx, server, metrics, prev, to)
+	metrics = append(metrics, MessagesSent, BotsCommands) // the heatmaps
+	tot, err := r.totals(ctx, server, slices.Compact(slices.Sorted(slices.Values(metrics))), prev, to)
 	if err != nil {
 		return Summary{}, err
 	}
-	if tot[MembersActive], err = r.withToday(ctx, server, MembersActive, tot[MembersActive], prev, to); err != nil {
-		return Summary{}, err
+	for _, k := range kpis {
+		if _, daily := dailyDistinct(k); daily {
+			if tot[k], err = r.withToday(ctx, server, k, tot[k], prev, to); err != nil {
+				return Summary{}, err
+			}
+		}
 	}
 	value := func(metric string, a, b time.Time) (float64, bool) {
 		mode := kpiModeOf(metric)
@@ -215,7 +229,7 @@ func (r *Reader) SummaryFor(ctx context.Context, server string, req SummaryReque
 		}
 		return reduce(mode, tot[metric], a, b)
 	}
-	for _, k := range SummaryKPIs {
+	for _, k := range kpis {
 		kpi := KPI{Metric: k, Spark: []Point{}}
 		kpi.Value, _ = value(k, from, to)
 		if covered {

@@ -12,6 +12,7 @@ export {
   usePluginMutation,
   usePluginQuery,
   usePortalPlugin,
+  usePortalAnalytics,
   usePortalServer,
   usePortalServers,
   useRoles,

@@ -1418,3 +1418,34 @@ export type AdminEvent =
   | { type: "stopping" }
   | { type: "status" }
   | { type: "sync" | "plugins" | "analytics"; server?: string };
+
+// ─────────────────────────────────────────────────────────── portal analytics
+
+/** Periods of `GET /portal/{server}/analytics`. */
+export type PortalAnalyticsPeriod = "7d" | "30d" | "90d";
+
+/**
+ * `GET /portal/{server}/analytics`: server-wide aggregates for members (opt-in per
+ * server, `spec.analytics.portal`). Nothing per member; only channels @everyone can see
+ * are named.
+ */
+export interface PortalAnalytics {
+  server: string;
+  period: PortalAnalyticsPeriod;
+  from: Timestamp;
+  to: Timestamp;
+  /** Oldest data point, null before the first one. */
+  since: Timestamp | null;
+  /**
+   * In this order: members.total, members.joined, members.active (average per day),
+   * messages.sent, voice.seconds, reactions.added, bots.commands, members.active.bots
+   * (average per day). `spark` is per day.
+   */
+  kpis: AnalyticsKpi[];
+  /** Channels with the most messages among those everyone can see, top 5. */
+  topChannels: { id: string; name: string; value: number }[];
+  /** Most used bot commands (every bot of the server), top 8; command starts with "/". */
+  topBotCommands: { bot: string; command: string; value: number }[];
+  /** Messages per weekday (0 = Monday) and UTC hour. */
+  heatmap: number[][];
+}

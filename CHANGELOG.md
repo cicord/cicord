@@ -6,6 +6,14 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- `spec.analytics.portal` (`off`, `members`, `public`) and
+  `GET /api/v1/portal/{server}/analytics`: server-wide activity for the community portal
+  (members, joins, active members, messages, voice, reactions, bot commands, the busiest
+  public channels and hours; nothing per member, private channels never named).
+  `@cicord/client`: `client.portal.analytics`; `@cicord/react`: `usePortalAnalytics`.
+
 ## [0.1.4] - 2026-11-25
 
 ### Added

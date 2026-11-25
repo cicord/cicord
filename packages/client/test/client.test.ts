@@ -214,10 +214,14 @@ describe("portal & plugins", () => {
     await expect(client.portal.servers()).resolves.toEqual([server]);
     await client.portal.server("ma-commu");
     await client.portal.me("ma commu");
+    await client.portal.analytics("ma-commu");
+    await client.portal.analytics("ma-commu", "7d");
     expect(calls.map((c) => c.url)).toEqual([
       "/api/v1/portal/servers",
       "/api/v1/portal/ma-commu",
       "/api/v1/portal/ma%20commu/me",
+      "/api/v1/portal/ma-commu/analytics?period=30d",
+      "/api/v1/portal/ma-commu/analytics?period=7d",
     ]);
   });
 

@@ -155,6 +155,23 @@ type AnalyticsSpec struct {
 	Retention string `yaml:"retention,omitempty" json:"retention,omitempty"`
 	// Presence also aggregates member presences (privileged ServerPresences intent).
 	Presence bool `yaml:"presence,omitempty" json:"presence,omitempty"`
+	// Portal shows server-wide aggregates in the community portal: "off" (default),
+	// "members" (signed-in members of the server) or "public" (anyone).
+	Portal string `yaml:"portal,omitempty" json:"portal,omitempty"`
+}
+
+// AnalyticsPortal returns who may read the portal's analytics of the server: "off",
+// "members" or "public". Off whenever analytics are disabled.
+func (s *ServerSpec) AnalyticsPortal() string {
+	enabled, _, _ := s.AnalyticsSettings()
+	if !enabled || s.Analytics == nil {
+		return "off"
+	}
+	switch s.Analytics.Portal {
+	case "members", "public":
+		return s.Analytics.Portal
+	}
+	return "off"
 }
 
 // DefaultAnalyticsRetentionDays is the retention when spec.analytics.retention is unset.

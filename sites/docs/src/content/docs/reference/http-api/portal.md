@@ -15,11 +15,44 @@ Part of the [HTTP API reference](../). For building portals, see the
 | GET | `/api/v1/portal/{server}/logo` | none | The `portal.theme.logo` image ([below](#logo-and-banner)). |
 | GET | `/api/v1/portal/{server}/banner` | none | The `portal.banner` image, same rules as the logo. |
 | GET | `/api/v1/portal/{server}/me` | member | `{"user": User, "member": {"nick", "joinedAt", "roles": [{"key", "id", "name", "color"}]}, "role": "member" \| "moderator" \| "admin"}` |
+| GET | `/api/v1/portal/{server}/analytics?period=7d\|30d\|90d` | per `spec.analytics.portal` | [Server-wide activity](#activity) (default `30d`). |
 | ANY | `/api/v1/portal/{server}/plugins/{bot}/{instance}/{path…}` | per route | [Plugin routes](#plugin-routes). |
 
 All portal endpoints answer `503` before the first revision. `/portal/{server}/me` answers
 `401` when anonymous and `403` when the caller is not a member. Member roles have `key: ""`
 when they are not declared in YAML.
+
+## Activity
+
+`GET /api/v1/portal/{server}/analytics` shares the server's activity with its community, when
+the server opts in with [`spec.analytics.portal`](../../../configuration/server/#analytics):
+`members` (signed-in members of the server: `401` anonymous, `403` not a member) or `public`
+(anyone). With `off` (the default) or without analytics, it answers `404`.
+
+```json
+{
+  "server": "ma-commu", "period": "30d",
+  "from": "2026-10-27T00:00:00Z", "to": "2026-11-26T00:00:00Z", "since": "2026-08-01T14:00:00Z",
+  "kpis": [{ "metric": "messages.sent", "value": 3121, "previous": 2870, "spark": [[1763424000, 98]] }],
+  "topChannels": [{ "id": "112233445566778899", "name": "général", "value": 1840 }],
+  "topBotCommands": [{ "bot": "Cicord", "command": "/rank", "value": 212 }],
+  "heatmap": [[0, 0, 3], [1, 0, 0]]
+}
+```
+
+- `kpis`, in this order: `members.total` (human members, last value), `members.joined`,
+  `members.active` (average per day), `messages.sent`, `voice.seconds`, `reactions.added`,
+  `bots.commands` and `members.active.bots` (average per day), each compared with the
+  previous period (`previous` is `null` when it is not covered), with one `spark` point per
+  day. The periods are whole UTC days ending today, as in the
+  [admin summary](../analytics/#summary).
+- `topChannels`: the 5 channels with the most messages **among those `@everyone` can see**;
+  private channels are never named nor counted there (the `messages.sent` KPI is server-wide).
+- `topBotCommands`: the 8 most used commands of every bot of the server.
+- `heatmap[weekday][hour]`: messages per weekday (`0` = Monday) and UTC hour.
+
+`@cicord/client`: `client.portal.analytics(server, period)`; `@cicord/react`:
+`usePortalAnalytics(period, server?)`.
 
 ## PortalServer
 

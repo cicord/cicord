@@ -247,6 +247,7 @@ func (s *server) routes() {
 	h("GET /api/v1/portal/{server}/logo", s.handlePortalImage("logo"))
 	h("GET /api/v1/portal/{server}/banner", s.handlePortalImage("banner"))
 	h("GET /api/v1/portal/{server}/me", s.handlePortalMe)
+	h("GET /api/v1/portal/{server}/analytics", s.handlePortalAnalytics)
 	h("/api/v1/portal/{server}/plugins/{bot}/{instance}/{path...}", s.handlePluginRoute)
 
 	// §7 machine

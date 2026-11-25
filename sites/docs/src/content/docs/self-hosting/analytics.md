@@ -186,6 +186,7 @@ spec:
     enabled: true     # default: analytics are collected when the block is absent
     retention: 400d   # default 400d
     presence: false   # default: only Discord's approximate online count
+    portal: off       # default; members or public share activity in the community portal
 ```
 
 - `enabled: false` stops collection for the server. Points already recorded stay until
@@ -194,6 +195,11 @@ spec:
   values). Older points are deleted.
 - `presence: true` aggregates statuses, platforms and activities, with the `ServerPresences`
   intent.
+- `portal: members` (or `public`) shows the community what happens on the server, in the
+  [community portal](../../portal/overview/): members, joins, active members per day,
+  messages, voice time, reactions, bot commands, the busiest channels and hours. Only
+  channels `@everyone` can see are named, and nothing is per member
+  ([`GET /api/v1/portal/{server}/analytics`](../../reference/http-api/portal/#activity)).
 
 ## Retention and storage
 

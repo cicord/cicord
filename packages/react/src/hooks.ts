@@ -9,6 +9,8 @@ import {
   type RoutesOf,
   type Json,
   type Me,
+  type PortalAnalytics,
+  type PortalAnalyticsPeriod,
   type PortalMe,
   type PortalPlugin,
   type PortalRole,
@@ -98,6 +100,8 @@ export const cicordKeys = {
   portalServers: () => ["cicord", "portal", "servers"] as const,
   portalServer: (server: string) => ["cicord", "portal", server] as const,
   member: (server: string) => ["cicord", "portal", server, "me"] as const,
+  portalAnalytics: (server: string, period: string) =>
+    ["cicord", "portal", server, "analytics", period] as const,
   plugin: (server: string, bot: string, instance: string, path: string, query?: Query) =>
     [
       "cicord",
@@ -247,6 +251,21 @@ export function useMember(server?: string): QueryResult<PortalMe | null> {
   const key = useServerKey(server);
   return useCicordQuery(key ? cicordKeys.member(key) : null, (signal) =>
     nullOn401(client.portal.me(key as string, { signal })),
+  );
+}
+
+/**
+ * Server-wide activity for the portal (`spec.analytics.portal`); the query errors with
+ * `not_found` when the server does not share it.
+ */
+export function usePortalAnalytics(
+  period: PortalAnalyticsPeriod = "30d",
+  server?: string,
+): QueryResult<PortalAnalytics> {
+  const { client } = useCicord();
+  const key = useServerKey(server);
+  return useCicordQuery(key ? cicordKeys.portalAnalytics(key, period) : null, (signal) =>
+    client.portal.analytics(key as string, period, { signal }),
   );
 }
 
