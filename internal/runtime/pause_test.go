@@ -297,7 +297,14 @@ func runDrill(t *testing.T, selfHeal bool) {
 	if d.channel("Voice").UserLimit != 12 {
 		t.Fatal("the revision was not applied after resume")
 	}
-	if got := d.statuses.take(); len(got) != 1 || got[0].state != CommitSuccess || got[0].sha != sha {
+	// With selfHeal, the sync that applies may be the self-heal one armed by the resume, still
+	// reporting in its own goroutine when the resync returns: wait for the report.
+	var got []statusEvent
+	d.waitFor("the commit status after resume and sync", func() bool {
+		got = append(got, d.statuses.take()...)
+		return len(got) > 0
+	})
+	if len(got) != 1 || got[0].state != CommitSuccess || got[0].sha != sha {
 		t.Fatalf("commit status after resume and sync: %+v", got)
 	}
 	d.waitFor("synced", func() bool { s := d.server(); return s.Sync == SyncSynced && s.Message == "" })
