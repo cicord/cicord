@@ -319,6 +319,36 @@ describe("analytics page", () => {
     );
   });
 
+  test("voice rooms a plugin created: one row, expandable to the rooms", async () => {
+    const { user, summary } = await open();
+    const s = await summary("30d");
+    const group = s.rankings["voice.seconds"]!.find((r) => r.dim === "plugin:main/voice-rooms")!;
+    expect(group.count).toBeGreaterThan(1);
+    await kpis();
+    const card = screen.getByRole("region", { name: "Voice time by channel" });
+    const list = within(card).getByRole("list", { name: "Voice time by channel" });
+    const rows = within(list).getAllByRole("listitem");
+    // Only the busy channels and the group: no row per temporary room.
+    expect(rows.length).toBeLessThanOrEqual(10);
+    const label = (li: HTMLElement) => li.firstElementChild!.textContent ?? "";
+    expect(rows.some((r) => /'s channel/.test(label(r)))).toBe(false);
+    const row = rows.find((r) => label(r).startsWith("voice-rooms"))!;
+    expect(label(row)).toBe(`voice-rooms${group.count} channels created`);
+    const toggle = within(row).getByRole("button", {
+      name: "Show the channels created by voice-rooms",
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const rooms = within(row).getByRole("list", { name: "Channels created by voice-rooms" });
+    const names = within(rooms).getAllByRole("listitem").map(label);
+    expect(names).toHaveLength(group.children!.length);
+    // Deleted rooms keep their names; the rooms still open are not marked.
+    expect(names.some((n) => /^.+'s channel \(deleted\)$/.test(n ?? ""))).toBe(true);
+    await user.click(toggle);
+    expect(within(row).queryByRole("list")).toBeNull();
+  });
+
   test("moderators see the page too", async () => {
     await open("full", /Mina/);
     expect(await kpis()).toBeTruthy();

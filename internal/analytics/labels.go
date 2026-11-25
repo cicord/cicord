@@ -12,7 +12,13 @@ import (
 // Labels: the API answers dimensions as stored (Discord IDs, emojis, codes) and
 // resolves them to display labels with a Labeler. The runtime plugs its live
 // knowledge of the server (internal/api); ResourceLabeler works from the resource
-// map and the configuration; FallbackLabel covers the rest.
+// map and the configuration; StoredLabeler from the labels the collector remembered
+// (deleted channels and roles keep their names); FallbackLabel covers the rest.
+//
+// Channels created by a plugin (temporary voice rooms, tickets…) are grouped: an
+// Owners resolver tells which plugin instance created a channel, and the channel
+// rankings and series show one entry per instance, keyed "plugin:<bot>/<instance>"
+// (groups.go).
 
 // DimRef is a dimension value to label: Kind is the metric's dimension (Metric.Dim:
 // "channel", "role", "emoji", "event", "invite", "rule", "command"…).
@@ -65,9 +71,17 @@ func ResolveLabels(ctx context.Context, l Labeler, server string, dims []DimRef)
 		seen[d.Value] = true
 		todo = append(todo, d)
 	}
-	if l != nil && len(todo) > 0 {
-		for v, lb := range l.Labels(ctx, server, todo) {
-			if seen[v] {
+	var ask []DimRef
+	for _, d := range todo {
+		if d.Kind == "channel" && IsGroup(d.Value) {
+			out[d.Value] = GroupLabel(d.Value)
+		} else {
+			ask = append(ask, d)
+		}
+	}
+	if l != nil && len(ask) > 0 {
+		for v, lb := range l.Labels(ctx, server, ask) {
+			if _, done := out[v]; seen[v] && !done {
 				out[v] = lb
 			}
 		}
@@ -152,7 +166,9 @@ var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 // ResourceLabeler labels channels, roles, custom emojis and AutoMod rules declared
 // in git: the resource map gives the YAML key of a Discord ID and the server
 // configuration its name. It knows nothing of resources created outside git (use
-// a live labeler first for those).
+// a live labeler first for those) and leaves out the channels plugins created (their
+// key is not a name). As an Owners resolver, it tells which plugin instance created
+// a channel that still exists.
 type ResourceLabeler struct {
 	Resources state.ResourceMap
 	// Spec returns the configuration of a server (nil when unknown).
@@ -190,11 +206,34 @@ func (l ResourceLabeler) Labels(ctx context.Context, server string, dims []DimRe
 			}
 		}
 		r, ok := byID[id]
-		if !ok {
+		if !ok || PluginOwner(r.Owner) {
 			continue
 		}
 		if lb, ok := resourceLabel(spec, d.Kind, r, animated); ok {
 			out[d.Value] = lb
+		}
+	}
+	return out
+}
+
+// Owners returns the plugin instance that created each channel of ids still in the
+// resource map.
+func (l ResourceLabeler) Owners(ctx context.Context, server string, ids []string) map[string]string {
+	if l.Resources == nil || len(ids) == 0 {
+		return nil
+	}
+	rs, err := l.Resources.List(ctx, server)
+	if err != nil {
+		return nil
+	}
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[string]string{}
+	for _, r := range rs {
+		if r.Kind == state.KindChannel && want[r.ID] && PluginOwner(r.Owner) {
+			out[r.ID] = r.Owner
 		}
 	}
 	return out

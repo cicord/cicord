@@ -54,14 +54,35 @@ in it.
   "223344556677889900": { "name": "Lounge", "kind": "voice" },
   "334455667788990011": { "name": "Moderator", "kind": "role", "color": "#e67e22" },
   "pepe:445566778899001122": { "name": "pepe", "kind": "emoji", "imageUrl": "https://cdn.discordapp.com/emojis/445566778899001122.png" },
-  "556677889900112233": { "name": "556677889900112233", "kind": "channel", "deleted": true },
+  "556677889900112233": { "name": "NPjonath's channel", "kind": "voice", "deleted": true },
+  "667788990011223344": { "name": "667788990011223344", "kind": "channel", "deleted": true },
+  "plugin:main/voice-rooms": { "name": "voice-rooms", "kind": "group" },
   "<7d": { "name": "<7d", "kind": "label" }
 }
 ```
 
-`kind` is `channel`, `voice`, `thread`, `role`, `emoji`, `event`, `invite` or `label`.
-Names come from the runtime's live view of the server, then from the configuration. An ID
-that matches nothing is shown as `deleted`, with the ID as its name.
+`kind` is `channel`, `voice`, `thread`, `role`, `emoji`, `event`, `invite`, `label` or
+`group` ([channels created by plugins](#plugin-channels)). Names come from the runtime's live
+view of the server, then from the configuration, then from the names the runtime remembered:
+a deleted channel, role or scheduled event keeps the last name the runtime saw, with
+`deleted: true` ([Names of deleted channels](../../../self-hosting/analytics/#names-of-deleted-channels)).
+An ID that matches nothing is shown as `deleted`, with the ID as its name.
+
+### Plugin channels
+
+Channels a plugin created (temporary voice rooms, tickets…: the resource map records their
+owner, and the runtime remembers it once they are deleted) are grouped in the channel
+dimensions (`messages.*`, `voice.*`, `threads.created`, `polls.created`, `stage.seconds`,
+`bots.commands.channels`): one dimension per plugin instance, `"plugin:<bot>/<instance>"`,
+labelled with the instance's name and `"kind": "group"`.
+
+- In the summary's rankings, a group's entry has `count` (how many channels it sums over the
+  period) and `children`: its channels, largest first, each with `dim`, `value` and
+  `previous`, at most 25; the others are summed into a last child `"dim": "other"`. The
+  children's labels are in `labels`.
+- In a series without `dim`, a group is one dimension, the sum of its channels, ranked
+  against the other channels. `dim=plugin:<bot>/<instance>` asks for a group alone; a
+  channel ID asks for one channel, grouped or not.
 
 ## Summary
 
@@ -132,7 +153,20 @@ have the steps with data.
 `bots.commands.channels` (channels), `bots.commands.tenure` (member tenures) and
 `components.used` (bots), plus `presence.activity` when `status.presence` is true.
 Counters are ranked by their sum, gauges by their highest value. Each entry's `previous` is
-its value over the previous period (`0` if it did not appear, `null` when not covered).
+its value over the previous period (`0` if it did not appear, `null` when not covered). In
+the channel rankings, the channels a plugin created are one entry per plugin instance, with
+`count` and `children` ([Plugin channels](#plugin-channels)):
+
+```json
+"voice.seconds": [
+  { "dim": "223344556677889900", "value": 86400, "previous": 72000 },
+  { "dim": "plugin:main/voice-rooms", "value": 21600, "previous": 9000, "count": 14,
+    "children": [
+      { "dim": "556677889900112233", "value": 7200, "previous": 0 },
+      …
+    ] }
+]
+```
 
 `heatmap[weekday][hour]` is human messages (`messages.sent`) per weekday and UTC hour over
 the period, weekday `0` = Monday. `botsHeatmap` is the same for bot commands
@@ -148,7 +182,7 @@ the period, weekday `0` = Monday. `botsHeatmap` is the same for bot commands
 | `to` | now | RFC 3339. Rounded up to the end of its step. |
 | `from` | `to` − 7 days | RFC 3339. Rounded down to the start of its step. |
 | `step` | `day` | `hour`, `day` or `week` (ISO weeks, from Monday). |
-| `dim` | | One dimension value (a channel ID…). Metrics without a dimension ignore it. |
+| `dim` | | One dimension value (a channel ID, a [plugin's channels](#plugin-channels) `plugin:<bot>/<instance>`…). Metrics without a dimension ignore it. |
 | `top` | `8` | 1 to 50: how many dimensions a metric with a dimension returns without `dim`. |
 
 **Limits:** at most 400 days between `from` and `to`, and at most 2000 points per series
@@ -163,7 +197,8 @@ have one value per day, today counted live. With `step=hour` they appear at 00:0
 Without `dim`, a metric with a dimension returns, in this order:
 
 1. its total, `"dim": ""`, over every dimension;
-2. its top `top` dimensions over the range, largest first;
+2. its top `top` dimensions over the range, largest first (the channels a plugin created
+   count as one dimension per plugin instance);
 3. `"dim": "other"` (total − top), only when there are more dimensions than `top`.
 
 ```json

@@ -581,9 +581,14 @@ export type AnalyticsLabelKind =
   | "event"
   | "invite"
   | "label"
+  /** The channels a plugin instance created, grouped: `name` is the instance's name. */
+  | "group"
   | (string & {});
 
-/** Display name of a dimension (a channel or role ID, a custom emoji…). */
+/**
+ * Display name of a dimension (a channel or role ID, a custom emoji…). A deleted channel,
+ * role or scheduled event keeps the last name the runtime saw (`deleted: true`).
+ */
 export interface AnalyticsLabel {
   name: string;
   kind: AnalyticsLabelKind;
@@ -651,12 +656,24 @@ export interface AnalyticsKpi {
   spark: AnalyticsPoint[];
 }
 
-/** One entry of a ranking (top channels, emojis, invites…). */
+/**
+ * One entry of a ranking (top channels, emojis, invites…). In the channel rankings, the
+ * channels a plugin created (temporary voice rooms, tickets…) are one entry per plugin
+ * instance: `dim` is `"plugin:<bot>/<instance>"` (labelled with kind `"group"`), `count`
+ * how many channels it sums and `children` those channels.
+ */
 export interface AnalyticsRanked {
   dim: string;
   value: number;
   /** The entry's value over the previous period; null when not covered. */
   previous: number | null;
+  /** A group of plugin-created channels: how many channels it sums over the period. */
+  count?: number;
+  /**
+   * A group's channels, largest first: at most 25, the rest summed into an `"other"` child.
+   * Their labels (remembered names of deleted channels included) are in `labels`.
+   */
+  children?: AnalyticsRanked[];
 }
 
 /**
@@ -1528,8 +1545,12 @@ export interface PortalAnalytics {
    * (average per day). `spark` is per day.
    */
   kpis: AnalyticsKpi[];
-  /** Channels with the most messages among those everyone can see, top 5. */
-  topChannels: { id: string; name: string; value: number }[];
+  /**
+   * Channels with the most messages among those everyone can see, top 5. The channels a
+   * plugin created are never named: those everyone can see count in one entry per plugin
+   * instance (`group: true`, `id` `"plugin:<bot>/<instance>"`, `name` the instance's name).
+   */
+  topChannels: { id: string; name: string; value: number; group?: boolean }[];
   /** Most used bot commands (every bot of the server), top 8; command starts with "/". */
   topBotCommands: { bot: string; command: string; value: number }[];
   /** Messages per weekday (0 = Monday) and UTC hour. */

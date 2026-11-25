@@ -35,11 +35,14 @@ type AnalyticsPoint struct {
 }
 
 // AnalyticsQuery selects points of one server: the metrics (all when empty), the
-// buckets in [From, To) and optionally one dimension (nil: every dimension).
+// buckets in [From, To) and optionally one dimension (Dim) or a set of dimensions
+// (Dims, at most MaxListLimit; nil or empty: every dimension). When both are set,
+// a point must match both.
 type AnalyticsQuery struct {
 	Server  string
 	Metrics []string
 	Dim     *string
+	Dims    []string
 	From    time.Time
 	To      time.Time
 }

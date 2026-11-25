@@ -6,7 +6,7 @@
  * the crosshair, a live region announces the values.
  */
 import type { AnalyticsStep } from "@cicord/client";
-import { Table2 } from "lucide-react";
+import { ChevronRight, Table2 } from "lucide-react";
 import {
   useId,
   useLayoutEffect,
@@ -775,6 +775,13 @@ export interface RankItem {
   /** Secondary text after the value (change vs the previous period, a share). */
   extra?: ReactNode;
   color?: string;
+  /**
+   * The entries this one sums (a group of the channels a plugin created): hidden behind a
+   * toggle, their bars relative to this entry.
+   */
+  children?: RankItem[];
+  /** Accessible name of the toggle that shows the children. */
+  expandLabel?: string;
 }
 
 /** Ranked horizontal bars on one baseline, one hue (ordered buckets pass their own colours). */
@@ -793,29 +800,67 @@ export function RankBars({
   return (
     <ol className="flex flex-col gap-2" aria-label={label}>
       {items.map((item) => (
-        <li
-          key={item.key}
-          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1"
-        >
-          <span className="flex min-w-0 items-center gap-2 text-[13px]">{item.label}</span>
-          <span className="flex items-baseline gap-2 text-[13px]">
-            <span className="font-medium tabular">{item.display}</span>
-            {item.extra ? (
-              <span className="text-xs text-muted-foreground tabular">{item.extra}</span>
-            ) : null}
-          </span>
-          <span className="col-span-2 h-1.5 rounded-full bg-surface-sunken" aria-hidden="true">
-            <span
-              className="block h-full rounded-full"
-              style={{
-                width: `${Math.max(1.5, (item.value / max) * 100)}%`,
-                background: item.color ?? "var(--chart-1)",
-              }}
-            />
-          </span>
-        </li>
+        <RankRow key={item.key} item={item} max={max} />
       ))}
     </ol>
+  );
+}
+
+function RankRow({ item, max }: { item: RankItem; max: number }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const kids = item.children ?? [];
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
+      <span className="flex min-w-0 items-center gap-2 text-[13px]">
+        {kids.length > 0 ? (
+          <button
+            type="button"
+            className="-ml-1 inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-surface-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            aria-expanded={open}
+            aria-controls={id}
+            aria-label={item.expandLabel ?? item.name}
+            onClick={() => setOpen((o) => !o)}
+          >
+            <ChevronRight
+              className={cn("size-3.5 transition-transform", open && "rotate-90")}
+              aria-hidden="true"
+            />
+          </button>
+        ) : null}
+        {item.label}
+      </span>
+      <span className="flex items-baseline gap-2 text-[13px]">
+        <span className="font-medium tabular">{item.display}</span>
+        {item.extra ? (
+          <span className="text-xs text-muted-foreground tabular">{item.extra}</span>
+        ) : null}
+      </span>
+      <span className="col-span-2 h-1.5 rounded-full bg-surface-sunken" aria-hidden="true">
+        <span
+          className="block h-full rounded-full"
+          style={{
+            width: `${Math.max(1.5, (item.value / max) * 100)}%`,
+            background: item.color ?? "var(--chart-1)",
+          }}
+        />
+      </span>
+      {kids.length > 0 ? (
+        <ol
+          id={id}
+          hidden={!open}
+          aria-label={item.name}
+          className={cn(
+            "col-span-2 mt-1 mb-1 flex-col gap-2 border-l border-border pl-4",
+            open ? "flex" : "hidden",
+          )}
+        >
+          {kids.map((kid) => (
+            <RankRow key={kid.key} item={kid} max={item.value || 1} />
+          ))}
+        </ol>
+      ) : null}
+    </li>
   );
 }
 

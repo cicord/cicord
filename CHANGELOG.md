@@ -6,6 +6,29 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Changed
+
+- Analytics: the channels a plugin created (the voice-rooms plugin's temporary rooms,
+  tickets…) are grouped into one row per plugin instance in every per-channel ranking and
+  chart of the dashboard ("Channels created by voice-rooms", with how many channels), instead
+  of one row per ephemeral channel; expand the row to see the channels. The analytics API
+  answers the group as the dimension `plugin:<bot>/<instance>`, with `count` and `children`
+  in the summary's rankings (`dim=plugin:<bot>/<instance>` in a series).
+- Analytics, community portal: the channels a plugin created, often named after a member,
+  are never named in `topChannels`: those `@everyone` can see count in one entry per plugin
+  instance (`group: true`), named after the instance. Private and deleted channels are still
+  left out.
+
+### Fixed
+
+- Analytics: deleted channels and roles keep their names in the dashboard
+  (`NPjonath's channel (deleted)` instead of `#1575242066328551536 (deleted)`), and scheduled
+  events are shown by name instead of their ID. The collector remembers the last name it saw
+  (on activity, once a day, on channel and role create, update and delete events, and from
+  the scheduled event samples, with no extra Discord API call) in the new state table
+  `analytics_labels` (migration 3, SQLite and PostgreSQL), pruned with the analytics
+  retention and when no data is left for the channel.
+
 ## [0.1.10] - 2026-11-25
 
 ### Added

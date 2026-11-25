@@ -161,6 +161,43 @@ describe("mock analytics", () => {
     expect(bots.points.every(([, v]) => Number.isInteger(v) && v >= 5)).toBe(true);
   });
 
+  test("plugin rooms: one group per plugin instance, rooms as children, remembered names", () => {
+    const { summary, series } = mock();
+    const s = summary("period=30d");
+    const voice = s.rankings["voice.seconds"]!;
+    const group = voice.find((r) => r.dim === "plugin:main/voice-rooms")!;
+    expect(group).toBeTruthy();
+    expect(s.labels["plugin:main/voice-rooms"]).toEqual({ name: "voice-rooms", kind: "group" });
+    // No temporary room outside its group.
+    expect(voice.every((r) => r.children || !s.labels[r.dim]?.name.endsWith("'s channel"))).toBe(
+      true,
+    );
+    const kids = group.children!;
+    expect(group.count).toBeGreaterThan(5);
+    expect(kids.length).toBe(Math.min(group.count!, 25) + (group.count! > 25 ? 1 : 0));
+    expect(kids.reduce((a, k) => a + k.value, 0)).toBeCloseTo(group.value, 1);
+    expect(kids.map((k) => k.value)).toEqual(kids.map((k) => k.value).toSorted((a, b) => b - a));
+    const deleted = kids.filter((k) => s.labels[k.dim]?.deleted);
+    expect(deleted.length).toBeGreaterThan(0);
+    expect(s.labels[deleted[0]!.dim]).toMatchObject({ kind: "voice", deleted: true });
+    expect(s.labels[deleted[0]!.dim]!.name).toMatch(/'s channel$/);
+    // Series: the group is one serie, the sum of its rooms.
+    const r = series(
+      "metrics=voice.seconds&from=2026-11-18T00:00:00Z&to=2026-11-25T00:00:00Z&step=day&top=50",
+    );
+    const rooms = r.series.find((x) => x.dim === "plugin:main/voice-rooms")!;
+    expect(rooms.points.some(([, v]) => v > 0)).toBe(true);
+    expect(r.series.filter((x) => r.labels[x.dim]?.name.endsWith("'s channel"))).toEqual([]);
+    const total = r.series.find((x) => x.dim === "")!;
+    const parts = r.series.filter((x) => x.dim !== "");
+    expect(parts.reduce((a, x) => a + x.points[3]![1], 0)).toBeCloseTo(total.points[3]![1], 1);
+    const alone = series(
+      "metrics=voice.seconds&from=2026-11-18T00:00:00Z&to=2026-11-25T00:00:00Z&step=day&dim=plugin:main/voice-rooms",
+    );
+    expect(alone.series).toEqual([rooms]);
+    expect(alone.labels["plugin:main/voice-rooms"]).toEqual({ name: "voice-rooms", kind: "group" });
+  });
+
   test("series validation: 2000 points, 400 days, unknown metric", () => {
     const { a } = mock();
     const q = (s: string) => a.series(new URL(`http://x/?${s}`));

@@ -11,7 +11,8 @@ import (
 	"github.com/cicord/cicord/internal/state"
 )
 
-// The analytics part of the suite (state.Analytics and state.AnalyticsTotals).
+// The analytics part of the suite (state.Analytics, state.AnalyticsTotals and
+// state.AnalyticsLabels).
 
 var analyticsTests = []struct {
 	name string
@@ -23,6 +24,10 @@ var analyticsTests = []struct {
 	{"AnalyticsQueryOrderIsByteOrder", testAnalyticsOrder},
 	{"AnalyticsDims", testAnalyticsDims},
 	{"AnalyticsTotals", testAnalyticsTotals},
+	{"AnalyticsQueryDims", testAnalyticsQueryDims},
+	{"AnalyticsLabels", testAnalyticsLabels},
+	{"AnalyticsLabelsValidation", testAnalyticsLabelsValidation},
+	{"AnalyticsLabelsPrune", testAnalyticsLabelsPrune},
 	{"AnalyticsValidation", testAnalyticsValidation},
 	{"AnalyticsActive", testAnalyticsActive},
 	{"AnalyticsPurgeAndSince", testAnalyticsPurge},
@@ -498,5 +503,192 @@ func testAnalyticsEmpty(t *testing.T, b Backend) {
 	}
 	if n, err := a.Purge(c, "none", hourN(0)); err != nil || n != 0 {
 		t.Errorf("Purge = %d, %v", n, err)
+	}
+}
+
+// testAnalyticsQueryDims: Query and Totals limited to a set of dimensions.
+func testAnalyticsQueryDims(t *testing.T, b Backend) {
+	s, _ := open(t, b)
+	a := s.Analytics()
+	tot, ok := a.(state.AnalyticsTotals)
+	if !ok {
+		t.Fatal("the backend's Analytics does not implement state.AnalyticsTotals")
+	}
+	record(t, a, state.AnalyticsCounter,
+		pt("main", "msg", "a", hourN(0), 1), pt("main", "msg", "b", hourN(0), 2), pt("main", "msg", "c", hourN(0), 4),
+		pt("main", "msg", "a", hourN(1), 8), pt("main", "voice", "a", hourN(1), 16), pt("other", "msg", "a", hourN(0), 100))
+	wantPoints(t, "query of dims a, b", query(t, a, state.AnalyticsQuery{Server: "main", Metrics: []string{"msg"}, Dims: []string{"b", "a", "zz"}}),
+		"msg/a@0=1", "msg/a@1=8", "msg/b@0=2")
+	b1 := "b"
+	wantPoints(t, "query of dim b among a, b", query(t, a, state.AnalyticsQuery{Server: "main", Dim: &b1, Dims: []string{"a", "b"}}),
+		"msg/b@0=2")
+	ps, err := tot.Totals(t.Context(), state.AnalyticsQuery{Server: "main", Dims: []string{"a", "c"}})
+	must(t, err)
+	wantPoints(t, "totals of dims a, c", ps, "msg/@0=5", "msg/@1=8", "voice/@1=16")
+	ps, err = tot.Totals(t.Context(), state.AnalyticsQuery{Server: "main", Metrics: []string{"msg"}, Dims: []string{"nope"}})
+	must(t, err)
+	wantPoints(t, "totals of an unknown dim", ps)
+	tooMany := make([]string, state.MaxListLimit+1)
+	for i := range tooMany {
+		tooMany[i] = fmt.Sprint(i)
+	}
+	if _, err := a.Query(t.Context(), state.AnalyticsQuery{Server: "main", Dims: tooMany}); err == nil {
+		t.Error("Query with more than MaxListLimit dims succeeded")
+	}
+	if _, err := tot.Totals(t.Context(), state.AnalyticsQuery{Server: "main", Dims: tooMany}); err == nil {
+		t.Error("Totals with more than MaxListLimit dims succeeded")
+	}
+}
+
+func analyticsLabels(t *testing.T, s state.Store) state.AnalyticsLabels {
+	t.Helper()
+	l, ok := s.Analytics().(state.AnalyticsLabels)
+	if !ok {
+		t.Fatal("the backend's Analytics does not implement state.AnalyticsLabels")
+	}
+	return l
+}
+
+func getLabels(t *testing.T, l state.AnalyticsLabels, server, dim string, ids ...string) map[string]state.AnalyticsLabel {
+	t.Helper()
+	got, err := l.GetLabels(t.Context(), server, dim, ids)
+	must(t, err)
+	out := map[string]state.AnalyticsLabel{}
+	for _, x := range got {
+		if x.Server != server || x.Dim != dim {
+			t.Errorf("label %+v: want server %q, dim %q", x, server, dim)
+		}
+		if x.SeenAt.Location() != time.UTC {
+			t.Errorf("seen at location %v, want UTC", x.SeenAt.Location())
+		}
+		if _, dup := out[x.ID]; dup {
+			t.Errorf("label %q returned twice", x.ID)
+		}
+		out[x.ID] = x
+	}
+	return out
+}
+
+func testAnalyticsLabels(t *testing.T, b Backend) {
+	s, clk := open(t, b)
+	l := analyticsLabels(t, s)
+	c := t.Context()
+	seen := clk.Now()
+	must(t, l.PutLabels(c,
+		state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "1", Name: "général", Type: "channel"},
+		state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "2", Name: "NPjonath's channel", Type: "voice", Owner: "plugin:main/voice-rooms"},
+		state.AnalyticsLabel{Server: "main", Dim: "role", ID: "1", Name: "Mods", Type: "role", Color: "#ff0000"},
+		state.AnalyticsLabel{Server: "other", Dim: "channel", ID: "1", Name: "elsewhere", Type: "channel"}))
+	got := getLabels(t, l, "main", "channel", "1", "2", "3")
+	if len(got) != 2 {
+		t.Fatalf("GetLabels = %v, want channels 1 and 2", got)
+	}
+	if g := got["1"]; g.Name != "général" || g.Type != "channel" || g.Owner != "" || g.Deleted {
+		t.Errorf("channel 1 = %+v", g)
+	}
+	assertTime(t, "zero SeenAt is now", got["1"].SeenAt, seen)
+	if g := got["2"]; g.Name != "NPjonath's channel" || g.Type != "voice" || g.Owner != "plugin:main/voice-rooms" {
+		t.Errorf("channel 2 = %+v", g)
+	}
+	if g := getLabels(t, l, "main", "role", "1")["1"]; g.Name != "Mods" || g.Color != "#ff0000" {
+		t.Errorf("role 1 = %+v", g)
+	}
+	if g := getLabels(t, l, "other", "channel", "1")["1"]; g.Name != "elsewhere" {
+		t.Errorf("other server's channel 1 = %+v", g)
+	}
+	if g := getLabels(t, l, "main", "channel"); len(g) != 0 {
+		t.Errorf("GetLabels without ids = %v", g)
+	}
+
+	// Replace: a rename, then the deletion without the owner (the resource map forgot
+	// it): the owner stays.
+	later := seen.Add(time.Hour)
+	must(t, l.PutLabels(c, state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "2", Name: "Chill room", Type: "voice", SeenAt: later}))
+	must(t, l.PutLabels(c, state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "2", Name: "Chill room", Type: "voice", Deleted: true, SeenAt: later}))
+	g := getLabels(t, l, "main", "channel", "2")["2"]
+	if g.Name != "Chill room" || !g.Deleted || g.Owner != "plugin:main/voice-rooms" {
+		t.Errorf("channel 2 after rename and delete = %+v", g)
+	}
+	assertTime(t, "seen at", g.SeenAt, later)
+	// A new owner replaces the stored one.
+	must(t, l.PutLabels(c, state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "2", Name: "x", Type: "voice", Owner: "plugin:main/tickets"}))
+	if g := getLabels(t, l, "main", "channel", "2")["2"]; g.Owner != "plugin:main/tickets" || g.Deleted {
+		t.Errorf("channel 2 with a new owner = %+v", g)
+	}
+	// The same key twice in one call: the last label wins, an earlier owner is kept.
+	must(t, l.PutLabels(c,
+		state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "9", Name: "first", Type: "voice", Owner: "plugin:main/voice-rooms"},
+		state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "9", Name: "second", Type: "voice", Deleted: true}))
+	if g := getLabels(t, l, "main", "channel", "9")["9"]; g.Name != "second" || !g.Deleted || g.Owner != "plugin:main/voice-rooms" {
+		t.Errorf("channel 9 written twice = %+v", g)
+	}
+	must(t, l.PutLabels(c))
+}
+
+func testAnalyticsLabelsValidation(t *testing.T, b Backend) {
+	s, _ := open(t, b)
+	l := analyticsLabels(t, s)
+	good := state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "1", Name: "a"}
+	for name, bad := range map[string]state.AnalyticsLabel{
+		"empty server": {Dim: "channel", ID: "2"},
+		"empty dim":    {Server: "main", ID: "2"},
+		"empty id":     {Server: "main", Dim: "channel"},
+		"out of range": {Server: "main", Dim: "channel", ID: "2", SeenAt: time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC)},
+	} {
+		// The valid label of the same call is not written either (atomic).
+		if err := l.PutLabels(t.Context(), good, bad); err == nil {
+			t.Errorf("%s: PutLabels succeeded", name)
+		}
+	}
+	if got := getLabels(t, l, "main", "channel", "1", "2"); len(got) != 0 {
+		t.Errorf("rejected PutLabels wrote %v", got)
+	}
+	tooMany := make([]string, state.MaxListLimit+1)
+	for i := range tooMany {
+		tooMany[i] = fmt.Sprint(i)
+	}
+	if _, err := l.GetLabels(t.Context(), "main", "channel", tooMany); err == nil {
+		t.Error("GetLabels with more than MaxListLimit ids succeeded")
+	}
+	ids := tooMany[:state.MaxListLimit]
+	if _, err := l.GetLabels(t.Context(), "main", "channel", ids); err != nil {
+		t.Errorf("GetLabels with MaxListLimit ids: %v", err)
+	}
+}
+
+func testAnalyticsLabelsPrune(t *testing.T, b Backend) {
+	s, clk := open(t, b)
+	l := analyticsLabels(t, s)
+	a := s.Analytics()
+	c := t.Context()
+	old := clk.Now().Add(-500 * 24 * time.Hour)
+	record(t, a, state.AnalyticsCounter, pt("main", "voice.seconds", "1", hourN(0), 60), pt("main", "voice.seconds", "2", hourN(0), 60),
+		pt("other", "voice.seconds", "3", hourN(0), 60))
+	must(t, l.PutLabels(c,
+		state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "1", Name: "kept"},               // data, seen now
+		state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "2", Name: "stale", SeenAt: old}, // data, not seen within the retention
+		state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "3", Name: "no data"},            // its points are another server's
+		state.AnalyticsLabel{Server: "main", Dim: "role", ID: "4", Name: "no data either"},        // no point at all
+		state.AnalyticsLabel{Server: "other", Dim: "channel", ID: "5", Name: "other's, no data"}))
+	n, err := l.PruneLabels(c, "main", clk.Now().Add(-400*24*time.Hour))
+	must(t, err)
+	if n != 3 {
+		t.Errorf("PruneLabels removed %d labels, want 3", n)
+	}
+	if got := getLabels(t, l, "main", "channel", "1", "2", "3"); len(got) != 1 || got["1"].Name != "kept" {
+		t.Errorf("channels after prune = %v", got)
+	}
+	if got := getLabels(t, l, "main", "role", "4"); len(got) != 0 {
+		t.Errorf("roles after prune = %v", got)
+	}
+	if got := getLabels(t, l, "other", "channel", "5"); len(got) != 1 {
+		t.Errorf("PruneLabels(main) touched other: %v", got)
+	}
+	// Once the points are purged, the label goes too.
+	if _, err := a.Purge(c, "main", hourN(1)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := l.PruneLabels(c, "main", old); err != nil || n != 1 {
+		t.Errorf("PruneLabels after the purge = %d, %v; want 1", n, err)
 	}
 }

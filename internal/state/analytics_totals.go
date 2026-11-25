@@ -11,7 +11,7 @@ import "context"
 // database avoids loading every dimension's rows.
 type AnalyticsTotals interface {
 	// Totals returns, for each metric and bucket selected by q, the sum of the
-	// values of every dimension (q.Dim is ignored), with Dim "", ordered by metric
-	// then bucket.
+	// values of every dimension (q.Dim is ignored; q.Dims, when set, limits the sum
+	// to those dimensions), with Dim "", ordered by metric then bucket.
 	Totals(ctx context.Context, q AnalyticsQuery) ([]AnalyticsPoint, error)
 }

@@ -4,7 +4,10 @@
  * from a seeded hash, never stored (sessionStorage could not hold them). A growing community
  * with weekly seasonality and evening peaks (UTC), a partnership that brings a wave of joins,
  * a raid that ends in bans, a few busy channels, custom emojis, invites, commands, voice and
- * presence, and the bots members use (Cicord's own, a music bot, a moderation bot).
+ * presence, and the bots members use (Cicord's own, a music bot, a moderation bot). The
+ * voice-rooms plugin creates temporary rooms ("join to create"), named after their owner and
+ * deleted once empty: the API groups them into one row per plugin instance, with the rooms
+ * (their remembered names) as children.
  *
  * Variants: `full` (everything collected), `noPresence` (no privileged presence intent and
  * no ViewAuditLog permission: `status.missing`, collection started 45 days ago), `empty`
@@ -48,6 +51,8 @@ interface Dim {
   from?: number;
   until?: number;
   label?: AnalyticsLabel;
+  /** A channel a plugin created: its owner, "plugin:<bot>/<instance>". */
+  owner?: string;
 }
 
 interface MetricDef {
@@ -107,6 +112,46 @@ const VOICE: Dim[] = [
   vc("ch-vmusic", "Music", 8),
   vc("ch-vstudy", "Focus", 5),
 ];
+/** The voice-rooms plugin instance of the mock server (resource owner). */
+const MOCK_ROOMS_OWNER = "plugin:main/voice-rooms";
+
+const ROOM_OWNERS = [
+  "NPjonath",
+  "Léa",
+  "Max",
+  "Sofia",
+  "kenji",
+  "Ana",
+  "Tom",
+  "Yuki",
+  "Bastien",
+  "Mira",
+  "Oscar",
+  "Inès",
+];
+
+/**
+ * Temporary voice rooms: one every few days over the history, one a day this week, each
+ * deleted the day it was created (the dashboard shows their remembered names); two are open.
+ */
+const ROOM_DAYS = Array.from({ length: DAYS }, (_, d) => d).filter(
+  (d) => d % 3 === 0 || d >= D - 6,
+);
+const ROOMS: Dim[] = [...ROOM_DAYS, D].map((day, i) => {
+  const open = day === D;
+  const owner = ROOM_OWNERS[(i * 7) % ROOM_OWNERS.length]!;
+  return {
+    id: `15752420${String(10_000_000_000 + i * 7_340_033)}`,
+    weight: 3 + ((i * 13) % 7),
+    from: day,
+    ...(open ? {} : { until: day }),
+    owner: MOCK_ROOMS_OWNER,
+    label: { name: `${owner}'s channel`, kind: "voice", ...(open ? {} : { deleted: true }) },
+  };
+});
+
+VOICE.push(...ROOMS);
+
 const STAGE: Dim[] = [{ id: "ch-stage", weight: 1, label: { name: "Stage", kind: "voice" } }];
 
 function emojiImage(text: string, color: string): string {
@@ -900,6 +945,8 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     "members.roles.removed",
   ]);
 
+  const weightSums = new Map<string, number>();
+
   /** Hours of one dimension of a counter on a day ("" = the total). */
   function counterHours(metric: string, dimId: string, d: number): number[] {
     const key = `${metric}|${dimId}`;
@@ -920,11 +967,17 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     const dim = dims.find((x) => x.id === dimId);
     if (!dim) return zeros();
     // Partitions share the total; ratio metrics are relative to the plain (message) weights.
-    const weightSum =
-      dims.reduce(
-        (a, x) => a + (PARTITIONS.has(metric) ? weightOf(metric, x, d) : live(x, d) ? x.weight : 0),
-        0,
-      ) || 1;
+    const sumKey = `${metric}|${d}`;
+    let weightSum = weightSums.get(sumKey);
+    if (weightSum === undefined) {
+      weightSum =
+        dims.reduce(
+          (a, x) =>
+            a + (PARTITIONS.has(metric) ? weightOf(metric, x, d) : live(x, d) ? x.weight : 0),
+          0,
+        ) || 1;
+      weightSums.set(sumKey, weightSum);
+    }
     const daily = (counterDaily(metric, d) * weightOf(metric, dim, d)) / weightSum;
     const burst =
       metric === "moderation.actions"
@@ -1071,6 +1124,60 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
 
   const dimsOf = (metric: string) => DIMS[metric] ?? [];
 
+  /** Owner of the rooms a plugin created, by channel ID. */
+  const OWNERS = new Map(ROOMS.map((r) => [r.id, r.owner!]));
+
+  /** Labels of the dimensions, a group of plugin rooms labelled with the instance's name. */
+  const labelOfDim = (dim: string): AnalyticsLabel | undefined =>
+    dim.startsWith("plugin:")
+      ? { name: dim.slice(dim.lastIndexOf("/") + 1), kind: "group" }
+      : LABELS[dim];
+
+  /**
+   * Groups the rooms plugins created into one entry per instance (internal/analytics
+   * groups.go): the sum, how many rooms, the largest 25 as children, the rest as "other".
+   */
+  function grouped(entries: AnalyticsRanked[]): AnalyticsRanked[] {
+    const out: AnalyticsRanked[] = [];
+    const groups = new Map<string, AnalyticsRanked[]>();
+    for (const e of entries) {
+      const owner = OWNERS.get(e.dim);
+      if (!owner) out.push(e);
+      else if (e.value > 0 || (e.previous ?? 0) > 0)
+        groups.set(owner, [...(groups.get(owner) ?? []), e]);
+    }
+    for (const [owner, rooms] of groups) {
+      const shown = rooms.filter((r) => r.value > 0).toSorted((a, b) => b.value - a.value);
+      const top = shown.slice(0, 25);
+      const rest = shown.slice(25);
+      const total = (xs: AnalyticsRanked[], f: (r: AnalyticsRanked) => number | null) =>
+        round(xs.reduce((a, r) => a + (f(r) ?? 0), 0));
+      const previous = rooms.some((r) => r.previous !== null)
+        ? total(rooms, (r) => r.previous)
+        : null;
+      out.push({
+        dim: owner,
+        value: total(shown, (r) => r.value),
+        previous,
+        count: shown.length,
+        children: [
+          ...top,
+          ...(rest.length
+            ? [
+                {
+                  dim: "other",
+                  value: total(rest, (r) => r.value),
+                  previous:
+                    previous === null ? null : round(previous - total(top, (r) => r.previous)),
+                },
+              ]
+            : []),
+        ],
+      });
+    }
+    return out;
+  }
+
   // ─────────────────────────────────────────────────────── summary
 
   const PERIOD_DAYS: Record<AnalyticsPeriod, number> = {
@@ -1183,18 +1290,20 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
       // Gauge rankings (activities) hold the period's peak, like the store's dimension totals.
       const mode = metric === "presence.activity" ? "peak" : "bucket";
       const entries = collected(metric)
-        ? dimsOf(metric)
-            .map((dim) => ({
+        ? grouped(
+            dimsOf(metric).map((dim) => ({
               dim: dim.id,
               value: round(aggregate(metric, dim.id, cur, now, mode) ?? 0),
               previous: prevCovered ? round(aggregate(metric, dim.id, prev, now, mode) ?? 0) : null,
-            }))
+            })),
+          )
             .filter((e) => e.value > 0)
             .toSorted((a, b) => b.value - a.value)
             .slice(0, 10)
         : [];
       rankings[metric] = entries;
-      for (const e of entries) if (LABELS[e.dim]) labels[e.dim] = LABELS[e.dim]!;
+      for (const e of [...entries, ...entries.flatMap((x) => x.children ?? [])])
+        if (labelOfDim(e.dim)) labels[e.dim] = labelOfDim(e.dim)!;
     }
 
     const heatmapOf = (metric: string) => {
@@ -1286,6 +1395,21 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
       return { metric, dim: dimId, points: out };
     };
 
+    /** A group of plugin rooms: the sum of its rooms, bucket by bucket. */
+    const groupSerie = (metric: string, owner: string): AnalyticsSerie => {
+      const parts = dimsOf(metric)
+        .filter((x) => x.owner === owner)
+        .map((x) => serie(metric, x.id));
+      return {
+        metric,
+        dim: owner,
+        points: serie(metric, "").points.map(([t], i) => [
+          t,
+          round(parts.reduce((a, p) => a + (p.points[i]?.[1] ?? 0), 0)),
+        ]),
+      };
+    };
+
     const result: AnalyticsSerie[] = [];
     const labels: Record<string, AnalyticsLabel> = {};
     for (const metric of metrics) {
@@ -1295,21 +1419,28 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
         continue;
       }
       if (dimParam !== null) {
-        result.push(serie(metric, dimParam));
-        if (LABELS[dimParam]) labels[dimParam] = LABELS[dimParam]!;
+        result.push(
+          dimParam.startsWith("plugin:") ? groupSerie(metric, dimParam) : serie(metric, dimParam),
+        );
+        if (labelOfDim(dimParam)) labels[dimParam] = labelOfDim(dimParam)!;
         continue;
       }
       const window: Window = { from, to };
-      const ranked = dimsOf(metric)
-        .map((dim) => ({ dim, total: aggregate(metric, dim.id, window, now, "avg") ?? 0 }))
-        .filter((x) => x.total > 0)
-        .toSorted((a, b) => b.total - a.total);
+      const ranked = grouped(
+        dimsOf(metric).map((dim) => ({
+          dim: dim.id,
+          value: aggregate(metric, dim.id, window, now, "avg") ?? 0,
+          previous: null,
+        })),
+      )
+        .filter((x) => x.value > 0)
+        .toSorted((a, b) => b.value - a.value);
       const total = serie(metric, "");
       result.push(total);
       const kept = ranked.slice(0, top);
-      for (const { dim } of kept) {
-        result.push(serie(metric, dim.id));
-        if (dim.label) labels[dim.id] = dim.label;
+      for (const entry of kept) {
+        result.push(entry.children ? groupSerie(metric, entry.dim) : serie(metric, entry.dim));
+        if (labelOfDim(entry.dim)) labels[entry.dim] = labelOfDim(entry.dim)!;
       }
       if (ranked.length > top) {
         // "other" = total − the kept dimensions, bucket by bucket.

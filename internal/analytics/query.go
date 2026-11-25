@@ -47,6 +47,8 @@ type Reader struct {
 	Store state.Analytics
 	// Labeler resolves dimensions (nil: FallbackLabel only).
 	Labeler Labeler
+	// Owners tells which channels a plugin created (nil: channels are not grouped).
+	Owners Owners
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -313,6 +315,34 @@ func (r *Reader) dimHourly(ctx context.Context, server, metric, dim string, from
 	return hourly(ps), err
 }
 
+// groupHourly returns the hourly sums of a metric over the channels of a group.
+func (r *Reader) groupHourly(ctx context.Context, req SeriesRequest, metric string, ids []string) (hourly, error) {
+	if len(ids) == 0 {
+		return hourly{}, nil
+	}
+	q := state.AnalyticsQuery{Server: req.Server, Metrics: []string{metric}, Dims: ids, From: req.From, To: req.To}
+	var ps []state.AnalyticsPoint
+	var err error
+	if t, ok := r.Store.(state.AnalyticsTotals); ok {
+		ps, err = t.Totals(ctx, q)
+	} else {
+		ps, err = r.Store.Query(ctx, q)
+	}
+	if err != nil {
+		return nil, err
+	}
+	sums := map[int64]float64{}
+	for _, p := range ps {
+		sums[p.Bucket.Unix()] += p.Value
+	}
+	hs := make(hourly, 0, len(sums))
+	for b, v := range sums {
+		hs = append(hs, state.AnalyticsPoint{Server: req.Server, Metric: metric, Bucket: time.Unix(b, 0).UTC(), Value: v})
+	}
+	slices.SortFunc(hs, func(a, b state.AnalyticsPoint) int { return a.Bucket.Compare(b.Bucket) })
+	return hs, nil
+}
+
 // withToday adds today's live distinct count of a daily metric (the collector
 // rolls up only past days) when today is in [from, to).
 func (r *Reader) withToday(ctx context.Context, server, metric string, hs hourly, from, to time.Time) (hourly, error) {
@@ -423,10 +453,22 @@ func (r *Reader) metricSeries(ctx context.Context, req SeriesRequest, m Metric) 
 	serie := func(dim string, hs hourly) Serie {
 		return Serie{Metric: m.Name, Dim: dim, Points: rollup(hs, a, req.From, req.To, req.Step)}
 	}
+	grouping := groupable(m) && r.Owners != nil
 	if m.Dim == "" || req.Dim != nil {
 		dim := ""
 		if m.Dim != "" {
 			dim = *req.Dim
+		}
+		if grouping && IsGroup(dim) {
+			ds, err := r.Store.Dims(ctx, req.Server, m.Name, req.From, req.To, state.MaxListLimit)
+			if err != nil {
+				return nil, nil, err
+			}
+			hs, err := r.groupHourly(ctx, req, m.Name, membersOf(ds, r.ownerMemo(req.Server).of(ctx, ds), dim))
+			if err != nil {
+				return nil, nil, err
+			}
+			return []Serie{serie(dim, hs)}, []string{dim}, nil
 		}
 		hs, err := r.dimHourly(ctx, req.Server, m.Name, dim, req.From, req.To)
 		if err == nil {
@@ -442,19 +484,31 @@ func (r *Reader) metricSeries(ctx context.Context, req SeriesRequest, m Metric) 
 		return []Serie{serie(dim, hs)}, dims, nil
 	}
 
-	// Top dimensions, "other" and the total.
-	ranked, err := r.Store.Dims(ctx, req.Server, m.Name, req.From, req.To, req.Top+2)
+	// Top dimensions (plugin-created channels grouped), "other" and the total.
+	limit := req.Top + 2
+	if grouping {
+		limit = state.MaxListLimit
+	}
+	ranked, err := r.Store.Dims(ctx, req.Server, m.Name, req.From, req.To, limit)
 	if err != nil {
 		return nil, nil, err
 	}
-	var dims []string
-	for _, d := range ranked {
-		if d.Dim != "" {
-			dims = append(dims, d.Dim)
+	var entries []grouped
+	if grouping {
+		entries = groupDims(ranked, r.ownerMemo(req.Server).of(ctx, ranked), nil)
+	} else {
+		for _, d := range ranked {
+			if d.Dim != "" {
+				entries = append(entries, grouped{Dim: d.Dim, Value: d.Value})
+			}
 		}
 	}
-	others := len(dims) > req.Top
-	dims = dims[:min(len(dims), req.Top)]
+	others := len(entries) > req.Top
+	entries = entries[:min(len(entries), req.Top)]
+	dims := make([]string, len(entries))
+	for i, e := range entries {
+		dims[i] = e.Dim
+	}
 	tot, err := r.totals(ctx, req.Server, []string{m.Name}, req.From, req.To)
 	if err != nil {
 		return nil, nil, err
@@ -462,13 +516,23 @@ func (r *Reader) metricSeries(ctx context.Context, req SeriesRequest, m Metric) 
 	total := tot[m.Name]
 	out := []Serie{serie("", total)}
 	parts := make([]hourly, 0, len(dims))
-	for _, d := range dims {
-		hs, err := r.dimHourly(ctx, req.Server, m.Name, d, req.From, req.To)
+	for _, e := range entries {
+		var hs hourly
+		var err error
+		if e.Members != nil {
+			ids := make([]string, len(e.Members))
+			for i, x := range e.Members {
+				ids[i] = x.Dim
+			}
+			hs, err = r.groupHourly(ctx, req, m.Name, ids)
+		} else {
+			hs, err = r.dimHourly(ctx, req.Server, m.Name, e.Dim, req.From, req.To)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
 		parts = append(parts, hs)
-		out = append(out, serie(d, hs))
+		out = append(out, serie(e.Dim, hs))
 	}
 	if others {
 		out = append(out, serie("other", minus(total, parts)))

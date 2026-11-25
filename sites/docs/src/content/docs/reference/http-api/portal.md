@@ -51,8 +51,12 @@ the server opts in with [`spec.analytics.portal`](../../../configuration/server/
   previous period (`previous` is `null` when it is not covered), with one `spark` point per
   day. The periods are whole UTC days ending today, as in the
   [admin summary](../analytics/#summary).
-- `topChannels`: the 5 channels with the most messages **among those `@everyone` can see**;
-  private channels are never named nor counted there (the `messages.sent` KPI is server-wide).
+- `topChannels`: the 5 channels with the most messages **among those `@everyone` can see
+  now**; private and deleted channels are never named nor counted there (the
+  `messages.sent` KPI is server-wide). The channels a plugin created (temporary voice rooms,
+  tickets, often named after a member) are never named: those `@everyone` can see count in
+  one entry per plugin instance, `{ "id": "plugin:<bot>/<instance>", "name": "<instance>",
+  "value": …, "group": true }`.
 - `topBotCommands`: the 8 most used commands of every bot of the server.
 - `heatmap[weekday][hour]`: messages per weekday (`0` = Monday) and UTC hour.
 

@@ -20,7 +20,11 @@ Cicord stores **aggregates only**:
   `#general` between 14:00 and 15:00 UTC". It never records who sent them.
 - **Bounded dimensions.** A dimension is a channel, role, AutoMod rule or scheduled event ID,
   an emoji, a command name, an invite code, or a fixed label such as `<7d` or `ban`. A member
-  ID or name is never a dimension.
+  ID or name is never a dimension. The runtime also remembers the last name of the channels,
+  roles and scheduled events it counts, so a deleted one keeps its name in the dashboard
+  ([Names of deleted channels](#names-of-deleted-channels)). A channel named after a member
+  (a temporary voice room such as "NPjonath's channel") keeps that name there, for the
+  moderators and admins only.
 - **No content.** No message text, attachment, file name or link is read or stored. Messages
   are only counted.
 - **Distinct members via daily tokens.** To count distinct active members, the runtime keeps
@@ -194,8 +198,10 @@ spec:
   `public` for anyone; `off`, or `enabled: false`, answers `404`. It covers the last 7, 30 or
   90 days: members, joins, active members, messages, voice time, reactions, bot commands and
   members using bots, the top 5 channels by messages, the top 8 bot commands and a weekday ×
-  hour heatmap of messages. Only channels `@everyone` can see are named, and nothing is per
-  member. The reference portal does not show it: a custom portal does, with
+  hour heatmap of messages. Only channels `@everyone` can see now are named, and nothing is
+  per member. Channels a plugin created, often named after a member, are never named: those
+  `@everyone` can see count in one entry per plugin instance, named after the instance
+  ([Channels created by plugins](#channels-created-by-plugins)). The reference portal does not show it: a custom portal does, with
   `usePortalAnalytics` (see the
   [Cicord community portal](../../portal/custom-portal/#example-the-cicord-community-portal)).
 
@@ -207,6 +213,9 @@ spec:
   `analytics_points` (buckets in unix seconds) and `analytics_active`. A busy server with
   a hundred active channels keeps a few million rows over 400 days. Backups of the state
   database include analytics ([Backups and secrets](../backups-and-secrets/)).
+- The remembered names are in `analytics_labels`, one row per channel, role or scheduled
+  event. Once a day, after retention, a name not seen within the retention, or whose channel
+  has no point left, is deleted.
 
 ## The dashboard
 
@@ -232,6 +241,32 @@ The analytics page of a server in the admin console (moderators and admins, on t
 
 Channel, role and emoji IDs are shown with their current name. A channel or role that no
 longer exists is marked as deleted.
+
+### Names of deleted channels
+
+Analytics store channels, roles and scheduled events by Discord ID, and Discord forgets the
+name of what is deleted. So the collector remembers the last name it saw: when a channel or
+role has activity (once a day per channel or role, from the runtime's cache), and when the
+gateway announces a channel or role created, renamed or deleted. It costs no Discord API
+call. A deleted channel is then shown as `NPjonath's channel (deleted)` instead of its ID.
+Channels deleted before the runtime remembered them, or while it was stopped and before any
+activity, still show their ID.
+
+### Channels created by plugins
+
+Channels a plugin creates are temporary by nature: a "join to create" voice room of the
+[voice-rooms](../../plugins/official/#voice-rooms) plugin, a ticket. The resource map records
+the plugin instance that owns them, and the collector remembers it once they are deleted. In
+every per-channel ranking and chart (messages, voice time, channels where bots are used,
+messages over time), they are **one row per plugin instance**, named "Channels created by
+voice-rooms" with how many channels it sums. Expand the row to see the channels, with their
+remembered names, largest first (25 at most, the rest summed as "Other"). The API answers
+the group as the dimension `plugin:<bot>/<instance>`
+([analytics API](../../reference/http-api/analytics/#plugin-channels)).
+
+The community portal never names these channels: it counts those `@everyone` can see now in
+the group's row, named after the plugin instance. A private room (`@everyone` cannot see it)
+is not counted, and neither is a deleted one, like any channel the portal cannot check.
 
 ## Prometheus
 

@@ -230,6 +230,7 @@ func (c *Collector) daily(ctx context.Context) {
 		if n > 0 {
 			c.log.Info("analytics: retention applied", "server", s.Key, "removed", n, "before", before.Format(time.DateOnly))
 		}
+		c.pruneLabels(ctx, s.Key, before)
 	}
 }
 

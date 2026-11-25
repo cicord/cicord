@@ -13,13 +13,15 @@ import (
 	"github.com/cicord/cicord/internal/state/internal/storeutil"
 )
 
-// analytics implements state.Analytics and state.AnalyticsTotals (schema in
-// migrations/0002_analytics.sql: buckets are unix seconds).
+// analytics implements state.Analytics, state.AnalyticsTotals and
+// state.AnalyticsLabels (schema in migrations/0002_analytics.sql and
+// 0003_analytics_labels.sql: buckets are unix seconds).
 type analytics struct{ s *Store }
 
 var (
 	_ state.Analytics       = analytics{}
 	_ state.AnalyticsTotals = analytics{}
+	_ state.AnalyticsLabels = analytics{}
 )
 
 func (s *Store) Analytics() state.Analytics { return analytics{s} }
@@ -59,9 +61,12 @@ func (a analytics) Record(ctx context.Context, kind state.AnalyticsKind, points 
 	return nil
 }
 
-// analyticsWhere builds the filter of a query: server, metrics, optional dim and
+// analyticsWhere builds the filter of a query: server, metrics, optional dim(s) and
 // the bucket range.
-func analyticsWhere(q state.AnalyticsQuery, withDim bool) (string, []any) {
+func analyticsWhere(q state.AnalyticsQuery, withDim bool) (string, []any, error) {
+	if err := storeutil.CheckAnalyticsDims(q.Dims); err != nil {
+		return "", nil, err
+	}
 	lo, hi := storeutil.AnalyticsRange(q.From, q.To)
 	var b strings.Builder
 	b.WriteString(`server = $1 AND bucket >= $2 AND bucket < $3`)
@@ -74,7 +79,11 @@ func analyticsWhere(q state.AnalyticsQuery, withDim bool) (string, []any) {
 		args = append(args, *q.Dim)
 		b.WriteString(` AND dim = $` + strconv.Itoa(len(args)))
 	}
-	return b.String(), args
+	if len(q.Dims) > 0 {
+		args = append(args, q.Dims)
+		b.WriteString(` AND dim = ANY($` + strconv.Itoa(len(args)) + `)`)
+	}
+	return b.String(), args, nil
 }
 
 func scanPoints(rows pgx.Rows, server string, withDim bool) ([]state.AnalyticsPoint, error) {
@@ -95,7 +104,10 @@ func scanPoints(rows pgx.Rows, server string, withDim bool) ([]state.AnalyticsPo
 
 // Query returns the points ordered by metric, dim, then bucket.
 func (a analytics) Query(ctx context.Context, q state.AnalyticsQuery) ([]state.AnalyticsPoint, error) {
-	where, args := analyticsWhere(q, true)
+	where, args, err := analyticsWhere(q, true)
+	if err != nil {
+		return nil, fmt.Errorf("state/postgres: query analytics: %w", err)
+	}
 	rows, err := a.s.pool.Query(ctx,
 		`SELECT metric, dim, bucket, value FROM analytics_points WHERE `+where+` ORDER BY metric, dim, bucket`, args...)
 	if err != nil {
@@ -110,7 +122,10 @@ func (a analytics) Query(ctx context.Context, q state.AnalyticsQuery) ([]state.A
 
 // Totals sums every dimension per metric and bucket (state.AnalyticsTotals).
 func (a analytics) Totals(ctx context.Context, q state.AnalyticsQuery) ([]state.AnalyticsPoint, error) {
-	where, args := analyticsWhere(q, false)
+	where, args, err := analyticsWhere(q, false)
+	if err != nil {
+		return nil, fmt.Errorf("state/postgres: analytics totals: %w", err)
+	}
 	rows, err := a.s.pool.Query(ctx,
 		`SELECT metric, bucket, SUM(value) FROM analytics_points WHERE `+where+` GROUP BY metric, bucket ORDER BY metric, bucket`, args...)
 	if err != nil {

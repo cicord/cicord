@@ -63,7 +63,7 @@ func (r *Runtime) configureAnalytics(a *active) {
 			cs.BotFile, cs.ApplicationID = b.File, b.Spec.ApplicationID
 		}
 		cache := srt.cache
-		cs.Channel = cache.Channel
+		cs.Channel, cs.Role, cs.Owner = cache.Channel, cache.Role, cache.Owner
 		cs.AFKChannelID = func() string { return cache.Server().AFKChannelID }
 		if h := r.bot(cs.Bot); h != nil {
 			cs.Connected, cs.Intents, cs.Client, cs.BotUserID = true, h.intents, h.session, h.session.Self().ID

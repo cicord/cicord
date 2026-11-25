@@ -103,6 +103,7 @@ func (c *Collector) Sample(ctx context.Context, server string) {
 	for _, e := range events {
 		if e.Status == "scheduled" || e.Status == "active" {
 			c.gauge(s, state.AnalyticsGaugeLast, EventsInterest, e.ID, now, float64(e.Interested))
+			c.pendLabel(s, state.AnalyticsLabel{Dim: "event", ID: e.ID, Name: e.Name, Type: "event"})
 		}
 	}
 	if s.cfg.presenceCollected() {

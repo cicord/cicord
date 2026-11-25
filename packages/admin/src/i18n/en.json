@@ -1919,6 +1919,12 @@
     "notCollected": "Not collected",
     "other": "Other",
     "deleted": "deleted",
+    "group": {
+      "name": "Channels created by {{name}}",
+      "count_one": "{{count}} channel created",
+      "count_other": "{{count}} channels created",
+      "expand": "Show the channels created by {{name}}"
+    },
     "kpi": {
       "label": "Headline numbers",
       "membersTotal": "Human members",

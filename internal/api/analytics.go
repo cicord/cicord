@@ -10,6 +10,7 @@ import (
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/state"
 )
 
 // Server activity analytics (https://cicord.dev/docs/reference/http-api/analytics/):
@@ -79,12 +80,29 @@ func (s *server) analyticsRequest(r *http.Request) (*analytics.Reader, string, a
 		return nil, "", analytics.Status{}, httpErr(http.StatusNotFound, "analytics_disabled",
 			"analytics are not available on this runtime (no analytics store is configured)")
 	}
-	labelers := analytics.Labelers{runtimeLabeler{s.rt}}
-	if s.store != nil {
-		labelers = append(labelers, analytics.ResourceLabeler{Resources: s.store.Resources(), Spec: s.serverSpec})
-	}
-	rd := &analytics.Reader{Store: s.opts.Analytics, Labeler: labelers}
+	labeler, owners := s.analyticsLabels()
+	rd := &analytics.Reader{Store: s.opts.Analytics, Labeler: labeler, Owners: owners}
 	return rd, key, s.analyticsStatus(key), nil
+}
+
+// analyticsLabels are the labelers of the analytics API, in order: the runtime's live
+// cache, the resource map with the configuration, then the labels the collector
+// remembered (deleted channels and roles); and the resolvers of the channels plugins
+// created (grouped per plugin instance): the resource map, then the remembered labels.
+func (s *server) analyticsLabels() (analytics.Labeler, analytics.Owners) {
+	labelers := analytics.Labelers{runtimeLabeler{s.rt}}
+	var owners analytics.OwnersChain
+	if s.store != nil {
+		rl := analytics.ResourceLabeler{Resources: s.store.Resources(), Spec: s.serverSpec}
+		labelers = append(labelers, rl)
+		owners = append(owners, rl)
+	}
+	if stored, ok := s.opts.Analytics.(state.AnalyticsLabels); ok {
+		sl := analytics.StoredLabeler{Store: stored, Live: runtimeLabeler{s.rt}.live}
+		labelers = append(labelers, sl)
+		owners = append(owners, sl)
+	}
+	return labelers, owners
 }
 
 func (s *server) serverSpec(key string) *config.ServerSpec {
@@ -121,6 +139,15 @@ func (s *server) failAnalytics(w http.ResponseWriter, err error) {
 // server (current names, channel types and role colors, whether declared in git or
 // not). It knows nothing while the cache is empty.
 type runtimeLabeler struct{ rt *runtime.Runtime }
+
+// live tells whether the runtime's cache of a server is loaded (its channels known).
+func (l runtimeLabeler) live(server string) bool {
+	if l.rt == nil {
+		return false
+	}
+	_, channels, _, ok := l.rt.ServerResources(server)
+	return ok && len(channels) > 0
+}
 
 func (l runtimeLabeler) Labels(_ context.Context, server string, dims []analytics.DimRef) map[string]analytics.Label {
 	if l.rt == nil {
@@ -199,7 +226,10 @@ func (s *server) handlePortalAnalytics(w http.ResponseWriter, r *http.Request) {
 		notFoundHandler(w, r)
 		return
 	}
-	rd := &analytics.Reader{Store: s.opts.Analytics}
+	// No labeler: the portal names only the channels everyone can see now (public);
+	// the owners group the channels plugins created, never named after a room.
+	_, owners := s.analyticsLabels()
+	rd := &analytics.Reader{Store: s.opts.Analytics, Owners: owners}
 	out, err := rd.Portal(r.Context(), key, r.URL.Query().Get("period"), publicChannels(s.rt, key, cfg.Spec.DiscordID))
 	if err != nil {
 		s.failAnalytics(w, err)

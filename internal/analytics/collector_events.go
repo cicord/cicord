@@ -11,6 +11,7 @@ import (
 
 // event maps a gateway event of the collecting bot to metrics. Caller holds c.mu.
 func (c *Collector) event(s *collected, ev discord.Event, now time.Time) {
+	c.labelEvent(s, ev)
 	switch e := ev.(type) {
 	case discord.MemberJoinEvent:
 		if e.Member.User.Bot {

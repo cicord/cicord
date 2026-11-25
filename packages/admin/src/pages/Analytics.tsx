@@ -742,13 +742,17 @@ const serie = (
   values: valuesOf(series, buckets, metric, dim),
 });
 
-/** Display name of a dimension: "#channel", "(deleted)" suffix, "Other". */
+/**
+ * Display name of a dimension: "#channel", "(deleted)" suffix, "Other", and "Channels created
+ * by <instance>" for the channels a plugin created (grouped by the runtime).
+ */
 function useDimLabel(labels: Record<string, AnalyticsLabel>): (dim: string) => string {
   const { t } = useTranslation();
   return (dim) => {
     if (dim === "other") return t("analytics.other");
     const l = labels[dim];
     const name = labelOf(labels, dim);
+    if (l?.kind === "group") return t("analytics.group.name", { name });
     const shown = l?.kind === "channel" || l?.kind === "thread" ? `#${name}` : name;
     return l?.deleted ? `${shown} (${t("analytics.deleted")})` : shown;
   };
@@ -1034,8 +1038,8 @@ function VoiceSection({ data }: { data: Data }) {
   const timeCard = useTimeCard(t("analytics.voice.title"), main, [seconds], inHours, "bar");
   const sessionsCard = useTimeCard(t("analytics.voice.sessions"), main, [sessions], num, "bar");
   const peakCard = useTimeCard(t("analytics.voice.peak"), fine, [peak], num, "line");
-  const dimLabel = useDimLabel(summary.labels);
-  const byChannel = rankItems(summary.rankings["voice.seconds"] ?? [], dimLabel, hrs, lng);
+  const channelRanks = useChannelRanks(summary.labels);
+  const byChannel = channelRanks(summary.rankings["voice.seconds"] ?? [], hrs);
 
   return (
     <Section title={t("analytics.sections.voice")}>
@@ -1129,8 +1133,39 @@ function rankItems(
       value: r.value,
       display: format(r.value),
       ...(delta.kind === "change" ? { extra: formatPercent(delta.ratio, lng, true) } : {}),
+      ...(r.children?.length ? { children: rankItems(r.children, name, format, lng, label) } : {}),
     };
   });
+}
+
+/**
+ * Items of a channel ranking: the channels a plugin created come as one group (its name and
+ * how many channels), expandable to the channels with their remembered names.
+ */
+function useChannelRanks(
+  labels: Record<string, AnalyticsLabel>,
+): (ranked: AnalyticsRanked[], format: (v: number) => string) => RankItem[] {
+  const { t, i18n } = useTranslation();
+  const dimLabel = useDimLabel(labels);
+  return (ranked, format) =>
+    rankItems(ranked, dimLabel, format, i18n.language).map((item, i) => {
+      const r = ranked[i]!;
+      if (!r.children?.length) return item;
+      const name = labelOf(labels, r.dim);
+      return {
+        ...item,
+        // The instance's name first: it is what tells groups apart when the row is narrow.
+        label: (
+          <span className="flex min-w-0 items-baseline gap-1.5" title={item.name}>
+            <span className="truncate">{name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {t("analytics.group.count", { count: r.count ?? r.children.length })}
+            </span>
+          </span>
+        ),
+        expandLabel: t("analytics.group.expand", { name }),
+      };
+    });
 }
 
 function EmojiLabel({ dim, labels }: { dim: string; labels: Record<string, AnalyticsLabel> }) {
@@ -1160,6 +1195,7 @@ function EngagementSection({ summary }: { summary: AnalyticsSummary }) {
   const r = (metric: string) => summary.rankings[metric] ?? [];
   const plain = (dim: string) => labelOf(labels, dim);
   const dimLabel = useDimLabel(labels);
+  const channelRanks = useChannelRanks(labels);
 
   const ageItems = ageBuckets(
     r("members.joined.age"),
@@ -1172,7 +1208,7 @@ function EngagementSection({ summary }: { summary: AnalyticsSummary }) {
     {
       metric: "messages.sent",
       title: t("analytics.rankings.channels"),
-      items: rankItems(r("messages.sent"), dimLabel, num, lng),
+      items: channelRanks(r("messages.sent"), num),
     },
     {
       metric: "reactions.added",
@@ -1330,7 +1366,7 @@ function BotsSection({ data }: { data: Data }) {
   const num = (v: number) => formatNumber(v, lng);
   const axis = (v: number) => formatNumber(v, lng, true);
   const r = (metric: string) => summary.rankings[metric] ?? [];
-  const dimLabel = useDimLabel({ ...summary.labels, ...bots.labels });
+  const channelRanks = useChannelRanks({ ...summary.labels, ...bots.labels });
 
   const days = weekdays(lng);
   const longDays = weekdays(lng, "long");
@@ -1398,7 +1434,7 @@ function BotsSection({ data }: { data: Data }) {
       metric: "bots.commands.channels",
       title: t("analytics.bots.channels"),
       description: t("analytics.bots.channelsDescription"),
-      items: rankItems(r("bots.commands.channels"), dimLabel, num, lng),
+      items: channelRanks(r("bots.commands.channels"), num),
     },
     {
       metric: "components.used",

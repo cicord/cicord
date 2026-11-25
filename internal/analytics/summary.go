@@ -263,18 +263,90 @@ func (r *Reader) summarize(ctx context.Context, server string, req SummaryReques
 		rankings = append(rankings[:len(rankings):len(rankings)], PresenceActivity)
 	}
 	var refs []DimRef
+	owners := r.ownerMemo(server)
 	for _, metric := range rankings {
 		m, _ := Lookup(metric)
-		list, err := r.ranking(ctx, server, metric, from, to, prev, covered)
+		var list []Ranked
+		var err error
+		if groupable(m) && r.Owners != nil {
+			list, err = r.groupedRanking(ctx, server, metric, from, to, prev, covered, owners)
+		} else {
+			list, err = r.ranking(ctx, server, metric, from, to, prev, covered)
+		}
 		if err != nil {
 			return Summary{}, err
 		}
 		out.Rankings[metric] = list
 		for _, e := range list {
 			refs = append(refs, DimRef{Kind: m.Dim, Value: e.Dim})
+			for _, c := range e.Children {
+				refs = append(refs, DimRef{Kind: m.Dim, Value: c.Dim})
+			}
 		}
 	}
 	out.Labels = ResolveLabels(ctx, r.Labeler, server, refs)
+	return out, nil
+}
+
+// groupedRanking is ranking for a channel metric whose plugin-created channels are
+// grouped per plugin instance: the top RankingSize entries, a group with its
+// channels as children (at most MaxGroupChildren, the rest in an "other" child).
+func (r *Reader) groupedRanking(ctx context.Context, server, metric string, from, to, prev time.Time, covered bool, owners *ownerMemo) ([]Ranked, error) {
+	ds, err := r.Store.Dims(ctx, server, metric, from, to, state.MaxListLimit)
+	if err != nil {
+		return nil, err
+	}
+	entries := groupDims(ds, owners.of(ctx, ds), nil)
+	entries = entries[:min(len(entries), RankingSize)]
+	out := make([]Ranked, 0, len(entries))
+	for _, e := range entries {
+		rk := Ranked{Dim: e.Dim, Value: e.Value}
+		if e.Members != nil {
+			rk.Count = len(e.Members)
+			rk.Children = []Ranked{}
+			rest := 0.0
+			for i, m := range e.Members {
+				if i < MaxGroupChildren {
+					rk.Children = append(rk.Children, Ranked{Dim: m.Dim, Value: m.Value})
+				} else {
+					rest += m.Value
+				}
+			}
+			if len(e.Members) > MaxGroupChildren {
+				rk.Children = append(rk.Children, Ranked{Dim: OtherDim, Value: rest})
+			}
+		}
+		out = append(out, rk)
+	}
+	if !covered || len(out) == 0 {
+		return out, nil
+	}
+	before, err := r.Store.Dims(ctx, server, metric, prev, from, state.MaxListLimit)
+	if err != nil {
+		return nil, err
+	}
+	bOwner := owners.of(ctx, before)
+	pv := make(map[string]float64, len(before))
+	for _, d := range before {
+		pv[d.Dim] = d.Value
+		if g, ok := bOwner[d.Dim]; ok {
+			pv[g] += d.Value
+		}
+	}
+	ptr := func(v float64) *float64 { return &v }
+	for i := range out {
+		out[i].Previous = ptr(pv[out[i].Dim])
+		shown := 0.0
+		for j := range out[i].Children {
+			c := &out[i].Children[j]
+			if c.Dim == OtherDim {
+				c.Previous = ptr(pv[out[i].Dim] - shown)
+				continue
+			}
+			c.Previous = ptr(pv[c.Dim])
+			shown += pv[c.Dim]
+		}
+	}
 	return out, nil
 }
 

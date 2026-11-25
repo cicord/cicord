@@ -340,7 +340,7 @@ func (o ownedResources) Put(ctx context.Context, res state.Resource) error {
 	if err := o.ResourceMap.Put(ctx, res); err != nil {
 		return err
 	}
-	o.cache.Remember(res.Kind, res.Key, res.ID)
+	o.cache.Remember(res.Kind, res.Key, res.ID, res.Owner)
 	return nil
 }
 

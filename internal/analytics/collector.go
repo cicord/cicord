@@ -83,8 +83,12 @@ type CollectorServer struct {
 	// discord.AnalyticsReader.
 	Client discord.Client
 
-	// Live lookups (runtime cache); nil when unknown.
-	Channel      func(id string) (discord.Channel, bool)
+	// Live lookups (runtime cache, no I/O); nil when unknown.
+	Channel func(id string) (discord.Channel, bool)
+	Role    func(id string) (discord.Role, bool)
+	// Owner returns the owner of a resource in the resource map ("plugin:<bot>/<instance>"
+	// for a channel a plugin created), "" when unknown.
+	Owner        func(id string) string
 	AFKChannelID func() string
 	// Permissions returns the bot's server-level permissions.
 	Permissions func(ctx context.Context) (discord.Permissions, error)
@@ -136,6 +140,8 @@ type Collector struct {
 	npending  int
 	stopped   bool
 	wg        sync.WaitGroup // invite refreshes
+	// npendingLabels counts the labels waiting in every server's labels.
+	npendingLabels int
 
 	// Guarded by tickMu (flush, samples, daily work run one at a time).
 	tickMu    sync.Mutex
@@ -144,6 +150,8 @@ type Collector struct {
 	rolledUp  string            // last day rolled up in this process ("" = check the store)
 	purged    map[string]string // server key → day of the last purge
 	lastFlush time.Time
+	// labeled is the signature of the labels written since the last prune, by server key.
+	labeled map[string]map[labelKey]string
 }
 
 // collected is the in-memory state of one server.
@@ -167,6 +175,11 @@ type collected struct {
 	invitesForbidden bool
 	lastSample       time.Time
 	autoMod          map[string]time.Time // rule|user|channel → last trigger
+
+	// labels wait for the next flush; noted are the resources whose label was taken
+	// from their activity since the last prune (collector_labels.go).
+	labels map[labelKey]state.AnalyticsLabel
+	noted  map[labelKey]struct{}
 }
 
 // NewCollector returns a collector; call Configure, then Run.
@@ -191,7 +204,7 @@ func NewCollector(opts CollectorOptions) *Collector {
 		servers: map[string]*collected{}, byKey: map[string]*collected{}, botUsers: map[string]bool{},
 		snapshots: map[string]discord.ServerAvailableEvent{}, buf: newBuffer(),
 		pending: map[activeKey]map[string]struct{}{}, seen: map[activeKey]map[string]struct{}{},
-		dayKeys: map[string][]byte{}, purged: map[string]string{},
+		dayKeys: map[string][]byte{}, purged: map[string]string{}, labeled: map[string]map[labelKey]string{},
 	}
 }
 
@@ -227,7 +240,10 @@ func (c *Collector) Configure(servers []CollectorServer, botUserIDs []string) {
 			c.endVoice(s, now)
 		}
 		if s == nil || s.cfg.Key != cfg.Key {
-			s = &collected{autoMod: map[string]time.Time{}}
+			if s != nil {
+				c.npendingLabels -= len(s.labels)
+			}
+			s = &collected{autoMod: map[string]time.Time{}, labels: map[labelKey]state.AnalyticsLabel{}, noted: map[labelKey]struct{}{}}
 		}
 		if fresh {
 			s.voice, s.presence = map[string]*voiceSession{}, map[string]presenceInfo{}
@@ -250,6 +266,7 @@ func (c *Collector) Configure(servers []CollectorServer, botUserIDs []string) {
 	for id, s := range c.servers {
 		if next[id] == nil {
 			c.endVoice(s, now)
+			c.npendingLabels -= len(s.labels)
 		}
 	}
 	c.servers, c.byKey = next, byKey
@@ -352,6 +369,7 @@ func (c *Collector) Flush(ctx context.Context) {
 		c.notePeak(s, now)
 	}
 	batches := c.buf.take()
+	labels := c.takeLabels(now)
 	pending := c.pending
 	c.pending, c.npending = map[activeKey]map[string]struct{}{}, 0
 	c.lastFlush = now
@@ -377,6 +395,8 @@ func (c *Collector) Flush(ctx context.Context) {
 			written[p.Server] = true
 		}
 	}
+	// After the points: a label pruned for want of data would otherwise race them.
+	c.flushLabels(ctx, labels)
 	c.flushActive(ctx, pending)
 	if c.opts.OnWrite != nil {
 		for _, server := range slices.Sorted(maps.Keys(written)) {
@@ -427,6 +447,7 @@ func (c *Collector) count(s *collected, metric, dim string, at time.Time, v floa
 	if !c.buf.add(state.AnalyticsCounter, s.cfg.Key, metric, dim, at, v) {
 		c.log.Warn("analytics: buffer full, dropping points", "server", s.cfg.Key, "metric", metric)
 	}
+	c.noteActivity(s, metric, dim)
 }
 
 // gauge records a gauge of a server. Caller holds c.mu.

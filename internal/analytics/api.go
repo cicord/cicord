@@ -15,7 +15,8 @@ import "time"
 //	      gauges keep the step's last (or max) value; daily distinct metrics are read
 //	      per day (with step=week: the average of the days). Without dim, a metric with
 //	      a dimension returns its top N dimensions (default 8) plus "other" and the
-//	      total ("").
+//	      total (""). Channels created by a plugin are grouped into one dimension
+//	      per plugin instance, "plugin:<bot>/<instance>" (also accepted as dim).
 //	GET /api/v1/servers/{server}/analytics/catalog
 //	    → Catalog: every metric with kind, unit, dimension and whether it is collected.
 //
@@ -48,10 +49,14 @@ type Missing struct {
 }
 
 // Label resolves a dimension to a display name (a channel or role ID to its current
-// name and type, a custom emoji to its name and image URL).
+// name and type, a custom emoji to its name and image URL). A deleted channel, role
+// or scheduled event keeps the last name the collector saw. A group of
+// plugin-created channels (dimension "plugin:<bot>/<instance>") is labelled with the
+// plugin instance's name and the kind "group".
 type Label struct {
 	Name string `json:"name"`
-	// Kind is "channel", "voice", "thread", "role", "emoji", "event", "invite" or "label".
+	// Kind is "channel", "voice", "thread", "role", "emoji", "event", "invite",
+	// "label" or "group".
 	Kind string `json:"kind"`
 	// ImageURL is set for custom emojis.
 	ImageURL string `json:"imageUrl,omitempty"`
@@ -100,6 +105,12 @@ type Ranked struct {
 	Value float64 `json:"value"`
 	// Previous is the entry's value over the previous period (null when not covered).
 	Previous *float64 `json:"previous"`
+	// Count is, for a group of plugin-created channels (Dim "plugin:<bot>/<instance>"),
+	// how many channels it sums over the period (0 otherwise).
+	Count int `json:"count,omitempty"`
+	// Children are a group's channels, largest first: at most MaxGroupChildren, the
+	// rest summed into an "other" child. Their labels are in Labels.
+	Children []Ranked `json:"children,omitempty"`
 }
 
 // Summary is the response of …/analytics/summary.
@@ -124,7 +135,9 @@ type Summary struct {
 	// actions per action, AutoMod triggers per rule, roles added, account ages of
 	// joins, bot commands (bot and command), channels of bot commands, tenure of the
 	// members using Cicord's commands, components per bot, and (with presence)
-	// activities. Keyed by metric name.
+	// activities. Keyed by metric name. In the channel rankings, the channels a
+	// plugin created are one entry per plugin instance ("plugin:<bot>/<instance>"),
+	// with the channels as Children.
 	Rankings map[string][]Ranked `json:"rankings"`
 
 	// Heatmap is human messages per weekday and hour (UTC) over the period:

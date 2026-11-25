@@ -317,3 +317,72 @@ func CheckActive(server, set, day, token string) error {
 // AnalyticsDimsLimit is the limit of Analytics.Dims: <= 0 means 100, capped at
 // state.MaxListLimit.
 func AnalyticsDimsLimit(n int) int { return ClampLimit(n, 100) }
+
+// CheckAnalyticsDims validates the Dims of an analytics query.
+func CheckAnalyticsDims(dims []string) error {
+	if len(dims) > state.MaxListLimit {
+		return fmt.Errorf("at most %d dimensions per analytics query, got %d", state.MaxListLimit, len(dims))
+	}
+	return nil
+}
+
+// LabelRow is a validated analytics label: SeenAt is unix nanoseconds.
+type LabelRow struct {
+	Server, Dim, ID, Name, Type, Color, Owner string
+	Deleted                                   bool
+	SeenAt                                    int64
+}
+
+// LabelRows validates the labels of AnalyticsLabels.PutLabels and converts them to
+// rows: a zero SeenAt is now(). Rows are sorted by (server, dim, id) and a key given
+// twice keeps its last label (one write per row, rows locked in the same order by
+// every writer).
+func LabelRows(labels []state.AnalyticsLabel, now func() time.Time) ([]LabelRow, error) {
+	byKey := make(map[[3]string]int, len(labels))
+	rows := make([]LabelRow, 0, len(labels))
+	for _, l := range labels {
+		switch {
+		case l.Server == "":
+			return nil, errors.New("analytics label: empty server")
+		case l.Dim == "":
+			return nil, errors.New("analytics label: empty dim")
+		case l.ID == "":
+			return nil, errors.New("analytics label: empty id")
+		}
+		seen, err := ToNanos("analytics label seen", OrNow(l.SeenAt, now))
+		if err != nil {
+			return nil, err
+		}
+		r := LabelRow{Server: l.Server, Dim: l.Dim, ID: l.ID, Name: l.Name, Type: l.Type, Color: l.Color,
+			Owner: l.Owner, Deleted: l.Deleted, SeenAt: seen}
+		k := [3]string{l.Server, l.Dim, l.ID}
+		if i, ok := byKey[k]; ok {
+			if r.Owner == "" {
+				r.Owner = rows[i].Owner
+			}
+			rows[i] = r
+			continue
+		}
+		byKey[k] = len(rows)
+		rows = append(rows, r)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Server != b.Server {
+			return a.Server < b.Server
+		}
+		if a.Dim != b.Dim {
+			return a.Dim < b.Dim
+		}
+		return a.ID < b.ID
+	})
+	return rows, nil
+}
+
+// CheckLabelIDs validates the ids of AnalyticsLabels.GetLabels.
+func CheckLabelIDs(ids []string) error {
+	if len(ids) > state.MaxListLimit {
+		return fmt.Errorf("at most %d ids per call, got %d", state.MaxListLimit, len(ids))
+	}
+	return nil
+}

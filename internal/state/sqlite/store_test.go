@@ -162,3 +162,37 @@ func TestMemorySurvivesCanceledTransaction(t *testing.T) {
 		t.Errorf("Increment after canceled tx: %v", err)
 	}
 }
+
+// TestMigrationAnalyticsLabels: a database at schema version 2 (before the
+// remembered analytics labels) is upgraded on Open: analytics_labels is created and
+// the points are kept.
+func TestMigrationAnalyticsLabels(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	s, err := Open(path)
+	must(t, err)
+	must(t, s.Analytics().Record(ctx(t), state.AnalyticsCounter,
+		state.AnalyticsPoint{Server: "main", Metric: "voice.seconds", Dim: "1", Bucket: time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC), Value: 60}))
+	// Back to version 2.
+	_, err = s.w.Exec(`DROP TABLE analytics_labels; DELETE FROM schema_migrations WHERE version = 3`)
+	must(t, err)
+	must(t, s.Close())
+
+	s, err = Open(path)
+	must(t, err)
+	defer s.Close()
+	if v, err := s.SchemaVersion(ctx(t)); err != nil || v < 3 {
+		t.Fatalf("schema version %d, %v; want >= 3", v, err)
+	}
+	ps, err := s.Analytics().Query(ctx(t), state.AnalyticsQuery{Server: "main"})
+	must(t, err)
+	if len(ps) != 1 || ps[0].Value != 60 {
+		t.Errorf("points after the upgrade = %+v", ps)
+	}
+	l := s.Analytics().(state.AnalyticsLabels)
+	must(t, l.PutLabels(ctx(t), state.AnalyticsLabel{Server: "main", Dim: "channel", ID: "1", Name: "Chill room", Type: "voice", Owner: "plugin:main/voice-rooms", Deleted: true}))
+	got, err := l.GetLabels(ctx(t), "main", "channel", []string{"1"})
+	must(t, err)
+	if len(got) != 1 || got[0].Name != "Chill room" || got[0].Owner != "plugin:main/voice-rooms" || !got[0].Deleted {
+		t.Errorf("label after the upgrade = %+v", got)
+	}
+}

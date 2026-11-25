@@ -27,8 +27,9 @@ type serverCache struct {
 }
 
 type resourceRef struct {
-	kind state.ResourceKind
-	key  string
+	kind  state.ResourceKind
+	key   string
+	owner string // state.Resource.Owner
 }
 
 func newServerCache(key, id string) *serverCache {
@@ -72,7 +73,7 @@ func (c *serverCache) Refresh(ctx context.Context, cl discord.Client, rm state.R
 			c.keyToID[r.Kind] = map[string]string{}
 		}
 		c.keyToID[r.Kind][r.Key] = r.ID
-		c.idToKey[r.ID] = resourceRef{r.Kind, r.Key}
+		c.idToKey[r.ID] = resourceRef{r.Kind, r.Key, r.Owner}
 	}
 	if cl != nil {
 		c.channels = map[string]discord.Channel{}
@@ -111,15 +112,17 @@ func (c *serverCache) Observe(ev discord.Event) {
 	}
 }
 
-// Remember records a mapping created at runtime (plugin-owned resources).
-func (c *serverCache) Remember(kind state.ResourceKind, key, id string) {
+// Remember records a mapping created at runtime (plugin-owned resources). It stays
+// until the next Refresh, also once the plugin deletes the resource: the analytics
+// collector reads the owner of a channel when it sees the channel deleted.
+func (c *serverCache) Remember(kind state.ResourceKind, key, id, owner string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.keyToID[kind] == nil {
 		c.keyToID[kind] = map[string]string{}
 	}
 	c.keyToID[kind][key] = id
-	c.idToKey[id] = resourceRef{kind, key}
+	c.idToKey[id] = resourceRef{kind, key, owner}
 }
 
 func (c *serverCache) ID(kind state.ResourceKind, key string) (string, bool) {
@@ -134,6 +137,13 @@ func (c *serverCache) Key(id string) (state.ResourceKind, string, bool) {
 	defer c.mu.RUnlock()
 	r, ok := c.idToKey[id]
 	return r.kind, r.key, ok
+}
+
+// Owner returns the owner of a mapped resource ("" when unknown).
+func (c *serverCache) Owner(id string) string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.idToKey[id].owner
 }
 
 func (c *serverCache) Channel(id string) (discord.Channel, bool) {
