@@ -19,6 +19,9 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ### Added
 
+- Plugin SDK: `message.embeds` on received messages (events, `channel.messages()`), in the
+  shape plugins send them, gated by the MessageContent intent like `content`.
+
 - Plugin SDK: `role.members({ limit?, after? })` lists the members holding a role
   (`ctx.server.role("staff").members()`), in user id order, at most 1000 per call (default
   100). It needs `discord.members.read` and the `ServerMembers` intent in plugin.yaml
