@@ -6,6 +6,42 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Changed
+
+- Store and Plugins pages offer the same actions with the same words. An update reads
+  **Update to X** everywhere (Store table, Plugins table, the plugin's Store page, the
+  instance's page) and leads to the same update review. On the Store page of an installed
+  plugin, the main action is **Update to X** when there is an update, else **Open** (its
+  instance, or each of them). **Install another instance** (the plugin a second time, with its
+  own name, settings and data) is now a secondary action, explained, and disabled while an
+  update is pending. An instance links to its Store page (**View in Store**), and the Store
+  page's Installed list links to the instances.
+- `GET /api/v1/events` has a `store` event: what the Store lists changed without a new
+  revision (a registry refresh found new releases). The admin console then refetches the Store
+  listings, plugin pages, update reviews and update badges; a new revision (`sync` without
+  server) also refreshes the Store. `@cicord/client`: `AdminEvent` `{type: "store"}`.
+- On a repository whose custom portal has typed routes (`portal/src/cicord-routes.d.ts`), a
+  Store install, update or uninstall also changes that file, which counts for the write-back
+  mode: with the community policies (`bots/**` and `plugins/**` commit, default
+  `pullRequest`), installing a bundled plugin now opens a pull request.
+- `cicord plugin add` and `cicord plugin update` regenerate the custom portal's route types
+  too (`Regenerated portal/src/cicord-routes.d.ts`), with a warning when they cannot.
+- A pull request opened by write-back carries the commit message body (what was regenerated,
+  warnings). Install, update and uninstall results have `warnings`.
+
+### Fixed
+
+- The Store page of an official plugin locked from the official registry (`cicord/<name>` in
+  `cicord.lock`, e.g. `cicord/tickets`) showed no update while the Store table showed one: it
+  was described from the bundled copy when the registry index did not list a newer version.
+  It now comes from the registry, like its update review and its installs. Store pages cached
+  in the admin console are refetched on Refresh, on `store` events and on a new revision.
+- A Store action (install, update, uninstall) no longer leaves the custom portal's route types
+  stale: `<portal>/src/cicord-routes.d.ts` is regenerated with the code of `cicord portal
+  typegen` in the same commit or pull request, so admin pull requests pass the portal's CI
+  (`cicord portal typegen --check`). When it cannot be generated, the change is still written
+  and the admin console, the commit message and the pull request say so.
+
 ## [0.1.7] - 2026-11-25
 
 ### Added

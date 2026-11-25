@@ -81,6 +81,32 @@ func (s *Service) OfficialRemote(ctx context.Context, name string) (reg config.R
 	return off, false, ErrUnknownPlugin
 }
 
+// OfficialOrigin is OfficialRemote for the page of an official plugin in a repository: a
+// plugin locked in cicord.lock from the official registry ("cicord/<name>", what its
+// instances run and what its update review compares with) is described from that
+// registry even when the cached index does not list a version newer than the bundled one
+// (the index may lag behind the release tags the update check reads). Otherwise the Store
+// page and its table could disagree on the update.
+func (s *Service) OfficialOrigin(ctx context.Context, repo *config.Repo, name string) (reg config.Registry, remote bool, err error) {
+	if off, ok := registry.Official(); ok && registry.NameRe.MatchString(name) && lockedOfficial(repo, name) {
+		return off, true, nil
+	}
+	return s.OfficialRemote(ctx, name)
+}
+
+// lockedOfficial reports whether an instance of repo uses cicord/<name> through cicord.lock.
+func lockedOfficial(repo *config.Repo, name string) bool {
+	if repo == nil {
+		return false
+	}
+	for _, i := range repo.Instances {
+		if i.Plugin != nil && i.Plugin.Source == config.OfficialRegistryName+"/"+name {
+			return true
+		}
+	}
+	return false
+}
+
 // checkSigned refuses an index read from an official URL that carries no verified
 // signature (defense in depth: registry.FetchIndex already refuses it, but Fetch may be
 // replaced).

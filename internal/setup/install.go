@@ -11,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -126,7 +125,7 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 		edits[registry.LockFile] = func(cur []byte) ([]byte, error) {
 			if l, err := registry.ParseLock(cur); err == nil {
 				if old, ok := l.Plugins[pkg.Source]; ok && (old.Commit != lock.Commit || old.Integrity != lock.Integrity) {
-					return nil, fmt.Errorf("%s is already locked at %s: update it with cicord plugin update", pkg.Source, old.Version)
+					return nil, fmt.Errorf("%s is already locked at %s: update it first (the Store's update, or cicord plugin update)", pkg.Source, old.Version)
 				}
 			}
 			return registry.SetLockEntry(cur, pkg.Source, lock)
@@ -158,7 +157,8 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 	}
 
 	// Validate (schema, references, build, intents) on a copy of the active revision.
-	if ds, err := in.validate(rev.Dir, edits); err != nil {
+	ds, routes, err := in.validate(rev.Dir, edits)
+	if err != nil {
 		return InstallResult{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
 			Message: "The plugin cannot be added to the configuration.", Hint: "See the details.", Details: err.Error()}
 	} else if ds.HasErrors() {
@@ -171,16 +171,10 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 			Diagnostics: ds.Errors(), Details: strings.Join(msgs, "\n")}
 	}
 
-	paths := make([]string, 0, len(edits))
-	for p := range edits {
-		paths = append(paths, p)
-	}
-	sort.Strings(paths)
-	mode := writeback.ModeFor(repo.Project.Spec.WriteBack, paths)
+	msg := routes.apply(edits, fmt.Sprintf("plugin(%s): install %s %s on %s\n\nInstalled from %s.", t.Bot, pkg.Name, pkg.Version, t.Server, pkg.From))
+	mode := writeback.ModeFor(repo.Project.Spec.WriteBack, editPaths(edits))
 	prevErr := rt.Status().LastError
-	res, err := in.Writer.Write(ctx, writeback.Request{Edits: edits,
-		Message: fmt.Sprintf("plugin(%s): install %s %s on %s\n\nInstalled from %s.", t.Bot, pkg.Name, pkg.Version, t.Server, pkg.From),
-		Actor:   actor, Source: source, Mode: mode})
+	res, err := in.Writer.Write(ctx, writeback.Request{Edits: edits, Message: msg, Actor: actor, Source: source, Mode: mode})
 	if err != nil {
 		if errors.Is(err, writeback.ErrConflict) {
 			return InstallResult{}, &Error{Status: http.StatusConflict, Code: "conflict", Message: "The repository changed meanwhile.", Hint: "Try again.", Details: err.Error()}
@@ -188,7 +182,8 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 		return InstallResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not save the plugin to the repository.",
 			Hint: "Check the repository access (Diagnostics → write-back), then try again.", Details: err.Error()}
 	}
-	out := InstallResult{Instance: instance, Mode: res.Mode, PullRequestURL: res.PullRequestURL, Health: runtime.HealthProgressing, Command: pkg.FirstCommand}
+	out := InstallResult{Instance: instance, Mode: res.Mode, PullRequestURL: res.PullRequestURL, Health: runtime.HealthProgressing, Command: pkg.FirstCommand,
+		Warnings: routes.Warnings}
 	if out.Mode == "" {
 		out.Mode = mode
 	}
@@ -267,6 +262,8 @@ type UninstallResult struct {
 	Mode           string   `json:"mode"`
 	Revision       string   `json:"revision,omitempty"`
 	PullRequestURL string   `json:"pullRequestUrl,omitempty"`
+	// Warnings: what the change could not keep up to date (the portal's route types).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // Uninstall takes a plugin instance off a server. An instance that also runs on other
@@ -363,7 +360,8 @@ func (in *Installer) Uninstall(ctx context.Context, serverKey, botKey, instance,
 		}
 	}
 
-	if ds, err := in.validate(rev.Dir, edits); err != nil {
+	ds, routes, err := in.validate(rev.Dir, edits)
+	if err != nil {
 		return UninstallResult{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
 			Message: "The plugin cannot be removed from the configuration.", Hint: "See the details.", Details: err.Error()}
 	} else if ds.HasErrors() {
@@ -376,16 +374,10 @@ func (in *Installer) Uninstall(ctx context.Context, serverKey, botKey, instance,
 			Hint:    "Another plugin or setting may depend on it.", Diagnostics: ds.Errors(), Details: strings.Join(msgs, "\n")}
 	}
 
-	paths := make([]string, 0, len(edits))
-	for p := range edits {
-		paths = append(paths, p)
-	}
-	sort.Strings(paths)
-	mode := writeback.ModeFor(repo.Project.Spec.WriteBack, paths)
+	msg := routes.apply(edits, fmt.Sprintf("plugin(%s): uninstall %s from %s", botKey, instance, serverKey))
+	mode := writeback.ModeFor(repo.Project.Spec.WriteBack, editPaths(edits))
 	prevErr := rt.Status().LastError
-	res, err := in.Writer.Write(ctx, writeback.Request{Edits: edits,
-		Message: fmt.Sprintf("plugin(%s): uninstall %s from %s", botKey, instance, serverKey),
-		Actor:   actor, Source: source, Mode: mode})
+	res, err := in.Writer.Write(ctx, writeback.Request{Edits: edits, Message: msg, Actor: actor, Source: source, Mode: mode})
 	if err != nil {
 		if errors.Is(err, writeback.ErrConflict) {
 			return UninstallResult{}, &Error{Status: http.StatusConflict, Code: "conflict", Message: "The repository changed meanwhile.", Hint: "Try again.", Details: err.Error()}
@@ -393,7 +385,7 @@ func (in *Installer) Uninstall(ctx context.Context, serverKey, botKey, instance,
 		return UninstallResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not save the change to the repository.",
 			Hint: "Check the repository access (Diagnostics → write-back), then try again.", Details: err.Error()}
 	}
-	out.Mode, out.PullRequestURL = res.Mode, res.PullRequestURL
+	out.Mode, out.PullRequestURL, out.Warnings = res.Mode, res.PullRequestURL, routes.Warnings
 	if out.Mode == "" {
 		out.Mode = mode
 	}
@@ -445,20 +437,23 @@ func listFiles(dir string) ([]string, error) {
 	return out, err
 }
 
-func (in *Installer) validate(revDir string, edits map[string]writeback.EditFunc) (config.Diagnostics, error) {
+func (in *Installer) validate(revDir string, edits map[string]writeback.EditFunc) (config.Diagnostics, portalRoutes, error) {
 	tmp, err := os.MkdirTemp("", "cicord-install-*")
 	if err != nil {
-		return nil, err
+		return nil, portalRoutes{}, err
 	}
 	defer os.RemoveAll(tmp)
 	if err := copyDir(revDir, tmp); err != nil {
-		return nil, err
+		return nil, portalRoutes{}, err
 	}
 	if err := ApplyEdits(tmp, edits); err != nil {
-		return nil, err
+		return nil, portalRoutes{}, err
 	}
-	_, _, ds, _ := in.Runtime.LoadAndBuild(tmp)
-	return ds, nil
+	repo, _, ds, _ := in.Runtime.LoadAndBuild(tmp)
+	if ds.HasErrors() || repo == nil {
+		return ds, portalRoutes{}, nil
+	}
+	return ds, regenerateRoutes(tmp, repo), nil
 }
 
 // ApplyEdits applies write-back edits to the files of a directory (a nil result deletes

@@ -103,3 +103,109 @@ func TestPluginUpdate(t *testing.T) {
 		t.Errorf("validate after update: %s", errOut)
 	}
 }
+
+const boardManifest = `apiVersion: cicord.dev/v1alpha1
+kind: Plugin
+metadata:
+  name: board
+  version: 1.0.0
+spec:
+  engine: ">=0.1.0"
+  entry: ./src/index.ts
+  capabilities: [portal.routes]
+  routes:
+    types: ./src/routes.ts
+`
+
+const boardSource = `import { definePlugin, defineRoutes } from "@cicord/sdk";
+import type { Routes } from "./routes.ts";
+export default definePlugin({
+  routes: defineRoutes<Routes>({
+    "GET /board": { access: "public", handler: () => [] },
+  }),
+});
+`
+
+// `cicord plugin add` and `cicord plugin update` keep the custom portal's route types up to
+// date like the admin's Store (community layout: spec.portal.path ./portal/dist and
+// portal/src/cicord-routes.d.ts): the portal's CI check (`portal typegen --check`) passes.
+func TestPluginAddUpdateKeepPortalRouteTypes(t *testing.T) {
+	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
+	plugin := commitRepo(t, map[string]string{"plugin.yaml": boardManifest, "src/index.ts": boardSource,
+		"src/routes.ts": "export interface Routes { \"GET /board\": { response: string[] } }\n"}, "v1.0.0")
+	reg := commitRepo(t, map[string]string{"index.yaml": "plugins:\n  board:\n    repo: " + plugin + "\n"})
+	dir := t.TempDir()
+	if code, _, errOut := run(t, "init", dir, "--server", "srv", "--bot", "bot"); code != 0 {
+		t.Fatalf("init: %s", errOut)
+	}
+	if code, _, errOut := run(t, "registry", "add", "acme", reg, "--dir", dir); code != 0 {
+		t.Fatalf("registry add: %s", errOut)
+	}
+	project := filepath.Join(dir, "cicord.yaml")
+	writeFile(t, project, strings.Replace(readFile(t, project), "spec:\n", "spec:\n  portal:\n    path: ./portal/dist\n", 1))
+	writeFile(t, filepath.Join(dir, "portal", "package.json"), `{"name":"portal","private":true}`)
+	writeFile(t, filepath.Join(dir, "portal", "dist", "index.html"), "<!doctype html>")
+	routes := filepath.Join(dir, "portal", "src", "cicord-routes.d.ts")
+	check := func(when string) {
+		t.Helper()
+		if code, out, errOut := run(t, "portal", "typegen", dir, "--check", "--out", routes); code != 0 {
+			t.Fatalf("portal typegen --check %s: %d %s %s", when, code, out, errOut)
+		}
+	}
+
+	// Without the file: left alone (a portal that does not use typed routes).
+	if code, out, errOut := run(t, "plugin", "add", "acme/board", "--bot", "bot", "--name", "first", "--dir", dir); code != 0 ||
+		strings.Contains(out, "Regenerated") {
+		t.Fatalf("plugin add without route types: %d %s %s", code, out, errOut)
+	}
+	if _, err := os.Stat(routes); !os.IsNotExist(err) {
+		t.Fatalf("route types created: %v", err)
+	}
+	if code, _, errOut := run(t, "portal", "typegen", dir); code != 0 {
+		t.Fatal(errOut)
+	}
+	check("after typegen")
+
+	// add: a second instance does not change the file (same plugin, same version).
+	code, out, errOut := run(t, "plugin", "add", "acme/board", "--bot", "bot", "--name", "second", "--dir", dir)
+	if code != 0 || strings.Contains(out, "Regenerated") {
+		t.Fatalf("plugin add of the same version: %d %s %s", code, out, errOut)
+	}
+	if !strings.Contains(readFile(t, routes), "//   board 1.0.0 (acme/board): 1 route(s), typed") {
+		t.Fatalf("route types:\n%s", readFile(t, routes))
+	}
+
+	// update: the header names the new version, and the check passes without a manual fix.
+	tagRelease(t, plugin, map[string]string{"plugin.yaml": strings.Replace(boardManifest, "1.0.0", "1.1.0", 1)}, "v1.1.0")
+	code, out, errOut = run(t, "plugin", "update", "acme/board", "--dir", dir)
+	if code != 0 || !strings.Contains(out, "Regenerated portal/src/cicord-routes.d.ts (cicord portal typegen).") || errOut != "" {
+		t.Fatalf("plugin update: %d %s %s", code, out, errOut)
+	}
+	got := readFile(t, routes)
+	if !strings.Contains(got, "//   board 1.1.0 (acme/board): 1 route(s), typed") || strings.Contains(got, "board 1.0.0") {
+		t.Fatalf("route types after update:\n%s", got)
+	}
+	check("after update")
+
+	// The file cannot be generated (a route contract that cannot be read): the update is
+	// applied, with a warning, and the file is left as it was.
+	bad := filepath.Join(dir, "plugins", "bad")
+	writeFile(t, filepath.Join(bad, "plugin.yaml"), strings.Replace(strings.Replace(boardManifest, "name: board", "name: bad", 1),
+		"./src/routes.ts", "./src/missing.ts", 1))
+	writeFile(t, filepath.Join(bad, "src", "index.ts"), strings.Replace(boardSource, `import type { Routes } from "./routes.ts";`,
+		`type Routes = { "GET /board": { response: string[] } };`, 1))
+	botFile := filepath.Join(dir, "bots", "bot", "bot.yaml")
+	writeFile(t, botFile, readFile(t, botFile)+"    - name: bad\n      source: ../../plugins/bad\n      grants: [portal.routes]\n")
+	tagRelease(t, plugin, map[string]string{"plugin.yaml": strings.Replace(boardManifest, "1.0.0", "1.2.0", 1)}, "v1.2.0")
+	code, out, errOut = run(t, "plugin", "update", "acme/board", "--dir", dir)
+	if code != 0 || strings.Contains(out, "Regenerated") ||
+		!strings.Contains(errOut, "warning: portal/src/cicord-routes.d.ts was not regenerated") {
+		t.Fatalf("plugin update with a broken contract: %d %s %s", code, out, errOut)
+	}
+	if lock, _ := registry.ReadLock(dir); lock.Plugins["acme/board"].Version != "1.2.0" {
+		t.Errorf("the update was not applied: %+v", lock.Plugins)
+	}
+	if readFile(t, routes) != got {
+		t.Error("the route types changed although they could not be generated")
+	}
+}

@@ -250,7 +250,7 @@ func (e *runtimeEnv) apiOptions(rt *runtime.Runtime, w writeback.Writer, branch 
 			SecretFunc: setup.OAuthClientSecret(e.secrets, nil)},
 		PublicURL: e.public, AdminURL: e.admin, CORSOrigins: e.cors, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: e.log,
 		Stopping: e.stopping, Setup: wz, Checker: e.checker(rt, w), Catalog: cat,
-		SecretStore: e.secrets, Secret: e.resolve, PluginStore: runtimePluginStore(cat, e.resolve, e.stopping, rt.Repo),
+		SecretStore: e.secrets, Secret: e.resolve, PluginStore: runtimePluginStore(cat, e.resolve, e.stopping, rt.Repo, rt.NotifyStore),
 		Metrics: e.metrics,
 	}
 }

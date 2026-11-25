@@ -13,6 +13,7 @@ import {
   Puzzle,
   SlidersHorizontal,
   Slash,
+  Store as StoreIcon,
   Trash2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -22,6 +23,7 @@ import { EmptyState, Mono, Page, PageHeader, PluginGlyph, Sha } from "../compone
 import { Callout, ErrorState } from "../components/errors.tsx";
 import { HealthBadge } from "../components/status.tsx";
 import { CapabilityChip, TrustBadge } from "../components/trust.tsx";
+import { WriteWarnings } from "../components/update.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,7 +46,7 @@ import { cn } from "../lib/utils.ts";
 import { Link, navigate, useLocation } from "../router.tsx";
 import { PluginSettings } from "./PluginSettings.tsx";
 import { UpdateCallout } from "./Store.tsx";
-import { storeUpdatePath } from "../shell/nav.ts";
+import { storePluginPath, storeUpdatePath } from "../shell/nav.ts";
 
 type Section = "settings" | "overview" | "danger";
 
@@ -163,6 +165,17 @@ function InstanceView({
         leading={<PluginGlyph size={40} />}
         title={name}
         description={p.description || undefined}
+        actions={
+          // The plugin's Store page (versions, what it requests, its other instances).
+          ws.isAdmin && instance.source && instance.source !== "local" ? (
+            <Button asChild variant="outline" size="sm">
+              <Link to={storePluginPath(serverKey, instance.source, p.name)}>
+                <StoreIcon />
+                {t("plugins.instance.viewInStore")}
+              </Link>
+            </Button>
+          ) : undefined
+        }
         meta={
           <>
             <Mono className="text-[11px]">
@@ -586,6 +599,7 @@ export function UninstallNotice({
           </div>
         ) : null}
         <p className="text-xs text-muted-foreground">{t("plugins.uninstall.done.dataKept")}</p>
+        <WriteWarnings warnings={r.warnings} />
         <div className="flex flex-wrap items-center gap-2">
           {pr && r.pullRequestUrl ? (
             <a

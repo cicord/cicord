@@ -12,7 +12,7 @@ What the admin console writes:
 | Change                                   | Files                                                                                   |
 | ---------------------------------------- | --------------------------------------------------------------------------------------- |
 | Plugin settings (base config or a server override) | `bots/<bot>/bot.yaml`                                                         |
-| Store install, update, uninstall         | `bots/<bot>/bot.yaml`, and `plugins/<name>/` (bundled plugins) or `cicord.lock` (registry plugins) |
+| Store install, update, uninstall         | `bots/<bot>/bot.yaml`, and `plugins/<name>/` (bundled plugins) or `cicord.lock` (registry plugins); with a custom portal that has typed routes, also its `src/cicord-routes.d.ts` |
 | Registries added or removed in the Store | `cicord.yaml`                                                                           |
 | Server icon, banner and splash uploads   | `servers/<key>.yaml` and `servers/assets/<key>-<kind>.<ext>`                            |
 
@@ -44,9 +44,10 @@ spec:
 - Policies are evaluated **in order**; the first one with a `paths` glob matching the changed
   file decides (`**` matches across directories, `*` and `?` within one). Otherwise
   `defaultMode` applies (`pullRequest` when unset).
-- A change touching several files uses the **strictest** mode among them. With the policies
-  above, installing a registry plugin also changes `cicord.lock`, which no policy matches, so
-  it opens a pull request.
+- A change touching several files is **one** commit or **one** pull request, in the
+  **strictest** mode among them. With the policies above, installing a registry plugin also
+  changes `cicord.lock`, which no policy matches, so it opens a pull request; so does any Store
+  action on a repository whose custom portal has typed routes (`portal/src/cicord-routes.d.ts`).
 - `enabled: false` turns write-back off: the admin console then refuses to save
   configuration (`403`).
 - `branch` is the target branch; it defaults to `spec.source.branch`.
@@ -71,6 +72,28 @@ Cicord-Source: admin-ui
 `Cicord-Actor` is `runtime-token` for a call made with the runtime token, and
 `Cicord-Source` is `setup` for the setup wizard's commits. `git log` and `git blame` show
 every change, and a bad edit is reverted like any commit.
+
+A Store action also says in its message what it regenerated (the portal's route types,
+`Regenerated portal/src/cicord-routes.d.ts (cicord portal typegen).`, with the routes it
+removes) or could not regenerate (`Warning: …`, also returned in the API response's `warnings`
+and shown in the admin console): the rest of the message (everything after the first line)
+is also the body of the pull request.
+
+### What a Store action keeps up to date
+
+A plugin install, update or uninstall made in the Store changes `cicord.lock` or
+`plugins/<name>/` and `bot.yaml`. Generated files that depend on them are regenerated in the
+same commit or pull request, so the repository's CI passes without a manual fix:
+
+- **The custom portal's route types** (`<portal>/src/cicord-routes.d.ts`, when the portal has
+  it): they name every plugin with routes and its version. They are written with the code of
+  `cicord portal typegen`, from the new revision's plugins, and match what
+  `cicord portal typegen --check` expects byte for byte, whatever cicord version CI pins (the
+  file never names a cicord version). See [Custom portal → Typed plugin
+  routes](../../portal/custom-portal/#kept-up-to-date-by-the-admins-store).
+- Nothing else needs it: `cicord portal vendor --check` depends on the cicord release only,
+  the committed portal build does not change with types, and `cicord validate` runs on the new
+  revision before anything is written. Plugin settings changes never change routes.
 
 ## Providers
 

@@ -621,6 +621,7 @@
     },
     "instance": {
       "back": "All plugins",
+      "viewInStore": "View in Store",
       "notFound": {
         "title": "This plugin instance does not exist",
         "text": "There is no instance {{bot}}/{{instance}} on this server. It may have been uninstalled or renamed."
@@ -1441,6 +1442,10 @@
     "sinceStart": "Live events count any message since the runtime started."
   },
   "store": {
+    "warnings": {
+      "title": "One generated file needs a manual fix",
+      "hint": "The change was saved. Fix what is listed here and commit it, or the repository's CI check fails."
+    },
     "title": "Store",
     "description": "Plugins from Cicord and from the sources declared in cicord.yaml. Installing one commits it to git; the runtime then activates the new revision.",
     "refresh": "Refresh sources",
@@ -1519,7 +1524,14 @@
       "notInstalled": "Not installed yet.",
       "instanceOn": "{{bot}}/{{instance}} on {{server}}",
       "install": "Install on {{server}}",
-      "installAgain": "Install another instance",
+      "installAnother": "Install another instance",
+      "installAnotherHint": "Adds the plugin a second time, with its own name, settings and data.",
+      "updateFirst": "Update to {{version}} first: every instance of a plugin runs the same version.",
+      "open": "Open",
+      "openInstance": "Open {{instance}}",
+      "openMore_one": "and {{count}} more instance, listed under Installed",
+      "openMore_other": "and {{count}} more instances, listed under Installed",
+      "installedHint": "Each instance has its own page with its settings.",
       "portal": "Open the developer portal",
       "back": "Back to the Store",
       "notFound": {
@@ -1701,7 +1713,7 @@
       "updatesNo": "Up to date"
     },
     "update": {
-      "badge": "Update {{version}}",
+      "badge": "Update to {{version}}",
       "badgeTip": "{{current}} → {{latest}} ({{level}} update)",
       "level": {
         "major": "major",
@@ -1713,7 +1725,7 @@
         "text": "Review what the new version requests before updating every instance of the plugin.",
         "major": "A major version: it may change its settings or behavior.",
         "modified": "This copy was modified in the repository: updating overwrites the local changes.",
-        "review": "Review the update",
+        "review": "Update to {{version}}",
         "askAdmin": "An admin can review and apply it from the Store."
       },
       "title": "Update {{name}}",

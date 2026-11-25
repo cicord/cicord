@@ -16,6 +16,10 @@ const (
 	ChangePlugins = "plugins"
 	// ChangeAnalytics: new analytics points were written for a server.
 	ChangeAnalytics = "analytics"
+	// ChangeStore: what the plugin Store lists changed without a new revision (a refresh of
+	// the registries found other versions or updates). A new revision is a "sync" change
+	// without server.
+	ChangeStore = "store"
 )
 
 // Change tells that something the admin console shows changed. It carries no content:
@@ -71,6 +75,11 @@ func (r *Runtime) notify(topic, server string) {
 		default:
 		}
 	}
+}
+
+// NotifyStore tells the admin console that the plugin Store changed (ChangeStore).
+func (r *Runtime) NotifyStore() {
+	r.notify(ChangeStore, "")
 }
 
 // notifySync publishes the change of a sync record ("server:<key>", "bot:<key>" or

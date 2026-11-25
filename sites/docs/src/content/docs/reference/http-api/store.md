@@ -33,7 +33,10 @@ official URL whose signature is missing, invalid, expired, for another registry 
 one already seen has `signature: "invalid"`, an `error`, and no plugins from it (`cicord` keeps
 its bundled plugins). `verified` is only `true` from a verified official index. A `cicord`
 plugin from the registry has a `repo`, and its `StoreDetail` a `commit` and `integrity`;
-installing it locks `cicord/<name>` in `cicord.lock`.
+installing it locks `cicord/<name>` in `cicord.lock`. Once `cicord/<name>` is locked, its `StoreDetail` (and an
+install of another instance) always comes from the registry, at its latest release, even when
+the index does not list a version newer than the bundled one: the page then shows the same
+`update` as the table, which compares the lock with the release tags.
 
 **Who**: browsing and installing need the `admin` role on a server (bearer: everywhere).
 Adding or removing a source changes `cicord.yaml` (the whole project): bearer, or `admin` on
@@ -133,8 +136,13 @@ of them at once:
   anything is written (`422 invalid` with diagnostics).
 - Mode, activation wait and response are those of the wizard's `POST /plugins/install`
   (`InstallResult = {"instance", "health", "message"?, "command"?, "revision"?, "mode",
-  "pullRequestUrl"?}`). Audit `store.install` (target `<bot>/<instance>`, details `{source,
-  plugin, version, commit, trust, mode}`).
+  "pullRequestUrl"?, "warnings"?}`). Audit `store.install` (target `<bot>/<instance>`, details
+  `{source, plugin, version, commit, trust, mode}`).
+- When the repository's custom portal has typed routes (`<portal>/src/cicord-routes.d.ts`),
+  the same commit or pull request regenerates them with the code of `cicord portal typegen`
+  (its path counts for the [write-back mode](../../../concepts/write-back/#policies)). When
+  they cannot be generated, the change is still written and `warnings` says so (also in the
+  commit message and the pull request body). Install, update and uninstall alike.
 
 ## Updating a plugin
 
@@ -196,7 +204,8 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
 ```json
 // UpdateResult
 { "version": "1.1.0", "mode": "commit|pullRequest", "revision"?: "…", "pullRequestUrl"?: "…",
-  "message"?: "…", "instances": [{ "server", "bot", "instance", "health", "message"? }] }
+  "message"?: "…", "instances": [{ "server", "bot", "instance", "health", "message"? }],
+  "warnings"?: ["…"] }
 ```
 
 The CLI equivalent is `cicord plugin update [<registry>/<plugin>] [--to <range>] [--force]`:

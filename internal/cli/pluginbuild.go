@@ -23,6 +23,7 @@ import (
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin"
+	"github.com/cicord/cicord/internal/portalroutes"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/sim"
 	"github.com/cicord/cicord/internal/source"
@@ -205,7 +206,7 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 		r.Errors = append(r.Errors, "http.fetch requires spec.network.allow")
 	}
 	// The route contract is copied into the portals (cicord portal typegen).
-	if _, err := readRouteContract(dir, m); err != nil {
+	if _, err := portalroutes.ReadContract(dir, m); err != nil {
 		r.Errors = append(r.Errors, err.Error())
 	} else if m.Spec.Routes != nil && m.Spec.Routes.Types != "" && len(def.Routes) == 0 {
 		r.Warnings = append(r.Warnings, "plugin.yaml declares spec.routes.types but the plugin has no routes")

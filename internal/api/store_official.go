@@ -10,15 +10,16 @@ import (
 )
 
 // officialOrigin tells an install of source "cicord" whether the plugin comes from the
-// official remote registry (store.Service.OfficialRemote) or from the binary. The install
-// must match what was reviewed: a reviewed commit means the remote version, none the
-// bundled one; when the origin changed in between, the install is refused (409 changed).
+// official remote registry (store.Service.OfficialOrigin, like the plugin's Store page) or
+// from the binary. The install must match what was reviewed: a reviewed commit means the
+// remote version, none the bundled one; when the origin changed in between, the install
+// is refused (409 changed).
 // ok is false when the response was written.
 func (s *server) officialOrigin(w http.ResponseWriter, r *http.Request, source, plugin, reviewedCommit string) (reg config.Registry, remote, ok bool) {
 	if source != config.OfficialRegistryName {
 		return config.Registry{}, false, true
 	}
-	reg, remote, err := s.pluginStore().OfficialRemote(r.Context(), plugin)
+	reg, remote, err := s.pluginStore().OfficialOrigin(r.Context(), s.rt.Repo(), plugin)
 	if err != nil {
 		s.failStore(w, err)
 		return config.Registry{}, false, false

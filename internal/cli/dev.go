@@ -199,7 +199,7 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
 		PublicURL: public, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
 		Stopping: stopping, Setup: wz, Checker: checker,
-		Catalog: cat, SecretStore: sec, Secret: stored, PluginStore: runtimePluginStore(cat, stored, stopping, rt.Repo),
+		Catalog: cat, SecretStore: sec, Secret: stored, PluginStore: runtimePluginStore(cat, stored, stopping, rt.Repo, rt.NotifyStore),
 	})
 
 	fmt.Fprintf(stdout, "Cicord dev runtime listening on %s\n", public)

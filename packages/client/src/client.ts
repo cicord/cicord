@@ -660,6 +660,7 @@ export class CicordClient {
               break;
             case "status":
             case "stopping":
+            case "store":
               onEvent({ type: e.event });
               break;
             case "sync":

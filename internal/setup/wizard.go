@@ -1335,6 +1335,8 @@ type InstallResult struct {
 	Revision       string `json:"revision,omitempty"`
 	Mode           string `json:"mode"`
 	PullRequestURL string `json:"pullRequestUrl,omitempty"`
+	// Warnings: what the change could not keep up to date (the portal's route types).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // InstallPlugin installs a catalog plugin on the wizard's server.

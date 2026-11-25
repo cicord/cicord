@@ -27,6 +27,7 @@ access checks.
 | `sync` | `{"server": "my-community"}` | A sync was recorded, or a gateway event showed drift on the server: the history, and the server's sync state, plan, resources and drift. Without `server`: a revision (activated or rejected). |
 | `plugins` | `{"server": "my-community"}` | A plugin instance of the server crashed or restarted. |
 | `analytics` | `{"server": "my-community"}` | New [analytics](../analytics/) points were written for the server (at most every 30 seconds while there is activity). |
+| `store` | `{}` | What the plugin [Store](../store/) lists changed without a new revision: a refresh of the registries (in the background, every 30 minutes) found other versions or updates, or a plugin page resolved a newer release than the one the table had. Refetch the Store listings, plugin pages and update reviews, and the update badges of plugin instances. A new revision is a `sync` event without `server`: it also changes what the Store shows as installed. |
 | `stopping` | `{}` | The runtime is shutting down (a restart or an update): reconnect. |
 
 ```text

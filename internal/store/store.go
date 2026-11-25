@@ -138,6 +138,11 @@ type Service struct {
 	// the tag prefix of the plugin (IndexEntry.TagPrefix; default registry.LatestVersion:
 	// tags only, no clone). Cached like indexes.
 	Latest func(ctx context.Context, registryURL, repoURL, tagPrefix string) (string, error)
+	// Changed is called when what the Store lists changed without a new revision: a
+	// background refresh found other versions or updates, or a plugin page resolved a newer
+	// version than the cached one. The admin console refetches its Store pages (the
+	// runtime's "store" change topic). Nil: nobody is told.
+	Changed func()
 
 	mu    sync.Mutex
 	cache map[string]cached // by normalized URL
@@ -243,6 +248,7 @@ func (s *Service) Run(stop <-chan struct{}, repo func() *config.Repo) {
 	}
 	t := time.NewTimer(first)
 	defer t.Stop()
+	last := ""
 	for {
 		select {
 		case <-ctx.Done():
@@ -251,10 +257,39 @@ func (s *Service) Run(stop <-chan struct{}, repo func() *config.Repo) {
 		}
 		r := repo()
 		if _, official := registry.Official(); official || len(registries(r)) > 0 {
-			_, _ = s.Sources(ctx, r, true) // also refreshes the latest versions of installed plugins
+			// Also refreshes the latest versions of installed plugins.
+			if srcs, err := s.Sources(ctx, r, true); err == nil {
+				if fp := fingerprint(srcs); fp != last {
+					last = fp
+					s.changed()
+				}
+			}
 		}
 		t.Reset(s.ttl())
 	}
+}
+
+func (s *Service) changed() {
+	if s.Changed != nil {
+		s.Changed()
+	}
+}
+
+// fingerprint sums up what a listing shows that a refresh can change: versions, updates,
+// fetch errors.
+func fingerprint(srcs []Source) string {
+	var b strings.Builder
+	for _, src := range srcs {
+		fmt.Fprintf(&b, "%s %t|", src.Name, src.Error != nil)
+		for _, p := range src.Plugins {
+			fmt.Fprintf(&b, "%s@%s", p.Name, p.Version)
+			if p.Update != nil {
+				fmt.Fprintf(&b, ">%s", p.Update.Latest)
+			}
+			b.WriteByte(',')
+		}
+	}
+	return b.String()
 }
 
 // Check fetches a registry index now (and caches it): nil when it is a valid registry.
@@ -375,7 +410,7 @@ func fromIndex(r config.Registry, name string, e registry.IndexEntry, inst []Ins
 func (s *Service) Detail(ctx context.Context, repo *config.Repo, source, name string) (Detail, error) {
 	var reg *config.Registry
 	if source == config.OfficialRegistryName {
-		off, remote, err := s.OfficialRemote(ctx, name)
+		off, remote, err := s.OfficialOrigin(ctx, repo, name)
 		if err != nil {
 			return Detail{}, err
 		}
@@ -471,12 +506,17 @@ func (s *Service) RegistryDetail(ctx context.Context, repo *config.Repo, reg con
 	}
 	fill(&d, e)
 	// What was just resolved is the latest version: keep the update check in line.
+	key := latestKey(ie.Repo, ie.TagPrefix(name))
 	s.mu.Lock()
 	if s.tags == nil {
 		s.tags = map[string]cachedLatest{}
 	}
-	s.tags[latestKey(ie.Repo, ie.TagPrefix(name))] = cachedLatest{version: d.Version, at: s.now()}
+	prev, known := s.tags[key]
+	s.tags[key] = cachedLatest{version: d.Version, at: s.now()}
 	s.mu.Unlock()
+	if known && prev.version != d.Version {
+		s.changed() // the plugin table (its update badges) is behind this page
+	}
 	if repo != nil && len(d.Installed) > 0 {
 		if l, err := registry.ReadLock(repo.Root); err == nil {
 			if le, ok := l.Plugins[source+"/"+name]; ok {

@@ -673,6 +673,7 @@ describe("simulator", () => {
                 'event: sync\ndata: {"server":"main"}\n\n' +
                 'event: analytics\ndata: {"server":"main"}\n\n' +
                 "event: plugins\ndata: not json\n\n" +
+                "event: store\ndata: {}\n\n" +
                 "event: stopping\ndata: {}\n\n" +
                 "event: unknown\ndata: {}\n\n",
             ),
@@ -691,6 +692,7 @@ describe("simulator", () => {
       { type: "status" },
       { type: "sync", server: "main" },
       { type: "analytics", server: "main" },
+      { type: "store" },
       { type: "stopping" },
     ]);
   });

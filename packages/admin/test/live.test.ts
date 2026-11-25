@@ -11,7 +11,21 @@ describe("live refresh", () => {
       ["admin", "history"],
       keys.server("main"),
     ]);
-    expect(prefixesFor({ type: "sync" })).toEqual([keys.status(), ["admin", "history"]]);
+    // A revision (sync without server) changes what the Store shows installed and updatable.
+    expect(prefixesFor({ type: "sync" })).toEqual([
+      keys.status(),
+      ["admin", "history"],
+      keys.store(),
+    ]);
+    // A registry refresh: the Store and the update badges of every server's plugins.
+    expect(prefixesFor({ type: "store" })).toEqual([keys.store(), ["admin", "server"]]);
+    // keys.store() covers the plugin pages and update reviews (stale details).
+    for (const key of [
+      keys.storeDetail("cicord", "tickets"),
+      keys.storeUpdate("cicord", "tickets"),
+    ])
+      expect(key.slice(0, keys.store().length)).toEqual([...keys.store()]);
+    expect(keys.plugins("main").slice(0, 2)).toEqual(["admin", "server"]);
     expect(prefixesFor({ type: "plugins", server: "main" })).toEqual([
       keys.status(),
       keys.plugins("main"),

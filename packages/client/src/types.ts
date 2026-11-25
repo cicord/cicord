@@ -789,6 +789,12 @@ export interface UninstallResult {
   mode: "commit" | "pullRequest";
   revision?: string;
   pullRequestUrl?: string;
+  /**
+   * What the change could not keep up to date, e.g. the custom portal's route types
+   * (`portal/src/cicord-routes.d.ts`) when `cicord portal typegen` failed: fix and commit it,
+   * or the portal's CI check fails.
+   */
+  warnings?: string[];
 }
 
 export type ConfigScope = "server" | "base";
@@ -1435,6 +1441,12 @@ export interface StoreUpdateResult {
   message?: string;
   /** Health of every instance (commit mode, once the new revision is active). */
   instances: UpdatedInstance[];
+  /**
+   * What the change could not keep up to date, e.g. the custom portal's route types
+   * (`portal/src/cicord-routes.d.ts`) when `cicord portal typegen` failed: fix and commit it,
+   * or the portal's CI check fails.
+   */
+  warnings?: string[];
 }
 
 /** Result of a plugin install (setup wizard §10 and Store §11). */
@@ -1447,6 +1459,12 @@ export interface InstallResult {
   revision?: string;
   mode: "commit" | "pullRequest";
   pullRequestUrl?: string;
+  /**
+   * What the change could not keep up to date, e.g. the custom portal's route types
+   * (`portal/src/cicord-routes.d.ts`) when `cicord portal typegen` failed: fix and commit it,
+   * or the portal's CI check fails.
+   */
+  warnings?: string[];
 }
 
 /** `POST /registries` request. */
@@ -1480,7 +1498,12 @@ export type AdminEvent =
   /** The runtime is shutting down (restart, update): reconnect. */
   | { type: "stopping" }
   | { type: "status" }
-  | { type: "sync" | "plugins" | "analytics"; server?: string };
+  | { type: "sync" | "plugins" | "analytics"; server?: string }
+  /**
+   * What the plugin Store lists changed without a new revision (a registry refresh found
+   * new releases or updates). A new revision is a `sync` event without server.
+   */
+  | { type: "store" };
 
 // ─────────────────────────────────────────────────────────── portal analytics
 

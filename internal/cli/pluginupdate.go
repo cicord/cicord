@@ -37,7 +37,11 @@ With a plugin, updates every instance using it: the cicord.lock entry, the versi
 each instance when the new version is outside it, and the grants (set to what the new
 version requests). Copies of official plugins (cicord/<name>) are rewritten from the plugins
 bundled in this binary; a locally modified copy is only overwritten with --force.
-Review the printed capability changes before committing.`,
+Review the printed capability changes before committing.
+
+When the repository's custom portal has typed routes (<portal>/src/cicord-routes.d.ts), they
+are regenerated like ` + "`cicord portal typegen`" + ` when their content changes, so the portal's CI
+check stays green; when they cannot be generated, a warning says so.`,
 		Example: `  cicord plugin update
   cicord plugin update acme/xp
   cicord plugin update acme/xp --to ^2.0.0
@@ -246,7 +250,9 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 	if err := setup.ApplyEdits(repo.Root, plan.Edits); err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "Updated %s to %s. Run `cicord validate`, then commit.\n", source, spec.Version)
+	fmt.Fprintf(w, "Updated %s to %s.\n", source, spec.Version)
+	refreshRouteTypes(w, cmd.ErrOrStderr(), repo.Root)
+	fmt.Fprintln(w, "Run `cicord validate`, then commit.")
 	return nil
 }
 

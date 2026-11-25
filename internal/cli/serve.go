@@ -522,7 +522,7 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 			SecretFunc: setup.OAuthClientSecret(sec, nil)},
 		PublicURL: public, AdminURL: f.adminURL, CORSOrigins: f.corsOrigins, AdminUI: webui.Admin(), Portal: webui.Portal(), Logger: log,
 		Stopping: stopping, Checker: &setup.Checker{Runtime: rt, Probe: defaultProbe(), Secrets: resolve, Writer: writer},
-		Catalog: cat, SecretStore: sec, Secret: resolve, PluginStore: runtimePluginStore(cat, resolve, stopping, rt.Repo),
+		Catalog: cat, SecretStore: sec, Secret: resolve, PluginStore: runtimePluginStore(cat, resolve, stopping, rt.Repo, rt.NotifyStore),
 		Metrics: reg,
 	})
 	runAlerts(alerts, rt, stopping)

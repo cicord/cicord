@@ -66,8 +66,8 @@ describe("plugin updates", () => {
     const { user, sent } = setup(`${SERVER}/plugins`);
     await login(user);
     const table = await screen.findByRole("table", { name: /plugin/i });
-    expect(await within(table).findByText("Update 0.1.0")).toBeTruthy();
-    expect(within(table).getByText("Update 0.4.1")).toBeTruthy();
+    expect(await within(table).findByText("Update to 0.1.0")).toBeTruthy();
+    expect(within(table).getByText("Update to 0.4.1")).toBeTruthy();
     await user.selectOptions(screen.getByRole("combobox", { name: "Updates" }), "true");
     expect(await screen.findByText(/of 2$/)).toBeTruthy();
     expect(sent.some((s) => s.path.endsWith("/plugins") && s.query.includes("updates=true"))).toBe(
@@ -79,8 +79,8 @@ describe("plugin updates", () => {
     await login(store.user);
     const storeTable = await screen.findByRole("table", { name: "Store plugins" });
     await store.user.selectOptions(screen.getByRole("combobox", { name: "Updates" }), "true");
-    expect(await within(storeTable).findByText("Update 0.4.1")).toBeTruthy();
-    expect(within(storeTable).getByText("Update 0.1.0")).toBeTruthy();
+    expect(await within(storeTable).findByText("Update to 0.4.1")).toBeTruthy();
+    expect(within(storeTable).getByText("Update to 0.1.0")).toBeTruthy();
     expect(
       store.sent.some(
         (s) => s.path === "/api/v1/store/plugins" && s.query.includes("updates=true"),
@@ -94,7 +94,7 @@ describe("plugin updates", () => {
     const banner = (await screen.findByText("Update available: 0.0.9 → 0.1.0")).closest(
       "[role=status]",
     ) as HTMLElement;
-    await user.click(within(banner).getByRole("link", { name: "Review the update" }));
+    await user.click(within(banner).getByRole("link", { name: "Update to 0.1.0" }));
     const main = screen.getByRole("main");
     expect(await within(main).findByRole("heading", { name: /Update Welcome/ })).toBeTruthy();
     // The capability the new version adds is highlighted.

@@ -120,7 +120,9 @@ from the server:
 - The change is validated on a copy of the active revision first (`422 invalid` when
   something depends on it). Mode, activation wait and errors are those of a
   [config `PUT`](#editing-the-config). Audit `plugin.uninstall`.
+- A custom portal's route types are regenerated in the same change, as for a
+  [Store install](../store/#installing); `warnings` says when they could not be.
 
 ```json
-{ "removed": true, "cleaned": ["cicord.lock: acme/xp"], "mode": "commit", "revision"?: "…", "pullRequestUrl"?: "…" }
+{ "removed": true, "cleaned": ["cicord.lock: acme/xp"], "mode": "commit", "revision"?: "…", "pullRequestUrl"?: "…", "warnings"?: ["…"] }
 ```

@@ -186,6 +186,35 @@ the response are type errors, so a portal build (`tsc --noEmit && vp build`) fai
 changes its contract. `cicord portal typegen --check` and `cicord portal build --check` fail
 when the file is out of date.
 
+### Kept up to date by the admin's Store
+
+The file names the version of every plugin with routes, so installing, updating or
+uninstalling a plugin changes it. When the portal sources already have
+`src/cicord-routes.d.ts` (the nearest directory above `spec.portal.path` with a
+`package.json`, e.g. `portal/src/cicord-routes.d.ts` for `path: ./portal/dist`), the
+[write-back](../../concepts/write-back/) of a Store install, update or uninstall made in the
+admin console regenerates it with the code of `cicord portal typegen`, from the plugins of the
+new revision, and puts it in the **same commit or pull request** as `cicord.lock` and
+`bot.yaml`: the `cicord-portal` check stays green without a manual fix. `cicord plugin add`
+and `cicord plugin update` do the same in your working tree (they print
+`Regenerated portal/src/cicord-routes.d.ts`): commit it with the rest. Its path counts for the
+write-back mode like the other changed files (the strictest policy wins): with the default
+`pullRequest` and a `commit` policy for `bots/**` only, such a change opens a pull request.
+
+If the file cannot be generated (a plugin that does not build, a route contract that cannot
+be read), the change is still saved; the admin console, the commit message and the pull request
+body (or the CLI's warning) say so: run `cicord portal typegen` and commit the result. When the change removes routes,
+the commit message lists them: portal code still calling them no longer type-checks
+(`pnpm build`), which only a code change fixes. A configuration change (plugin settings) never
+changes the file: routes come from the plugins' code. A portal without the file, or that writes
+it elsewhere (`--out`), is left alone.
+
+The output depends only on the repository (plugin names, versions, sources as written in
+`bot.yaml`, routes and contracts), never on the cicord version that wrote it: the cicord
+release pinned in `cicord-portal.yml` checks a file written by a newer runtime, byte for byte.
+The other generated check, `cicord portal vendor --check`, depends only on that release, not on
+the plugins.
+
 A plugin the generated file does not list falls back to the contracts of the official plugins
 (`levels`, `polls`, `tickets`, `onboarding`: `OfficialPluginRoutes` in `@cicord/client`), else
 to untyped JSON, so the reference portal type-checks in a repository without them. The

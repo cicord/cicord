@@ -368,9 +368,20 @@ func (w *GitWriter) branchExists(r *git.Repository, branch string) bool {
 	return err == nil
 }
 
+// prParts splits a commit message into the pull request title (its first line) and the
+// rest of its body (what the change did besides, warnings), "" when there is none.
+func prParts(req Request) (title, details string) {
+	title, details, _ = strings.Cut(strings.TrimSpace(req.Message), "\n")
+	return title, strings.TrimSpace(details)
+}
+
 func (w *GitWriter) openPR(ctx context.Context, branch string, req Request) (string, error) {
-	title := strings.SplitN(strings.TrimSpace(req.Message), "\n", 2)[0]
-	body := "Change proposed from the Cicord admin UI.\n\n" + strings.TrimSpace(strings.TrimPrefix(trailers(req), strings.TrimSpace(req.Message)))
+	title, details := prParts(req)
+	body := "Change proposed from the Cicord admin UI.\n\n"
+	if details != "" {
+		body += details + "\n\n"
+	}
+	body += strings.TrimSpace(strings.TrimPrefix(trailers(req), strings.TrimSpace(req.Message)))
 	payload, _ := json.Marshal(map[string]string{"title": title, "head": branch, "base": w.opts.Branch, "body": body})
 	u := fmt.Sprintf("%s/repos/%s/pulls", strings.TrimRight(w.opts.GitHubAPI, "/"), url.PathEscape(w.opts.GitHubRepo))
 	u = strings.Replace(u, "%2F", "/", 1)

@@ -567,7 +567,7 @@ cicord plugin test plugins/onboarding --config plugins/onboarding/test/config.ya
 
 ### `cicord plugin add`
 
-Add a registry plugin to a bot and lock it in `cicord.lock`. The registry is one declared in `cicord.yaml` `spec.registries`, or `cicord`, the [official registry](../../plugins/publishing/#the-official-registry). The bot gets `source`, a `version` range (`^<version>` without `@<range>`) and `grants` set to the capabilities the plugin requests; review them before committing.
+Add a registry plugin to a bot and lock it in `cicord.lock`. The registry is one declared in `cicord.yaml` `spec.registries`, or `cicord`, the [official registry](../../plugins/publishing/#the-official-registry). The bot gets `source`, a `version` range (`^<version>` without `@<range>`) and `grants` set to the capabilities the plugin requests; review them before committing. When the repository's custom portal has typed routes (`<portal>/src/cicord-routes.d.ts`), it is regenerated like `cicord portal typegen` when its content changes (a `Regenerated …` line is printed), so the portal's CI check stays green; when it cannot be generated, a warning says so and the rest of the change is kept.
 
 ```text
 cicord plugin add <registry>/<plugin>[@<range>] [flags]
@@ -587,7 +587,7 @@ cicord plugin add cicord/welcome --bot moderator     # from github.com/cicord/ci
 
 ### `cicord plugin update`
 
-Without argument, list the plugins with a newer version: registry plugins (`cicord.lock`) and copies of the official plugins (`plugins/<name>/`). With a plugin, update every instance using it: the lock entry, each instance's version range when the new version is outside it, and the grants (set to what the new version requests). Copies of official plugins (`cicord/<name>` instances using `plugins/<name>/`) are rewritten from the plugins bundled in this binary; a locally modified copy only with `--force`. An official plugin locked in `cicord.lock` (installed from the official registry) updates from the registry like any registry plugin. Review the printed capability changes before committing.
+Without argument, list the plugins with a newer version: registry plugins (`cicord.lock`) and copies of the official plugins (`plugins/<name>/`). With a plugin, update every instance using it: the lock entry, each instance's version range when the new version is outside it, and the grants (set to what the new version requests). Copies of official plugins (`cicord/<name>` instances using `plugins/<name>/`) are rewritten from the plugins bundled in this binary; a locally modified copy only with `--force`. An official plugin locked in `cicord.lock` (installed from the official registry) updates from the registry like any registry plugin. Review the printed capability changes before committing. When the repository's custom portal has typed routes (`<portal>/src/cicord-routes.d.ts`), it is regenerated like `cicord portal typegen` when its content changes (a `Regenerated …` line is printed), so the portal's CI check stays green; when it cannot be generated, a warning says so and the rest of the change is kept.
 
 ```text
 cicord plugin update [<registry>/<plugin>] [flags]

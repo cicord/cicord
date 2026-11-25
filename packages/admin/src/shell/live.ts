@@ -37,10 +37,15 @@ export function prefixesFor(event: AdminEvent): QueryKey[] {
       return [keys.status()];
     case "sync":
       // With a server: a sync record, or drift seen in a gateway event (its plan, resources
-      // and drift changed).
+      // and drift changed). Without: a revision was activated or rejected; a new revision
+      // changes what the Store shows as installed and its updates (lists and plugin pages).
       return event.server
         ? [keys.status(), ["admin", "history"], keys.server(event.server)]
-        : [keys.status(), ["admin", "history"]];
+        : [keys.status(), ["admin", "history"], keys.store()];
+    case "store":
+      // A registry refresh found new releases: the Store (sources, table, plugin pages,
+      // update reviews) and the update badges of the plugin instances of every server.
+      return [keys.store(), ["admin", "server"]];
     case "plugins":
       return event.server ? [keys.status(), keys.plugins(event.server)] : [keys.status()];
     case "analytics":

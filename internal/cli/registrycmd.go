@@ -309,9 +309,11 @@ the registry's host only.`,
 var registrySubcommands []func() *cobra.Command
 
 // runtimePluginStore is the Store of a running runtime: guarded fetches, registry tokens
-// from secret, and indexes refreshed in the background until stopping is closed.
-func runtimePluginStore(cat *catalog.Catalog, secret func(string) (string, bool), stopping <-chan struct{}, repo func() *config.Repo) *store.Service {
-	s := &store.Service{Catalog: cat, CacheDir: registry.DefaultCacheDir(), PublicOnly: !registry.AllowPrivateRegistries(), Secret: secret}
+// from secret, and indexes refreshed in the background until stopping is closed. changed
+// is told when the listing changes without a new revision (the "store" change topic).
+func runtimePluginStore(cat *catalog.Catalog, secret func(string) (string, bool), stopping <-chan struct{}, repo func() *config.Repo, changed func()) *store.Service {
+	s := &store.Service{Catalog: cat, CacheDir: registry.DefaultCacheDir(), PublicOnly: !registry.AllowPrivateRegistries(), Secret: secret,
+		Changed: changed}
 	wg, _ := backgroundRuns.LoadOrStore(stopping, &sync.WaitGroup{})
 	wg.(*sync.WaitGroup).Go(func() { s.Run(stopping, repo) })
 	return s

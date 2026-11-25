@@ -10,7 +10,8 @@ import { TrustBadge } from "../components/trust.tsx";
 import { UpdateBadge } from "../components/update.tsx";
 import { useTranslation } from "../i18n/index.ts";
 import { useFlash } from "../lib/flash.ts";
-import { instancePath } from "../shell/nav.ts";
+import { useWorkspace } from "../context.tsx";
+import { instancePath, storeUpdatePath } from "../shell/nav.ts";
 import { UninstallNotice, type UninstallFlash } from "./PluginInstance.tsx";
 
 export { formatPath } from "./PluginSettings.tsx";
@@ -27,6 +28,7 @@ const pluginParams = (q: TableQuery): PluginListParams => ({
 export function PluginsPage({ serverKey }: { serverKey: string }) {
   const { t } = useTranslation();
   const { client } = useCicord();
+  const ws = useWorkspace();
   // The result of an uninstall made on the instance's page, shown once.
   const [flash, dismissFlash] = useFlash<UninstallFlash>(`uninstall:${serverKey}`);
 
@@ -77,7 +79,12 @@ export function PluginsPage({ serverKey }: { serverKey: string }) {
       cell: (p) => (
         <span className="inline-flex flex-wrap items-center gap-1.5">
           <Mono>{p.plugin.version}</Mono>
-          {p.update ? <UpdateBadge update={p.update} /> : null}
+          {p.update ? (
+            <UpdateBadge
+              update={p.update}
+              {...(ws.isAdmin ? { to: storeUpdatePath(serverKey, p.source, p.plugin.name) } : {})}
+            />
+          ) : null}
         </span>
       ),
     },

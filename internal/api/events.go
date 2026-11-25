@@ -17,8 +17,8 @@ import (
 // GET /api/v1/events is a Server-Sent Events stream of change hints. The first event,
 // "hello", gives the runtime version and revision (a client that sees another version
 // than the one it loaded reloads its code); then one event per change topic of the
-// runtime (status, sync, plugins, analytics) with the server concerned. Events carry no
-// content: clients refetch through the usual endpoints and their access checks. Server
+// runtime (status, sync, plugins, analytics, store) with the server concerned. Events
+// carry no content: clients refetch through the usual endpoints and their access checks. Server
 // events are only sent for the servers the user moderates. "stopping" is sent when the
 // runtime shuts down (an update restarts it): reconnect. The stream ends after
 // eventsLifetime (the client reconnects, which checks the session and access again).

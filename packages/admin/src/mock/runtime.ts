@@ -1848,6 +1848,19 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     const instance = jsonText(body["instance"]) || name;
     if (state.instances.some((i) => i.bot === botKey && i.instance === instance))
       return fail(409, "conflict", `bot ${botKey} already has an instance named "${instance}"`);
+    // Like the runtime: the version is shared by every instance, so a new instance of a
+    // plugin with a pending update needs the update first.
+    const pending = updateOf(source, name);
+    if (pending)
+      return explained(422, {
+        code: "invalid",
+        message: "The plugin cannot be added to the configuration.",
+        hint: "See the details.",
+        details:
+          source === "cicord" && pending.kind === "bundled"
+            ? `plugins/${name}/plugin.yaml already exists with other content`
+            : `${source}/${name} is already locked at ${pending.current}: update it first (the Store's update, or cicord plugin update)`,
+      });
     const missing = p.intents.filter(
       (i) => PRIVILEGED_INTENTS.includes(i) && !ENABLED_INTENTS.includes(i),
     );

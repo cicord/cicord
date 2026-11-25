@@ -18,6 +18,7 @@ import {
 import { useCicord } from "@cicord/react";
 import {
   ArrowLeft,
+  ArrowUpCircle,
   CheckCircle2,
   ExternalLink,
   Globe,
@@ -48,7 +49,7 @@ import { DataTable, type DataTableColumn, type TableQuery } from "../components/
 import { Callout, ErrorState, HumanErrorCallout, toastError } from "../components/errors.tsx";
 import { HealthBadge } from "../components/status.tsx";
 import { RISK, TrustBadge } from "../components/trust.tsx";
-import { UpdateBadge } from "../components/update.tsx";
+import { UpdateBadge, WriteWarnings } from "../components/update.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -236,8 +237,12 @@ function Store({ serverKey }: { serverKey: string }) {
     setRefreshing(true);
     try {
       await client.store.refresh();
-      // Sources, the plugin table and the details ("the latest version": review them again).
-      await cache.invalidate(keys.store());
+      // Sources, the plugin table, the plugin pages and update reviews ("the latest
+      // version": review them again), and the update badges of the Plugins table.
+      await Promise.all([
+        cache.invalidate(keys.store()),
+        cache.invalidate(keys.plugins(serverKey)),
+      ]);
       toast.success(t("store.refreshed"));
     } catch (e) {
       toastError(e, t("store.refreshFailed"));
@@ -383,7 +388,9 @@ function Browse({ sources, serverKey }: { sources: StoreSourceSummary[]; serverK
           ) : (
             <span className="text-subtle-foreground">—</span>
           )}
-          {p.update ? <UpdateBadge update={p.update} /> : null}
+          {p.update ? (
+            <UpdateBadge update={p.update} to={storeUpdatePath(serverKey, p.source, p.name)} />
+          ) : null}
         </span>
       ),
     },
@@ -612,22 +619,16 @@ function PluginDetail({
                   {t("store.install.changed.hint")}
                 </Callout>
               ) : null}
-              {d.update ? (
-                <UpdateCallout
-                  update={d.update}
-                  to={storeUpdatePath(serverKey, d.source, d.name)}
-                />
-              ) : null}
+              {d.update ? <UpdateCallout update={d.update} inBar /> : null}
               <Card className="px-4 py-4">
                 <Review detail={d} serverKey={serverKey} />
               </Card>
-              <StickyBar>
-                <Button onClick={() => setStep("install")}>
-                  {d.installed.some((i) => i.server === serverKey)
-                    ? t("store.detail.installAgain")
-                    : t("store.detail.install", { server: serverName })}
-                </Button>
-              </StickyBar>
+              <DetailActions
+                detail={d}
+                serverKey={serverKey}
+                serverName={serverName}
+                onInstall={() => setStep("install")}
+              />
             </>
           ) : (
             <InstallForm
@@ -645,14 +646,108 @@ function PluginDetail({
   );
 }
 
+/** At most this many instances get their own "Open" button in the action bar. */
+const OPEN_IN_BAR = 3;
+
+/**
+ * The action bar of a Store page. Installed on this server: the primary action is the
+ * update ("Update to X", the update review) when there is one, else opening the instance
+ * (each of them, when there are several). Installing another instance (another name,
+ * settings and data) is a rare, advanced action: secondary, and explained.
+ */
+function DetailActions({
+  detail: d,
+  serverKey,
+  serverName,
+  onInstall,
+}: {
+  detail: StoreDetail;
+  serverKey: string;
+  serverName: string;
+  onInstall: () => void;
+}) {
+  const { t } = useTranslation();
+  const hintId = useId();
+  const here = d.installed.filter((i) => i.server === serverKey);
+  const installLabel = here.length
+    ? t("store.detail.installAnother")
+    : t("store.detail.install", { server: serverName });
+  if (!d.update && !here.length)
+    return (
+      <StickyBar>
+        <Button onClick={onInstall}>{installLabel}</Button>
+      </StickyBar>
+    );
+  const open = here.slice(0, OPEN_IN_BAR);
+  return (
+    <StickyBar>
+      <div className="mr-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        {/* With an update pending, a new instance would need the new version, which the
+            others do not run yet: the version is shared, so the update comes first. */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onInstall}
+          disabled={!!d.update}
+          aria-describedby={here.length || d.update ? hintId : undefined}
+        >
+          <Plus />
+          {installLabel}
+        </Button>
+        {here.length || d.update ? (
+          <p id={hintId} className="text-xs text-muted-foreground">
+            {d.update
+              ? t("store.detail.updateFirst", { version: d.update.latest })
+              : t("store.detail.installAnotherHint")}
+          </p>
+        ) : null}
+      </div>
+      {d.update ? (
+        <Button asChild>
+          <Link to={storeUpdatePath(serverKey, d.source, d.name)}>
+            <ArrowUpCircle />
+            {t("store.update.available.review", { version: d.update.latest })}
+          </Link>
+        </Button>
+      ) : here.length === 1 ? (
+        <Button asChild>
+          <Link to={instancePath(serverKey, here[0]!.bot, here[0]!.instance)}>
+            <SlidersHorizontal />
+            {t("store.detail.open")}
+          </Link>
+        </Button>
+      ) : (
+        <>
+          {here.length > OPEN_IN_BAR ? (
+            <span className="text-xs text-muted-foreground">
+              {t("store.detail.openMore", { count: here.length - OPEN_IN_BAR })}
+            </span>
+          ) : null}
+          {open.map((i) => (
+            <Button key={`${i.bot}/${i.instance}`} asChild variant="secondary">
+              <Link to={instancePath(serverKey, i.bot, i.instance)}>
+                <SlidersHorizontal />
+                {t("store.detail.openInstance", { instance: i.instance })}
+              </Link>
+            </Button>
+          ))}
+        </>
+      )}
+    </StickyBar>
+  );
+}
+
 /** "Update available" on the page of an installed plugin (Store page, instance page). */
 export function UpdateCallout({
   update,
   to,
+  inBar = false,
 }: {
   update: NonNullable<StoreDetail["update"]>;
   /** The update review; absent when the viewer cannot update (not admin). */
   to?: string;
+  /** The page's action bar offers the update (the Store page): no button of its own. */
+  inBar?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -660,14 +755,17 @@ export function UpdateCallout({
       tone={update.modified || update.level === "major" ? "warning" : "info"}
       title={t("store.update.available.title", { current: update.current, latest: update.latest })}
       action={
-        to ? (
+        to && !inBar ? (
           <Button asChild size="sm">
-            <Link to={to}>{t("store.update.available.review")}</Link>
+            <Link to={to}>
+              <ArrowUpCircle />
+              {t("store.update.available.review", { version: update.latest })}
+            </Link>
           </Button>
         ) : undefined
       }
     >
-      <p>{to ? t("store.update.available.text") : t("store.update.available.askAdmin")}</p>
+      <p>{to || inBar ? t("store.update.available.text") : t("store.update.available.askAdmin")}</p>
       {update.level === "major" ? <p>{t("store.update.available.major")}</p> : null}
       {update.modified ? <p>{t("store.update.available.modified")}</p> : null}
     </Callout>
@@ -868,24 +966,27 @@ function Review({ detail, serverKey }: { detail: StoreDetail; serverKey: string 
           <Nothing>{t("store.detail.noCommands")}</Nothing>
         )}
       </Block>
-      <Block title={t("store.detail.installed")}>
+      <Block
+        title={t("store.detail.installed")}
+        hint={detail.installed.length ? t("store.detail.installedHint") : undefined}
+      >
         {detail.installed.length ? (
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-1" aria-label={t("store.detail.installed")}>
             {detail.installed.map((i) => (
-              <li
-                key={`${i.server}/${i.bot}/${i.instance}`}
-                className={cn(
-                  "text-[13px]",
-                  i.server === serverKey ? "text-foreground" : "text-muted-foreground",
-                )}
-              >
-                <Mono className="text-inherit">
+              <li key={`${i.server}/${i.bot}/${i.instance}`} className="text-[13px]">
+                <Link
+                  to={instancePath(i.server, i.bot, i.instance)}
+                  className={cn(
+                    "rounded-sm font-mono text-[12px] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+                    i.server === serverKey ? "text-brand" : "text-muted-foreground",
+                  )}
+                >
                   {t("store.detail.instanceOn", {
                     bot: i.bot,
                     instance: i.instance,
                     server: i.server,
                   })}
-                </Mono>
+                </Link>
               </li>
             ))}
           </ul>
@@ -1326,6 +1427,7 @@ function InstallDone({
         />
         {pr ? t("store.install.done.pr") : t("store.install.done.title", { name })}
       </p>
+      <WriteWarnings warnings={result.warnings} />
       {pr ? (
         <>
           <p className="text-[13px]">{t("store.install.done.prText")}</p>

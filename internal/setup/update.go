@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -369,6 +370,8 @@ type UpdateResult struct {
 	PullRequestURL string                 `json:"pullRequestUrl,omitempty"`
 	Message        string                 `json:"message,omitempty"`
 	Instances      []UpdateInstanceHealth `json:"instances"`
+	// Warnings: what the change could not keep up to date (the portal's route types).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // UpdateInstanceHealth is the health of an updated instance once the revision is active.
@@ -401,7 +404,9 @@ func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor
 			}
 		}
 	}
-	if ds, err := in.validate(rev.Dir, plan.Edits); err != nil {
+	edits := maps.Clone(plan.Edits)
+	ds, routes, err := in.validate(rev.Dir, edits)
+	if err != nil {
 		return UpdateResult{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
 			Message: "The update cannot be applied to the configuration.", Hint: "See the details.", Details: err.Error()}
 	} else if ds.HasErrors() {
@@ -415,21 +420,15 @@ func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor
 			Diagnostics: ds.Errors(), Details: strings.Join(msgs, "\n")}
 	}
 
-	paths := make([]string, 0, len(plan.Edits))
-	for p := range plan.Edits {
-		paths = append(paths, p)
-	}
-	sort.Strings(paths)
-	mode := writeback.ModeFor(repo.Project.Spec.WriteBack, paths)
-	prevErr := rt.Status().LastError
 	added := ""
 	if len(plan.Diff.Capabilities.Added) > 0 {
 		added = "\nNewly granted: " + strings.Join(plan.Diff.Capabilities.Added, ", ") + "."
 	}
-	res, err := in.Writer.Write(ctx, writeback.Request{Edits: plan.Edits,
-		Message: fmt.Sprintf("plugin: update %s %s → %s\n\nUpdated on %s.%s", spec.Source, plan.Current.Version, spec.Version,
-			strings.Join(plan.Servers, ", "), added),
-		Actor: actor, Source: source, Mode: mode})
+	msg := routes.apply(edits, fmt.Sprintf("plugin: update %s %s → %s\n\nUpdated on %s.%s", spec.Source, plan.Current.Version, spec.Version,
+		strings.Join(plan.Servers, ", "), added))
+	mode := writeback.ModeFor(repo.Project.Spec.WriteBack, editPaths(edits))
+	prevErr := rt.Status().LastError
+	res, err := in.Writer.Write(ctx, writeback.Request{Edits: edits, Message: msg, Actor: actor, Source: source, Mode: mode})
 	if err != nil {
 		if errors.Is(err, writeback.ErrConflict) {
 			return UpdateResult{}, &Error{Status: http.StatusConflict, Code: "conflict", Message: "The repository changed meanwhile.", Hint: "Review the update again.", Details: err.Error()}
@@ -437,7 +436,8 @@ func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor
 		return UpdateResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not save the update to the repository.",
 			Hint: "Check the repository access (Diagnostics → write-back), then try again.", Details: err.Error()}
 	}
-	out := UpdateResult{Version: spec.Version, Mode: res.Mode, PullRequestURL: res.PullRequestURL, Instances: []UpdateInstanceHealth{}}
+	out := UpdateResult{Version: spec.Version, Mode: res.Mode, PullRequestURL: res.PullRequestURL, Instances: []UpdateInstanceHealth{},
+		Warnings: routes.Warnings}
 	if out.Mode == "" {
 		out.Mode = mode
 	}

@@ -29,6 +29,7 @@ import { EmptyState, Mono, Page, Sha } from "../components/common.tsx";
 import { Callout, ErrorState } from "../components/errors.tsx";
 import { HealthBadge } from "../components/status.tsx";
 import { TrustBadge } from "../components/trust.tsx";
+import { WriteWarnings } from "../components/update.tsx";
 import { Badge } from "../components/ui/badge.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
@@ -760,6 +761,7 @@ function UpdateDone({
           ? t("store.update.done.pr")
           : t("store.update.done.title", { name, version: result.version })}
       </p>
+      <WriteWarnings warnings={result.warnings} />
       {pr ? (
         <>
           <p className="text-[13px]">{t("store.update.done.prText")}</p>

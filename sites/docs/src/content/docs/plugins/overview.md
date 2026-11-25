@@ -80,8 +80,12 @@ request, and every capability the plugin requests is granted, as reviewed.
 ## Updating
 
 Cicord compares each locked version with the highest release tag of the plugin's repository
-(any major version) and shows **Update available** in the Store, the Plugins table and the
-plugin's page. The update review shows:
+(any major version) and offers **Update to X** in the Store, the Plugins table, the plugin's
+Store page (its main action) and the instance's page, all leading to the same update review.
+On the Store page of an installed plugin without an update, the main action opens its
+instance; **Install another instance** adds the plugin a second time, with its own name,
+settings and data (on the same or another bot), which is rarely needed. The update review
+shows:
 
 - what the new version requests compared with the installed one (capabilities, intents,
   network hosts);

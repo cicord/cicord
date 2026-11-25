@@ -52,6 +52,13 @@ func newPluginAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <registry>/<plugin>[@<range>]",
 		Short: "Add a registry plugin to a bot and lock it in cicord.lock",
+		Long: `Adds a registry plugin to a bot and locks it in cicord.lock: the bot gets source, a version
+range (^<version> without @<range>) and grants set to the capabilities the plugin requests;
+review them before committing.
+
+When the repository's custom portal has typed routes (<portal>/src/cicord-routes.d.ts), they
+are regenerated like ` + "`cicord portal typegen`" + ` when their content changes, so the portal's CI
+check stays green; when they cannot be generated, a warning says so.`,
 		Example: `  cicord plugin add acme/hello --bot moderator
   cicord plugin add acme/xp@^1.2.0 --bot moderator --name xp`,
 		Args: cobra.ExactArgs(1),
@@ -120,6 +127,7 @@ func newPluginAddCmd() *cobra.Command {
 					fmt.Fprintf(w, "  - %s\n", c)
 				}
 			}
+			refreshRouteTypes(w, cmd.ErrOrStderr(), repo.Root)
 			return nil
 		},
 	}

@@ -221,3 +221,75 @@ func TestRemoteWins(t *testing.T) {
 		}
 	}
 }
+
+// An official plugin locked from the official registry (cicord.lock "cicord/<name>", like
+// cicord/tickets on the community repository) whose index entry is not newer than the
+// bundled copy: its Store page is the registry's latest version, so the page shows the
+// update the table shows (the table reads the release tags, the index may lag behind).
+// A page that resolves a newer version than the table's cached one tells the console.
+func TestLockedOfficialDetailMatchesTable(t *testing.T) {
+	withOfficial(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	if err := registry.WriteLock(root, &registry.Lock{Plugins: map[string]registry.LockEntry{
+		"cicord/onboarding": {Version: "0.1.0", Repo: "https://git.example/onboarding.git", Commit: "c1"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	repo := &config.Repo{Root: root, Project: &config.Project{}}
+	repo.Instances = []config.Instance{{Bot: "b", Name: "onboarding", Server: "s",
+		Plugin: &config.LoadedPlugin{Source: "cicord/onboarding", Manifest: &config.Plugin{Metadata: config.PluginMetadata{Name: "onboarding", Version: "0.1.0"}}}}}
+	latest, resolved := "0.2.0", "0.2.0"
+	changes := 0
+	s := &Service{Catalog: testCatalog(),
+		Fetch: func(context.Context, string) (*registry.Index, error) {
+			idx := officialIndex(true) // onboarding 0.0.1: the bundled 0.1.0 wins in the listing
+			return idx, nil
+		},
+		Latest: func(context.Context, string, string, string) (string, error) { return latest, nil },
+		Resolve: func(context.Context, []config.Registry, string, string, string) (*registry.Resolution, error) {
+			return &registry.Resolution{Entry: registry.LockEntry{Version: resolved, Commit: "c2", Integrity: "sha256-x"},
+				Dir: "../../examples/basic/plugins/onboarding"}, nil
+		},
+		Changed: func() { changes++ },
+	}
+	srcs, err := s.Sources(ctx, repo, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row Plugin
+	for _, p := range srcs[0].Plugins {
+		if p.Name == "onboarding" {
+			row = p
+		}
+	}
+	if row.Update == nil || row.Update.Current != "0.1.0" || row.Update.Latest != "0.2.0" {
+		t.Fatalf("table row = %+v", row)
+	}
+	d, err := s.Detail(ctx, repo, config.OfficialRegistryName, "onboarding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Resolution == nil || d.Version != "0.2.0" || d.Update == nil || *d.Update != *row.Update || len(d.Installed) != 1 {
+		t.Fatalf("detail = %+v (update %+v), table %+v", d, d.Update, row.Update)
+	}
+	if changes != 0 {
+		t.Errorf("Changed called %d times although the table was up to date", changes)
+	}
+	// Installs of that plugin come from the registry too (what the page reviewed).
+	if _, remote, err := s.OfficialOrigin(ctx, repo, "onboarding"); !remote || err != nil {
+		t.Errorf("OfficialOrigin = %v, %v", remote, err)
+	}
+	if _, remote, _ := s.OfficialOrigin(ctx, nil, "onboarding"); remote {
+		t.Error("not locked: the bundled copy wins")
+	}
+
+	// A newer release than the table's cached latest: the console is told to refetch.
+	resolved = "0.3.0"
+	if d, err = s.Detail(ctx, repo, config.OfficialRegistryName, "onboarding"); err != nil || d.Update == nil || d.Update.Latest != "0.3.0" {
+		t.Fatalf("detail = %+v, %v", d.Update, err)
+	}
+	if changes != 1 {
+		t.Errorf("Changed called %d times, want 1", changes)
+	}
+}

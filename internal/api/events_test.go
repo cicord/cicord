@@ -87,6 +87,16 @@ func TestEvents(t *testing.T) {
 			break
 		}
 	}
+	// A Store change (a registry refresh found a new release): a "store" hint, no server.
+	e.rt.NotifyStore()
+	for {
+		if ev := next(); ev.name == "store" {
+			if ev.data != `{}` {
+				t.Errorf("store event data = %s", ev.data)
+			}
+			break
+		}
+	}
 }
 
 // TestEventsStopping: on shutdown the stream says "stopping" before it ends (a proxy can

@@ -6,18 +6,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cicord/cicord/internal/config"
-	"github.com/cicord/cicord/internal/typegen"
+	"github.com/cicord/cicord/internal/portalroutes"
 	"github.com/cicord/cicord/internal/version"
 )
 
 // routeTypesFile is the file written by `cicord portal typegen`, relative to the portal.
-const routeTypesFile = "src/cicord-routes.d.ts"
+const routeTypesFile = portalroutes.File
 
 func newPortalTypegenCmd() *cobra.Command {
 	var out string
@@ -97,22 +96,7 @@ func portalSourceDir(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if proj.Spec.Portal != nil && proj.Spec.Portal.Path != "" {
-		rel, ok := config.ResolveRepoPath("cicord.yaml", proj.Spec.Portal.Path)
-		if !ok {
-			return "", fmt.Errorf("spec.portal.path %q must be inside the repository", proj.Spec.Portal.Path)
-		}
-		out := filepath.Join(root, filepath.FromSlash(rel))
-		for d := filepath.Dir(out); strings.HasPrefix(d, root) && d != root; d = filepath.Dir(d) {
-			if _, err := os.Stat(filepath.Join(d, "package.json")); err == nil {
-				return d, nil
-			}
-		}
-	}
-	if _, err := os.Stat(filepath.Join(root, "portal", "package.json")); err == nil {
-		return filepath.Join(root, "portal"), nil
-	}
-	return "", errors.New("no custom portal found (cicord.yaml spec.portal.path, or ./portal): create one with `cicord portal init`, or pass --out")
+	return portalroutes.SourceDir(root, proj)
 }
 
 // writeRouteTypes generates the route types of the repository at root into out. With
@@ -136,75 +120,53 @@ func writeRouteTypes(stderr io.Writer, root, out string, check bool) (bool, erro
 }
 
 // routeTypes builds every plugin of the repository at root and generates the declaration
-// file of their portal routes.
+// file of their portal routes (the code the write-back of Store actions runs too).
 func routeTypes(stderr io.Writer, root string) (string, error) {
 	repo, ds := config.Load(root, config.LoadOptions{EngineVersion: version.Version, Resolver: defaultResolver(root)})
 	if repo == nil || ds.HasErrors() {
 		printDiagnostics(stderr, ds.Errors())
 		return "", errors.New("the repository does not validate (cicord validate): cannot type its plugin routes")
 	}
-	plugins, err := routePlugins(repo)
-	if err != nil {
-		return "", err
-	}
-	return typegen.GenerateRoutes(plugins)
+	return portalroutes.Generate(repo)
 }
 
-// routePlugins returns the plugins used by the instances of a repository with their
-// portal routes and route contract.
-func routePlugins(repo *config.Repo) ([]typegen.RoutePlugin, error) {
-	var keys []string
-	for k := range repo.Plugins {
-		keys = append(keys, k)
+// refreshRouteTypes keeps the route types of the repository's custom portal in line after
+// a plugin change made by the CLI (`cicord plugin add`, `cicord plugin update`), like the
+// write-back of the admin's Store: only a file the portal already has, only when its
+// content changes, a warning (not an error) when it cannot be generated.
+func refreshRouteTypes(stdout, stderr io.Writer, dir string) {
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return
 	}
-	sort.Strings(keys)
-	used := map[string]bool{}
-	for _, in := range repo.Instances {
-		used[in.Plugin.Key] = true
+	proj, err := readProject(root)
+	if err != nil {
+		return
 	}
-	var out []typegen.RoutePlugin
-	for _, k := range keys {
-		lp := repo.Plugins[k]
-		if !used[k] {
-			continue
-		}
-		rep, err := buildPluginReport(lp.Dir)
-		if err != nil {
-			return nil, fmt.Errorf("plugin %s: %w", lp.Manifest.Metadata.Name, err)
-		}
-		if len(rep.Errors) > 0 {
-			return nil, fmt.Errorf("plugin %s does not build (cicord plugin build %s): %s", rep.Name, relOr(repo.Root, lp.Dir), rep.Errors[0])
-		}
-		rp := typegen.RoutePlugin{Name: rep.Name, Version: rep.Version, Source: lp.Source}
-		for _, r := range rep.Routes {
-			rp.Routes = append(rp.Routes, typegen.Route{Method: r.Method, Path: r.Path, Access: r.Access})
-		}
-		if len(rp.Routes) > 0 {
-			if rp.Contract, err = readRouteContract(lp.Dir, lp.Manifest); err != nil {
-				return nil, fmt.Errorf("plugin %s: %w", rep.Name, err)
+	rel := portalroutes.Tracked(root, proj)
+	if rel == "" {
+		return
+	}
+	var r portalroutes.Result
+	repo, ds := config.Load(root, config.LoadOptions{EngineVersion: version.Version, Resolver: defaultResolver(root)})
+	if repo == nil || ds.HasErrors() {
+		r = portalroutes.Result{Path: rel, Warnings: []string{portalroutes.NotRegenerated(rel,
+			errors.New("the repository does not validate: run `cicord validate`"))}}
+	} else {
+		r = portalroutes.Regenerate(root, repo)
+	}
+	if r.Content != nil {
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(rel)), r.Content, 0o644); err != nil {
+			r.Warnings = append(r.Warnings, portalroutes.NotRegenerated(rel, err))
+		} else {
+			fmt.Fprintf(stdout, "Regenerated %s (cicord portal typegen).\n", rel)
+			if len(r.Removed) > 0 {
+				fmt.Fprintf(stdout, "Routes no longer available to the portal: %s. Portal code still calling them no longer type-checks.\n",
+					strings.Join(r.Removed, ", "))
 			}
 		}
-		out = append(out, rp)
 	}
-	return out, nil
-}
-
-// readRouteContract reads the route contract of a plugin (spec.routes.types), "" when it
-// declares none.
-func readRouteContract(dir string, m *config.Plugin) (string, error) {
-	if m.Spec.Routes == nil || m.Spec.Routes.Types == "" {
-		return "", nil
+	for _, w := range r.Warnings {
+		fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
-	rel := filepath.Clean(filepath.FromSlash(m.Spec.Routes.Types))
-	if !filepath.IsLocal(rel) {
-		return "", fmt.Errorf("spec.routes.types %q must be inside the plugin directory", m.Spec.Routes.Types)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, rel))
-	if err != nil {
-		return "", fmt.Errorf("spec.routes.types: %w", err)
-	}
-	if err := typegen.CheckRouteContract(string(data)); err != nil {
-		return "", fmt.Errorf("%s: %w", m.Spec.Routes.Types, err)
-	}
-	return string(data), nil
 }
