@@ -12,7 +12,7 @@ portal. All of them are **Apache-2.0**.
 Cicord release, at the same version as the binary (ESM and `.d.ts` builds, with
 [npm provenance](../../getting-started/installation/#verify-a-download)):
 `pnpm add @cicord/client`. `cicord portal init` depends on them at the exact version of the
-`cicord` binary (`"@cicord/client": "0.1.10"`), and `cicord portal upgrade` follows cicord
+`cicord` binary (`"@cicord/client": "0.1.11"`), and `cicord portal upgrade` follows cicord
 upgrades. `cicord portal init --vendor` (offline or air-gapped builds) **vendors** the copies
 embedded in the binary as `file:` dependencies instead, which needs no registry access;
 `cicord portal upgrade --to-npm`

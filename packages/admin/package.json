@@ -1,6 +1,6 @@
 {
   "name": "@cicord/admin",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "description": "Generic Cicord admin console (React + Vite+), prebuilt and embedded in the cicord binary under /admin/.",
   "license": "Apache-2.0",
