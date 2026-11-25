@@ -1,7 +1,8 @@
 /**
  * Analytics of a server: headline numbers against the previous period, then members,
- * messages, voice, engagement rankings and presence. One period selector scopes everything;
- * while a new period loads, the previous render stays at reduced opacity.
+ * messages, voice, engagement rankings and presence. One period selector (a preset or a
+ * custom range, kept in the URL) scopes everything; while a new period loads, the previous
+ * render stays at reduced opacity.
  */
 import {
   CicordApiError,
@@ -14,8 +15,16 @@ import {
   type AnalyticsSummary,
 } from "@cicord/client";
 import { useCicord } from "@cicord/react";
-import { ArrowDownRight, ArrowUpRight, ChartColumn, EyeOff, Minus, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  CalendarRange,
+  ChartColumn,
+  EyeOff,
+  Minus,
+  RefreshCw,
+} from "lucide-react";
+import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { keys, useAnalyticsSeries, useAnalyticsSummary } from "../api.ts";
 import {
   ChartCard,
@@ -35,6 +44,9 @@ import { EmptyState, Mono, Page, PageHeader } from "../components/common.tsx";
 import { Callout, ErrorState } from "../components/errors.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Button } from "../components/ui/button.tsx";
+import { Input } from "../components/ui/input.tsx";
+import { Label } from "../components/ui/label.tsx";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover.tsx";
 import { Skeleton } from "../components/ui/skeleton.tsx";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group.tsx";
 import { useWorkspace } from "../context.tsx";
@@ -42,6 +54,7 @@ import { useTranslation } from "../i18n/index.ts";
 import {
   ACCOUNT_AGES,
   KPI_POLARITY,
+  MAX_RANGE_DAYS,
   PERIODS,
   averageOf,
   bucketsOf,
@@ -53,6 +66,8 @@ import {
   formatDuration,
   formatNumber,
   formatPercent,
+  formatRange,
+  fromLocalInput,
   hourLabel,
   inProgressFrom,
   isCustomEmoji,
@@ -60,9 +75,14 @@ import {
   mainSeriesParams,
   missingFor,
   parseActivity,
+  rangeProblem,
+  splitLinks,
   sumOf,
+  toLocalInput,
+  toRfc3339,
   valuesOf,
   weekdays,
+  type RangeProblem,
 } from "../lib/analytics.ts";
 import { cn } from "../lib/utils.ts";
 import { navigate, useLocation } from "../router.tsx";
@@ -72,6 +92,7 @@ const DOCS = "https://cicord.dev/docs/self-hosting/analytics/";
 /** i18n keys of the KPIs (metric names contain dots, i18next's separator). */
 const KPI_KEYS = {
   "members.total": "membersTotal",
+  "members.bots": "membersBots",
   "members.joined": "membersJoined",
   "members.left": "membersLeft",
   "members.net": "membersNet",
@@ -92,21 +113,36 @@ interface Data {
   fine: AnalyticsSeries;
 }
 
-function usePeriod(): [AnalyticsPeriod, (p: AnalyticsPeriod) => void] {
+/** What the page shows: a preset period, or a custom range (RFC 3339 UTC). */
+type Range = { period: AnalyticsPeriod } | { from: string; to: string };
+
+const isTime = (v: string | null): v is string => v !== null && !Number.isNaN(Date.parse(v));
+
+/** The range in the URL: `?period=7d`, `?from=…&to=…`, or nothing (30 days). */
+function useRange(): [Range, (r: Range) => void] {
   const { path, search } = useLocation();
+  const from = search.get("from");
+  const to = search.get("to");
   const raw = search.get("period");
-  const period = PERIODS.includes(raw as AnalyticsPeriod) ? (raw as AnalyticsPeriod) : "30d";
-  const set = (p: AnalyticsPeriod) =>
-    navigate(p === "30d" ? path : `${path}?period=${p}`, { replace: true, keepScroll: true });
-  return [period, set];
+  const range: Range =
+    isTime(from) && isTime(to)
+      ? { from, to }
+      : { period: PERIODS.includes(raw as AnalyticsPeriod) ? (raw as AnalyticsPeriod) : "30d" };
+  const set = (r: Range) => {
+    // RFC 3339 times need no escaping in a query string (digits, "-", ":", "T", "Z").
+    const query =
+      "from" in r ? `from=${r.from}&to=${r.to}` : r.period === "30d" ? "" : `period=${r.period}`;
+    navigate(query ? `${path}?${query}` : path, { replace: true, keepScroll: true });
+  };
+  return [range, set];
 }
 
 export function AnalyticsPage({ serverKey }: { serverKey: string }) {
   const { t } = useTranslation();
   const ws = useWorkspace();
   const { cache } = useCicord();
-  const [period, setPeriod] = usePeriod();
-  const summary = useAnalyticsSummary(serverKey, period);
+  const [range, setRange] = useRange();
+  const summary = useAnalyticsSummary(serverKey, range);
   const mainParams = useMemo(
     () => (summary.data ? mainSeriesParams(summary.data) : null),
     [summary.data],
@@ -142,8 +178,8 @@ export function AnalyticsPage({ serverKey }: { serverKey: string }) {
         <>
           <ToggleGroup
             type="single"
-            value={period}
-            onValueChange={(v) => v && setPeriod(v as AnalyticsPeriod)}
+            value={"period" in range ? range.period : ""}
+            onValueChange={(v) => v && setRange({ period: v as AnalyticsPeriod })}
             aria-label={t("analytics.period.label")}
           >
             {PERIODS.map((p) => (
@@ -152,6 +188,12 @@ export function AnalyticsPage({ serverKey }: { serverKey: string }) {
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+          <CustomRange
+            range={range}
+            shown={data?.summary}
+            error={"from" in range ? summary.error : null}
+            onApply={setRange}
+          />
           <Button
             variant="outline"
             size="icon-sm"
@@ -231,7 +273,193 @@ export function AnalyticsPage({ serverKey }: { serverKey: string }) {
   );
 }
 
+// ───────────────────────────────────────────────────────────── custom range
+
+const HOUR_MS = 3600_000;
+
+/**
+ * The custom range button and its popover: two local date-time inputs, checked like the
+ * runtime checks them, sent as RFC 3339 UTC. The runtime's 400 for the current range is
+ * shown in the form too.
+ */
+function CustomRange({
+  range,
+  shown,
+  error,
+  onApply,
+}: {
+  range: Range;
+  /** The summary on screen (the form starts from its window). */
+  shown: AnalyticsSummary | undefined;
+  /** Error of the current custom range's summary. */
+  error: unknown;
+  onApply: (r: Range) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const custom = "from" in range;
+  // The window the runtime shows: rounded outward to UTC hours.
+  const label = custom
+    ? formatRange(
+        new Date(Math.floor(Date.parse(range.from) / HOUR_MS) * HOUR_MS).toISOString(),
+        new Date(Math.ceil(Date.parse(range.to) / HOUR_MS) * HOUR_MS).toISOString(),
+        i18n.language,
+      )
+    : null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("h-[30px] text-xs", !custom && "text-muted-foreground")}
+          aria-label={label ? t("analytics.custom.active", { range: label }) : undefined}
+        >
+          <CalendarRange className="size-3.5" />
+          <span className="max-w-44 truncate sm:max-w-none">
+            {label ?? t("analytics.custom.button")}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[min(20rem,calc(100vw-2rem))]"
+        aria-label={t("analytics.custom.title")}
+      >
+        <RangeForm
+          initial={
+            custom
+              ? range
+              : shown
+                ? // A preset ends tomorrow 00:00 UTC: start from now instead.
+                  { from: shown.from, to: new Date(Math.min(Date.parse(shown.to), Date.now())) }
+                : null
+          }
+          serverError={
+            error instanceof CicordApiError && error.status === 400 ? error.message : null
+          }
+          onCancel={() => setOpen(false)}
+          onApply={(r) => {
+            setOpen(false);
+            onApply(r);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function RangeForm({
+  initial,
+  serverError,
+  onApply,
+  onCancel,
+}: {
+  initial: { from: string | Date; to: string | Date } | null;
+  serverError: string | null;
+  onApply: (r: { from: string; to: string }) => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const id = useId();
+  const [from, setFrom] = useState(() => toLocalInput(initial?.from ?? Date.now() - 7 * 86400_000));
+  const [to, setTo] = useState(() => toLocalInput(initial?.to ?? Date.now()));
+  const [problem, setProblem] = useState<RangeProblem | null>(null);
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const a = fromLocalInput(from);
+    const b = fromLocalInput(to);
+    const p = rangeProblem(a, b);
+    setProblem(p);
+    if (!p) onApply({ from: toRfc3339(a!), to: toRfc3339(b!) });
+  };
+
+  const message = problem
+    ? t(`analytics.custom.errors.${problem}`, { count: MAX_RANGE_DAYS })
+    : serverError
+      ? t("analytics.custom.rejected", { message: serverError })
+      : null;
+  const fromInvalid =
+    problem === "future" ||
+    problem === "tooLong" ||
+    (problem === "missing" && !fromLocalInput(from));
+  const toInvalid =
+    problem === "order" || problem === "tooLong" || (problem === "missing" && !fromLocalInput(to));
+  const describedBy = `${id}-zone${message ? ` ${id}-error` : ""}`;
+
+  return (
+    <form noValidate onSubmit={submit} className="flex flex-col gap-3">
+      <h3 className="text-sm font-semibold">{t("analytics.custom.title")}</h3>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${id}-from`}>{t("analytics.custom.from")}</Label>
+        <Input
+          id={`${id}-from`}
+          type="datetime-local"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          aria-invalid={fromInvalid || undefined}
+          aria-describedby={describedBy}
+          required
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${id}-to`}>{t("analytics.custom.to")}</Label>
+        <Input
+          id={`${id}-to`}
+          type="datetime-local"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          aria-invalid={toInvalid || undefined}
+          aria-describedby={describedBy}
+          required
+        />
+      </div>
+      <p id={`${id}-zone`} className="text-xs text-muted-foreground">
+        {t("analytics.custom.zone", { zone })}
+      </p>
+      {message ? (
+        <p id={`${id}-error`} role="alert" className="text-xs text-danger">
+          {message}
+        </p>
+      ) : null}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          {t("analytics.custom.cancel")}
+        </Button>
+        <Button type="submit" size="sm">
+          {t("analytics.custom.apply")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 // ───────────────────────────────────────────────────────────── status
+
+/** Text with its http(s) URLs as links (new tab). */
+function LinkText({ text }: { text: string }) {
+  return (
+    <>
+      {splitLinks(text).map((part, i) =>
+        part.href ? (
+          <a
+            key={i}
+            href={part.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+          >
+            {part.text}
+          </a>
+        ) : (
+          part.text
+        ),
+      )}
+    </>
+  );
+}
 
 function CollectionMeta({ status }: { status: AnalyticsStatus }) {
   const { t, i18n } = useTranslation();
@@ -263,10 +491,12 @@ function MissingCallout({ status }: { status: AnalyticsStatus }) {
                 </code>
               ))}
             </p>
-            <p>{m.reason}</p>
+            <p>
+              <LinkText text={m.reason} />
+            </p>
             <p className="text-muted-foreground">
               <span className="font-medium text-foreground">{t("analytics.missing.fix")}</span>{" "}
-              {m.fix}
+              <LinkText text={m.fix} />
             </p>
           </li>
         ))}
@@ -298,8 +528,12 @@ function DashboardSkeleton() {
 
 // ───────────────────────────────────────────────────────────── KPIs
 
+const STEP_SECONDS = { hour: 3600, day: 86400 } as const;
+
 function KpiGrid({ summary }: { summary: AnalyticsSummary }) {
   const { t } = useTranslation();
+  // Older runtimes send no step: their sparklines are per day.
+  const sparkStep = STEP_SECONDS[summary.step] ?? 86400;
   return (
     <section aria-label={t("analytics.kpi.label")}>
       <Card className="overflow-hidden">
@@ -311,7 +545,7 @@ function KpiGrid({ summary }: { summary: AnalyticsSummary }) {
               value={kpi.value}
               previous={kpi.previous}
               spark={kpi.spark.map((p) => p[1])}
-              sparkPartial={(kpi.spark.at(-1)?.[0] ?? 0) + 86400 > Date.now() / 1000}
+              sparkPartial={(kpi.spark.at(-1)?.[0] ?? 0) + sparkStep > Date.now() / 1000}
               period={summary.period}
               missing={missingFor(summary.status, kpi.metric) !== undefined}
             />
@@ -342,7 +576,7 @@ function KpiTile({
   previous: number | null;
   spark: number[];
   sparkPartial: boolean;
-  period: AnalyticsPeriod;
+  period: AnalyticsSummary["period"];
   missing: boolean;
 }) {
   const { t, i18n } = useTranslation();
@@ -518,7 +752,12 @@ function MembersSection({ data }: { data: Data }) {
   const num = (v: number) => formatNumber(v, lng);
   const axis = (v: number) => formatNumber(v, lng, true);
 
+  const [shownMembers, setShownMembers] = useState<"humans" | "bots">("humans");
   const total = serie(main, b, "members.total", t("analytics.members.total"), "var(--chart-1)");
+  const bots = serie(main, b, "members.bots", t("analytics.members.bots"), "var(--chart-2)");
+  // Bots are a handful next to thousands of humans: one at a time, each on its own axis.
+  const hasBots = main.series.some((s) => s.metric === "members.bots");
+  const members = hasBots && shownMembers === "bots" ? bots : total;
   const joined = serie(main, b, "members.joined", t("analytics.members.joined"), "var(--chart-1)");
   const leftValues = valuesOf(main, b, "members.left");
   const left: TimeSeries = {
@@ -537,7 +776,13 @@ function MembersSection({ data }: { data: Data }) {
     ),
   };
   const flow = useTimeCard(t("analytics.members.flow"), main, [joined, left, net], num, "bar");
-  const totalCard = useTimeCard(t("analytics.members.title"), main, [total], num, "line");
+  const totalCard = useTimeCard(
+    t("analytics.members.title"),
+    main,
+    hasBots ? [total, bots] : [total],
+    num,
+    "line",
+  );
 
   const fb = bucketsOf(fine);
   const online = serie(fine, fb, "members.online", t("analytics.members.online"), "var(--chart-1)");
@@ -555,6 +800,19 @@ function MembersSection({ data }: { data: Data }) {
       <ChartCard
         title={t("analytics.members.title")}
         description={t("analytics.members.description")}
+        actions={
+          hasBots ? (
+            <ToggleGroup
+              type="single"
+              value={shownMembers}
+              onValueChange={(v) => v && setShownMembers(v as "humans" | "bots")}
+              aria-label={t("analytics.members.show")}
+            >
+              <ToggleGroupItem value="humans">{t("analytics.members.humans")}</ToggleGroupItem>
+              <ToggleGroupItem value="bots">{t("analytics.members.bots")}</ToggleGroupItem>
+            </ToggleGroup>
+          ) : undefined
+        }
         table={{
           ...totalCard.table,
           columns: [...totalCard.table.columns, joined.label, left.label, net.label],
@@ -571,12 +829,12 @@ function MembersSection({ data }: { data: Data }) {
           kind="line"
           buckets={b}
           step={main.step}
-          series={[total]}
+          series={[members]}
           format={num}
           formatAxis={axis}
           minZero={false}
           axisWidth={48}
-          label={t("analytics.members.title")}
+          label={`${t("analytics.members.title")}: ${members.label}`}
           height={170}
         />
         <div className="flex flex-col gap-2 border-t pt-3">
@@ -788,6 +1046,7 @@ function VoiceSection({ data }: { data: Data }) {
             series={[seconds]}
             format={inHours}
             formatAxis={(v) => formatDuration(v * 3600, lng, true)}
+            integer={false}
             label={t("analytics.voice.title")}
           />
         </ChartCard>
@@ -1010,7 +1269,9 @@ function NotCollected({ reason }: { reason: string }) {
   return (
     <div className="flex flex-col gap-1 py-4 text-center text-[13px]">
       <p className="font-medium text-muted-foreground">{t("analytics.notCollected")}</p>
-      <p className="text-xs text-muted-foreground">{reason}</p>
+      <p className="text-xs text-muted-foreground">
+        <LinkText text={reason} />
+      </p>
     </div>
   );
 }
@@ -1028,9 +1289,11 @@ function PresenceSection({ data }: { data: Data }) {
       <Section title={t("analytics.sections.presence")}>
         <Card>
           <EmptyState icon={<EyeOff />} title={t("analytics.presence.off.title")}>
-            <p>{missing?.reason ?? t("analytics.presence.off.text")}</p>
+            <p>
+              <LinkText text={missing?.reason ?? t("analytics.presence.off.text")} />
+            </p>
             <p className="mt-2">
-              {missing?.fix ?? t("analytics.presence.off.fix")}{" "}
+              <LinkText text={missing?.fix ?? t("analytics.presence.off.fix")} />{" "}
               <a
                 href={DOCS}
                 target="_blank"

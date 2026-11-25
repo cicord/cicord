@@ -412,6 +412,19 @@ export interface AuditQuery {
  */
 export type AnalyticsPeriod = "7d" | "30d" | "90d" | "365d";
 
+/**
+ * A custom window of `GET /servers/{server}/analytics/summary?from=&to=` (RFC 3339 or a
+ * Date). The runtime floors `from` and ceils `to` to the UTC hour; it requires at least one
+ * hour, at most 400 days, and `from` before now (`invalid`, 400, otherwise).
+ */
+export interface AnalyticsRange {
+  from: Date | Timestamp;
+  to: Date | Timestamp;
+}
+
+/** What `client.analytics.summary` covers: a preset period or a custom range. */
+export type AnalyticsSummaryQuery = AnalyticsPeriod | { period: AnalyticsPeriod } | AnalyticsRange;
+
 /** Bucket size of `GET /servers/{server}/analytics/series` (UTC hours, days, ISO weeks). */
 export type AnalyticsStep = "hour" | "day" | "week";
 
@@ -427,6 +440,7 @@ export type AnalyticsUnit = "count" | "members" | "seconds" | "level" | (string 
 /** Metric names of the analytics catalog. */
 export type AnalyticsMetric =
   | "members.total"
+  | "members.bots"
   | "members.online"
   | "members.joined"
   | "members.left"
@@ -566,7 +580,7 @@ export interface AnalyticsKpi {
   value: number;
   /** Value over the previous period of the same length; null when not covered by the data. */
   previous: number | null;
-  /** The KPI per day over the period, for a sparkline. */
+  /** The KPI per `step` of the summary (hours or days) over the period, for a sparkline. */
   spark: AnalyticsPoint[];
 }
 
@@ -579,19 +593,26 @@ export interface AnalyticsRanked {
 }
 
 /**
- * `GET /servers/{server}/analytics/summary`. The window is calendar days including today
- * (`to` = tomorrow 00:00 UTC, `from` = `to` − N days); the previous period is the N days before.
+ * `GET /servers/{server}/analytics/summary`. For a preset period the window is calendar days
+ * including today (`to` = tomorrow 00:00 UTC, `from` = `to` − N days); for a custom range
+ * (`period: "custom"`) it is the requested range rounded outward to UTC hours. The previous
+ * period is the window of the same length just before `from`.
  */
 export interface AnalyticsSummary {
   server: string;
-  period: AnalyticsPeriod;
+  period: AnalyticsPeriod | "custom";
   from: Timestamp;
   to: Timestamp;
   /**
-   * In this order: members.total (last value), members.joined, members.left, members.net
-   * (joined − left), members.active (average per day), messages.sent, voice.seconds,
-   * members.online (average of the samples), reactions.added, commands.used,
-   * moderation.actions.
+   * Bucket of the KPI sparklines: `hour` for a custom range shorter than 2 days, else `day`
+   * (always `day` for a preset period).
+   */
+  step: Extract<AnalyticsStep, "hour" | "day">;
+  /**
+   * In this order: members.total (human members, last value), members.bots (bot members,
+   * last value), members.joined, members.left, members.net (joined − left), members.active
+   * (average per day), messages.sent, voice.seconds, members.online (online humans, average
+   * of the samples), reactions.added, commands.used, moderation.actions.
    */
   kpis: AnalyticsKpi[];
   /** Top 10 per metric name over the period. */

@@ -665,6 +665,11 @@ describe("analytics", () => {
     const client = createCicordClient({ fetch });
     await client.analytics.summary("ma commu", "90d");
     await client.analytics.summary("s");
+    await client.analytics.summary("s", { period: "7d" });
+    await client.analytics.summary("s", {
+      from: new Date("2026-11-20T10:30:00.500Z"),
+      to: "2026-11-21T08:00:00Z",
+    });
     await client.analytics.series("s", {
       metrics: ["messages.sent", "members.joined"],
       from: new Date("2026-11-01T00:00:00.123Z"),
@@ -677,6 +682,8 @@ describe("analytics", () => {
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       "GET /api/v1/servers/ma%20commu/analytics/summary?period=90d",
       "GET /api/v1/servers/s/analytics/summary?period=30d",
+      "GET /api/v1/servers/s/analytics/summary?period=7d",
+      "GET /api/v1/servers/s/analytics/summary?from=2026-11-20T10%3A30%3A00Z&to=2026-11-21T08%3A00%3A00Z",
       "GET /api/v1/servers/s/analytics/series?metrics=messages.sent%2Cmembers.joined&from=2026-11-01T00%3A00%3A00Z&to=2026-11-24T00%3A00%3A00Z&step=day&top=5",
       "GET /api/v1/servers/s/analytics/series?metrics=voice.seconds&dim=ch%3A1",
       "GET /api/v1/servers/s/analytics/catalog",

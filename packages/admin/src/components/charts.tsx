@@ -57,12 +57,26 @@ function useWidth<T extends HTMLElement>(fallback = 640) {
   return [ref, width] as const;
 }
 
-/** Round tick values covering [min, max] (about `count` of them). */
-export function niceTicks(min: number, max: number, count = 4): number[] {
+/**
+ * Round tick values covering [min, max] (about `count` of them). `integer`: whole-number
+ * ticks only (a step of at least 1, no 2.5 at magnitude 1), for counts and members.
+ */
+export function niceTicks(
+  min: number,
+  max: number,
+  count = 4,
+  { integer = false }: { integer?: boolean } = {},
+): number[] {
   if (max <= min) max = min + 1;
-  const raw = (max - min) / count;
+  if (integer) {
+    min = Math.floor(min);
+    max = Math.ceil(max);
+  }
+  const raw = integer ? Math.max(1, (max - min) / count) : (max - min) / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = ([1, 2, 2.5, 5, 10].find((s) => s * mag >= raw) ?? 10) * mag;
+  const step =
+    ([1, 2, 2.5, 5, 10].find((s) => s * mag >= raw && (!integer || Number.isInteger(s * mag))) ??
+      10) * mag;
   const start = Math.floor(min / step) * step;
   const ticks: number[] = [];
   for (let v = start; v <= max + step * 0.5; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
@@ -312,6 +326,7 @@ export function TimeChart({
   label,
   height = 180,
   minZero = true,
+  integer = true,
   axisWidth,
 }: {
   buckets: number[];
@@ -326,6 +341,8 @@ export function TimeChart({
   height?: number;
   /** Lines: the y axis starts at 0 (false: fits the data, e.g. member totals). */
   minZero?: boolean;
+  /** Whole-number y ticks (default: every metric is a count, members or seconds). */
+  integer?: boolean;
   /** Fixed width of the y axis labels (aligns stacked panels). */
   axisWidth?: number;
 }) {
@@ -363,7 +380,7 @@ export function TimeChart({
       lo = Math.min(lo, v);
     }
   if (hi === lo) hi = lo + 1;
-  const ticks = niceTicks(lo, hi, height < 140 ? 3 : 4);
+  const ticks = niceTicks(lo, hi, height < 140 ? 3 : 4, { integer });
   const y0 = ticks[0]!;
   const y1 = ticks[ticks.length - 1]!;
 

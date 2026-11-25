@@ -340,12 +340,18 @@ const PRESENCE_SOURCE = "presence events (privileged intent)";
 
 /** internal/analytics/catalog.go, in dashboard order. */
 const CATALOG: MetricDef[] = [
-  m("members.total", "last", "members", "Discord's approximate member count, sampled"),
+  m(
+    "members.total",
+    "last",
+    "members",
+    "Discord's approximate member count minus the bot members (humans), sampled",
+  ),
+  m("members.bots", "last", "members", "bot members of the server, sampled"),
   m(
     "members.online",
     "last",
     "members",
-    "Discord's approximate online count (online, idle, do not disturb), sampled",
+    "Discord's approximate online count (online, idle, do not disturb) minus online bots, sampled",
   ),
   m("members.joined", "counter", "count", "member join events"),
   m("members.left", "counter", "count", "member leave events (leaves, kicks and bans)"),
@@ -458,7 +464,7 @@ const MISSING_PRESENCE: AnalyticsMissing = {
   metrics: ["presence.status", "presence.platform", "presence.activity"],
   reason:
     "Detailed presence is off: spec.analytics.presence is not set and the bot does not have the Presence privileged intent.",
-  fix: "Set spec.analytics.presence: true in the server's YAML, enable Presence Intent for the bot in the Discord Developer Portal (Bot → Privileged Gateway Intents) and add ServerPresences to the bot's intents.",
+  fix: "Set spec.analytics.presence: true in the server's YAML, enable Presence Intent for the bot in the Discord Developer Portal (https://discord.com/developers/applications/1100000000000000001/bot → Privileged Gateway Intents) and add ServerPresences to the bot's intents.",
 };
 const MISSING_AUDIT: AnalyticsMissing = {
   metrics: ["moderation.actions"],
@@ -857,6 +863,9 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     switch (metric) {
       case "members.total":
         return totalAt(d, h);
+      case "members.bots":
+        // A few bots, one more now and then.
+        return 5 + Math.floor(5 * growth(d));
       case "members.online":
         return online();
       case "members.boosting":
@@ -939,6 +948,17 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
       }
       return total;
     }
+    if (kind === "daily" && mode === "avg") {
+      // Daily distinct metrics are read per day: the days the window touches.
+      if (!collected(metric)) return undefined;
+      let days = 0;
+      for (let d = Math.max(firstDay, dayOf(w.from)); d <= Math.min(D, dayOf(w.to - 1)); d++) {
+        if (base + d * DAY > now) break;
+        total += dailyValue(metric, d, now);
+        days++;
+      }
+      return days ? total / days : undefined;
+    }
     let count = 0;
     let last: number | undefined;
     let max: number | undefined;
@@ -966,13 +986,37 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     "365d": 365,
   };
 
+  /** The summary's window: a preset period (calendar days) or a custom range (UTC hours). */
+  function summaryWindow(
+    q: URLSearchParams,
+    now: number,
+  ): { period: AnalyticsPeriod | "custom"; step: "hour" | "day"; cur: Window } | { error: string } {
+    if (!q.has("from") && !q.has("to")) {
+      const period = (q.get("period") ?? "30d") as AnalyticsPeriod;
+      const days = PERIOD_DAYS[period];
+      if (!days) return { error: `invalid period "${period}" (7d, 30d, 90d or 365d)` };
+      const to = (todayEpochDay + 1) * DAY;
+      return { period, step: "day", cur: { from: to - days * DAY, to } };
+    }
+    if (q.has("period")) return { error: "period and from/to are mutually exclusive" };
+    const fromMs = Date.parse(q.get("from") ?? "");
+    const toMs = Date.parse(q.get("to") ?? "");
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs))
+      return { error: "from and to are both required, in RFC 3339" };
+    const from = Math.floor(fromMs / 1000 / HOUR) * HOUR;
+    const to = Math.ceil(toMs / 1000 / HOUR) * HOUR;
+    if (to - from < HOUR) return { error: "from must be before to (at least 1 hour)" };
+    if (to - from > DAYS * DAY) return { error: "at most 400 days per request" };
+    if (from >= now) return { error: "from must be in the past" };
+    return { period: "custom", step: to - from < 2 * DAY ? "hour" : "day", cur: { from, to } };
+  }
+
   function summary(url: URL, now: number): Result {
-    const period = (url.searchParams.get("period") ?? "30d") as AnalyticsPeriod;
-    const days = PERIOD_DAYS[period];
-    if (!days) return { status: 400, message: `invalid period "${period}" (7d, 30d, 90d or 365d)` };
-    const to = (todayEpochDay + 1) * DAY;
-    const cur: Window = { from: to - days * DAY, to };
-    const prev: Window = { from: cur.from - days * DAY, to: cur.from };
+    const win = summaryWindow(url.searchParams, now);
+    if ("error" in win) return { status: 400, message: win.error };
+    const { period, step, cur } = win;
+    const length = cur.to - cur.from;
+    const prev: Window = { from: cur.from - length, to: cur.from };
     const sinceSec = base + firstDay * DAY;
     const prevCovered = hasData && sinceSec <= prev.from + DAY;
 
@@ -988,14 +1032,16 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
     const spark = (metric: string): AnalyticsPoint[] => {
       const points: AnalyticsPoint[] = [];
       if (!collected(metric === "members.net" ? "members.joined" : metric)) return points;
-      for (let t = cur.from; t < cur.to; t += DAY) {
-        const v = value(metric, { from: t, to: t + DAY });
+      const size = step === "hour" ? HOUR : DAY;
+      for (let t = alignDown(cur.from, step); t < cur.to; t += size) {
+        const v = value(metric, { from: Math.max(t, cur.from), to: Math.min(t + size, cur.to) });
         if (v !== undefined) points.push([t, round(v)]);
       }
       return points;
     };
     const KPIS = [
       "members.total",
+      "members.bots",
       "members.joined",
       "members.left",
       "members.net",
@@ -1068,6 +1114,7 @@ function buildModel(variant: MockAnalyticsVariant, todayEpochDay: number, server
         period,
         from: iso(cur.from),
         to: iso(cur.to),
+        step,
         kpis,
         rankings,
         heatmap,

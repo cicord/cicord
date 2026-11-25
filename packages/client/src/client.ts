@@ -9,10 +9,10 @@ import {
 import type {
   AddRegistryRequest,
   AnalyticsCatalog,
-  AnalyticsPeriod,
   AnalyticsSeries,
   AnalyticsSeriesParams,
   AnalyticsSummary,
+  AnalyticsSummaryQuery,
   AuditEntry,
   AuditQuery,
   InstallResult,
@@ -745,16 +745,24 @@ export class CicordClient {
    */
   readonly analytics = {
     /**
-     * `GET /servers/{server}/analytics/summary?period=`: headline numbers compared with the
-     * previous period, rankings and the weekday × hour heatmap.
+     * `GET /servers/{server}/analytics/summary?period=` or `?from=&to=`: headline numbers
+     * compared with the previous period of the same length, rankings and the weekday × hour
+     * heatmap. `query` is a preset period (`"30d"`, `{ period: "30d" }`) or a custom range
+     * (`{ from, to }`, RFC 3339 or Dates). Rejects with `invalid` (400) for a range shorter
+     * than an hour, longer than 400 days or starting in the future.
      */
     summary: (
       server: string,
-      period: AnalyticsPeriod = "30d",
+      query: AnalyticsSummaryQuery = "30d",
       options?: CallOptions,
     ): Promise<AnalyticsSummary> =>
       this.#api<AnalyticsSummary>("GET", `/servers/${seg(server)}/analytics/summary`, {
-        query: { period },
+        query:
+          typeof query === "string"
+            ? { period: query }
+            : "period" in query
+              ? { period: query.period }
+              : { from: rfc3339(query.from), to: rfc3339(query.to) },
         ...options,
       }),
     /**

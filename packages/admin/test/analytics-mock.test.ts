@@ -25,8 +25,11 @@ describe("mock analytics", () => {
     expect(s.server).toBe("s");
     expect(s.to).toBe("2026-11-25T00:00:00Z");
     expect(s.from).toBe("2026-10-26T00:00:00Z");
+    expect(s.period).toBe("30d");
+    expect(s.step).toBe("day");
     expect(s.kpis.map((k) => k.metric)).toEqual([
       "members.total",
+      "members.bots",
       "members.joined",
       "members.left",
       "members.net",
@@ -41,6 +44,8 @@ describe("mock analytics", () => {
     const kpi = (m: string) => s.kpis.find((k) => k.metric === m)!;
     expect(kpi("members.net").value).toBe(kpi("members.joined").value - kpi("members.left").value);
     expect(kpi("members.total").value).toBeGreaterThan(3000);
+    expect(kpi("members.bots").value).toBeGreaterThanOrEqual(5);
+    expect(kpi("members.bots").value).toBeLessThan(20);
     expect(kpi("members.joined").spark).toHaveLength(30);
     expect(kpi("messages.sent").previous).not.toBeNull();
     expect(Object.keys(s.rankings)).toContain("presence.activity");
@@ -51,6 +56,40 @@ describe("mock analytics", () => {
     // Evening peak (20:00 UTC) beats the night (05:00 UTC).
     expect(s.heatmap[2]![20]!).toBeGreaterThan(s.heatmap[2]![5]! * 3);
     expect(s.status).toMatchObject({ enabled: true, presence: true, missing: [] });
+  });
+
+  test("custom range: rounded outward to hours, hourly sparks under 2 days, same-length previous", () => {
+    const { summary } = mock();
+    const s = summary("from=2026-11-23T10:20:00Z&to=2026-11-24T08:05:00Z");
+    expect(s.period).toBe("custom");
+    expect(s.step).toBe("hour");
+    expect(s.from).toBe("2026-11-23T10:00:00Z");
+    expect(s.to).toBe("2026-11-24T09:00:00Z");
+    const kpi = (m: string) => s.kpis.find((k) => k.metric === m)!;
+    expect(s.kpis).toHaveLength(12);
+    expect(kpi("members.joined").spark).toHaveLength(23);
+    expect(kpi("members.joined").spark[0]![0]).toBe(Date.parse("2026-11-23T10:00:00Z") / 1000);
+    expect(kpi("members.joined").previous).not.toBeNull();
+    // Longer ranges: daily sparks, aligned on UTC days.
+    const week = summary("from=2026-11-10T12:00:00Z&to=2026-11-17T12:00:00Z");
+    expect(week.step).toBe("day");
+    expect(week.kpis.find((k) => k.metric === "messages.sent")!.spark).toHaveLength(8);
+  });
+
+  test("custom range validation", () => {
+    const { a } = mock();
+    const q = (s: string) => a.summary(new URL(`http://x/?${s}`));
+    expect(q("period=7d&from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z")).toMatchObject({
+      status: 400,
+      message: expect.stringContaining("mutually exclusive"),
+    });
+    expect(q("from=2026-11-02T00:00:00Z&to=2026-11-01T00:00:00Z")).toMatchObject({ status: 400 });
+    expect(q("from=2026-11-01T00:00:00Z&to=2026-11-01T00:00:00Z")).toMatchObject({ status: 400 });
+    expect(q("from=2025-01-01T00:00:00Z&to=2026-11-01T00:00:00Z")).toMatchObject({ status: 400 });
+    expect(q("from=2026-11-25T00:00:00Z&to=2026-11-26T00:00:00Z")).toMatchObject({ status: 400 });
+    expect(q("from=nope&to=2026-11-01T00:00:00Z")).toMatchObject({ status: 400 });
+    // One minute inside an hour becomes that whole hour.
+    expect(q("from=2026-11-20T10:10:00Z&to=2026-11-20T10:11:00Z")).toMatchObject({ status: 200 });
   });
 
   test("365d: the previous year is not covered", () => {
@@ -74,6 +113,11 @@ describe("mock analytics", () => {
     expect(at(3)).toBeCloseTo(msgs[0]!.points[3]![1], 5);
     expect(r.labels["ch-memes"]?.name).toBe("memes");
     expect(r.series.find((x) => x.metric === "members.total")!.points.length).toBe(24);
+    const bots = series(
+      "metrics=members.bots&from=2026-11-01T00:00:00Z&to=2026-11-24T00:00:00Z&step=day",
+    ).series[0]!;
+    expect(bots.points).toHaveLength(23);
+    expect(bots.points.every(([, v]) => Number.isInteger(v) && v >= 5)).toBe(true);
   });
 
   test("series validation: 2000 points, 400 days, unknown metric", () => {

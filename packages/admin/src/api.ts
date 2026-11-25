@@ -1,9 +1,9 @@
 /** Data hooks of the admin console, on top of @cicord/react's query cache. */
 import type {
-  AnalyticsPeriod,
   AnalyticsSeries,
   AnalyticsSeriesParams,
   AnalyticsSummary,
+  AnalyticsSummaryQuery,
   AuditEntry,
   PluginInstance,
   Message,
@@ -31,8 +31,8 @@ export const keys = {
   audit: (key: string, before: string) => ["admin", "server", key, "audit", before] as const,
   /** Prefix of every analytics query of a server (refresh). */
   analytics: (key: string) => ["admin", "server", key, "analytics"] as const,
-  analyticsSummary: (key: string, period: AnalyticsPeriod) =>
-    ["admin", "server", key, "analytics", "summary", period] as const,
+  analyticsSummary: (key: string, query: AnalyticsSummaryQuery) =>
+    ["admin", "server", key, "analytics", "summary", JSON.stringify(query)] as const,
   analyticsSeries: (key: string, params: AnalyticsSeriesParams) =>
     ["admin", "server", key, "analytics", "series", JSON.stringify(params)] as const,
   /** Prefix of every plugin query of a server (list, pages, single instances). */
@@ -100,14 +100,14 @@ export function useAudit(key: string, before: string): QueryResult<AuditEntry[]>
   );
 }
 
-/** `GET /servers/{server}/analytics/summary?period=` (moderator). */
+/** `GET /servers/{server}/analytics/summary?period=` or `?from=&to=` (moderator). */
 export function useAnalyticsSummary(
   key: string,
-  period: AnalyticsPeriod,
+  query: AnalyticsSummaryQuery,
 ): QueryResult<AnalyticsSummary> {
   const { client } = useCicord();
-  return useCicordQuery(keys.analyticsSummary(key, period), (signal) =>
-    client.analytics.summary(key, period, { signal }),
+  return useCicordQuery(keys.analyticsSummary(key, query), (signal) =>
+    client.analytics.summary(key, query, { signal }),
   );
 }
 

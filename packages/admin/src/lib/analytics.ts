@@ -17,18 +17,31 @@ export const ACCOUNT_AGES = ["<1d", "<7d", "<30d", "<1y", ">=1y"] as const;
 
 const STEP_SECONDS: Record<AnalyticsStep, number> = { hour: 3600, day: 86400, week: 604800 };
 
-/** Bucket of the period's charts: days, weeks for a year (at most 2000 points per series). */
-const stepFor = (period: AnalyticsPeriod): AnalyticsStep => (period === "365d" ? "week" : "day");
+const DAY = 86400;
+
+/** Days covered by a summary (its normalized window). */
+const daysOf = (summary: Pick<AnalyticsSummary, "from" | "to">): number =>
+  (Date.parse(summary.to) - Date.parse(summary.from)) / 1000 / DAY;
+
+/**
+ * Bucket of the period's charts (at most 2000 points per series): hours under 2 days, days
+ * under 120 days, else weeks (7d to 90d: days, a year: weeks).
+ */
+export function stepFor(days: number): AnalyticsStep {
+  return days < 2 ? "hour" : days < 120 ? "day" : "week";
+}
 
 /** Bucket of the sampled gauges (online members, voice peak): hours up to 30 days. */
-const fineStepFor = (period: AnalyticsPeriod): AnalyticsStep =>
-  period === "7d" || period === "30d" ? "hour" : "day";
+export function fineStepFor(days: number): AnalyticsStep {
+  return days <= 30 ? "hour" : "day";
+}
 
 /** Metrics of the dashboard's main series request (one step for every chart). */
 export function mainSeriesParams(summary: AnalyticsSummary): AnalyticsSeriesParams {
   return {
     metrics: [
       "members.total",
+      "members.bots",
       "members.joined",
       "members.left",
       "members.active",
@@ -47,7 +60,7 @@ export function mainSeriesParams(summary: AnalyticsSummary): AnalyticsSeriesPara
     ],
     from: summary.from,
     to: summary.to,
-    step: stepFor(summary.period),
+    step: stepFor(daysOf(summary)),
     top: 6,
   };
 }
@@ -57,7 +70,7 @@ export function fineSeriesParams(summary: AnalyticsSummary): AnalyticsSeriesPara
     metrics: ["members.online", "voice.peak"],
     from: summary.from,
     to: summary.to,
-    step: fineStepFor(summary.period),
+    step: fineStepFor(daysOf(summary)),
   };
 }
 
@@ -115,6 +128,7 @@ export function missingFor(status: AnalyticsStatus, metric: string): AnalyticsMi
 export type Polarity = "up" | "down" | "neutral";
 
 export const KPI_POLARITY: Record<string, Polarity> = {
+  "members.bots": "neutral",
   "members.left": "down",
   "moderation.actions": "neutral",
 };
@@ -138,6 +152,99 @@ function change(ratio: number, diff: number, polarity: Polarity): Delta {
     flat || polarity === "neutral" ? "neutral" : up === (polarity === "up") ? "good" : "bad";
   return { kind: "change", ratio, diff, tone };
 }
+
+// ───────────────────────────────────────────────────────────── custom range
+
+/** Longest custom range the summary accepts. */
+export const MAX_RANGE_DAYS = 400;
+
+/** Why a custom range is refused before asking the runtime (null: valid). */
+export type RangeProblem = "missing" | "order" | "tooLong" | "future";
+
+/**
+ * Checks a custom range the way the runtime does after rounding outward to UTC hours:
+ * from before to (so at least one hour), at most 400 days, from before now.
+ */
+export function rangeProblem(
+  from: Date | null,
+  to: Date | null,
+  now = Date.now(),
+): RangeProblem | null {
+  if (!from || !to || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return "missing";
+  if (from.getTime() >= to.getTime()) return "order";
+  if (from.getTime() >= now) return "future";
+  const hour = 3600_000;
+  const span = Math.ceil(to.getTime() / hour) * hour - Math.floor(from.getTime() / hour) * hour;
+  if (span > MAX_RANGE_DAYS * DAY * 1000) return "tooLong";
+  return null;
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** A time as the value of an `<input type="datetime-local">` (the browser's time zone). */
+export function toLocalInput(time: Date | string | number): string {
+  const d = new Date(time);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** The value of an `<input type="datetime-local">` as a Date (null when empty or invalid). */
+export function fromLocalInput(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) return null;
+  // Without an offset, a date-time string is parsed in the local time zone.
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** A Date as RFC 3339 UTC, whole seconds. */
+export const toRfc3339 = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
+
+/** A summary window as a short label: "Nov 3, 14:00 – Nov 4, 10:00" (UTC, like the charts). */
+export function formatRange(from: string, to: string, lng: string): string {
+  const a = new Date(from);
+  const b = new Date(to);
+  const sameYear =
+    a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCFullYear() === new Date().getUTCFullYear();
+  const wholeDays = a.getTime() % (DAY * 1000) === 0 && b.getTime() % (DAY * 1000) === 0;
+  const fmt = new Intl.DateTimeFormat(lng, {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+    ...(wholeDays ? {} : { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }),
+    timeZone: "UTC",
+  });
+  // Whole days end at 00:00 of the next day: show the last day included.
+  return fmt.formatRange(a, wholeDays ? new Date(b.getTime() - DAY * 1000) : b);
+}
+
+// ───────────────────────────────────────────────────────────── links in text
+
+/** A part of a text: plain text, or an http(s) URL. */
+export type TextPart = { text: string; href?: string };
+
+/**
+ * Splits a text around its http(s) URLs. Trailing punctuation (".", ",", ";", ":", "!", "?")
+ * and a ")" without its "(" in the URL stay in the text.
+ */
+export function splitLinks(text: string): TextPart[] {
+  const parts: TextPart[] = [];
+  let last = 0;
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"]+/g)) {
+    let url = m[0];
+    for (;;) {
+      if (/[.,;:!?'"]$/.test(url)) url = url.slice(0, -1);
+      else if (url.endsWith(")") && count(url, "(") < count(url, ")")) url = url.slice(0, -1);
+      else break;
+    }
+    if (!/^https?:\/\/[^/]/.test(url)) continue;
+    if (m.index > last) parts.push({ text: text.slice(last, m.index) });
+    parts.push({ text: url, href: url });
+    last = m.index + url.length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
+}
+
+const count = (s: string, c: string) => s.split(c).length - 1;
 
 // ───────────────────────────────────────────────────────────── labels
 

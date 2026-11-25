@@ -1780,8 +1780,26 @@
         "7d": "previous 7 days",
         "30d": "previous 30 days",
         "90d": "previous 90 days",
-        "365d": "previous year"
+        "365d": "previous year",
+        "custom": "previous period of the same length"
       }
+    },
+    "custom": {
+      "button": "Custom",
+      "active": "Custom range: {{range}} (UTC)",
+      "title": "Custom range",
+      "from": "From",
+      "to": "To",
+      "zone": "In your time zone ({{zone}}). The range is rounded outward to whole hours; the dashboard shows UTC.",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "errors": {
+        "missing": "Enter a start and an end, date and time.",
+        "order": "The end must be after the start.",
+        "tooLong": "A range covers at most {{count}} days.",
+        "future": "The start must be in the past."
+      },
+      "rejected": "The runtime refused this range: {{message}}"
     },
     "meta": {
       "since": "Collected since {{date}}",
@@ -1815,14 +1833,15 @@
     "deleted": "deleted",
     "kpi": {
       "label": "Headline numbers",
-      "membersTotal": "Members",
+      "membersTotal": "Human members",
+      "membersBots": "Bots",
       "membersJoined": "Joins",
       "membersLeft": "Leaves",
       "membersNet": "Net growth",
       "membersActive": "Active members / day",
       "messagesSent": "Messages",
       "voiceSeconds": "Voice time",
-      "membersOnline": "Online (average)",
+      "membersOnline": "Online humans (avg)",
       "reactionsAdded": "Reactions",
       "commandsUsed": "Commands",
       "moderationActions": "Moderation actions"
@@ -1851,15 +1870,18 @@
     },
     "members": {
       "title": "Members over time",
-      "description": "Member count, then joins, leaves and net growth per period.",
-      "total": "Members",
+      "description": "Human members (bots excluded), or bot members, then joins, leaves and net growth per period.",
+      "total": "Human members",
+      "bots": "Bots",
+      "show": "Members shown",
+      "humans": "Humans",
       "joined": "Joins",
       "left": "Leaves",
       "net": "Net growth",
       "flow": "Joins and leaves",
-      "online": "Online",
+      "online": "Online humans",
       "onlineTitle": "Online members",
-      "onlineDescription": "Discord's approximate count of members online, idle or do not disturb."
+      "onlineDescription": "Discord's approximate count of members online, idle or do not disturb, bots excluded."
     },
     "active": {
       "title": "Daily active members",
