@@ -1196,8 +1196,14 @@ func (p *planner) planExpr(rk state.ResourceKind, kind, key, label, path string,
 	}
 	if !exists {
 		if *count >= limit {
-			p.blockFields(ActionCreate, kind, key, "", fmt.Sprintf("%smaximum number of %s reached (%d at boost level %d)",
-				prefixLimit, plural, limit, p.in.Live.Server.PremiumTier), map[string]FieldChange{"exists": {From: false, To: true}})
+			// Below level 3 a higher boost level gives more slots: the expression waits for
+			// boosts (not drift); at level 3 the limit is final.
+			reason := fmt.Sprintf("%smaximum number of %s reached (%d at boost level %d)", prefixLimit, plural, limit, p.in.Live.Server.PremiumTier)
+			if p.in.Live.Server.PremiumTier < 3 {
+				reason = fmt.Sprintf("%smaximum number of %s reached (%d at boost level %d); a higher boost level gives more slots",
+					prefixBoost, plural, limit, p.in.Live.Server.PremiumTier)
+			}
+			p.blockFields(ActionCreate, kind, key, "", reason, map[string]FieldChange{"exists": {From: false, To: true}})
 			return
 		}
 		*count++

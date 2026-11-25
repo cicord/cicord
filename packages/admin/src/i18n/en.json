@@ -301,7 +301,9 @@
       "applied_other": "Applied {{count}} changes",
       "blocked_one": "{{count}} change blocked by the sync policy",
       "blocked_other": "{{count}} changes blocked by the sync policy",
-      "failed": "Sync failed"
+      "failed": "Sync failed",
+      "waiting_one": "{{count}} change waits for a higher boost level",
+      "waiting_other": "{{count}} changes wait for a higher boost level"
     }
   },
   "plan": {
@@ -345,6 +347,10 @@
     "notes": {
       "title": "Notes",
       "text": "Nothing to apply: information about the declared configuration."
+    },
+    "boost": {
+      "title": "Waiting for boosts",
+      "text": "These changes need a higher server boost level. Cicord applies them as soon as the level is reached; the server stays in sync meanwhile."
     }
   },
   "history": {

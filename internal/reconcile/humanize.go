@@ -391,7 +391,7 @@ func ExplainBlocked(b Blocked) *HumanError {
 	case strings.HasPrefix(reason, prefixLimit):
 		h.Code = ErrCodeLimitReached
 		h.Message = "Discord limit: " + strings.TrimPrefix(reason, prefixLimit)
-		h.Hint = "Remove some from Discord or from the YAML (or boost the server for more expression slots)."
+		h.Hint = "Remove some from Discord or from the YAML."
 	case strings.HasPrefix(reason, prefixRecreate):
 		h.Code = ErrCodeRecreateRequired
 		h.Message = capitalize(strings.TrimPrefix(reason, prefixRecreate))

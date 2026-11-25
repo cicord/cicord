@@ -17,9 +17,12 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
   of its changes (the gateway events of the new changes reached it before it stopped), and
   the new revision healed it forward again. The previous reconcilers now stop before the
   new revision changes anything.
-- A server whose only blocked changes wait for a boost level (e.g. a banner below level 2)
-  stayed `OutOfSync` forever; they are still listed as blocked in the plan but are no longer
-  drift, and the status message says they wait for a higher boost level.
+- A server whose only blocked changes wait for a boost level (a banner, an invite splash, an
+  animated icon, role icons or gradient colors below their level, and emojis, stickers or
+  sounds beyond the slots of a level below 3) stayed `OutOfSync` forever; they are still
+  listed in the plan but are no longer drift, the status message says they wait for a higher
+  boost level, and the admin's Plan page shows them as a "Waiting for boosts" warning
+  instead of "Blocked".
 - The runtime status and the server detail read the whole server from Discord on every
   request (a plan each, about 2 s, up to 10 s when Discord throttled), which the live admin
   console multiplied; they now reuse the last plan's drift until an apply, a relevant event

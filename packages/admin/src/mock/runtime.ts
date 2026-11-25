@@ -813,6 +813,19 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           details: 'hierarchy: role "Admin" is at or above the bot\'s highest role',
         },
       },
+      {
+        action: "update",
+        kind: "server",
+        key: "ma-commu",
+        reason: "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
+        fields: { banner: { from: null, to: "../assets/banner.png" } },
+        error: {
+          code: "boost_required",
+          message: "Banner requires boost level 2; server is level 0 (0 boost(s))",
+          hint: "Boost the server to the required level (Server Settings → Server Boost), or remove the setting from the YAML. Cicord applies it as soon as the level is reached.",
+          details: "boost: banner requires boost level 2; server is level 0 (0 boost(s))",
+        },
+      },
     ],
     notes: [
       {

@@ -476,12 +476,23 @@ func TestParityLimitsAndPrune(t *testing.T) {
 	if err != nil || len(res.Failed) > 0 {
 		t.Fatalf("sync: %v\n%s", err, p)
 	}
-	b := blockedWith(p, KindSticker, "limit: maximum number of stickers reached (5 at boost level 0)")
+	// Below boost level 3 more boosts give more slots: the 6th sticker waits for boosts
+	// (blocked, explained, but not drift).
+	b := blockedWith(p, KindSticker, "boost: maximum number of stickers reached (5 at boost level 0); a higher boost level gives more slots")
 	if b == nil || b.Key != "s6" {
 		t.Fatalf("6th sticker not blocked:\n%s", p)
 	}
-	if h := ExplainBlocked(*b); h.Code != ErrCodeLimitReached {
+	if h := ExplainBlocked(*b); h.Code != ErrCodeBoostRequired {
 		t.Errorf("explained = %+v", h)
+	}
+	after, err := r.Plan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range DriftOf(after) {
+		if d.Kind == KindSticker {
+			t.Errorf("a sticker waiting for boosts is drift: %+v", d)
+		}
 	}
 	if n := len(e.w.Stickers(e.srv.ID)); n != 5 {
 		t.Errorf("stickers = %d", n)

@@ -13,6 +13,7 @@ import {
   CircleCheck,
   CircleHelp,
   GitCompareArrows,
+  Gem,
   History,
   Info,
   Lock,
@@ -90,13 +91,17 @@ export function SyncButton({ serverKey, size }: { serverKey: string; size?: "sm"
           duration: 9000,
         });
       } else {
+        const waiting = res.plan.blocked.filter(waitsForBoost).length;
+        const blocked = res.plan.blocked.length - waiting;
+        const notes = [
+          blocked > 0 ? t("sync.toast.blocked", { count: blocked }) : "",
+          waiting > 0 ? t("sync.toast.waiting", { count: waiting }) : "",
+        ].filter(Boolean);
         toast.success(
           res.applied === 0
             ? t("sync.toast.upToDate")
             : t("sync.toast.applied", { count: res.applied }),
-          res.plan.blocked.length > 0
-            ? { description: t("sync.toast.blocked", { count: res.plan.blocked.length }) }
-            : undefined,
+          notes.length > 0 ? { description: notes.join(" ") } : undefined,
         );
       }
     } catch (e) {
@@ -263,6 +268,8 @@ export function PlanPage({ serverKey }: { serverKey: string }) {
 
 function PlanView({ plan }: { plan: Plan }) {
   const { t } = useTranslation();
+  const waiting = plan.blocked.filter(waitsForBoost);
+  const blocked = plan.blocked.filter((b) => !waitsForBoost(b));
   const groups = useMemo(() => groupChanges(plan.changes), [plan.changes]);
   const counts = useMemo(() => {
     const out: Record<string, number> = {};
@@ -319,7 +326,7 @@ function PlanView({ plan }: { plan: Plan }) {
           ))}
         </>
       )}
-      {plan.blocked.length > 0 ? (
+      {blocked.length > 0 ? (
         <Card role="region" aria-label={t("plan.blocked.title")} className="border-danger/25">
           <CardHeader className="py-2.5">
             <Lock className="mt-1 size-4 text-danger" aria-hidden="true" />
@@ -328,35 +335,25 @@ function PlanView({ plan }: { plan: Plan }) {
               <CardDescription>{t("plan.blocked.text")}</CardDescription>
             </div>
             <span className="ml-auto tabular text-[13px] leading-6 text-muted-foreground">
-              {plan.blocked.length}
+              {blocked.length}
             </span>
           </CardHeader>
-          <ul className="divide-y">
-            {plan.blocked.map((b, i) => {
-              const e = blockedError(b);
-              return (
-                <li key={`${b.key}-${i}`} className="flex flex-col gap-1.5 px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <ActionBadge action={b.action} />
-                    <span className="text-xs text-muted-foreground">{kindLabel(b.kind)}</span>
-                    {b.summary ? (
-                      <span className="text-[13px] text-foreground">{b.summary}</span>
-                    ) : (
-                      <Mono className="text-foreground">{b.key}</Mono>
-                    )}
-                  </div>
-                  <p className="text-[13px] font-medium">{e.message}</p>
-                  {e.hint ? <p className="text-[13px] text-muted-foreground">{e.hint}</p> : null}
-                  {b.fields && Object.keys(b.fields).length > 0 ? (
-                    <FieldDiff fields={b.fields} />
-                  ) : null}
-                  {e.details && e.details !== e.message ? (
-                    <TechnicalDetails text={e.details} />
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <BlockedList items={blocked} />
+        </Card>
+      ) : null}
+      {waiting.length > 0 ? (
+        <Card role="region" aria-label={t("plan.boost.title")} className="border-warning/30">
+          <CardHeader className="py-2.5">
+            <Gem className="mt-1 size-4 text-warning" aria-hidden="true" />
+            <div>
+              <CardTitle>{t("plan.boost.title")}</CardTitle>
+              <CardDescription>{t("plan.boost.text")}</CardDescription>
+            </div>
+            <span className="ml-auto tabular text-[13px] leading-6 text-muted-foreground">
+              {waiting.length}
+            </span>
+          </CardHeader>
+          <BlockedList items={waiting} />
         </Card>
       ) : null}
       {plan.notes && plan.notes.length > 0 ? (
@@ -383,6 +380,39 @@ function PlanView({ plan }: { plan: Plan }) {
       ) : null}
     </div>
   );
+}
+
+/** The items of a blocked or waiting-for-boosts card. */
+function BlockedList({ items }: { items: readonly PlanBlocked[] }) {
+  return (
+    <ul className="divide-y">
+      {items.map((b, i) => {
+        const e = blockedError(b);
+        return (
+          <li key={`${b.key}-${i}`} className="flex flex-col gap-1.5 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <ActionBadge action={b.action} />
+              <span className="text-xs text-muted-foreground">{kindLabel(b.kind)}</span>
+              {b.summary ? (
+                <span className="text-[13px] text-foreground">{b.summary}</span>
+              ) : (
+                <Mono className="text-foreground">{b.key}</Mono>
+              )}
+            </div>
+            <p className="text-[13px] font-medium">{e.message}</p>
+            {e.hint ? <p className="text-[13px] text-muted-foreground">{e.hint}</p> : null}
+            {b.fields && Object.keys(b.fields).length > 0 ? <FieldDiff fields={b.fields} /> : null}
+            {e.details && e.details !== e.message ? <TechnicalDetails text={e.details} /> : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** A blocked operation that only needs a higher server boost level: not drift. */
+export function waitsForBoost(b: PlanBlocked): boolean {
+  return b.reason.startsWith("boost:");
 }
 
 function FieldDiff({ fields }: { fields: NonNullable<PlanChange["fields"]> }) {

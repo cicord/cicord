@@ -110,6 +110,10 @@ describe("overview & server", () => {
     // A refused role assignment reads as what it is, not as its key.
     expect(within(blocked).getByText(/give role "Admin" to @Léa/)).toBeTruthy();
     expect(within(blocked).queryByText("admin/112233445566778900")).toBeNull();
+    // A banner below its boost level waits for boosts: a warning, not a block.
+    const waiting = screen.getByRole("region", { name: "Waiting for boosts" });
+    expect(within(waiting).getByText(/Banner requires boost level 2/)).toBeTruthy();
+    expect(within(blocked).queryByText(/Banner requires boost level 2/)).toBeNull();
     const notes = screen.getByRole("region", { name: "Notes" });
     expect(within(notes).getByText(/is not a member of the server/)).toBeTruthy();
 
