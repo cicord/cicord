@@ -69,6 +69,12 @@ func newDrill(t *testing.T, selfHeal bool) *drill {
 	return d
 }
 
+// quietSource is a local source that does not watch its directory: the drill activates its
+// revisions itself, and a file it edits must not also become a local revision behind its back.
+type quietSource struct{ *source.Local }
+
+func (quietSource) Changes() <-chan struct{} { return nil }
+
 // start runs a runtime on the drill's world and store (a restart keeps the store).
 func (d *drill) start() {
 	t := d.t
@@ -82,7 +88,7 @@ func (d *drill) start() {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 	d.rt = New(Options{
-		Source: src, Connector: d.w, Store: d.store, Mode: "dev", Simulator: true,
+		Source: quietSource{src}, Connector: d.w, Store: d.store, Mode: "dev", Simulator: true,
 		Secrets:   func(n string) (string, bool) { return d.token, n == "DISCORD_TOKEN_MODERATOR" },
 		PortalURL: "http://localhost:7420", Logger: logger, ResyncInterval: -1,
 		CommitStatus: d.statuses.report,
