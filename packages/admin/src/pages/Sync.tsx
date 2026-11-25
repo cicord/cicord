@@ -411,7 +411,7 @@ function BlockedList({ items }: { items: readonly PlanBlocked[] }) {
 }
 
 /** A blocked operation that only needs a higher server boost level: not drift. */
-export function waitsForBoost(b: PlanBlocked): boolean {
+function waitsForBoost(b: PlanBlocked): boolean {
   return b.reason.startsWith("boost:");
 }
 
