@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-25
+
 ### Added
 
 - Emergency pause: **Pause enforcement** in the admin console, `cicord pause <server>
@@ -372,7 +374,8 @@ First public release (pre-release, API `cicord.dev/v1alpha1`).
   multi-arch image `ghcr.io/cicord/cicord` with SBOM, provenance and an attestation in the
   registry; `@cicord/*` on npm through trusted publishing with provenance.
 
-[Unreleased]: https://github.com/cicord/cicord/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/cicord/cicord/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/cicord/cicord/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/cicord/cicord/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/cicord/cicord/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/cicord/cicord/compare/v0.1.3...v0.1.4

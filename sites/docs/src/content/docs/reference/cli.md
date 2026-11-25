@@ -6,7 +6,7 @@ tableOfContents:
 ---
 
 `cicord` is both the command line tool and the runtime. This page lists every command with
-the flags of `cicord <command> --help` (version 0.1.6); `--help` stays authoritative. Every
+the flags of `cicord <command> --help` (version 0.1.7); `--help` stays authoritative. Every
 command also accepts `-h, --help`, and boolean flags accept `--flag=false`.
 
 | Command | Purpose |
@@ -390,7 +390,7 @@ docker exec cicord cicord healthcheck --service --data-dir /data --timeout 5m
 
 ### `cicord version`
 
-Print the version and the commit the binary was built from: `cicord 0.1.6 (<commit>)` (`dev` instead of the commit for a local build).
+Print the version and the commit the binary was built from: `cicord 0.1.7 (<commit>)` (`dev` instead of the commit for a local build).
 
 ```text
 cicord version [flags]

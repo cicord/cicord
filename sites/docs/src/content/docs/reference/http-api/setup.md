@@ -162,7 +162,7 @@ discord.com:
 ```json
 // SetupView (never contains secret values)
 { "step": "welcome|discord|server|repository|login|verify|plugin|done", "steps": [...],
-  "completed": false, "mode": "serve|dev", "simulator": false, "version": "0.1.6",
+  "completed": false, "mode": "serve|dev", "simulator": false, "version": "0.1.7",
   "intent"?: "existing|new", "providers": ["embedded", "github"], "publicUrl": "…",
   "bot"?: { "key", "secretRef", "applicationId", "applicationName", "userId", "username",
             "avatarUrl"?, "flags", "tokenStored", "portalUrl", "intents": Check },

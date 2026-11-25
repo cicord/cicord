@@ -8,7 +8,7 @@
 # GitHub CLI (gh) is installed and logged in, then installs `cicord`.
 #
 # Environment:
-#   CICORD_VERSION       version to install (0.1.6 or v0.1.6); default: the latest release
+#   CICORD_VERSION       version to install (0.1.7 or v0.1.7); default: the latest release
 #   CICORD_INSTALL_DIR   where to put cicord; default: /usr/local/bin when it is writable or
 #                        sudo is available, else ~/.local/bin
 #   CICORD_RELEASES_URL  releases base URL (a mirror, or tests);
@@ -40,7 +40,7 @@ fetch() {
 }
 
 # latest_version BASE: the version of BASE/latest (the latest release, never a
-# pre-release), from the tag the redirect lands on (.../releases/tag/v0.1.6).
+# pre-release), from the tag the redirect lands on (.../releases/tag/v0.1.7).
 latest_version() {
   if has curl; then
     url="$(curl -fsSL --proto "$proto" --proto-redir "$proto" -o /dev/null -w '%{url_effective}' "$1/latest")" || return 1
