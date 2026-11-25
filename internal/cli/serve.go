@@ -245,7 +245,14 @@ func runHTTP(ctx context.Context, log *slog.Logger, ln net.Listener, h http.Hand
 		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	var once sync.Once
-	srv.RegisterOnShutdown(func() { once.Do(func() { close(stopping) }) })
+	closeStopping := func() { once.Do(func() { close(stopping) }) }
+	srv.RegisterOnShutdown(closeStopping)
+	// After the shutdown, background goroutines tied to stopping (the plugin store's
+	// refresh) have ended too.
+	defer func() {
+		closeStopping()
+		waitBackground(stopping, 10*time.Second)
+	}()
 	rctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	rtDone := make(chan error, 1)

@@ -8,7 +8,9 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -310,8 +312,28 @@ var registrySubcommands []func() *cobra.Command
 // from secret, and indexes refreshed in the background until stopping is closed.
 func runtimePluginStore(cat *catalog.Catalog, secret func(string) (string, bool), stopping <-chan struct{}, repo func() *config.Repo) *store.Service {
 	s := &store.Service{Catalog: cat, CacheDir: registry.DefaultCacheDir(), PublicOnly: !registry.AllowPrivateRegistries(), Secret: secret}
-	go s.Run(stopping, repo)
+	wg, _ := backgroundRuns.LoadOrStore(stopping, &sync.WaitGroup{})
+	wg.(*sync.WaitGroup).Go(func() { s.Run(stopping, repo) })
 	return s
+}
+
+// backgroundRuns tracks the background goroutines of a runtime by its stopping channel
+// (<-chan struct{}): runHTTP waits for them once it closed stopping, so none outlives
+// the command.
+var backgroundRuns sync.Map
+
+// waitBackground waits (at most timeout) for the background goroutines of stopping.
+func waitBackground(stopping <-chan struct{}, timeout time.Duration) {
+	v, ok := backgroundRuns.LoadAndDelete(stopping)
+	if !ok {
+		return
+	}
+	done := make(chan struct{})
+	go func() { v.(*sync.WaitGroup).Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+	}
 }
 
 // editProject rewrites cicord.yaml with edit and checks the result still loads.
