@@ -35,8 +35,9 @@ type Metric struct {
 // written once per day on the day's first bucket (00:00 UTC).
 const (
 	// Members
-	MembersTotal        = "members.total"         // gauge last: approximate member count
-	MembersOnline       = "members.online"        // gauge last: approximate presence count (online, idle, dnd)
+	MembersTotal        = "members.total"         // gauge last: human members (approximate member count minus the bots)
+	MembersBots         = "members.bots"          // gauge last: bot members (accounts Discord flags as bots)
+	MembersOnline       = "members.online"        // gauge last: human members online, idle or dnd
 	MembersJoined       = "members.joined"        // counter
 	MembersLeft         = "members.left"          // counter
 	MembersJoinedByAge  = "members.joined.age"    // counter, dim: account age bucket (<1d, <7d, <30d, <1y, >=1y)
@@ -89,8 +90,9 @@ const (
 
 // Catalog lists every metric, in dashboard order.
 var Catalog = []Metric{
-	{Name: MembersTotal, Kind: state.AnalyticsGaugeLast, Unit: "members", Source: "Discord's approximate member count, sampled"},
-	{Name: MembersOnline, Kind: state.AnalyticsGaugeLast, Unit: "members", Source: "Discord's approximate online count (online, idle, do not disturb), sampled"},
+	{Name: MembersTotal, Kind: state.AnalyticsGaugeLast, Unit: "members", Source: "human members: Discord's approximate member count minus the bot members, sampled"},
+	{Name: MembersBots, Kind: state.AnalyticsGaugeLast, Unit: "members", Source: "bot members (accounts Discord flags as bots): the member list, read daily and kept current by join and leave events"},
+	{Name: MembersOnline, Kind: state.AnalyticsGaugeLast, Unit: "members", Source: "human members online, idle or do not disturb: counted from presences when detailed presence is collected, otherwise Discord's approximate online count minus the bot members, sampled"},
 	{Name: MembersJoined, Kind: state.AnalyticsCounter, Unit: "count", Source: "member join events"},
 	{Name: MembersLeft, Kind: state.AnalyticsCounter, Unit: "count", Source: "member leave events (leaves, kicks and bans)"},
 	{Name: MembersJoinedByAge, Kind: state.AnalyticsCounter, Dim: "account age", Unit: "count", Source: "member join events: age of the Discord account"},

@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"net/url"
 	"time"
 
 	"github.com/cicord/cicord/internal/state"
@@ -19,7 +20,7 @@ const DefaultSummaryPeriod = "7d"
 
 // SummaryKPIs are the KPIs of the summary, in order (api.go).
 var SummaryKPIs = []string{
-	MembersTotal, MembersJoined, MembersLeft, MembersNet, MembersActive, MessagesSent,
+	MembersTotal, MembersBots, MembersJoined, MembersLeft, MembersNet, MembersActive, MessagesSent,
 	VoiceSeconds, MembersOnline, ReactionsAdded, CommandsUsed, ModerationActions,
 }
 
@@ -43,7 +44,7 @@ const (
 
 func kpiModeOf(metric string) kpiMode {
 	switch metric {
-	case MembersTotal:
+	case MembersTotal, MembersBots:
 		return kpiLast
 	case MembersActive:
 		return kpiDailyAvg
@@ -91,25 +92,102 @@ func ParseSummaryPeriod(period string) (string, int, error) {
 	return period, days, nil
 }
 
-// Summary answers …/analytics/summary (see api.go). The period is made of whole
-// UTC days and ends with today: [today - (days-1), tomorrow). The previous period
-// is the same number of days just before; it is "covered" (previous values are
-// not null) when collection started before its first day ended.
+// CustomPeriod is Summary.Period for a from..to range.
+const CustomPeriod = "custom"
+
+// hourlySparkBelow: a custom range shorter than this has hourly sparklines.
+const hourlySparkBelow = 48 * time.Hour
+
+// SummaryRequest is the range of a summary: a preset Period, or From and To (custom).
+type SummaryRequest struct {
+	Period   string
+	From, To time.Time
+}
+
+// ParseSummaryRequest reads ?period= or ?from=&to= (RFC 3339) of …/analytics/summary.
+// A custom range is widened to whole UTC hours; it must last 1 hour to MaxRangeDays
+// days and start before now.
+func ParseSummaryRequest(q url.Values, now time.Time) (SummaryRequest, error) {
+	fromS, toS, period := q.Get("from"), q.Get("to"), q.Get("period")
+	if fromS == "" && toS == "" {
+		period, _, err := ParseSummaryPeriod(period)
+		return SummaryRequest{Period: period}, err
+	}
+	if period != "" {
+		return SummaryRequest{}, badRequest("give either period or from and to, not both")
+	}
+	if fromS == "" || toS == "" {
+		return SummaryRequest{}, badRequest("a custom range needs both from and to")
+	}
+	parse := func(name, v string) (time.Time, error) {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			return t, badRequest("%s must be an RFC 3339 time, e.g. 2026-11-24T00:00:00Z", name)
+		}
+		return t.UTC(), nil
+	}
+	from, err := parse("from", fromS)
+	if err != nil {
+		return SummaryRequest{}, err
+	}
+	to, err := parse("to", toS)
+	if err != nil {
+		return SummaryRequest{}, err
+	}
+	from = hourOf(from)
+	if c := hourOf(to); c.Before(to) {
+		to = c.Add(time.Hour)
+	}
+	switch {
+	case !from.Before(to):
+		return SummaryRequest{}, badRequest("from must be before to")
+	case to.Sub(from) > MaxRangeDays*24*time.Hour:
+		return SummaryRequest{}, badRequest("at most %d days per request", MaxRangeDays)
+	case !from.Before(now):
+		return SummaryRequest{}, badRequest("from must be in the past")
+	}
+	return SummaryRequest{Period: CustomPeriod, From: from, To: to}, nil
+}
+
+// Summary answers …/analytics/summary for a preset period ("" is the default).
 func (r *Reader) Summary(ctx context.Context, server, period string, status Status) (Summary, error) {
-	period, days, err := ParseSummaryPeriod(period)
+	period, _, err := ParseSummaryPeriod(period)
 	if err != nil {
 		return Summary{}, err
+	}
+	return r.SummaryFor(ctx, server, SummaryRequest{Period: period}, status)
+}
+
+// SummaryFor answers …/analytics/summary (see api.go). A preset period is made of
+// whole UTC days and ends with today: [today - (days-1), tomorrow); a custom range is
+// the request's. The previous period has the same length just before; it is "covered"
+// (previous values are not null) when collection started before its first sparkline
+// step ended. Sparklines are per day, or per hour for a custom range shorter than two
+// days.
+func (r *Reader) SummaryFor(ctx context.Context, server string, req SummaryRequest, status Status) (Summary, error) {
+	from, to := req.From, req.To
+	period := req.Period
+	if period != CustomPeriod {
+		var days int
+		var err error
+		if period, days, err = ParseSummaryPeriod(period); err != nil {
+			return Summary{}, err
+		}
+		to = dayFloor(r.now()).AddDate(0, 0, 1)
+		from = to.AddDate(0, 0, -days)
 	}
 	st, err := r.withSince(ctx, server, status)
 	if err != nil {
 		return Summary{}, err
 	}
-	to := dayFloor(r.now()).AddDate(0, 0, 1)
-	from := to.AddDate(0, 0, -days)
-	prev := from.AddDate(0, 0, -days)
-	covered := st.Since != nil && st.Since.Before(prev.Add(24*time.Hour))
+	step, stepName := 24*time.Hour, "day"
+	if period == CustomPeriod && to.Sub(from) < hourlySparkBelow {
+		step, stepName = time.Hour, "hour"
+	}
+	prev := from.Add(-to.Sub(from))
+	covered := st.Since != nil && st.Since.Before(prev.Add(step))
 
-	out := Summary{Server: server, Period: period, From: from, To: to, KPIs: []KPI{},
+	out := Summary{Server: server, Period: period, Step: stepName, From: from, To: to, KPIs: []KPI{},
 		Rankings: map[string][]Ranked{}, Status: st}
 
 	// Hourly totals of the KPI metrics over both periods.
@@ -143,8 +221,8 @@ func (r *Reader) Summary(ctx context.Context, server, period string, status Stat
 				kpi.Previous = &v
 			}
 		}
-		for d := from; d.Before(to); d = d.AddDate(0, 0, 1) {
-			if v, ok := value(k, d, d.AddDate(0, 0, 1)); ok {
+		for d := from; d.Before(to); d = d.Add(step) {
+			if v, ok := value(k, d, d.Add(step)); ok {
 				kpi.Spark = append(kpi.Spark, Point{float64(d.Unix()), v})
 			}
 		}

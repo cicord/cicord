@@ -227,6 +227,7 @@ type collectorFakeClient struct {
 	discord.Client
 	mu        sync.Mutex
 	counts    discord.ServerCounts
+	bots      []string
 	events    []discord.ScheduledEventInterest
 	invites   []discord.InviteUses
 	inviteErr error
@@ -245,6 +246,13 @@ func (f *collectorFakeClient) GetServerCounts(context.Context, string) (discord.
 	defer f.mu.Unlock()
 	f.call("counts")
 	return f.counts, nil
+}
+
+func (f *collectorFakeClient) ListServerBots(context.Context, string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.call("bots")
+	return append([]string(nil), f.bots...), nil
 }
 
 func (f *collectorFakeClient) ListScheduledEventInterest(context.Context, string) ([]discord.ScheduledEventInterest, error) {

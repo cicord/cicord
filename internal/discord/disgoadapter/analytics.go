@@ -3,6 +3,7 @@ package disgoadapter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/disgoorg/disgo/rest"
@@ -263,6 +264,38 @@ func (s *session) GetServerCounts(ctx context.Context, serverID string) (discord
 		ApproximateMembers: g.ApproximateMemberCount, ApproximateOnline: g.ApproximatePresenceCount,
 		Boosts: derefInt(g.PremiumSubscriptionCount), BoostTier: g.PremiumTier,
 	}, nil
+}
+
+// maxMemberPages bounds ListServerBots (1000 members per page).
+const maxMemberPages = 1000
+
+// ListServerBots is GET /guilds/{id}/members?limit=1000, page after page.
+func (s *session) ListServerBots(ctx context.Context, serverID string) ([]string, error) {
+	if err := checkIDs("ListServerBots", serverID); err != nil {
+		return nil, err
+	}
+	var bots []string
+	after := "0"
+	for range maxMemberPages {
+		var page []wireMember
+		q := discordapi.QueryValues{"limit": 1000, "after": after}
+		if err := s.do(ctx, "ListServerBots", rest.GetMembers.Compile(q, serverID), nil, &page); err != nil {
+			return nil, err
+		}
+		for _, m := range page {
+			if m.User == nil {
+				continue
+			}
+			if m.User.Bot {
+				bots = append(bots, m.User.ID)
+			}
+			after = m.User.ID // members come in ascending user ID order
+		}
+		if len(page) < 1000 {
+			return bots, nil
+		}
+	}
+	return nil, fmt.Errorf("ListServerBots: server %s has more than %d members", serverID, maxMemberPages*1000)
 }
 
 // ListScheduledEventInterest is GET /guilds/{id}/scheduled-events?with_user_count=true.

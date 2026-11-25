@@ -92,7 +92,7 @@ func (c *Collector) applySnapshot(s *collected, snap discord.ServerAvailableEven
 	if s.cfg.presenceCollected() {
 		s.presence = map[string]presenceInfo{}
 		for _, p := range snap.Presences {
-			if info, ok := presenceFrom(p); ok {
+			if info, ok := presenceFrom(p); ok && !c.isBot(s, p.UserID) {
 				s.presence[p.UserID] = info
 			}
 		}
@@ -184,7 +184,10 @@ func (c *Collector) presenceGauges(s *collected, now time.Time) {
 	status := map[string]int{}
 	platform := map[string]int{"desktop": 0, "mobile": 0, "web": 0}
 	activity := map[string]int{}
-	for _, p := range s.presence {
+	for id, p := range s.presence {
+		if c.isBot(s, id) {
+			continue // a bot read after its presence
+		}
 		status[p.status]++
 		for _, pl := range p.platforms {
 			platform[pl]++

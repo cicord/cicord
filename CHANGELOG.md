@@ -6,6 +6,24 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- Analytics: bot members are counted apart (`members.bots`, from the member list read once
+  a day and kept current by join and leave events); `members.total` and `members.online`
+  now count humans only, and bots are left out of the presence aggregates. The summary
+  takes a custom range (`?from=&to=`, whole UTC hours, hourly sparklines under two days)
+  and the admin's Analytics page a Custom period with dates and times.
+
+### Changed
+
+- Analytics charts use whole-number axes, and the links in the "not collected" notice are
+  clickable.
+
+### Fixed
+
+- A plugin handler that failed once its timeout had fired could report its own error
+  instead of the timeout.
+
 ## [0.1.2] - 2026-11-25
 
 ### Added

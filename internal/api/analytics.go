@@ -22,7 +22,12 @@ func (s *server) handleAnalyticsSummary(w http.ResponseWriter, r *http.Request) 
 		s.failAnalytics(w, err)
 		return
 	}
-	out, err := rd.Summary(r.Context(), key, r.URL.Query().Get("period"), st)
+	req, err := analytics.ParseSummaryRequest(r.URL.Query(), time.Now())
+	if err != nil {
+		s.failAnalytics(w, err)
+		return
+	}
+	out, err := rd.SummaryFor(r.Context(), key, req, st)
 	if err != nil {
 		s.failAnalytics(w, err)
 		return

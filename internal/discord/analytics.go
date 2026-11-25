@@ -180,4 +180,8 @@ type AnalyticsReader interface {
 	// ListInviteUses returns the server's invites and, when the server has one, its vanity
 	// URL. It needs the ManageServer permission (ErrForbidden otherwise).
 	ListInviteUses(ctx context.Context, serverID string) ([]InviteUses, error)
+	// ListServerBots returns the user IDs of the server's bot members (accounts Discord
+	// flags as bots). It lists every member, 1000 per request, and needs the privileged
+	// ServerMembers intent.
+	ListServerBots(ctx context.Context, serverID string) ([]string, error)
 }

@@ -561,3 +561,69 @@ func TestLabels(t *testing.T) {
 		t.Errorf("config channel label = %+v", l)
 	}
 }
+
+func TestParseSummaryRequest(t *testing.T) {
+	q := func(kv ...string) url.Values {
+		v := url.Values{}
+		for i := 0; i < len(kv); i += 2 {
+			v.Set(kv[i], kv[i+1])
+		}
+		return v
+	}
+	req, err := analytics.ParseSummaryRequest(q(), qNow)
+	if err != nil || req.Period != "7d" {
+		t.Fatalf("default = %+v, %v", req, err)
+	}
+	// Widened to whole hours.
+	req, err = analytics.ParseSummaryRequest(q("from", "2026-11-20T10:30:00+01:00", "to", "2026-11-21T08:10:00Z"), qNow)
+	if err != nil || req.Period != analytics.CustomPeriod ||
+		!req.From.Equal(time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)) || !req.To.Equal(time.Date(2026, 11, 21, 9, 0, 0, 0, time.UTC)) {
+		t.Fatalf("custom = %+v, %v", req, err)
+	}
+	for _, bad := range []url.Values{
+		q("period", "7d", "from", "2026-11-20T00:00:00Z", "to", "2026-11-21T00:00:00Z"),
+		q("from", "2026-11-20T00:00:00Z"),
+		q("from", "yesterday", "to", "2026-11-21T00:00:00Z"),
+		q("from", "2026-11-21T00:00:00Z", "to", "2026-11-20T00:00:00Z"),
+		q("from", "2025-01-01T00:00:00Z", "to", "2026-11-20T00:00:00Z"),
+		q("from", qNow.Add(time.Hour).Format(time.RFC3339), "to", qNow.Add(3*time.Hour).Format(time.RFC3339)),
+		q("period", "1y"),
+	} {
+		if _, err := analytics.ParseSummaryRequest(bad, qNow); err == nil {
+			t.Errorf("accepted %v", bad)
+		}
+	}
+}
+
+func TestSummaryCustomRange(t *testing.T) {
+	st := qStore(t)
+	a := st.Analytics()
+	r := &analytics.Reader{Store: a, Now: func() time.Time { return qNow }}
+	ctx := t.Context()
+	from := qDay(-1).Add(8 * time.Hour)
+	to := from.Add(6 * time.Hour)
+	qCounter(t, a, analytics.MessagesSent, "111", from.Add(-6*time.Hour), 4) // first hour of the previous range
+	qCounter(t, a, analytics.MessagesSent, "111", from.Add(time.Hour), 5)
+	qCounter(t, a, analytics.MessagesSent, "111", from.Add(2*time.Hour), 2)
+	qCounter(t, a, analytics.MessagesSent, "111", to, 9) // after the range
+	qRec(t, a, state.AnalyticsGaugeLast, analytics.MembersBots, "", from.Add(time.Hour), 3)
+
+	s, err := r.SummaryFor(ctx, "main", analytics.SummaryRequest{Period: analytics.CustomPeriod, From: from, To: to}, analytics.Status{Enabled: true})
+	qMust(t, err)
+	if s.Period != "custom" || s.Step != "hour" || !s.From.Equal(from) || !s.To.Equal(to) {
+		t.Fatalf("summary = %+v", s)
+	}
+	msgs := qKPI(t, s, analytics.MessagesSent)
+	if msgs.Value != 7 || msgs.Previous == nil || *msgs.Previous != 4 || len(msgs.Spark) != 6 {
+		t.Errorf("messages.sent = %+v", msgs)
+	}
+	if b := qKPI(t, s, analytics.MembersBots); b.Value != 3 {
+		t.Errorf("members.bots = %+v", b)
+	}
+	// Two days or more: daily sparklines.
+	s, err = r.SummaryFor(ctx, "main", analytics.SummaryRequest{Period: analytics.CustomPeriod, From: qDay(-3), To: qDay(0)}, analytics.Status{Enabled: true})
+	qMust(t, err)
+	if s.Step != "day" || len(qKPI(t, s, analytics.MessagesSent).Spark) != 3 {
+		t.Errorf("3-day range: step %s, spark %v", s.Step, qKPI(t, s, analytics.MessagesSent).Spark)
+	}
+}

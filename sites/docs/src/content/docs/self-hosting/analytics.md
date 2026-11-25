@@ -51,8 +51,9 @@ dashboard shows its top values, the rest as "other", and the total.
 
 | Metric | Kind | Dimension | Unit | Source |
 |---|---|---|---|---|
-| `members.total` | gauge (last) | — | members | Discord's approximate member count, sampled |
-| `members.online` | gauge (last) | — | members | Discord's approximate online count (online, idle, do not disturb), sampled |
+| `members.total` | gauge (last) | — | members | Human members: Discord's approximate member count minus the bot members, sampled |
+| `members.bots` | gauge (last) | — | members | Bot members (accounts Discord flags as bots): the member list, read once a day and kept current by join and leave events |
+| `members.online` | gauge (last) | — | members | Human members online, idle or do not disturb: counted from presences when detailed presence is collected, otherwise Discord's approximate online count minus the bot members (taken as all online), sampled |
 | `members.joined` | counter | — | count | Member join events |
 | `members.left` | counter | — | count | Member leave events (leaves, kicks and bans) |
 | `members.joined.age` | counter | account age | count | Member join events: age of the Discord account (`<1d`, `<7d`, `<30d`, `<1y`, `>=1y`) |
@@ -128,8 +129,8 @@ a few depend on a bot permission too:
 
 | Metrics | Needs |
 |---|---|
-| `members.total`, `members.online`, boosts | Nothing (`Servers`, always enabled) |
-| `members.joined*`, `members.left`, `members.roles.*`, `onboarding.completed` | `ServerMembers` (privileged) |
+| `members.total`, `members.online`, boosts | Nothing (`Servers`, always enabled); without `ServerMembers` they include the bots |
+| `members.bots`, `members.joined*`, `members.left`, `members.roles.*`, `onboarding.completed` | `ServerMembers` (privileged) |
 | `messages.*`, `members.active.chat` | `ServerMessages` |
 | `messages.attachments`, `polls.created` | `ServerMessages` and `MessageContent` (privileged): without it, Discord sends messages without their attachments and polls |
 | `reactions.added` | `ServerMessageReactions` |

@@ -20,6 +20,9 @@ const (
 	FlushInterval = 30 * time.Second
 	// InviteDebounce groups the joins of a burst into one invite list fetch.
 	InviteDebounce = 2 * time.Second
+	// BotsRefresh is how often the member list is read again to know the bot members
+	// (join and leave events keep it current in between).
+	BotsRefresh = 24 * time.Hour
 
 	// maxDimsPerFlush caps the dimensions of a metric per server and hour in one flush;
 	// the smallest ones are summed into "other".
@@ -85,6 +88,12 @@ type CollectorServer struct {
 	Permissions func(ctx context.Context) (discord.Permissions, error)
 }
 
+// isBot tells whether a user is a bot: one of the runtime's bots or a bot member of the
+// server. Caller holds c.mu.
+func (c *Collector) isBot(s *collected, userID string) bool {
+	return c.botUsers[userID] || s.bots[userID]
+}
+
 func (s CollectorServer) presenceCollected() bool {
 	return s.Presence && s.Connected && s.Intents.Has(intentPresences)
 }
@@ -137,6 +146,12 @@ type collected struct {
 
 	voice    map[string]*voiceSession // user ID → session
 	presence map[string]presenceInfo  // user ID → presence (when collected)
+
+	// bots are the user IDs of the server's bot members, read from the member list
+	// (needs ServerMembers) at botsAt and kept current by join and leave events; nil
+	// until read.
+	bots   map[string]bool
+	botsAt time.Time
 
 	invMu   sync.Mutex // one invite fetch at a time
 	invites inviteState
@@ -202,6 +217,7 @@ func (c *Collector) Configure(servers []CollectorServer, botUserIDs []string) {
 		}
 		if fresh {
 			s.voice, s.presence = map[string]*voiceSession{}, map[string]presenceInfo{}
+			s.bots, s.botsAt = nil, time.Time{}
 		}
 		s.cfg = cfg
 		if !cfg.Enabled {

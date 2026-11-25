@@ -515,6 +515,31 @@ func (c *Client) GetServerCounts(ctx context.Context, serverID string) (discord.
 		Boosts: s.info.PremiumSubscriptionCount, BoostTier: s.info.PremiumTier}, nil
 }
 
+// ListServerBots returns the user IDs of the server's bot members.
+func (c *Client) ListServerBots(ctx context.Context, serverID string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	w := c.w
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s, err := w.server(serverID)
+	if err != nil {
+		return nil, err
+	}
+	if s.members[c.a.userID] == nil {
+		return nil, forbidden("missing access to server %s", serverID)
+	}
+	var bots []string
+	for id := range s.members {
+		if u := w.users[id]; u != nil && u.user.Bot {
+			bots = append(bots, id)
+		}
+	}
+	sort.Strings(bots)
+	return bots, nil
+}
+
 // ListScheduledEventInterest returns the scheduled events of a server.
 func (c *Client) ListScheduledEventInterest(ctx context.Context, serverID string) ([]discord.ScheduledEventInterest, error) {
 	if err := ctx.Err(); err != nil {

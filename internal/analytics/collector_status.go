@@ -8,7 +8,7 @@ import (
 
 // Metric groups reported in Status.Missing.
 var (
-	membersMetrics = []string{MembersJoined, MembersLeft, MembersJoinedByAge, MembersJoinedBots,
+	membersMetrics = []string{MembersJoined, MembersLeft, MembersJoinedByAge, MembersJoinedBots, MembersBots,
 		MembersRoleAdded, MembersRoleRemoved, OnboardingCompleted}
 	contentMetrics  = []string{MessagesAttachments, PollsCreated}
 	auditMetrics    = []string{ModerationActions}
@@ -48,7 +48,7 @@ func (c *Collector) Status(server string) Status {
 	portal := discord.PortalBotURL(cfg.ApplicationID)
 	if !cfg.Intents.Has(intentMembers) {
 		st.Missing = append(st.Missing, Missing{Metrics: membersMetrics,
-			Reason: fmt.Sprintf("the bot %s does not request the privileged ServerMembers intent (member joins, leaves and updates)", cfg.Bot),
+			Reason: fmt.Sprintf("the bot %s does not request the privileged ServerMembers intent (member joins, leaves and updates, and which members are bots: without it the member counts include the bots)", cfg.Bot),
 			Fix:    fmt.Sprintf("add ServerMembers to spec.intents in %s and turn on Server Members Intent in the Discord developer portal (%s → Privileged Gateway Intents)", botFile(cfg), portal)})
 	}
 	if !cfg.Intents.Has(intentMessageContent) {

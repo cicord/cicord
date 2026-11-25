@@ -15,6 +15,9 @@ func (c *Collector) event(s *collected, ev discord.Event, now time.Time) {
 	case discord.MemberJoinEvent:
 		if e.Member.User.Bot {
 			c.count(s, MembersJoinedBots, "", now, 1)
+			if s.bots != nil {
+				s.bots[e.Member.User.ID] = true
+			}
 			return
 		}
 		c.count(s, MembersJoined, "", now, 1)
@@ -25,6 +28,7 @@ func (c *Collector) event(s *collected, ev discord.Event, now time.Time) {
 		if !e.User.Bot {
 			c.count(s, MembersLeft, "", now, 1)
 		}
+		delete(s.bots, e.User.ID)
 		if vs := s.voice[e.User.ID]; vs != nil {
 			c.credit(s, vs, now)
 			delete(s.voice, e.User.ID)
@@ -105,7 +109,7 @@ func (c *Collector) event(s *collected, ev discord.Event, now time.Time) {
 		c.applySnapshot(s, e, now)
 
 	case discord.PresenceUpdateEvent:
-		if !s.cfg.presenceCollected() {
+		if !s.cfg.presenceCollected() || c.isBot(s, e.Presence.UserID) {
 			return
 		}
 		if p, ok := presenceFrom(e.Presence); ok {

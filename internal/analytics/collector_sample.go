@@ -43,6 +43,21 @@ func (c *Collector) Sample(ctx context.Context, server string) {
 			c.log.Warn("analytics: scheduled events", "server", cfg.Key, "err", eventsErr)
 		}
 	}
+	// The bot members: the whole member list (1000 per request), at most once a day.
+	var bots []string
+	listBots := false
+	if reader != nil && cfg.Intents.Has(intentMembers) {
+		c.mu.Lock()
+		listBots = s.botsAt.IsZero() || c.now().Sub(s.botsAt) >= BotsRefresh
+		c.mu.Unlock()
+	}
+	if listBots {
+		var err error
+		if bots, err = reader.ListServerBots(ctx, cfg.ID); err != nil {
+			c.log.Warn("analytics: bot members", "server", cfg.Key, "err", err)
+			listBots = false
+		}
+	}
 	var (
 		perms    discord.Permissions
 		permsErr = errors.New("unknown")
@@ -61,9 +76,27 @@ func (c *Collector) Sample(ctx context.Context, server string) {
 	if permsErr == nil {
 		s.perms, s.permsKnown = perms, true
 	}
+	if listBots {
+		s.bots, s.botsAt = make(map[string]bool, len(bots)), now
+		for _, id := range bots {
+			s.bots[id] = true
+			delete(s.presence, id)
+		}
+	}
 	if counts != nil {
-		c.gauge(s, state.AnalyticsGaugeLast, MembersTotal, "", now, float64(counts.ApproximateMembers))
-		c.gauge(s, state.AnalyticsGaugeLast, MembersOnline, "", now, float64(counts.ApproximateOnline))
+		humans, online := counts.ApproximateMembers, counts.ApproximateOnline
+		if s.bots != nil {
+			// Discord's counts include the bots. Online without detailed presence: most
+			// bot members keep a gateway connection, so all of them are taken as online.
+			humans = max(0, humans-len(s.bots))
+			online = max(0, online-len(s.bots))
+			c.gauge(s, state.AnalyticsGaugeLast, MembersBots, "", now, float64(len(s.bots)))
+		}
+		if s.cfg.presenceCollected() {
+			online = len(s.presence) // bots excluded, exact
+		}
+		c.gauge(s, state.AnalyticsGaugeLast, MembersTotal, "", now, float64(humans))
+		c.gauge(s, state.AnalyticsGaugeLast, MembersOnline, "", now, float64(online))
 		c.gauge(s, state.AnalyticsGaugeLast, MembersBoosting, "", now, float64(counts.Boosts))
 		c.gauge(s, state.AnalyticsGaugeLast, ServerBoostTier, "", now, float64(counts.BoostTier))
 	}

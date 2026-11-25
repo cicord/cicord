@@ -65,10 +65,13 @@ that matches nothing is shown as `deleted`, with the ID as its name.
 
 ## Summary
 
-`GET …/analytics/summary?period=7d|30d|90d|365d` (default `7d`).
+`GET …/analytics/summary?period=7d|30d|90d|365d` (default `7d`), or
+`GET …/analytics/summary?from=<RFC 3339>&to=<RFC 3339>` for a custom range (not both).
 
-The period is made of whole UTC days and ends with today: `from` is 00:00 UTC, `period` days
-before tomorrow, and `to` is tomorrow 00:00 UTC. Each value is compared with the **previous
+A preset period is made of whole UTC days and ends with today: `from` is 00:00 UTC, `period`
+days before tomorrow, and `to` is tomorrow 00:00 UTC. A custom range is widened to whole UTC
+hours (`from` rounded down, `to` rounded up), lasts 1 hour to 400 days and starts in the
+past; `period` is then `"custom"`. Each value is compared with the **previous
 period** of the same length, just before. `previous` is `null` when that period is not
 covered: collection started after its first day. The previous period of `365d` reaches
 730 days back, so with the default retention of 400 days its `previous` values stay `null`.
@@ -77,6 +80,7 @@ covered: collection started after its first day. The previous period of `365d` r
 {
   "server": "ma-commu",
   "period": "7d",
+  "step": "day",
   "from": "2026-11-18T00:00:00Z",
   "to": "2026-11-25T00:00:00Z",
   "kpis": [
@@ -94,23 +98,25 @@ covered: collection started after its first day. The previous period of `365d` r
 }
 ```
 
-(The example is abridged. There are always 11 KPIs, the 9 or 10 rankings listed below, and a
+(The example is abridged. There are always 12 KPIs, the 9 or 10 rankings listed below, and a
 7 × 24 heatmap.)
 
 `kpis`, in this order:
 
 | Metric | Value |
 |---|---|
-| `members.total` | The latest sample of the period |
+| `members.total` | The latest sample of the period (human members) |
+| `members.bots` | The latest sample of the period |
 | `members.joined`, `members.left` | Sum |
 | `members.net` | `members.joined` − `members.left` |
 | `members.active` | Average of the daily distinct counts (today counted live) |
 | `messages.sent`, `voice.seconds` | Sum over every channel |
-| `members.online` | Average of the hourly samples |
+| `members.online` | Average of the hourly samples (humans) |
 | `reactions.added`, `commands.used`, `moderation.actions` | Sum |
 
-`spark` has one point per day. Counters and `members.net` have every day (`0` without
-activity); sampled values only have the days with data.
+`spark` has one point per `step`: `day`, or `hour` for a custom range shorter than two
+days. Counters and `members.net` have every step (`0` without activity); sampled values only
+have the steps with data.
 
 `rankings` has the top 10 of `messages.sent` (channels), `voice.seconds` (channels),
 `reactions.added` (emojis), `invites.uses` (invites), `commands.used`, `moderation.actions`

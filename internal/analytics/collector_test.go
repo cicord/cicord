@@ -406,6 +406,7 @@ func TestSampling(t *testing.T) {
 		s.Intents |= discord.MustIntents("ServerPresences")
 	})
 	f.client.counts = discord.ServerCounts{ApproximateMembers: 120, ApproximateOnline: 30, Boosts: 7, BoostTier: 2}
+	f.client.bots = []string{"8", "9"}
 	f.client.events = []discord.ScheduledEventInterest{{ID: "e1", Status: "scheduled", Interested: 12}, {ID: "e2", Status: "completed", Interested: 3}}
 	pres := func(user, status, desktop, mobile string, acts ...discord.Activity) discord.MemberPresence {
 		return discord.MemberPresence{UserID: user, Status: status, Desktop: desktop, Mobile: mobile, Activities: acts}
@@ -413,6 +414,7 @@ func TestSampling(t *testing.T) {
 	f.c.Handle("alpha", discord.ServerAvailableEvent{ServerID: "1", Presences: []discord.MemberPresence{
 		pres("5", "online", "online", "", discord.Activity{Type: "playing", Name: "Minecraft"}, discord.Activity{Type: "custom", Name: "Custom Status"}),
 		pres("6", "idle", "", "idle", discord.Activity{Type: "playing", Name: "Minecraft"}),
+		pres("8", "online", "online", "", discord.Activity{Type: "playing", Name: "/help"}), // a bot member
 	}})
 	f.c.Handle("alpha", discord.PresenceUpdateEvent{ServerID: "1", Presence: pres("7", "dnd", "dnd", "dnd", discord.Activity{Type: "listening", Name: "Spotify"})})
 	f.c.Handle("alpha", discord.PresenceUpdateEvent{ServerID: "1", Presence: pres("6", "offline", "", "")})
@@ -420,12 +422,15 @@ func TestSampling(t *testing.T) {
 	f.c.Tick(ctx)
 	h := f.clock.Now()
 	checks := map[[2]string]float64{
-		{MembersTotal, ""}: 120, {MembersOnline, ""}: 30, {MembersBoosting, ""}: 7, {ServerBoostTier, ""}: 2,
+		// Humans only: 120 members minus 2 bots; online from the presences (5 and 7), not
+		// Discord's count, without the bot 8.
+		{MembersTotal, ""}: 118, {MembersBots, ""}: 2, {MembersOnline, ""}: 2, {MembersBoosting, ""}: 7, {ServerBoostTier, ""}: 2,
 		{EventsInterest, "e1"}: 12, {EventsInterest, "e2"}: 0,
 		{PresenceStatus, "online"}: 1, {PresenceStatus, "idle"}: 0, {PresenceStatus, "dnd"}: 1,
 		{PresencePlatform, "desktop"}: 2, {PresencePlatform, "mobile"}: 1, {PresencePlatform, "web"}: 0,
 		{PresenceActivity, "playing:Minecraft"}: 1, {PresenceActivity, "listening:Spotify"}: 1, {PresenceActivity, "custom:Custom Status"}: 0,
-		{VoicePeak, ""}: 1,
+		{PresenceActivity, "playing:/help"}: 0,
+		{VoicePeak, ""}:                     1,
 	}
 	for k, want := range checks {
 		if got := f.store.value("main", k[0], k[1], h); got != want {
@@ -445,6 +450,42 @@ func TestSampling(t *testing.T) {
 	}
 	if st := f.c.Status("main"); !st.Presence || len(st.Missing) != 0 || st.RetentionDays != 30 || !st.Enabled {
 		t.Errorf("status = %+v", st)
+	}
+}
+
+// TestBotMembers: without detailed presence, the bots are subtracted from Discord's
+// member and online counts; joins and leaves of bots keep the list current, and the
+// member list is read again after BotsRefresh only.
+func TestBotMembers(t *testing.T) {
+	f := newCollectorFixture(t)
+	f.client.counts = discord.ServerCounts{ApproximateMembers: 50, ApproximateOnline: 10}
+	f.client.bots = []string{"8", "9", "10"}
+	f.c.Tick(ctx)
+	h := f.clock.Now()
+	for k, want := range map[string]float64{MembersTotal: 47, MembersBots: 3, MembersOnline: 7} {
+		if got := f.store.value("main", k, "", h); got != want {
+			t.Errorf("%s = %v, want %v", k, got, want)
+		}
+	}
+	f.c.Handle("alpha", discord.MemberJoinEvent{Member: discord.Member{ServerID: "1", User: discord.User{ID: "11", Bot: true}}})
+	f.c.Handle("alpha", discord.MemberLeaveEvent{ServerID: "1", User: discord.User{ID: "8", Bot: true}})
+	f.c.Handle("alpha", discord.MemberLeaveEvent{ServerID: "1", User: discord.User{ID: "9", Bot: true}})
+	f.client.counts = discord.ServerCounts{ApproximateMembers: 49, ApproximateOnline: 10}
+	f.clock.add(SampleInterval)
+	f.c.Tick(ctx)
+	h = f.clock.Now()
+	for k, want := range map[string]float64{MembersTotal: 47, MembersBots: 2, MembersOnline: 8} {
+		if got := f.store.value("main", k, "", h); got != want {
+			t.Errorf("after joins and leaves: %s = %v, want %v", k, got, want)
+		}
+	}
+	if n := f.client.count("bots"); n != 1 {
+		t.Errorf("member list read %d times before BotsRefresh", n)
+	}
+	f.clock.add(BotsRefresh)
+	f.c.Tick(ctx)
+	if n := f.client.count("bots"); n != 2 {
+		t.Errorf("member list read %d times after BotsRefresh", n)
 	}
 }
 

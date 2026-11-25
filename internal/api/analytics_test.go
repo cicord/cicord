@@ -85,6 +85,9 @@ func TestAnalyticsValidation(t *testing.T) {
 		"series?metrics=messages.sent&step=hour&from=2026-01-01T00:00:00Z&to=2026-06-01T00:00:00Z",
 		"series?metrics=messages.sent&top=0",
 		"summary?period=1y",
+		"summary?period=7d&from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z",
+		"summary?from=2026-11-01T00:00:00Z",
+		"summary?from=2026-11-02T00:00:00Z&to=2026-11-01T00:00:00Z",
 	} {
 		r := c.do("GET", analyticsPath+q, nil)
 		var body struct {
@@ -172,6 +175,15 @@ func TestAnalyticsData(t *testing.T) {
 	}
 	if !strings.Contains(string(r.body), `"invites.uses":[]`) {
 		t.Errorf("empty ranking not []: %s", r.body)
+	}
+
+	// A custom range: the same data over the last 30 days, hourly bounds.
+	to := time.Now().UTC().Truncate(time.Hour).Add(time.Hour)
+	cq := url.Values{"from": {to.AddDate(0, 0, -30).Format(time.RFC3339)}, "to": {to.Format(time.RFC3339)}}
+	var custom analytics.Summary
+	c.expect(200, "GET", analyticsPath+"summary?"+cq.Encode(), nil).json(t, &custom)
+	if custom.Period != "custom" || custom.Step != "day" || !custom.To.Equal(to) || len(custom.KPIs) != len(analytics.SummaryKPIs) {
+		t.Fatalf("custom summary = %+v", custom)
 	}
 	if h := sum.Heatmap[isoWeekdayOf(yesterday)][10]; h != 7 {
 		t.Errorf("heatmap = %v", h)

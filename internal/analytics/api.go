@@ -5,8 +5,11 @@ import "time"
 // The JSON contract of the analytics API (admin console, @cicord/client).
 //
 //	GET /api/v1/servers/{server}/analytics/summary?period=7d|30d|90d|365d
+//	GET /api/v1/servers/{server}/analytics/summary?from=RFC3339&to=RFC3339
 //	    → Summary: the dashboard's headline numbers, each compared with the previous
-//	      period of the same length, plus the rankings and the activity heatmap.
+//	      period of the same length, plus the rankings and the activity heatmap. A
+//	      custom from..to (instead of period) is widened to whole UTC hours and lasts
+//	      1 hour to 400 days.
 //	GET /api/v1/servers/{server}/analytics/series?metrics=a,b&from=RFC3339&to=RFC3339&step=hour|day|week[&dim=…][&top=N]
 //	    → Series: time series of the requested metrics. Counters are summed per step;
 //	      gauges keep the step's last (or max) value; daily distinct metrics are read
@@ -87,7 +90,7 @@ type KPI struct {
 	// Previous is the value over the previous period of the same length (null when
 	// that period is not covered by the data).
 	Previous *float64 `json:"previous"`
-	// Spark is the KPI per day over the period, for a sparkline.
+	// Spark is the KPI per Summary.Step over the period, for a sparkline.
 	Spark []Point `json:"spark"`
 }
 
@@ -101,12 +104,16 @@ type Ranked struct {
 
 // Summary is the response of …/analytics/summary.
 type Summary struct {
-	Server string    `json:"server"`
-	Period string    `json:"period"` // "7d", "30d", "90d" or "365d"
-	From   time.Time `json:"from"`
-	To     time.Time `json:"to"`
+	Server string `json:"server"`
+	Period string `json:"period"` // "7d", "30d", "90d", "365d" or "custom"
+	// Step is the step of the KPI sparklines: "day", or "hour" for a custom range
+	// shorter than two days.
+	Step string    `json:"step"`
+	From time.Time `json:"from"`
+	To   time.Time `json:"to"`
 
-	// KPIs, in this order: members.total (last value), members.joined, members.left,
+	// KPIs, in this order: members.total (human members, last value), members.bots
+	// (last value), members.joined, members.left,
 	// net growth ("members.net": joined - left), members.active (average per day),
 	// messages.sent, voice.seconds, members.online (average of the samples),
 	// reactions.added, commands.used, moderation.actions.
