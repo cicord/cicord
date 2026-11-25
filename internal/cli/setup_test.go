@@ -271,7 +271,7 @@ func TestSetupWizardE2ESim(t *testing.T) {
 
 	// First plugin: the catalog, the intents gate, then install.
 	cat := c.ok("GET", "/api/v1/catalog", nil)["plugins"].([]any)
-	if len(cat) != 9 {
+	if len(cat) != 10 {
 		t.Fatalf("catalog = %d plugins", len(cat))
 	}
 	c.ok("POST", "/api/v1/setup/step", map[string]any{"step": "plugin"})

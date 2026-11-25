@@ -206,7 +206,7 @@ a verified official index; in any other registry it is ignored.
 ### Source `cicord` and the bundled plugins
 
 The official registry needs no `cicord.yaml` entry: its plugins are part of source `cicord`
-(the name is reserved), merged with the nine plugins bundled in the binary (every official
+(the name is reserved), merged with the ten plugins bundled in the binary (every official
 plugin except github-releases), for offline and first installs. When a plugin is in both, the
 registry version is used only if its index `version` is a valid semver **greater** than the
 bundled one; otherwise the bundled copy is used. Installing a bundled plugin (the setup

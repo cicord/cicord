@@ -6,6 +6,39 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- Official plugin **voice-rooms** (bundled, and in the official registry): voice channels on
+  demand ("join to create"). Joining a hub channel such as "➕ Create a channel" gives the
+  member a voice channel of their own, moves them into it and deletes it once only bots are
+  left in it. Several hubs, each with its name template (`{member}`, `{username}`, `{n}`),
+  category (default: the hub's), user limit, bitrate, allowed roles and owner permissions;
+  an empty-room grace delay, a creation cooldown, and rooms adopted or deleted when the plugin
+  starts. Owners (and the staff) manage their room with `/voice rename`, `limit`, `lock`,
+  `unlock`, `permit`, `kick`, `transfer` and `claim`. The showcase example has a regular hub
+  and a guild hub.
+- Plugin SDK, voice:
+  - `voiceStateUpdate` event (intent `ServerVoiceStates`): `user`, `member`, `channel` (now),
+    `previous` and the mute, deafen, stream and camera flags. Discord does not send the
+    previous channel: the runtime keeps the voice states of its servers per bot session,
+    rebuilt from each `GUILD_CREATE` and kept current by the voice and member events.
+  - `ctx.server.voiceMembers(channel)` (`discord.members.read`, intent `ServerVoiceStates`):
+    the members connected to a voice channel. It throws until the gateway has sent the
+    server's voice states, never answering "nobody" when it does not know.
+  - `member.moveTo(channel)` and `member.disconnect()`, with the new capability
+    `discord.voice.move` (View Channel, Connect, Move Members).
+  - `ctx.server.editChannel(channel, options)` (`discord.channels.manage`): rename, topic,
+    user limit, bitrate and overwrites of a plugin-owned channel. Overwrites are patched
+    (`allow` / `deny` / `clear` per target, `null` removes one), so what the channel got from
+    its category is kept.
+  - `createChannel()` takes `userLimit` and `bitrate` for voice channels; `channel.categoryId`.
+  - `@cicord/sdk/testing`: `setVoice()`, `voiceChannel()`, `overwrites()`, `voiceMoves`,
+    `editedChannels`, and fakes of the calls above.
+- Simulator: `UpdateMember` moves and disconnects members (Move Members, Connect in the
+  destination, its user limit ignored); joining a voice channel needs Connect and respects
+  the user limit; deleting a voice channel disconnects its members; voice states carry the
+  member.
+
 ## [0.1.9] - 2026-11-25
 
 ### Changed

@@ -89,6 +89,9 @@ var released = map[string]map[string][]string{
 		"sha256-NozhyJgHRpaiIgOR/UK4XR/sbuUX2DBrz5oIF6OnWo0=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-DrtE6XadcqWmQCFnNizgQoMsgjJIlGo6l/yFJjpv8Zo=", // lint fixes (oxlint, knip), lib ES2023
 	}},
+	"voice-rooms": {"0.1.0": {
+		"sha256-uL6pZTiV73przMhhxvze+RBz3/K9t6nGCK9/vanjXV4=", // join-to-create voice rooms (voiceStateUpdate, editChannel, voiceMembers, moveTo)
+	}},
 }
 
 // PluginFiles returns the files of a catalog plugin relative to its directory (what an

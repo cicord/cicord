@@ -253,7 +253,8 @@ cached for 15 seconds per server, so polling stays cheap for Discord and git. Th
 ### 7. First plugin
 
 The **bundled catalog**: the official plugins embedded in the binary at build time (welcome,
-onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log, announcements).
+onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log, announcements,
+voice-rooms).
 
 - Pick a plugin to review it: its capabilities in plain words, its gateway intents, the
   websites it may call, and its slash commands (found by building and inspecting the plugin).
@@ -281,7 +282,7 @@ and server.
 
 ## The plugin catalog
 
-The wizard's catalog is the sources of the nine official plugins, embedded in the binary at
+The wizard's catalog is the sources of the ten official plugins, embedded in the binary at
 build time (`plugin.yaml`, `config.schema.json`, `tsconfig.json`, `src/*.ts`; never
 `node_modules` or build output). `GET /api/v1/catalog` lists them for admins. After the
 setup, the admin console's **Store** adds the plugins of [registries](../../plugins/publishing/).

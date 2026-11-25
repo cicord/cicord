@@ -27,8 +27,8 @@ changed. This page is updated as work lands; no dates are promised.
   autocomplete), components, modals, schedules, tasks, server join and leave events,
   messages with their embeds, the members of a role, cross-plugin events, plugin-owned
   channels and typed portal routes. See [Testing and limits](../../plugins/testing/).
-- **Official plugins**: ten in the signed official registry
-  [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins), nine of them also bundled
+- **Official plugins**: eleven in the signed official registry
+  [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins), ten of them also bundled
   in the binary (all but `github-releases`), exercised end to end on the simulator.
 - **Git write-back**: commits and GitHub pull requests, with per-path policies.
 - **GitHub access** with a token or a **GitHub App** (short-lived installation tokens scoped to
