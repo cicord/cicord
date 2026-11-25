@@ -200,6 +200,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function target() {
   for (let i = 0; i < 50; i++) {
     try {
+      // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- the DevTools endpoint of the headless Chrome this script started, on loopback
       const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
       const page = list.find((t) => t.type === "page");
       if (page) return page.webSocketDebuggerUrl;
