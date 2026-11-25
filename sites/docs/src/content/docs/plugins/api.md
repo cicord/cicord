@@ -87,7 +87,8 @@ Discord has no "members of a role" endpoint: the runtime lists the server's memb
 (`GET /guilds/{id}/members`, 1000 per request, at most 100,000 members) and filters them.
 The listing is shared by the plugins of the server, reused for up to 60 seconds and kept
 current in between by member joins, updates and leaves, so repeated calls are cheap; the first
-call on a large server takes one request per 1000 members. The intent cannot be seen in the
+call on a large server takes one request per 1000 members (rate limited): it may outlast the
+handler timeout, but the listing goes on and later calls are served from it. The intent cannot be seen in the
 plugin's definition, so it is checked when `members()` is called; `cicord plugin build` does not
 warn about a declared `ServerMembers` without member handlers when the plugin has
 `discord.members.read`. In tests, `createTestContext({ intents: [...] })` applies the same

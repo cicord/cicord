@@ -108,6 +108,7 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`).
 |---|---|---|---|
 | `server.channel(key or { id })`, `server.role()` | all | rt/* | to verify |
 | `server.member()` | moderation, levels | rt/Moderation, rt/Levels | to verify |
+| `role.members()` (members holding a role; ServerMembers intent; shared 60 s listing patched by member events) | tickets `GET /staff` (0.2) | `internal/plugin` TestRoleMembers*; `internal/runtime` TestMemberList*; `internal/sim` TestListMembers; `disgoadapter` TestListMembersPages; SDK role-members tests | to verify |
 | `role.position`, `role.mentionable`, `server.ownerId`, `member.permissions` (server-level, no channel overwrites), `member.access` | moderation (hierarchy), polls (ping) | `internal/plugin` TestMemberPermissionsAccessAndRolePositions, TestOwnerAndAdminAccess; `disgoadapter` TestRoleAndServerFromJSON; SDK permission tests | to verify |
 | `allowedMentions` id lists (`roles: [id]`, `users: [id]`, `repliedUser`; ≤ 100 snowflakes; a type never both parsed and listed) | polls `ping` (only the pinged member or role) | rt/Polls (`sim` MessageMentions); `internal/plugin` TestAllowedMentionIDLists; `internal/sim` TestAllowedMentionsResolution; `disgoadapter` TestAllowedMentionsToWire; `internal/discord` TestAllowedMentionsValidate | to verify |
 | `server.createChannel` (category, topic, overwrites `@everyone` / role key / `member:<id>`) | tickets | rt/Tickets (visibility per member) | to verify |
