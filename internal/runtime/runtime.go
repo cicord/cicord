@@ -115,6 +115,9 @@ type Runtime struct {
 
 	// commit is the last commit status posted for the active revision (syncMu).
 	commit struct{ sha, state string }
+	// commitFailing mirrors commit.state == CommitFailure for notify, which runs without
+	// syncMu; rechecking is true while a recheck started by a change is pending.
+	commitFailing, rechecking atomic.Bool
 }
 
 // active is an activated revision.
@@ -601,7 +604,26 @@ func (r *Runtime) commitStatus(ctx context.Context, rev source.Revision, st, des
 		return
 	}
 	r.commit.sha, r.commit.state = rev.SHA, st
+	r.commitFailing.Store(st == CommitFailure)
 	r.opts.CommitStatus(ctx, rev.SHA, st, truncateRunes(description, maxCommitDescription))
+}
+
+// recheckCommitSoon rechecks the commit status of the active revision after a health
+// change, while it is a failure: a plugin that was still restarting, or a bot reconnecting,
+// when its server was synced turns it into a success once healthy, without waiting for the
+// next sync. One recheck at a time; it waits for syncMu in its own goroutine.
+func (r *Runtime) recheckCommitSoon() {
+	if !r.commitFailing.Load() || !r.rechecking.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer r.rechecking.Store(false)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		r.syncMu.Lock()
+		defer r.syncMu.Unlock()
+		r.recheckCommitStatus(ctx)
+	}()
 }
 
 // maxCommitDescription is GitHub's limit for a commit status description.

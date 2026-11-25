@@ -59,6 +59,9 @@ func (r *Runtime) SubscribeChanges() (<-chan Change, func()) {
 
 // notify publishes a change without blocking.
 func (r *Runtime) notify(topic, server string) {
+	if topic == ChangeStatus || topic == ChangePlugins {
+		r.recheckCommitSoon()
+	}
 	h := &r.changes
 	h.mu.Lock()
 	defer h.mu.Unlock()
