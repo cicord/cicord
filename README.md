@@ -62,6 +62,15 @@ Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
 
 ## License
 
-Cicord is licensed under the [Apache License 2.0](LICENSE): the runtime, the CLI, the admin
-console, the SDKs, the official plugins and the sites. See [NOTICE](NOTICE). Cicord is an
-independent project, not affiliated with Discord.
+Copyright 2026 Cicord team. Cicord is licensed under the [Apache License 2.0](LICENSE): the
+runtime, the CLI, the admin console, the SDKs, the official plugins and the sites. See
+[NOTICE](NOTICE). Cicord is an independent project, not affiliated with Discord.
+
+Cicord is provided "AS IS", WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+implied, including, without limitation, any warranties or conditions of title,
+non-infringement, merchantability or fitness for a particular purpose. In no event shall the
+Cicord team or its contributors be liable for any claim, damages or other liability, direct or
+indirect, arising from the use of or the inability to use the software (including the loss of
+data, of Discord servers or of access to them), even if advised of the possibility of such
+damages. You are solely responsible for determining whether using Cicord is appropriate and
+assume all risks of using it. See sections 7 and 8 of the [License](LICENSE).
