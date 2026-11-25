@@ -162,6 +162,8 @@ func TestLoadErrors(t *testing.T) {
 		{"engine", "cicord.yaml", `engine: ">=0.1.0 <0.2.0"`, `engine: ">=9.0.0"`, "requires Cicord", 0},
 		{"plugin capability unknown", "plugins/welcome/plugin.yaml", "    - storage.kv", "    - storage.everything", "/spec/capabilities", 0},
 		{"wrong kind", "servers/ma-commu.yaml", "kind: Server", "kind: Guild", `expected kind "Server"`, 0},
+		{"role member not a snowflake", "servers/ma-commu.yaml", "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"12345\"]", "/spec/roles/admin/members/0", 0},
+		{"role member duplicated", "servers/ma-commu.yaml", "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"123456789012345678\", \"123456789012345678\"]", "/spec/roles/admin/members", 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -184,6 +186,19 @@ func TestLoadErrors(t *testing.T) {
 				t.Fatalf("no error containing %q in:\n%v", tc.want, ds.Err())
 			}
 		})
+	}
+}
+
+func TestRoleMembers(t *testing.T) {
+	dir := copyExample(t)
+	edit(t, filepath.Join(dir, "servers/ma-commu.yaml"), "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"123456789012345678\", \"98765432109876543\"]")
+	repo, ds := Load(dir, LoadOptions{EngineVersion: "0.1.0"})
+	if ds.HasErrors() {
+		t.Fatal(ds.Err())
+	}
+	got := repo.Servers["ma-commu"].Spec.Roles["admin"].Members
+	if len(got) != 2 || got[0] != "123456789012345678" || got[1] != "98765432109876543" {
+		t.Errorf("members = %v", got)
 	}
 }
 

@@ -143,3 +143,53 @@ func TestMarkdown(t *testing.T) {
 		t.Errorf("truncated length %d", len(long))
 	}
 }
+
+func TestMemberRoles(t *testing.T) {
+	const alice, bob, carol = "123456789012345678", "223456789012345678", "323456789012345678"
+	ps, err := FromReconcile(reconcile.Plan{
+		Server: "s",
+		Changes: []reconcile.Change{{
+			Action: reconcile.ActionUpdate, Kind: reconcile.KindMemberRole, Key: "maintainer/" + alice, ID: alice,
+			Summary: `give role "Maintainer" to @Alice (123456789012345678)`,
+			Fields:  map[string]reconcile.FieldChange{"assigned": {From: false, To: true}},
+		}},
+		Blocked: []reconcile.Blocked{{
+			Action: reconcile.ActionUpdate, Kind: reconcile.KindMemberRole, Key: "owner/" + bob, ID: bob,
+			Reason:  `hierarchy: role "Owner" is at or above the bot's highest role`,
+			Summary: `give role "Owner" to @Bob (223456789012345678)`,
+			Fields:  map[string]reconcile.FieldChange{"assigned": {From: false, To: true}},
+		}},
+		Notes: []reconcile.Note{{Kind: reconcile.KindMemberRole, Key: "maintainer/" + carol,
+			Message: `roles.maintainer.members: user 323456789012345678 is not in the server; they get the role "Maintainer" once they join`}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	Text(&b, ps)
+	out := b.String()
+	for _, want := range []string{
+		"Server s: 1 change(s), 1 blocked",
+		`  ~ give role "Maintainer" to @Alice (123456789012345678)`,
+		`  ! blocked: give role "Owner" to @Bob (223456789012345678) (hierarchy: role "Owner" is at or above the bot's highest role)`,
+		`  note: roles.maintainer.members: user 323456789012345678 is not in the server; they get the role "Maintainer" once they join`,
+		"Plan: 0 to create, 1 to update, 0 to delete. 1 operation(s) blocked.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "assigned") {
+		t.Errorf("redundant field lines:\n%s", out)
+	}
+	md := Markdown(Result{Valid: true, Plans: ps}, MarkdownOptions{})
+	if !strings.Contains(md, "1 change(s), 1 blocked, 1 note(s)</summary>") || !strings.Contains(md, "\nnote: roles.maintainer.members: user 323456789012345678") {
+		t.Errorf("markdown:\n%s", md)
+	}
+	// a plan with only notes has no changes
+	var nb strings.Builder
+	Text(&nb, []Plan{{Server: "n", Notes: ps[0].Notes}})
+	if !strings.Contains(nb.String(), "Server n: no changes, 1 note(s)") || Pending([]Plan{{Server: "n", Notes: ps[0].Notes}}) {
+		t.Errorf("notes only:\n%s", nb.String())
+	}
+}

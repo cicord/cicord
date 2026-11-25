@@ -1284,5 +1284,17 @@ func FetchOptionsFor(sp *config.ServerSpec, mapped []state.Resource) FetchOption
 		Emojis:        len(sp.Emojis) > 0 || has[state.KindEmoji],
 		Stickers:      len(sp.Stickers) > 0 || has[state.KindSticker],
 		Sounds:        len(sp.Soundboard) > 0 || has[state.KindSound],
+		Members:       listedMembers(sp),
 	}
+}
+
+// listedMembers returns the user IDs listed in roles.*.members, deduplicated and sorted
+// (nil when no role lists members).
+func listedMembers(sp *config.ServerSpec) []string {
+	var ids []string
+	for _, r := range sp.Roles {
+		ids = append(ids, r.Members...)
+	}
+	slices.Sort(ids)
+	return slices.Compact(ids)
 }

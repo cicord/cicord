@@ -56,6 +56,7 @@ type Reconciler struct {
 
 	emu     sync.Mutex                    // event state
 	managed map[string]state.ResourceKind // git-owned Discord ID → kind
+	roleIDs map[string]string             // git-owned role key → Discord ID
 	// exprSeen is the last seen state of the managed emojis and stickers (ID →
 	// fingerprint): their gateway events carry the whole list of the server.
 	exprSeen map[string]string
@@ -262,19 +263,24 @@ func (r *Reconciler) DriftPending() bool {
 
 func (r *Reconciler) refreshManaged(mapped []state.Resource) {
 	m := make(map[string]state.ResourceKind, len(mapped))
+	roles := map[string]string{}
 	for _, res := range mapped {
 		if res.Owner == state.OwnerGit {
 			m[res.ID] = res.Kind
+			if res.Kind == state.KindRole {
+				roles[res.Key] = res.ID
+			}
 		}
 	}
 	r.emu.Lock()
-	r.managed = m
+	r.managed, r.roleIDs = m, roles
 	r.emu.Unlock()
 }
 
 // HandleEvent inspects a gateway event. Events about git-managed roles, channels,
 // AutoMod rules, emojis, stickers and soundboard sounds, the @everyone role (when
-// spec.everyone is set) or the server profile (when spec.profile is set) are relevant:
+// spec.everyone is set), the server profile (when spec.profile is set) or a user listed
+// in roles.*.members who joins or loses a listed role (ServerMembers intent) are relevant:
 // drift is marked and, with syncPolicy.selfHeal, a debounced Sync is scheduled. It
 // never blocks on Discord.
 //
@@ -313,6 +319,10 @@ func (r *Reconciler) HandleEvent(ev discord.Event) bool {
 			seen[x.ID] = emojiPrint(x)
 		}
 		relevant = r.exprChanged(state.KindEmoji, seen)
+	case discord.MemberJoinEvent:
+		relevant = r.memberDrift(e.Member, true)
+	case discord.MemberUpdateEvent:
+		relevant = r.memberDrift(e.Member, false)
 	case discord.StickersUpdateEvent:
 		seen := make(map[string]string, len(e.Stickers))
 		for _, x := range e.Stickers {

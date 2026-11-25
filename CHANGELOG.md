@@ -8,6 +8,13 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ### Added
 
+- `roles.<key>.members`: Discord user IDs who must hold a role, so staff roles are declared
+  in git. Additive: listed members who lack the role get it (plan change kind `memberRole`,
+  `give role "Maintainer" to @Alice (…)`), unlisted holders keep it, and removing a user from
+  the list never removes the role. A listed user who is not in the server is a plan note
+  (new `notes[]` in plans) and gets the role once they join; a role at or above the bot is
+  blocked (`hierarchy:`). With the `ServerMembers` intent and `selfHeal`, joins and removed
+  roles are fixed right away.
 - `spec.analytics.portal` (`off`, `members`, `public`) and
   `GET /api/v1/portal/{server}/analytics`: server-wide activity for the community portal
   (members, joins, active members, messages, voice, reactions, bot commands, the busiest

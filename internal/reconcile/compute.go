@@ -65,6 +65,7 @@ type planner struct {
 
 	buckets map[phase][]Change
 	blocked []Blocked
+	notes   []Note
 
 	// Community state: live now, wanted after the plan (and not blocked).
 	communityLive, communityAfter bool
@@ -145,6 +146,7 @@ func computePlan(in planInput) (Plan, error) {
 		return Plan{}, err
 	}
 	p.planRoleOrder()
+	p.planRoleMembers()
 	if err := p.planChannels(); err != nil {
 		return Plan{}, err
 	}
@@ -159,7 +161,7 @@ func computePlan(in planInput) (Plan, error) {
 	p.planExpressions()
 	p.planOrphans()
 
-	plan := Plan{Server: p.serverKey, Changes: []Change{}, Blocked: p.blocked}
+	plan := Plan{Server: p.serverKey, Changes: []Change{}, Blocked: p.blocked, Notes: p.notes}
 	if plan.Blocked == nil {
 		plan.Blocked = []Blocked{}
 	}

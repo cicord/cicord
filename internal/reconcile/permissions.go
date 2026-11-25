@@ -344,6 +344,8 @@ func (p *planner) preflight(changes []Change) *PermissionsError {
 				}
 				need.Add(added, src+".permissions")
 			}
+		case KindMemberRole:
+			need.Add(permManageRoles, "roles."+c.op.member.roleKey+".members")
 		case KindCategory, KindChannel:
 			src := map[string]string{KindCategory: "categories.", KindChannel: "channels."}[c.Kind] + c.Key
 			if c.Action == ActionReorder {

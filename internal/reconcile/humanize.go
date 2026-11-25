@@ -351,6 +351,10 @@ func ExplainBlocked(b Blocked) *HumanError {
 		h.Code = ErrCodeDeletionProtection
 		h.Message = capitalize(what) + " was removed from the YAML but deletion protection is on"
 		h.Hint = "Set syncPolicy.deletionProtection: false to let Cicord delete it, or add it back to the YAML."
+	case strings.HasPrefix(reason, "hierarchy") && b.Kind == KindMemberRole && b.Summary != "":
+		h.Code = ErrCodeRoleHierarchy
+		h.Message = "Cannot " + b.Summary + ": the role is at or above the bot's highest role"
+		h.Hint = "In Server Settings → Roles, drag the bot's role above it, then sync again."
 	case strings.HasPrefix(reason, "hierarchy"):
 		h.Code = ErrCodeRoleHierarchy
 		h.Message = capitalize(what) + " is at or above the bot's highest role"
@@ -360,6 +364,10 @@ func ExplainBlocked(b Blocked) *HumanError {
 		owner := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(reason, "ownership:"), " key is owned by"))
 		h.Message = capitalize(what) + " is managed by " + orDefault(owner, "another owner")
 		h.Hint = "Rename the key in the YAML, or remove it from the plugin that owns it."
+	case strings.HasPrefix(reason, "managed") && b.Kind == KindMemberRole && b.Summary != "":
+		h.Code = ErrCodeManagedRole
+		h.Message = "Cannot " + b.Summary + ": the role belongs to an integration (a bot or app role)"
+		h.Hint = "Discord does not let anyone give integration roles. Remove members from this role in the YAML."
 	case strings.HasPrefix(reason, "managed"):
 		h.Code = ErrCodeManagedRole
 		h.Message = capitalize(what) + " belongs to an integration (a bot or app role)"
@@ -407,7 +415,7 @@ func ExplainBlocked(b Blocked) *HumanError {
 
 var kindNoun = map[string]string{
 	KindServer: "the server settings", KindRole: "role", KindCategory: "category",
-	KindChannel: "channel", KindEveryone: "the @everyone role",
+	KindChannel: "channel", KindEveryone: "the @everyone role", KindMemberRole: "role assignment",
 	KindWidget: "the server widget", KindOnboarding: "the onboarding", KindWelcomeScreen: "the welcome screen",
 	KindAutoMod: "AutoMod rule", KindEmoji: "emoji", KindSticker: "sticker", KindSound: "soundboard sound",
 }
@@ -461,7 +469,7 @@ func requiredPermission(r *ErrorResource) string {
 		return ""
 	}
 	switch r.Kind {
-	case KindRole, KindEveryone:
+	case KindRole, KindEveryone, KindMemberRole:
 		return "Manage Roles"
 	case KindChannel, KindCategory:
 		return "Manage Channels"

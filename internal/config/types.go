@@ -382,6 +382,9 @@ type RoleSpec struct {
 	Icon        string   `yaml:"icon,omitempty" json:"icon,omitempty"`
 	Emoji       string   `yaml:"emoji,omitempty" json:"emoji,omitempty"`
 	Permissions []string `yaml:"permissions,omitempty" json:"permissions,omitempty"`
+	// Members are Discord user IDs who must hold the role (additive: unlisted holders
+	// keep it, and removing an ID never removes the role).
+	Members []string `yaml:"members,omitempty" json:"members,omitempty"`
 }
 
 type RoleColors struct {

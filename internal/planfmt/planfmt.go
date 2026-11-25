@@ -9,7 +9,7 @@
 // Symbols:
 //
 //   - create   ~ update   - delete   > reorder   = adopt   # unmanage (left in Discord)
-//     ! blocked (with the reason)
+//     ! blocked (with the reason)   note: information that needs no action
 package planfmt
 
 import (
@@ -44,12 +44,20 @@ type Change struct {
 
 // Blocked is an operation the reconciler refuses to perform.
 type Blocked struct {
-	Action string           `json:"action"`
-	Kind   string           `json:"kind"`
-	Key    string           `json:"key"`
-	ID     string           `json:"id,omitempty"`
-	Reason string           `json:"reason"`
-	Fields map[string]Field `json:"fields,omitempty"`
+	Action  string           `json:"action"`
+	Kind    string           `json:"kind"`
+	Key     string           `json:"key"`
+	ID      string           `json:"id,omitempty"`
+	Reason  string           `json:"reason"`
+	Summary string           `json:"summary,omitempty"`
+	Fields  map[string]Field `json:"fields,omitempty"`
+}
+
+// Note is information about a plan that needs no action (reconcile.Note).
+type Note struct {
+	Kind    string `json:"kind"`
+	Key     string `json:"key"`
+	Message string `json:"message"`
 }
 
 // Plan is the plan of one server.
@@ -57,6 +65,7 @@ type Plan struct {
 	Server  string    `json:"server"`
 	Changes []Change  `json:"changes"`
 	Blocked []Blocked `json:"blocked"`
+	Notes   []Note    `json:"notes,omitempty"`
 }
 
 // Empty reports whether the plan has no change to apply (blocked operations are not
@@ -181,7 +190,8 @@ func Symbol(action string) string {
 }
 
 // Lines renders one plan as lines (without the server header): one line per change
-// prefixed by its symbol, followed by indented field details, then blocked operations.
+// prefixed by its symbol, followed by indented field details, then blocked operations
+// and notes.
 func Lines(p Plan) []string {
 	var out []string
 	for _, c := range p.Changes {
@@ -190,12 +200,22 @@ func Lines(p Plan) []string {
 			summary = fmt.Sprintf("%s %s %s", c.Action, c.Kind, c.Key)
 		}
 		out = append(out, Symbol(c.Action)+" "+summary)
-		out = append(out, fieldLines(c.Action, c.Fields, "    ")...)
+		if c.Kind != reconcile.KindMemberRole { // the summary says it all
+			out = append(out, fieldLines(c.Action, c.Fields, "    ")...)
+		}
 	}
 	for _, b := range p.Blocked {
-		what := strings.TrimSpace(fmt.Sprintf("%s %s %s", b.Action, b.Kind, b.Key))
+		what := b.Summary
+		if what == "" {
+			what = strings.TrimSpace(fmt.Sprintf("%s %s %s", b.Action, b.Kind, b.Key))
+		}
 		out = append(out, fmt.Sprintf("! blocked: %s (%s)", what, b.Reason))
-		out = append(out, fieldLines(reconcile.ActionUpdate, b.Fields, "    ")...)
+		if b.Kind != reconcile.KindMemberRole {
+			out = append(out, fieldLines(reconcile.ActionUpdate, b.Fields, "    ")...)
+		}
+	}
+	for _, n := range p.Notes {
+		out = append(out, "note: "+n.Message)
 	}
 	return out
 }
@@ -209,6 +229,9 @@ func Text(w io.Writer, ps []Plan) {
 		switch {
 		case c.Total() == 0 && c.Blocked == 0:
 			head += "no changes"
+			if len(p.Notes) > 0 {
+				head += fmt.Sprintf(", %d note(s)", len(p.Notes))
+			}
 		default:
 			head += fmt.Sprintf("%d change(s)", c.Total())
 			if c.Blocked > 0 {
@@ -282,6 +305,9 @@ func Markdown(r Result, o MarkdownOptions) string {
 		}
 		if c.Blocked > 0 {
 			label += fmt.Sprintf(", %d blocked", c.Blocked)
+		}
+		if len(p.Notes) > 0 {
+			label += fmt.Sprintf(", %d note(s)", len(p.Notes))
 		}
 		fmt.Fprintf(&b, "<details%s><summary>Server <code>%s</code>: %s</summary>\n\n", openIf(c.Total()+c.Blocked > 0), htmlEscape(p.Server), label)
 		lines := Lines(p)

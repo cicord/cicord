@@ -34,6 +34,15 @@
 //   - Managed roles (bot/integration roles) are never touched. @everyone is only touched
 //     through spec.everyone (Change kind "everyone").
 //
+// # Role holders
+//
+// roles.<key>.members lists user IDs who must hold the role. It is additive: each
+// listed user who is in the server (fetched one by one with GetMember, once per plan)
+// gets the role (Change kind "memberRole", key "<role key>/<user ID>", applied after the
+// role positions); holders who are not listed are left alone, and removing a user from
+// the list never removes the role. A listed user who is not in the server is a Note,
+// not drift. A role at or above the bot's highest role is Blocked ("hierarchy: ...").
+//
 // # Removed keys (prune)
 //
 // A git-owned mapping whose key is no longer in the YAML produces:
@@ -160,6 +169,7 @@
 //
 // Drift returns one entry per differing field of the current plan (https://cicord.dev/docs/reference/http-api/servers/).
 // HandleEvent marks drift for role, channel, AutoMod rule, emoji, sticker and
-// soundboard sound events on git-owned resources, @everyone and server updates; with
-// syncPolicy.selfHeal it schedules a debounced Sync.
+// soundboard sound events on git-owned resources, @everyone and server updates, and
+// member events (ServerMembers intent) of a listed role holder who joins or lacks a
+// listed role; with syncPolicy.selfHeal it schedules a debounced Sync.
 package reconcile

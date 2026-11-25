@@ -25,6 +25,7 @@ type env struct {
 	w       *sim.World
 	srv     discord.Server
 	bot     discord.User
+	app     string // the bot's application ID
 	session discord.Session
 	store   *sqlite.Store
 	desired *config.Server
@@ -51,7 +52,7 @@ func newEnvWith(t *testing.T, desired *config.Server, root string, perms discord
 	t.Helper()
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
-	token, bot, _ := w.CreateBot("cicord")
+	token, bot, app := w.CreateBot("cicord")
 	srv := w.CreateServer("Fresh", owner.ID, sim.WithGeneralChannel())
 	if _, err := w.AddBotToServer(srv.ID, bot.ID, perms); err != nil {
 		t.Fatal(err)
@@ -67,7 +68,7 @@ func newEnvWith(t *testing.T, desired *config.Server, root string, perms discord
 	t.Cleanup(func() { store.Close() })
 	d := *desired
 	d.Spec.DiscordID = srv.ID
-	return &env{t: t, w: w, srv: srv, bot: bot, session: sess, store: store, desired: &d, root: root}
+	return &env{t: t, w: w, srv: srv, bot: bot, app: app, session: sess, store: store, desired: &d, root: root}
 }
 
 func (e *env) reconciler(c discord.Client, mod ...func(*Options)) *Reconciler {

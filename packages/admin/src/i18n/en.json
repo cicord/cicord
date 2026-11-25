@@ -332,7 +332,8 @@
       "role": "Roles",
       "category": "Categories",
       "channel": "Channels",
-      "overwrite": "Permission overwrites"
+      "overwrite": "Permission overwrites",
+      "memberRole": "Role holders"
     },
     "blockedReason": {
       "deletionProtection": "Removed from the YAML, but deletion protection is on (syncPolicy.deletionProtection).",

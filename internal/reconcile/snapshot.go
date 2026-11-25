@@ -33,11 +33,18 @@ type Snapshot struct {
 	HasEmojis     bool
 	HasStickers   bool
 	HasSounds     bool
+	// Members are the fetched members among FetchOptions.Members (by user ID); a listed
+	// user missing from the map is not in the server. HasMembers = fetched.
+	Members    map[string]discord.Member
+	HasMembers bool
 }
 
 // FetchOptions selects the optional parts of a Snapshot.
 type FetchOptions struct {
 	Widget, Onboarding, WelcomeScreen, AutoMod, Emojis, Stickers, Sounds bool
+	// Members are user IDs to fetch one by one (roles.<key>.members): only listed users
+	// are read, never the whole member list.
+	Members []string
 }
 
 // FetchAll fetches every optional part (cicord import).
@@ -115,6 +122,23 @@ func FetchWith(ctx context.Context, c discord.Client, serverID, botUserID string
 			return s, fmt.Errorf("list stickers: %w", err)
 		}
 		s.HasStickers = true
+	}
+	if len(o.Members) > 0 {
+		s.Members = make(map[string]discord.Member, len(o.Members))
+		for _, id := range o.Members {
+			if _, ok := s.Members[id]; ok {
+				continue
+			}
+			m, err := c.GetMember(ctx, serverID, id)
+			if errors.Is(err, discord.ErrNotFound) {
+				continue // not in the server (yet)
+			}
+			if err != nil {
+				return s, fmt.Errorf("get member %s: %w", id, err)
+			}
+			s.Members[id] = m
+		}
+		s.HasMembers = true
 	}
 	if o.Sounds {
 		if s.Sounds, err = c.ListSoundboardSounds(ctx, serverID); err != nil {

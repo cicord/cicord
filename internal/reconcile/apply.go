@@ -213,6 +213,13 @@ func (a *applier) run(ctx context.Context, c Change) error {
 		}
 		return a.roleIconSaved(ctx, c.Key, o, role)
 
+	case c.Kind == KindMemberRole:
+		roleID, ok := a.ids[state.KindRole][o.member.roleKey]
+		if !ok {
+			return fmt.Errorf("unresolved role %q", o.member.roleKey)
+		}
+		return c0.AddMemberRole(ctx, a.serverID, o.member.userID, roleID, a.reason())
+
 	case c.Kind == KindWidget, c.Kind == KindWelcomeScreen, c.Kind == KindOnboarding, c.Kind == KindAutoMod,
 		c.Kind == KindEmoji, c.Kind == KindSticker, c.Kind == KindSound:
 		return a.runParity(ctx, c)

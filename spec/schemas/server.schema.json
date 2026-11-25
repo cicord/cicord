@@ -194,7 +194,13 @@
           "minLength": 1,
           "maxLength": 32
         },
-        "permissions": { "$ref": "common.schema.json#/$defs/permissions" }
+        "permissions": { "$ref": "common.schema.json#/$defs/permissions" },
+        "members": {
+          "description": "Discord user IDs who must hold the role. Additive: each listed user who is in the server gets the role; holders who are not listed keep it, and removing a user from the list never removes the role. A listed user who is not in the server is noted in the plan and gets the role at the first sync after joining.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/snowflake" },
+          "uniqueItems": true
+        }
       },
       "additionalProperties": false
     },
