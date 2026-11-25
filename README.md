@@ -40,13 +40,13 @@ Quick install (Linux or macOS, with the [GitHub CLI](https://cli.github.com/) to
 build provenance):
 
 ```sh
-VERSION=0.1.4 OS=linux ARCH=amd64     # OS: linux | darwin, ARCH: amd64 | arm64
+VERSION=0.1.5 OS=linux ARCH=amd64     # OS: linux | darwin, ARCH: amd64 | arm64
 gh release download "v$VERSION" --repo cicord/cicord --pattern "cicord_${VERSION}_${OS}_${ARCH}.tar.gz"
 gh attestation verify "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" --repo cicord/cicord
 tar -xzf "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" cicord && sudo install cicord /usr/local/bin/
 ```
 
-Or the image: `docker run --rm ghcr.io/cicord/cicord:0.1.4 version`. A real-world
+Or the image: `docker run --rm ghcr.io/cicord/cicord:0.1.5 version`. A real-world
 configuration: the official community server's repository,
 [cicord/cicord-community](https://github.com/cicord/cicord-community).
 
