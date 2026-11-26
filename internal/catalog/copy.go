@@ -91,6 +91,8 @@ var released = map[string]map[string][]string{
 	}},
 	"voice-rooms": {"0.1.0": {
 		"sha256-XfwG2yJFC9y2Bw4tDoh9XO95vKTUVFX6wo+eXgImNc4=", // join-to-create voice rooms (voiceStateUpdate, editChannel, voiceMembers, moveTo)
+	}, "0.1.1": {
+		"sha256-luaZS3J1JcA8pBVTqiUEqV15YDDcWNg9blMWuI9IHS4=", // requires the voice API introduced in v0.1.10
 	}},
 }
 
