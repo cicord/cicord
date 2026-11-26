@@ -3,7 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"math/rand/v2"
+	"math/rand/v2" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- test input generation
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -30,6 +30,8 @@ func TestFilesReadFanOutStaysWithinTheResultBudget(t *testing.T) {
 		e.Files = map[string][]byte{"big.txt": data}
 		e.Limits.HandlerTimeout = time.Minute
 		e.Limits.AutoDeferAfter = time.Minute
+		// The test measures memory, not CPU: receiving 20 MiB strings is slow under -race.
+		e.Limits.SyncBudget = 10 * time.Second
 	})
 	runtime.GC()
 	var base runtime.MemStats

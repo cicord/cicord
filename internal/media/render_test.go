@@ -125,6 +125,11 @@ func TestPerceptualReencoding(t *testing.T) {
 // The advertised envelope renders, and anything outside it is refused by
 // validation with a clear message, not by an out-of-memory failure (SDK-11).
 func TestRenderEnvelope(t *testing.T) {
+	// This test checks the memory envelope, not speed: a small CI runner under -race can
+	// take several seconds for the largest card. TestRenderDeadlineAndRecovery covers the
+	// deadline itself.
+	defer func(d time.Duration) { renderDeadline = d }(renderDeadline)
+	renderDeadline = 30 * time.Second
 	src := image.NewRGBA64(image.Rect(0, 0, 724, 724))
 	for y := range 724 {
 		for x := range 724 {
