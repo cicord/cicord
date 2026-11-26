@@ -39,7 +39,8 @@ func TestModerationSDK(t *testing.T) {
            await m.setRoles(["member"],"test");await m.removeTimeout("test");
            return {role:m.hasRole("member")};
          }
-         return ctx.server.channel("general").purge({limit:250,author:member,contains:"sample"});
+         const channel=ctx.server.channel("general"); const filter={limit:250,author:member,contains:"sample"};
+         if(verb==="preview")return channel.previewPurge(filter);return channel.purge(filter);
       }}
     },
     events: {
@@ -84,6 +85,9 @@ func TestModerationSDK(t *testing.T) {
 	}
 	if r := call("roles"); r["role"] != true {
 		t.Fatalf("roles: %+v", r)
+	}
+	if r := call("preview"); len(r["ids"].([]any)) != 102 {
+		t.Fatalf("preview: %+v", r)
 	}
 	if r := call("purge"); r["deleted"] != float64(102) {
 		t.Fatalf("purge: %+v", r)

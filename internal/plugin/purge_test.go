@@ -15,7 +15,7 @@ func TestModerationGrantBoundaries(t *testing.T) {
 		input string
 		grant string
 	}{
-		{opChannelPurge, `{"channelId":"100","limit":1}`, capMessagesRead},
+		{opChannelPurge(false), `{"channelId":"100","limit":1}`, capMessagesRead},
 		{opChannelBulkDelete, `{"channelId":"100","ids":["123"]}`, capMessagesManage},
 		{opServerBans, `{}`, capMembersModerate},
 		{opServerUnban, `{"userId":"42"}`, capMembersModerate},
@@ -31,7 +31,7 @@ func TestModerationGrantBoundaries(t *testing.T) {
 	}
 	i := &Instance{grants: map[string]bool{capMessagesRead: true, capMessagesManage: true}}
 	for _, input := range []string{`{"limit":1,"contains":"abc"}`, `{"limit":5,"attachments":false}`} {
-		_, err := opChannelPurge(i, nil, json.RawMessage(input))
+		_, err := opChannelPurge(true)(i, nil, json.RawMessage(input))
 		var ce *CapabilityError
 		if !errors.As(err, &ce) || ce.Capability != "MessageContent" {
 			t.Fatalf("missing intent for %s: %v", input, err)

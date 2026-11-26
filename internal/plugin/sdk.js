@@ -186,6 +186,9 @@
     async bulkDelete(ids, reason) {
       return acall("channel.bulkDelete", {channelId:this.id,ids,reason});
     },
+    async previewPurge(filter) {
+      return acall("channel.previewPurge", Object.assign({},filter,{channelId:this.id}));
+    },
     async purge(filter) {
       return acall("channel.purge", Object.assign({},filter,{channelId:this.id}));
     },

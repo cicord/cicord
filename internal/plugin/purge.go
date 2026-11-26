@@ -114,68 +114,81 @@ func (f purgeFilter) matches(m discord.Message, cutoff time.Time) bool {
 		(f.Contains == "" || strings.Contains(m.Content, f.Contains))
 }
 
-func opChannelPurge(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
-	if err := i.requirePurge(); err != nil {
-		return nil, err
-	}
-	f, err := decode[purgeFilter](args)
-	if err != nil {
-		return nil, err
-	}
-	if f.Limit < 1 || f.Limit > 1000 {
-		return nil, argErr("purge(): limit must be between 1 and 1000")
-	}
-	if (f.Contains != "" || f.Attachments != nil) && !i.env.MessageContent {
-		return nil, &CapabilityError{Capability: "MessageContent"}
-	}
-	for _, id := range []string{f.Author, f.Before, f.After} {
-		if id != "" {
-			if err := checkSnowflake("filter", id); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return func(ctx context.Context) (any, error) {
-		if err := i.checkPurgeChannel(ctx, f.ChannelID); err != nil {
+func opChannelPurge(preview bool) asyncOp {
+	return func(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+		if err := i.requirePurge(); err != nil {
 			return nil, err
 		}
-		var result purgeResult
-		before := f.Before
-		for remaining := f.Limit; remaining > 0; {
-			pageSize := min(100, remaining)
-			page, err := i.env.Discord.ListMessages(ctx, f.ChannelID, discord.ListMessagesParams{Limit: pageSize, Before: before})
-			if err != nil {
+		f, err := decode[purgeFilter](args)
+		if err != nil {
+			return nil, err
+		}
+		if f.Limit < 1 || f.Limit > 1000 {
+			return nil, argErr("purge(): limit must be between 1 and 1000")
+		}
+		if (f.Contains != "" || f.Attachments != nil) && !i.env.MessageContent {
+			return nil, &CapabilityError{Capability: "MessageContent"}
+		}
+		for _, id := range []string{f.Author, f.Before, f.After} {
+			if id != "" {
+				if err := checkSnowflake("filter", id); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return func(ctx context.Context) (any, error) {
+			if err := i.checkPurgeChannel(ctx, f.ChannelID); err != nil {
 				return nil, err
 			}
-			if len(page) == 0 {
-				break
+			var result purgeResult
+			var selected []string
+			if preview {
+				selected = []string{}
 			}
-			ids := make([]string, 0, len(page))
-			cutoff := time.Now().Add(-bulkMessageAge)
-			end := false
-			for _, m := range page {
-				if f.After != "" && !discord.SnowflakeLess(f.After, m.ID) {
-					end = true
+			before := f.Before
+			for remaining := f.Limit; remaining > 0; {
+				pageSize := min(100, remaining)
+				page, err := i.env.Discord.ListMessages(ctx, f.ChannelID, discord.ListMessagesParams{Limit: pageSize, Before: before})
+				if err != nil {
+					return nil, err
+				}
+				if len(page) == 0 {
 					break
 				}
-				if f.matches(m, cutoff) {
-					ids = append(ids, m.ID)
-				} else {
-					result.Skipped++
+				ids := make([]string, 0, len(page))
+				cutoff := time.Now().Add(-bulkMessageAge)
+				end := false
+				for _, m := range page {
+					if f.After != "" && !discord.SnowflakeLess(f.After, m.ID) {
+						end = true
+						break
+					}
+					if f.matches(m, cutoff) {
+						ids = append(ids, m.ID)
+					} else {
+						result.Skipped++
+					}
 				}
+				if preview {
+					selected = append(selected, ids...)
+				} else {
+					n, err := i.deleteBatch(ctx, f.ChannelID, ids, f.Reason)
+					if err != nil {
+						return nil, err
+					}
+					result.Deleted += n
+					result.Skipped += len(ids) - n
+				}
+				if end || len(page) < pageSize {
+					break
+				}
+				before = page[len(page)-1].ID
+				remaining -= len(page)
 			}
-			n, err := i.deleteBatch(ctx, f.ChannelID, ids, f.Reason)
-			if err != nil {
-				return nil, err
+			if preview {
+				return map[string]any{"ids": selected, "skipped": result.Skipped}, nil
 			}
-			result.Deleted += n
-			result.Skipped += len(ids) - n
-			if end || len(page) < pageSize {
-				break
-			}
-			before = page[len(page)-1].ID
-			remaining -= len(page)
-		}
-		return result, nil
-	}, nil
+			return result, nil
+		}, nil
+	}
 }

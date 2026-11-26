@@ -117,7 +117,8 @@ examines at most `limit` messages (1–1000) newest first. Both methods require
 `discord.messages.read` and `discord.messages.manage`. Text and attachment filters
 also require the plugin's `MessageContent` intent. The result reports the counts of
 deleted and skipped messages. A plugin should show the scope and obtain moderator
-confirmation before a bulk action.
+confirmation before a bulk action. Use `channel.previewPurge(filter)` to obtain the exact
+message IDs without deleting them, then apply the approved IDs in bounded batches.
 
 ## Events
 

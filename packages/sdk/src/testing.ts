@@ -619,7 +619,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         for (const m of selected) await m.delete(reason);
         return selected.length;
       },
-      async purge(filter) {
+      async previewPurge(filter) {
         need("discord.messages.read");
         need("discord.messages.manage");
         if (
@@ -652,8 +652,14 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
             (filter.attachments === undefined || m.attachments.length > 0 === filter.attachments) &&
             (!filter.contains || m.content.includes(filter.contains)),
         );
-        for (const m of selected) await m.delete(filter.reason);
-        return { deleted: selected.length, skipped: candidates.length - selected.length };
+        return { ids: selected.map((m) => m.id), skipped: candidates.length - selected.length };
+      },
+      async purge(filter) {
+        const { ids, skipped } = await channel.previewPurge(filter);
+        let deleted = 0;
+        for (let start = 0; start < ids.length; start += 100)
+          deleted += await channel.bulkDelete(ids.slice(start, start + 100), filter.reason);
+        return { deleted, skipped };
       },
       async messages(opts = {}) {
         need("discord.messages.read");
@@ -1385,6 +1391,9 @@ function fakeInteraction(
         mention: "<#interaction-channel>",
         send: async () => {
           throw new Error("not supported in tests: pass `channel` in the call");
+        },
+        previewPurge: async () => {
+          throw new Error("pass a channel to test previewPurge");
         },
         bulkDelete: async () => {
           throw new Error("pass a channel to test bulkDelete");

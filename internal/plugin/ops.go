@@ -107,7 +107,8 @@ func init() {
 	asyncOps = map[string]asyncOp{
 		"channel.send":         opChannelSend,
 		"channel.bulkDelete":   opChannelBulkDelete,
-		"channel.purge":        opChannelPurge,
+		"channel.purge":        opChannelPurge(false),
+		"channel.previewPurge": opChannelPurge(true),
 		"channel.messages":     opChannelMessages,
 		"channel.message":      opChannelMessage,
 		"channel.createThread": opChannelCreateThread,

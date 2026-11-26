@@ -225,6 +225,7 @@ export interface TextChannel extends Channel {
   /** Deletes up to 100 recent guild messages. Requires discord.messages.manage and discord.messages.read. */
   bulkDelete(ids: Snowflake[], reason?: string): Promise<number>;
   /** Scans up to limit messages, newest first. Old or nonmatching messages are counted as skipped. */
+  previewPurge(filter: PurgeFilter): Promise<{ ids: Snowflake[]; skipped: number }>;
   purge(filter: PurgeFilter): Promise<{ deleted: number; skipped: number }>;
   /** @capability discord.messages.send */
   send(message: MessageInput): Promise<Message>;
