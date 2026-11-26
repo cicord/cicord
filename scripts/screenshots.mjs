@@ -252,6 +252,23 @@ async function evaluate(cdp, expression) {
   return r.result.value;
 }
 
+/**
+ * Calls fn in the page with args passed as values (Runtime.callFunctionOn), never spliced
+ * into the source: fn is a function of this script, args are data.
+ */
+async function call(cdp, fn, ...args) {
+  const { result: global } = await cdp.send("Runtime.evaluate", { expression: "globalThis" });
+  const r = await cdp.send("Runtime.callFunctionOn", {
+    objectId: global.objectId,
+    functionDeclaration: fn.toString(),
+    arguments: args.map((value) => ({ value })),
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? "call");
+  return r.result.value;
+}
+
 async function load(cdp, url) {
   const loaded = new Promise((resolve) =>
     cdp.on((m) => m.method === "Page.loadEventFired" && resolve()),
@@ -263,7 +280,7 @@ async function load(cdp, url) {
 async function waitText(cdp, text, timeoutMs = 15000) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
-    const ok = await evaluate(cdp, `document.body?.innerText.includes(${JSON.stringify(text)})`);
+    const ok = await call(cdp, (t) => document.body?.innerText.includes(t) ?? false, text);
     if (ok) return;
     await sleep(200);
   }
@@ -275,10 +292,15 @@ async function devLogin(cdp, username) {
   const state = await (await fetch(`${base}/api/v1/sim/state`)).json();
   const user = state.users.find((u) => u.username === username);
   if (!user) throw new Error(`no simulated user ${username}`);
-  const status = await evaluate(
+  const status = await call(
     cdp,
-    `fetch("/auth/dev-login", {method: "POST", headers: {"Content-Type": "application/json", "X-Cicord-Request": "1"},
-      body: JSON.stringify({userId: ${JSON.stringify(user.id)}})}).then(r => r.status)`,
+    (userId) =>
+      fetch("/auth/dev-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Cicord-Request": "1" },
+        body: JSON.stringify({ userId }),
+      }).then((r) => r.status),
+    user.id,
   );
   if (status !== 200) throw new Error(`dev login as ${username}: HTTP ${status}`);
 }
@@ -345,10 +367,13 @@ async function main() {
     }
     let clip;
     if (shot.clip) {
-      clip = await evaluate(
+      clip = await call(
         cdp,
-        `(() => { const r = document.querySelector(${JSON.stringify(shot.clip)}).getBoundingClientRect();
-           return {x: r.x, y: r.y, width: r.width, height: r.height, scale: 1}; })()`,
+        (selector) => {
+          const r = document.querySelector(selector).getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height, scale: 1 };
+        },
+        shot.clip,
       );
     }
     const { data } = await cdp.send("Page.captureScreenshot", {
