@@ -202,15 +202,18 @@ cicord plugin test plugins/welcome
 cicord plugin test plugins/onboarding --config plugins/onboarding/test/config.yaml
 ```
 
-A plugin whose startup checks depend on the server’s reconciliation policy can include
-`test/server.yaml`. The smoke test applies its values to the disposable simulated server.
-The fixture may set either or both booleans below and is limited to 4 KiB. Omitting the
-file preserves the simulator’s default server policy.
+Use an optional `test/server.yaml` to configure the disposable simulated server. Its
+`syncPolicy` may set either or both booleans below. To simulate a private log, list its
+channel key under `privateChannels`. Each key must reference a text channel in the
+plugin’s effective test configuration. The simulator denies `ViewChannel` and
+`ReadMessageHistory` to `@everyone` on those channels. The fixture accepts up to 32
+unique channel keys and is limited to 4 KiB.
 
 ```yaml
 syncPolicy:
   selfHeal: true
   deletionProtection: true
+privateChannels: [audit]
 ```
 
 

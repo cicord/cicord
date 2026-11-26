@@ -634,7 +634,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	refs := map[string]map[string]bool{}
 	refsOf(schema, effective, refs)
 
-	policy, err := readTestSyncPolicy(absPlugin)
+	fixture, err := readTestServerFixture(absPlugin)
 	if err != nil {
 		return fmt.Errorf("test/server.yaml: %w", err)
 	}
@@ -649,7 +649,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	if err := copyRepoTree(absPlugin, filepath.Join(repoDir, "plugins", name)); err != nil {
 		return err
 	}
-	if err := writeTestRepo(repoDir, name, m, cfg, refs, policy); err != nil {
+	if err := writeTestRepo(repoDir, name, m, cfg, refs, fixture); err != nil {
 		return err
 	}
 	repo, ds := config.Load(repoDir, config.LoadOptions{})
@@ -888,7 +888,7 @@ func printDiagnosticsRel(w io.Writer, ds config.Diagnostics, prefix, real string
 	}
 }
 
-func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs map[string]map[string]bool, policy *testSyncPolicy) error {
+func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs map[string]map[string]bool, fixture *testServerFixture) error {
 	write := func(rel string, v any) error {
 		data, err := yaml.Marshal(v)
 		if err != nil {
@@ -916,17 +916,27 @@ func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs 
 	for _, k := range sorted("category") {
 		categories[k] = map[string]any{"name": k}
 	}
-	channels := map[string]any{"general": map[string]any{"name": "general", "type": "text"}}
+	channels := map[string]config.Channel{"general": {Name: "general", Type: "text"}}
 	for _, k := range sorted("channel") {
 		if _, isCat := categories[k]; !isCat {
-			channels[k] = map[string]any{"name": k, "type": "text"}
+			channels[k] = config.Channel{Name: k, Type: "text"}
 		}
 	}
 	project := map[string]any{"apiVersion": config.APIVersion, "kind": "Project",
 		"metadata": map[string]any{"name": "plugin-test"}, "spec": map[string]any{"engine": engineRange()}}
 	srvSpec := map[string]any{"discordId": testServerID, "profile": map[string]any{"name": "Plugin test"}, "channels": channels}
-	if policy != nil {
-		srvSpec["syncPolicy"] = policy
+	if fixture != nil {
+		if fixture.SyncPolicy != nil {
+			srvSpec["syncPolicy"] = fixture.SyncPolicy
+		}
+		for _, key := range fixture.PrivateChannels {
+			channel, ok := channels[key]
+			if !ok || !refs["channel"][key] {
+				return fmt.Errorf("test/server.yaml: privateChannels key %q must reference a configured synthetic text channel", key)
+			}
+			channel.Overwrites = map[string]config.OverwriteSpec{"@everyone": {Deny: []string{"ViewChannel", "ReadMessageHistory"}}}
+			channels[key] = channel
+		}
 	}
 	if len(roles) > 0 {
 		srvSpec["roles"] = roles

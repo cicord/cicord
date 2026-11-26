@@ -15,8 +15,13 @@ type testSyncPolicy struct {
 	DeletionProtection *bool `yaml:"deletionProtection,omitempty"`
 }
 
-// readTestSyncPolicy reads only reconciliation switches for the disposable simulator.
-func readTestSyncPolicy(pluginDir string) (*testSyncPolicy, error) {
+type testServerFixture struct {
+	SyncPolicy      *testSyncPolicy `yaml:"syncPolicy"`
+	PrivateChannels []string        `yaml:"privateChannels"`
+}
+
+// readTestServerFixture reads a bounded declaration for the disposable simulator.
+func readTestServerFixture(pluginDir string) (*testServerFixture, error) {
 	const path = "test/server.yaml"
 	const maxSize = 4096
 	root, err := os.OpenRoot(pluginDir)
@@ -48,16 +53,27 @@ func readTestSyncPolicy(pluginDir string) (*testSyncPolicy, error) {
 		return nil, errors.New("file exceeds 4 KiB")
 	}
 
-	var fixture struct {
-		SyncPolicy *testSyncPolicy `yaml:"syncPolicy"`
-	}
+	var fixture testServerFixture
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&fixture); err != nil {
 		return nil, err
 	}
-	if fixture.SyncPolicy == nil || (fixture.SyncPolicy.SelfHeal == nil && fixture.SyncPolicy.DeletionProtection == nil) {
+	if fixture.SyncPolicy != nil && fixture.SyncPolicy.SelfHeal == nil && fixture.SyncPolicy.DeletionProtection == nil {
 		return nil, errors.New("expected syncPolicy.selfHeal or syncPolicy.deletionProtection")
+	}
+	if fixture.SyncPolicy == nil && len(fixture.PrivateChannels) == 0 {
+		return nil, errors.New("expected syncPolicy or at least one privateChannels entry")
+	}
+	if len(fixture.PrivateChannels) > 32 {
+		return nil, errors.New("privateChannels supports at most 32 channel keys")
+	}
+	seen := make(map[string]bool, len(fixture.PrivateChannels))
+	for _, key := range fixture.PrivateChannels {
+		if key == "" || seen[key] {
+			return nil, fmt.Errorf("privateChannels contains an empty or duplicate key %q", key)
+		}
+		seen[key] = true
 	}
 	var extra yaml.Node
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
@@ -66,5 +82,5 @@ func readTestSyncPolicy(pluginDir string) (*testSyncPolicy, error) {
 		}
 		return nil, errors.New("expected a single YAML document")
 	}
-	return fixture.SyncPolicy, nil
+	return &fixture, nil
 }
