@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/cicord/cicord/internal/version"
 	"github.com/cicord/cicord/internal/webui"
 )
 
@@ -63,6 +64,9 @@ func testKit(t *testing.T, v string) fstest.MapFS {
 func useVersion(t *testing.T, v string) {
 	t.Helper()
 	old := cicordVersion
+	oldTag := version.ReleaseTag
+	version.ReleaseTag = "v" + v
+	t.Cleanup(func() { version.ReleaseTag = oldTag })
 	cicordVersion = func() string { return v }
 	t.Cleanup(func() { cicordVersion = old })
 }
@@ -595,5 +599,67 @@ func checkWorkflowYAML(t *testing.T, wf string) {
 				t.Errorf("job %s step %d: needs exactly one of uses and run: %v", name, i, st)
 			}
 		}
+	}
+}
+
+// A candidate's semver is shared by its source checkout and a possible future tag.
+// Only the latter opts into registry packages and attested release archives.
+func TestSnapshotAndTaggedCandidateScaffolds(t *testing.T) {
+	const v = "0.2.0-rc.1"
+	const source = "1111111111111111111111111111111111111111"
+	const kitSource = "2222222222222222222222222222222222222222"
+	useVersion(t, v)
+	oldRef := sourceRevision
+	sourceRevision = func() string { return source }
+	t.Cleanup(func() { sourceRevision = oldRef })
+	kit := testKit(t, v)
+	kit["source-ref"] = &fstest.MapFile{Data: []byte(kitSource + "\n")}
+	useKit(t, kit, nil)
+	for _, tagged := range []bool{false, true} {
+		label := "source"
+		version.ReleaseTag = ""
+		if tagged {
+			label = "tagged"
+			version.ReleaseTag = "v" + v
+		}
+		t.Run(label, func(t *testing.T) {
+			repo := t.TempDir()
+			if code, _, stderr := run(t, "init", repo, "--project", "demo"); code != 0 {
+				t.Fatal(stderr)
+			}
+			wf := readFile(t, filepath.Join(repo, ".github/workflows/cicord.yml"))
+			if tagged {
+				if !strings.Contains(wf, "go install github.com/cicord/cicord/cmd/cicord@v"+v) {
+					t.Fatal(wf)
+				}
+			} else if strings.Count(wf, "github.com/cicord/cicord/cmd/cicord@"+source) != 3 || !strings.Contains(wf, "internal/version.Version="+v) {
+				t.Fatal(wf)
+			}
+			portal := filepath.Join(repo, "portal")
+			if code, _, stderr := run(t, "portal", "init", portal); code != 0 {
+				t.Fatal(stderr)
+			}
+			spec := readScaffoldedPortal(t, portal).Dependencies["@cicord/client"]
+			workflow := readFile(t, filepath.Join(repo, ".github/workflows/cicord-portal.yml"))
+			checkWorkflowYAML(t, workflow)
+			if tagged {
+				if spec != v || !strings.Contains(workflow, `CICORD_TAG: "v`+v+`"`) || !strings.Contains(workflow, "gh attestation verify") {
+					t.Fatalf("tagged %q: %s", spec, workflow)
+				}
+			} else {
+				if !strings.HasPrefix(spec, "file:vendor/") || !strings.Contains(workflow, `CICORD_REF: "`+kitSource+`"`) ||
+					!strings.Contains(workflow, "make -C cicord-source all") || strings.Contains(workflow, "gh release download") {
+					t.Fatalf("source %q: %s", spec, workflow)
+				}
+				dir := filepath.Join(repo, "plugins", "snapshot")
+				code, _, stderr := run(t, "plugin", "new", dir, "--from-npm")
+				if code == 0 || !strings.Contains(stderr, "unpublished") {
+					t.Fatal(code, stderr)
+				}
+				if _, err := os.Stat(dir); !os.IsNotExist(err) {
+					t.Fatalf("unexpected partial scaffold: %v", err)
+				}
+			}
+		})
 	}
 }

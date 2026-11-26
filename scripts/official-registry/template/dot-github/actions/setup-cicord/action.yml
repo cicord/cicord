@@ -1,12 +1,12 @@
 name: Set up cicord
 description: >-
   Builds the cicord CLI from github.com/cicord/cicord at the version in the CICORD_VERSION
-  repository variable (a tag or branch; default main) and puts it on PATH.
+  repository variable (defaults to the source commit pinned when the registry was generated) and puts it on PATH.
 inputs:
   version:
     description: cicord/cicord ref to build
     required: false
-    default: main
+    default: "@CICORD_SOURCE_REF@"
   token:
     description: token able to read cicord/cicord (only needed while it is private)
     required: false
@@ -17,7 +17,7 @@ runs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: cicord/cicord
-        ref: ${{ inputs.version }}
+        ref: ${{ inputs.version || '@CICORD_SOURCE_REF@' }}
         token: ${{ inputs.token }}
         path: .cicord-src
         persist-credentials: false

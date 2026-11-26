@@ -22,8 +22,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      # The cicord release that generated this repository; bump it with the runtime.
-      - run: go install github.com/cicord/cicord/cmd/cicord@{{.Cicord}}
+      # Pin the engine that generated this repository and update it with the runtime.
+      - run: go install {{if .Source}}-ldflags="-X github.com/cicord/cicord/internal/version.Version={{.Version}} -X github.com/cicord/cicord/internal/version.SourceRef={{.Cicord}}" {{end}}github.com/cicord/cicord/cmd/cicord@{{.Cicord}}
       - run: cicord validate
 
   plan:
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      - run: go install github.com/cicord/cicord/cmd/cicord@{{.Cicord}}
+      - run: go install {{if .Source}}-ldflags="-X github.com/cicord/cicord/internal/version.Version={{.Version}} -X github.com/cicord/cicord/internal/version.SourceRef={{.Cicord}}" {{end}}github.com/cicord/cicord/cmd/cicord@{{.Cicord}}
       - run: cicord plan --remote --comment
         env:
           CICORD_RUNTIME_URL: ${{"{{"}} vars.CICORD_RUNTIME_URL }}
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      - run: go install github.com/cicord/cicord/cmd/cicord@{{.Cicord}}
+      - run: go install {{if .Source}}-ldflags="-X github.com/cicord/cicord/internal/version.Version={{.Version}} -X github.com/cicord/cicord/internal/version.SourceRef={{.Cicord}}" {{end}}github.com/cicord/cicord/cmd/cicord@{{.Cicord}}
       # The runtime pulls the merged commit (webhook or polling); wait for it to be applied.
       - run: cicord status --wait --revision ${{"{{"}} github.sha }} --timeout 10m
         env:

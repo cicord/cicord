@@ -1,7 +1,8 @@
 # Cicord developer tasks.
 GO ?= go
-VERSION ?= 0.1.11
-LDFLAGS := -s -w -X github.com/cicord/cicord/internal/version.Version=$(VERSION) -X github.com/cicord/cicord/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
+VERSION ?= 0.2.0-rc.1
+SOURCE_REF ?= $(shell git rev-parse HEAD 2>/dev/null)
+LDFLAGS := -s -w -X github.com/cicord/cicord/internal/version.Version=$(VERSION) -X github.com/cicord/cicord/internal/version.SourceRef=$(SOURCE_REF) -X github.com/cicord/cicord/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
 .PHONY: all build ui test test-go test-js vet lint check clean hooks release
 
@@ -47,6 +48,6 @@ clean:
 hooks:
 	git config core.hooksPath .githooks
 
-## release: prepare the release commit of VERSION (versions + CHANGELOG), e.g. make release VERSION=0.1.11 (never pushes nor tags)
+## release: prepare the release commit of VERSION (versions + CHANGELOG), e.g. make release VERSION=0.2.0-rc.1 (never pushes nor tags)
 release:
 	scripts/release.sh $(VERSION)

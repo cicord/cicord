@@ -64,6 +64,7 @@ func TestPluginNewTestSetup(t *testing.T) {
 }
 
 func TestFromNPM(t *testing.T) {
+	useVersion(t, "0.1.8")
 	useKit(t, minimalKit(t), nil)
 	plugin := filepath.Join(t.TempDir(), "hello")
 	if code, _, stderr := run(t, "plugin", "new", plugin, "--from-npm"); code != 0 {

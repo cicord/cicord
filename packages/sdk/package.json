@@ -1,6 +1,6 @@
 {
   "name": "@cicord/sdk",
-  "version": "0.1.11",
+  "version": "0.2.0-rc.1",
   "description": "Cicord plugin SDK: authoring types (spec/sdk/cicord-sdk.d.ts) and a tiny runtime for unit tests in Node.",
   "keywords": [
     "cicord",

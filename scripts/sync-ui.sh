@@ -38,6 +38,12 @@ sync_kit() {
   fi
   rm -rf "$kit/packages" "$kit/template"
   mkdir -p "$kit/packages"
+  local source_ref="${SOURCE_REF:-$(git -C "$root" rev-parse --verify HEAD 2>/dev/null || true)}"
+  if [[ -n "$source_ref" ]]; then
+    printf '%s\n' "$source_ref" >"$kit/source-ref"
+  else
+    rm -f "$kit/source-ref"
+  fi
   for p in sdk client react ui; do
     # pnpm pack rewrites workspace:/catalog: specifiers to real versions.
     (cd "$root/packages/$p" && pnpm pack --pack-destination "$kit/packages" >/dev/null)

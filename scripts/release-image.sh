@@ -31,6 +31,10 @@ commit="$(git rev-parse --short HEAD)"
 revision="$(git rev-parse HEAD)"
 # Reproducible image timestamps: the commit time.
 epoch="$(git log -1 --format=%ct)"
+release_tag=""
+if [ "$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}" || true)" = "$revision" ]; then
+  release_tag="v$VERSION"
+fi
 
 tags=("$IMAGE:$VERSION" "$IMAGE:sha-$commit")
 if [[ "$VERSION" != *-* ]]; then
@@ -60,6 +64,8 @@ echo "release-image: building ${tags[*]} for $PLATFORMS (push=$PUSH)" >&2
 docker buildx build \
   --platform "$PLATFORMS" \
   --build-arg VERSION="$VERSION" \
+  --build-arg SOURCE_REF="$revision" \
+  --build-arg RELEASE_TAG="$release_tag" \
   --build-arg COMMIT="$commit" \
   --build-arg SOURCE_DATE_EPOCH="$epoch" \
   --sbom=true \

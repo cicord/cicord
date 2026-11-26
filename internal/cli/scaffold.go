@@ -114,6 +114,8 @@ func newInitCmd() *cobra.Command {
 				"TokenEnv":      "DISCORD_TOKEN_" + strings.ToUpper(strings.ReplaceAll(o.bot, "-", "_")),
 				"EngineRange":   engineRange(),
 				"Cicord":        cicordInstallVersion(),
+				"Source":        !isReleaseVersion(cicordVersion()),
+				"Version":       cicordVersion(),
 				"Provider":      o.provider,
 				"Repo":          o.repo,
 			}
@@ -195,6 +197,9 @@ func newPluginCmd() *cobra.Command {
 		Short: "Scaffold a TypeScript plugin",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if fromNPM && !isReleaseVersion(cicordVersion()) {
+				return fmt.Errorf("the SDK for source build %s is unpublished; use the embedded SDK with make ui build and omit --from-npm", cicordVersion())
+			}
 			abs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err

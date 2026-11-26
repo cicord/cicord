@@ -8,6 +8,10 @@ accepted by review, in one repository, with a **signed** index.
 |---|---|
 @PLUGIN_TABLE@
 
+CI builds Cicord at the immutable source commit pinned when this registry was generated.
+Set the repository variable `CICORD_VERSION` to select a release tag. The signing workflow
+requires an explicit release tag.
+
 ## Install a plugin
 
 Every Cicord runtime knows this registry: it is source `cicord`, with no `cicord.yaml` entry.

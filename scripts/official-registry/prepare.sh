@@ -46,6 +46,11 @@ sdk_tgz="$(cd "$tmp" && ls cicord-sdk-*.tgz)"
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 cp -R "$here/template/." "$out/"
+# The generated CI builds this checkout's immutable source revision. The repository
+# variable CICORD_VERSION can subsequently select a release tag.
+ref="$(git -C "$root" rev-parse 'HEAD^{commit}')"
+setup_action="$out/dot-github/actions/setup-cicord/action.yml"
+sed "s/@CICORD_SOURCE_REF@/$ref/" "$setup_action" >"$setup_action.tmp" && mv "$setup_action.tmp" "$setup_action"
 mv "$out/gitignore" "$out/.gitignore"
 mv "$out/node-version" "$out/.node-version"
 mv "$out/dot-github" "$out/.github"

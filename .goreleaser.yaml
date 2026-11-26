@@ -25,6 +25,7 @@ builds:
       - -s -w
       - -X github.com/cicord/cicord/internal/version.Version={{ .Version }}
       - -X github.com/cicord/cicord/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/cicord/cicord/internal/version.ReleaseTag={{ .Tag }}
     # Reproducible: file times are the commit time.
     mod_timestamp: "{{ .CommitTimestamp }}"
     goos: [linux, darwin, windows]

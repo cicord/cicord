@@ -84,13 +84,9 @@ are deleted, and so is vendor/.
 // cicordVersion is the version of this cicord, without a leading v (replaced in tests).
 var cicordVersion = func() string { return strings.TrimPrefix(version.Version, "v") }
 
-// isReleaseVersion reports whether v is the version of a cicord release, whose @cicord/*
-// packages are on npm: a semantic version (pre-releases included, published under the npm
-// dist-tag next) that is not a development build ("dev", "x.y.z-dev…").
-func isReleaseVersion(v string) bool {
-	sv, err := semver.StrictNewVersion(strings.TrimPrefix(v, "v"))
-	return err == nil && !strings.HasPrefix(sv.Prerelease(), "dev")
-}
+// Overridden by CLI tests to model tagged releases and unpublished source builds.
+var isReleaseVersion = version.Published
+var sourceRevision = version.Revision
 
 // vendorRefRe matches a dependency on a vendored tarball in package.json or
 // pnpm-workspace.yaml: "file:vendor/<file>.tgz".
@@ -327,8 +323,16 @@ func printUpgradeNext(w io.Writer, src, rel string, toNPM bool) {
 		return
 	}
 	want := cicordInstallVersion()
-	if m := regexp.MustCompile(`CICORD_TAG: "([^"]*)"`).FindSubmatch(wf); m != nil && string(m[1]) != want && string(m[1]) != "latest" && want != "latest" {
-		fmt.Fprintf(w, "Also set CICORD_TAG to %q in .github/workflows/cicord-portal.yml (now %q): its check compares the portal with that cicord.\n", want, m[1])
+	if m := regexp.MustCompile(`CICORD_(TAG|REF): "([^"]*)"`).FindSubmatch(wf); m != nil && string(m[2]) != want {
+		label := "REF"
+		if isReleaseVersion(cicordVersion()) {
+			label = "TAG"
+		}
+		if string(m[1]) == label {
+			fmt.Fprintf(w, "Also set CICORD_%s to %q in .github/workflows/cicord-portal.yml (now %q).\n", label, want, m[2])
+		} else {
+			fmt.Fprintf(w, "Update the installation steps in .github/workflows/cicord-portal.yml to match this build (%s). New portals generate those steps with cicord portal init.\n", want)
+		}
 	}
 	if toNPM && bytes.Contains(wf, []byte("cicord portal vendor --check")) {
 		fmt.Fprintln(w, "Its `cicord portal vendor --check` step keeps working; rename it to `cicord portal upgrade --check`.")

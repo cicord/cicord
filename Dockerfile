@@ -36,6 +36,7 @@ RUN --mount=type=cache,id=cicord-pnpm-store,target=/pnpm-store \
 RUN pnpm -r --filter "./packages/*" build
 # Admin UI, default portal and portal kit (pnpm pack of @cicord/*, needs node) into the
 # Go embed dirs.
+ARG SOURCE_REF
 COPY scripts/sync-ui.sh ./scripts/
 COPY internal/webui ./internal/webui
 RUN ./scripts/sync-ui.sh \
@@ -51,18 +52,20 @@ RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod go mod download
 COPY . .
 COPY --from=ui /src/internal/webui ./internal/webui
 ARG TARGETOS TARGETARCH
-ARG VERSION=0.1.11
+ARG VERSION=0.2.0-rc.1
 ARG COMMIT=dev
+ARG SOURCE_REF
+ARG RELEASE_TAG
 RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod \
     --mount=type=cache,id=cicord-gobuild,target=/root/.cache/go-build \
     GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
-      -ldflags "-s -w -X github.com/cicord/cicord/internal/version.Version=${VERSION} -X github.com/cicord/cicord/internal/version.Commit=${COMMIT}" \
+      -ldflags "-s -w -X github.com/cicord/cicord/internal/version.Version=${VERSION} -X github.com/cicord/cicord/internal/version.Commit=${COMMIT} -X github.com/cicord/cicord/internal/version.ReleaseTag=${RELEASE_TAG} -X github.com/cicord/cicord/internal/version.SourceRef=${SOURCE_REF}" \
       -o /out/cicord ./cmd/cicord \
  && mkdir -p /out/data /out/repo && chmod 0700 /out/data /out/repo
 
 # ───────────────────────────────────────────────────────────── runtime
 FROM gcr.io/distroless/static-debian13:nonroot
-ARG VERSION=0.1.11
+ARG VERSION=0.2.0-rc.1
 ARG COMMIT=dev
 LABEL org.opencontainers.image.title="cicord" \
       org.opencontainers.image.version="${VERSION}" \

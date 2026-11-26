@@ -8,7 +8,7 @@ import (
 )
 
 // Version is the engine version, checked against cicord.yaml spec.engine and plugin manifests.
-var Version = "0.1.11"
+var Version = "0.2.0-rc.1"
 
 // Commit is the git commit the binary was built from.
 var Commit = "dev"

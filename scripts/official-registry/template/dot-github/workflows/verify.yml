@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-cicord
         with:
-          version: ${{ vars.CICORD_VERSION || 'main' }}
+          version: ${{ vars.CICORD_VERSION }}
           token: ${{ secrets.CICORD_SOURCE_TOKEN || github.token }}
       - name: Verify index.yaml.sig
         run: bash scripts/verify.sh

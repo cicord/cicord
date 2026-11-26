@@ -65,6 +65,14 @@ unreleased="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md 
 prev="$(sed -n 's|^\[Unreleased\]: https://github.com/cicord/cicord/compare/v\(.*\)\.\.\.HEAD$|\1|p' CHANGELOG.md)"
 [[ -n "$prev" ]] || { echo "release: no [Unreleased] compare link at the bottom of CHANGELOG.md" >&2; exit 1; }
 
+# Validate the previous pins before changing any files. During feature development
+# the basic example installs an immutable source commit with its matching engine stamp.
+example=examples/basic/.github/workflows/cicord.yml
+if ! tagged_workflow="$(awk -v old="$old" -v new="$new" -f scripts/release-example.awk "$example")"; then
+  echo "release: unexpected cicord install pins in $example" >&2
+  exit 1
+fi
+
 # Portable in-place edit (GNU and BSD sed differ on -i).
 edit() { local f="$1"; shift; sed "$@" "$f" >"$f.tmp" && mv "$f.tmp" "$f"; }
 
@@ -73,7 +81,7 @@ edit Makefile -e "s/^VERSION ?= $old$/VERSION ?= $new/"
 edit Dockerfile -e "s/^ARG VERSION=$old$/ARG VERSION=$new/"
 # The workflow of `cicord init` pins the release that generated it; the example ships the
 # same file (TestInitWorkflow compares them).
-edit examples/basic/.github/workflows/cicord.yml -e "s|cicord/cmd/cicord@v$old$|cicord/cmd/cicord@v$new|"
+printf '%s\n' "$tagged_workflow" >"$example"
 for p in sdk client react ui cli admin create-cicord-portal; do
   f="packages/$p/package.json"
   # Only the package's own version (the first "version" key), not a dependency's.

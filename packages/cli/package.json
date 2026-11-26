@@ -1,6 +1,6 @@
 {
   "name": "@cicord/cli",
-  "version": "0.1.11",
+  "version": "0.2.0-rc.1",
   "description": "The cicord command line tool and runtime, as an npm package: installs the release binary for your platform.",
   "keywords": [
     "cicord",

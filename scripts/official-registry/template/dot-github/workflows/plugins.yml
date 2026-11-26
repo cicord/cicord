@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-cicord
         with:
-          version: ${{ vars.CICORD_VERSION || 'main' }}
+          version: ${{ vars.CICORD_VERSION }}
           token: ${{ secrets.CICORD_SOURCE_TOKEN || github.token }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -63,7 +63,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-cicord
         with:
-          version: ${{ vars.CICORD_VERSION || 'main' }}
+          version: ${{ vars.CICORD_VERSION }}
           token: ${{ secrets.CICORD_SOURCE_TOKEN || github.token }}
       - name: Check index.yaml
         env:

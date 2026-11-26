@@ -18,7 +18,7 @@ func exampleDir(t *testing.T) string {
 }
 
 func TestLoadExample(t *testing.T) {
-	repo, ds := Load(exampleDir(t), LoadOptions{EngineVersion: "0.1.0"})
+	repo, ds := Load(exampleDir(t), LoadOptions{EngineVersion: "0.2.0-rc.1"})
 	if ds.HasErrors() {
 		t.Fatalf("unexpected errors:\n%v", ds.Err())
 	}
@@ -107,7 +107,7 @@ func edit(t *testing.T, file, old, new string) {
 }
 
 // A pre-release engine is checked by semver precedence (0.2.0-rc.1 sorts between 0.1.x and
-// 0.2.0): it satisfies the example's ">=0.1.0 <0.2.0" project range and the plugins'
+// 0.2.0): it satisfies the example's ">=0.2.0-0 <0.3.0" project range and the plugins'
 // ">=0.1.0", and not a range starting at the release it precedes.
 func TestEnginePrerelease(t *testing.T) {
 	engineErrors := func(dir, engine string) []string {
@@ -120,13 +120,13 @@ func TestEnginePrerelease(t *testing.T) {
 		}
 		return out
 	}
-	for _, v := range []string{"0.2.0-rc.1", "0.1.1-rc.2", "0.1.1+build.5"} {
+	for _, v := range []string{"0.2.0-rc.1", "0.2.0", "0.2.1+build.5"} {
 		if errs := engineErrors(exampleDir(t), v); len(errs) > 0 {
 			t.Errorf("engine %s: %v", v, errs)
 		}
 	}
 	dir := copyExample(t)
-	edit(t, filepath.Join(dir, "cicord.yaml"), `engine: ">=0.1.0 <0.2.0"`, `engine: ">=0.2.0 <0.3.0"`)
+	edit(t, filepath.Join(dir, "cicord.yaml"), `engine: ">=0.2.0-0 <0.3.0"`, `engine: ">=0.2.0 <0.3.0"`)
 	edit(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), `engine: ">=0.1.0"`, `engine: ">=0.2.0"`)
 	errs := strings.Join(engineErrors(dir, "0.2.0-rc.1"), "\n")
 	for _, want := range []string{"this repository requires Cicord >=0.2.0 <0.3.0, running 0.2.0-rc.1", "plugin requires Cicord >=0.2.0, running 0.2.0-rc.1"} {
@@ -159,7 +159,7 @@ func TestLoadErrors(t *testing.T) {
 		{"config ref", "bots/moderator/bot.yaml", "channel: general", "channel: nowhere", `unknown channel "nowhere"`, 0},
 		{"override ref", "bots/moderator/bot.yaml", "            message:", "            autoRole: ghost\n            message:", `[server my-community] unknown role "ghost"`, 0},
 		{"secret in token", "bots/moderator/bot.yaml", "secretRef: DISCORD_TOKEN_MODERATOR", "secretRef: my-token", "/spec/token/secretRef", 0},
-		{"engine", "cicord.yaml", `engine: ">=0.1.0 <0.2.0"`, `engine: ">=9.0.0"`, "requires Cicord", 0},
+		{"engine", "cicord.yaml", `engine: ">=0.2.0-0 <0.3.0"`, `engine: ">=9.0.0"`, "requires Cicord", 0},
 		{"plugin capability unknown", "plugins/welcome/plugin.yaml", "    - storage.kv", "    - storage.everything", "/spec/capabilities", 0},
 		{"wrong kind", "servers/my-community.yaml", "kind: Server", "kind: Guild", `expected kind "Server"`, 0},
 		{"role member not a snowflake", "servers/my-community.yaml", "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"12345\"]", "/spec/roles/admin/members/0", 0},
@@ -169,7 +169,7 @@ func TestLoadErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := copyExample(t)
 			edit(t, filepath.Join(dir, tc.file), tc.old, tc.new)
-			_, ds := Load(dir, LoadOptions{EngineVersion: "0.1.0"})
+			_, ds := Load(dir, LoadOptions{EngineVersion: "0.2.0-rc.1"})
 			if !ds.HasErrors() {
 				t.Fatalf("expected an error containing %q, got none", tc.want)
 			}
@@ -192,7 +192,7 @@ func TestLoadErrors(t *testing.T) {
 func TestRoleMembers(t *testing.T) {
 	dir := copyExample(t)
 	edit(t, filepath.Join(dir, "servers/my-community.yaml"), "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"123456789012345678\", \"98765432109876543\"]")
-	repo, ds := Load(dir, LoadOptions{EngineVersion: "0.1.0"})
+	repo, ds := Load(dir, LoadOptions{EngineVersion: "0.2.0-rc.1"})
 	if ds.HasErrors() {
 		t.Fatal(ds.Err())
 	}
@@ -251,7 +251,7 @@ func TestOnboardingEveryoneAccess(t *testing.T) {
 		edit(t, f, "    staff-chat:\n", extra)
 		edit(t, f, "  syncPolicy:", onboarding)
 		edit(t, f, "permissions: [ViewChannel, ReadMessageHistory, AddReactions, UseApplicationCommands]", everyone)
-		_, ds := Load(dir, LoadOptions{EngineVersion: "0.1.0"})
+		_, ds := Load(dir, LoadOptions{EngineVersion: "0.2.0-rc.1"})
 		var out []string
 		for _, d := range ds.Errors() {
 			out = append(out, d.String())

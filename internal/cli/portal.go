@@ -27,6 +27,7 @@ import (
 
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/typegen"
+	"github.com/cicord/cicord/internal/version"
 	"github.com/cicord/cicord/internal/webui"
 )
 
@@ -346,7 +347,15 @@ func portalInit(w io.Writer, dir string, force, vendor bool) error {
 			fmt.Fprintln(w, "  kept   .github/workflows/cicord-portal.yml (exists)")
 		} else {
 			var buf bytes.Buffer
-			if err := portalWorkflow.Execute(&buf, map[string]string{"Dir": rel, "Cicord": cicordInstallVersion()}); err != nil {
+			ref := cicordInstallVersion()
+			if !isReleaseVersion(v) {
+				if data, err := fs.ReadFile(kit, "source-ref"); err == nil {
+					if candidate := strings.TrimSpace(string(data)); version.ValidSourceRef(candidate) {
+						ref = candidate
+					}
+				}
+			}
+			if err := portalWorkflow.Execute(&buf, map[string]any{"Dir": rel, "Cicord": ref, "Version": v, "Source": !isReleaseVersion(v)}); err != nil {
 				return err
 			}
 			if err := os.MkdirAll(filepath.Dir(wf), 0o755); err != nil {
@@ -409,7 +418,32 @@ jobs:
         working-directory: [[.Dir]]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The cicord release whose @cicord/* packages the portal depends on: bump it with the
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 12
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: [[.Dir]]/pnpm-lock.yaml
+[[if .Source]]      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: stable
+          cache: false
+      - name: Build the pinned Cicord snapshot and its portal kit
+        working-directory: ${{ runner.temp }}
+        env:
+          CICORD_REF: "[[.Cicord]]"
+          CICORD_VERSION: "[[.Version]]"
+        run: |
+          set -euo pipefail
+          src="$(go mod download -json "github.com/cicord/cicord@$CICORD_REF" | jq -er .Dir)"
+          cp -R "$src" cicord-source
+          chmod -R u+w cicord-source
+          chmod u+x cicord-source/scripts/sync-ui.sh
+          make -C cicord-source all VERSION="$CICORD_VERSION" SOURCE_REF="$CICORD_REF"
+          echo "$PWD/cicord-source/bin" >> "$GITHUB_PATH"
+[[else]]      # The cicord release whose @cicord/* packages the portal depends on: bump it with the
       # runtime, after "cicord portal upgrade". "portal upgrade --check" compares the portal
       # with this binary: the exact npm version in package.json, or for a vendored portal the
       # tarballs of the portal kit that the release binary embeds (a "go install" build does
@@ -423,7 +457,6 @@ jobs:
         run: |
           set -euo pipefail
           tag="$CICORD_TAG"
-          if [ "$tag" = latest ]; then tag="$(gh release view --repo cicord/cicord --json tagName -q .tagName)"; fi
           case "$RUNNER_ARCH" in X64) arch=amd64 ;; ARM64) arch=arm64 ;; *) echo "::error::no cicord release for $RUNNER_ARCH"; exit 1 ;; esac
           archive="cicord_${tag#v}_linux_${arch}.tar.gz"
           gh release download "$tag" --repo cicord/cicord --pattern "$archive" --pattern checksums.txt --clobber
@@ -433,20 +466,12 @@ jobs:
           mkdir -p cicord-bin && tar -xzf "$archive" -C cicord-bin cicord
           echo "$PWD/cicord-bin" >> "$GITHUB_PATH"
           cicord-bin/cicord version
-      - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
+[[end]]      - name: The plugin route types match the plugins (src/cicord-routes.d.ts)
         working-directory: .
         run: cicord portal typegen --check --out [[.Dir]]/src/cicord-routes.d.ts
       - name: The @cicord/* packages are this cicord's version (package.json, vendor/)
         working-directory: .
         run: cicord portal upgrade --check [[.Dir]]
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        with:
-          version: 12
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
-          cache: pnpm
-          cache-dependency-path: [[.Dir]]/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm build
@@ -646,11 +671,11 @@ func hashTree(dir string) (string, error) {
 }
 
 // cicordInstallVersion is the cicord release the generated workflows install: the tag
-// of this binary, or latest for a development build.
+// of a published binary, or the immutable source ref of a snapshot.
 func cicordInstallVersion() string {
 	v := cicordVersion()
 	if !isReleaseVersion(v) {
-		return "latest"
+		return sourceRevision()
 	}
 	return "v" + v
 }

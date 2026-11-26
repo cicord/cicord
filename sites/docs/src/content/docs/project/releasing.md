@@ -19,6 +19,12 @@ with the site (`sites.yml`), not by a release: it installs the latest GitHub Rel
 `@cicord/admin` (the admin console, embedded in `cicord`) are not published. Versions are
 semver, `0.x` while the API is `v1alpha1`.
 
+The 0.2 feature checkout uses `0.2.0-rc.1` as its source compatibility version.
+Publishing a distribution still requires a release tag and the release workflows.
+The preparation script requires a strictly greater version, a clean tree and
+the `main` branch. After integrating a source baseline of `0.2.0-rc.1`, choose
+`0.2.0-rc.2` or a later version for release preparation.
+
 ## What the workflows do
 
 **`release.yml`** (tag `v*`; Actions → release → Run workflow is a dry run that publishes

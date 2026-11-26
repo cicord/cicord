@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -107,7 +108,7 @@ func TestInitWorkflow(t *testing.T) {
 	}
 	wf := readFile(t, filepath.Join(dir, ".github", "workflows", "cicord.yml"))
 	for _, want := range []string{
-		"go install github.com/cicord/cicord/cmd/cicord@" + cicordInstallVersion(), "cicord validate", "cicord plan --remote --comment",
+		"github.com/cicord/cicord/cmd/cicord@" + cicordInstallVersion(), "cicord validate", "cicord plan --remote --comment",
 		"cicord status --wait --revision ${{ github.sha }}", "CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}",
 		"CICORD_RUNTIME_TOKEN: ${{ secrets.CICORD_RUNTIME_TOKEN }}", "pull-requests: write", "contents: read",
 	} {
@@ -128,8 +129,12 @@ func TestInitWorkflow(t *testing.T) {
 		}
 	}
 	// the example repository ships the same workflow (scripts/release.sh bumps its version)
-	if ex := readFile(t, "../../examples/basic/.github/workflows/cicord.yml"); ex != wf {
-		t.Errorf("examples/basic workflow differs from the init template:\n%s", ex)
+	// The example is a known public snapshot or release. Generated workflows pin the
+	// generating binary's revision, which can be a subsequent commit.
+	example := readFile(t, "../../examples/basic/.github/workflows/cicord.yml")
+	installs := regexp.MustCompile(`(?m)^      - run: go install [^\n]*github\.com/cicord/cicord/cmd/cicord@(v[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[0-9]+)?|[a-f0-9]{40})$`)
+	if len(installs.FindAllString(example, -1)) != 3 || installs.ReplaceAllString(example, "      - run: install-cicord") != installs.ReplaceAllString(wf, "      - run: install-cicord") {
+		t.Errorf("example workflow and generated workflow disagree: %s", wf)
 	}
 	if code, _, errOut := run(t, "validate", dir); code != 0 {
 		t.Errorf("validate init repo: %s", errOut)

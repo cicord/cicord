@@ -33,10 +33,11 @@ has() { command -v "$1" >/dev/null 2>&1; }
 # fetch URL FILE: downloads URL into FILE (fails on HTTP errors).
 fetch() {
   if has curl; then
-    curl -fsSL --proto "$proto" --proto-redir "$proto" --retry 3 -o "$2" "$1"
+    curl -fsSL --proto "$proto" --proto-redir "$proto" --retry 3 -o "$2" "$1" || return 1
   else
-    wget -q -O "$2" "$1"
+    wget -q -O "$2" "$1" || return 1
   fi
+  [ -f "$2" ]
 }
 
 # latest_version BASE: the version of BASE/latest (the latest release, never a

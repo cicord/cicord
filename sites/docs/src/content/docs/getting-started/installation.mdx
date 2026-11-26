@@ -179,7 +179,7 @@ for running the runtime.
 2. Build everything:
 
    ```sh
-   make all VERSION=0.1.11
+   make all
    ```
 
    `make all` runs `make ui` (installs the JS workspace with `pnpm install --frozen-lockfile`,
@@ -194,6 +194,36 @@ for running the runtime.
    ```
 
 </Steps>
+
+### Test the 0.2 source snapshot
+
+The `feature/0.2.0` branch identifies its engine and workspace packages as
+`0.2.0-rc.1`. The public release installation commands above continue to install
+published distributions. To test the branch directly:
+
+```sh
+git clone --branch feature/0.2.0 https://github.com/cicord/cicord.git
+cd cicord
+make build
+bin/cicord version
+bin/cicord init ../community
+bin/cicord validate ../community
+```
+
+New projects accept `>=0.2.0-0 <0.3.0`. Use `make all` for the admin UI and the
+portal kit. A snapshot vendors its bundled packages during `cicord portal init`.
+The portal workflow rebuilds that kit from its pinned source commit. A binary from
+a release tag uses the matching npm package versions and verifies the release
+archive's checksum and attestation in portal CI.
+
+The repository workflow installs the engine by immutable Git commit or Go
+pseudo-version. A Go build normally embeds the checkout commit. For a build
+without VCS metadata, such as `go run`, the CLI ships a known published feature
+commit as its CI baseline. To build from an archive or container with a specific
+commit, pass `SOURCE_REF=<full SHA>` to Make or `--build-arg SOURCE_REF=<full SHA>`
+to Docker. Commits referenced by generated workflows must be accessible to their
+GitHub runners.
+
 
 :::note
 `make build` alone builds only the Go binary. It embeds whatever UI build is already in
