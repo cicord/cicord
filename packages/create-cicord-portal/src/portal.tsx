@@ -11,12 +11,16 @@ import { Avatar, Button, Spinner, ThemeProvider } from "@cicord/ui";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { forgetServer, requestedServer, rememberServer, type PortalConfig } from "./config.ts";
 import { I18nProvider, pickLocale, useT } from "./i18n/index.tsx";
+import { entries, published, visible } from "./features/catalog.ts";
 import { Link, navigate, usePathname } from "./router.tsx";
 
 // ───────────────────────────────────────────────────────────── contexts
 
 const ConfigContext = createContext<PortalConfig | null>(null);
 const ServerContext = createContext<PortalServer | null>(null);
+
+export const PortalLinkStatus =
+  createContext<ReturnType<typeof useLinkTokenLogin>["status"]>("none");
 
 export const ConfigProvider = ConfigContext.Provider;
 
@@ -289,6 +293,15 @@ export function Shell({ children }: { children: ReactNode }) {
             <NavLink to="/appeals/staff">{t.appeals.review}</NavLink>
           ) : null}
           {pages.ticketsInNav ? <NavLink to="/tickets">{t.nav.tickets}</NavLink> : null}
+          {entries.some(
+            ([, f]) =>
+              visible(f, !!role && !!user, atLeast(role, "moderator") && !!user) &&
+              server.plugins.some((p) => published(f, p)),
+          ) ? (
+            <NavLink to="/community">
+              {t.locale.startsWith("fr") ? "Outils communautaires" : "Community tools"}
+            </NavLink>
+          ) : null}
           {showDevelopers ? <NavLink to="/developers">{t.nav.developers}</NavLink> : null}
         </nav>
         <div className="portal-header__end">
@@ -316,7 +329,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main id="main" className="portal-main">
-        {children}
+        <PortalLinkStatus.Provider value={linkLogin.status}>{children}</PortalLinkStatus.Provider>
       </main>
       <footer className="portal-footer">
         <span>

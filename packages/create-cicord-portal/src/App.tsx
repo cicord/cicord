@@ -1,5 +1,6 @@
 import { CicordProvider } from "@cicord/react";
 import { useState } from "react";
+import { FeaturePage } from "./features/FeaturePage.tsx";
 import type { PortalConfig } from "./config.ts";
 import { Appeals } from "./pages/Appeals.tsx";
 import { Developers } from "./pages/Developers.tsx";
@@ -37,7 +38,7 @@ function Page() {
     case "/developers":
       return <Developers />;
     default:
-      return <NotFound />;
+      return <FeaturePage path={path} />;
   }
 }
 
