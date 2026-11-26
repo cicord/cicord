@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,7 +67,7 @@ func TestMemberErasureReplayAndRestore(t *testing.T) {
 		t.Helper()
 		for _, user := range []string{a, b} {
 			_, err := e.rt.Store().KV("private-replies:"+server).Get(ctx, "user:"+user+":private-command:pending")
-			if (user == a && err != state.ErrNotFound) || (user == b && err != nil) {
+			if (user == a && !errors.Is(err, state.ErrNotFound)) || (user == b && err != nil) {
 				t.Fatalf("private reply erasure %s: %v", user, err)
 			}
 		}

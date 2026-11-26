@@ -2370,8 +2370,10 @@ export interface InteractionResult {
   modal: Modal | undefined;
 }
 
-/** Result of `runCommand` (same shape as the other interaction helpers). */
-export type CommandResult = InteractionResult;
+/** A command that handed off its private reply exposes its queued task to the test. */
+export interface CommandResult extends InteractionResult {
+  runDeferredTask?: () => Promise<void>;
+}
 
 type Phase = "none" | "deferred" | "replied" | "updated" | "modal";
 
@@ -2533,12 +2535,45 @@ export async function runCommand(
   call: CommandCall,
 ): Promise<CommandResult> {
   const leaf = resolveCommand(plugin, path, "runCommand");
-  const result = emptyResult();
+  const result: CommandResult = emptyResult();
   const base = fakeInteraction(harness, "command", path, call, result);
   const { update: _update, ...rest } = base;
   const interaction = Object.defineProperties(
     {
       ...rest,
+      async deferTask(name: string, payload?: Json) {
+        const handle = plugin.tasks?.[name];
+        const channel = base.channel;
+        if (!handle || !base.member || !channel || result.runDeferredTask)
+          throw new Error("private command task unavailable");
+        if (!result.deferred) await base.defer({ ephemeral: true });
+        if (!result.deferred?.ephemeral) throw new Error("private deferral required");
+        const { id } = await harness.ctx.schedule.after(1000, name, payload);
+        const expiresAt = new Date(Date.now() + 14 * 60_000);
+        result.runDeferredTask = async () => {
+          if (!harness.scheduled.some((task) => task.id === id)) return;
+          await harness.ctx.schedule.cancel(id);
+          if (Date.now() >= expiresAt.getTime()) return;
+          await handle(harness.ctx, payload, {
+            id,
+            attempt: 1,
+            interaction: {
+              id: base.id,
+              userId: base.user.id,
+              channelId: channel.id,
+              expiresAt,
+              async reply(message) {
+                if (
+                  !harness.member(base.user.id)?.canView(channel) ||
+                  Date.now() >= expiresAt.getTime()
+                )
+                  throw new Error("private command task unavailable");
+                await base.reply(message);
+              },
+            },
+          });
+        };
+      },
       command: leaf.command,
       ...(leaf.group ? { group: leaf.group } : {}),
       ...(leaf.subcommand ? { subcommand: leaf.subcommand } : {}),

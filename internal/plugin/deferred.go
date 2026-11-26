@@ -97,6 +97,16 @@ func opDeferTask(i *Instance, inv *invocation, raw json.RawMessage) (func(contex
 	}, nil
 }
 
+func (i *Instance) readDeferredReceipt(id string, encrypted json.RawMessage) (deferredReceipt, bool) {
+	var r deferredReceipt
+	data, err := i.env.DeferredSecrets.OpenEphemeral(i.deferredBinding(id), encrypted)
+	if err != nil {
+		return r, false
+	}
+	valid := json.Unmarshal(data, &r) == nil
+	return r, valid
+}
+
 func (i *Instance) runDeferred(ctx context.Context, name string, payload json.RawMessage, d TaskDelivery) error {
 	kv, ok := i.env.DeferredRecords.(state.AdvancedKV)
 	if !ok || i.env.DeferredSecrets == nil {
@@ -107,7 +117,7 @@ func (i *Instance) runDeferred(ctx context.Context, name string, payload json.Ra
 		Payload json.RawMessage `json:"payload"`
 	}
 	if json.Unmarshal(payload, &p) != nil || p.UserID == "" {
-		return nil
+		return errPrivateTask
 	}
 	key := deferredRecord(p.UserID, d.ID)
 	entries, err := kv.Entries(ctx, []string{key})
@@ -117,12 +127,12 @@ func (i *Instance) runDeferred(ctx context.Context, name string, payload json.Ra
 	if len(entries) != 1 || entries[0] == nil {
 		return nil
 	}
-	data, err := i.env.DeferredSecrets.OpenEphemeral(i.deferredBinding(d.ID), entries[0].Value)
-	if err != nil {
+	r, readable := i.readDeferredReceipt(d.ID, entries[0].Value)
+	if !readable {
+		// A different revision or encryption key cannot resume this private interaction.
 		return nil
 	}
-	var r deferredReceipt
-	if json.Unmarshal(data, &r) != nil || r.UserID != p.UserID || r.Source != i.env.DeferredSource || r.Name != name || !time.Now().Before(r.ExpiresAt) {
+	if r.UserID != p.UserID || r.Source != i.env.DeferredSource || r.Name != name || !time.Now().Before(r.ExpiresAt) {
 		_ = kv.Delete(ctx, key)
 		return nil
 	}
@@ -149,7 +159,7 @@ func (i *Instance) runDeferred(ctx context.Context, name string, payload json.Ra
 		return err
 	}
 	r.Started = true
-	data, _ = json.Marshal(r)
+	data, _ := json.Marshal(r)
 	sealed, err := i.env.DeferredSecrets.SealEphemeral(i.deferredBinding(d.ID), data)
 	if err != nil {
 		return errPrivateTask

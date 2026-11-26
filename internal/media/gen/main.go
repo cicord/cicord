@@ -16,7 +16,7 @@ func main() {
 	if err := cmd.Run(); err != nil {
 		os.Exit(1)
 	}
-	if err := os.Chmod("renderer.wasm", 0o644); err != nil {
+	if err := os.Chmod("renderer.wasm", 0o600); err != nil {
 		log.Fatal(err)
 	}
 }
