@@ -451,10 +451,11 @@ func TestShowcaseTickets(t *testing.T) {
 	if _, err := s.store.Resources().GetByID(context.Background(), showcaseServer, ticket.ID); err == nil {
 		t.Error("ownership record kept after deleteChannel")
 	}
-	resp, _ := s.route("tickets", "GET", "/tickets", &sam, map[string]string{"status": "closed"})
-	if !strings.Contains(string(resp.Body), `"status":"closed"`) {
-		t.Errorf("closed tickets = %s", resp.Body)
-	}
+	// The close is committed by a durable task after the summary: wait for the record.
+	s.waitFor("closed ticket listed", func() bool {
+		resp, _ := s.route("tickets", "GET", "/tickets", &sam, map[string]string{"status": "closed"})
+		return strings.Contains(string(resp.Body), `"status":"closed"`)
+	})
 }
 
 // ───────────────────────────────────────────────────────────── SDK edge cases (probe)

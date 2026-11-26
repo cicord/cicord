@@ -107,8 +107,8 @@ func edit(t *testing.T, file, old, new string) {
 }
 
 // A pre-release engine is checked by semver precedence (0.2.0-rc.1 sorts between 0.1.x and
-// 0.2.0): it satisfies the example's ">=0.2.0-0 <0.3.0" project range, and not a range
-// starting at the release it precedes, like the bundled plugins' ">=0.2.0".
+// 0.2.0): ranges starting at a release (the example's ">=0.2.0 <0.3.0", the bundled plugins'
+// ">=0.2.0") refuse it, and a pre-release range (">=0.2.0-0") admits it.
 func TestEnginePrerelease(t *testing.T) {
 	engineErrors := func(dir, engine string) []string {
 		_, ds := Load(dir, LoadOptions{EngineVersion: engine})
@@ -125,18 +125,19 @@ func TestEnginePrerelease(t *testing.T) {
 			t.Errorf("engine %s: %v", v, errs)
 		}
 	}
-	// The project range admits the pre-release; the plugins' ">=0.2.0" does not.
+	// A released example's ">=0.2.0 <0.3.0" refuses the pre-release, like the plugins' ">=0.2.0".
 	errs := strings.Join(engineErrors(exampleDir(t), "0.2.0-rc.1"), "\n")
-	if strings.Contains(errs, "this repository requires") || !strings.Contains(errs, "plugin requires Cicord >=0.2.0, running 0.2.0-rc.1") {
-		t.Errorf("engine 0.2.0-rc.1 on the example:\n%s", errs)
-	}
-	dir := copyExample(t)
-	edit(t, filepath.Join(dir, "cicord.yaml"), `engine: ">=0.2.0-0 <0.3.0"`, `engine: ">=0.2.0 <0.3.0"`)
-	errs = strings.Join(engineErrors(dir, "0.2.0-rc.1"), "\n")
 	for _, want := range []string{"this repository requires Cicord >=0.2.0 <0.3.0, running 0.2.0-rc.1", "plugin requires Cicord >=0.2.0, running 0.2.0-rc.1"} {
 		if !strings.Contains(errs, want) {
 			t.Errorf("no %q in:\n%s", want, errs)
 		}
+	}
+	// A pre-release project range (">=0.2.0-0") admits it; the plugins still do not.
+	dir := copyExample(t)
+	edit(t, filepath.Join(dir, "cicord.yaml"), `engine: ">=0.2.0 <0.3.0"`, `engine: ">=0.2.0-0 <0.3.0"`)
+	errs = strings.Join(engineErrors(dir, "0.2.0-rc.1"), "\n")
+	if strings.Contains(errs, "this repository requires") || !strings.Contains(errs, "plugin requires Cicord >=0.2.0, running 0.2.0-rc.1") {
+		t.Errorf("engine 0.2.0-rc.1 with a pre-release range:\n%s", errs)
 	}
 	if errs := engineErrors(dir, "0.2.0"); len(errs) > 0 {
 		t.Errorf("engine 0.2.0: %v", errs)
@@ -163,7 +164,7 @@ func TestLoadErrors(t *testing.T) {
 		{"config ref", "bots/moderator/bot.yaml", "channel: general", "channel: nowhere", `unknown channel "nowhere"`, 0},
 		{"override ref", "bots/moderator/bot.yaml", "            message:", "            autoRole: ghost\n            message:", `[server my-community] unknown role "ghost"`, 0},
 		{"secret in token", "bots/moderator/bot.yaml", "secretRef: DISCORD_TOKEN_MODERATOR", "secretRef: my-token", "/spec/token/secretRef", 0},
-		{"engine", "cicord.yaml", `engine: ">=0.2.0-0 <0.3.0"`, `engine: ">=9.0.0"`, "requires Cicord", 0},
+		{"engine", "cicord.yaml", `engine: ">=0.2.0 <0.3.0"`, `engine: ">=9.0.0"`, "requires Cicord", 0},
 		{"plugin capability unknown", "plugins/welcome/plugin.yaml", "    - storage.kv", "    - storage.everything", "/spec/capabilities", 0},
 		{"wrong kind", "servers/my-community.yaml", "kind: Server", "kind: Guild", `expected kind "Server"`, 0},
 		{"role member not a snowflake", "servers/my-community.yaml", "permissions: [Administrator]", "permissions: [Administrator]\n      members: [\"12345\"]", "/spec/roles/admin/members/0", 0},

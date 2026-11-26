@@ -154,7 +154,11 @@ func TestShowcaseAuditLog(t *testing.T) {
 
 	// Before the batch flush, only the urgent entry: audit-log 0.2 posts a confirmed audit
 	// fact (the owner's deletion, from the server audit log) at once. The rest follows in
-	// one compact batch message.
+	// one compact batch message. The fact goes through the audit attribution workers, so
+	// wait for it rather than for the world to be idle.
+	s.waitMessage("urgent audit fact", auditCh.ID, func(m discord.Message) bool {
+		return strings.Contains(textOf(m), "Confirmed audit entry")
+	})
 	if ms := w.Messages(auditCh.ID); len(ms) != 1 || !strings.Contains(textOf(ms[0]), "Confirmed audit entry: owner (<@"+s.owner.ID+">) deleted one message by <@"+alice.ID+">") {
 		for _, m := range ms {
 			t.Logf("posted: %q", textOf(m))
