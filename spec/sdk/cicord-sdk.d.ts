@@ -497,6 +497,9 @@ export interface Server {
   incident(actions: {invitesDisabledUntil?:Date; dmsDisabledUntil?:Date}): Promise<void>;
   /** Request a full sync of the active YAML revision. @capability server.sync */
   requestSync(reason: string): Promise<void>;
+  /** Read current Discord policies. confined checks every possible role combination against
+   * the supplied role/member ceiling. Viewer access also checks current membership and age gates. */
+  verifyReaders(channel: ChannelRef|Channel, readers:{roles:readonly Snowflake[];members:readonly Snowflake[];viewer?:Snowflake;withoutMember?:Snowflake;destination?:ChannelRef|Channel}):Promise<{known:boolean;confined:boolean;fingerprint:string;viewerCanRead:boolean;withoutMemberFingerprint?:string;destination:AudienceRelation}>;
   /** Remove a DM previously sent as retractable by this instance. @capability discord.dm.send */
   retractDM(messageId:Snowflake): Promise<void>;
   scheduledEvents():Promise<readonly ScheduledEvent[]>;

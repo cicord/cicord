@@ -1,9 +1,12 @@
 package plugin
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"maps"
 	"slices"
 	"time"
 
@@ -184,4 +187,111 @@ func audienceFingerprint(owner string, p *discord.Audience) string {
 	raw, _ := json.Marshal([]any{p.Server, p.Channel, owner, p.NSFW, roles, p.Everyone.Allow & contentRead, p.Everyone.Deny & contentRead, readOverwrites(p.RoleOverrides), readOverwrites(p.MemberOverrides)})
 	digest := sha256.Sum256(raw)
 	return hex.EncodeToString(digest[:])
+}
+
+type readVerification struct {
+	Known                    bool   `json:"known"`
+	Confined                 bool   `json:"confined"`
+	Fingerprint              string `json:"fingerprint"`
+	WithoutMemberFingerprint string `json:"withoutMemberFingerprint,omitempty"`
+	ViewerCanRead            bool   `json:"viewerCanRead"`
+	Destination              string `json:"destination"`
+}
+
+func opVerifyReaders(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capChannelsRead); err != nil {
+		return nil, err
+	}
+	a, err := decode[struct {
+		Channel               ref
+		Roles, Members        []string
+		Viewer, WithoutMember string
+		Destination           *ref
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	if len(a.Roles)+len(a.Members) > 100 {
+		return nil, argErr("verifyReaders: too many principals")
+	}
+	if a.Viewer != "" {
+		if err := i.require(capMembersRead); err != nil {
+			return nil, err
+		}
+	}
+	if a.Viewer != "" {
+		if err := checkSnowflake("member", a.Viewer); err != nil {
+			return nil, err
+		}
+	}
+	return func(ctx context.Context) (any, error) {
+		out := readVerification{Destination: "unknown"}
+		roles, err := i.env.Discord.ListRoles(ctx, i.env.ServerID)
+		if err != nil {
+			return out, nil
+		}
+		server, err := i.env.Discord.GetServer(ctx, i.env.ServerID)
+		if err != nil || server.OwnerID == "" {
+			return out, nil
+		}
+		policy := func(r ref) *discord.Audience {
+			id, e := i.resolve(state.KindChannel, r)
+			if e != nil {
+				return nil
+			}
+			channel, e := i.env.Discord.GetChannel(ctx, id)
+			if e != nil || channel.ServerID != i.env.ServerID {
+				return nil
+			}
+			return discord.NewAudience(channel, roles)
+		}
+		source := policy(a.Channel)
+		if source == nil {
+			return out, nil
+		}
+		limit := discord.Channel{ID: "reader-ceiling", ServerID: i.env.ServerID, Type: discord.ChannelText, Overwrites: []discord.Overwrite{{Type: discord.OverwriteRole, ID: i.env.ServerID, Deny: contentRead}}}
+		for _, id := range a.Roles {
+			if err := checkSnowflake("role", id); err != nil || id == i.env.ServerID {
+				return out, nil
+			}
+			limit.Overwrites = append(limit.Overwrites, discord.Overwrite{ID: id, Type: discord.OverwriteRole, Allow: contentRead})
+		}
+		for _, id := range a.Members {
+			if err := checkSnowflake("member", id); err != nil {
+				return out, nil
+			}
+			limit.Overwrites = append(limit.Overwrites, discord.Overwrite{ID: id, Type: discord.OverwriteMember, Allow: contentRead})
+		}
+		ceiling := discord.NewAudience(limit, roles)
+		if ceiling == nil {
+			return out, nil
+		}
+		out.Known = true
+		out.Fingerprint = audienceFingerprint(server.OwnerID, source)
+		if a.WithoutMember != "" {
+			clean := *source
+			clean.MemberOverrides = maps.Clone(source.MemberOverrides)
+			delete(clean.MemberOverrides, a.WithoutMember)
+			out.WithoutMemberFingerprint = audienceFingerprint(server.OwnerID, &clean)
+		}
+		relation := discord.CompareAudience(ceiling, source)
+		out.Confined = relation == "same" || relation == "narrower"
+		if a.Destination != nil {
+			out.Destination = discord.CompareAudience(source, policy(*a.Destination))
+		}
+		if a.Viewer != "" && !source.NSFW {
+			if _, known := inv.audienceMembers.Load(a.Viewer); !known {
+				return out, nil
+			}
+			member, e := i.env.Discord.GetMember(ctx, i.env.ServerID, a.Viewer)
+			if e != nil && !errors.Is(e, discord.ErrNotFound) {
+				return out, nil
+			}
+			if e == nil && member.User.ID == a.Viewer {
+				perms, known := source.Permissions(a.Viewer, member.RoleIDs, server.OwnerID, member.TimeoutUntil != nil && member.TimeoutUntil.After(time.Now()))
+				out.ViewerCanRead = known && perms.Has(contentRead)
+			}
+		}
+		return out, nil
+	}, nil
 }

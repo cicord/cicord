@@ -1315,13 +1315,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   function reads(bits: Set<Permission>) {
     return bits.has("ViewChannel") && bits.has("ReadMessageHistory");
   }
-  function audienceOf(channel: TextChannel | undefined): Audience {
+  function audienceOf(channel: TextChannel | undefined, withoutMember?:string): Audience {
     const out = {
       known: !!channel,
       ...(channel?{fingerprint:createHash("sha256").update(JSON.stringify({
         channel:channel.id,ownerId,nsfw:channelPolicy.get(channel.id)?.nsfw,
         permissions:options.server?.everyonePermissions,roles:[...rolePermissions],
-        overwrites:[...(channelOverwrites.get(channel.id)??[])].map(([id,o])=>[id,[...o.allow].filter(p=>p==="ViewChannel" || p==="ReadMessageHistory").sort(),[...o.deny].filter(p=>p==="ViewChannel" || p==="ReadMessageHistory").sort()]),
+        overwrites:[...(channelOverwrites.get(channel.id)??[])].filter(([id])=>!withoutMember || id!=="member:"+withoutMember).map(([id,o])=>[id,[...o.allow].filter(p=>p==="ViewChannel" || p==="ReadMessageHistory").sort(),[...o.deny].filter(p=>p==="ViewChannel" || p==="ReadMessageHistory").sort()]),
       })).digest("hex")} : {}),
       public: false,
       allowRoles: [] as string[],
@@ -1514,6 +1514,25 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     audience(ref) {
       need("discord.channels.read");
       return audienceOf(policyChannel(ref));
+    },
+    async verifyReaders(ref,readers) {
+      need("discord.channels.read");
+      const source=policyChannel(ref);
+      const ceilingId=":reader-ceiling";
+      const ceiling=source && {...source,id:ceilingId};
+      const overwrites=new Map<string,TestOverwrite>();
+      overwrites.set("@everyone",{allow:[],deny:["ViewChannel","ReadMessageHistory"]});
+      for(const id of readers.roles)overwrites.set("role:"+id,{allow:["ViewChannel","ReadMessageHistory"],deny:[]});
+      for(const id of readers.members)overwrites.set("member:"+id,{allow:["ViewChannel","ReadMessageHistory"],deny:[]});
+      channelOverwrites.set(ceilingId,overwrites);
+      try{
+        const rel=comparePolicies(ceiling,source);
+        const audience=audienceOf(source);
+        if(readers.viewer)need("discord.members.read");
+        return {known:audience.known,withoutMemberFingerprint:readers.withoutMember?audienceOf(source,readers.withoutMember).fingerprint:undefined,confined:rel==="same" || rel==="narrower",fingerprint:audience.fingerprint??"",
+          viewerCanRead:!!source && !channelPolicy.get(source.id)?.nsfw && !!readers.viewer && !!members.get(readers.viewer)?.canView(source),
+          destination:readers.destination?comparePolicies(source,policyChannel(readers.destination)):"unknown"};
+      }finally {channelOverwrites.delete(ceilingId);}
     },
     compareAudience(source, destination) {
       need("discord.channels.read");

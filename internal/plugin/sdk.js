@@ -533,6 +533,10 @@
       async members(options = {}) { return freeze((await acall("server.members",options)).map(mkMember)); },
       audience(channel) { return freeze(hcall("server.audience",{ref:refIn(channel)})); },
       compareAudience(source,destination) { return hcall("server.compareAudience",{source:refIn(source),destination:refIn(destination)}); },
+      async verifyReaders(channel,options){
+        const o=options||{};
+        return freeze(await acall("server.verifyReaders",{channel:refIn(channel),roles:o.roles,members:o.members,viewer:o.viewer,withoutMember:o.withoutMember,destination:o.destination?refIn(o.destination):undefined}));
+      },
       async retractDM(messageId){await acall("dm.retract",{messageId});},
       async ban(userId, options = {}) {
         await acall("member.ban", {userId: String(userId), reason: options.reason, deleteMessagesSeconds: options.deleteMessagesSeconds});
