@@ -112,6 +112,7 @@ type botState struct {
 }
 
 type serverState struct {
+	incident    discord.IncidentActions
 	audit       []discord.AuditLogEntryEvent
 	info        discord.Server
 	roles       map[string]*discord.Role

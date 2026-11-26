@@ -217,6 +217,19 @@ export function PlanPage({ serverKey }: { serverKey: string }) {
   const { t } = useTranslation();
   const ws = useWorkspace();
   const plan = usePlan(serverKey, ws.isAdmin);
+  const { client } = useCicord();
+  const [removing, setRemoving] = useState("");
+  const remove = async (origin: string, id: string) => {
+    setRemoving(origin + "/" + id);
+    try {
+      await client.admin.removeOverlay(serverKey, origin, id);
+      await plan.refetch();
+    } catch (e) {
+      toastError(e, t("overlay.failed"));
+    } finally {
+      setRemoving("");
+    }
+  };
   return (
     <Page>
       <PageHeader
@@ -265,7 +278,46 @@ export function PlanPage({ serverKey }: { serverKey: string }) {
           title={t("plan.loadFailed")}
         />
       ) : (
-        <PlanView plan={plan.data} />
+        <>
+          {plan.data.overlays?.length ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("overlay.title")}</CardTitle>
+              </CardHeader>
+              <ul className="divide-y">
+                {plan.data.overlays.map((o) => (
+                  <li
+                    key={o.origin + "/" + o.id}
+                    className="flex flex-wrap items-center justify-between gap-3 p-4"
+                  >
+                    <div>
+                      <strong>{o.reason}</strong>
+                      <p>
+                        {o.origin} / {o.id}
+                      </p>
+                      <p>
+                        {[
+                          ...Object.keys(o.channels ?? {}),
+                          ...Object.keys(o.members ?? {}),
+                          ...(o.server ? [o.server.verificationLevel] : []),
+                        ].join(", ")}
+                      </p>
+                      <time dateTime={o.until}>{new Date(o.until).toLocaleString()}</time>
+                    </div>
+                    <Button
+                      variant="outline"
+                      disabled={!!removing}
+                      onClick={() => void remove(o.origin, o.id)}
+                    >
+                      {t("overlay.lift")}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+          <PlanView plan={plan.data} />
+        </>
       )}
     </Page>
   );

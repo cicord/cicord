@@ -400,3 +400,27 @@ func (c *Client) UpdateGuildProfile(ctx context.Context, serverID string, p disc
 	w.emit(discord.MemberUpdateEvent{Member: cloneMember(*mem), Previous: &previous})
 	return w.record(a, "UpdateGuildProfile", serverID, a.userID, "", nil)
 }
+
+func (c *Client) SetIncident(ctx context.Context, server string, a discord.IncidentActions) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	w := c.w
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s, err := w.server(server)
+	if err != nil {
+		return err
+	}
+	if err = w.requireServer(c.actorFor(ctx), s, discord.MustPermissions("ManageServer")); err != nil {
+		return err
+	}
+	if a.InvitesDisabledUntil != nil {
+		s.incident.InvitesDisabledUntil = a.InvitesDisabledUntil
+	}
+	if a.DMsDisabledUntil != nil {
+		s.incident.DMsDisabledUntil = a.DMsDisabledUntil
+	}
+	w.changed()
+	return nil
+}

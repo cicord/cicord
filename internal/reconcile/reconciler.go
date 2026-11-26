@@ -20,6 +20,7 @@ import (
 
 // Options configures a Reconciler for one server.
 type Options struct {
+	Overlays   func(context.Context) (OverlayState, error)
 	Operations *discord.OperationScope
 	// Server is the desired state (required). Its File is used to resolve the icon.
 	Server *config.Server
@@ -65,8 +66,9 @@ var ErrPaused = errors.New("enforcement is paused on this server: nothing is app
 // Reconciler plans and applies one server. Its methods are safe for concurrent use;
 // Plan, Apply, Sync and Drift are serialized.
 type Reconciler struct {
-	opts Options
-	log  *slog.Logger
+	suspended map[string]bool // protected by emu
+	opts      Options
+	log       *slog.Logger
 
 	mu      sync.Mutex // serializes plan/apply
 	desired *config.Server
@@ -155,7 +157,28 @@ func (r *Reconciler) plan(ctx context.Context) (Plan, error) {
 }
 
 func (r *Reconciler) planLive(ctx context.Context) (Plan, error) {
-	sp := &r.desired.Spec
+	return r.planLiveTargets(ctx, nil)
+}
+
+func (r *Reconciler) planLiveTargets(ctx context.Context, targets OverlayTargets) (Plan, error) {
+	desired := r.desired
+	var suspended map[string]bool
+	var notes []Note
+	var active []Overlay
+	if r.opts.Overlays != nil {
+		overlays, err := r.opts.Overlays(ctx)
+		if err != nil {
+			return Plan{}, err
+		}
+		now := time.Now()
+		desired, suspended, notes = overlays.effective(desired, now)
+		for _, o := range overlays.Active {
+			if o.Until.After(now) {
+				active = append(active, o)
+			}
+		}
+	}
+	sp := &desired.Spec
 	mapped, err := r.opts.Resources.List(ctx, r.serverKey())
 	if err != nil {
 		return Plan{}, fmt.Errorf("list resource map: %w", err)
@@ -164,7 +187,7 @@ func (r *Reconciler) planLive(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	in := planInput{Desired: r.desired, Live: snap, Mapped: mapped, BotTop: snap.BotTopPosition(), BotUserID: r.opts.BotUserID,
+	in := planInput{Desired: desired, Suspended: suspended, OverlayTargets: targets, Live: snap, Mapped: mapped, BotTop: snap.BotTopPosition(), BotUserID: r.opts.BotUserID,
 		Files: map[string][]byte{}, FileState: map[string]iconState{}}
 	dir := filepath.Join(r.opts.RepoRoot, filepath.Dir(filepath.FromSlash(r.desired.File)))
 	for name, rel := range parityFiles(sp) {
@@ -188,8 +211,11 @@ func (r *Reconciler) planLive(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	p.Notes = append(p.Notes, notes...)
+	p.Overlays = active
 	r.refreshManaged(mapped)
 	r.emu.Lock()
+	r.suspended = suspended
 	r.drifted = !p.Empty() || slices.ContainsFunc(p.Blocked, func(b Blocked) bool { return !waitsForBoost(b) })
 	r.lastDrift, r.lastDriftAt, r.driftValid = DriftOf(p), time.Now(), true
 	r.boostWaits = slices.ContainsFunc(p.Blocked, waitsForBoost)

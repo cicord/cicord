@@ -134,6 +134,20 @@ func (s *session) UpdateServer(ctx context.Context, serverID string, p discord.S
 	return serverFromWire(g), nil
 }
 
+func (s *session) SetIncident(ctx context.Context, serverID string, a discord.IncidentActions) error {
+	if err := checkIDs("SetIncident", serverID); err != nil {
+		return err
+	}
+	body := map[string]any{}
+	if a.InvitesDisabledUntil != nil {
+		body["invites_disabled_until"] = a.InvitesDisabledUntil.UTC()
+	}
+	if a.DMsDisabledUntil != nil {
+		body["dms_disabled_until"] = a.DMsDisabledUntil.UTC()
+	}
+	return s.do(ctx, "SetIncident", rest.UpdateGuildIncidentActions.Compile(nil, serverID), body, nil)
+}
+
 // ───────────────────────────────────────────────────────────── roles
 
 func (s *session) ListRoles(ctx context.Context, serverID string) ([]discord.Role, error) {

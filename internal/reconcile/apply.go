@@ -218,6 +218,9 @@ func (a *applier) run(ctx context.Context, c Change) error {
 		if !ok {
 			return fmt.Errorf("unresolved role %q", o.member.roleKey)
 		}
+		if o.member.remove {
+			return c0.RemoveMemberRole(ctx, a.serverID, o.member.userID, roleID, a.reason())
+		}
 		return c0.AddMemberRole(ctx, a.serverID, o.member.userID, roleID, a.reason())
 
 	case c.Kind == KindWidget, c.Kind == KindWelcomeScreen, c.Kind == KindOnboarding, c.Kind == KindAutoMod,

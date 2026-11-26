@@ -128,6 +128,11 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 		}
 	}
 	for _, task := range tasks {
+		if task.Scope == overlayTaskScope {
+			s.slots <- struct{}{}
+			go s.r.deliverOverlay(ctx, task)
+			continue
+		}
 		inst := byScope[task.Scope]
 		if inst == nil || !inst.plugin.def.HasTask(task.Name) {
 			retry := now.Add(time.Minute)

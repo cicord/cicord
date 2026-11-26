@@ -21,12 +21,18 @@ import (
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/locales"
 	"github.com/cicord/cicord/internal/plugin/qjs"
+	"github.com/cicord/cicord/internal/reconcile"
 	"github.com/cicord/cicord/internal/state"
 )
 
 // Env is everything an instance may touch. It is provided by the bot host.
 type Env struct {
 	Locales         locales.Catalog
+	OverlayApply    func(context.Context, reconcile.Overlay) error
+	OverlayRemove   func(context.Context, string) error
+	OverlayList     func(context.Context) ([]reconcile.Overlay, error)
+	RequestSync     func(context.Context, string) error
+	Incident        func(context.Context, discord.IncidentActions) error
 	ManagedResource func(string) (bool, bool)
 	AttributeAudit  func(context.Context, discord.AuditLogEntryEvent) discord.AuditLogEntryEvent
 	Operations      *discord.OperationScope
@@ -67,6 +73,7 @@ type Env struct {
 	ServerModeration bool
 	ServerMembers    bool
 	// Membership of these role keys is declared in the active Git revision.
+	DeclaredRolesByUser map[string][]string
 	DeclaredMemberRoles []string
 	// ServerVoiceStates reports that the plugin declares the ServerVoiceStates intent in
 	// plugin.yaml, which server.voiceMembers() requires.

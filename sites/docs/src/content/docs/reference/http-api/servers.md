@@ -247,3 +247,28 @@ bytes as body (any `Content-Type`: the bytes decide).
 
 The banner needs boost level 2 and the splash level 1: uploading works at any level, and the
 plan blocks the setting (`boost_required`) until the server reaches it.
+
+### Incident overlays
+
+The server Plan page lists the installation, reason, expiration, and targets of every
+active overlay. An administrator can lift an individual overlay there or with
+`DELETE /api/v1/servers/{server}/overlays/{bot}/{instance}/{id}`. List them with
+`GET /api/v1/servers/{server}/overlays`. Each installation can manage only its own
+overlays through `ctx.server.overlays`.
+
+An overlay adds denies, removes existing allows (`neutral`), raises slowmode or
+verification, or suspends roles assigned to named holders in YAML. Wildcard channels
+use the active revision's managed channel list. Restriction composition preserves
+other installations' locks. Reusing an ID replaces its targets and expiry. The
+maximum lifetime is seven days. Check the runtime plan for targets removed from YAML.
+
+A durable task recomputes affected fields at expiry, including with self-healing
+disabled. While enforcement is paused the runtime persists changes and expirations.
+Resuming applies only pending overlay fields against the current revision. Other
+drift follows normal sync policy. A failed Discord update retains its pending
+targets and is retried. A local plan cannot see overlays. Use `cicord plan --remote`
+before reviewing incident-related structural changes.
+
+`server.incident` authorizes the bot to disable invites or DMs for up to 24 hours.
+The Discord bot needs Manage Server. `server.sync` allows an installation to request
+a full reconciliation with an audit reason. [Discord incident actions](https://docs.discord.com/developers/resources/guild#modify-guild-incident-actions)

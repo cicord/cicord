@@ -1,4 +1,9 @@
 {
+  "overlay": {
+    "title": "Active incident overlays",
+    "lift": "Lift overlay",
+    "failed": "Could not lift overlay"
+  },
   "app": {
     "admin": "admin",
     "mock": "Mock runtime"

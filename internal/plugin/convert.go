@@ -27,11 +27,13 @@ type userDTO struct {
 }
 
 type roleDTO struct {
-	ID      string `json:"id"`
-	Key     string `json:"key,omitempty"`
-	Name    string `json:"name"`
-	Color   string `json:"color,omitempty"`
-	Mention string `json:"mention"`
+	Managed         *bool  `json:"managed,omitempty"`
+	DeclaredMembers bool   `json:"declaredMembers"`
+	ID              string `json:"id"`
+	Key             string `json:"key,omitempty"`
+	Name            string `json:"name"`
+	Color           string `json:"color,omitempty"`
+	Mention         string `json:"mention"`
 	// Position and Mentionable are omitted when the role is not known (not cached).
 	Position    *int  `json:"position,omitempty"`
 	Mentionable *bool `json:"mentionable,omitempty"`
@@ -52,6 +54,7 @@ type memberDTO struct {
 	PremiumSince  string         `json:"premiumSince,omitempty"`
 	TimedOutUntil string         `json:"timedOutUntil,omitempty"`
 	AvatarURL     string         `json:"avatarUrl,omitempty"`
+	DeclaredRoles []string       `json:"declaredRoles"`
 	subject       discord.Member // host-only permission input, never serialized
 	User          userDTO        `json:"user"`
 	Nick          string         `json:"nick,omitempty"`
@@ -206,6 +209,8 @@ func (i *Instance) roleDTOFrom(r discord.Role) roleDTO {
 	dto := i.unknownRoleDTO(r)
 	pos, mentionable := r.Position, r.Mentionable
 	dto.Position, dto.Mentionable = &pos, &mentionable
+	dto.Managed = &r.Managed
+	dto.DeclaredMembers = slices.Contains(i.env.DeclaredMemberRoles, dto.Key)
 	return dto
 }
 
@@ -268,13 +273,14 @@ func (i *Instance) channelDTO(id string) channelDTO {
 func (i *Instance) memberDTO(m discord.Member) memberDTO {
 	dto := memberDTO{
 		subject: m, Pending: m.Pending, Flags: flagNames(uint64(m.Flags), memberFlagNames), PremiumSince: optionalTime(m.PremiumSince), TimedOutUntil: optionalTime(m.TimeoutUntil), AvatarURL: m.AvatarURL,
-		User:        i.userDTO(m.User),
-		Nick:        m.Nick,
-		DisplayName: m.DisplayName(),
-		Roles:       make([]roleDTO, 0, len(m.RoleIDs)),
-		JoinedAt:    jsTime(m.JoinedAt),
-		Permissions: i.memberPermissions(m).Names(),
-		Access:      i.memberAccess(m),
+		DeclaredRoles: i.env.DeclaredRolesByUser[m.User.ID],
+		User:          i.userDTO(m.User),
+		Nick:          m.Nick,
+		DisplayName:   m.DisplayName(),
+		Roles:         make([]roleDTO, 0, len(m.RoleIDs)),
+		JoinedAt:      jsTime(m.JoinedAt),
+		Permissions:   i.memberPermissions(m).Names(),
+		Access:        i.memberAccess(m),
 	}
 	for _, id := range m.RoleIDs {
 		dto.Roles = append(dto.Roles, i.roleDTO(id))

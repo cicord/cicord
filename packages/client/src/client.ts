@@ -701,6 +701,11 @@ export class CicordClient {
     /** `GET /servers/{server}/resources` (moderator) — roles, categories, channels for pickers. */
     resources: (server: string, options?: CallOptions): Promise<ServerResources> =>
       this.#api<ServerResources>("GET", `/servers/${seg(server)}/resources`, options),
+    removeOverlay: (server: string, origin: string, id: string): Promise<void> =>
+      this.#api(
+        "DELETE",
+        `/servers/${seg(server)}/overlays/${origin.split("/").map(seg).join("/")}/${seg(id)}`,
+      ),
     /** `GET /servers/{server}/plan` (admin). */
     plan: (server: string, options?: CallOptions): Promise<Plan> =>
       this.#api<Plan>("GET", `/servers/${seg(server)}/plan`, options),

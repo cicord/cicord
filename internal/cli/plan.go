@@ -212,6 +212,7 @@ func localPlan(ctx context.Context, dir string, lf *localFlags) (planfmt.Result,
 			errs = append(errs, fmt.Errorf("server %s: %w", sr.key, err))
 			p = reconcile.Plan{Server: sr.key, Blocked: []reconcile.Blocked{{Action: "sync", Kind: reconcile.KindServer, Key: sr.key, Reason: firstLineOf(err.Error())}}}
 		}
+		p.Notes = append(p.Notes, reconcile.Note{Kind: "overlay", Key: sr.key, Message: "Active overlays are unknown locally. Use cicord plan --remote to include runtime overlays."})
 		fp, err := planfmt.FromReconcile(p)
 		if err != nil {
 			return res, nil, err

@@ -164,15 +164,16 @@ type blockedDTO struct {
 }
 
 type planDTO struct {
-	Server  string             `json:"server"`
-	Changes []reconcile.Change `json:"changes"`
-	Blocked []blockedDTO       `json:"blocked"`
-	Notes   []reconcile.Note   `json:"notes,omitempty"`
+	Overlays []reconcile.Overlay `json:"overlays,omitempty"`
+	Server   string              `json:"server"`
+	Changes  []reconcile.Change  `json:"changes"`
+	Blocked  []blockedDTO        `json:"blocked"`
+	Notes    []reconcile.Note    `json:"notes,omitempty"`
 }
 
 func humanPlan(p reconcile.Plan) planDTO {
 	p = emptyPlan(p)
-	out := planDTO{Server: p.Server, Changes: p.Changes, Blocked: make([]blockedDTO, 0, len(p.Blocked)), Notes: p.Notes}
+	out := planDTO{Overlays: p.Overlays, Server: p.Server, Changes: p.Changes, Blocked: make([]blockedDTO, 0, len(p.Blocked)), Notes: p.Notes}
 	for _, b := range p.Blocked {
 		out.Blocked = append(out.Blocked, blockedDTO{Blocked: b, Error: reconcile.ExplainBlocked(b)})
 	}

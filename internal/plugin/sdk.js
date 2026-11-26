@@ -179,6 +179,7 @@
       id: d.id, key: d.key || undefined, name: d.name || "", color: d.color || undefined, mention: d.mention,
       // Unknown (role not cached): left undefined, never guessed.
       position: typeof d.position === "number" ? d.position : undefined,
+      managed:d.managed, declaredMembers:d.declaredMembers,
       mentionable: typeof d.mentionable === "boolean" ? d.mentionable : undefined,
     }));
   }
@@ -329,6 +330,7 @@
   function mkMember(d) {
     if (!d) return undefined;
     const m = Object.create(MemberProto);
+    m.declaredRoles=freeze((d.declaredRoles||[]).slice());
     m.user = mkUser(d.user);
     m.id = d.user.id;
     m.nickname = d.nick || undefined;
@@ -463,6 +465,13 @@
 
   function mkContext(d) {
     const server = freeze({
+      overlays: freeze({
+        async apply(overlay) { await acall("server.overlayApply",overlay); },
+        async remove(id) { await acall("server.overlayRemove",{id}); },
+        async list() { return freeze((await acall("server.overlays",{})).map(o=>deepFreeze({...o,until:new Date(o.until)}))); },
+      }),
+      async incident(actions) { await acall("server.incident",actions); },
+      async requestSync(reason) { await acall("server.requestSync",{reason}); },
       id: d.server.id,
       key: d.server.key,
       name: d.server.name,

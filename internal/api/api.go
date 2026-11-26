@@ -230,6 +230,8 @@ func (s *server) routes() {
 	h("GET /api/v1/servers/{server}", s.handleServer)
 	h("GET /api/v1/servers/{server}/resources", s.handleResources)
 	h("GET /api/v1/servers/{server}/plan", s.handlePlan)
+	h("GET /api/v1/servers/{server}/overlays", s.handleOverlays)
+	h("DELETE /api/v1/servers/{server}/overlays/{bot}/{instance}/{id}", s.handleRemoveOverlay)
 	h("POST /api/v1/servers/{server}/sync", s.handleServerSync)
 	h("GET /api/v1/servers/{server}/pause", s.handlePauseGet)
 	h("POST /api/v1/servers/{server}/pause", s.handlePause)

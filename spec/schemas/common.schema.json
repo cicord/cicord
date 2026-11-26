@@ -99,6 +99,7 @@
         "discord.reactions.manage", "discord.members.read", "discord.members.manage",
         "discord.members.moderate", "discord.roles.assign", "discord.channels.read", "discord.auditlog.read", "discord.invites.read",
         "discord.channels.manage", "discord.threads.manage", "discord.voice.move", "discord.dm.send",
+        "server.overlays", "server.incident", "server.sync",
         "storage.kv", "storage.index", "files.read", "scheduler", "http.fetch", "portal.routes", "portal.links",
         "events.publish", "events.subscribe"
       ]

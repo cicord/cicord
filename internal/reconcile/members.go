@@ -51,12 +51,16 @@ func (p *planner) planRoleMembers() {
 					Message: fmt.Sprintf("roles.%s.members: user %s is not in the server; they get the role %q once they join", key, userID, spec.Name)})
 				continue
 			}
-			if how != "create" && m.HasRole(role.ID) {
+			if (how != "create" && m.HasRole(role.ID)) != p.in.Suspended[userID] {
 				continue
 			}
 			ck := memberRoleKey(key, userID)
 			summary := fmt.Sprintf("give role %q to %s", spec.Name, memberLabel(m, userID))
 			fields := map[string]FieldChange{"assigned": {From: false, To: true}}
+			if p.in.Suspended[userID] {
+				summary = fmt.Sprintf("suspend role %q for %s", spec.Name, memberLabel(m, userID))
+				fields["assigned"] = FieldChange{From: true, To: false}
+			}
 			switch {
 			case how != "create" && role.Managed:
 				p.blocked = append(p.blocked, Blocked{Action: ActionUpdate, Kind: KindMemberRole, Key: ck, ID: userID,
@@ -71,7 +75,7 @@ func (p *planner) planRoleMembers() {
 				Action: ActionUpdate, Kind: KindMemberRole, Key: ck, ID: userID,
 				Summary: summary,
 				Fields:  fields,
-				op:      &op{phase: phaseRoleMembers, member: &memberWant{roleKey: key, userID: userID}},
+				op:      &op{phase: phaseRoleMembers, member: &memberWant{roleKey: key, userID: userID, remove: p.in.Suspended[userID]}},
 			})
 		}
 	}
@@ -99,7 +103,7 @@ func (r *Reconciler) memberDrift(m discord.Member, joined bool) bool {
 		return len(keys) > 0
 	}
 	for _, key := range keys {
-		if id, ok := r.roleIDs[key]; ok && !m.HasRole(id) {
+		if id, ok := r.roleIDs[key]; ok && m.HasRole(id) == r.suspended[m.User.ID] {
 			return true
 		}
 	}

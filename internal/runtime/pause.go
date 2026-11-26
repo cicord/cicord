@@ -167,7 +167,7 @@ func (r *Runtime) Pause(ctx context.Context, server string, p PauseInfo) (PauseI
 }
 
 // Resume ends the pause of a server and returns it (false when the server was not
-// paused). Nothing is applied by Resume itself: the next revision, Sync now, periodic
+// paused). Resume flushes pending overlay fields. Other changes wait for the next revision, Sync now, periodic
 // resync (selfHeal) or drift event does, as without a pause.
 func (r *Runtime) Resume(ctx context.Context, server, by, byName string) (PauseInfo, bool, error) {
 	a := r.Active()
@@ -184,6 +184,19 @@ func (r *Runtime) Resume(ctx context.Context, server, by, byName string) (PauseI
 		r.pauseMu.Unlock()
 		return PauseInfo{}, false, nil
 	}
+	// Schedule the pending overlay wakeup before deleting the durable pause. A
+	// process exit immediately after unpausing must still converge the pending fields.
+	doc, readErr := r.overlayState(ctx, server)
+	if readErr != nil {
+		r.pauseMu.Unlock()
+		return PauseInfo{}, false, readErr
+	}
+	if len(doc.Pending) > 0 || len(doc.Active) > 0 {
+		if err := r.scheduleOverlay(ctx, server, time.Now()); err != nil {
+			r.pauseMu.Unlock()
+			return PauseInfo{}, false, err
+		}
+	}
 	if err := r.opts.Store.KV(pauseKVScope).Delete(ctx, server); err != nil && !errors.Is(err, state.ErrNotFound) {
 		r.pauseMu.Unlock()
 		return PauseInfo{}, false, fmt.Errorf("remove the pause: %w", err)
@@ -199,6 +212,15 @@ func (r *Runtime) Resume(ctx context.Context, server, by, byName string) (PauseI
 	r.record(ctx, state.SyncRecord{Revision: a.rev.ID, Target: "server:" + server, Status: SyncRecordResumed,
 		Message: fmt.Sprintf("enforcement resumed by %s (paused by %s for %s)", who, cur.Who(), time.Since(cur.At).Round(time.Second)), Details: details})
 	r.log.Info("enforcement resumed", "server", server, "by", by)
+	r.syncMu.Lock()
+	err := r.flushOverlay(ctx, server)
+	r.syncMu.Unlock()
+	if err != nil {
+		if wakeErr := r.scheduleOverlay(ctx, server, time.Now()); wakeErr != nil {
+			err = errors.Join(err, wakeErr)
+		}
+		return cur, true, err
+	}
 	r.refreshPlan(ctx, rt)
 	r.notify(ChangeStatus, "")
 	return cur, true, nil

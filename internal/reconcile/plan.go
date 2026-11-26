@@ -94,10 +94,11 @@ type Note struct {
 // Plan is the diff between the desired and the live state of one server.
 // Changes are in apply order.
 type Plan struct {
-	Server  string    `json:"server"`
-	Changes []Change  `json:"changes"`
-	Blocked []Blocked `json:"blocked"`
-	Notes   []Note    `json:"notes,omitempty"`
+	Overlays []Overlay `json:"overlays,omitempty"`
+	Server   string    `json:"server"`
+	Changes  []Change  `json:"changes"`
+	Blocked  []Blocked `json:"blocked"`
+	Notes    []Note    `json:"notes,omitempty"`
 
 	// preflight is set when the bot lacks what the changes need (Plan returns it).
 	preflight *PermissionsError
@@ -237,7 +238,10 @@ type serverSpec struct {
 
 // memberWant is a role to give to a member; the role ID is resolved at apply time (the
 // role may be created by the same apply).
-type memberWant struct{ roleKey, userID string }
+type memberWant struct {
+	roleKey, userID string
+	remove          bool
+}
 
 // op is the data Apply needs for a change.
 type op struct {

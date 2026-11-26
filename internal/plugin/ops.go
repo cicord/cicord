@@ -62,6 +62,7 @@ var capabilityPermissions = map[string]discord.Permissions{
 	capRolesAssign:            discord.MustPermissions("ManageRoles"),
 	capChannelsRead:           discord.MustPermissions("ViewChannel"),
 	capChannelsManage:         discord.MustPermissions("ViewChannel", "ManageChannels", "ManageRoles"),
+	"server.incident":         discord.MustPermissions("ManageServer"),
 	capThreadsManage: discord.MustPermissions("ViewChannel", "CreatePublicThreads", "CreatePrivateThreads",
 		"ManageThreads", "SendMessagesInThreads"),
 	// Moving a member needs MoveMembers, and Connect in the destination channel.
@@ -182,6 +183,11 @@ func init() {
 		"channel.pins":           messaging("pins", capMessagesRead),
 		"channel.typing":         messaging("typing", capMessagesSend),
 		"channel.sendAs":         messaging("sendAs", "discord.webhooks.manage"),
+		"server.overlayApply":    opOverlayApply,
+		"server.overlayRemove":   opOverlayRemove,
+		"server.overlays":        opOverlayList,
+		"server.incident":        opIncident,
+		"server.requestSync":     opRequestSync,
 	}
 }
 

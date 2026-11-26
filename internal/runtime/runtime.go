@@ -111,8 +111,9 @@ type Runtime struct {
 
 	changes changeHub // GET /api/v1/events
 
-	pauseMu sync.RWMutex
-	pauses  pauseState // paused servers (pause.go)
+	overlayMu sync.Mutex
+	pauseMu   sync.RWMutex
+	pauses    pauseState // paused servers (pause.go)
 
 	// commit is the last commit status posted for the active revision (syncMu).
 	commit struct{ sha, state string }
@@ -477,6 +478,7 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 			continue
 		}
 		rt.rec = reconcile.New(reconcile.Options{
+			Overlays:   func(ctx context.Context) (reconcile.OverlayState, error) { return r.overlayState(ctx, key) },
 			Operations: r.operationScope(discord.Operation{ServerID: srv.Spec.DiscordID, ActorID: host.session.Self().ID, Bot: host.key, Revision: rev.ID}),
 			Server:     srv, RepoRoot: rev.Dir, Client: host.session, Resources: r.opts.Store.Resources(),
 			KV: r.opts.Store.KV("reconcile:" + key), BotUserID: host.session.Self().ID,
@@ -954,7 +956,7 @@ func (r *Runtime) PlanDir(ctx context.Context, dir string) (config.Diagnostics, 
 			plans = append(plans, reconcile.Plan{Server: key, Blocked: []reconcile.Blocked{{Action: "sync", Kind: "server", Key: key, Reason: "no connected bot for this server"}}})
 			continue
 		}
-		rec := reconcile.New(reconcile.Options{Server: srv, RepoRoot: dir, Client: host.session,
+		rec := reconcile.New(reconcile.Options{Overlays: func(ctx context.Context) (reconcile.OverlayState, error) { return r.overlayState(ctx, key) }, Server: srv, RepoRoot: dir, Client: host.session,
 			Resources: readOnlyResources{r.opts.Store.Resources()}, KV: r.opts.Store.KV("reconcile:" + key),
 			BotUserID: host.session.Self().ID, Logger: r.log})
 		p, err := rec.Plan(ctx)

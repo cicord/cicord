@@ -18,9 +18,11 @@ type iconState struct{ Hash, URL string }
 
 // planInput is everything computePlan needs. It is pure data.
 type planInput struct {
-	Desired *config.Server
-	Live    Snapshot
-	Mapped  []state.Resource // resource map entries of this server (all owners)
+	Suspended      map[string]bool
+	OverlayTargets OverlayTargets
+	Desired        *config.Server
+	Live           Snapshot
+	Mapped         []state.Resource // resource map entries of this server (all owners)
 	// BotTop is the position of the bot's highest role (math.MaxInt = no constraint).
 	BotTop int
 	// BotUserID is the bot's user ID ("" = unknown): the "@bot" overwrite target falls
@@ -167,6 +169,9 @@ func computePlan(in planInput) (Plan, error) {
 	}
 	for ph := phaseServer; ph <= phaseUnmanage; ph++ {
 		plan.Changes = append(plan.Changes, p.buckets[ph]...)
+	}
+	if in.OverlayTargets != nil {
+		plan.Changes = in.OverlayTargets.filter(plan.Changes)
 	}
 	plan.preflight = p.preflight(plan.Changes)
 	return plan, nil

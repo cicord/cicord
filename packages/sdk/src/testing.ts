@@ -35,6 +35,7 @@ import type {
   AuditLogEntry,
   ServerInvite,
   ChannelRef,
+  Overlay,
   CaseScope,
   Context,
   CreateChannelOptions,
@@ -73,6 +74,8 @@ export interface TestRoleInit {
   mentionable?: boolean;
   /** Git declares role membership; bulk replacement must preserve it. */
   declaredMembers?: boolean;
+  managed?: boolean;
+  holders?: string[];
   /** Server-level permissions the role grants (`member.permissions`). Default none. */
   permissions?: Permission[];
 }
@@ -578,6 +581,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       mention: `<@&${id}>`,
       position: r.position ?? roles.size + 1,
       mentionable: r.mentionable ?? false,
+      managed: r.managed ?? false,
+      declaredMembers: r.declaredMembers ?? r.holders !== undefined,
     });
     roles.set(key, role);
     rolePermissions.set(id, r.permissions ?? []);
@@ -929,6 +934,9 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       moderation.push(entry);
     };
     const member: Member = {
+      declaredRoles: Object.entries(options.roles ?? {})
+        .filter(([, r]) => r.holders?.includes(user.id))
+        .map(([key]) => key),
       user,
       id: user.id,
       ...(init.nickname ? { nickname: init.nickname } : {}),
@@ -1228,10 +1236,47 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     if (!left) return "wider";
     return both ? "unknown" : "disjoint";
   }
+  const overlayRecords = new Map<string, Overlay & { origin: string }>();
   const server: Server = {
     ...(options.server?.preferredLocale ? { preferredLocale: options.server.preferredLocale } : {}),
     async members(opts = {}) {
       return memberList(opts);
+    },
+    overlays: {
+      async apply(o) {
+        need("server.overlays");
+        if (
+          !o.reason.trim() ||
+          !Number.isFinite(+o.until) ||
+          +o.until <= Date.now() ||
+          +o.until > Date.now() + 7 * 86400000
+        )
+          throw new Error("invalid overlay");
+        for (const channel of Object.values(o.channels ?? {}))
+          for (const patch of Object.values(channel.overwrites ?? {}))
+            if ("allow" in patch) throw new Error("overlay allows are forbidden");
+        overlayRecords.set(o.id, structuredClone({ ...o, origin: "test/test" }));
+      },
+      async list() {
+        need("server.overlays");
+        return structuredClone([...overlayRecords.values()].filter((o) => +o.until > Date.now()));
+      },
+      async remove(id) {
+        need("server.overlays");
+        overlayRecords.delete(id);
+      },
+    },
+    async incident(a) {
+      need("server.incident");
+      if (!a.invitesDisabledUntil && !a.dmsDisabledUntil)
+        throw new Error("an incident end time is required");
+      for (const until of Object.values(a))
+        if (+until <= Date.now() || +until > Date.now() + 86400000)
+          throw new Error("invalid incident end time");
+    },
+    async requestSync(reason) {
+      need("server.sync");
+      if (!reason.trim()) throw new Error("a sync reason is required");
     },
     async invites() {
       need("discord.invites.read");

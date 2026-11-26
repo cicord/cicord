@@ -446,7 +446,17 @@ export interface PlanNote {
 }
 
 /** Diff between the desired and the live state of one server; changes are in apply order. */
+export interface IncidentOverlay {
+  origin: string;
+  id: string;
+  until: string;
+  reason: string;
+  server?: { verificationLevel: string };
+  channels?: Record<string, unknown>;
+  members?: Record<string, unknown>;
+}
 export interface Plan {
+  overlays?: IncidentOverlay[];
   server: string;
   changes: PlanChange[];
   blocked: PlanBlocked[];

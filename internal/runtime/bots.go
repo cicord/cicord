@@ -20,6 +20,7 @@ import (
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin"
+	"github.com/cicord/cicord/internal/reconcile"
 	"github.com/cicord/cicord/internal/state"
 )
 
@@ -290,14 +291,53 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 	m := in.Plugin.Manifest
 
 	srvName := srt.cache.Server().Name
+	declaredRolesByUser := map[string][]string{}
 	var declaredMemberRoles []string
 	for key, role := range srt.cfg.Spec.Roles {
+		for _, user := range role.Members {
+			declaredRolesByUser[user] = append(declaredRolesByUser[user], key)
+		}
 		if role.Members != nil {
 			declaredMemberRoles = append(declaredMemberRoles, key)
 		}
 	}
+	origin := in.Bot + "/" + in.Name
 	env := plugin.Env{
 		Locales: in.Plugin.Locales,
+		OverlayApply: func(c context.Context, o reconcile.Overlay) error {
+			return r.updateOverlay(c, srt, origin, o.ID, &o, "plugin:"+origin)
+		},
+		OverlayRemove: func(c context.Context, id string) error {
+			return r.updateOverlay(c, srt, origin, id, nil, "plugin:"+origin)
+		},
+		OverlayList: func(c context.Context) ([]reconcile.Overlay, error) { return r.Overlays(c, in.Server, origin) },
+		RequestSync: func(c context.Context, reason string) error {
+			if _, err := r.opts.Store.Audit().Append(c, state.AuditEntry{Time: time.Now(), Server: in.Server, Actor: "plugin:" + origin, Action: "server.sync.request", Target: in.Server, Details: mustJSONReason(reason)}); err != nil {
+				return err
+			}
+			if !r.syncMu.TryLock() {
+				return errors.New("sync already in progress")
+			}
+			defer r.syncMu.Unlock()
+			a := r.Active()
+			if a == nil || a.servers[in.Server] != srt {
+				return errors.New("installation is activating")
+			}
+			_, _, _, err := r.reconcileServer(c, a.rev, srt, triggerManual)
+			return err
+		},
+		Incident: func(c context.Context, actions discord.IncidentActions) error {
+			r.pauseMu.RLock()
+			defer r.pauseMu.RUnlock()
+			if _, paused := r.pauses.m[in.Server]; paused {
+				return reconcile.ErrPaused
+			}
+			cl, ok := host.session.(discord.IncidentClient)
+			if !ok {
+				return errors.New("incident actions unavailable")
+			}
+			return cl.SetIncident(c, srt.cfg.Spec.DiscordID, actions)
+		},
 		ManagedResource: func(id string) (bool, bool) {
 			managed := srt.cache.Owner(id) == state.OwnerGit
 			return managed, managed && srt.cfg.Spec.SyncPolicy.SelfHeal() && !r.isPaused(in.Server)
@@ -306,8 +346,8 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		AttributeAudit: func(ctx context.Context, e discord.AuditLogEntryEvent) discord.AuditLogEntryEvent {
 			return r.enrichAudit(ctx, host.session, e)
 		},
-		DeclaredMemberRoles: declaredMemberRoles,
-		BotKey:              in.Bot, InstanceName: in.Name, PluginName: m.Metadata.Name, PluginVersion: m.Metadata.Version,
+		DeclaredMemberRoles: declaredMemberRoles, DeclaredRolesByUser: declaredRolesByUser,
+		BotKey: in.Bot, InstanceName: in.Name, PluginName: m.Metadata.Name, PluginVersion: m.Metadata.Version,
 		Bot: host.session.Self(), ApplicationID: host.session.ApplicationID(),
 		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL, ServerPreferredLocale: srt.cache.Server().PreferredLocale,
 		Index:  r.opts.Store.Index(instanceScope(in)),

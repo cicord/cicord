@@ -191,6 +191,10 @@ export interface User {
 }
 
 export interface Role {
+  /** Discord integration owns the role. Unknown when the role is unavailable. */
+  readonly managed?: boolean;
+  /** Git declares the member list on this role. */
+  readonly declaredMembers?: boolean;
   readonly id: Snowflake;
   /** Key in servers/<server>.yaml when the role is managed by Cicord. */
   readonly key?: string;
@@ -271,6 +275,8 @@ export interface Member {
   readonly premiumSince?: Date;
   readonly timedOutUntil?: Date;
   readonly avatarUrl?: string;
+  /** Role keys assigned to this user by roles.*.members on the active revision. */
+  readonly declaredRoles?: readonly string[];
   /** Effective permissions for the current invocation. Missing information returns an empty list. */
   permissionsIn(channel: ChannelRef | Channel): readonly Permission[];
   /** Both ViewChannel and ReadMessageHistory are required to expose past content. */
@@ -390,10 +396,29 @@ export interface AuditLogEntry {
     plugin?:{plugin:string;bot:string;instance:string};revision?:string};
 }
 
+export interface Overlay {
+  id: string;
+  reason: string;
+  until: Date;
+  channels?: Record<string, {slowmodeSeconds?: number; overwrites?: Record<string, { deny?: Permission[]; neutral?: Permission[] }> }>;
+  server?: {verificationLevel: "low" | "medium" | "high" | "highest"};
+  members?: Record<Snowflake, {suspendDeclaredRoles: true}>;
+}
+
 export interface Server {
   readonly preferredLocale?: string;
   /** Paginated by ascending user id. Shares the role.members() cache, grant and intent. */
   members(options?: { limit?: number; after?: Snowflake }): Promise<Member[]>;
+  /** Temporary restrictions owned by this installation. @capability server.overlays */
+  readonly overlays: {
+    apply(overlay: Overlay): Promise<void>;
+    remove(id: string): Promise<void>;
+    list(): Promise<(Overlay & {origin:string})[]>;
+  };
+  /** Restrict invites or DMs for up to 24 hours. @capability server.incident */
+  incident(actions: {invitesDisabledUntil?:Date; dmsDisabledUntil?:Date}): Promise<void>;
+  /** Request a full sync of the active YAML revision. @capability server.sync */
+  requestSync(reason: string): Promise<void>;
   invites():Promise<ServerInvite[]>;
   /** Up to 100 recent entries. Requires discord.auditlog.read and ServerModeration. */
   auditLog(options?:{action?: string;actorId?:Snowflake;before?:Snowflake;limit?:number}):Promise<AuditLogEntry[]>;
