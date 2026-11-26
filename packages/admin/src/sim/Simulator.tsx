@@ -130,6 +130,18 @@ export function SimulatorPage() {
   );
 }
 
+function useTimeoutDeadline(until: string | undefined): Date | undefined {
+  const end = until ? Date.parse(until) : 0;
+  const [tick, refresh] = useState(0);
+  useEffect(() => {
+    const remaining = end - Date.now();
+    if (!(remaining > 0)) return undefined;
+    const timer = setTimeout(() => refresh((n) => n + 1), Math.min(remaining, 2_147_483_647));
+    return () => clearTimeout(timer);
+  }, [end, tick]);
+  return end > Date.now() ? new Date(end) : undefined;
+}
+
 function Playground({
   users,
   bots,
@@ -146,16 +158,40 @@ function Playground({
   const status = useStatus();
   const config = useAdminConfig();
   const [serverId, setServerId] = useState(servers[0]!.id);
-  const server = servers.find((s) => s.id === serverId) ?? servers[0]!;
+  const roster = servers.find((s) => s.id === serverId) ?? servers[0]!;
+  const [actorId, setActorId] = useState<string>(
+    () => stored(ACTOR_KEY) ?? roster.ownerId ?? users[0]?.id ?? "",
+  );
+  const actor = users.find((u) => u.id === actorId) ?? users.find((u) => u.id === roster.ownerId);
+  const member = roster.members.find((m) => m.user.id === actor?.id);
+  const actorIsMember = member !== undefined;
+  const scoped = useSimState(actorIsMember, actor?.id);
+  const actorServer = actorIsMember
+    ? scoped.data?.servers.find((s) => s.id === roster.id)
+    : undefined;
+  const server = useMemo(
+    () => ({ ...roster, channels: actorServer?.channels ?? [] }),
+    [roster, actorServer],
+  );
+  const timeout = useTimeoutDeadline(member?.timedOutUntil);
+  const timeoutReason = timeout
+    ? i18n.t("sim.composer.timedOut", { time: timeout.toLocaleTimeString() })
+    : undefined;
   const botIds = useMemo(() => new Set(bots.map((b) => b.id)), [bots]);
   const textChannels = server.channels.filter((c) => c.type !== "category" && TEXTUAL.has(c.type));
   const firstText = textChannels.find((c) => /g[eé]n[eé]ral/i.test(c.name)) ?? textChannels[0];
-  const [view, setView] = useState<View | null>(
-    firstText ? { kind: "channel", id: firstText.id } : null,
-  );
-  const [actorId, setActorId] = useState<string>(
-    () => stored(ACTOR_KEY) ?? server.ownerId ?? users[0]?.id ?? "",
-  );
+  const [selection, setView] = useState<View | null>(null);
+  const view: View | null =
+    (selection?.kind === "dm" && selection.userId === actor?.id) ||
+    (selection?.kind === "channel" && textChannels.some((c) => c.id === selection.id))
+      ? selection
+      : firstText
+        ? { kind: "channel", id: firstText.id }
+        : null;
+  const openDms = (user: User) => {
+    setActorId(user.id);
+    setView({ kind: "dm", userId: user.id });
+  };
   const [last, setLast] = useState<LastInteraction | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [modal, setModal] = useState<LastInteraction | null>(null);
@@ -164,19 +200,11 @@ function Playground({
   const [showQuick, setShowQuick] = useState(() => stored(QUICKSTART_KEY) !== "hidden");
 
   const allUsers = useMemo(() => [...users, ...bots], [users, bots]);
-  const actor = users.find((u) => u.id === actorId) ?? users.find((u) => u.id === server.ownerId);
   const isMember = (id: string) => server.members.some((m) => m.user.id === id);
-  const actorIsMember = actor ? isMember(actor.id) : false;
 
   useEffect(() => {
     if (actor) store(ACTOR_KEY, actor.id);
   }, [actor]);
-
-  // Keep the selected channel valid when switching servers.
-  useEffect(() => {
-    if (view?.kind === "channel" && !server.channels.some((c) => c.id === view.id))
-      setView(firstText ? { kind: "channel", id: firstText.id } : null);
-  }, [server, view, firstText]);
 
   const resolver: MentionResolver = useMemo(
     () => ({
@@ -371,14 +399,16 @@ function Playground({
           <h3 className="sim-nav-title">{i18n.t("sim.dms.title")}</h3>
           <p className="muted small sim-nav-hint">{i18n.t("sim.dms.hint")}</p>
           <ul className="sim-dm-list">
-            {users.map((u) => (
-              <DmEntry
-                key={u.id}
-                user={u}
-                active={view?.kind === "dm" && view.userId === u.id}
-                onSelect={() => setView({ kind: "dm", userId: u.id })}
-              />
-            ))}
+            {users
+              .filter((u) => u.id === actor?.id)
+              .map((u) => (
+                <DmEntry
+                  key={u.id}
+                  user={u}
+                  active={view?.kind === "dm" && view.userId === u.id}
+                  onSelect={() => openDms(u)}
+                />
+              ))}
           </ul>
         </div>
       </aside>
@@ -390,7 +420,7 @@ function Playground({
             welcomeUser={welcomeUser}
             dmTarget={dmTarget}
             onJoin={(u) => void join(u)}
-            onDms={(u) => setView({ kind: "dm", userId: u.id })}
+            onDms={openDms}
             onPreview={() => {
               if (server.ownerId) setActorId(server.ownerId);
               setCommandHint("welcome-preview");
@@ -409,12 +439,7 @@ function Playground({
             resolver={resolver}
             botIds={botIds}
             busy={busy}
-            onComponent={async (m, id, values) => {
-              // Components in a DM are clicked by the DM's recipient.
-              const recipient = users.find((u) => u.id === view.userId);
-              if (recipient && recipient.id !== actorId) setActorId(recipient.id);
-              await onComponent(m, id, values);
-            }}
+            onComponent={onComponent}
           />
         ) : view?.kind === "channel" ? (
           <ChannelView
@@ -430,7 +455,7 @@ function Playground({
           <EmptyState title={i18n.t("sim.pickChannel")} />
         )}
 
-        {last ? (
+        {last && last.ctx.userId === actor?.id ? (
           <InteractionCard
             entry={last}
             resolver={resolver}
@@ -463,7 +488,7 @@ function Playground({
           </div>
           {mode === "message" ? (
             <MessageComposer
-              disabled={view?.kind !== "channel" || !actorIsMember}
+              disabled={view?.kind !== "channel" || !actorIsMember || !!timeout}
               reason={
                 view?.kind === "dm"
                   ? "DMs are read-only: the simulator records what bots send to users."
@@ -472,7 +497,7 @@ function Playground({
                         user:
                           actor?.displayName || actor?.username || i18n.t("sim.composer.thisUser"),
                       })
-                    : undefined
+                    : timeoutReason
               }
               channelName={
                 view?.kind === "channel"
@@ -497,8 +522,10 @@ function Playground({
           ) : (
             <CommandPanel
               server={server}
-              disabled={!actorIsMember}
-              reason={!actorIsMember ? i18n.t("sim.composer.joinToRun") : undefined}
+              channelId={channelForCommand}
+              userId={actor?.id}
+              disabled={!actorIsMember || !!timeout || !channelForCommand}
+              reason={!actorIsMember ? i18n.t("sim.composer.joinToRun") : timeoutReason}
               onRun={runCommand}
               onAutocomplete={autocomplete}
               initial={commandHint}
@@ -517,7 +544,7 @@ function Playground({
           onAct={setActorId}
           onJoin={(u) => void join(u)}
           onLeave={(u) => void leave(u)}
-          onDms={(u) => setView({ kind: "dm", userId: u.id })}
+          onDms={openDms}
           onCreate={async (username) => {
             try {
               const user = await client.sim.createUser(username);
@@ -538,7 +565,7 @@ function Playground({
         />
       </aside>
 
-      {modal?.result.modal ? (
+      {modal?.result.modal && modal.ctx.userId === actor?.id ? (
         <ModalDialog
           modal={modal.result.modal}
           onCancel={() => setModal(null)}
@@ -663,7 +690,7 @@ function ChannelView({
   busy: string | null;
   onComponent: (m: Message, customId: string, values: string[]) => Promise<void>;
 }) {
-  const messages = useSimMessages(channelId);
+  const messages = useSimMessages(channelId, viewer?.id);
   const channel = server.channels.find((c) => c.id === channelId);
   const scroll = useStickToBottom(messages.data?.length);
   return (
@@ -935,6 +962,8 @@ function MessageComposer({
 
 function CommandPanel({
   server,
+  channelId,
+  userId,
   disabled,
   reason,
   onRun,
@@ -943,6 +972,8 @@ function CommandPanel({
   channelName,
 }: {
   server: SimServer;
+  channelId: string;
+  userId: string | undefined;
   disabled: boolean;
   reason: string | undefined;
   onRun: (c: SimCommand, o: { [key: string]: Json }) => Promise<void>;
@@ -950,14 +981,14 @@ function CommandPanel({
   initial: string | undefined;
   channelName: string | undefined;
 }) {
-  const commands = useSimCommands(server.id);
+  const commands = useSimCommands(server.id, channelId, userId);
   if (commands.isLoading) return <Skeleton lines={2} />;
-  if (!commands.data)
+  if (!commands.data && !disabled)
     return <ErrorState error={commands.error} onRetry={() => void commands.refetch()} />;
   return (
     <CommandRunner
       key={initial ?? "default"}
-      commands={commands.data}
+      commands={commands.data ?? []}
       server={server}
       disabled={disabled}
       disabledReason={

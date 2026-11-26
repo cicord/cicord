@@ -55,6 +55,7 @@ const absentId = "998877665544332211";
 type Obj = { [key: string]: Json };
 
 interface Member {
+  timedOutUntil?: string;
   userId: string;
   nick: string;
   roles: string[];
@@ -1284,6 +1285,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       return json(
         result(null, { status: "failed", error: "the user is not a member of this server" }),
       );
+    if (timedOut(userId))
+      return json(result(null, { status: "failed", error: "member is timed out" }));
     const reply = (content: string, extra: Partial<Message> = {}) => {
       const m = message(bot, channelId, content, { ephemeral: true, ...extra });
       state.messages.push(m);
@@ -1355,38 +1358,55 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     );
   }
 
-  const simState = () => ({
+  const timedOut = (userId: string) => Date.parse(member(userId)?.timedOutUntil ?? "") > Date.now();
+  const canInspect = (actor: string | null, category: string) =>
+    !actor ||
+    (!!member(actor) &&
+      (category !== "staff" || accessRole(actor) === "admin" || accessRole(actor) === "moderator"));
+  const canRead = (actor: string | null, id: string) => {
+    const ch = [...channels, ...unmanagedChannels].find((c) => c.id === id);
+    return !!ch && canInspect(actor, ch.category);
+  };
+  const simState = (actor: string | null) => ({
     users: state.users,
     bots: [{ ...bot, bot: true }],
-    servers: [
-      {
-        id: SERVER_ID,
-        key: SERVER_KEY,
-        name: SERVER_NAME,
-        ownerId: users.owner.id,
-        channels: [
-          ...categories.map((c, i) => ({ id: c.id, name: c.name, type: "category", position: i })),
-          ...[...channels, ...unmanagedChannels].map((c, i) => ({
-            id: c.id,
-            name: c.name,
-            type: c.type,
-            parentId: categories.find((k) => k.key === c.category)?.id ?? "",
-            position: i,
-          })),
-        ],
-        roles: [...roles, ...unmanagedRoles].map((r, i) => ({
-          id: r.id,
-          name: r.name,
-          color: r.color,
-          position: 20 - i,
-        })),
-        members: state.members.map((m) => ({
-          user: userById(m.userId)!,
-          nick: m.nick,
-          roles: m.roles,
-        })),
-      },
-    ],
+    servers:
+      actor && !member(actor)
+        ? []
+        : [
+            {
+              id: SERVER_ID,
+              key: SERVER_KEY,
+              name: SERVER_NAME,
+              ownerId: users.owner.id,
+              channels: [
+                ...categories
+                  .filter((c) => canInspect(actor, c.key))
+                  .map((c, i) => ({ id: c.id, name: c.name, type: "category", position: i })),
+                ...[...channels, ...unmanagedChannels]
+                  .filter((c) => canInspect(actor, c.category))
+                  .map((c, i) => ({
+                    id: c.id,
+                    name: c.name,
+                    type: c.type,
+                    parentId: categories.find((k) => k.key === c.category)?.id ?? "",
+                    position: i,
+                  })),
+              ],
+              roles: [...roles, ...unmanagedRoles].map((r, i) => ({
+                id: r.id,
+                name: r.name,
+                color: r.color,
+                position: 20 - i,
+              })),
+              members: state.members.map((m) => ({
+                user: userById(m.userId)!,
+                nick: m.nick,
+                roles: m.roles,
+                ...(m.timedOutUntil ? { timedOutUntil: m.timedOutUntil } : {}),
+              })),
+            },
+          ],
   });
 
   // ───────────────────────────────────────────── store (§11)
@@ -2256,7 +2276,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
 
     if (path.startsWith(`${API}/sim/`)) {
       const sim = path.slice(`${API}/sim`.length);
-      if (method === "GET" && sim === "/state") return json(simState());
+      if (method === "GET" && sim === "/state")
+        return json(simState(url.searchParams.get("userId")));
       if (method === "POST" && sim === "/users") {
         const username = jsonText(body["username"]).trim();
         if (!username) return fail(400, "invalid", "username is required");
@@ -2278,7 +2299,12 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       const msgs = /^\/channels\/([^/]+)\/messages$/.exec(sim);
       if (method === "GET" && msgs) {
         const id = decodeURIComponent(msgs[1]!);
-        return json({ items: state.messages.filter((m) => m.channelId === id).slice(-100) });
+        const actor = url.searchParams.get("userId");
+        if (actor && !canRead(actor, id))
+          return fail(403, "forbidden", "Channel history is unavailable to this member.");
+        return json({
+          items: state.messages.filter((m) => m.channelId === id && !m.ephemeral).slice(-100),
+        });
       }
       const dms = /^\/users\/([^/]+)\/dms$/.exec(sim);
       if (method === "GET" && dms)
@@ -2288,12 +2314,26 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         if (!author) return fail(404, "not_found", "unknown user");
         if (!member(author.id))
           return fail(403, "forbidden", `${author.username} is not a member of the server`);
+        if (timedOut(author.id) || !canRead(author.id, jsonText(body["channelId"])))
+          return fail(403, "forbidden", "Member cannot send messages in this channel.");
         const m = message(author, jsonText(body["channelId"]), jsonText(body["content"]));
         state.messages.push(m);
         changed();
         return json(m);
       }
-      if (method === "GET" && sim === "/commands") return json({ items: commands() });
+      if (method === "GET" && sim === "/commands") {
+        const actor = url.searchParams.get("userId");
+        if (actor && !canRead(actor, url.searchParams.get("channelId") ?? ""))
+          return fail(403, "forbidden", "Channel unavailable");
+        return json({
+          items:
+            actor && timedOut(actor)
+              ? []
+              : commands().filter(
+                  (c) => !actor || c.name !== "welcome-preview" || accessRole(actor) === "admin",
+                ),
+        });
+      }
       if (method === "POST" && sim === "/commands") return runCommand(body);
       if (method === "POST" && sim === "/components") return clickComponent(body);
     }

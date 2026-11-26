@@ -1022,6 +1022,8 @@ export interface SimChannel {
 }
 
 export interface SimMember {
+  /** Discord timeout deadline in ISO format. A past deadline has expired. */
+  timedOutUntil?: string;
   user: User;
   nick: string;
   /** Role ids. */

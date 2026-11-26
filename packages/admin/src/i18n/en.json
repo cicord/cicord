@@ -848,7 +848,7 @@
     },
     "dms": {
       "title": "Direct messages",
-      "hint": "What bots sent to each user",
+      "hint": "What bots sent to the selected user",
       "none": "No DMs for {{name}} yet",
       "noneText": "The welcome plugin DMs an onboarding link when a member joins."
     },
@@ -890,6 +890,7 @@
       "thisUser": "This user",
       "notMember": "{{user}} is not a member: join the server first.",
       "joinToRun": "Join the server with this user to run commands.",
+      "timedOut": "This member is timed out until {{time}}.",
       "placeholder": "Message #{{channel}}",
       "send": "Send message",
       "runsIn": "Runs in #{{channel}}"

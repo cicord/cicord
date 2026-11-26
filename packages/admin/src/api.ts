@@ -53,9 +53,11 @@ export const keys = {
   storeUpdate: (source: string, plugin: string) =>
     ["admin", "store", "update", source, plugin] as const,
   sim: () => ["sim"] as const,
-  simState: () => ["sim", "state"] as const,
-  simCommands: (serverId: string) => ["sim", "commands", serverId] as const,
-  simMessages: (channelId: string) => ["sim", "messages", channelId] as const,
+  simState: (userId = "") => ["sim", "state", userId] as const,
+  simCommands: (serverId: string, channelId: string, userId: string) =>
+    ["sim", "commands", serverId, channelId, userId] as const,
+  simMessages: (channelId: string, userId: string) =>
+    ["sim", "messages", channelId, userId] as const,
   simDms: (userId: string) => ["sim", "dms", userId] as const,
 };
 
@@ -182,22 +184,32 @@ export function useStoreUpdateReview(
   );
 }
 
-export function useSimState(enabled = true): QueryResult<SimState> {
+export function useSimState(enabled = true, userId?: string): QueryResult<SimState> {
   const { client } = useCicord();
-  return useCicordQuery(keys.simState(), (signal) => client.sim.state({ signal }), { enabled });
+  return useCicordQuery(keys.simState(userId), (signal) => client.sim.state({ signal, userId }), {
+    enabled,
+  });
 }
 
-export function useSimCommands(serverId: string | undefined): QueryResult<SimCommand[]> {
+export function useSimCommands(
+  serverId: string,
+  channelId: string | undefined,
+  userId: string | undefined,
+): QueryResult<SimCommand[]> {
   const { client } = useCicord();
-  return useCicordQuery(serverId ? keys.simCommands(serverId) : null, (signal) =>
-    client.sim.commands(serverId, { signal }),
+  return useCicordQuery(
+    channelId && userId ? keys.simCommands(serverId, channelId, userId) : null,
+    (signal) => client.sim.commands(serverId, { signal, channelId, userId }),
   );
 }
 
-export function useSimMessages(channelId: string | undefined): QueryResult<Message[]> {
+export function useSimMessages(
+  channelId: string,
+  userId: string | undefined,
+): QueryResult<Message[]> {
   const { client } = useCicord();
-  return useCicordQuery(channelId ? keys.simMessages(channelId) : null, (signal) =>
-    client.sim.messages(channelId!, { limit: 100 }, { signal }),
+  return useCicordQuery(userId ? keys.simMessages(channelId, userId) : null, (signal) =>
+    client.sim.messages(channelId, { limit: 100, userId }, { signal }),
   );
 }
 

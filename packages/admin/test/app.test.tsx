@@ -504,8 +504,16 @@ describe("simulator", () => {
     expect(link.getAttribute("href")).toMatch(/\/onboarding\?cicord_token=/);
     expect(link.getAttribute("target")).toBe("_blank");
 
-    // Slash command as the owner
+    // Inspecting Alice's inbox changes the active identity. Staff channels and
+    // the private moderation command disappear from her view.
+    expect(screen.queryByRole("button", { name: "staff" })).toBeNull();
     await user.click(screen.getByRole("button", { name: /general/ }));
+    await user.click(screen.getByRole("tab", { name: "Slash command" }));
+    await screen.findByRole("option", { name: "welcome-stats" });
+    expect(screen.queryByRole("option", { name: "welcome-preview" })).toBeNull();
+    await user.click(within(members).getByRole("button", { name: "Act as owner" }));
+    await screen.findByRole("option", { name: "welcome-preview" });
+    // Slash command as the owner
     await user.click(screen.getByRole("tab", { name: "Slash command" }));
     await user.selectOptions(
       await screen.findByLabelText("Command"),
@@ -515,6 +523,8 @@ describe("simulator", () => {
     const result = await screen.findByRole("status", { name: "Interaction result" });
     expect(within(result).getByText("replied")).toBeTruthy();
     expect(within(result).getByText("ephemeral")).toBeTruthy();
+    await user.click(within(members).getByRole("button", { name: "Act as alice" }));
+    expect(screen.queryByRole("status", { name: "Interaction result" })).toBeNull();
 
     // Buttons call the component endpoint
     await user.click(screen.getByRole("button", { name: /rules/ }));
@@ -532,6 +542,18 @@ describe("simulator", () => {
     await user.type(screen.getByLabelText("New user name"), "dave");
     await user.click(screen.getByRole("button", { name: "Create" }));
     expect(await screen.findByRole("button", { name: "dave joins the server" })).toBeTruthy();
+  });
+
+  test("a timed-out actor regains the guild composer at the deadline", async () => {
+    const { runtime, user } = setup("/admin/simulator");
+    const moderator = runtime.state.members.find((m) => m.userId === "104")!;
+    moderator.timedOutUntil = new Date(Date.now() + 2400).toISOString();
+    await loginAsOwner(user);
+    await user.click(await screen.findByRole("button", { name: "Act as mina" }));
+    const input = await screen.findByRole("textbox", { name: "Message" });
+    await waitFor(() => expect(input.getAttribute("placeholder")).toMatch(/timed out until/));
+    expect(input.hasAttribute("disabled")).toBe(true);
+    await waitFor(() => expect(input.hasAttribute("disabled")).toBe(false), { timeout: 4000 });
   });
 
   test("command options accept string or numeric types", () => {

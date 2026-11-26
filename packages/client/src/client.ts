@@ -1102,8 +1102,8 @@ export class CicordClient {
 
   readonly sim = {
     /** `GET /sim/state`. */
-    state: (options?: CallOptions): Promise<SimState> =>
-      this.#api<SimState>("GET", "/sim/state", options),
+    state: ({ userId, ...options }: CallOptions & { userId?: string } = {}): Promise<SimState> =>
+      this.#api<SimState>("GET", "/sim/state", { ...options, query: { userId } }),
     /** `POST /sim/users` — creates a simulated user. */
     createUser: (username: string, options?: CallOptions): Promise<User> =>
       this.#api<User>("POST", "/sim/users", { body: { username }, ...options }),
@@ -1125,7 +1125,7 @@ export class CicordClient {
     /** `GET /sim/channels/{id}/messages?limit=` — oldest first. */
     messages: async (
       channelId: string,
-      query: { limit?: number } = {},
+      query: { limit?: number; userId?: string } = {},
       options?: CallOptions,
     ): Promise<Message[]> =>
       (
@@ -1170,10 +1170,13 @@ export class CicordClient {
     modal: (request: SimModalRequest, options?: CallOptions): Promise<InteractionResult> =>
       this.#api<InteractionResult>("POST", "/sim/modals", { body: request, ...options }),
     /** `GET /sim/commands?serverId=` — registered commands (all simulated servers by default). */
-    commands: async (serverId?: string, options?: CallOptions): Promise<SimCommand[]> =>
+    commands: async (
+      serverId?: string,
+      { userId, channelId, ...options }: CallOptions & { userId?: string; channelId?: string } = {},
+    ): Promise<SimCommand[]> =>
       (
         await this.#api<Items<SimCommand>>("GET", "/sim/commands", {
-          query: { serverId },
+          query: { serverId, userId, channelId },
           ...options,
         })
       ).items,
