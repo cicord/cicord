@@ -206,6 +206,8 @@ func (r *Runtime) connectBots(ctx context.Context, repo *config.Repo) {
 		if fr, ok := sess.(discord.ApplicationFlagsReader); ok {
 			enabled := discord.IntentsFromFlags(fr.ApplicationFlags())
 			r.appIntents.Store(key, enabled)
+			repo.ApplyOptionalIntents(key, enabled)
+			intents = botIntents(repo, key) | r.analyticsIntents(repo, key)
 			if missing := intents & discord.PrivilegedIntents &^ enabled; missing != 0 {
 				// Discord would close the gateway with 4014: say which toggle to turn on.
 				msg := fmt.Sprintf("the privileged intent(s) %s are not enabled for the application: turn them on in the Discord developer portal (%s → Privileged Gateway Intents), then restart Cicord or push a new revision",
@@ -362,10 +364,10 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		Index:  r.opts.Store.Index(instanceScope(in)),
 		Config: in.Config, Grants: in.Grants, NetworkAllow: in.NetworkAllow, Files: in.Files, Secret: func(n string) (string, []string, bool) { return r.instanceSecret(in, n) }, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
 		ReportStatus:   irt.featureStatus,
-		MessageContent: slices.Contains(m.Spec.Intents, "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
-		ServerModeration:  slices.Contains(m.Spec.Intents, "ServerModeration"),
-		ServerMembers:     slices.Contains(m.Spec.Intents, "ServerMembers"),
-		ServerVoiceStates: slices.Contains(m.Spec.Intents, "ServerVoiceStates"),
+		MessageContent: slices.Contains(in.EffectiveIntents(), "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
+		ServerModeration:  slices.Contains(in.EffectiveIntents(), "ServerModeration"),
+		ServerMembers:     slices.Contains(in.EffectiveIntents(), "ServerMembers"),
+		ServerVoiceStates: slices.Contains(in.EffectiveIntents(), "ServerVoiceStates"),
 		Discord:           host.session, Resolver: srt.cache,
 		VoiceStates: func() ([]discord.VoiceState, bool) {
 			return host.voice.States(srt.cfg.Spec.DiscordID)
@@ -378,9 +380,17 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		DMReceipts: r.opts.Store.KV("dm-receipts:" + in.ID()), KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources: ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
 		Portal:    &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, Store: r.opts.Store, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name, MaxTTL: 24 * time.Hour},
-		Publish: func(topic string, payload json.RawMessage) error {
-			r.publish(in.Bot, srt.cfg.Spec.DiscordID, topic, payload)
-			return nil
+		Features:  in.Features,
+		HasPlugin: func(name string) bool {
+			_, err := resolvePeer(irt, name)
+			var e *plugin.InteropError
+			return !(errors.As(err, &e) && e.Unavailable)
+		},
+		InvokePlugin: func(ctx context.Context, kind string, a plugin.Request, f plugin.CallFrame) (json.RawMessage, error) {
+			return r.invokePeer(ctx, irt, kind, a, f)
+		},
+		PublishVersion: func(ctx context.Context, name string, v int, key string, data json.RawMessage) error {
+			return r.publishEvent(ctx, irt, name, v, key, data)
 		},
 		Logger:    r.log, // the instance adds bot, plugin, instance and server
 		Limits:    r.opts.PluginLimits,
@@ -593,7 +603,7 @@ func (h *botHost) dispatchPlugins(rt *routing, ev discord.Event) {
 		return
 	}
 	for _, i := range rt.byServer[sid] {
-		if !i.plugin.def.HasEvent(name) {
+		if !i.plugin.def.HasEvent(name) || !hasEventIntents(i.cfg, name) {
 			continue
 		}
 		done := i.inst().DispatchEvent(context.Background(), ev)
@@ -666,25 +676,15 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 	}()
 }
 
-// publish delivers a cross-plugin event to subscribers on the same (bot, server).
-func (r *Runtime) publish(bot, serverID, topic string, payload json.RawMessage) {
-	h := r.bot(bot)
-	if h == nil {
-		return
-	}
-	for _, i := range h.routing.Load().byServer[serverID] {
-		for _, sub := range i.plugin.def.Subscriptions {
-			if sub == topic {
-				i := i
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-					defer cancel()
-					_, err := r.WithReplayPrivacy(ctx, i.cfg.Server, payload, func() error { return i.inst().Deliver(ctx, topic, payload) })
-					r.handlerDone(i, err)
-				}()
-			}
+// A gateway session unions every installation's intents. Deliver an optional handler
+// only when the receiving installation itself has the required intents.
+func hasEventIntents(in config.Instance, name string) bool {
+	for _, n := range plugin.EventIntents(name) {
+		if !slices.Contains(in.EffectiveIntents(), n) {
+			return false
 		}
 	}
+	return true
 }
 
 func (h *botHost) syncGuildProfile(ctx context.Context, root, file string, b config.BotServer, serverID string) error {

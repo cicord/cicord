@@ -49,7 +49,7 @@ func TestPluginBuild(t *testing.T) {
 		t.Errorf("unused intent = %d\n%s", code, out)
 	}
 	writeFile(t, om, strings.Replace(readFile(t, om), "    - storage.kv\n", "    - storage.kv\n    - discord.members.read\n", 1))
-	if code, out, _ := run(t, "plugin", "build", ob); code != 0 || strings.Contains(out, "warning:") {
+	if code, out, _ := run(t, "plugin", "build", ob); code != 0 || strings.Contains(strings.ReplaceAll(out, "warning: legacy event topics are deprecated;", ""), "warning:") {
 		t.Errorf("ServerMembers with discord.members.read = %d\n%s", code, out)
 	}
 	// a syntax error is reported with its location
@@ -152,7 +152,7 @@ func TestShowcasePlugins(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := "../../examples/showcase/plugins/" + name
 			code, out, errOut := run(t, "plugin", "build", dir)
-			if code != 0 || strings.Contains(out, "warning:") {
+			if code != 0 || strings.Contains(strings.ReplaceAll(out, "warning: legacy event topics are deprecated;", ""), "warning:") {
 				t.Errorf("build = %d\n%s\n%s", code, out, errOut)
 			}
 			if code, _, errOut := run(t, "plugin", "typegen", dir, "--check"); code != 0 {

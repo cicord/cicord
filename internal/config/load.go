@@ -36,6 +36,9 @@ type Repo struct {
 // LoadedPlugin is a plugin manifest plus its compiled config schema.
 type LoadedPlugin struct {
 	Locales      locales.Catalog
+	Registry     string
+	Contracts    map[string]Contract
+	Verified     bool
 	Key          string
 	Dir          string // absolute
 	Source       string // as written in bot.yaml (first reference)
@@ -54,6 +57,8 @@ type Instance struct {
 	Server       string // server key
 	Plugin       *LoadedPlugin
 	Grants       []string
+	Features     map[string]string // feature -> reason disabled (empty when enabled)
+	Interop      InstanceInterop
 	// Config is the effective config: base config ⊕ server override (merge patch) with
 	// schema defaults applied. JSON-compatible values (numbers are float64).
 	Config map[string]any
@@ -231,6 +236,7 @@ func (l *loader) load(dir string) *Repo {
 
 	l.checkServers(repo)
 	l.checkBots(repo)
+	l.checkInterop(repo)
 	l.checkUniqueIDs(repo)
 	l.checkPortal(repo)
 	return repo
@@ -476,7 +482,7 @@ func (l *loader) checkBots(repo *Repo) {
 			}
 			var missing []string
 			for _, c := range lp.Manifest.Spec.Capabilities {
-				if !granted[c] {
+				if !HasGrant(inst.Grants, c) {
 					missing = append(missing, c)
 				}
 			}
@@ -550,7 +556,7 @@ func (l *loader) checkBots(repo *Repo) {
 					l.sink.errorf(b.File, doc.lineOf(p), p, "[server %s] %s", sk, problem.msg)
 				}
 				repo.Instances = append(repo.Instances, Instance{
-					Bot: bk, Name: inst.Name, Server: sk, Plugin: lp, Grants: inst.Grants, Config: cfg,
+					Bot: bk, Name: inst.Name, Server: sk, Plugin: lp, Grants: effectiveGrants(lp.Manifest.Spec, inst.Grants), Config: cfg, Features: l.features(lp.Manifest.Spec, inst.Grants, bk), Interop: inst.Interop,
 					NetworkAllow: network, SecretRefs: inst.Secrets, Files: files,
 				})
 			}
@@ -638,6 +644,19 @@ func (l *loader) loadPlugin(repo *Repo, b *Bot, base string, inst PluginInstance
 			return nil
 		}
 		lp.ConfigSchema, lp.SchemaDoc = s, sdoc
+	}
+	if !inst.IsLocal() && m.Spec.Interop != nil {
+		registry, _, _ := strings.Cut(inst.Source, "/")
+		if registry != "cicord" {
+			lp.Registry = registry
+		}
+		if p, ok := l.opts.Resolver.(interface{ Provenance(string) (string, bool) }); ok {
+			lp.Registry, lp.Verified = p.Provenance(inst.Source)
+		}
+	}
+	if err := lp.LoadContracts(); err != nil {
+		l.sink.errorf(mdoc.file, mdoc.lineOf("/spec/interop"), "/spec/interop", "%v", err)
+		return nil
 	}
 	repo.Plugins[key] = lp
 	return lp

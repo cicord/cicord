@@ -108,7 +108,8 @@ var (
 
 func init() {
 	syncOps = map[string]syncOp{
-		"crypto.random":          randomValues,
+		"crypto.random": randomValues,
+		"plugins.has":   opPluginsHas, "features.enabled": opFeature,
 		"resolve.role":           opResolveRole,
 		"server.channel":         opServerChannel,
 		"server.role":            opServerRole,
@@ -210,6 +211,7 @@ func init() {
 		"events.list":            communityOp("list"), "events.create": communityOp("create"), "events.edit": communityOp("edit"), "events.delete": communityOp("delete"), "events.users": communityOp("users"),
 		"channel.memberOverwrite": opChannelMemberOverwrite,
 		"message.endPoll":         pollOp(false), "message.pollVoters": pollOp(true), "analytics.summary": opAnalytics,
+		"plugins.query": opInterop("query"), "plugins.call": opInterop("action"),
 	}
 }
 
@@ -255,6 +257,9 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 	inv := i.currentInv()
 	if err := inv.alive(); err != nil {
 		return 0, err
+	}
+	if inv.frame.ReadOnly && !readonlyOp(op, args) {
+		return 0, &CapabilityError{Capability: "read-only"}
 	}
 	if i.inflight >= maxInFlight {
 		return 0, fmt.Errorf("%s: too many pending host calls (max %d per instance)", op, maxInFlight)
@@ -1702,13 +1707,13 @@ func kvOp(i *Instance, args json.RawMessage, needKey bool) (kvArgs, error) {
 	return a, nil
 }
 
-func opKVGet(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+func opKVGet(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	a, err := kvOp(i, args, true)
 	if err != nil {
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
-		v, err := i.env.KV.Get(ctx, a.Key)
+		v, err := i.invocationKV(inv).Get(ctx, a.Key)
 		if errors.Is(err, state.ErrNotFound) {
 			return nil, nil
 		}
@@ -1719,7 +1724,7 @@ func opKVGet(i *Instance, _ *invocation, args json.RawMessage) (func(context.Con
 	}, nil
 }
 
-func opKVSet(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+func opKVSet(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	a, err := kvOp(i, args, true)
 	if err != nil {
 		return nil, err
@@ -1735,17 +1740,17 @@ func opKVSet(i *Instance, _ *invocation, args json.RawMessage) (func(context.Con
 	}
 	ttl := time.Duration(a.TTLSeconds * float64(time.Second))
 	return func(ctx context.Context) (any, error) {
-		return nil, i.env.KV.Set(ctx, a.Key, a.Value, ttl)
+		return nil, i.invocationKV(inv).Set(ctx, a.Key, a.Value, ttl)
 	}, nil
 }
 
-func opKVDelete(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+func opKVDelete(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	a, err := kvOp(i, args, true)
 	if err != nil {
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
-		err := i.env.KV.Delete(ctx, a.Key)
+		err := i.invocationKV(inv).Delete(ctx, a.Key)
 		if errors.Is(err, state.ErrNotFound) {
 			err = nil
 		}
@@ -1753,7 +1758,7 @@ func opKVDelete(i *Instance, _ *invocation, args json.RawMessage) (func(context.
 	}, nil
 }
 
-func opKVIncrement(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+func opKVIncrement(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	a, err := kvOp(i, args, true)
 	if err != nil {
 		return nil, err
@@ -1763,7 +1768,7 @@ func opKVIncrement(i *Instance, _ *invocation, args json.RawMessage) (func(conte
 		by = *a.By
 	}
 	return func(ctx context.Context) (any, error) {
-		return i.env.KV.Increment(ctx, a.Key, by)
+		return i.invocationKV(inv).Increment(ctx, a.Key, by)
 	}, nil
 }
 
@@ -1772,7 +1777,7 @@ type kvItemDTO struct {
 	Value json.RawMessage `json:"value"`
 }
 
-func opKVList(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+func opKVList(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	a, err := kvOp(i, args, false)
 	if err != nil {
 		return nil, err
@@ -1784,7 +1789,7 @@ func opKVList(i *Instance, _ *invocation, args json.RawMessage) (func(context.Co
 		return nil, argErr("kv.list: limit must be between 1 and 1000")
 	}
 	return func(ctx context.Context) (any, error) {
-		items, next, err := i.env.KV.List(ctx, a.Prefix, a.Limit, a.Cursor)
+		items, next, err := i.invocationKV(inv).List(ctx, a.Prefix, a.Limit, a.Cursor)
 		if err != nil {
 			return nil, err
 		}
@@ -1880,16 +1885,18 @@ func newID() string {
 
 // ───────────────────────────────────────────────────────────── events & portal
 
-func opEventsPublish(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+func opEventsPublish(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	if err := i.require(capEventsPublish); err != nil {
 		return nil, err
 	}
-	if i.env.Publish == nil {
+	if i.env.Publish == nil && i.env.PublishVersion == nil {
 		return nil, errors.New("events.publish: the event bus is not available")
 	}
 	a, err := decode[struct {
-		Topic   string          `json:"topic"`
-		Payload json.RawMessage `json:"payload"`
+		Version        *int            `json:"version"`
+		IdempotencyKey string          `json:"idempotencyKey"`
+		Topic          string          `json:"topic"`
+		Payload        json.RawMessage `json:"payload"`
 	}](args)
 	if err != nil {
 		return nil, err
@@ -1904,7 +1911,20 @@ func opEventsPublish(i *Instance, _ *invocation, args json.RawMessage) (func(con
 		return nil, argErr("events.publish: payload larger than %d bytes", maxKVValue)
 	}
 	topic := i.env.PluginName + "." + a.Topic
-	return func(context.Context) (any, error) {
+	version := 1
+	if a.Version != nil {
+		version = *a.Version
+	}
+	if version < 1 || len(a.IdempotencyKey) > 256 {
+		return nil, argErr("invalid event version or idempotency key")
+	}
+	return func(ctx context.Context) (any, error) {
+		if inv.frame.Publish != nil {
+			return nil, inv.frame.Publish(ctx, a.Topic, version, a.IdempotencyKey, a.Payload)
+		}
+		if i.env.PublishVersion != nil {
+			return nil, i.env.PublishVersion(ctx, a.Topic, version, a.IdempotencyKey, a.Payload)
+		}
 		return nil, i.env.Publish(topic, a.Payload)
 	}, nil
 }

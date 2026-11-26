@@ -20,6 +20,7 @@ import type {
   AuditEntry,
   AuditQuery,
   DeadTask,
+  InteropGraph,
   InstallResult,
   InteractionResult,
   Items,
@@ -775,6 +776,8 @@ export class CicordClient {
           ...options,
         })
       ).items,
+    interop: (server: string, options?: CallOptions): Promise<InteropGraph> =>
+      this.#api<InteropGraph>("GET", `/servers/${seg(server)}/interop`, options),
     deadLetters: async (server: string, options?: CallOptions): Promise<DeadTask[]> =>
       (await this.#api<Items<DeadTask>>("GET", `/servers/${seg(server)}/dead-letters`, options))
         .items,

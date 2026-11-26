@@ -11,6 +11,30 @@ import type * as Spec from "@cicord/sdk";
 
 export const sdkFeatures = Object.freeze({ contextMenus: true } as const);
 
+export class InteropError extends Error {
+  constructor(
+    readonly code: Spec.InteropCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "InteropError";
+  }
+}
+export class PluginUnavailableError extends InteropError {
+  constructor(message = "Plugin is unavailable") {
+    super("not_found", message);
+    this.name = "PluginUnavailableError";
+  }
+}
+export function query<I = Spec.Json, O = Spec.Json>(handler: Spec.Query<I, O>): Spec.Query<I, O> {
+  return handler;
+}
+export function action<I = Spec.Json, O = Spec.Json>(
+  handler: Spec.Action<I, O>,
+): Spec.Action<I, O> {
+  return handler;
+}
+
 const CAPABILITY_IN_MESSAGE = /capability "?([a-z]+(?:\.[a-z]+)+)"?/;
 
 /** Thrown when a call needs a capability that is not granted in bot.yaml. */

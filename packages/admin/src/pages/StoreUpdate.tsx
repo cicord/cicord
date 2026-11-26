@@ -43,6 +43,8 @@ import { instancePath, storePluginPath } from "../shell/nav.ts";
 import {
   Block,
   CapabilityRow,
+  ServerGrantConsent,
+  serverGrants,
   capabilityLabel,
   DetailHeader,
   DEVELOPER_PORTAL,
@@ -413,6 +415,8 @@ function UpdateForm({
   const unofficial = d.trust === "unofficial";
   const blocked = review.missingAdmin.length > 0 || !review.configValid;
   const [confirmed, setConfirmed] = useState(false);
+  const [serverConfirmed, setServerConfirmed] = useState(false);
+  const privilegedGrants = serverGrants(review.diff.capabilities.added);
   const [force, setForce] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [pending, setPending] = useState(false);
@@ -421,7 +425,11 @@ function UpdateForm({
   useEffect(() => {
     if (problem) problemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [problem]);
-  const ready = !blocked && (!unofficial || confirmed) && (!review.modified || force);
+  const ready =
+    (!privilegedGrants.length || serverConfirmed) &&
+    !blocked &&
+    (!unofficial || confirmed) &&
+    (!review.modified || force);
   const invalidCount = review.instances.filter((i) => i.diagnostics.length).length;
 
   const submit = async (e: FormEvent) => {
@@ -433,6 +441,7 @@ function UpdateForm({
       ...(d.commit ? { commit: d.commit } : {}),
       ...(d.integrity ? { integrity: d.integrity } : {}),
       ...(unofficial ? { confirmUnofficial: true } : {}),
+      ...(privilegedGrants.length ? { confirmPrivileged: true } : {}),
       ...(review.modified && force ? { force: true } : {}),
     };
     setPending(true);
@@ -501,6 +510,13 @@ function UpdateForm({
         <Instances review={review} serverKey={serverKey} />
         <Files review={review} />
       </Card>
+      {privilegedGrants.length > 0 && (
+        <ServerGrantConsent
+          grants={privilegedGrants}
+          checked={serverConfirmed}
+          change={setServerConfirmed}
+        />
+      )}
       {d.privilegedIntents.length && review.diff.privilegedIntents.added.length ? (
         <Callout
           tone="warning"

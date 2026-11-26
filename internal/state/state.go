@@ -38,6 +38,7 @@ const (
 // the int64 unix-nanosecond range (roughly before 1678 or after 2262) are
 // rejected. JSON payloads are returned byte for byte as stored.
 type Store interface {
+	Interop() InteropStore
 	Resources() ResourceMap
 	// KV returns the key-value space of a scope, e.g. "plugin:<bot>/<instance>/<server>".
 	KV(scope string) KV
@@ -135,6 +136,7 @@ type Task struct {
 // TaskLease identifies one delivery. A receipt can only settle the same claim:
 // replacing or cancelling a task invalidates every outstanding receipt.
 type TaskLease struct {
+	Event bool
 	Task
 	Receipt  string
 	Attempt  int
@@ -154,6 +156,7 @@ type TaskQueue interface {
 	TaskWriter
 	ClaimDue(ctx context.Context, now, until time.Time, worker string, limit int) ([]TaskLease, error)
 	Acknowledge(ctx context.Context, lease TaskLease) error
+	Consume(ctx context.Context, lease TaskLease) (bool, error)
 	// Release schedules another delivery or, with a zero retry time, parks the task
 	// as a dead letter. An empty failure defers an unavailable handler.
 	Release(ctx context.Context, lease TaskLease, retry time.Time, failure string) error

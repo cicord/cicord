@@ -66,6 +66,7 @@ func Run(t *testing.T, b Backend) {
 		{"TaskTiesAreByteOrder", testTaskTies},
 		{"TaskValidation", testTaskValidation},
 		{"TaskLeases", testTaskLeases},
+		{"Interop", testInterop},
 		{"TaskConcurrentClaim", testTaskConcurrentClaim},
 		{"TaskDueExtremeTimes", testTaskDueExtremes},
 		{"AuditLog", testAuditLog},

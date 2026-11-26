@@ -157,10 +157,13 @@ type serverRT struct {
 }
 
 type instanceRT struct {
-	featureMessages map[string]string
-	cfg             config.Instance
-	serverID        string
-	plugin          *builtPlugin
+	featureDiagnostics map[string]string
+	cfg                config.Instance
+	serverID           string
+	plugin             *builtPlugin
+	revision           *active
+	eventRejects       atomic.Uint64
+	interopProblem     atomic.Value
 	// current is the running instance; the supervisor replaces it after a crash.
 	current atomic.Pointer[plugin.Instance]
 
@@ -178,14 +181,14 @@ func (i *instanceRT) featureStatus(key, message string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	if message == "" {
-		delete(i.featureMessages, key)
+		delete(i.featureDiagnostics, key)
 		return
 	}
-	if i.featureMessages == nil {
-		i.featureMessages = map[string]string{}
+	if i.featureDiagnostics == nil {
+		i.featureDiagnostics = map[string]string{}
 	}
-	if _, ok := i.featureMessages[key]; ok || len(i.featureMessages) < 32 {
-		i.featureMessages[key] = message
+	if _, ok := i.featureDiagnostics[key]; ok || len(i.featureDiagnostics) < 32 {
+		i.featureDiagnostics[key] = message
 	}
 }
 
@@ -451,14 +454,15 @@ func buildPlugin(lp *config.LoadedPlugin) (*builtPlugin, error) {
 		return nil, err
 	}
 	m := lp.Manifest.Spec
-	var problems []string
+	problems := def.CheckInterop(m, res.Code)
+	caps, intents := m.Declared()
 	for _, in := range def.RequiredIntents() {
-		if !slices.Contains(m.Intents, in) {
+		if !slices.Contains(intents, in) {
 			problems = append(problems, fmt.Sprintf("a handler needs the %s intent, which plugin.yaml does not declare", in))
 		}
 	}
 	need := func(cond bool, capability, what string) {
-		if cond && !slices.Contains(m.Capabilities, capability) {
+		if cond && !slices.Contains(caps, capability) {
 			problems = append(problems, fmt.Sprintf("%s requires the %s capability in plugin.yaml", what, capability))
 		}
 	}
@@ -569,8 +573,11 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	// 3. plugin instances
 	var pluginFailures []string // for the commit status
 	for _, in := range repo.Instances {
-		irt := &instanceRT{cfg: in, plugin: builds[in.Plugin.Key], health: HealthProgressing, quit: make(chan struct{})}
+		irt := &instanceRT{revision: next, cfg: in, plugin: builds[in.Plugin.Key], health: HealthProgressing, quit: make(chan struct{})}
 		next.instances = append(next.instances, irt)
+	}
+	for _, irt := range next.instances {
+		in := irt.cfg
 		host := r.bot(in.Bot)
 		srt := next.servers[in.Server]
 		switch {
@@ -1170,9 +1177,9 @@ func (r *Runtime) instanceDeadCounts() map[string]int {
 func (r *Runtime) reportedHealth(i *instanceRT, dead int) (string, string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.health == HealthHealthy && len(i.featureMessages) > 0 {
+	if i.health == HealthHealthy && len(i.featureDiagnostics) > 0 {
 		var messages []string
-		for k, m := range i.featureMessages {
+		for k, m := range i.featureDiagnostics {
 			messages = append(messages, k+": "+m)
 		}
 		slices.Sort(messages)
@@ -1191,6 +1198,9 @@ func (r *Runtime) reportedHealth(i *instanceRT, dead int) (string, string) {
 		if len(optional) > 0 && dead == 0 {
 			return i.health, "Features requiring these optional secrets are disabled: " + strings.Join(optional, ", ")
 		}
+	}
+	if m := i.featureMessages(); len(m) > 0 && i.health == HealthHealthy {
+		return HealthDegraded, strings.Join(m, "; ")
 	}
 	if dead > 0 && i.health == HealthHealthy {
 		return HealthDegraded, fmt.Sprintf("%d failed scheduled task(s) need attention in Diagnostics", dead)

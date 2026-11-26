@@ -34,11 +34,13 @@ type Command struct {
 
 // Entry is one installable plugin.
 type Entry struct {
-	Name        string   `json:"name"`
-	DisplayName string   `json:"displayName"`
-	Description string   `json:"description"`
-	Version     string   `json:"version"`
-	Keywords    []string `json:"keywords"`
+	Interop     *config.InteropSpec      `json:"interop,omitempty"`
+	Optional    []config.OptionalFeature `json:"optional,omitempty"`
+	Name        string                   `json:"name"`
+	DisplayName string                   `json:"displayName"`
+	Description string                   `json:"description"`
+	Version     string                   `json:"version"`
+	Keywords    []string                 `json:"keywords"`
 	// Source is the catalog source ("official" for the bundled plugins).
 	Source       string   `json:"source"`
 	Capabilities []string `json:"capabilities"`
@@ -143,7 +145,7 @@ func describe(fsys fs.FS, dir, tmp string, inspect bool) (Entry, error) {
 	if err := config.DecodeYAML(raw, &m); err != nil {
 		return Entry{}, fmt.Errorf("plugin.yaml: %w", err)
 	}
-	e := Entry{Name: m.Metadata.Name, DisplayName: m.Metadata.DisplayName, Description: m.Metadata.Description,
+	e := Entry{Interop: m.Spec.Interop, Optional: m.Spec.Optional, Name: m.Metadata.Name, DisplayName: m.Metadata.DisplayName, Description: m.Metadata.Description,
 		Version: m.Metadata.Version, Keywords: nonNil(m.Metadata.Keywords),
 		Capabilities: nonNil(m.Spec.Capabilities), Intents: nonNil(m.Spec.Intents), Network: []string{},
 		Schema: map[string]any{}, PrivilegedIntents: []string{}}

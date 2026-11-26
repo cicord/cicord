@@ -12,6 +12,7 @@ import (
 // disappears with its lease. The replacement's effect succeeds but the handler fails.
 func TestDurableTaskDelivery(t *testing.T) {
 	e := startExampleResync(t, nil, func(dir string) {
+		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "spec:", "spec:\n  delivery: at-least-once")
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - scheduler\n    - portal.links")
 		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - portal.links", "        - scheduler\n        - portal.links")
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  tasks: {

@@ -196,6 +196,7 @@ type storeUpdateRequest struct {
 	Version           string `json:"version"`
 	Commit            string `json:"commit"`
 	Integrity         string `json:"integrity"`
+	ConfirmPrivileged bool   `json:"confirmPrivileged"`
 	ConfirmUnofficial bool   `json:"confirmUnofficial"`
 	// Force overwrites a locally modified copy of an official plugin.
 	Force bool `json:"force"`
@@ -303,6 +304,9 @@ func (s *server) handleStoreUpdate(w http.ResponseWriter, r *http.Request) {
 		plan.Modified = st.Modified
 	}
 
+	if !s.confirmServerGrants(w, plan.Diff.Capabilities.Added, req.ConfirmPrivileged) {
+		return
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	in := setup.Installer{Runtime: s.rt, Writer: s.opts.Writer, Catalog: s.opts.Catalog, Timeout: s.opts.ActivationTimeout}

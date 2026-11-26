@@ -63,7 +63,7 @@ import type {
 } from "@cicord/sdk";
 import { createHmac } from "node:crypto";
 import { testStorage } from "./testing-storage.js";
-import { CapabilityError } from "./index.js";
+import { CapabilityError, PluginUnavailableError } from "./index.js";
 
 // ───────────────────────────────────────────────────────────── options
 
@@ -156,6 +156,8 @@ export interface TestContextOptions {
   uploadLimit?: number;
 
   analytics?: import("@cicord/sdk").AnalyticsSummary;
+  features?: string[];
+  plugins?: Context["plugins"];
   /**
    * Plugin config. Defaults are applied only when `schema` is given (like the runtime does
    * with config.schema.json); otherwise pass every field the plugin reads.
@@ -1763,6 +1765,16 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         return structuredClone(options.analytics);
       },
     },
+    features: { enabled: (name) => options.features?.includes(name) ?? false },
+    plugins: options.plugins ?? {
+      has: () => false,
+      async query(plugin) {
+        throw new PluginUnavailableError(plugin);
+      },
+      async call(plugin) {
+        throw new PluginUnavailableError(plugin);
+      },
+    },
     plugin: {
       name: options.plugin?.name ?? "test-plugin",
       version: options.plugin?.version ?? "0.0.0",
@@ -2587,4 +2599,22 @@ function validateLayoutInput(input: MessageInput) {
     if (count > 40) throw new TypeError("layout exceeds 40 components");
   }
   for (const n of input.layout) visit(n, "message");
+}
+
+/** Test helper for idempotent handlers. Concurrent calls share the same promise;
+ * a failed effect can be retried. Keep the returned closure across redeliveries. */
+export function onceFor() {
+  const seen = new Map<string, Promise<void>>();
+  return (id: string, effect: () => Promise<void>): Promise<void> => {
+    const previous = seen.get(id);
+    if (previous) return previous;
+    const promise = Promise.resolve()
+      .then(effect)
+      .catch((error) => {
+        seen.delete(id);
+        throw error;
+      });
+    seen.set(id, promise);
+    return promise;
+  };
 }

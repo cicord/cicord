@@ -24,7 +24,15 @@
   }
   Object.defineProperty(CapabilityError.prototype, "name", { value: "CapabilityError", writable: true, configurable: true });
 
-  function mkError(name, message, capability) {
+  class InteropError extends Error {
+    constructor(code, message) { super(message); this.name = "InteropError"; this.code = code; }
+  }
+  class PluginUnavailableError extends InteropError {
+    constructor(message) { super("not_found", message); this.name = "PluginUnavailableError"; }
+  }
+  function mkError(name, message, capability, code) {
+    if (name === "PluginUnavailableError") return new PluginUnavailableError(message);
+    if (name === "InteropError") return new InteropError(code, message);
     if (capability) return new CapabilityError(capability, message);
     const e = name === "TypeError" ? new TypeError(message) : new Error(message);
     if (name && name !== "Error" && name !== "TypeError") {
@@ -42,6 +50,7 @@
     try {
       if (e instanceof Error) {
         return JSON.stringify({
+          code: e instanceof InteropError ? e.code : undefined,
           name: cut(String(e.name || "Error"), 200),
           message: cut(String(e.message), MAX_ERROR_TEXT),
           stack: typeof e.stack === "string" ? cut(e.stack, MAX_ERROR_TEXT) : "",
@@ -72,7 +81,7 @@
   function mkErrorJSON(json) {
     let d;
     try { d = JSON.parse(json); } catch (_) { d = { message: String(json) }; }
-    return mkError(d.name, d.message, d.capability);
+    return mkError(d.name, d.message, d.capability, d.code);
   }
 
   const raw = host.raw;
@@ -655,7 +664,7 @@
     });
 
     const events = freeze({
-      async publish(topic, payload) { await acall("events.publish", { topic, payload: payload === undefined ? null : payload }); },
+      async publish(topic, payload, opts = {}) { await acall("events.publish", { topic, version: opts.version, idempotencyKey: opts.idempotencyKey, payload: payload === undefined ? null : payload }); },
     });
 
     const portal = freeze({
@@ -698,6 +707,12 @@
       http,
       events,
       portal,
+      features: freeze({enabled: (feature) => hcall("features.enabled", {feature})}),
+      plugins: freeze({
+        has: (plugin) => hcall("plugins.has", {plugin}),
+        query: (plugin, name, input, opts = {}) => acall("plugins.query", {plugin, name, input, timeoutMs: opts.timeoutMs}),
+        call: (plugin, name, input, opts = {}) => acall("plugins.call", {plugin, name, input, timeoutMs: opts.timeoutMs, idempotencyKey: opts.idempotencyKey}),
+      }),
     });
   }
 
@@ -717,7 +732,7 @@
 
   function defineRoutes(routes) { return routes; }
 
-  const sdk = freeze({ sdkFeatures:freeze({contextMenus:true}), definePlugin, command, subcommand, defineRoutes, CapabilityError });
+  const sdk = freeze({ sdkFeatures:freeze({contextMenus:true}), definePlugin, command, subcommand, defineRoutes, query: command, action: command, CapabilityError, InteropError, PluginUnavailableError });
 
   const entries = (o) => (o && typeof o === "object" ? Object.keys(o).map((k) => [k, o[k]]) : []);
   const fns = (o) => entries(o).map(([name, f]) => ({ name, type: typeof f }));
@@ -738,7 +753,7 @@
   function describe() {
     const def = plugin;
     const sections = {};
-    for (const k of ["events", "commands", "contextMenus","components", "modals", "schedules", "tasks", "subscriptions", "routes", "privacy"]) {
+    for (const k of ["events", "commands", "contextMenus","components", "modals", "schedules", "tasks", "subscriptions", "routes", "privacy","queries","actions"]) {
       sections[k] = typeof def[k];
     }
     return JSON.stringify({
@@ -766,6 +781,8 @@
       schedules: entries(def.schedules).map(([name, s]) => ({ name, cron: s && s.cron, type: typeof (s && s.run) })),
       privacy: fns(def.privacy),
       tasks: fns(def.tasks),
+      queries: entries(def.queries).map(([name, v]) => ({name, type:typeof (v && v.run)})),
+      actions: entries(def.actions).map(([name, v]) => ({name, type:typeof (v && v.run)})),
       subscriptions: fns(def.subscriptions),
       routes: entries(def.routes).map(([name, r]) => ({ name, access: r && r.access, type: typeof (r && r.handler) })),
     });
@@ -830,6 +847,7 @@
       case "privacy": { const f=own(plugin.privacy,name); return f ? [plugin.privacy,f] : null; }
       case "schedule": { const s = own(plugin.schedules, name); return s && s.run ? [s, s.run] : null; }
       case "task": { const f = own(plugin.tasks, name); return f ? [plugin.tasks, f] : null; }
+      case "query": case "action": { const h = own(kind === "query" ? plugin.queries : plugin.actions, name); return h && typeof h.run === "function" ? [h, h.run] : null; }
       case "subscription": { const f = own(plugin.subscriptions, name); return f ? [plugin.subscriptions, f] : null; }
       case "route": { const r = own(plugin.routes, name); return r && r.handler ? [r, r.handler] : null; }
     }
@@ -889,7 +907,8 @@
       case "modal": return [mkModalInteraction(d)];
       case "privacy": return [d];
       case "task": return [d.payload, freeze(d.task)];
-      case "subscription": return [d.payload];
+      case "subscription": return [d.payload, d.meta && deepFreeze(d.meta)];
+      case "query": case "action": return [d.input, deepFreeze(d.call)];
       case "route": return [freeze({
         params: freeze(d.params || {}),
         query: freeze(d.query || {}),
@@ -932,6 +951,7 @@
           try {
             if (kind === "privacy") s = JSON.stringify(v);
             else if (kind === "route") { const envelope = routeOut(v); s = typeof envelope === "string" ? envelope : JSON.stringify(envelope); }
+            else if (kind === "query" || kind === "action") s = JSON.stringify(v === undefined ? null : v);
             else if (kind === "autocomplete") s = JSON.stringify(v === undefined || v === null ? [] : v);
             ok(s);
           } catch (e) {

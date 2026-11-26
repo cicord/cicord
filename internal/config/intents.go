@@ -14,7 +14,7 @@ func (r *Repo) GatewayIntents(bot string) []string {
 	names = append(names, b.Spec.Intents...)
 	for _, in := range r.Instances {
 		if in.Bot == bot {
-			names = append(names, in.Plugin.Manifest.Spec.Intents...)
+			names = append(names, in.EffectiveIntents()...)
 		}
 	}
 	for _, key := range b.Spec.ServerKeys() {

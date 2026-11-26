@@ -25,6 +25,7 @@ import (
 	"github.com/cicord/cicord/internal/locales"
 	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/portalroutes"
+	"github.com/cicord/cicord/internal/registry"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/sim"
 	"github.com/cicord/cicord/internal/source"
@@ -169,6 +170,15 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 	}
 	r.Privacy = m.Spec.Privacy
 	r.def = def
+	lp := config.LoadedPlugin{Dir: dir, Manifest: m}
+	if err := lp.LoadContracts(); err != nil {
+		r.Errors = append(r.Errors, err.Error())
+	}
+	r.Errors = append(r.Errors, def.CheckInterop(m.Spec, res.Code)...)
+	if m.Spec.Interop == nil {
+		r.Warnings = append(r.Warnings, "legacy event topics are deprecated; declare spec.interop and spec.delivery for versioned contracts")
+	}
+	caps, intents := m.Spec.Declared()
 	for _, c := range def.Commands {
 		cj := commandJSON{Name: c.Name, Description: c.Description, Ephemeral: c.Ephemeral, Permissions: c.Permissions, Options: optionsJSON(c.Options)}
 		r.Commands = append(r.Commands, cj)
@@ -189,12 +199,12 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 
 	// The same manifest checks as the runtime (internal/runtime buildPlugin).
 	for _, in := range def.RequiredIntents() {
-		if !slices.Contains(m.Spec.Intents, in) {
+		if !slices.Contains(intents, in) {
 			r.Errors = append(r.Errors, fmt.Sprintf("a handler needs the %s intent, which plugin.yaml does not declare (spec.intents)", in))
 		}
 	}
 	need := func(cond bool, capability, what string) {
-		if cond && !slices.Contains(m.Spec.Capabilities, capability) {
+		if cond && !slices.Contains(caps, capability) {
 			r.Errors = append(r.Errors, fmt.Sprintf("%s requires the %s capability in plugin.yaml", what, capability))
 		}
 	}
@@ -425,6 +435,31 @@ of date), for CI.`,
 			content, err := typegen.Generate(schema)
 			if err != nil {
 				return err
+			}
+			if m.Spec.Interop != nil {
+				self := &config.LoadedPlugin{Dir: dir, Manifest: m}
+				if err := self.LoadContracts(); err != nil {
+					return err
+				}
+				plugins := []*config.LoadedPlugin{self}
+				abs, err := filepath.Abs(dir)
+				if err != nil {
+					return err
+				}
+				if root := findRepoRoot(abs); root != "" {
+					repo, ds := config.Load(root, config.LoadOptions{Resolver: registry.NewResolver(root, registry.DefaultCacheDir())})
+					if err := ds.Err(); err != nil {
+						return err
+					}
+					for _, installed := range repo.Plugins {
+						plugins = append(plugins, installed)
+					}
+				}
+				contracts, err := typegen.Interop(plugins)
+				if err != nil {
+					return err
+				}
+				content += contracts
 			}
 			if out == "" {
 				out = filepath.Join(dir, "src", "cicord-env.d.ts")

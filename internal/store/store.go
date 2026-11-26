@@ -82,6 +82,8 @@ type Plugin struct {
 
 // Detail is a plugin with what it requests, at its latest version.
 type Detail struct {
+	Interop  *config.InteropSpec      `json:"interop,omitempty"`
+	Optional []config.OptionalFeature `json:"optional,omitempty"`
 	Plugin
 	Commit            string            `json:"commit,omitempty"`
 	Integrity         string            `json:"integrity,omitempty"`
@@ -530,6 +532,7 @@ func (s *Service) RegistryDetail(ctx context.Context, repo *config.Repo, reg con
 }
 
 func fill(d *Detail, e catalog.Entry) {
+	d.Interop, d.Optional = e.Interop, e.Optional
 	d.Capabilities, d.Intents, d.PrivilegedIntents = nonNil(e.Capabilities), nonNil(e.Intents), nonNil(e.PrivilegedIntents)
 	d.Network, d.Schema, d.Commands = nonNil(e.Network), e.Schema, e.Commands
 	if d.Schema == nil {

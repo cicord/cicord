@@ -66,7 +66,7 @@ func (q taskQueue) Due(ctx context.Context, now time.Time, limit int) ([]state.T
 		return nil, nil
 	}
 	rows, err := q.s.pool.Query(ctx,
-		`SELECT id, scope, name, payload, run_at FROM tasks WHERE NOT dead AND COALESCE(available_at, run_at) <= $1 ORDER BY run_at, id LIMIT $2`,
+		`SELECT id, scope, name, payload, run_at FROM tasks WHERE event_seq IS NULL AND NOT dead AND COALESCE(available_at, run_at) <= $1 ORDER BY run_at, id LIMIT $2`,
 		cutoff, limit)
 	if err != nil {
 		return nil, fmt.Errorf("state/postgres: due tasks: %w", err)
@@ -103,9 +103,9 @@ func (q taskQueue) ClaimDue(ctx context.Context, now, until time.Time, worker st
 	}
 	receipt := worker + "/" + rand.Text()
 	rows, err := q.s.pool.Query(ctx, `UPDATE tasks SET available_at = $3, receipt = $4, attempts = attempts + 1
- WHERE id IN (SELECT id FROM tasks WHERE NOT dead AND COALESCE(available_at, run_at) <= $1
+ WHERE id IN (SELECT id FROM tasks AS candidate WHERE NOT dead AND (event_seq IS NULL OR NOT EXISTS (SELECT 1 FROM tasks prior WHERE prior.event_stream=candidate.event_stream AND NOT prior.dead AND prior.event_seq<candidate.event_seq)) AND COALESCE(available_at, run_at) <= $1
  ORDER BY COALESCE(available_at, run_at), id LIMIT $2 FOR UPDATE SKIP LOCKED)
- RETURNING id, scope, name, payload, run_at, attempts, failures`, cutoff, clampLimit(limit, state.DefaultDueLimit), expires, receipt)
+ RETURNING id, scope, name, payload, run_at, attempts, failures, event_seq IS NOT NULL`, cutoff, clampLimit(limit, state.DefaultDueLimit), expires, receipt)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (q taskQueue) ClaimDue(ctx context.Context, now, until time.Time, worker st
 		var t state.TaskLease
 		var payload []byte
 		var runAt int64
-		if err := rows.Scan(&t.ID, &t.Scope, &t.Name, &payload, &runAt, &t.Attempt, &t.Failures); err != nil {
+		if err := rows.Scan(&t.ID, &t.Scope, &t.Name, &payload, &runAt, &t.Attempt, &t.Failures, &t.Event); err != nil {
 			return nil, err
 		}
 		t.Receipt, t.RunAt, t.Payload = receipt, fromNanos(runAt), payload
@@ -148,7 +148,7 @@ func (q taskQueue) Release(ctx context.Context, lease state.TaskLease, retry tim
 	if failure != "" {
 		added = 1
 	}
-	_, err := q.s.pool.Exec(ctx, `UPDATE tasks SET receipt='', available_at=$3, failures=failures+$4, last_failure=$5, dead=$6 WHERE id=$1 AND receipt=$2`, lease.ID, lease.Receipt, next, added, failure, retry.IsZero())
+	_, err := q.s.pool.Exec(ctx, `UPDATE tasks SET receipt='', available_at=$3, failures=failures+$4, last_failure=$5, dead=$6,dead_at=$7 WHERE id=$1 AND receipt=$2`, lease.ID, lease.Receipt, next, added, failure, retry.IsZero(), q.s.now().UnixNano())
 	return err
 }
 
@@ -210,4 +210,15 @@ func (q taskQueue) ResolveDead(ctx context.Context, server, id string, retry boo
 		return false, err
 	}
 	return res.RowsAffected() == 1, nil
+}
+
+func (q taskQueue) Consume(ctx context.Context, lease state.TaskLease) (bool, error) {
+	if lease.Receipt == "" {
+		return false, errors.New("missing lease receipt")
+	}
+	r, err := q.s.pool.Exec(ctx, `DELETE FROM tasks WHERE id=$1 AND receipt=$2`, lease.ID, lease.Receipt)
+	if err != nil {
+		return false, err
+	}
+	return r.RowsAffected() == 1, nil
 }

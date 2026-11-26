@@ -210,12 +210,20 @@ func (v *vm) close() { v.q.Close() }
 // TypeError when applicable).
 func errorJSON(err error) string {
 	var ce *CapabilityError
+	var ie *InteropError
 	info := struct {
+		Code       string `json:"code,omitempty"`
 		Name       string `json:"name"`
 		Message    string `json:"message"`
 		Capability string `json:"capability,omitempty"`
 	}{Name: "Error", Message: err.Error()}
-	if errors.As(err, &ce) {
+	if errors.As(err, &ie) {
+		info.Name = "InteropError"
+		if ie.Unavailable {
+			info.Name = "PluginUnavailableError"
+		}
+		info.Code = ie.Code
+	} else if errors.As(err, &ce) {
 		info.Capability, info.Message = ce.Capability, ce.Error()
 	} else if errors.Is(err, errInvalidArgument) {
 		info.Name = "TypeError"
@@ -226,12 +234,12 @@ func errorJSON(err error) string {
 
 func parseScriptError(js string) *ScriptError {
 	var info struct {
-		Name, Message, Stack, Capability string
+		Name, Message, Stack, Capability, Code string
 	}
 	if err := json.Unmarshal([]byte(js), &info); err != nil {
 		return &ScriptError{Name: "Error", Message: truncate(js, maxErrorText)}
 	}
-	return &ScriptError{Name: truncate(info.Name, 200), Message: truncate(info.Message, maxErrorText),
+	return &ScriptError{InteropCode: info.Code, Name: truncate(info.Name, 200), Message: truncate(info.Message, maxErrorText),
 		Stack: truncate(info.Stack, maxErrorText), Capability: truncate(info.Capability, 200)}
 }
 
@@ -391,9 +399,10 @@ func hardStopGrace(budget time.Duration) time.Duration {
 // ScriptError is an error thrown by plugin code. Stack positions are mapped to the
 // plugin's TypeScript sources.
 type ScriptError struct {
-	Name    string
-	Message string
-	Stack   string
+	InteropCode string
+	Name        string
+	Message     string
+	Stack       string
 	// Capability is set when the error is a CapabilityError.
 	Capability string
 }

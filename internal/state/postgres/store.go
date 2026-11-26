@@ -37,6 +37,7 @@ import (
 
 	"github.com/cicord/cicord/internal/state"
 	"github.com/cicord/cicord/internal/state/internal/advanced"
+	"github.com/cicord/cicord/internal/state/internal/interopdb"
 	"github.com/cicord/cicord/internal/state/internal/storeutil"
 )
 
@@ -139,6 +140,9 @@ func (s *Store) Sweep(ctx context.Context) (int64, error) {
 	now := s.now().UnixNano()
 	var total int64
 	for _, q := range []string{
+		`DELETE FROM interop_events WHERE expires_at <= $1`,
+		`DELETE FROM interop_actions WHERE expires_at <= $1`,
+		`DELETE FROM tasks WHERE dead AND event_seq IS NOT NULL AND dead_at <= $1 - 1209600000000000`,
 		`DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= $1`,
 		`DELETE FROM sessions WHERE expires_at <= $1`,
 	} {
@@ -267,3 +271,5 @@ func jsonArg(field string, v []byte) (any, error) {
 
 // clampLimit returns def for n <= 0 and caps n at state.MaxListLimit.
 func clampLimit(n, def int) int { return storeutil.ClampLimit(n, def) }
+
+func (s *Store) Interop() state.InteropStore { return interopdb.Store{DB: s.sqlDB, Postgres: true} }

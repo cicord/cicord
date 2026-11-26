@@ -117,6 +117,30 @@
         "network":{"type":"object","required":["allow"],"additionalProperties":false,"properties":{
           "allow":{"type":"array","maxItems":128,"uniqueItems":true,"items":{"$ref":"common.schema.json#/$defs/networkHost"}}
         }},
+        "interop": {
+          "type": "object",
+          "properties": {
+            "targets": {
+              "type": "object",
+              "propertyNames": {
+                "$ref": "common.schema.json#/$defs/key"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$"
+              }
+            },
+            "allowCallers": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "grants": {
           "description": "Capabilities granted to this plugin. Must cover every capability its manifest requests.",
           "type": "array",

@@ -84,6 +84,10 @@ func startExampleWith(t *testing.T, prepare func(w *sim.World, appID string)) *e
 // startExampleResync is startExampleWith with an edit of the copied repository before the
 // runtime starts and a periodic resync interval (negative: none).
 func startExampleResync(t *testing.T, prepare func(w *sim.World, appID string), edit func(dir string), resync time.Duration) *env {
+	return startExampleBots(t, prepare, edit, resync, nil)
+}
+
+func startExampleBots(t *testing.T, prepare func(w *sim.World, appID string), edit func(string), resync time.Duration, extra func(*sim.World, string) map[string]string) *env {
 	t.Helper()
 	w := sim.NewWorld()
 	owner := w.CreateUser("owner")
@@ -96,6 +100,11 @@ func startExampleResync(t *testing.T, prepare func(w *sim.World, appID string), 
 		t.Fatal(err)
 	}
 
+	tokens := map[string]string{}
+	if extra != nil {
+		tokens = extra(w, srv.ID)
+	}
+	tokens["DISCORD_TOKEN_MODERATOR"] = token
 	dir := t.TempDir()
 	copyTree(t, "../../examples/basic", dir)
 	replaceIn(t, filepath.Join(dir, "servers/my-community.yaml"), `discordId: "112233445566778899"`, `discordId: "`+srv.ID+`"`)
@@ -121,7 +130,7 @@ func startExampleResync(t *testing.T, prepare func(w *sim.World, appID string), 
 	rt := New(Options{
 		PrivacyDir: t.TempDir(),
 		Source:     src, Connector: w, Store: store, Mode: "dev", Simulator: true,
-		Secrets:   func(n string) (string, bool) { return token, n == "DISCORD_TOKEN_MODERATOR" },
+		Secrets:   func(n string) (string, bool) { token, ok := tokens[n]; return token, ok },
 		PortalURL: "http://localhost:7420", Logger: logger, ResyncInterval: resync,
 	})
 	ctx, cancel := context.WithCancel(context.Background())

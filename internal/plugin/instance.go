@@ -111,7 +111,11 @@ type Env struct {
 	Resources  state.ResourceMap // records plugin-owned channels; nil: not recorded
 	Portal     PortalLinker      // nil: ctx.portal.link fails
 	// Publish sends a cross-plugin event. topic is namespaced: "<plugin>.<topic>".
-	Publish func(topic string, payload json.RawMessage) error
+	Features       map[string]string
+	HasPlugin      func(string) bool
+	InvokePlugin   func(context.Context, string, Request, CallFrame) (json.RawMessage, error)
+	PublishVersion func(context.Context, string, int, string, json.RawMessage) error
+	Publish        func(topic string, payload json.RawMessage) error
 
 	Logger     *slog.Logger // nil: discarded
 	Limits     Limits
@@ -803,6 +807,7 @@ type invResult struct {
 type invocation struct {
 	locale         string
 	privacySubject string // only this subject can be pseudonymized by the current privacy hook
+	frame          CallFrame
 	// Only member identities supplied by the host for this handler may be used to
 	// check channel access. Plugin arguments cannot invent role memberships.
 	audienceMembers sync.Map // user ID -> discord.Member
@@ -963,6 +968,11 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 	if kind == "privacy" {
 		inv.privacySubject, _ = data.(string)
 	}
+	if frame, ok := caller.Value(callKey{}).(CallFrame); ok {
+		inv.frame = frame
+	} else {
+		inv.frame.Principal = trustedPrincipal(data)
+	}
 	inv.rememberAudience(data)
 	queued = true
 
@@ -976,6 +986,13 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		i.invMu.Lock()
 		i.invs[inv.id] = inv
 		i.invMu.Unlock()
+		if start, ok := caller.Value(startKey{}).(func(context.Context) error); ok {
+			if err := start(inv.ctx); err != nil {
+				i.forget(inv)
+				inv.settle(invResult{err: err})
+				return
+			}
+		}
 		err := i.enter(inv, i.limits.SyncBudget, func(ctx context.Context) error {
 			handled, err := i.vm.runAPI(ctx, "dispatch", strconv.FormatUint(inv.id, 10), kind, name, dataJSON)
 			if err == nil && handled != "1" {
@@ -1265,6 +1282,11 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 			v.Member = &m
 		}
 		dto.Viewer = v
+	}
+	if scoped, ok := any(req).(interface{ ScopedInteropPrincipal() (string, string, bool) }); ok && req.Viewer != nil {
+		if kind, id, verified := scoped.ScopedInteropPrincipal(); verified {
+			ctx = context.WithValue(ctx, callKey{}, CallFrame{Principal: &Principal{UserID: req.Viewer.User.ID, Access: "scoped", ResourceScope: &ResourceScope{Kind: kind, ID: id}}})
+		}
 	}
 	r := <-i.dispatch(ctx, "route", route.Key(), dto, nil)
 	if r.err != nil {

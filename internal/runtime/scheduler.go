@@ -134,7 +134,7 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 			continue
 		}
 		inst := byScope[task.Scope]
-		if inst == nil || !inst.plugin.def.HasTask(task.Name) {
+		if inst == nil || (!task.Event && !inst.plugin.def.HasTask(task.Name)) {
 			retry := now.Add(time.Minute)
 			reason := ""
 			if !now.Before(task.RunAt.Add(24 * time.Hour)) {
@@ -156,9 +156,20 @@ func (s *scheduler) deliverTask(ctx context.Context, inst *instanceRT, task stat
 	defer func() { <-s.slots }()
 	c, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
-	_, err := s.r.WithReplayPrivacy(c, inst.cfg.Server, task.Payload, func() error {
-		return inst.inst().RunTask(c, task.Name, task.Payload, plugin.TaskDelivery{ID: task.ID, Attempt: task.Attempt})
-	})
+	legacy := inst.cfg.Plugin.Manifest.Spec.Delivery != "at-least-once"
+	if legacy {
+		c = plugin.BeforeDelivery(c, func(ctx context.Context) error {
+			taken, err := queue.Consume(ctx, task)
+			if err != nil {
+				return err
+			}
+			if !taken {
+				return plugin.ErrDeliverySuperseded
+			}
+			return nil
+		})
+	}
+	err := checkedTask(c, inst, task, s.r)
 	s.r.handlerDone(inst, err)
 	if ctx.Err() != nil {
 		return // shutdown leaves the lease recoverable

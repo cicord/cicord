@@ -19,18 +19,19 @@ import (
 // Definition is the static part of a plugin, extracted from `definePlugin({...})` by Inspect.
 // All lists are sorted by name, except command options (Discord order).
 type Definition struct {
-	ContextMenus  []CommandDef
-	HasPrivacy    bool
-	Commands      []CommandDef
-	Events        []string // SDK event names: memberJoin, messageCreate, …
-	Components    []string // local component ids (handler keys)
-	Modals        []string // local modal ids (handler keys)
-	Schedules     []ScheduleDef
-	Tasks         []string
-	Subscriptions []string // "<plugin>.<topic>"
-	Routes        []RouteDef
-	HasOnStart    bool
-	HasOnStop     bool
+	ContextMenus     []CommandDef
+	HasPrivacy       bool
+	Commands         []CommandDef
+	Events           []string // SDK event names: memberJoin, messageCreate, …
+	Components       []string // local component ids (handler keys)
+	Modals           []string // local modal ids (handler keys)
+	Schedules        []ScheduleDef
+	Tasks            []string
+	Subscriptions    []string // "<plugin>.<topic>"
+	Routes           []RouteDef
+	HasOnStart       bool
+	HasOnStop        bool
+	Queries, Actions []string
 }
 
 // CommandDef is a slash command declared under `commands`.
@@ -408,16 +409,18 @@ type describedPlugin struct {
 		Permissions     []string
 		Ephemeral       bool
 	} `json:"contextMenus"`
-	Privacy    []describedFn     `json:"privacy"`
-	Keys       []string          `json:"keys"`
-	OnStart    string            `json:"onStart"` // typeof
-	OnStop     string            `json:"onStop"`
-	Events     []describedFn     `json:"events"`
-	Commands   []describedCmd    `json:"commands"`
-	Components []describedFn     `json:"components"`
-	Modals     []describedFn     `json:"modals"`
-	Schedules  []describedCron   `json:"schedules"`
-	Tasks      []describedFn     `json:"tasks"`
+	Privacy    []describedFn   `json:"privacy"`
+	Keys       []string        `json:"keys"`
+	OnStart    string          `json:"onStart"` // typeof
+	OnStop     string          `json:"onStop"`
+	Events     []describedFn   `json:"events"`
+	Commands   []describedCmd  `json:"commands"`
+	Components []describedFn   `json:"components"`
+	Modals     []describedFn   `json:"modals"`
+	Schedules  []describedCron `json:"schedules"`
+	Tasks      []describedFn   `json:"tasks"`
+	Queries    []describedFn
+	Actions    []describedFn
 	Subs       []describedFn     `json:"subscriptions"`
 	Routes     []describedFn     `json:"routes"`
 	Sections   map[string]string `json:"sections"` // section name → typeof
@@ -476,7 +479,7 @@ type describedOpt struct {
 
 var knownSections = map[string]bool{
 	"contextMenus": true, "onStart": true, "onStop": true, "events": true, "commands": true, "components": true,
-	"privacy": true, "modals": true, "schedules": true, "tasks": true, "subscriptions": true, "routes": true,
+	"privacy": true, "modals": true, "schedules": true, "tasks": true, "subscriptions": true, "routes": true, "queries": true, "actions": true,
 }
 
 var (
@@ -624,6 +627,18 @@ func buildDefinition(dp describedPlugin) (*Definition, error) {
 		if checkFn("tasks", t.Name, t.Type) {
 			d.Tasks = append(d.Tasks, t.Name)
 		}
+	}
+	for _, section := range []struct {
+		name string
+		fns  []describedFn
+		dest *[]string
+	}{{"queries", dp.Queries, &d.Queries}, {"actions", dp.Actions, &d.Actions}} {
+		for _, f := range section.fns {
+			if checkFn(section.name, f.Name, f.Type) {
+				*section.dest = append(*section.dest, f.Name)
+			}
+		}
+		sort.Strings(*section.dest)
 	}
 	for _, s := range dp.Subs {
 		if !subKeyRe.MatchString(s.Name) {

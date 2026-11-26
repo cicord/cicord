@@ -263,6 +263,7 @@ type storeInstallRequest struct {
 	Version           string         `json:"version"`
 	Commit            string         `json:"commit"`
 	Integrity         string         `json:"integrity"`
+	ConfirmPrivileged bool           `json:"confirmPrivileged"`
 	ConfirmUnofficial bool           `json:"confirmUnofficial"`
 }
 
@@ -375,6 +376,9 @@ func (s *server) handleStoreInstall(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if !s.confirmServerGrants(w, pkg.Capabilities, req.ConfirmPrivileged) {
+		return
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	in := setup.Installer{Runtime: s.rt, Writer: s.opts.Writer, Catalog: s.opts.Catalog, Timeout: s.opts.ActivationTimeout}

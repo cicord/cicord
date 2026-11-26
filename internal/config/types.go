@@ -550,6 +550,7 @@ type PluginInstance struct {
 	Secrets   map[string]TokenRef       `yaml:"secrets,omitempty" json:"secrets,omitempty"`
 	Network   *Network                  `yaml:"network,omitempty" json:"network,omitempty"`
 	Files     []string                  `yaml:"files,omitempty" json:"files,omitempty"`
+	Interop   InstanceInterop           `yaml:"interop,omitempty" json:"interop,omitempty"`
 	Name      string                    `yaml:"name" json:"name"`
 	Source    string                    `yaml:"source" json:"source"`
 	Version   string                    `yaml:"version,omitempty" json:"version,omitempty"`
@@ -609,6 +610,9 @@ type PluginSpec struct {
 	Secrets      []PluginSecret    `yaml:"secrets,omitempty" json:"secrets,omitempty"`
 	Assets       string            `yaml:"assets,omitempty" json:"assets,omitempty"`
 	Privacy      *PrivacyInventory `yaml:"privacy,omitempty" json:"privacy,omitempty"`
+	Delivery     string            `yaml:"delivery,omitempty" json:"delivery,omitempty"`
+	Optional     []OptionalFeature `yaml:"optional,omitempty" json:"optional,omitempty"`
+	Interop      *InteropSpec      `yaml:"interop,omitempty" json:"interop,omitempty"`
 	Engine       string            `yaml:"engine" json:"engine"`
 	Entry        string            `yaml:"entry" json:"entry"`
 	Capabilities []string          `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`

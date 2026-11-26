@@ -40,6 +40,7 @@ const LockFile = "cicord.lock"
 
 // Index is the content of a registry's index.yaml.
 type Index struct {
+	proof   indexProof
 	Plugins map[string]IndexEntry `yaml:"plugins"`
 	// SignedBy is the ID of the official key whose signature verified (FetchIndex sets it
 	// for official URLs only; "" otherwise). Never read from the file.
@@ -509,6 +510,7 @@ func FetchIndex(ctx context.Context, url string) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
+	var proof indexProof
 	signedBy := ""
 	if Trust(url) == TrustOfficial {
 		var sig []byte
@@ -519,6 +521,7 @@ func FetchIndex(ctx context.Context, url string) (*Index, error) {
 			}
 			sig = []byte(s)
 		}
+		proof = indexProof{content, string(sig)}
 		err := checkSerial(ctx, func() (Envelope, error) {
 			env, id, err := VerifyIndex([]byte(content), sig, officialKeys(), VerifyOptions{Registries: officialURLs()})
 			signedBy = id
@@ -533,6 +536,7 @@ func FetchIndex(ctx context.Context, url string) (*Index, error) {
 		return nil, fmt.Errorf("%s: %w", Redact(url), err)
 	}
 	idx.SignedBy = signedBy
+	idx.proof = proof
 	return idx, nil
 }
 
@@ -648,6 +652,7 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 		return nil, fmt.Errorf("%s@%s: %w", source, entry.Version, err)
 	}
 	entry.Integrity = sum
+	saveIndexProof(filepath.Join(cacheDir, "official-index-proof.json"), idx.proof)
 	if err := os.WriteFile(filepath.Join(dir, ".cicord-integrity"), []byte(sum+"\n"), 0o644); err != nil {
 		return nil, err
 	}

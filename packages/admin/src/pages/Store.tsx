@@ -890,6 +890,42 @@ function Review({ detail, serverKey }: { detail: StoreDetail; serverKey: string 
         </h3>
         <p className="text-xs text-muted-foreground">{t("store.detail.reviewHint")}</p>
       </div>
+      {detail.interop && (
+        <Block title={t("store.detail.events")}>
+          <ul>
+            {detail.interop.publishes?.map((p) => (
+              <li key={p.topic + (p.version ?? 1)}>
+                {t("store.detail.publishes")} {detail.name}.{p.topic} v{p.version ?? 1} ·{" "}
+                {p.scope ?? "bot"}
+              </li>
+            ))}
+            {detail.interop.subscribes?.map((p) => (
+              <li key={p.topic + (p.version ?? 1)}>
+                {t("store.detail.subscribes")} {p.topic} v{p.version ?? 1}
+              </li>
+            ))}
+          </ul>
+        </Block>
+      )}
+      {detail.optional?.length ? (
+        <Block title={t("store.detail.optional")}>
+          <ul>
+            {detail.optional.map((f) => (
+              <li key={f.feature}>
+                {f.feature}
+                <ul>
+                  {f.capabilities?.map((c) => (
+                    <CapabilityRow key={c} cap={c} />
+                  ))}
+                  {f.intents?.map((intent) => (
+                    <li key={intent}>{intent}</li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </Block>
+      ) : null}
       <Block title={t("store.detail.capabilities")}>
         {detail.capabilities.length ? (
           <ul className="flex flex-col gap-1" aria-label={t("store.detail.capabilities")}>
@@ -998,9 +1034,33 @@ function Review({ detail, serverKey }: { detail: StoreDetail; serverKey: string 
   );
 }
 
+export function serverGrants(capabilities: string[]) {
+  return capabilities.filter((c) =>
+    ["server.overlays", "server.incident", "server.sync"].includes(c),
+  );
+}
+export function ServerGrantConsent({
+  grants,
+  checked,
+  change,
+}: {
+  grants: string[];
+  checked: boolean;
+  change: (v: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <label className="flex items-start gap-2 rounded-md border border-danger p-3 text-danger">
+      <input type="checkbox" checked={checked} onChange={(e) => change(e.target.checked)} />
+      {t("store.detail.serverGrants", { grants: grants.join(", ") })}
+    </label>
+  );
+}
+
 export function CapabilityRow({ cap }: { cap: string }) {
   const { t } = useTranslation();
-  const risk = RISK[cap];
+  const wildcard = cap.startsWith("plugins.") && cap.endsWith(".*");
+  const risk = wildcard || serverGrants([cap]).length ? "high" : RISK[cap];
   return (
     <li className="flex items-start gap-2 text-[13px]">
       {risk ? (
@@ -1018,7 +1078,8 @@ export function CapabilityRow({ cap }: { cap: string }) {
         />
       )}
       <span className="min-w-0">
-        {capabilityLabel(t, cap)} <Mono className="text-[11px] text-subtle-foreground">{cap}</Mono>
+        {wildcard ? t("store.detail.allMethods") : capabilityLabel(t, cap)}{" "}
+        <Mono className="text-[11px] text-subtle-foreground">{cap}</Mono>
       </span>
     </li>
   );
@@ -1053,6 +1114,8 @@ function InstallForm({
   const [instance, setInstance] = useState(detail.name);
   const [draft, setDraft] = useState<JsonObject>(() => applyDefaults(schema, {}));
   const [confirmed, setConfirmed] = useState(false);
+  const [serverConfirmed, setServerConfirmed] = useState(false);
+  const privilegedGrants = serverGrants(detail.capabilities);
   const [attempted, setAttempted] = useState(false);
   const [serverErrors, setServerErrors] = useState<MappedDiagnostics>({ byField: {}, general: [] });
   const [problem, setProblem] = useState<unknown>(null);
@@ -1076,7 +1139,10 @@ function InstallForm({
         )
       ? t("store.install.conflict.title")
       : undefined;
-  const ready = (!unofficial || confirmed) && (!multiBot || !!bot);
+  const ready =
+    (!privilegedGrants.length || serverConfirmed) &&
+    (!unofficial || confirmed) &&
+    (!multiBot || !!bot);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -1098,6 +1164,7 @@ function InstallForm({
       ...(registry && detail.commit ? { commit: detail.commit } : {}),
       ...(registry && detail.integrity ? { integrity: detail.integrity } : {}),
       ...(unofficial ? { confirmUnofficial: true } : {}),
+      ...(privilegedGrants.length ? { confirmPrivileged: true } : {}),
     };
     setPending(true);
     setProblem(null);
@@ -1203,6 +1270,13 @@ function InstallForm({
         )}
       </div>
 
+      {privilegedGrants.length > 0 && (
+        <ServerGrantConsent
+          grants={privilegedGrants}
+          checked={serverConfirmed}
+          change={setServerConfirmed}
+        />
+      )}
       {privileged.length ? (
         <Callout
           tone="warning"

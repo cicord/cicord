@@ -38,6 +38,9 @@ export function TrustBadge({ trust, className }: { trust: PluginTrust; className
 
 /** Capabilities that deserve attention (colour and icon wherever they are listed). */
 export const RISK: Record<string, "high" | "medium"> = {
+  "server.overlays": "high",
+  "server.incident": "high",
+  "server.sync": "high",
   "discord.messages.manage": "medium",
   "discord.webhooks.manage": "high",
   "discord.members.manage": "medium",

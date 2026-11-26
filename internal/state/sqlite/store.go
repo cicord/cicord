@@ -32,6 +32,7 @@ import (
 
 	"github.com/cicord/cicord/internal/state"
 	"github.com/cicord/cicord/internal/state/internal/advanced"
+	"github.com/cicord/cicord/internal/state/internal/interopdb"
 	"github.com/cicord/cicord/internal/state/internal/storeutil"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
@@ -196,6 +197,9 @@ func (s *Store) Sweep(ctx context.Context) (int64, error) {
 	now := s.now().UnixNano()
 	var total int64
 	for _, q := range []string{
+		`DELETE FROM interop_events WHERE expires_at <= ?`,
+		`DELETE FROM interop_actions WHERE expires_at <= ?`,
+		`DELETE FROM tasks WHERE dead AND event_seq IS NOT NULL AND dead_at <= ? - 1209600000000000`,
 		`DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= ?`,
 		`DELETE FROM sessions WHERE expires_at <= ?`,
 	} {
@@ -348,3 +352,5 @@ func rollback(tx *sql.Tx, err *error) {
 		*err = errors.Join(*err, fmt.Errorf("state/sqlite: rollback: %w", rbErr))
 	}
 }
+
+func (s *Store) Interop() state.InteropStore { return interopdb.Store{DB: s.w} }

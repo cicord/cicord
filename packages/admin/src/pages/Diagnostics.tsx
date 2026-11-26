@@ -25,6 +25,7 @@ export function DiagnosticsPage({ serverKey }: { serverKey: string }) {
           </Button>
         }
       />
+      <Interop key={`interop-${serverKey}`} serverKey={serverKey} />
       <FailedTasks key={serverKey} serverKey={serverKey} />
       {rep.error ? <SetupError error={rep.error} /> : null}
       {rep.data ? (
@@ -110,6 +111,47 @@ function FailedTasks({ serverKey }: { serverKey: string }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function Interop({ serverKey }: { serverKey: string }) {
+  const { client } = useCicord();
+  const { t } = useTranslation();
+  const graph = usePoll((signal) => client.admin.interop(serverKey, { signal }), 15_000);
+  if (graph.error) return <SetupError error={graph.error} />;
+  if (!graph.data) return null;
+  const disabled = Object.entries(graph.data.features).flatMap(([id, features]) =>
+    Object.entries(features ?? {})
+      .filter(([, reason]) => reason)
+      .map(([name, reason]) => `${id} · ${name} · ${reason}`),
+  );
+  if (!graph.data.edges.length && !disabled.length) return null;
+  return (
+    <section className="mb-6" aria-label={t("diagnostics.interop")}>
+      <h2 className="mb-2 font-semibold">{t("diagnostics.interop")}</h2>
+      <ul className="divide-y rounded-md border px-3">
+        {graph.data.edges.map((edge) => (
+          <li key={JSON.stringify(edge)} className="py-2">
+            <p className="font-medium">
+              {edge.from} → {edge.to}
+            </p>
+            <p className="text-sm">
+              {edge.kind} · {edge.contract} · {edge.status}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {disabled.length > 0 && (
+        <>
+          <h3 className="mt-3 font-medium">{t("diagnostics.disabledFeatures")}</h3>
+          <ul>
+            {disabled.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }

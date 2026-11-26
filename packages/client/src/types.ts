@@ -244,6 +244,16 @@ export interface ServerAssetResult {
 }
 
 /** Failed work retained for an administrator. The private plugin payload is omitted. */
+export interface InteropGraph {
+  edges: {
+    kind: "query" | "action" | "event";
+    from: string;
+    to: string;
+    contract: string;
+    status: string;
+  }[];
+  features: Record<string, Record<string, string> | null>;
+}
 export interface DeadTask {
   id: string;
   scope: string;
@@ -1354,6 +1364,11 @@ export interface StorePluginParams extends PageParams<StorePluginSortKey> {
  * requests (read from its plugin.yaml at that version, not from the index).
  */
 export interface StoreDetail extends StorePlugin {
+  interop?: {
+    publishes?: { topic: string; version?: number; scope?: string }[];
+    subscribes?: { topic: string; version?: number }[];
+  };
+  optional?: { feature: string; capabilities?: string[]; intents?: string[] }[];
   version: string;
   /** Resolved commit (registry plugins); send it back with the install. */
   commit?: string;
@@ -1392,6 +1407,7 @@ export interface StoreInstallRequest {
   integrity?: string;
   /** Required (`true`) for `unofficial` sources, otherwise `409 confirmation_required`. */
   confirmUnofficial?: boolean;
+  confirmPrivileged?: boolean;
 }
 
 /** What a new version adds to and removes from a list (sorted). */
@@ -1488,6 +1504,7 @@ export interface StoreUpdateRequest {
   integrity?: string;
   /** Required (`true`) for `unofficial` sources. */
   confirmUnofficial?: boolean;
+  confirmPrivileged?: boolean;
   /** Overwrite a locally modified copy of an official plugin. */
   force?: boolean;
 }

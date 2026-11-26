@@ -39,7 +39,158 @@
     "spec": {
       "type": "object",
       "required": ["engine", "entry"],
+      "dependentRequired": { "interop": ["delivery"] },
       "properties": {
+        "delivery": {
+          "enum": [
+            "at-least-once"
+          ]
+        },
+        "optional": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9]*$"
+              },
+              "capabilities": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "common.schema.json#/$defs/capability"
+                }
+              },
+              "intents": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "common.schema.json#/$defs/intent"
+                }
+              }
+            },
+            "required": [
+              "feature"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "interop": {
+          "type": "object",
+          "properties": {
+            "types": {
+              "$ref": "common.schema.json#/$defs/relativePath"
+            },
+            "publishes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "topic": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z][a-zA-Z0-9]*$"
+                  },
+                  "scope": {
+                    "enum": [
+                      "bot",
+                      "server"
+                    ]
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "topic"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "subscribes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]+\\.[a-zA-Z][a-zA-Z0-9]*$"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "topic": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9-]+\\.[a-zA-Z][a-zA-Z0-9]*$"
+                      },
+                      "version": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647
+                      }
+                    },
+                    "required": [
+                      "topic"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "provides": {
+              "type": "object",
+              "properties": {
+                "queries": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z][a-zA-Z0-9]*$"
+                  }
+                },
+                "actions": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z][a-zA-Z0-9]*$"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "consumes": {
+              "type": "object",
+              "properties": {
+                "queries": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]+\\.[a-zA-Z][a-zA-Z0-9]*$"
+                  }
+                },
+                "actions": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]+\\.[a-zA-Z][a-zA-Z0-9]*$"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
         "engine": { "$ref": "common.schema.json#/$defs/semverRange" },
         "locales": { "type": "string", "minLength": 1, "description": "Directory of locale JSON catalogues relative to the plugin." },
         "assets": { "type": "string", "pattern": "^\\./", "description": "Plugin asset directory, at most 5 MiB total." },
