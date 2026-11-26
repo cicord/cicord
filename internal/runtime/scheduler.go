@@ -2,19 +2,23 @@ package runtime
 
 import (
 	"context"
+	"crypto/rand"
 	"sync"
 	"time"
 
 	"github.com/cicord/cicord/internal/plugin"
+	"github.com/cicord/cicord/internal/state"
 )
 
 // scheduler runs one-shot tasks (persisted in the store) and cron schedules of the active
 // revision's plugin instances. Ticks every second.
 type scheduler struct {
-	r    *Runtime
-	mu   sync.Mutex
-	jobs []*cronJob
-	tick time.Duration
+	r      *Runtime
+	mu     sync.Mutex
+	jobs   []*cronJob
+	tick   time.Duration
+	worker string
+	slots  chan struct{}
 }
 
 type cronJob struct {
@@ -24,7 +28,9 @@ type cronJob struct {
 	next time.Time
 }
 
-func newScheduler(r *Runtime) *scheduler { return &scheduler{r: r, tick: time.Second} }
+func newScheduler(r *Runtime) *scheduler {
+	return &scheduler{r: r, tick: time.Second, worker: rand.Text(), slots: make(chan struct{}, 64)}
+}
 
 func (s *scheduler) reset(a *active) {
 	now := time.Now().UTC()
@@ -96,8 +102,23 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 	if a == nil {
 		return
 	}
-	tasks, err := s.r.opts.Store.Tasks().Due(ctx, now, 100)
-	if err != nil || len(tasks) == 0 {
+	space := cap(s.slots) - len(s.slots)
+	if space == 0 {
+		return
+	}
+	timeout := s.r.opts.PluginLimits.HandlerTimeout
+	if timeout <= 0 {
+		timeout = plugin.DefaultHandlerTimeout
+	}
+	queue := s.r.opts.Store.Tasks()
+	tasks, err := queue.ClaimDue(ctx, now, now.Add(2*timeout), s.worker, space)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.r.log.Warn("claim due tasks", "err", err)
+		}
+		return
+	}
+	if len(tasks) == 0 {
 		return
 	}
 	byScope := map[string]*instanceRT{}
@@ -106,25 +127,47 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 			byScope[instanceScope(i.cfg)] = i
 		}
 	}
-	for _, t := range tasks {
-		inst := byScope[t.Scope]
-		if inst == nil || !inst.plugin.def.HasTask(t.Name) {
-			// The instance is gone or no longer declares the task: keep it unless it is
-			// more than a day overdue, so a temporarily broken revision does not lose work.
-			if now.Sub(t.RunAt) > 24*time.Hour {
-				_ = s.r.opts.Store.Tasks().Complete(ctx, t.ID)
+	for _, task := range tasks {
+		inst := byScope[task.Scope]
+		if inst == nil || !inst.plugin.def.HasTask(task.Name) {
+			retry := now.Add(time.Minute)
+			reason := ""
+			if !now.Before(task.RunAt.Add(24 * time.Hour)) {
+				retry = time.Time{}
+				reason = "handler unavailable for 24 hours"
+			}
+			if err := queue.Release(ctx, task, retry, reason); err != nil {
+				s.r.log.Warn("defer orphan task", "id", task.ID, "err", err)
 			}
 			continue
 		}
-		_ = s.r.opts.Store.Tasks().Complete(ctx, t.ID) // at-most-once delivery
-		go func() {
-			c, cancel := context.WithTimeout(ctx, time.Minute)
-			defer cancel()
-			err := inst.inst().RunTask(c, t.Name, t.Payload)
-			s.r.handlerDone(inst, err)
-			if err != nil {
-				s.r.log.Warn("task failed", "instance", inst.id(), "task", t.Name, "err", err)
-			}
-		}()
+		s.slots <- struct{}{}
+		go s.deliverTask(ctx, inst, task, now.Add(timeout))
+	}
+}
+
+func (s *scheduler) deliverTask(ctx context.Context, inst *instanceRT, task state.TaskLease, deadline time.Time) {
+	queue := s.r.opts.Store.Tasks()
+	defer func() { <-s.slots }()
+	c, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	err := inst.inst().RunTask(c, task.Name, task.Payload, plugin.TaskDelivery{ID: task.ID, Attempt: task.Attempt})
+	s.r.handlerDone(inst, err)
+	if ctx.Err() != nil {
+		return // shutdown leaves the lease recoverable
+	}
+	if err == nil {
+		err = queue.Acknowledge(ctx, task)
+	} else {
+		s.r.log.Warn("task handler failed", "instance", inst.id(), "id", task.ID, "attempt", task.Attempt, "err", err)
+		// Never persist arbitrary plugin error text with the administrative record.
+		var retry time.Time
+		if task.Failures < 4 {
+			retry = time.Now().Add(time.Second << task.Failures)
+		}
+		err = queue.Release(ctx, task, retry, "handler failed")
+	}
+	if err != nil {
+		s.r.log.Warn("settle task delivery", "instance", inst.id(), "id", task.ID, "err", err)
 	}
 }

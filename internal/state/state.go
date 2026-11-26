@@ -131,15 +131,47 @@ type Task struct {
 	RunAt   time.Time
 }
 
-type TaskQueue interface {
+// TaskLease identifies one delivery. A receipt can only settle the same claim:
+// replacing or cancelling a task invalidates every outstanding receipt.
+type TaskLease struct {
+	Task
+	Receipt  string
+	Attempt  int
+	Failures int
+}
+
+// TaskWriter is the part of the queue exposed to a plugin.
+type TaskWriter interface {
 	// Schedule inserts the task, or replaces the task with the same ID and scope
 	// (ErrTaskIDConflict when the ID belongs to another scope).
 	Schedule(ctx context.Context, t Task) error
 	Cancel(ctx context.Context, scope, id string) error
+}
+
+// TaskQueue persists scheduled work until successful delivery or operator disposal.
+type TaskQueue interface {
+	TaskWriter
+	ClaimDue(ctx context.Context, now, until time.Time, worker string, limit int) ([]TaskLease, error)
+	Acknowledge(ctx context.Context, lease TaskLease) error
+	// Release schedules another delivery or, with a zero retry time, parks the task
+	// as a dead letter. An empty failure defers an unavailable handler.
+	Release(ctx context.Context, lease TaskLease, retry time.Time, failure string) error
+	DeadCounts(ctx context.Context) (map[string]int, error)
+	DeadLetters(ctx context.Context, server string, limit int) ([]DeadTask, error)
+	ResolveDead(ctx context.Context, server, id string, retry bool, now time.Time) (bool, error)
 	// Due returns tasks with RunAt <= now, oldest first (ties by ID, byte order).
 	Due(ctx context.Context, now time.Time, limit int) ([]Task, error)
-	// Complete removes a task after it ran.
-	Complete(ctx context.Context, id string) error
+}
+
+// DeadTask omits the payload: it may contain private member or message data.
+type DeadTask struct {
+	Scope    string    `json:"scope"`
+	ID       string    `json:"id"`
+	Name     string    `json:"name"`
+	RunAt    time.Time `json:"runAt"`
+	Attempts int       `json:"attempts"`
+	Failures int       `json:"failures"`
+	Reason   string    `json:"reason"`
 }
 
 // ───────────────────────────────────────────────────────────── audit

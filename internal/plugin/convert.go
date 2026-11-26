@@ -722,7 +722,13 @@ type viewerDTO struct {
 	Member *memberDTO `json:"member,omitempty"`
 }
 
+// TaskDelivery is stable across retries except for the increasing attempt.
+type TaskDelivery struct {
+	ID      string `json:"id"`
+	Attempt int    `json:"attempt"`
+}
 type payloadDTO struct {
+	Task    *TaskDelivery   `json:"task,omitempty"`
 	Payload json.RawMessage `json:"payload,omitempty"`
 }
 

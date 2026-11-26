@@ -243,6 +243,17 @@ export interface ServerAssetResult {
   warnings: string[];
 }
 
+/** Failed work retained for an administrator. The private plugin payload is omitted. */
+export interface DeadTask {
+  id: string;
+  scope: string;
+  name: string;
+  runAt: string;
+  attempts: number;
+  failures: number;
+  reason: string;
+}
+
 export interface PluginInstanceStatus {
   instance: string;
   plugin: string;

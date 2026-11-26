@@ -434,7 +434,13 @@ minutes by default, 24 hours at most. The `welcome` example above DMs one to eac
 Both need `scheduler`. `schedules` run on a cron expression in **UTC**: standard 5-field cron
 and descriptors (`@hourly`, `@daily`, `@every 10m`); `TZ=` prefixes are refused. `tasks` are
 one-shot jobs started with `ctx.schedule.after()`; they are persisted and survive restarts
-and new revisions.
+and new revisions. The runtime acknowledges a task after its handler succeeds. After a
+crash, its lease expires and the same task ID can run again. The third handler argument
+carries `id` and `attempt`. Recheck the current state before applying a delayed change.
+
+Failures retry with exponential backoff. After five handler failures, or after a handler
+has been unavailable for 24 hours past the due time, the task appears in the server's
+admin Diagnostics. An administrator can retry or discard it. Task payloads stay private.
 
 ```ts
 schedules: {

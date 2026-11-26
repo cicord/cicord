@@ -1076,12 +1076,33 @@ type InstanceInfo struct {
 	Message    string
 }
 
+// instanceDeadCounts reads the persistent queue so a restart preserves alerts.
+func (r *Runtime) instanceDeadCounts() map[string]int {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	counts, err := r.opts.Store.Tasks().DeadCounts(ctx)
+	if err != nil {
+		r.log.Warn("read dead letter counts", "err", err)
+	}
+	return counts
+}
+
+func (i *instanceRT) reportedHealth(dead int) (string, string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if dead > 0 && i.health == HealthHealthy {
+		return HealthDegraded, fmt.Sprintf("%d failed scheduled task(s) need attention in Diagnostics", dead)
+	}
+	return i.health, i.message
+}
+
 // Instances lists instances of the active revision (all servers when server == "").
 func (r *Runtime) Instances(server string) []InstanceInfo {
 	a := r.Active()
 	if a == nil {
 		return nil
 	}
+	dead := r.instanceDeadCounts()
 	var out []InstanceInfo
 	for _, i := range a.instances {
 		if server != "" && i.cfg.Server != server {
@@ -1091,9 +1112,8 @@ func (r *Runtime) Instances(server string) []InstanceInfo {
 		if i.plugin != nil {
 			def = i.plugin.def
 		}
-		i.mu.Lock()
-		out = append(out, InstanceInfo{Config: i.cfg, Definition: def, Health: i.health, Message: i.message})
-		i.mu.Unlock()
+		health, message := i.reportedHealth(dead[instanceScope(i.cfg)])
+		out = append(out, InstanceInfo{Config: i.cfg, Definition: def, Health: health, Message: message})
 	}
 	return out
 }
@@ -1150,6 +1170,7 @@ func (r *Runtime) Status() Status {
 	}
 	rev := a.rev
 	st.Revision = &rev
+	dead := r.instanceDeadCounts()
 	for _, key := range sortedKeys(a.servers) {
 		s := a.servers[key]
 		s.mu.Lock()
@@ -1187,13 +1208,12 @@ func (r *Runtime) Status() Status {
 			if i.cfg.Bot != key {
 				continue
 			}
-			i.mu.Lock()
+			health, message := i.reportedHealth(dead[instanceScope(i.cfg)])
 			bs.Plugins = append(bs.Plugins, PluginStatus{Instance: i.cfg.Name, Plugin: i.cfg.Plugin.Manifest.Metadata.Name,
-				Version: i.cfg.Plugin.Manifest.Metadata.Version, Server: i.cfg.Server, Health: i.health, Message: i.message})
-			if i.health == HealthDegraded && bs.Health == HealthHealthy {
+				Version: i.cfg.Plugin.Manifest.Metadata.Version, Server: i.cfg.Server, Health: health, Message: message})
+			if health == HealthDegraded && bs.Health == HealthHealthy {
 				bs.Health, bs.Message = HealthDegraded, fmt.Sprintf("plugin instance %s on %s is degraded", i.cfg.Name, i.cfg.Server)
 			}
-			i.mu.Unlock()
 		}
 		st.Bots = append(st.Bots, bs)
 	}

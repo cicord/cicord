@@ -64,6 +64,8 @@ func Run(t *testing.T, b Backend) {
 		{"Tasks", testTasks},
 		{"TaskTiesAreByteOrder", testTaskTies},
 		{"TaskValidation", testTaskValidation},
+		{"TaskLeases", testTaskLeases},
+		{"TaskConcurrentClaim", testTaskConcurrentClaim},
 		{"TaskDueExtremeTimes", testTaskDueExtremes},
 		{"AuditLog", testAuditLog},
 		{"AuditDetailsValidation", testAuditDetailsValidation},
@@ -892,8 +894,8 @@ func testTasks(t *testing.T, b Backend) {
 	must(t, q.Cancel(c, "a", "t1")) // wrong scope: no-op
 	must(t, q.Cancel(c, "b", "t1"))
 	must(t, q.Cancel(c, "b", "t1")) // idempotent
-	must(t, q.Complete(c, "t2"))
-	must(t, q.Complete(c, "missing"))
+	must(t, q.Cancel(c, "a", "t2"))
+	must(t, q.Cancel(c, "a", "missing"))
 	due, err = q.Due(c, now, 10)
 	must(t, err)
 	if got := taskIDs(due); fmt.Sprint(got) != "[late t0 t3]" {
@@ -1258,7 +1260,7 @@ func testTimeRoundTripExact(t *testing.T, b Backend) {
 		if !found {
 			t.Errorf("task %q not due at its own RunAt", "t"+key)
 		}
-		must(t, s.Tasks().Complete(ctx(t), "t"+key))
+		must(t, s.Tasks().Cancel(ctx(t), "sc", "t"+key))
 	}
 	// Session expiry keeps nanoseconds too.
 	exp := time.Date(2100, 1, 2, 3, 4, 5, 6, paris)

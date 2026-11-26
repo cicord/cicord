@@ -143,6 +143,36 @@ describe("layout", () => {
     expect(screen.getByRole("columnheader", { name: "Actual (Discord)" })).toBeTruthy();
   });
 
+  test("diagnostics lists failed tasks and confirms a discard before submitting", async () => {
+    let discarded = false;
+    const task = {
+      id: "t1",
+      name: "expire",
+      scope: "plugin:helper/support/pixel-haven",
+      runAt: "2026-01-01T00:00:00Z",
+      attempts: 5,
+      failures: 5,
+      reason: "handler failed",
+    };
+    const { user } = await start("/servers/pixel-haven/diagnostics", (url, init) => {
+      if (url.pathname.endsWith("/dead-letters"))
+        return Response.json({ items: discarded ? [] : [task] });
+      if (url.pathname.endsWith("/dead-letters/t1/discard") && init.method === "POST") {
+        discarded = true;
+        return new Response(null, { status: 204 });
+      }
+      return undefined;
+    });
+    await user.click(await screen.findByRole("button", { name: "Discard task" }));
+    expect(discarded).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByText("expire")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Discard task" }));
+    await user.click(screen.getByRole("button", { name: "Discard task" }));
+    await waitFor(() => expect(screen.queryByText("expire")).toBeNull());
+    expect(discarded).toBe(true);
+  });
+
   test("an explained sync failure becomes a friendly toast, never raw JSON", async () => {
     const raw =
       'sync: reconcile pixel-haven: 1 change(s) failed: create channel news: discord CreateChannel: discord: bad request (HTTP 400 50035: Invalid Form Body {"type":{"_errors":[]}})';

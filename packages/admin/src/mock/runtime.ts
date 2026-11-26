@@ -2113,6 +2113,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           return r.status === 200 ? json(r.body) : fail(400, "invalid", r.message);
         });
       if (method === "GET" && rest === "/plan") return staff(() => json(plan()), true);
+      if (method === "GET" && rest === "/dead-letters")
+        return staff(() => json({ items: [] }), true);
       if (method === "GET" && rest === "/diagnostics")
         return staff(
           () =>

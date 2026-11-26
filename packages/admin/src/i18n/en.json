@@ -1440,6 +1440,12 @@
     "title": "Diagnostics",
     "description": "The same live checks as the setup wizard: token, intents, permissions, role position, commands, events and saving.",
     "run": "Run the checks",
+    "deadLetters": "Failed scheduled tasks",
+    "attempts": "{{count}} attempts",
+    "retryTask": "Retry task",
+    "discardTask": "Discard task",
+    "confirmDiscard": "Permanently discard this task?",
+    "cancel": "Cancel",
     "ranAt": "Last run",
     "sinceStart": "Live events count any message since the runtime started."
   },

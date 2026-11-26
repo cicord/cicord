@@ -126,3 +126,14 @@ from the server:
 ```json
 { "removed": true, "cleaned": ["cicord.lock: acme/xp"], "mode": "commit", "revision"?: "…", "pullRequestUrl"?: "…", "warnings"?: ["…"] }
 ```
+
+
+## Failed scheduled tasks
+
+A server administrator can list up to 100 pending decisions with
+`GET /api/v1/servers/{server}/dead-letters`. Each item includes the task ID, plugin scope,
+handler name, due time, attempt and failure counts, and a failure category.
+`POST /api/v1/servers/{server}/dead-letters/{id}/retry` enables another delivery.
+`POST /api/v1/servers/{server}/dead-letters/{id}/discard` deletes the failed task.
+Both actions return 204 on success and are audited. A missing or already resolved task
+returns 404.

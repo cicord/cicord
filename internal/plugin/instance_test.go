@@ -290,7 +290,7 @@ export default definePlugin({
 	if _, err := h.inst.HandleRoute(context.Background(), "GET", "/", RouteRequest{}); !errors.As(err, &ce) || ce.Capability != capPortalRoutes {
 		t.Fatalf("HandleRoute: %v", err)
 	}
-	if err := h.inst.RunTask(context.Background(), "x", nil); !errors.As(err, &ce) || ce.Capability != capScheduler {
+	if err := h.inst.RunTask(context.Background(), "x", nil, TaskDelivery{ID: "x", Attempt: 1}); !errors.As(err, &ce) || ce.Capability != capScheduler {
 		t.Fatalf("RunTask: %v", err)
 	}
 	if err := h.inst.Deliver(context.Background(), "a.b", nil); !errors.As(err, &ce) || ce.Capability != capEventsSubscribe {
@@ -834,7 +834,7 @@ export default definePlugin({
     } }),
   },
   tasks: {
-    async remind(ctx, payload) { ctx.log.info("remind", { payload: payload ?? null }); },
+    async remind(ctx, payload, task) { ctx.log.info("remind", { payload: payload ?? null, attempt: task.attempt, id: task.id }); },
   },
   schedules: { daily: { cron: "@daily", async run(ctx) { ctx.log.info("daily"); } } },
   subscriptions: { "economy.purchase": async (ctx, payload) => { ctx.log.info("delivered", { payload }); } },
@@ -887,16 +887,16 @@ export default definePlugin({
 	}
 
 	// The bot host runs due tasks, schedules and deliveries.
-	if err := h.inst.RunTask(context.Background(), "remind", tasks[0].Payload); err != nil {
+	if err := h.inst.RunTask(context.Background(), "remind", tasks[0].Payload, TaskDelivery{ID: tasks[0].ID, Attempt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if e := h.logged("remind"); !reflect.DeepEqual(e.Attrs["payload"], map[string]any{"who": "42"}) {
 		t.Fatalf("task payload: %v", e.Attrs)
 	}
-	if err := h.inst.RunTask(context.Background(), "remind", nil); err != nil {
+	if err := h.inst.RunTask(context.Background(), "remind", nil, TaskDelivery{ID: "retry", Attempt: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if e := h.logged("remind"); e.Attrs["payload"] != nil {
+	if e := h.logged("remind"); e.Attrs["payload"] != nil || e.Attrs["id"] != "retry" || e.Attrs["attempt"] != float64(2) {
 		t.Fatalf("empty payload: %v", e.Attrs)
 	}
 	if err := h.inst.RunSchedule(context.Background(), "daily"); err != nil {

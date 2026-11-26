@@ -77,7 +77,7 @@ type Env struct {
 	Access Access
 
 	KV        state.KV          // already scoped to the instance; nil: kv calls fail
-	Tasks     state.TaskQueue   // nil: ctx.schedule fails
+	Tasks     state.TaskWriter  // nil: ctx.schedule fails
 	TaskScope string            // Task.Scope for tasks created by this instance
 	Resources state.ResourceMap // records plugin-owned channels; nil: not recorded
 	Portal    PortalLinker      // nil: ctx.portal.link fails
@@ -114,6 +114,9 @@ type Resolver interface {
 type PortalLinker interface {
 	Link(path, userID string, ttl time.Duration) (string, error)
 }
+
+// DefaultHandlerTimeout is also used to size durable task leases.
+const DefaultHandlerTimeout = 10 * time.Second
 
 // Limits bounds plugin execution. Zero fields take the defaults.
 type Limits struct {
@@ -154,7 +157,7 @@ func (l Limits) withDefaults() Limits {
 	}
 	def(&l.SyncBudget, 50*time.Millisecond)
 	def(&l.StartupBudget, 2*time.Second)
-	def(&l.HandlerTimeout, 10*time.Second)
+	def(&l.HandlerTimeout, DefaultHandlerTimeout)
 	def(&l.AutoDeferAfter, 2*time.Second)
 	def(&l.AutocompleteTimeout, 2500*time.Millisecond)
 	def(&l.StopTimeout, 3*time.Second)
@@ -206,7 +209,7 @@ type Runtime interface {
 	HandleInteraction(ctx context.Context, it discord.Interaction, kind, localID string) error
 	HandleRoute(ctx context.Context, method, path string, req RouteRequest) (RouteResponse, error)
 	RunSchedule(ctx context.Context, name string) error
-	RunTask(ctx context.Context, name string, payload json.RawMessage) error
+	RunTask(ctx context.Context, name string, payload json.RawMessage, delivery TaskDelivery) error
 	Deliver(ctx context.Context, topic string, payload json.RawMessage) error
 }
 
@@ -1196,11 +1199,11 @@ func (i *Instance) RunSchedule(ctx context.Context, name string) error {
 
 // RunTask runs a `tasks` entry with the payload given to ctx.schedule.after (requires
 // scheduler).
-func (i *Instance) RunTask(ctx context.Context, name string, payload json.RawMessage) error {
+func (i *Instance) RunTask(ctx context.Context, name string, payload json.RawMessage, delivery TaskDelivery) error {
 	if err := i.require(capScheduler); err != nil {
 		return err
 	}
-	return (<-i.dispatch(ctx, "task", name, payloadDTO{Payload: rawOrNil(payload)}, nil)).err
+	return (<-i.dispatch(ctx, "task", name, payloadDTO{Payload: rawOrNil(payload), Task: &delivery}, nil)).err
 }
 
 // Deliver runs the subscription for topic ("<plugin>.<topic>"; requires events.subscribe).

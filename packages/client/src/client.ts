@@ -18,6 +18,7 @@ import type {
   AnalyticsSummaryQuery,
   AuditEntry,
   AuditQuery,
+  DeadTask,
   InstallResult,
   InteractionResult,
   Items,
@@ -733,6 +734,11 @@ export class CicordClient {
           ...options,
         })
       ).items,
+    deadLetters: async (server: string, options?: CallOptions): Promise<DeadTask[]> =>
+      (await this.#api<Items<DeadTask>>("GET", `/servers/${seg(server)}/dead-letters`, options))
+        .items,
+    resolveDeadLetter: (server: string, id: string, decision: "retry" | "discard"): Promise<void> =>
+      this.#api<void>("POST", `/servers/${seg(server)}/dead-letters/${seg(id)}/${decision}`),
     /** `GET /servers/{server}/plugins` (moderator): every instance. */
     plugins: async (server: string, options?: CallOptions): Promise<PluginInstance[]> =>
       (await this.#api<Items<PluginInstance>>("GET", `/servers/${seg(server)}/plugins`, options))

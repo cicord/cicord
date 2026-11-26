@@ -805,7 +805,8 @@ export interface PluginDefinition {
   /** Recurring jobs (cron syntax, server time zone UTC). @capability scheduler */
   schedules?: Record<string, { cron: string; run(ctx: Context): Awaitable<void> }>;
   /** One-shot tasks started with ctx.schedule.after(). @capability scheduler */
-  tasks?: Record<string, (ctx: Context, payload: Json | undefined) => Awaitable<void>>;
+  /** A task may be delivered more than once. Its ID is stable across attempts. */
+  tasks?: Record<string, (ctx: Context, payload: Json | undefined, task?: { readonly id: string; readonly attempt: number }) => Awaitable<void>>;
   /** Cross-plugin event subscriptions, keyed by "<plugin>.<topic>". @capability events.subscribe */
   subscriptions?: Record<string, (ctx: Context, payload: Json) => Awaitable<void>>;
   /** HTTP routes exposed to the community portal. @capability portal.routes */

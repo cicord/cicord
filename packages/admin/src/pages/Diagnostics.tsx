@@ -1,11 +1,12 @@
 /** Diagnostics: the setup wizard's live checklist, re-runnable at any time. */
+import { useState } from "react";
 import { useCicord } from "@cicord/react";
 import { RotateCw } from "lucide-react";
 import { Page, PageHeader, Time } from "../components/common.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { useTranslation } from "../i18n/index.ts";
 import { diagnostics } from "../setup/api.ts";
-import { usePoll } from "../setup/hooks.ts";
+import { useAction, usePoll } from "../setup/hooks.ts";
 import { Checklist, SetupError } from "../setup/kit.tsx";
 
 export function DiagnosticsPage({ serverKey }: { serverKey: string }) {
@@ -24,6 +25,7 @@ export function DiagnosticsPage({ serverKey }: { serverKey: string }) {
           </Button>
         }
       />
+      <FailedTasks key={serverKey} serverKey={serverKey} />
       {rep.error ? <SetupError error={rep.error} /> : null}
       {rep.data ? (
         <>
@@ -34,5 +36,80 @@ export function DiagnosticsPage({ serverKey }: { serverKey: string }) {
         </>
       ) : null}
     </Page>
+  );
+}
+
+function FailedTasks({ serverKey }: { serverKey: string }) {
+  const { t } = useTranslation();
+  const { client } = useCicord();
+  const list = usePoll((signal) => client.admin.deadLetters(serverKey, { signal }), 15_000);
+  const action = useAction();
+  const [discard, setDiscard] = useState<string | null>(null);
+  function decide(id: string, decision: "retry" | "discard") {
+    void action.run(async () => {
+      await client.admin.resolveDeadLetter(serverKey, id, decision);
+      setDiscard(null);
+      list.refresh();
+    });
+  }
+  if (list.error) return <SetupError error={list.error} />;
+  if (!list.data?.length) return null;
+  return (
+    <section className="mb-6" aria-label={t("diagnostics.deadLetters")}>
+      <h2 className="mb-2 font-semibold">{t("diagnostics.deadLetters")}</h2>
+      {action.error ? <SetupError error={action.error} /> : null}
+      <ul className="divide-y rounded-md border px-3">
+        {list.data.map((task) => (
+          <li key={task.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div>
+              <p className="font-medium">{task.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {task.scope} · {t("diagnostics.attempts", { count: task.attempts })} · {task.reason}
+              </p>
+            </div>
+            {discard === task.id ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span>{t("diagnostics.confirmDiscard")}</span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={action.pending}
+                  onClick={() => decide(task.id, "discard")}
+                >
+                  {t("diagnostics.discardTask")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={action.pending}
+                  onClick={() => setDiscard(null)}
+                >
+                  {t("diagnostics.cancel")}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={action.pending}
+                  onClick={() => decide(task.id, "retry")}
+                >
+                  {t("diagnostics.retryTask")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={action.pending}
+                  onClick={() => setDiscard(task.id)}
+                >
+                  {t("diagnostics.discardTask")}
+                </Button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

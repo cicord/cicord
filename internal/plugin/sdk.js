@@ -670,7 +670,7 @@
       case "autocomplete": return [mkAutocompleteInteraction(d), freeze({ name: d.focused.name, value: d.focused.value })];
       case "component": return [mkComponentInteraction(d)];
       case "modal": return [mkModalInteraction(d)];
-      case "task":
+      case "task": return [d.payload, freeze(d.task)];
       case "subscription": return [d.payload];
       case "route": return [freeze({
         params: freeze(d.params || {}),
