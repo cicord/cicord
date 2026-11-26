@@ -56,7 +56,9 @@ test("an uninstalled installation's data is reported and purged after typing its
   const card = title.closest<HTMLElement>("[aria-labelledby]");
   if (!card) throw new Error("orphaned data card missing");
   expect(within(card).getByText("moderator/old-tickets")).toBeTruthy();
-  expect(within(card).getByText(/14 records, 3 ranking entries/)).toBeTruthy();
+  expect(
+    within(card).getByText("14 records, 3 ranking entries, 0 index documents, 1 task"),
+  ).toBeTruthy();
   await user.click(within(card).getByRole("button", { name: "Purge data" }));
   const dlg = await screen.findByRole("alertdialog");
   const purge = within(dlg).getByRole("button", { name: "Purge data" });

@@ -92,7 +92,8 @@ const (
 type Runtime struct {
 	privacyFences sync.Map // logical server key → *plugin.PrivacyFence
 	syncRequests  sync.Map // installation ID → time of its last accepted requestSync
-	auditSlots    chan struct{}
+	auditQ        auditQueue
+	actors        actorCache
 	auditMu       sync.Mutex
 	unconfirmed   map[string]*UnconfirmedAudit // Discord server ID → CORE-04 alert
 	opts          Options
@@ -259,8 +260,10 @@ func New(opts Options) *Runtime {
 	if opts.Metrics == nil {
 		opts.Metrics = metrics.NewRegistry()
 	}
-	r := &Runtime{opts: opts, auditSlots: make(chan struct{}, 8), log: opts.Logger, bots: map[string]*botHost{}, wake: make(chan struct{}, 1),
+	r := &Runtime{opts: opts, log: opts.Logger, bots: map[string]*botHost{}, wake: make(chan struct{}, 1),
 		restart: restartPolicy{min: restartMin, max: restartMax, stable: restartStable}}
+	r.auditQ.capacity, r.auditQ.maxWorkers, r.auditQ.gate = auditQueueCap, auditWorkers, auditGate
+	r.auditQ.timeout, r.auditQ.recheck, r.auditQ.every = auditCheckTimeout, auditRecheck, auditOverflowReport
 	r.sched = newScheduler(r)
 	r.metrics = newRuntimeMetrics(opts.Metrics, r)
 	if opts.Analytics != nil {

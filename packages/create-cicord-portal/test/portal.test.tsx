@@ -176,7 +176,15 @@ test("ticket staff can assign, reply privately or publicly, and lose detail acce
     notes: [],
     rating: null,
     assignee: null,
-    messages: [],
+    messages: [
+      {
+        id: "m1",
+        author: { id: "123456789012345678", displayName: "Alex" },
+        content:
+          "**Urgent**: <@123456789012345678> pinged <@&234567890123456789>\nin <#345678901234567890>",
+        embeds: [],
+      },
+    ],
   };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -214,6 +222,16 @@ test("ticket staff can assign, reply privately or publicly, and lose detail acce
   render(<App config={{ client, login: () => {}, mock: true }} />);
   await user.click(await screen.findByRole("button", { name: /Invoice check/ }));
   expect(await screen.findByText("A delivery question")).toBeTruthy();
+  // Thread messages: Discord mentions as chips (no raw IDs), bold and line breaks.
+  const thread = screen.getByText("Urgent").closest("p")!;
+  expect(thread.querySelector("strong:not(:first-child)")?.textContent).toBe("Urgent");
+  expect([...thread.querySelectorAll(".mention")].map((c) => c.textContent)).toEqual([
+    "@Alex",
+    "@role",
+    "#channel",
+  ]);
+  expect(thread.querySelector("br")).toBeTruthy();
+  expect(thread.textContent).not.toMatch(/<[@#]|\d{17}/);
   await user.selectOptions(await screen.findByLabelText("Assignee"), "42");
   await user.selectOptions(await screen.findByLabelText("Message type"), "note");
   await user.type(screen.getByRole("textbox", { name: "Private staff note" }), "Check invoice");

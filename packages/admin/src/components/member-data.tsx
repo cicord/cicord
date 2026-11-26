@@ -178,12 +178,12 @@ export function OrphanedData({ serverKey }: { serverKey: string }) {
               <span className="grid">
                 <span className="font-medium">{o.instance}</span>
                 <span className="text-muted-foreground">
-                  {t("orphanedData.counts", {
-                    records: o.records,
-                    rankings: o.rankings,
-                    index: o.index,
-                    tasks: o.tasks,
-                  })}
+                  {[
+                    t("orphanedData.records", { count: o.records }),
+                    t("orphanedData.rankings", { count: o.rankings }),
+                    t("orphanedData.index", { count: o.index }),
+                    t("orphanedData.tasks", { count: o.tasks }),
+                  ].join(", ")}
                 </span>
               </span>
               <AlertDialog

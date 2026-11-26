@@ -1,7 +1,8 @@
 import type { PortalPlugin } from "@cicord/client";
-import { useCicord, usePluginQuery } from "@cicord/react";
+import { useCicord, useMember, usePluginQuery } from "@cicord/react";
 import { Button, Notice, Spinner } from "@cicord/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { DiscordText, type MentionNames } from "../components/DiscordText.tsx";
 import { useT } from "../i18n/index.tsx";
 import { useServer } from "../portal.tsx";
 
@@ -23,6 +24,7 @@ interface Person {
 }
 interface Detail extends Item {
   description: string;
+  author?: Person;
   assignee: { id?: string; displayName: string } | null;
   rating: number | null;
   notes?: { by: Person; at: string; content: string }[];
@@ -224,6 +226,22 @@ function TicketDetail({ plugin, id, staff }: { plugin: PortalPlugin; id: string;
     "/staff",
     { query: { type: ticket?.type } },
   );
+  const member = useMember();
+  // Mentions are named from what the page already knows: the people of the ticket and the
+  // staff list (users), and the viewer's own roles. Others show as a neutral chip.
+  const names = useMemo<MentionNames>(() => {
+    const users = new Map<string, string>();
+    const add = (p?: { id?: string; displayName: string } | null) => {
+      if (p?.id) users.set(p.id, p.displayName);
+    };
+    for (const p of assignees.data?.items ?? []) add(p);
+    add(ticket?.author);
+    add(ticket?.assignee);
+    for (const n of ticket?.notes ?? []) add(n.by);
+    for (const m of ticket?.messages ?? []) add(m.author);
+    const roles = new Map((member.data?.member.roles ?? []).map((r) => [r.id, r.name]));
+    return { users, roles };
+  }, [assignees.data, ticket, member.data]);
   useEffect(() => {
     const controller = new AbortController();
     const ref = client.plugin(server.key, plugin.bot, plugin.instance);
@@ -287,16 +305,19 @@ function TicketDetail({ plugin, id, staff }: { plugin: PortalPlugin; id: string;
       </Notice>
     );
   if (!ticket) return <Spinner label={t.loading} />;
+  const text = (content: string) => (
+    <DiscordText content={content} names={names} fallback={q.mention} />
+  );
   return (
     <section className="ticket-detail" aria-labelledby="ticket-title">
       <h2 id="ticket-title">
         #{id} · {ticket.subject}
       </h2>
-      <p>{ticket.description}</p>
+      <p>{text(ticket.description)}</p>
       {ticket.messages?.map((m) => (
         <p key={m.id}>
           <strong>{m.author.displayName}</strong>{" "}
-          {m.content || m.embeds.map((e) => e.description).join(" ")}
+          {text(m.content || m.embeds.map((e) => e.description ?? "").join(" "))}
         </p>
       ))}
       {staff && (
@@ -348,7 +369,7 @@ function TicketDetail({ plugin, id, staff }: { plugin: PortalPlugin; id: string;
               <h3>{q.notes}</h3>
               {ticket.notes.map((n, i) => (
                 <p key={i}>
-                  <strong>{n.by.displayName}</strong> {n.content}
+                  <strong>{n.by.displayName}</strong> {text(n.content)}
                 </p>
               ))}
             </section>

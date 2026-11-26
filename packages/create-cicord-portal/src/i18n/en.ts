@@ -151,6 +151,8 @@ export const en: Messages = {
     loadMore: "Load more",
     moreFailed: "Could not load more tickets.",
     loginTitle: "Sign in to see the tickets",
+    /** Mentions whose name the page does not know. */
+    mention: { user: "user", role: "role", channel: "channel" },
   },
 
   developers: {

@@ -159,6 +159,7 @@ export const fr = {
     loadMore: "Afficher plus",
     moreFailed: "Impossible de charger plus de tickets.",
     loginTitle: "Connecte-toi pour voir les tickets",
+    mention: { user: "utilisateur", role: "rôle", channel: "salon" },
   },
 
   developers: {

@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,14 +15,43 @@ import (
 // auditObserver records the attribution of every audit entry the welcome plugin
 // receives, keyed by action and target.
 func auditObserver(t *testing.T) *env {
+	return auditObserverWith(t, nil)
+}
+
+// auditObserverWith is auditObserver with a further edit of the repository.
+func auditObserverWith(t *testing.T, edit func(dir string)) *env {
 	return startExampleResync(t, nil, func(dir string) {
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - discord.auditlog.read\n    - portal.links")
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "[ServerMembers]", "[ServerMembers, ServerModeration]")
+		if edit != nil {
+			edit(dir)
+		}
+		// Required capabilities and intents, in the inline or the block YAML style.
+		manifest := filepath.Join(dir, "plugins/welcome/plugin.yaml")
+		replaceFirst(t, manifest, "\n  capabilities:\n", "\n  capabilities:\n    - discord.auditlog.read\n")
+		if data, _ := os.ReadFile(manifest); strings.Contains(string(data), "[ServerMembers]") {
+			replaceIn(t, manifest, "[ServerMembers]", "[ServerMembers, ServerModeration]")
+		} else {
+			replaceFirst(t, manifest, "\n  intents:\n", "\n  intents:\n    - ServerModeration\n")
+		}
 		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - discord.dm.send", "        - discord.auditlog.read\n        - discord.dm.send")
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  events: {async auditLogEntry(ctx,e){
     const key="audit:"+e.action+":"+(e.targetId||"")+":"+(e.options&&e.options.id||"")+":"+e.id;
     await ctx.kv.set(key,e.attribution.kind+"/"+e.attribution.certainty)},`)
 	}, -1)
+}
+
+// replaceFirst replaces the first occurrence of old in file.
+func replaceFirst(t *testing.T, file, old, new string) {
+	t.Helper()
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), old) {
+		t.Fatalf("%s: %q not found", file, old)
+	}
+	if err := os.WriteFile(file, []byte(strings.Replace(string(data), old, new, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // attributions returns the recorded attributions of action on target.

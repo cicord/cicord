@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -66,13 +67,22 @@ func (r *Runtime) ownBot(userID string) (discord.User, bool) {
 const maxAuditCandidates = 64
 
 func (r *Runtime) attribute(ctx context.Context, e discord.AuditLogEntryEvent) discord.Attribution {
+	a, _ := r.checkAttribution(ctx, e)
+	return a
+}
+
+// checkAttribution attributes an entry and reports whether the journal check of an
+// entry by a project bot ran to the end. When the check could not run (a state store
+// error or timeout), the attribution is cicord/unknown and checked is false: a
+// missing proof is then no evidence, and must never raise the CORE-04 alert.
+func (r *Runtime) checkAttribution(ctx context.Context, e discord.AuditLogEntryEvent) (_ discord.Attribution, checked bool) {
 	a := discord.Attribution{Kind: "unknown", Certainty: "unknown"}
 	if e.UserID == "" {
-		return a
+		return a, true
 	}
 	if _, own := r.ownBot(e.UserID); !own {
 		if e.Actor == nil {
-			return a
+			return a, true
 		}
 		a.Kind = "human"
 		if e.Actor.Bot {
@@ -82,19 +92,22 @@ func (r *Runtime) attribute(ctx context.Context, e discord.AuditLogEntryEvent) d
 		if discord.DescribeAuditAction(e.ActionType).Mergeable {
 			a.Certainty = "probable"
 		}
-		return a
+		return a, true
 	}
 	a.Kind = "cicord"
 	a.Certainty = "probable"
 	at := discord.SnowflakeTime(e.ID)
 	if at.IsZero() || e.TargetID == "" || discord.DescribeAuditAction(e.ActionType).Mergeable {
-		return a
+		return a, true
+	}
+	unchecked := func() (discord.Attribution, bool) {
+		return discord.Attribution{Kind: "cicord", Certainty: "unknown"}, false
 	}
 	action := discord.JournalAction(e.ActionType)
 	prefix := operationPrefix(e.UserID, action, e.TargetID)
 	kv, ok := r.opts.Store.KV("emitted:" + e.ServerID).(state.AdvancedKV)
 	if !ok {
-		return a
+		return unchecked()
 	}
 	// Overwrite entries: a create or update binds the operation of the overwritten
 	// role or member; a delete binds the removal marker of the call, which the
@@ -143,9 +156,9 @@ func (r *Runtime) attribute(ctx context.Context, e discord.AuditLogEntryEvent) d
 	if op, err := bound(); err == nil {
 		a.Certainty = "confirmed"
 		a.Operation = op
-		return a
+		return a, true
 	} else if !errors.Is(err, state.ErrNotFound) {
-		return a
+		return unchecked()
 	}
 	// Candidates: unclaimed operations on this target within ±30 s. An operation
 	// already bound to another entry is skipped, so two identical calls in the window
@@ -163,13 +176,13 @@ scan:
 	for len(candidates) < maxAuditCandidates && scanned < 4*maxAuditCandidates {
 		rows, next, err := kv.List(ctx, prefix, 32, cursor)
 		if err != nil {
-			return a
+			return unchecked()
 		}
 		scanned += len(rows)
 		for _, row := range rows {
 			var op discord.Operation
 			if json.Unmarshal(row.Value, &op) != nil {
-				return a
+				return unchecked()
 			}
 			if op.At.After(at.Add(30 * time.Second)) {
 				break scan
@@ -181,7 +194,7 @@ scan:
 				if _, err := kv.Get(ctx, "claimed:"+row.Key); err == nil {
 					continue
 				} else if !errors.Is(err, state.ErrNotFound) {
-					return a
+					return unchecked()
 				}
 			}
 			candidates = append(candidates, candidate{row.Key, op})
@@ -219,21 +232,23 @@ scan:
 		}
 		commit, err := kv.Atomic(ctx, checks, writes)
 		if err != nil {
-			return a
+			return unchecked()
 		}
 		if commit.OK {
 			a.Certainty = "confirmed"
 			a.Operation = &c.op
-			return a
+			return a, true
 		}
 		// Another observer bound this entry, or another entry took the operation.
 		if op, err := bound(); err == nil {
 			a.Certainty = "confirmed"
 			a.Operation = op
-			return a
+			return a, true
+		} else if !errors.Is(err, state.ErrNotFound) {
+			return unchecked()
 		}
 	}
-	return a
+	return a, true
 }
 
 // overwriteDetail is the overwritten role or member of an overwrite entry.
@@ -249,17 +264,25 @@ func overwriteDetail(e discord.AuditLogEntryEvent) string {
 }
 
 func (r *Runtime) enrichAudit(ctx context.Context, client discord.Client, e discord.AuditLogEntryEvent) discord.AuditLogEntryEvent {
+	e, _ = r.enrichAuditChecked(ctx, client, e)
+	return e
+}
+
+// enrichAuditChecked is enrichAudit, reporting whether the journal check of an entry
+// by a project bot ran (see checkAttribution).
+func (r *Runtime) enrichAuditChecked(ctx context.Context, client discord.Client, e discord.AuditLogEntryEvent) (discord.AuditLogEntryEvent, bool) {
 	if e.UserID != "" && e.Actor == nil {
 		// Gateway entries carry only user_id. A project bot is known locally: its
 		// attribution does not wait on a Discord lookup.
 		if self, own := r.ownBot(e.UserID); own {
 			e.Actor = &self
-		} else if u, err := client.GetUser(ctx, e.UserID); err == nil {
+		} else if u, err := r.actors.lookup(ctx, client, e.UserID, r.auditQ.timeout); err == nil {
 			e.Actor = &u
 		}
 	}
-	e.Attribution = r.attribute(ctx, e)
-	return e
+	var checked bool
+	e.Attribution, checked = r.checkAttribution(ctx, e)
+	return e, checked
 }
 
 func unconfirmedOwn(e discord.AuditLogEntryEvent) bool {
@@ -278,9 +301,183 @@ func provable(e discord.AuditLogEntryEvent) bool {
 // delivered its audit entry.
 var auditRecheck = 1500 * time.Millisecond
 
-// Only declared audit subscribers need actor lookups. Cap concurrent lookups so
-// slow Discord responses cannot stall the gateway. A saturated queue reports
-// unknown attribution and cannot authorize an automatic sanction.
+var (
+	// auditQueueCap bounds the gateway audit entries accepted for attribution and not
+	// finished yet (waiting, being checked, or waiting for their recheck). Discord
+	// writes one entry per created role, channel, overwrite and webhook, and a first
+	// sync delivers them in one burst: the queue holds the burst of a large server.
+	auditQueueCap = 4096
+	// auditWorkers is the number of entries attributed at once.
+	auditWorkers = 8
+	// auditCheckTimeout bounds one attribution: the actor lookup and the journal check.
+	// It starts when a worker takes the entry, not when the gateway queued it.
+	auditCheckTimeout = 3 * time.Second
+	// auditOverflowReport is how often a lasting overflow is reported.
+	auditOverflowReport = time.Minute
+	// auditGate, when set (tests), runs before each attribution.
+	auditGate func()
+)
+
+type auditJob struct {
+	host       *botHost
+	entry      discord.AuditLogEntryEvent
+	subscribed bool
+	recheck    bool
+}
+
+// auditQueue is the FIFO of gateway audit entries waiting for attribution. Workers
+// start on demand and stop when it is empty. It never blocks the gateway: an entry
+// that does not fit is not checked (see dispatchAudit), and the overflow is counted
+// and logged once per episode with the count.
+type auditQueue struct {
+	// Settings, read from the package variables when the runtime is created.
+	capacity, maxWorkers    int
+	timeout, recheck, every time.Duration
+	gate                    func()
+
+	mu      sync.Mutex
+	jobs    []auditJob
+	pending int // accepted entries not finished, rechecks included
+	workers int
+	// Entries not checked since the last report: dropped by an overflow, or whose
+	// journal check failed.
+	dropped, failed int
+	servers         map[string]struct{}
+	since           time.Time
+}
+
+// enqueueAudit accepts an entry for attribution. A recheck keeps the place its entry
+// already holds, so it is never refused.
+func (r *Runtime) enqueueAudit(j auditJob) bool {
+	q := &r.auditQ
+	q.mu.Lock()
+	if !j.recheck && q.pending >= q.capacity {
+		q.noteUncheckedLocked(j.entry.ServerID, true)
+		report := time.Since(q.since) >= q.every
+		q.mu.Unlock()
+		if report {
+			r.reportUncheckedAudit()
+		}
+		return false
+	}
+	if !j.recheck {
+		q.pending++
+	}
+	q.jobs = append(q.jobs, j)
+	spawn := q.workers < q.maxWorkers
+	if spawn {
+		q.workers++
+	}
+	q.mu.Unlock()
+	if spawn {
+		go r.auditWorker()
+	}
+	return true
+}
+
+func (q *auditQueue) noteUncheckedLocked(server string, dropped bool) {
+	if dropped {
+		q.dropped++
+	} else {
+		q.failed++
+	}
+	if q.since.IsZero() {
+		q.since = time.Now()
+	}
+	if q.servers == nil {
+		q.servers = map[string]struct{}{}
+	}
+	if len(q.servers) < 16 {
+		q.servers[server] = struct{}{}
+	}
+}
+
+// reportUncheckedAudit logs the entries not checked since the last report, once.
+func (r *Runtime) reportUncheckedAudit() {
+	q := &r.auditQ
+	q.mu.Lock()
+	dropped, failed, since := q.dropped, q.failed, q.since
+	servers := make([]string, 0, len(q.servers))
+	for s := range q.servers {
+		servers = append(servers, s)
+	}
+	q.dropped, q.failed, q.servers, q.since = 0, 0, nil, time.Time{}
+	q.mu.Unlock()
+	if dropped+failed == 0 {
+		return
+	}
+	slices.Sort(servers)
+	// Not checked is not unconfirmed: these entries raised no alert.
+	r.log.Warn("audit entries not checked for attribution: no alert was raised for them", "queueFull", dropped, "checkFailed", failed,
+		"since", since.UTC().Format(time.RFC3339), "servers", strings.Join(servers, ","))
+}
+
+func (r *Runtime) auditWorker() {
+	q := &r.auditQ
+	for {
+		q.mu.Lock()
+		if len(q.jobs) == 0 {
+			q.workers--
+			q.mu.Unlock()
+			return
+		}
+		j := q.jobs[0]
+		q.jobs[0] = auditJob{}
+		q.jobs = q.jobs[1:]
+		q.mu.Unlock()
+		r.attributeJob(j)
+	}
+}
+
+func (r *Runtime) attributeJob(j auditJob) {
+	q := &r.auditQ
+	if q.gate != nil {
+		q.gate()
+	}
+	h, e := j.host, j.entry
+	ctx, cancel := context.WithTimeout(context.Background(), q.timeout)
+	var checked bool
+	if j.recheck {
+		e.Attribution, checked = r.checkAttribution(ctx, e)
+	} else {
+		e, checked = r.enrichAuditChecked(ctx, h.session, e)
+	}
+	cancel()
+	if !j.recheck && (!checked || unconfirmedOwn(e) && provable(e)) {
+		// Wait outside the workers: a large reconcile must not starve them. A check that
+		// could not run gets a second chance too.
+		j.entry, j.recheck = e, true
+		time.AfterFunc(q.recheck, func() { r.enqueueAudit(j) })
+		return
+	}
+	switch {
+	case !checked:
+		q.mu.Lock()
+		q.noteUncheckedLocked(e.ServerID, false)
+		q.mu.Unlock()
+	case unconfirmedOwn(e) && provable(e):
+		r.log.Warn("unconfirmed audit activity by a project bot: its token may be compromised", "server", e.ServerID, "entry", e.ID, "action", discord.DescribeAuditAction(e.ActionType).Name)
+		r.noteUnconfirmedAudit(h.key, e)
+	case unconfirmedOwn(e):
+		r.log.Info("audit entry by a project bot that the journal cannot prove", "server", e.ServerID, "entry", e.ID, "action", discord.DescribeAuditAction(e.ActionType).Name)
+	}
+	if j.subscribed {
+		h.dispatchPlugins(h.routing.Load(), e)
+	}
+	q.mu.Lock()
+	q.pending--
+	drained := q.pending == 0
+	q.mu.Unlock()
+	if drained {
+		r.reportUncheckedAudit()
+	}
+}
+
+// dispatchAudit queues a gateway audit entry for attribution: the actor lookup, the
+// CORE-04 check of the entries of a project bot, then the plugins that subscribe.
+// It never blocks the gateway. An entry that does not fit in a full queue is not
+// checked: it never raises the alert, and subscribers receive it with unknown
+// attribution, which cannot authorize an automatic sanction.
 func (h *botHost) dispatchAudit(e discord.AuditLogEntryEvent) {
 	subscribed := false
 	for _, i := range h.routing.Load().byServer[e.ServerID] {
@@ -292,43 +489,85 @@ func (h *botHost) dispatchAudit(e discord.AuditLogEntryEvent) {
 	if _, own := h.rt.ownBot(e.UserID); !subscribed && !own {
 		return // only entries of a project bot need the CORE-04 check
 	}
-	select {
-	case h.rt.auditSlots <- struct{}{}:
-		go func() {
-			release := sync.OnceFunc(func() { <-h.rt.auditSlots })
-			defer release()
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			entry := h.rt.enrichAudit(ctx, h.session, e)
-			if unconfirmedOwn(entry) && provable(entry) {
-				// Wait outside the lookup slots: a large reconcile must not starve them.
-				release()
-				select {
-				case <-time.After(auditRecheck):
-				case <-ctx.Done():
-				}
-				recheck, stop := context.WithTimeout(context.Background(), time.Second)
-				entry.Attribution = h.rt.attribute(recheck, entry)
-				stop()
-			}
-			switch {
-			case unconfirmedOwn(entry) && provable(entry):
-				h.rt.log.Warn("unconfirmed audit activity by a project bot: its token may be compromised", "server", e.ServerID, "entry", e.ID, "action", discord.DescribeAuditAction(e.ActionType).Name)
-				h.rt.noteUnconfirmedAudit(h.key, entry)
-			case unconfirmedOwn(entry):
-				h.rt.log.Info("audit entry by a project bot that the journal cannot prove", "server", e.ServerID, "entry", e.ID, "action", discord.DescribeAuditAction(e.ActionType).Name)
-			}
-			if subscribed {
-				h.dispatchPlugins(h.routing.Load(), entry)
-			}
-		}()
-	default:
-		// The CORE-04 check of a saturated queue is lost with the lookup: say so.
-		h.rt.log.Warn("audit attribution queue full: entry not checked", "server", e.ServerID, "entry", e.ID)
-		if subscribed {
-			e.Attribution = discord.Attribution{Kind: "unknown", Certainty: "unknown"}
-			h.dispatchPlugins(h.routing.Load(), e)
+	if h.rt.enqueueAudit(auditJob{host: h, entry: e, subscribed: subscribed}) {
+		return
+	}
+	if subscribed {
+		e.Attribution = discord.Attribution{Kind: "unknown", Certainty: "unknown"}
+		h.dispatchPlugins(h.routing.Load(), e)
+	}
+}
+
+// actorCache resolves the actors of gateway audit entries (which carry only a user
+// ID). A burst of entries by one actor (a raid deleting channels) costs one Discord
+// lookup: concurrent lookups of a user share one call, and users are kept a while.
+type actorCache struct {
+	mu       sync.Mutex
+	users    map[string]cachedActor
+	inflight map[string]*actorCall
+}
+
+type cachedActor struct {
+	user    discord.User
+	expires time.Time
+}
+
+type actorCall struct {
+	done chan struct{}
+	user discord.User
+	err  error
+}
+
+const (
+	actorTTL      = 10 * time.Minute
+	actorCacheMax = 4096
+)
+
+func (c *actorCache) lookup(ctx context.Context, client discord.Client, id string, timeout time.Duration) (discord.User, error) {
+	c.mu.Lock()
+	if u, ok := c.users[id]; ok && time.Now().Before(u.expires) {
+		c.mu.Unlock()
+		return u.user, nil
+	}
+	call := c.inflight[id]
+	if call == nil {
+		call = &actorCall{done: make(chan struct{})}
+		if c.inflight == nil {
+			c.inflight = map[string]*actorCall{}
 		}
+		c.inflight[id] = call
+		c.mu.Unlock()
+		// The shared call outlives the caller that started it: the others still wait.
+		lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+		call.user, call.err = client.GetUser(lctx, id)
+		cancel()
+		c.mu.Lock()
+		delete(c.inflight, id)
+		if call.err == nil {
+			if len(c.users) >= actorCacheMax {
+				now := time.Now()
+				for k, u := range c.users {
+					if !now.Before(u.expires) {
+						delete(c.users, k)
+					}
+				}
+				if len(c.users) >= actorCacheMax {
+					clear(c.users)
+				}
+			}
+			if c.users == nil {
+				c.users = map[string]cachedActor{}
+			}
+			c.users[id] = cachedActor{call.user, time.Now().Add(actorTTL)}
+		}
+		close(call.done)
+	}
+	c.mu.Unlock()
+	select {
+	case <-call.done:
+		return call.user, call.err
+	case <-ctx.Done():
+		return discord.User{}, ctx.Err()
 	}
 }
 

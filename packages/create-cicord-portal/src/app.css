@@ -1261,6 +1261,26 @@ code {
 .ticket-detail p {
   white-space: pre-wrap;
 }
+/* Discord mentions and code in ticket messages (components/DiscordText.tsx). */
+.ticket-detail .mention {
+  padding: 0 0.25rem;
+  border-radius: var(--cicord-radius-sm);
+  color: var(--cicord-accent-text);
+  background: color-mix(in srgb, var(--cicord-accent) 14%, transparent);
+  font-weight: 500;
+}
+.ticket-detail code {
+  padding: 0 0.25rem;
+  border-radius: var(--cicord-radius-sm);
+  background: var(--cicord-sunken);
+  font-size: 0.875em;
+}
+.ticket-detail .code-block {
+  display: block;
+  margin: 0.25rem 0;
+  padding: 0.5rem 0.75rem;
+  white-space: pre-wrap;
+}
 .ticket-detail form {
   display: grid;
   justify-items: start;
