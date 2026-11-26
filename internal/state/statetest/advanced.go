@@ -211,8 +211,13 @@ func RankAt100k(t *testing.T, kv state.AdvancedKV) {
 	}
 	slices.Sort(times)
 	t.Logf("100,000 members, exact rank + 10-entry arbitrary-offset page, 100 samples: p95 %s", times[94])
-	if times[94] >= time.Second {
-		t.Fatalf("rank and page p95 %s exceeds 1s", times[94])
+	// SDK-09 asks for p95 under 1 s; under the race detector only gross regressions count.
+	budget := time.Second
+	if raceEnabled {
+		budget = 5 * time.Second
+	}
+	if times[94] >= budget {
+		t.Fatalf("rank and page p95 %s exceeds %s", times[94], budget)
 	}
 }
 

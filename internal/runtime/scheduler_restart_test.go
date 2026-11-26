@@ -234,7 +234,13 @@ func TestDurableTaskSurvivesRestartAfterEffect(t *testing.T) {
 			// Depending on whether the instance or the scheduler stopped first, the
 			// task was released or keeps its lease (2 × handler timeout): look past it.
 			due, err := store.Tasks().Due(ctx, when.Add(time.Hour), 10)
-			if err != nil || len(due) != 1 || due[0].ID != "expiry" {
+			var queued []state.Task
+			for _, task := range due {
+				if task.Scope == restartScope { // other plugins' tasks (onboarding's migration) are not under test
+					queued = append(queued, task)
+				}
+			}
+			if err != nil || len(queued) != 1 || queued[0].ID != "expiry" {
 				t.Fatalf("after the crash the task must still be queued: %+v %v", due, err)
 			}
 			e, _ = p.boot(t, store)
