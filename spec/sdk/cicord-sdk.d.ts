@@ -502,6 +502,8 @@ export interface Server {
   verifyReaders(channel: ChannelRef|Channel, readers:{roles:readonly Snowflake[];members:readonly Snowflake[];viewer?:Snowflake;withoutMember?:Snowflake;destination?:ChannelRef|Channel}):Promise<{known:boolean;confined:boolean;fingerprint:string;viewerCanRead:boolean;withoutMemberFingerprint?:string;destination:AudienceRelation}>;
   /** Remove a DM previously sent as retractable by this instance. @capability discord.dm.send */
   retractDM(messageId:Snowflake): Promise<void>;
+  /** Edit an existing DM owned by this installation, including after a reconnect. */
+  editRetractableDM(messageId:Snowflake,message:MessageInput): Promise<void>;
   scheduledEvents():Promise<readonly ScheduledEvent[]>;
   createScheduledEvent(event:ScheduledEventInput):Promise<ScheduledEvent>;
   invites():Promise<ServerInvite[]>;
@@ -537,6 +539,9 @@ export interface Server {
    * the category's (Discord syncs it). @capability discord.channels.manage
    */
   createChannel(options: CreateChannelOptions): Promise<TextChannel>;
+  /** Recover a provisioning request by its exact, unique channel topic. An existing
+   * channel without this installation's ownership receipt is never returned as owned. */
+  recoverOwnedChannel(topic:string):Promise<{status:"missing"|"owned"|"conflict";id?:Snowflake}>;
   /**
    * Edit a channel owned by this plugin instance (created by `createChannel`); overwrites
    * are patched, see `EditChannelOptions`. @capability discord.channels.manage

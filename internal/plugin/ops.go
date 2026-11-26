@@ -214,7 +214,9 @@ func init() {
 		"channel.memberOverwrite": opChannelMemberOverwrite,
 		"message.endPoll":         pollOp(false), "message.pollVoters": pollOp(true), "analytics.summary": opAnalytics,
 		"plugins.query": opInterop("query"), "plugins.call": opInterop("action"),
-		"server.verifyReaders": opVerifyReaders,
+		"server.verifyReaders":       opVerifyReaders,
+		"dm.editReceipt":             opEditDMReceipt,
+		"server.recoverOwnedChannel": opRecoverOwnedChannel,
 	}
 }
 
@@ -1204,6 +1206,41 @@ func opMemberSend(i *Instance, _ *invocation, args json.RawMessage) (func(contex
 
 // A receipt is scoped by bot, instance and server. A plugin cannot retract a message
 // from a different server even when both installations share the same Discord DM.
+func opEditDMReceipt(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capDMSend); err != nil {
+		return nil, err
+	}
+	a, err := decode[channelMessageArgs](args)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkSnowflake("message", a.MessageID); err != nil {
+		return nil, err
+	}
+	msg, err := i.messageCreate(a.Message, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := i.scopeDMControls(true, msg.Components); err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context) (any, error) {
+		if i.env.DMReceipts == nil {
+			return nil, errors.New("DM receipt storage unavailable")
+		}
+		raw, err := i.env.DMReceipts.Get(ctx, a.MessageID)
+		if err != nil {
+			return nil, err
+		}
+		var channel string
+		if err := json.Unmarshal(raw, &channel); err != nil {
+			return nil, err
+		}
+		_, err = i.env.Discord.EditMessage(ctx, channel, a.MessageID, msg)
+		return nil, err
+	}, nil
+}
+
 func opRetractDM(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	if err := i.require(capDMSend); err != nil {
 		return nil, err
@@ -1439,6 +1476,48 @@ func opServerVoiceMembers(i *Instance, _ *invocation, args json.RawMessage) (fun
 
 // owner is the ResourceMap owner of plugin-created resources.
 func (i *Instance) owner() string { return "plugin:" + i.env.BotKey + "/" + i.env.InstanceName }
+
+// A lost REST/VM acknowledgement must not grant ownership of an unrelated matching
+// channel. Confirm against the durable ownership receipt before returning an ID.
+func opRecoverOwnedChannel(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capChannelsManage); err != nil {
+		return nil, err
+	}
+	a, err := decode[struct{ Topic string }](args)
+	if err != nil {
+		return nil, err
+	}
+	if a.Topic == "" || len([]rune(a.Topic)) > 1024 {
+		return nil, argErr("provide the original provisioning topic")
+	}
+	return func(ctx context.Context) (any, error) {
+		if i.env.Resources == nil {
+			return nil, errors.New("channel ownership storage unavailable")
+		}
+		list, err := i.env.Discord.ListChannels(ctx, i.env.ServerID)
+		if err != nil {
+			return nil, err
+		}
+		answer := map[string]string{"status": "missing"}
+		for _, ch := range list {
+			if ch.Topic != a.Topic || ch.ServerID != i.env.ServerID {
+				continue
+			}
+			if answer["status"] != "missing" {
+				return map[string]string{"status": "conflict"}, nil
+			}
+			record, err := i.env.Resources.Get(ctx, i.env.ServerKey, state.KindChannel, i.env.BotKey+"/"+i.env.InstanceName+"/"+ch.ID)
+			if errors.Is(err, state.ErrNotFound) || err == nil && (record.Owner != i.owner() || record.ID != ch.ID) {
+				return map[string]string{"status": "conflict"}, nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			answer = map[string]string{"status": "owned", "id": ch.ID}
+		}
+		return answer, nil
+	}, nil
+}
 
 func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	if err := i.require(capChannelsManage); err != nil {

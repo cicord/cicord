@@ -1547,7 +1547,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     name: options.server?.name ?? "Test Server",
     ...(options.server?.iconUrl ? { iconUrl: options.server.iconUrl } : {}),
     ...(ownerId !== undefined ? { ownerId } : {}),
-    async retractDM(id) {
+    async editRetractableDM(id,input){
+      need("discord.dm.send");
+      const message=messages.get(id);
+      if(!dmReceipts.has(id) || !message)throw new Error("Unknown DM receipt");
+      await message.edit(input);
+    },
+    async retractDM(id){
       need("discord.dm.send");
       if (!dmReceipts.delete(id)) return;
       const m = messages.get(id);
@@ -1607,6 +1613,12 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     async member(userId) {
       need("discord.members.read");
       return members.get(userId);
+    },
+    async recoverOwnedChannel(topic){
+      need("discord.channels.manage");
+      const found=createdChannels.filter(c=>c.options.topic===topic && channels.has(c.channel.id));
+      if(found.length===1)return {status:"owned",id:found[0]!.channel.id};
+      return {status:found.length?"conflict":"missing"};
     },
     async createChannel(opts) {
       need("discord.channels.manage");

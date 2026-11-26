@@ -538,6 +538,7 @@
         const o=options||{};
         return freeze(await acall("server.verifyReaders",{channel:refIn(channel),roles:o.roles,members:o.members,viewer:o.viewer,withoutMember:o.withoutMember,destination:o.destination?refIn(o.destination):undefined}));
       },
+      async editRetractableDM(messageId,message){await acall("dm.editReceipt",{messageId,message:msgIn(message)});},
       async retractDM(messageId){await acall("dm.retract",{messageId});},
       async ban(userId, options = {}) {
         await acall("member.ban", {userId: String(userId), reason: options.reason, deleteMessagesSeconds: options.deleteMessagesSeconds});
@@ -562,6 +563,7 @@
         const m = await acall("server.member", { userId: String(userId) });
         return m ? mkMember(m) : undefined;
       },
+      async recoverOwnedChannel(topic){return freeze(await acall("server.recoverOwnedChannel",{topic}));},
       async createChannel(options) {
         if (!options || typeof options !== "object") throw new TypeError("createChannel: options are required");
         return mkChannel(await acall("server.createChannel", options));
