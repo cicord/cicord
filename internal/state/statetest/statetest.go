@@ -47,6 +47,7 @@ func Run(t *testing.T, b Backend) {
 		name string
 		fn   func(t *testing.T, b Backend)
 	}{
+		{"AdvancedKV", testAdvanced},
 		{"KVBasics", testKVBasics},
 		{"KVValueRoundTrip", testKVValueRoundTrip},
 		{"KVBinaryKeys", testKVBinaryKeys},

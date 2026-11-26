@@ -23,9 +23,11 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/stdlib"
 	"net"
 	"strconv"
 	"time"
@@ -34,6 +36,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state/internal/advanced"
 	"github.com/cicord/cicord/internal/state/internal/storeutil"
 )
 
@@ -48,9 +51,10 @@ const migrationLockID int64 = 0x636963_6f7264
 
 // Store is a PostgreSQL-backed state.Store. It is safe for concurrent use.
 type Store struct {
-	pool *pgxpool.Pool
-	now  func() time.Time
-	desc string
+	sqlDB *sql.DB
+	pool  *pgxpool.Pool
+	now   func() time.Time
+	desc  string
 }
 
 // Option configures Open.
@@ -96,6 +100,7 @@ func Open(ctx context.Context, connString string, opts ...Option) (*Store, error
 		return nil, fmt.Errorf("state/postgres: %s: %w", s.desc, err)
 	}
 	s.pool = pool
+	s.sqlDB = stdlib.OpenDBFromPool(pool)
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("state/postgres: connect to %s: %w", s.desc, err)
@@ -123,6 +128,7 @@ func (s *Store) Describe() string { return s.desc }
 
 // Close closes the connection pool. It is safe to call more than once.
 func (s *Store) Close() error {
+	_ = s.sqlDB.Close()
 	s.pool.Close()
 	return nil
 }
@@ -155,7 +161,15 @@ func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 }
 
 func (s *Store) Resources() state.ResourceMap { return resourceMap{s} }
-func (s *Store) KV(scope string) state.KV     { return kvSpace{s: s, scope: scope} }
+func (s *Store) KV(scope string) state.KV {
+	return advanced.Space{Read: s.sqlDB, Write: s.sqlDB, Scope: scope, Now: s.now, Postgres: true}
+}
+func (s *Store) BufferedScope(_ context.Context, scope string) (state.KV, func(context.Context, state.KV) error) {
+	return s.KV(scope).(advanced.Space).Buffer()
+}
+func (s *Store) WithAtomicScope(ctx context.Context, scope string, fn func(state.KV) error) error {
+	return s.KV(scope).(advanced.Space).Transaction(ctx, fn)
+}
 func (s *Store) Tasks() state.TaskQueue       { return taskQueue{s} }
 func (s *Store) Audit() state.AuditLog        { return auditLog{s} }
 func (s *Store) Syncs() state.SyncLog         { return syncLog{s} }

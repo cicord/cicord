@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/cicord/cicord/internal/state"
+	"github.com/cicord/cicord/internal/state/internal/advanced"
 	"github.com/cicord/cicord/internal/state/internal/storeutil"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
@@ -218,7 +219,15 @@ func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 }
 
 func (s *Store) Resources() state.ResourceMap { return resourceMap{s} }
-func (s *Store) KV(scope string) state.KV     { return kvSpace{s: s, scope: scope} }
+func (s *Store) KV(scope string) state.KV {
+	return advanced.Space{Read: s.r, Write: s.w, Scope: scope, Now: s.now}
+}
+func (s *Store) BufferedScope(_ context.Context, scope string) (state.KV, func(context.Context, state.KV) error) {
+	return s.KV(scope).(advanced.Space).Buffer()
+}
+func (s *Store) WithAtomicScope(ctx context.Context, scope string, fn func(state.KV) error) error {
+	return s.KV(scope).(advanced.Space).Transaction(ctx, fn)
+}
 func (s *Store) Tasks() state.TaskQueue       { return taskQueue{s} }
 func (s *Store) Audit() state.AuditLog        { return auditLog{s} }
 func (s *Store) Syncs() state.SyncLog         { return syncLog{s} }
