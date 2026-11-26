@@ -38,6 +38,13 @@ func TestDistributionProvenance(t *testing.T) {
 	if got := revision(pseudo, info); got != pseudo {
 		t.Fatal(got)
 	}
+	// Without SourceRef, a VCS stamp or a pseudo-version there is no commit to pin: no
+	// fallback to an older snapshot, which would install other code under this version.
+	for _, none := range []*debug.BuildInfo{nil, main("(devel)"), main("v" + candidate)} {
+		if got := revision("", none); got != "" {
+			t.Errorf("revision without source info = %q", got)
+		}
+	}
 	for _, mutable := range []string{"main", "feature/0.2.0", "latest", "v0.1.11", "dev", "123abc", "x; false"} {
 		if ValidSourceRef(mutable) || revision(mutable, nil) != "" {
 			t.Errorf("accepted mutable or invalid ref %q", mutable)

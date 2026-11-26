@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { command, definePlugin } from "@cicord/sdk";
+import { command, definePlugin } from "../src/index.ts";
 import { createTestContext, runCommand, runContextMenu } from "../src/testing.ts";
 
 test("translations use the current interaction and never interpolate member input twice", async () => {

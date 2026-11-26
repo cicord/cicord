@@ -9,7 +9,8 @@
 # Needs a builder that can export multi-platform images with attestations, e.g.
 #   docker buildx create --use --driver docker-container
 # Environment: VERSION (required, without the leading "v"), IMAGE (ghcr.io/cicord/cicord),
-# PLATFORMS (linux/amd64,linux/arm64), PUSH (false).
+# PLATFORMS (linux/amd64,linux/arm64), PUSH (false), RELEASE_TAG (v<VERSION> on a tag build;
+# detected from the local tag when unset).
 #
 # Tags: <version> and sha-<short commit>; a version without a pre-release suffix also gets
 # <major>.<minor> and latest. Prints the image digest, and writes digest=<sha256:…> to
@@ -31,8 +32,17 @@ commit="$(git rev-parse --short HEAD)"
 revision="$(git rev-parse HEAD)"
 # Reproducible image timestamps: the commit time.
 epoch="$(git log -1 --format=%ct)"
-release_tag=""
-if [ "$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}" || true)" = "$revision" ]; then
+# A binary stamped with its release tag is a published distribution (version.Published):
+# `cicord init` and `portal init` inside the image then pin the tag and the npm packages.
+# The release workflow passes RELEASE_TAG on tag pushes; otherwise the tag must exist
+# locally and point at HEAD.
+release_tag="${RELEASE_TAG:-}"
+if [ -n "$release_tag" ]; then
+  if [ "$release_tag" != "v$VERSION" ]; then
+    echo "release-image: RELEASE_TAG=$release_tag does not match VERSION=$VERSION" >&2
+    exit 1
+  fi
+elif [ "$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}" || true)" = "$revision" ]; then
   release_tag="v$VERSION"
 fi
 

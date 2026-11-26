@@ -602,6 +602,44 @@ func checkWorkflowYAML(t *testing.T, wf string) {
 	}
 }
 
+// An unpublished build that does not know its commit refuses to scaffold workflows
+// rather than pin another commit, and a tagged release installs its tag whatever it
+// knows about its source.
+func TestScaffoldWithoutSourceCommit(t *testing.T) {
+	const v = "0.2.0"
+	useVersion(t, v)
+	oldRef := sourceRevision
+	sourceRevision = func() string { return "" }
+	t.Cleanup(func() { sourceRevision = oldRef })
+	repo := t.TempDir()
+	if code, _, _ := run(t, "init", repo, "--project", "demo"); code != 0 {
+		t.Fatal("a release refused to scaffold without a source commit")
+	}
+	if wf := readFile(t, filepath.Join(repo, ".github/workflows/cicord.yml")); !strings.Contains(wf, "cmd/cicord@v"+v) || strings.Contains(wf, "SourceRef=") {
+		t.Fatal(wf)
+	}
+	version.ReleaseTag = ""
+	repo = t.TempDir()
+	code, _, stderr := run(t, "init", repo, "--project", "demo")
+	if code == 0 || !strings.Contains(stderr, "does not know its source commit") {
+		t.Fatalf("code %d: %s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".github/workflows/cicord.yml")); err == nil {
+		t.Fatal("wrote a workflow")
+	}
+	// Inside a repository, portal init refuses before writing any portal file.
+	repo = t.TempDir()
+	writeFile(t, filepath.Join(repo, "cicord.yaml"), "apiVersion: cicord.dev/v1alpha1\nkind: Project\nmetadata:\n  name: demo\nspec: {}\n")
+	useKit(t, testKit(t, v), nil)
+	portal := filepath.Join(repo, "portal")
+	if code, _, stderr := run(t, "portal", "init", portal); code == 0 || !strings.Contains(stderr, "does not know its source commit") {
+		t.Fatalf("portal init: %d %s", code, stderr)
+	}
+	if _, err := os.Stat(portal); err == nil {
+		t.Fatal("portal init wrote files before refusing")
+	}
+}
+
 // A candidate's semver is shared by its source checkout and a possible future tag.
 // Only the latter opts into registry packages and attested release archives.
 func TestSnapshotAndTaggedCandidateScaffolds(t *testing.T) {

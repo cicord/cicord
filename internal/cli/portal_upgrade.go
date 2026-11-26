@@ -322,7 +322,10 @@ func printUpgradeNext(w io.Writer, src, rel string, toNPM bool) {
 	if err != nil {
 		return
 	}
-	want := cicordInstallVersion()
+	want, err := cicordInstallVersion()
+	if err != nil {
+		return
+	}
 	if m := regexp.MustCompile(`CICORD_(TAG|REF): "([^"]*)"`).FindSubmatch(wf); m != nil && string(m[2]) != want {
 		label := "REF"
 		if isReleaseVersion(cicordVersion()) {

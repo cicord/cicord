@@ -6,7 +6,9 @@
 # <version> is x.y.z, or x.y.z-rc.N for a pre-release (GitHub prerelease, npm dist-tag next).
 #
 # 1. sets <version> wherever the version is written (engine version, Makefile, Dockerfile,
-#    the packages' package.json, @cicord/cli included);
+#    the packages' package.json, @cicord/cli included, the basic example's CI pins and, for
+#    x.y.z, the examples' pre-release spec.engine range); every one must carry the current
+#    version first;
 # 2. for x.y.z, turns the CHANGELOG's [Unreleased] section into "## [x.y.z] - <today>" (it
 #    must not be empty), with a fresh empty [Unreleased] above it and the compare links at
 #    the bottom (from the previous release of the CHANGELOG, never from a pre-release). A
@@ -58,6 +60,20 @@ if git rev-parse -q --verify "refs/tags/v$new" >/dev/null; then
   echo "release: the tag v$new already exists" >&2; exit 1
 fi
 
+# Every versioned file must carry the current version before anything is edited: a file
+# left on another version (a hand edit, a half-merged bump) would otherwise be skipped by
+# the substitutions below, or be caught only after the other files were already changed.
+mixed=()
+grep -qxF "VERSION ?= $old" Makefile || mixed+=(Makefile)
+[[ "$(grep -c '^ARG VERSION=' Dockerfile)" -gt 0 && "$(grep '^ARG VERSION=' Dockerfile | grep -cvxF "ARG VERSION=$old")" -eq 0 ]] || mixed+=(Dockerfile)
+for p in sdk client react ui cli admin create-cicord-portal; do
+  [[ "$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "packages/$p/package.json" | head -n 1)" == "$old" ]] || mixed+=("packages/$p/package.json")
+done
+if ((${#mixed[@]})); then
+  echo "release: these files do not carry the current version $old (internal/version/version.go): ${mixed[*]}" >&2
+  exit 1
+fi
+
 # The [Unreleased] section: everything between its heading and the next "## [".
 unreleased="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep -v '^[[:space:]]*$' || true)"
 [[ -n "$unreleased" ]] || { echo "release: CHANGELOG.md has nothing under [Unreleased]" >&2; exit 1; }
@@ -89,6 +105,16 @@ for p in sdk client react ui cli admin create-cicord-portal; do
     '!done && index($0, old) { sub(old, new); done = 1 } { print }' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
 done
 
+# The example repositories declare the engine range `cicord init` writes: a pre-release
+# range (">=x.y.0-0 <…") becomes the release's (">=x.y.0 <…") with the release itself.
+examples=(examples/basic/cicord.yaml examples/showcase/cicord.yaml)
+if [[ "$pre" == false ]]; then
+  minor="${new%.*}"
+  for f in "${examples[@]}"; do
+    edit "$f" -e "s/^  engine: \">=$minor\.0-0 </  engine: \">=$minor.0 </"
+  done
+fi
+
 if [[ "$pre" == false ]]; then
   today="$(date -u +%Y-%m-%d)"
   awk -v v="$new" -v d="$today" -v prev="$prev" '
@@ -110,7 +136,7 @@ for p in sdk client react ui cli admin create-cicord-portal; do
   grep -qF "\"version\": \"$new\"" "packages/$p/package.json" || { echo "release: packages/$p/package.json was not updated" >&2; exit 1; }
 done
 
-git add internal/version/version.go Makefile Dockerfile CHANGELOG.md packages/*/package.json examples/basic/.github/workflows/cicord.yml
+git add internal/version/version.go Makefile Dockerfile CHANGELOG.md packages/*/package.json examples/basic/.github/workflows/cicord.yml "${examples[@]}"
 git commit -q -m "chore(release): v$new"
 echo "Committed chore(release): v$new ($old → $new)."
 

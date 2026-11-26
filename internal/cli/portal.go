@@ -198,9 +198,17 @@ func portalInit(w io.Writer, dir string, force, vendor bool) error {
 	}
 	repoRoot := findRepoRoot(filepath.Dir(abs))
 	name := sanitizeKey(filepath.Base(abs))
+	workflowRef := ""
 	if repoRoot != "" {
 		if p, err := readProject(repoRoot); err == nil && p.Metadata.Name != "" {
 			name = p.Metadata.Name + "-portal"
+		}
+		// Resolved before anything is written: a build that cannot pin its source refuses
+		// to scaffold instead of leaving a half-written portal.
+		if _, statErr := os.Stat(filepath.Join(repoRoot, ".github", "workflows", "cicord-portal.yml")); statErr != nil || force {
+			if workflowRef, err = portalWorkflowRef(kit, v); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -347,15 +355,7 @@ func portalInit(w io.Writer, dir string, force, vendor bool) error {
 			fmt.Fprintln(w, "  kept   .github/workflows/cicord-portal.yml (exists)")
 		} else {
 			var buf bytes.Buffer
-			ref := cicordInstallVersion()
-			if !isReleaseVersion(v) {
-				if data, err := fs.ReadFile(kit, "source-ref"); err == nil {
-					if candidate := strings.TrimSpace(string(data)); version.ValidSourceRef(candidate) {
-						ref = candidate
-					}
-				}
-			}
-			if err := portalWorkflow.Execute(&buf, map[string]any{"Dir": rel, "Cicord": ref, "Version": v, "Source": !isReleaseVersion(v)}); err != nil {
+			if err := portalWorkflow.Execute(&buf, map[string]any{"Dir": rel, "Cicord": workflowRef, "Version": v, "Source": !isReleaseVersion(v)}); err != nil {
 				return err
 			}
 			if err := os.MkdirAll(filepath.Dir(wf), 0o755); err != nil {
@@ -670,12 +670,32 @@ func hashTree(dir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), err
 }
 
-// cicordInstallVersion is the cicord release the generated workflows install: the tag
-// of a published binary, or the immutable source ref of a snapshot.
-func cicordInstallVersion() string {
-	v := cicordVersion()
+// portalWorkflowRef is the cicord the portal workflow installs: for an unpublished build,
+// the source commit its embedded kit was built from when it records one, else
+// cicordInstallVersion.
+func portalWorkflowRef(kit fs.FS, v string) (string, error) {
 	if !isReleaseVersion(v) {
-		return sourceRevision()
+		if data, err := fs.ReadFile(kit, "source-ref"); err == nil {
+			if candidate := strings.TrimSpace(string(data)); version.ValidSourceRef(candidate) {
+				return candidate, nil
+			}
+		}
 	}
-	return "v" + v
+	return cicordInstallVersion()
+}
+
+// cicordInstallVersion is the cicord release the generated workflows install: the tag
+// of a published binary, or the immutable source ref of an unpublished build. An
+// unpublished build that does not know its commit is refused: pinning any other commit
+// would install different code under this version.
+func cicordInstallVersion() (string, error) {
+	v := cicordVersion()
+	if isReleaseVersion(v) {
+		return "v" + v, nil
+	}
+	if ref := sourceRevision(); ref != "" {
+		return ref, nil
+	}
+	return "", fmt.Errorf("this cicord (%s) is an unpublished build that does not know its source commit, so the generated workflows cannot install the same code: "+
+		"use a cicord release, build from a git checkout (make build), or set -ldflags \"-X github.com/cicord/cicord/internal/version.SourceRef=<commit>\"", v)
 }

@@ -16,11 +16,6 @@ var ReleaseTag string
 // Source checkouts normally receive the full commit from the Go toolchain.
 var SourceRef string
 
-// Go run and source archives can omit the VCS stamp. This published source baseline
-// implements the branch SDK. Snapshot CI explicitly supplies the engine version when
-// installing it. An ordinary source binary prefers its own embedded VCS commit.
-const snapshotBaseline = "25e50db5a14c082966877fc39b6ebde329be7b27"
-
 var commitRef = regexp.MustCompile("^[0-9a-f]{40}$")
 var pseudoRef = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]*[0-9]{14}-[0-9a-f]{12}$`)
 
@@ -44,13 +39,14 @@ func published(v, tag string, info *debug.BuildInfo) bool {
 	return tag == want || (info != nil && info.Main.Path == "github.com/cicord/cicord" && info.Main.Version == want)
 }
 
-// Revision returns an immutable go-install ref for the exact source. A versioned
-// module installation can have a Go pseudo-version but no local Git metadata.
+// Revision returns an immutable go-install ref for the exact source of an unpublished
+// build: SourceRef, the commit the Go toolchain embedded, or the pseudo-version of a
+// go install. It is "" when the build carries none of them (go run, a source archive, a
+// Docker build without SOURCE_REF): there is then no commit that installs this code, and
+// callers must refuse to pin one rather than guess. Published builds install their
+// release tag instead (see Published).
 func Revision() string {
-	if ref := revision(SourceRef, buildInfo()); ref != "" {
-		return ref
-	}
-	return snapshotBaseline
+	return revision(SourceRef, buildInfo())
 }
 
 // ValidSourceRef accepts only immutable commit or Go pseudo-version references.

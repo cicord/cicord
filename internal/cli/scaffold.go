@@ -105,6 +105,10 @@ func newInitCmd() *cobra.Command {
 					o.provider = "github"
 				}
 			}
+			install, err := cicordInstallVersion()
+			if err != nil {
+				return err
+			}
 			data := map[string]any{
 				"Project":       o.project,
 				"Server":        o.server,
@@ -113,7 +117,7 @@ func newInitCmd() *cobra.Command {
 				"ApplicationID": o.appID,
 				"TokenEnv":      "DISCORD_TOKEN_" + strings.ToUpper(strings.ReplaceAll(o.bot, "-", "_")),
 				"EngineRange":   engineRange(),
-				"Cicord":        cicordInstallVersion(),
+				"Cicord":        install,
 				"Source":        !isReleaseVersion(cicordVersion()),
 				"Version":       cicordVersion(),
 				"Provider":      o.provider,

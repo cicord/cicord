@@ -107,8 +107,12 @@ func TestInitWorkflow(t *testing.T) {
 		t.Fatalf("init: %s", errOut)
 	}
 	wf := readFile(t, filepath.Join(dir, ".github", "workflows", "cicord.yml"))
+	install, err := cicordInstallVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
-		"github.com/cicord/cicord/cmd/cicord@" + cicordInstallVersion(), "cicord validate", "cicord plan --remote --comment",
+		"github.com/cicord/cicord/cmd/cicord@" + install, "cicord validate", "cicord plan --remote --comment",
 		"cicord status --wait --revision ${{ github.sha }}", "CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}",
 		"CICORD_RUNTIME_TOKEN: ${{ secrets.CICORD_RUNTIME_TOKEN }}", "pull-requests: write", "contents: read",
 	} {
@@ -116,7 +120,7 @@ func TestInitWorkflow(t *testing.T) {
 			t.Errorf("workflow misses %q:\n%s", want, wf)
 		}
 	}
-	if strings.Contains(wf, "@latest") && cicordInstallVersion() != "latest" {
+	if strings.Contains(wf, "@latest") && install != "latest" {
 		t.Errorf("workflow is not pinned to this cicord:\n%s", wf)
 	}
 	checkWorkflowYAML(t, wf)

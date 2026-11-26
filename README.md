@@ -53,11 +53,6 @@ Or the image: `docker run --rm ghcr.io/cicord/cicord:0.1.11 version`. A real-wor
 configuration: the official community server's repository,
 [cicord/cicord-community](https://github.com/cicord/cicord-community).
 
-The `feature/0.2.0` source snapshot reports `0.2.0-rc.1`. To test it, build the
-checkout with `make build`, then run `bin/cicord init ../community` and
-`bin/cicord validate ../community`. Use `make all` to include the portal and its
-vendored SDK packages. [Source installation](sites/docs/src/content/docs/getting-started/installation.mdx#test-the-02-source-snapshot).
-
 ## Community and contributing
 
 Questions, ideas or a plugin to show? [Join the Cicord community on Discord](https://discord.gg/qTt5S2Fe4m).

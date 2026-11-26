@@ -23,8 +23,9 @@ test: test-go test-js
 test-go:
 	$(GO) test -race ./...
 
+## test-js: build the workspace packages (tests import each other's dist), then run every package's tests and the example plugins' tests
 test-js:
-	pnpm -r test
+	pnpm test
 
 vet:
 	$(GO) vet ./...
@@ -48,6 +49,6 @@ clean:
 hooks:
 	git config core.hooksPath .githooks
 
-## release: prepare the release commit of VERSION (versions + CHANGELOG), e.g. make release VERSION=0.2.0-rc.1 (never pushes nor tags)
+## release: prepare the release commit of VERSION (versions + CHANGELOG), e.g. make release VERSION=0.2.0 (never pushes nor tags)
 release:
 	scripts/release.sh $(VERSION)

@@ -6,13 +6,602 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+Cicord 0.2.0 is a large plugin platform release.
+
+- **Plugins get new SDK APIs.** Plugins can moderate, read the audit log and react to
+  structure events. They can store data atomically, with rankings and full-text search, and
+  translate their messages and commands. They can talk to each other through versioned
+  contracts, apply temporary incident overlays and hold write-only credentials. Every
+  plugin that stores member data must declare it, and admins can export or erase a
+  member's data.
+- **Work is durable.** Tasks and events are leased, retried and kept as dead letters until
+  an admin decides.
+- **The reference portal gains staff and member pages.** The admin console gains Diagnostics,
+  Member data, overlay and plugin secret screens.
+- **The official registry grows from 11 plugins to 29.** Every official plugin release in
+  the registry now requires Cicord 0.2.0.
+- **Image rendering is experimental and opt-in** (`ctx.render.image`). So are the economy,
+  giveaways and ai-assistant plugins. The three-community usage gate still applies to them.
+
+### Upgrading from 0.1.11
+
+Read this before you upgrade. **The database upgrade is one-way.**
+
+1. **Back up the state first.** Back up the data directory (`cicord.db`, `secret.key`,
+   `link.key`) or dump PostgreSQL.
+   - On first start, 0.2.0 applies migrations 0004, 0005, 0006, 0010 and 0011
+     automatically, on SQLite and on PostgreSQL. 7 to 9 are not used. They add task
+     leases, versioned storage and rankings, the full-text index, interop receipts and
+     the storage byte counters.
+   - Tests upgrade a populated 0.1.11 database on both backends.
+   - **There is no rollback.** A 0.1.11 binary refuses a migrated database ("database
+     schema version 11 is newer than this binary supports (3)"). To go back, restore the
+     backup.
+   - The runtime also refuses to start when a recorded migration does not match this
+     binary's migration of the same number.
+2. **Widen `spec.engine` before you upgrade.** Repositories created by 0.1.x declare
+   `spec.engine: ">=0.1.0 <0.2.0"` in `cicord.yaml`, and 0.2.0 refuses that revision.
+   - Commit `">=0.1.0 <0.3.0"` first: 0.1.11 accepts it too.
+   - Upgrade the runtime.
+   - Then narrow it to `">=0.2.0 <0.3.0"`, the range `cicord init` now writes.
+3. **VPS auto-update.** The default `CICORD_AUTO_UPDATE=patch` does not install 0.2.0.
+   With `minor`, the update takes a backup first and rolls back if the service check fails.
+   Widen `spec.engine` (step 2) before 0.2.0 is published, or 0.2.0 fails that check.
+4. **Update the pinned CLI.** The CI workflow that `cicord init` generated
+   (`.github/workflows/cicord.yml`) installs `cicord@v0.1.11` three times: change it to
+   `@v0.2.0`.
+5. **Update official plugins after the runtime, never before.**
+   - Every official plugin release in the registry requires engine `>=0.2.0`.
+   - On 0.2.0, `cicord plugin add`, `cicord plugin update` and the Store pick only releases
+     whose `spec.engine` accepts the running engine and that the signed index publishes.
+   - A 0.1.x CLI does neither. While you are still on 0.1.x:
+     - do not `plugin add` official plugins, and do not install them from the Store: both
+       resolve to the newest release;
+     - pass `--to` with the instance's current range to `plugin update`.
+   - Copies of official plugins in `plugins/<name>/` keep working on 0.2.0.
+   - Review each update before you commit it: updated plugins request new grants,
+     intents and Discord permissions. For example, audit-log and moderation need
+     `discord.auditlog.read`, the `ServerModeration` intent and View Audit Log.
+6. **Approve widened credentials.** When a new plugin version widens what a bound credential
+   can reach (new hosts, another use, a larger or different provider budget), the update
+   stops and prints a review digest.
+   - CLI: repeat `cicord plugin update <plugin> --approve-secret-changes <digest>`.
+   - Store: send the digest as `confirmSecretChanges`.
+7. **Plugin `secretRef` names must start with `CICORD_`.** This applies to the
+   `secrets.<NAME>.secretRef` of a plugin installation in `bot.yaml`.
+   - Variables the runtime reads itself (`CICORD_SECRET_KEY`, `CICORD_PRIVACY_KEY`,
+     `CICORD_PUBLIC_URL`, registry tokens…) are reserved.
+8. **Upgrade custom portals.** The built-in portal updates with the binary. For a portal
+   created with `cicord portal init`:
+   - run `cicord portal upgrade`, then `pnpm install` and `cicord portal build`, and commit;
+   - `portal upgrade` only changes the `@cicord/*` packages. A portal forked from the
+     reference portal gets none of the new pages. To get them, run `cicord portal init`
+     into a scratch directory and merge by hand:
+     - Verification (typed-code challenge);
+     - TicketDesk (paged tickets);
+     - Rewards (paged giveaway entrants);
+     - Audit (paced export);
+     - the Appeals page and the `src/features/` community pages.
+9. **Plugin storage now has a quota.** Each installation may hold 1,000,000 KV keys and
+   ranking members, and 256 MiB of keys, values and members. An installation already above
+   it keeps its data, but further writes fail until it shrinks.
+10. **For plugin authors.** Details are under Changed.
+    - Scheduled tasks are now at-least-once.
+    - `Message.member` is set on received messages only.
+    - `member.addRole()` and `member.removeRole()` refuse roles whose membership is declared
+      in YAML.
+    - Plugin route responses keep only allowlisted headers.
+    - `enabled: false` in an installation's config belongs to the host.
+    - Builds can no longer read files outside the plugin package.
+    - `@cicord/sdk/testing` enforces the runtime's limits.
+11. **0.2.0 source snapshots and plugin data.** Plugin data written by a 0.2.0-rc.1
+    source snapshot, or by 0.1.x official plugins, has no compatibility guarantee. Several
+    official plugins migrate their own 0.1.x data; their READMEs say what is kept.
+
 ### Added
 
-- Scheduled plugin tasks survive a worker interruption. Failures are retried, and admins
-  can inspect, retry or discard failed tasks in Diagnostics.
-- The moderation SDK supports guild bans and unbans, paginated bans, ban events, clearing a
-  timeout, replacing member roles and bounded message purges.
+#### Runtime and delivery
 
+- **Durable scheduled tasks and events.** A task is leased while its handler runs and
+  acknowledged when the handler succeeds. After a crash the lease expires and the same
+  task ID runs again. The handler's third argument carries `id` and `attempt`.
+  - **Who pays for a crash:** only the handler that crashed the instance. The work that
+    waited or ran beside it is delivered again after the restart, and nothing is claimed
+    while the instance is down.
+  - **Retries:** five deliveries over about six minutes (1 s, 7 s, 45 s, 5 min, with
+    jitter).
+  - **Streams:** the next event of a stream is delivered as soon as the previous one is
+    acknowledged.
+  - **Dropped subscriptions:** an event whose subscription a new revision dropped waits,
+    and is parked after 24 hours.
+- **Dead letters.** Failed work stays as a dead letter. It records a failure category
+  (timeout, crash, budget, built-in error name or interop code), never the plugin's error
+  text.
+  - Admins list, retry and discard dead letters in **Diagnostics**, or with
+    `GET /servers/{server}/dead-letters`. The list pages with `cursor`/`nextCursor` and
+    `limit` (1–500), and reports `total` and `truncated`.
+  - The other endpoints are `POST …/dead-letters/{id}/retry|discard` and
+    `GET …/dead-letters/{id}/event`.
+- **Private command replies on durable tasks.** A guild command's `deferTask(name, payload)`
+  defers an ephemeral reply and hands it to a task. The host keeps an encrypted reply
+  credential for at most 14 minutes.
+- **Disabling an installation.** `enabled: false` in an installation's config (or the admin
+  **Enabled** switch, also in a server override) disables it.
+  - The installation stays listed as Disabled. Its commands, routes, subscriptions and
+    schedules stop, and its queued deliveries keep their payloads and deadlines.
+  - Re-enabling validates the whole config again.
+  - `cicord status --wait` and `healthcheck --service` accept a disabled installation.
+- **Direct-message routing.**
+  - **Which server:** a DM to a bot that is on several servers goes to the server the
+    member picks from a menu. The choice is kept per bot across reconnects.
+  - **Which plugin:** `spec.directMessages.instance` in `bot.yaml` names the installation
+    that receives the DMs. Plugins handle them with the `directMessage` event, which carries
+    the validated `member` of that server.
+  - **Queueing:** work is queued per user shard, and member lookups run in parallel with a
+    5 s bound.
+  - **Rate limit:** each user gets a burst of 10 DMs, then one per second. A rate-limited
+    DM gets a localized "try again" reply.
+- **Per-server bot appearance.** In `bot.yaml`, a `servers` entry can be
+  `{key, profile: {nickname, bio, avatar, banner}}`, applied to the bot member on that
+  server. It is restored when the bot is invited again.
+- **Status lines and feature diagnostics.** `ctx.status.set(key, message)` adds status lines
+  to the instance status. `ctx.features.enabled()` and `ctx.features.report()` report which
+  optional features are on, and Diagnostics shows them.
+- **Own-action attribution.**
+  - **Journaling:** audited Discord calls are journaled before they are sent. A gateway
+    audit entry is bound to at most one emitted operation with the same actor, action and
+    target within 30 seconds.
+  - **Coverage:** overwrite changes sent in a channel update, webhooks, scheduled events,
+    soundboard sounds, onboarding, the bot's nickname, and member updates that set roles and
+    a nickname are matched with Discord's own entries.
+  - **Unmatched entries:** an audited action by a project bot that Cicord did not emit
+    raises an alert ("Bot token possibly compromised"). It also adds a line to
+    `cicord status` and sets `unconfirmedAudit` in the server status, which the admin server
+    page shows. This is advisory and never changes health.
+- **`CICORD_COMPILER_CACHE_DIR`:** a private native-code cache for the embedded compiler.
+
+#### Plugin SDK
+
+- **Moderation.**
+  - `ctx.server.ban()` (also for users who left), `unban()` and paged `bans()`, with the
+    `banAdd` and `banRemove` events.
+  - `member.removeTimeout()` and `member.setRoles()`.
+  - `channel.bulkDelete(ids)`, and a bounded `channel.purge(filter)` (1–1000 messages). Use
+    `channel.previewPurge(filter)` to confirm the exact message IDs before deleting them.
+- **Audit log and structure events.**
+  - `discord.auditlog.read` gives `ctx.server.auditLog()` and the `auditLogEntry` event,
+    with the attribution fields.
+  - New events:
+    - channels: `channelCreate|Update|Delete`;
+    - roles: `roleCreate|Update|Delete`;
+    - threads: `threadCreate|Delete`;
+    - the server: `serverUpdate`, `serverAvailable`;
+    - expressions, webhooks and invites: `expressionsUpdate`, `webhooksUpdate`,
+      `inviteCreate|Delete`;
+    - AutoMod: `automodAction`.
+
+    A structure event carries the previous state when it is available, plus `managed` and
+    `willHeal`.
+  - `ctx.server.invites()` (`discord.invites.read`) reads the current invites.
+- **Channel audiences.**
+  - `member.canView(channel)` and `member.permissionsIn(channel)` decide from the live
+    guild permissions.
+  - `ctx.server.compareAudience(source, destination)` returns `same`, `narrower`, `wider`,
+    `disjoint` or `unknown` before content is copied. `ctx.server.audience()` summarizes an audience
+    for display, and `server.verifyReaders()` checks a reader ceiling.
+  - `channel.memberOverwrite(userId)` reads a member-specific overwrite, and
+    `ctx.server.protection()` reports the guild protection settings.
+  - An access check denies the read while the gateway is disconnected. It also denies
+    age-restricted channels without verified eligibility, and private threads without
+    verified membership.
+- **Members and server.**
+  - `role.permissions` is the role's bitfield.
+  - `ctx.server.cicordBotIds` lists the project's own bots, so plugins can exempt them.
+  - New member fields: `premiumSince`, `timedOutUntil` and `flags` (rejoined, completed
+    onboarding, bypasses verification). Interactions carry the user's `locale`, and the
+    server its `preferredLocale`.
+  - `ctx.server.members()` pages server membership (up to 1,000,000 members).
+- **Messaging.**
+  - Pins, `typing()`, reactions (`reactionUsers`, `removeReaction`, `discord.reactions.manage`)
+    and crossposts.
+  - Webhook sends under another name (`sendAs`, `discord.webhooks.manage`).
+  - DMs the bot can retract or edit later (`retractDM`, `editRetractableDM`), also after a
+    reconnect.
+  - Binary `files` on messages, DMs and interaction replies (up to ten).
+  - `attachment.bytes()`, with downloads up to 8 MiB.
+- **Interactions.**
+  - Guild context menus (`contextMenus`, USER and MESSAGE), with per-bot, per-server quotas.
+  - Components V2 layouts.
+  - User, role and channel select menus.
+  - Labeled modal fields.
+- **Scheduled events and polls.**
+  - `scheduledEvents()` and `createScheduledEvent()` (`discord.events.read|manage`), with
+    the `scheduledEvent*` events.
+  - Native polls: `message.poll`, `endPoll()`, paged `pollVoters()`, and the
+    `pollVoteAdd|Remove` events.
+  - `ctx.analytics.summary()` (`analytics.read`) gives aggregate server analytics.
+- **Storage.**
+  - `kv.getEntry()` returns a value with its version, and `kv.getMany()` reads several keys.
+  - `kv.atomic()` commits checks and mutations in one transaction (128 operations).
+  - `kv.ranking(name)` gives exact rankings, with `rank`, `top`, `around` and `count`. A
+    write changes one row, and ranks are counted on read. A board holds at most 250,000
+    members.
+  - Scoped full-text search with `ctx.index(name)` (`storage.index`), on SQLite FTS5 and
+    on PostgreSQL.
+  - `crypto.getRandomValues()` and `crypto.randomUUID()`.
+- **Translations.**
+  - `spec.locales` holds flat JSON catalogues, and `ctx.i18n.t(key, vars)` translates with
+    locale fallback.
+  - Catalogue keys also translate the Discord command and context-menu UI, option
+    descriptions and fixed choices (`commands.<command>.options.<option>.choices.<value>`).
+  - Number variables are formatted like JavaScript.
+- **Interop.** Plugins integrate through versioned contracts declared in `spec.interop` and
+  `contracts/`:
+  - **Events:** server- or bot-scoped publications, `meta.id` for deduplication, 30-day
+    publication keys, and ordered, durable subscriber queues.
+  - **Queries:** `ctx.plugins.query()` (`plugins.query:<plugin>.<name>`) on a read-only
+    context.
+  - **Actions:** transactional actions with idempotency receipts (`ctx.plugins.call()`,
+    `plugins.call:<plugin>.<name>`).
+  - **Callers:** each caller is authenticated by the host, and member calls carry a
+    delegated principal. An installation restricts its callers with `interop.allowCallers`,
+    and a consumer picks a provider with `interop.targets`.
+  - **Optional features:** `spec.optional` features have their own grants
+    (`ctx.features`, `ctx.plugins.hasFeature`).
+  - **Admin:** the interop graph of a server is at `GET /servers/{server}/interop`.
+- **Member privacy.**
+  - `spec.privacy.records` declares every member-bearing record.
+  - The `privacy.export` and `privacy.erase` hooks are idempotent. `ctx.privacy.pseudonym()`
+    works only inside them.
+  - Admins export or erase a member in **Server settings → Member data**, or with
+    `POST /servers/{server}/privacy/export|erase`. The report is per installation.
+  - Erasures are recorded in an HMAC journal (`member-erasures/`, `privacy.key` or
+    `CICORD_PRIVACY_KEY`) and reapplied after a restore of an older backup.
+- **Temporary incident overlays.** `ctx.server.overlays` (`server.overlays`) applies
+  time-limited restrictions. Overlays last at most seven days, and a durable task converges
+  the affected fields at expiry, also while enforcement is paused.
+  - **What an overlay can do:** add denies, take allows back (`neutral`, also on the `"*"`
+    target), raise slowmode or the verification level, or suspend roles declared in YAML.
+  - **Seeing and lifting overlays:** they are listed on the server Plan page and through
+    `GET /servers/{server}/overlays`, and lifted one by one.
+  - **Other incident actions:** `ctx.server.incident()` (`server.incident`) pauses invites
+    or DMs for up to 24 hours. `ctx.server.requestSync()` (`server.sync`) asks for a full
+    sync.
+- **Credentials and files.**
+  - **Plugin secrets:** a manifest declares `spec.secrets`, each with an allowed use and
+    hosts, and optionally an Anthropic daily token budget.
+    - `bot.yaml` binds a name to a `secretRef`.
+    - The plugin passes `ctx.secrets.ref(name)` to `http.fetch` and never sees the value.
+    - Admins set the value write-only with `PUT …/plugins/{bot}/{instance}/secrets/{name}`
+      or in the admin console.
+  - **Per-instance hosts:** an installation in `bot.yaml` can allow extra hosts with
+    `network.allow`.
+  - **Repository files:** an installation can mount repository files with `files`. The
+    plugin reads them with `ctx.files.read` (`files.read`).
+  - **Assets:** `spec.assets` bundles up to 5 MiB of read-only files, read with
+    `ctx.assets.read`.
+- **Media.** `ctx.media.hash()` (`sha256`, `phash`, `dhash`) and `ctx.media.distance()`
+  need `media.analyze`.
+  - Image decoding runs in a confined WebAssembly worker, with 96 MiB of memory and a
+    3-second deadline.
+  - Input is limited to 8 MiB and four megapixels.
+- **Image rendering (experimental, opt-in).** `ctx.render.image()` (`render`) draws PNG
+  cards in the confined worker. The layer types are text, image, `rect`, `progress` and
+  `chart`.
+  - **Sizes:** sides up to 2048 px with an area of at most 524,288 pixels. Source images are
+    limited to 524,288 decoded pixels in total.
+  - **Budget:** 24 MiB of memory and a one-second deadline. The deadline starts once a
+    worker slot is free.
+  - **Errors:** a larger spec gets a validation error.
+  - **Fonts:** Inter, Noto, emoji or a packaged font. Their OFL notices ship in `NOTICE`,
+    in the archives, the image and the npm packages.
+- **Portal case links.**
+  - `ctx.portal.link(path, {scope})` signs a link to one case, bound to the recipient's
+    Discord identity and to the issuing installation.
+  - Routes with `access: "scoped"` read `request.scope`.
+  - `ctx.portal.revoke()` invalidates the links of a case.
+  - An expired link can be renewed through OAuth for up to 30 days.
+- **Plugin route answers.** Routes can return text answers, with the full 2 MiB allowance.
+- **`@cicord/sdk/testing`.** The harness behaves like the host.
+  - **Provider calls:** `callProvider` runs a provider query or action in a fresh realm,
+    with a read-only context for queries and the contract checked. `fakeProviders` checks a
+    consumer's input against its providers' contracts.
+  - **New helpers:** `readOnlyContext`, `contractViolation`, `replayActionEffects`,
+    `harness.status`, `harness.attachment()`, `server.otherCicordBotIds`.
+  - **Fakes:** the harness takes asset, binary `fetch`, `renderImage` and `hashImage`
+    fakes.
+  - **Channels:** `createChannel({provisionKey})` returns the channel created earlier with
+    the same key, and `recoverOwnedChannel({provisionKey})` finds it.
+- **Idempotent channel creation.** `createChannel({provisionKey})` and
+  `recoverOwnedChannel()` make channel creation idempotent per installation, across
+  restarts, voice channels included. The keys are kept as a digest for 30 days.
+
+#### Admin console and HTTP API
+
+- **Diagnostics:** dead letters with "Load more", feature diagnostics and status lines.
+- **Server settings → Member data:** export, erase and the per-plugin report.
+- **Orphaned data:** **Server settings** lists the data uninstalled installations left
+  behind (records, rankings, index, tasks, DM receipts) and deletes it once the installation
+  name is typed. The API is `GET /servers/{server}/orphaned-data` and
+  `POST /servers/{server}/orphaned-data/purge`.
+- **Plan page:** active overlays, each with a lift action
+  (`DELETE /servers/{server}/overlays/{bot}/{instance}/{id}`).
+- **Plugin instance page:** declared secrets, which can be set write-only, and the
+  Disabled state.
+- **Server page:** the interop graph, and the `unconfirmedAudit` warning.
+- **Admin dev mock:** serves the dead-letter, overlay and plugin secret endpoints.
+- **`@cicord/client`:** methods for all of the above. `admin.deadLetters()` returns a page,
+  and `CicordApiError.retryAfter` gives the `Retry-After` delay.
+
+#### Portal
+
+- **Reference portal community pages** (`/community`), routed per plugin instance under the
+  viewer's session:
+  - **Everyone:** an event calendar with an ICS feed, suggestions, poll totals, giveaway
+    draw proofs and season standings.
+  - **Members:** verification, their own moderation history, birthday preferences, invite
+    standings, tag search, and a wallet with its shop.
+  - **Staff:**
+    - moderation: case filters, appeals, the verification queue, guard rules and incidents;
+    - community: announcements with preview and scheduling, shift coverage and suggestion
+      decisions;
+    - records: the ledger, tag editing, unanswered questions, and audit search and export.
+- **Verification:** a typed-code challenge. The plugin renders a code in an image, the
+  member types it in, and a rejected answer gets a new challenge.
+- **Ticket desk:** typed queues, transcript downloads and "Load more".
+- **Giveaway Draw view:** reads every entrant page before it draws, and fails instead of
+  mixing pages from a redraw.
+- **Audit export:** reads two pages a second, and waits for `Retry-After` on a 429 or 503.
+- **Appeals:** an appeal page for signed case links, which works after a ban too.
+
+#### CLI
+
+- **`cicord plugin purge-data <server> <bot>/<instance>`** deletes the data of an
+  uninstalled installation.
+- **`cicord plugin update --approve-secret-changes <digest>`** approves a widened
+  credential review.
+- **`cicord plugin test`** reads an optional `test/server.yaml`:
+  - `syncPolicy`;
+  - `privateChannels`;
+  - `botPermissions`, the test bot's permissions after start, to run the plugin in degraded
+    mode.
+
+  `--config` with `enabled: false` checks that a disabled installation registers no
+  handlers.
+- **`cicord plugin build`** checks literal event names and versions against the contracts,
+  and warns when a manifest declares no `spec.interop`.
+
+#### Simulator
+
+- **Members can act:** join, move or leave voice, react, vote in native polls, and change
+  channel overwrites as the operator.
+- **Member views:** `?userId=` on state, history and commands shows what one member sees,
+  timeouts included.
+- **Audit entries:** written like Discord's, with kick and timeout reasons and voice moves.
+- **Bot permissions:** `World.SetBotPermissions` changes a bot's managed role, to test
+  degraded mode.
+
+### Changed
+
+- **Tasks are at-least-once.** `ctx.schedule` tasks are leased and retried, as described
+  under Added. A handler can run again after a crash. It must recheck state and be
+  idempotent.
+- **`Message.member`** is set on received server messages only, from the gateway payload.
+  Fetched messages and the results of `send`, `reply` and `edit` never carry it, as on
+  Discord, and the simulator no longer adds it.
+- **`member.addRole()` and `member.removeRole()`** refuse roles whose members are declared in
+  YAML. Use a `suspendDeclaredRoles` overlay instead of fighting the reconciler.
+- **`enabled` in an installation's config** is the host's switch, read before the plugin's
+  schema.
+- **Plugin builds are confined.** They see only a read-only view of the plugin package:
+  imports, TypeScript configuration, source maps and schema references that leave the
+  package fail.
+- **`kv.list` pages** stop at 4 MiB of values.
+- **`@cicord/sdk/testing` fails where production would:**
+  - **Limits:** storage quotas, ranking size, `kv.list` pages, `i18n.t` caps, render limits
+    and `status.set` bounds.
+  - **`callRoute`:** answers `403` below a route's access level and filters headers like the
+    portal. Tests that compared `headers` with `{}` now see the core's headers.
+  - **Messages:** only received messages carry `member`.
+  - **`ctx.privacy.pseudonym`:** throws outside a privacy hook. A test that calls a privacy
+    hook directly with `t.ctx` must use `callProvider` or `readOnlyContext`.
+- **Engine-aware plugin resolution.** `cicord plugin add`, `cicord plugin update`, the Store
+  and its update badge pick the newest release whose `spec.engine` accepts the running
+  Cicord. They never pick one above the version the signed official index publishes.
+  `plugin update` lists the version it would actually install.
+- **New repositories and plugins** created by `cicord init` and `cicord plugin new` declare
+  `spec.engine: ">=0.2.0 <0.3.0"`.
+- **Generated CI workflows** pin the release tag of a published binary.
+  - An unpublished build pins its own source commit, and refuses to scaffold when it does
+    not know it.
+  - `cicord portal init` from an unpublished build vendors the embedded `@cicord/*` packages.
+- **Container image:** the base and frontend images are pinned by digest.
+
+### Fixed
+
+- **Portal Home:** says "not a member" only for the runtime's 403. A 429, a 5xx or a network
+  error shows a retry message.
+
+### Security
+
+#### Portal and plugin routes
+
+- **Plugin route responses keep only allowlisted headers:** `Content-Disposition`, `ETag`,
+  `Last-Modified`, `X-*` headers outside the reserved prefixes below, `Cache-Control` on
+  public routes, and a few others.
+  - **Refused headers:** a plugin can no longer set `Refresh`, `Clear-Site-Data`, `Link`,
+    `Upgrade` or hop-by-hop headers. It can no longer set the headers reverse proxies act
+    on either: `X-Accel-*`, `X-Sendfile`, `X-Lighttpd-*`, `X-LiteSpeed-*`, `X-Reproxy-*`, and
+    forwarding and rewrite headers. Before, a route behind nginx could trigger an internal
+    redirect or a sendfile.
+  - **Status codes:** a status outside 200–599 answers `500`.
+  - **Caching:** every answer has `Vary: Cookie, Authorization`. A public route called by a
+    signed-in viewer is `Cache-Control: no-store`.
+- **Portal requests:**
+  - each signed-in user gets at most 120 a minute (bursts of 60), then
+    `429 rate_limited` with `Retry-After`;
+  - `/portal/{server}/me` and the member analytics use the 30-second member cache, and
+    concurrent reads of one member share one Discord call;
+  - plugin routes re-read the member on every request.
+- **Guild ownership and channel reads** are checked against the current gateway session and
+  the live guild permissions, not cached state.
+
+#### Plugin registry
+
+- **Official registry:**
+  - the runtime rereads the signed index when its cached copy is older than an hour or does
+    not cover the locked release, so a revoked publisher loses verified status within the
+    hour;
+  - an older cached index never replaces a newer one;
+  - a tag pushed to the registry is not installed until the signed index publishes it.
+- **Registry packages:**
+  - Git transfers are bounded: 64 MiB of pack, 32,768 objects, a 45 s deadline;
+  - a cached package is checked against the integrity in `cicord.lock` before it is used;
+  - packages whose paths differ only by case or Unicode normalization are refused.
+
+#### Runtime resources
+
+- **Host memory per installation is bounded,** private VMs included:
+  - SDK results waiting for the VM: 96 MiB per installation and 48 MiB per handler.
+    `files.read`, `kv.get`, `kv.list`, `kv.getMany` and `index.search` reserve their result
+    before they read it;
+  - staged message files: 100 MiB per installation and 512 MiB per process. Staging a
+    file needs the grant of the send it is for;
+  - `ctx.i18n.t`: results and variables of at most 64 KiB.
+- **Media downloads** use the instance's own slots, never a process-wide one: one slot per
+  processor, between 2 and 4.
+- **Image decoding:** the WebP decoder used by the new media features is
+  `golang.org/x/image` v0.45.0, which includes the fix for GO-2026-6222.
+
+#### Privacy, interop and overlays
+
+- **Member erasure:**
+  - it waits for the member's active handlers;
+  - it gates only work that may predate it;
+  - it matches member IDs only as 17–20 digit snowflakes;
+  - a failure part-way is audited (`privacy.erase` with `failed: true`) and answered `503`
+    with the partial report;
+  - the member data report lists the data of uninstalled installations as `orphaned`
+    (incomplete).
+- **Interop:**
+  - action receipts are keyed by the caller installation and bind the principal's user and
+    resource scope;
+  - interop calls and isolated member requests have per-server admission budgets;
+  - `requestSync()` accepts one request per installation every 30 seconds.
+- **Overlays:**
+  - an overlay that would take View Channel, Manage Channels or Manage Roles from the bot
+    is refused;
+  - an installation holds at most 128 of a server's 256 overlays, with a reserve of 8.
+- **SQLite full-text search:** a query matches only its own index, and scores are rounded so
+  that they do not depend on other installations' documents.
+
+### Official plugins
+
+The official registry ([cicord-plugins](https://github.com/cicord/cicord-plugins)) adds 18
+plugins and updates the existing 11.
+
+- **Engine:** every release requires engine `>=0.2.0`.
+- **Locales:** every plugin has English and French messages.
+- **Experimental:** the plugins marked experimental below are opt-in, and the
+  three-community usage gate applies to them.
+- **Bundled copies:** the copies bundled with the binary stay on their 0.1.x versions.
+
+New plugins:
+
+- **ai-assistant** 0.1.0 (**experimental**, off by default): `/ask` answers from mounted
+  Markdown and quotes its sources. It calls Anthropic with a host-bound API key, under a
+  daily token budget per server, and falls back to a human contact.
+- **anti-nuke** 0.2.0: monitor only. It correlates mass deletions, kicks and other admin
+  actions with audit-log evidence against per-actor thresholds, alerts staff, and publishes
+  `anti-nuke.triggered`. It never sanctions.
+- **birthdays** 0.1.0: opt-in birthdays and greetings in the member's local time, with an
+  optional 24-hour role through member-roles.
+- **channel-automations** 0.1.0: per-channel auto-thread, auto-react, auto-crosspost,
+  media-only, posting intervals and timed auto-delete. Each rule has its own grant.
+- **community-events** 0.1.0: Discord scheduled events and weekly series in a per-series
+  `timeZone`. Reminder DMs, a public calendar and ICS feed (bounded), and attendance events.
+- **economy** 0.1.0 (**experimental**, disabled until configured): server points, daily and
+  weekly claims, transfers, a shop and an atomic ledger. It provides `balance`, `credit`
+  and `debit` to other plugins.
+- **feeds** 0.1.0 (off by default): posts RSS, Atom and JSON Feed entries from allowed
+  hosts, with filters and an optional role ping.
+- **giveaways** 0.1.0 (**experimental**, disabled until configured): weighted draws with a
+  seed commitment, conditions, claims and rerolls. Entry routes are paged with
+  `entriesCursor`, and the plugin's `test/verify.mjs` follows them.
+- **guard** 0.2.0: link, invite, mention, attachment, duplicate, new-account and raid rules.
+  It is monitor-only unless `mode: enforce`, caps automatic sanctions, and always exempts
+  the project's own bots.
+- **invite-tracker** 0.1.0: attributes a join only when the invite-use delta is
+  unambiguous, flags fake joins, and has leaderboards and an `inviterOf` query.
+- **member-roles** 0.1.0: temporary, sticky, tenure and booster roles. A temporary grant of a
+  role with dangerous or unknown permissions is refused unless the role is listed in
+  `temp.privilegedRoles`, and interop grants need a non-empty `temp.roles`.
+- **reminders** 0.1.0: `/remind` in English and French time phrases, repeats that keep
+  their local time, a "Remind me" message menu and `/timezone`.
+- **staff-shifts** 0.1.0: `/duty on|off` with an on-duty role, weekly plans and a coverage
+  view on the portal.
+- **starboard** 0.1.0: copies a message once it reaches a reaction threshold, only to a
+  board whose audience is the same or narrower. The copy is removed when the source changes.
+- **stats-reports** 0.1.0: weekly and monthly aggregate reports, with optional channel
+  counters. Its charts are **experimental** (image rendering).
+- **suggestions** 0.1.0: `/suggest` or a forum, with votes, statuses, optional anonymity
+  and threads. It keeps the text only with `retainText`.
+- **tags** 0.1.0 (off by default): staff-curated answers from Markdown or the portal,
+  through `/tag` and a message menu.
+- **verification** 0.2.0: a portal challenge bound to the member.
+  - **Default challenge:** `typed`, a 6-character code drawn with image rendering.
+  - **Fallback:** when rendering is unavailable, the new `fallback` setting decides:
+    `review` (the default) sends the member to staff review, and `button` gives them a
+    button. It never passes silently.
+  - **Also:** Turnstile and hCaptcha, account-age policies and a staff queue.
+
+Updated plugins:
+
+- **announcements** 0.2.0 (from 0.1.0): sticky messages, `/countdown`, optional
+  crossposting, and portal compose, preview and scheduling.
+- **audit-log** 0.2.0 (from 0.1.0): evidence-based logs of channels, roles, threads,
+  expressions, settings, invites, bans, voice and AutoMod, with actors taken from the audit
+  log. Staff search and export. It needs new grants and intents (`discord.auditlog.read`,
+  `ServerModeration`…). Posts made by 0.1 are not tracked.
+- **github-releases** 0.2.0 (from 0.1.0): locales and `enabled`. Its 0.1 state is still
+  read.
+- **levels** 0.2.0 (from 0.1.0): voice XP, multipliers, boosts, reward modes, seasons, CSV
+  import, `/xp` admin commands and bonuses from other plugins. A member's export contains
+  only their own data. The image rank card is **experimental**.
+- **moderation** 0.3.0 (from 0.1.1):
+  - **New commands:** timed bans, `/unban`, reviewed `/purge`, `/case`, `/history`, `/note`,
+    quarantine, and `/lock` and `/slowmode` overlays. `/lock` neutralizes role and member
+    allows through the `"*"` target.
+  - **Bans:**
+    - a temporary ban is lifted from the active case and the recorded Discord ban;
+    - a later ban takes over an earlier one;
+    - the optional `tempRoles` feature drops expired temporary roles from a quarantine.
+  - **Appeals:** portal appeals. Staff cannot decide their own case.
+  - **Interop:** the `sanction` action.
+  - **Locales:** fully localized output.
+  - **Upgrade:** needs new grants. `webhook.url` is deprecated in favour of the
+    `WEBHOOK_URL` secret.
+- **onboarding** 0.2.0 (from 0.1.0): locales and `enabled`. Choices are kept for 365 days.
+  It needs `scheduler` for its migration.
+- **polls** 0.2.0 (from 0.1.1): native Discord polls, scheduled starts, role eligibility
+  and weights, `polls.closed` v2 and a paged `polls.voters` query. It needs
+  `discord.members.read`.
+- **reaction-roles** 0.2.0 (from 0.1.1): locales and `enabled`.
+- **tickets** 0.4.0 (from 0.2.1):
+  - **Queues:** typed queues, and opening a ticket from a message menu.
+  - **Optional features:** modmail, rating prompts and managed messages.
+  - **Staff:** first-response reminders, auto-close, HTML and Markdown transcripts, and
+    moderation appeals.
+  - **API:** `GET /tickets` is paged with a cursor.
+  - **Upgrade:** existing tickets move to the `default` type.
+- **voice-rooms** 0.2.0 (from 0.1.0; the bundle has 0.1.1):
+  - **Permissions:** a status line when Discord refuses a permission.
+  - **Creation:** crash-safe, with `provisionKey` and a sweep of interrupted creations.
+  - **Rename limit:** two renames per 10 minutes, kept across restarts.
+  - **Events:** optional `roomCreated` and `roomClosed` events.
+- **welcome** 0.2.0 (from 0.1.1): triggers on join, verification or onboarding, with
+  variants, a leave message, templates and the inviter. The image card is
+  **experimental**. Role, DM and portal link grants became optional.
 
 ## [0.1.11] - 2026-11-25
 
