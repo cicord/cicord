@@ -273,6 +273,8 @@ export interface TestHarness {
   validateFiles(input: MessageInput): void;
 
   readonly ctx: Context;
+  /** Run the administrative erase hook, including scoped removal of member-tagged index data. */
+  eraseMember(plugin: PluginDefinition, userId: string): Promise<{ erased: number }>;
   /** Seed a received message, including interaction follow-ups. */
   receive(channel: string | undefined, author: User, input: MessageInput): Message;
   setReaction(messageId: string, emoji: string, userId: string, present?: boolean): void;
@@ -1981,6 +1983,40 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
 
   return {
     ctx,
+    async eraseMember(plugin, userId) {
+      if (!plugin.privacy) throw new Error("plugin has no privacy hooks");
+      const tag = "member-" + userId;
+      const scoped: Context = {
+        ...ctx,
+        privacy: {
+          async pseudonym(member) {
+            if (member !== userId)
+              throw new Error("pseudonym is scoped to the member of the current privacy hook");
+            return ctx.privacy.pseudonym(member);
+          },
+        },
+        index(name, opts) {
+          const api = ctx.index(name, opts);
+          if (!grants || grants.has("storage.index")) return api;
+          return {
+            ...api,
+            async remove(id) {
+              for (const [key, docs] of indices) {
+                if (!key.startsWith(name + "|")) continue;
+                const doc = docs.get(id);
+                if (doc && !doc.tags?.includes(tag))
+                  throw new Error("index document has no binding to the member being erased");
+                docs.delete(id);
+              }
+            },
+          };
+        },
+      };
+      const result = await plugin.privacy.erase(scoped, userId);
+      for (const docs of indices.values())
+        for (const [id, doc] of docs) if (doc.tags?.includes(tag)) docs.delete(id);
+      return result;
+    },
     attachment,
     validateFiles,
     onceFor: onceFor(),

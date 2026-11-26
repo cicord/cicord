@@ -81,3 +81,24 @@ func (f fullText) Search(ctx context.Context, name, lang, q string, opts state.I
 	}
 	return out, rows.Err()
 }
+
+func (f fullText) EraseSubject(ctx context.Context, subject, name, id string) error {
+	q := "DELETE FROM plugin_index_docs WHERE scope=$1 AND tags ? $2"
+	args := []any{f.scope, "member-" + subject}
+	if name != "" {
+		q += " AND name=$3 AND id=$4"
+		args = append(args, name, id)
+	}
+	tag, err := f.s.pool.Exec(ctx, q, args...)
+	if err != nil || name == "" || tag.RowsAffected() > 0 {
+		return err
+	}
+	var exists bool
+	if err := f.s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM plugin_index_docs WHERE scope=$1 AND name=$2 AND id=$3)", f.scope, name, id).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return state.ErrUnboundIndexDocument
+	}
+	return nil
+}

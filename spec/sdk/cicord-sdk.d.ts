@@ -811,6 +811,7 @@ export interface Scheduler {
 /** Opaque logical reference, resolved only by the host at an approved destination. */
 export type SecretRef = string & { readonly __secretRef: unique symbol };
 
+/** Attach an exact `member-${userId}` tag for each represented member to bind privacy cleanup, including after grant withdrawal. */
 export interface IndexDocument { title?: string; text: string; tags?: string[]; meta?: Json }
 export interface IndexHit { id: string; score: number; snippet: string; meta: Json }
 export interface FullTextIndex {

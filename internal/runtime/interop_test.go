@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
@@ -53,6 +54,11 @@ func TestInteropMixedVersionsAndCalls(t *testing.T) {
  for(const version of [1,2])await ctx.events.publish("closed",{voters},{version,idempotencyKey:"poll:1"});return true}
  if(b.op==="badEvent"){const name=b.topic;await ctx.events.publish(name,{voters:3});return true}
  if(b.op==="has")return [ctx.plugins.has("levels"),ctx.plugins.has("missing"),ctx.features.enabled("optionalBonus")];
+ if(b.op==="crossFence"){
+   await ctx.kv.set("entered",true);
+   while(!await ctx.kv.get("continue"))await new Promise(ok=>setTimeout(ok,2));
+   return await ctx.plugins.query("levels","read",{});
+ }
  if(b.op==="query")return await ctx.plugins.query(b.plugin||"levels",b.name||"read",b.input||{},b.opts);
  return await ctx.plugins.call("levels",b.name||"credit",b.input,b.opts)
  }catch(e){return {code:e.code||e.name, unavailable:e instanceof PluginUnavailableError,typed:e instanceof InteropError}}}}}})`)
@@ -195,6 +201,37 @@ spec:
 	if len(e.rt.InteropGraph("my-community").Edges) == 0 {
 		t.Fatal("missing interop edges")
 	}
+	// A pending privacy writer must not deadlock a nested provider call made by
+	// a portal handler that already owns the server's read lease.
+	outer := make(chan string, 1)
+	go func() { outer <- caller(`{"op":"crossFence"}`) }()
+	callerKV := e.rt.Store().KV("plugin:moderator/polls/my-community")
+	e.waitFor("caller holding privacy lease", func() bool { _, err := callerKV.Get(ctx, "entered"); return err == nil })
+	erased := make(chan error, 1)
+	go func() { _, err := e.rt.MemberData(ctx, "my-community", "123456789012345678", "erase"); erased <- err }()
+	fence := e.rt.privacyFence("my-community")
+	e.waitFor("privacy writer waiting", func() bool {
+		if !fence.TryRLock() {
+			return true
+		}
+		fence.RUnlock()
+		return false
+	})
+	if err := callerKV.Set(ctx, "continue", json.RawMessage("true"), 0); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-outer:
+		if !strings.Contains(got, `"total":50`) {
+			t.Fatal(got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("nested call reacquired privacy lease")
+	}
+	if err := <-erased; err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func TestOptionalFeaturesKeepHealthyAndNeverHideOperationalProblems(t *testing.T) {

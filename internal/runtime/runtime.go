@@ -86,10 +86,10 @@ const (
 
 // Runtime is safe for concurrent use.
 type Runtime struct {
-	privacyMu  sync.RWMutex
-	auditSlots chan struct{}
-	opts       Options
-	log        *slog.Logger
+	privacyFences sync.Map // logical server key → *plugin.PrivacyFence
+	auditSlots    chan struct{}
+	opts          Options
+	log           *slog.Logger
 
 	syncMu sync.Mutex // serializes revision activation and server syncs
 

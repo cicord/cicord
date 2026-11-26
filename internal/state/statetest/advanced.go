@@ -136,7 +136,7 @@ func testAdvanced(t *testing.T, b Backend) {
 
 	type private interface {
 		VisitPrivacy(context.Context, func(string, json.RawMessage) error) error
-		PurgeTasks(context.Context, string, bool, func(json.RawMessage) bool) (int, error)
+		PurgeTasks(context.Context, string, bool, func(string, json.RawMessage) bool) (int, error)
 	}
 	scope := st.KV("plugin:bot/privacy/server").(private)
 	for _, task := range []state.Task{{ID: "a", Scope: "plugin:bot/privacy/server", Name: "remind", Payload: json.RawMessage(`"A"`), RunAt: clock.Now()}, {ID: "b", Scope: "plugin:bot/removed/server", Name: "remind", Payload: json.RawMessage(`"B"`), RunAt: clock.Now()}, {ID: "other", Scope: "plugin:bot/privacy/other", Name: "remind", Payload: json.RawMessage(`"A"`), RunAt: clock.Now()}} {
@@ -152,7 +152,7 @@ func testAdvanced(t *testing.T, b Backend) {
 	if !seen {
 		t.Fatal("missing task on restore scan")
 	}
-	count, err := scope.PurgeTasks(ctx, "server", false, func(v json.RawMessage) bool { return string(v) == `"A"` })
+	count, err := scope.PurgeTasks(ctx, "server", false, func(_ string, v json.RawMessage) bool { return string(v) == `"A"` })
 	must(t, err)
 	if count != 1 {
 		t.Fatal(count)

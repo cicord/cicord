@@ -270,10 +270,17 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	finishPrivacy, err := i.beginPrivacyWork(inv)
+	if err != nil {
+		return 0, err
+	}
 	i.nextCall++
 	id := i.nextCall
 	i.inflight++
 	go func() {
+		if finishPrivacy != nil {
+			defer finishPrivacy()
+		}
 		// Bound binary responses through delivery to the VM. Waiting operations keep
 		// only their small inputs and share the normal handler deadline.
 		var release func()

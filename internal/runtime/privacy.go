@@ -37,8 +37,18 @@ type PrivacyReport struct {
 
 type privacyStore interface {
 	VisitPrivacy(context.Context, func(string, json.RawMessage) error) error
-	PurgeTasks(context.Context, string, bool, func(json.RawMessage) bool) (int, error)
+	PurgeTasks(context.Context, string, bool, func(string, json.RawMessage) bool) (int, error)
 }
+
+func (r *Runtime) privacyFence(server string) *plugin.PrivacyFence {
+	if v, ok := r.privacyFences.Load(server); ok {
+		return v.(*plugin.PrivacyFence)
+	}
+	v, _ := r.privacyFences.LoadOrStore(server, new(plugin.PrivacyFence))
+	return v.(*plugin.PrivacyFence)
+}
+
+var errPrivacyRetry = errors.New("privacy hook needs retry")
 
 func (r *Runtime) privacyKV(server string) state.KV { return r.opts.Store.KV("privacy:v1:" + server) }
 func (r *Runtime) fingerprint(server, user string) string {
@@ -163,6 +173,9 @@ func (r *Runtime) restoreMemberData(ctx context.Context, server, scope string, i
 	if err != nil || len(marks) == 0 {
 		return err
 	}
+	fence := r.privacyFence(server)
+	fence.LockErase()
+	defer fence.UnlockErase()
 	kv, ok := r.opts.Store.KV(scope).(privacyStore)
 	if !ok {
 		return errors.New("privacy inventory scan unavailable")
@@ -180,9 +193,19 @@ func (r *Runtime) restoreMemberData(ctx context.Context, server, scope string, i
 		return err
 	}
 	for _, id := range sortedKeys(ids) {
-		if _, err := inst.Privacy(ctx, "erase", id); err != nil {
+		if _, err := inst.Privacy(plugin.WithPrivacyGuard(ctx), "erase", id); err != nil {
 			return fmt.Errorf("restore erase hook failed: %w", err)
 		}
+		if err := r.eraseTaggedIndex(ctx, scope, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) eraseTaggedIndex(ctx context.Context, scope, user string) error {
+	if index, ok := r.opts.Store.Index(scope).(state.SubjectIndex); ok {
+		return index.EraseSubject(ctx, user, "", "")
 	}
 	return nil
 }
@@ -193,6 +216,7 @@ func (r *Runtime) memberReport(ctx context.Context, server, user, action string)
 	if active == nil || active.servers[server] == nil {
 		return rep, errors.New("server unavailable")
 	}
+	held := map[string]bool{}
 	for _, i := range active.instances {
 		if i.cfg.Server != server {
 			continue
@@ -204,7 +228,10 @@ func (r *Runtime) memberReport(ctx context.Context, server, user, action string)
 			item.Records = inventory.Records
 		}
 		switch {
-		case i.plugin == nil || !i.plugin.def.HasPrivacy:
+		case i.plugin == nil || (inst == nil && inventory != nil && len(inventory.Records) > 0):
+			item.Status = "unavailable"
+			rep.Complete = false
+		case !i.plugin.def.HasPrivacy:
 			if inventory != nil && len(inventory.Records) == 0 {
 				item.Status = "no-member-data"
 			} else {
@@ -215,7 +242,10 @@ func (r *Runtime) memberReport(ctx context.Context, server, user, action string)
 			item.Status = "unavailable"
 			rep.Complete = false
 		default:
-			data, err := inst.Privacy(ctx, action, user)
+			data, err := inst.Privacy(plugin.WithPrivacyGuard(ctx), action, user)
+			if err == nil && action == "erase" {
+				err = r.eraseTaggedIndex(ctx, instanceScope(i.cfg), user)
+			}
 			if err != nil {
 				item.Status = "failed"
 				rep.Complete = false
@@ -223,6 +253,9 @@ func (r *Runtime) memberReport(ctx context.Context, server, user, action string)
 				item.Status = "ok"
 				item.Data = data
 			}
+		}
+		if item.Status == "failed" || item.Status == "unavailable" {
+			held[instanceScope(i.cfg)] = true
 		}
 		rep.Plugins = append(rep.Plugins, item)
 	}
@@ -235,7 +268,10 @@ func (r *Runtime) memberReport(ctx context.Context, server, user, action string)
 		interop, hasInterop := any(r).(interface {
 			PurgeInteropMember(context.Context, string, string) (int, error)
 		})
-		n, err := storage.PurgeTasks(ctx, server, hasInterop, func(raw json.RawMessage) bool {
+		n, err := storage.PurgeTasks(ctx, server, hasInterop, func(scope string, raw json.RawMessage) bool {
+			if held[scope] {
+				return false
+			}
 			match := false
 			subjects("", raw, func(id string) {
 				if id == user {
@@ -264,14 +300,14 @@ func (r *Runtime) MemberData(ctx context.Context, server, user, action string) (
 		return PrivacyReport{}, errors.New("invalid privacy request")
 	}
 	if action == "erase" {
-		r.privacyMu.Lock()
-		defer r.privacyMu.Unlock()
+		r.privacyFence(server).LockErase()
+		defer r.privacyFence(server).UnlockErase()
 		if err := r.remember(ctx, server, user); err != nil {
 			return PrivacyReport{}, err
 		}
 	} else {
-		r.privacyMu.RLock()
-		defer r.privacyMu.RUnlock()
+		r.privacyFence(server).RLock()
+		defer r.privacyFence(server).RUnlock()
 	}
 	return r.memberReport(ctx, server, user, action)
 }
@@ -283,22 +319,22 @@ func (r *Runtime) ReplayPrivacy(ctx context.Context, server string, payload json
 }
 
 func (r *Runtime) WithReplayPrivacy(ctx context.Context, server string, payload json.RawMessage, deliver func() error) (bool, error) {
-	r.privacyMu.RLock()
+	r.privacyFence(server).RLock()
 	ids, err := r.erasedIn(ctx, server, payload)
 	if err != nil {
-		r.privacyMu.RUnlock()
+		r.privacyFence(server).RUnlock()
 		return false, err
 	}
 	if len(ids) == 0 {
-		defer r.privacyMu.RUnlock()
+		defer r.privacyFence(server).RUnlock()
 		if deliver != nil {
 			return false, deliver()
 		}
 		return false, nil
 	}
-	r.privacyMu.RUnlock()
-	r.privacyMu.Lock()
-	defer r.privacyMu.Unlock()
+	r.privacyFence(server).RUnlock()
+	r.privacyFence(server).LockErase()
+	defer r.privacyFence(server).UnlockErase()
 	for _, id := range ids {
 		rep, err := r.memberReport(ctx, server, id, "erase")
 		if err != nil {
@@ -306,7 +342,7 @@ func (r *Runtime) WithReplayPrivacy(ctx context.Context, server string, payload 
 		}
 		for _, p := range rep.Plugins {
 			if p.Status == "failed" || p.Status == "unavailable" {
-				return true, errors.New("privacy hook needs retry")
+				return true, errPrivacyRetry
 			}
 		}
 	}

@@ -69,3 +69,12 @@ func IndexTerms(q string, opts *IndexQuery) ([]string, error) {
 	}
 	return word.FindAllString(q, 32), nil
 }
+
+// SubjectIndex permits privacy cleanup of explicitly member-tagged documents
+// in one installation. Empty name and id select only that subject's tagged
+// documents across this installation's indexes.
+type SubjectIndex interface {
+	EraseSubject(ctx context.Context, subject, name, id string) error
+}
+
+var ErrUnboundIndexDocument = errors.New("index document has no binding to the member being erased")

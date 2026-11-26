@@ -28,6 +28,7 @@ import (
 
 // Env is everything an instance may touch. It is provided by the bot host.
 type Env struct {
+	PrivacyFence  *PrivacyFence
 	Locales       locales.Catalog
 	OverlayApply  func(context.Context, reconcile.Overlay) error
 	OverlayRemove func(context.Context, string) error
@@ -369,6 +370,9 @@ func NewInstance(code string, def *Definition, env Env) (*Instance, error) {
 	i.egress = newEgress(env.NetworkAllow, env.AllowPrivateNetworks, env.HTTPClient, limits.MaxResponseBytes)
 	i.ctx, i.cancel = context.WithCancelCause(context.Background())
 	i.bg = &invocation{kind: "background", ctx: i.ctx, cancel: func(error) {}, done: make(chan invResult, 1)}
+	if env.PrivacyFence != nil {
+		i.bg.work.generation = env.PrivacyFence.generation.Load()
+	}
 
 	v, err := newVM(context.Background(), i, limits.Memory)
 	if err != nil {
@@ -814,6 +818,7 @@ type invResult struct {
 // invocation is one handler run. Its context bounds every host call made by its code
 // (attributed per turn, see currentInv).
 type invocation struct {
+	work           invocationWork
 	locale         string
 	privacySubject string // only this subject can be pseudonymized by the current privacy hook
 	frame          CallFrame
@@ -989,6 +994,25 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 	if guarded, _ := caller.Value(privacyKey{}).(bool); guarded {
 		inv.frame.PrivacyGuard = true
 	}
+	var leavePrivacy func()
+	if fence := i.env.PrivacyFence; fence != nil {
+		// Privacy hooks run under the administration/restore lease. Delivery and
+		// delegated calls already holding a lease propagate PrivacyGuard to peers.
+		if !inv.frame.PrivacyGuard {
+			generation := fence.generation.Load()
+			fence.RLock()
+			if generation != fence.generation.Load() {
+				fence.RUnlock()
+				stopCaller()
+				inv.release()
+				finish(invResult{err: errPrivacyChanged})
+				return out
+			}
+			leavePrivacy = fence.RUnlock
+		}
+		inv.frame.PrivacyGuard = true
+		inv.work.generation = fence.generation.Load()
+	}
 	inv.rememberAudience(data)
 	queued = true
 
@@ -1002,7 +1026,7 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		i.invMu.Lock()
 		i.invs[inv.id] = inv
 		i.invMu.Unlock()
-		if start, ok := caller.Value(startKey{}).(func(context.Context) error); ok {
+		if start, ok := caller.Value(startKey{}).(func(context.Context) error); ok && (kind == "task" || kind == "subscription") {
 			if err := start(inv.ctx); err != nil {
 				i.forget(inv)
 				inv.settle(invResult{err: err})
@@ -1056,6 +1080,12 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		i.forget(inv)
 		if r.err != nil && !errors.Is(r.err, ErrNoHandler) && !errors.Is(r.err, ErrStopped) && !errors.Is(r.err, ErrBudgetExceeded) && !errors.Is(r.err, ErrCrashed) {
 			i.logger.Error("plugin handler failed", "handler", kind, "name", name, "error", r.err.Error())
+		}
+		if i.env.PrivacyFence != nil {
+			inv.work.drain()
+			if leavePrivacy != nil {
+				leavePrivacy()
+			}
 		}
 		finish(r)
 	}()

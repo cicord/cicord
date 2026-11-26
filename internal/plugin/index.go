@@ -8,10 +8,7 @@ import (
 )
 
 func opIndex(method string) asyncOp {
-	return func(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
-		if err := i.require("storage.index"); err != nil {
-			return nil, err
-		}
+	return func(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 		if i.env.Index == nil {
 			return nil, errors.New("full-text storage unavailable")
 		}
@@ -22,6 +19,21 @@ func opIndex(method string) asyncOp {
 		}](args)
 		if err != nil {
 			return nil, err
+		}
+		if err := i.require("storage.index"); err != nil {
+			// A revoked grant must not strand personal data. During an administrator's
+			// erase hook, the backend verifies the exact member binding; every other
+			// index operation still requires the ordinary capability.
+			limited, ok := i.env.Index.(state.SubjectIndex)
+			if !ok || method != "remove" || inv == nil || inv.kind != "privacy" || inv.name != "erase" || inv.privacySubject == "" || a.ID == "" {
+				return nil, err
+			}
+			if err := state.ValidateIndex(a.Name, a.Language); err != nil {
+				return nil, err
+			}
+			return func(ctx context.Context) (any, error) {
+				return nil, limited.EraseSubject(ctx, inv.privacySubject, a.Name, a.ID)
+			}, nil
 		}
 		if err := state.ValidateIndex(a.Name, a.Language); err != nil {
 			return nil, err

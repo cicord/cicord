@@ -319,7 +319,8 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		}
 	}
 	env := plugin.Env{
-		Locales: in.Plugin.Locales,
+		PrivacyFence: r.privacyFence(in.Server),
+		Locales:      in.Plugin.Locales,
 		OverlayApply: func(c context.Context, o reconcile.Overlay) error {
 			return r.updateOverlay(c, srt, origin, o.ID, &o, "plugin:"+origin)
 		},

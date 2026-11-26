@@ -2,6 +2,7 @@ package advanced
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 )
 
@@ -30,7 +31,7 @@ func visitRecords(ctx context.Context, db runner, q string, args []any, visit fu
 func (s Space) VisitPrivacy(ctx context.Context, visit func(string, json.RawMessage) error) error {
 	for _, q := range []string{
 		"SELECT key,value FROM kv WHERE scope=?1", "SELECT member,NULL FROM rankings WHERE scope=?1",
-		"SELECT DISTINCT name,NULL FROM rankings WHERE scope=?1", "SELECT name,payload FROM tasks WHERE scope=?1",
+		"SELECT DISTINCT name,NULL FROM rankings WHERE scope=?1", "SELECT id,tags FROM plugin_index_docs WHERE scope=?1", "SELECT name,payload FROM tasks WHERE scope=?1",
 	} {
 		if err := visitRecords(ctx, s.Read, s.query(q), []any{s.Scope}, visit); err != nil {
 			return err
@@ -39,10 +40,27 @@ func (s Space) VisitPrivacy(ctx context.Context, visit func(string, json.RawMess
 	return nil
 }
 
+func visitTaskPage(ctx context.Context, tx *sql.Tx, query string, server, cursor string, visit func(string, string, json.RawMessage)) error {
+	rows, err := tx.QueryContext(ctx, query, server, cursor)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, scope string
+		var raw []byte
+		if err := rows.Scan(&id, &scope, &raw); err != nil {
+			return err
+		}
+		visit(id, scope, raw)
+	}
+	return rows.Err()
+}
+
 // PurgeTasks deletes matching live, leased and dead tasks across a server,
 // including instances removed from the current manifest. Inter-plugin events
 // have their own eraser that preserves unaffected members on participant pages.
-func (s Space) PurgeTasks(ctx context.Context, server string, separateEvents bool, matches func(json.RawMessage) bool) (int, error) {
+func (s Space) PurgeTasks(ctx context.Context, server string, separateEvents bool, matches func(string, json.RawMessage) bool) (int, error) {
 	tx, err := s.Write.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -52,30 +70,29 @@ func (s Space) PurgeTasks(ctx context.Context, server string, separateEvents boo
 	if separateEvents {
 		ordinary = " AND event_seq IS NULL"
 	}
-	selectPage := s.query("SELECT id,payload FROM tasks WHERE substr(scope,1,7)='plugin:' AND substr(scope,length(scope)-length(?1))='/' || ?1 AND id>?2" + ordinary + " ORDER BY id LIMIT 128")
-	remove := s.query("DELETE FROM tasks WHERE id=?1 AND payload=?2 AND substr(scope,1,7)='plugin:' AND substr(scope,length(scope)-length(?3))='/' || ?3" + ordinary)
+	selectPage := s.query("SELECT id,scope,payload FROM tasks WHERE substr(scope,1,7)='plugin:' AND substr(scope,length(scope)-length(?1))='/' || ?1 AND id>?2" + ordinary + " ORDER BY id LIMIT 128")
+	remove := s.query("DELETE FROM tasks WHERE id=?1 AND payload=?2 AND scope=?3" + ordinary)
 	var count int
 	var cursor string
 	for {
 		type match struct {
-			id  string
-			raw json.RawMessage
+			id, scope string
+			raw       json.RawMessage
 		}
 		var pending []match
 		n := 0
-		err := visitRecords(ctx, tx, selectPage, []any{server, cursor}, func(id string, raw json.RawMessage) error {
+		err := visitTaskPage(ctx, tx, selectPage, server, cursor, func(id, scope string, raw json.RawMessage) {
 			n++
 			cursor = id
-			if len(raw) > 0 && matches(raw) {
-				pending = append(pending, match{id, raw})
+			if len(raw) > 0 && matches(scope, raw) {
+				pending = append(pending, match{id, scope, raw})
 			}
-			return nil
 		})
 		if err != nil {
 			return 0, err
 		}
 		for _, p := range pending {
-			result, err := tx.ExecContext(ctx, remove, p.id, s.bytes(string(p.raw)), server)
+			result, err := tx.ExecContext(ctx, remove, p.id, s.bytes(string(p.raw)), p.scope)
 			if err != nil {
 				return 0, err
 			}

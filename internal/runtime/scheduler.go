@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"sync"
 	"time"
 
@@ -123,9 +124,7 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 	}
 	byScope := map[string]*instanceRT{}
 	for _, i := range a.instances {
-		if i.inst() != nil {
-			byScope[instanceScope(i.cfg)] = i
-		}
+		byScope[instanceScope(i.cfg)] = i
 	}
 	for _, task := range tasks {
 		if task.Scope == overlayTaskScope {
@@ -134,10 +133,17 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 			continue
 		}
 		inst := byScope[task.Scope]
-		if inst == nil || (!task.Event && !inst.plugin.def.HasTask(task.Name)) {
+		if inst == nil || inst.inst() == nil || (!task.Event && !inst.plugin.def.HasTask(task.Name)) {
 			retry := now.Add(time.Minute)
 			reason := ""
-			if !now.Before(task.RunAt.Add(24 * time.Hour)) {
+			// An installed plugin may be unable to start because its erasure
+			// migration failed. Its original deadline remains recoverable until repair.
+			protecting := false
+			if inst != nil && !task.Event && inst.cfg.Plugin.Manifest.Spec.Privacy != nil {
+				erased, err := s.r.ErasedPayload(ctx, inst.cfg.Server, task.Payload)
+				protecting = erased || err != nil
+			}
+			if !protecting && !now.Before(task.RunAt.Add(24*time.Hour)) {
 				retry = time.Time{}
 				reason = "handler unavailable for 24 hours"
 			}
@@ -176,6 +182,10 @@ func (s *scheduler) deliverTask(ctx context.Context, inst *instanceRT, task stat
 	}
 	if err == nil {
 		err = queue.Acknowledge(ctx, task)
+	} else if errors.Is(err, errPrivacyRetry) {
+		// Keep the original legal enforcement timer recoverable while its plugin
+		// repairs member state. A blocked privacy operation is not a delivery failure.
+		err = queue.Release(ctx, task, time.Now().Add(time.Minute), "")
 	} else {
 		s.r.log.Warn("task handler failed", "instance", inst.id(), "id", task.ID, "attempt", task.Attempt, "err", err)
 		// Never persist arbitrary plugin error text with the administrative record.
