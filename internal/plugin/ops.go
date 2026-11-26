@@ -103,6 +103,7 @@ var (
 
 func init() {
 	syncOps = map[string]syncOp{
+		"crypto.random":          randomValues,
 		"resolve.role":           opResolveRole,
 		"server.channel":         opServerChannel,
 		"server.role":            opServerRole,
@@ -145,6 +146,9 @@ func init() {
 		"server.createChannel": opServerCreateChannel,
 		"server.deleteChannel": opServerDeleteChannel,
 		"server.editChannel":   opServerEditChannel,
+		"kv.entries":           advancedOp("entries"),
+		"kv.atomic":            advancedOp("atomic"),
+		"kv.rank":              advancedOp("rank"),
 		"kv.get":               opKVGet,
 		"kv.set":               opKVSet,
 		"kv.delete":            opKVDelete,

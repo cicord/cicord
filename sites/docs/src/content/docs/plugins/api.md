@@ -632,3 +632,23 @@ Plugins get `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queue
 `process`, no global `fetch`, no DOM and no Node.js API.
 
 Next: [testing and limits](../testing/).
+
+### Atomic KV and rankings
+
+`getEntry(key)` returns the JSON value and an opaque version. Use `check(key, version)` to guard a transaction, or pass `undefined` to require an absent or expired key. `getMany(keys)` preserves request order, duplicate keys and the difference between missing values and JSON null.
+
+```ts
+const account = await ctx.kv.getEntry<number>("account:27");
+const balance = (account?.value ?? 0) + 5;
+const result = await ctx.kv.atomic()
+  .check("account:27", account?.version)
+  .set("account:27", balance)
+  .rankSet("balances", "27", balance)
+  .commit();
+```
+
+A failed check returns `{ok:false}`. Mutation errors reject the promise and roll back every change. Ordinary writes also change the version. An increment preserves a live value’s expiry. A set replaces its expiry and accepts `{ttlSeconds}`. A transaction accepts 128 checks and mutations combined. Keys, board names and member keys allow 1–512 UTF-8 bytes. A value can hold up to 1 MiB. A plugin instance can store 100,000 KV keys and ranking members combined. Expired keys free capacity when swept or removed. A multi-read accepts 128 keys and up to 4 MiB of returned values.
+
+`ctx.kv.ranking(name)` supports `add`, `set`, `score`, `rank`, `top({offset,limit})`, `around(member,radius)`, `remove` and `count`. Order is by descending finite score, then ascending UTF-8 member key. Ranks start at 1. A page returns `{member,score,rank}[]` and can contain up to 1,000 entries. The maximum radius is 499. Both databases maintain indexed positions, so even a deep page seeks in O(log n + limit). Moving a member updates each intervening position. Atomic builders also support `rankRemove(name,member)`.
+
+The global `crypto.getRandomValues(view)` fills a Uint8Array of up to 65,536 bytes from the host’s cryptographic random source. `crypto.randomUUID()` returns a random RFC 4122 version 4 UUID.

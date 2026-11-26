@@ -500,6 +500,39 @@
 
     const kv = freeze({
       async get(key) { return acall("kv.get", { key }); },
+      async getEntry(key) { return (await acall("kv.entries", [key]))[0] ?? undefined; },
+      async getMany(keys) { return (await acall("kv.entries", keys)).map(e => e === null ? undefined : e.value); },
+      atomic() {
+        const checks = [], ops = [];
+        let used = false;
+        const append = (list, value) => {
+          if (used || checks.length + ops.length >= 128) throw new TypeError("kv.atomic: closed or full transaction");
+          list.push(value); return builder;
+        };
+        const builder = freeze({
+          check(key, version) { return append(checks, {key, version: version ?? null}); },
+          set(key, value, options) {
+            if (value === undefined) throw new TypeError("kv.atomic.set: expected JSON");
+            return append(ops, {op:"set", key, value, ttlSeconds:options?.ttlSeconds});
+          },
+          increment(key, by=1) { if (!Number.isFinite(by)) throw new TypeError("expected finite delta"); return append(ops,{op:"increment",key,by}); },
+          delete(key) { return append(ops,{op:"delete",key}); },
+          rankSet(name,key,score) { if (!Number.isFinite(score)) throw new TypeError("expected finite score"); return append(ops,{op:"rankSet",name,key,score}); },
+          rankRemove(name,key) { return append(ops,{op:"rankRemove",name,key}); },
+          async commit() { if (used) throw new TypeError("transaction already committed"); used = true; return acall("kv.atomic",{checks,ops}); },
+        });
+        return builder;
+      },
+      ranking(name) {
+        const run = (method, params) => acall("kv.rank", {name,method,...params});
+        const write = (method, member, score) => { if (!Number.isFinite(score)) throw new TypeError("expected finite score"); return run(method,{member,score}); };
+        return freeze({
+          add: (member, delta) => write("add",member,delta), set: (member, score) => write("set",member,score),
+          score: member => run("score",{member}), rank: member => run("rank",{member}),
+          top: ({limit=100,offset=0}={}) => run("top",{limit,offset}),
+          around: (member,radius) => run("around",{member,radius}), remove: member => run("remove",{member}), count: () => run("count",{}),
+        });
+      },
       async set(key, value, options) {
         if (value === undefined) throw new TypeError("kv.set: value must be JSON (got undefined)");
         await acall("kv.set", { key, value, ttlSeconds: options && options.ttlSeconds });
@@ -814,6 +847,19 @@
   // ─────────────────────────────────────────────────────────── globals
 
   const g = globalThis;
+  g.crypto = freeze({
+    getRandomValues(view) {
+      if (!(view instanceof Uint8Array)) throw new TypeError("crypto.getRandomValues expects a Uint8Array");
+      const bytes = hcall("crypto.random",view.byteLength);
+      for (let i=0;i<view.byteLength;i++) view[i]=parseInt(bytes.slice(2*i,2*i+2),16);
+      return view;
+    },
+    randomUUID() {
+      const bytes = hcall("crypto.random",16);
+      const variant = ((parseInt(bytes[16],16)&3)|8).toString(16);
+      return bytes.slice(0,8)+"-"+bytes.slice(8,12)+"-4"+bytes.slice(13,16)+"-"+variant+bytes.slice(17,20)+"-"+bytes.slice(20);
+    }
+  });
   // Timer ids come from Go, which fires them with fireTimer(id, keep).
   const timers = new Map();
   function addTimer(fn, ms, repeat, a) {

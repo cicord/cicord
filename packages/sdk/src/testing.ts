@@ -41,7 +41,6 @@ import type {
   EditChannelOptions,
   Interaction,
   Json,
-  KV,
   Member,
   Message,
   MessageInput,
@@ -59,6 +58,7 @@ import type {
   User,
   VoiceStateUpdate,
 } from "@cicord/sdk";
+import { testStorage } from "./testing-storage.js";
 import { CapabilityError } from "./index.js";
 
 // ───────────────────────────────────────────────────────────── options
@@ -406,10 +406,6 @@ export function normalizeAllowedMentions(
   };
 }
 
-function clone<T extends Json>(value: T): T {
-  return structuredClone(value);
-}
-
 type SchemaNode = { [key: string]: unknown };
 const isObject = (v: unknown): v is SchemaNode =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -526,7 +522,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const threads: TestHarness["threads"] = [];
   const requests: TestHarness["requests"] = [];
   const kvData = new Map<string, Json>();
-  const kvExpiry = new Map<string, number>();
+
 
   const roles = new Map<string, Role>();
   const rolePermissions = new Map<string, readonly Permission[]>(); // role id → permissions
@@ -1245,54 +1241,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     },
   };
 
-  const live = (key: string): boolean => {
-    const exp = kvExpiry.get(key);
-    if (exp !== undefined && exp <= Date.now()) {
-      kvData.delete(key);
-      kvExpiry.delete(key);
-      return false;
-    }
-    return kvData.has(key);
-  };
-  const kv: KV = {
-    async get<T extends Json = Json>(key: string) {
-      need("storage.kv");
-      if (!live(key)) return undefined;
-      return clone(kvData.get(key) as Json) as T;
-    },
-    async set(key, value, opts) {
-      need("storage.kv");
-      kvData.set(key, clone(value));
-      if (opts?.ttlSeconds) kvExpiry.set(key, Date.now() + opts.ttlSeconds * 1000);
-      else kvExpiry.delete(key);
-    },
-    async delete(key) {
-      need("storage.kv");
-      kvData.delete(key);
-      kvExpiry.delete(key);
-    },
-    async increment(key, by = 1) {
-      need("storage.kv");
-      const current = live(key) ? kvData.get(key) : undefined;
-      const next = (typeof current === "number" ? current : 0) + by;
-      kvData.set(key, next);
-      return next;
-    },
-    async list<T extends Json = Json>(
-      opts: { prefix?: string; limit?: number; cursor?: string } = {},
-    ) {
-      need("storage.kv");
-      const keys = [...kvData.keys()]
-        .filter((k) => k.startsWith(opts.prefix ?? "") && live(k))
-        .toSorted();
-      const start = opts.cursor ? Number(opts.cursor) : 0;
-      const limit = opts.limit ?? 100;
-      const page = keys.slice(start, start + limit);
-      const items = page.map((key) => ({ key, value: clone(kvData.get(key) as Json) as T }));
-      const next = start + limit < keys.length ? String(start + limit) : undefined;
-      return next ? { items, cursor: next } : { items };
-    },
-  };
+  const kv = testStorage(kvData, () => need("storage.kv"));
 
   const log = (level: LogEntry["level"]) => (message: string, fields?: Record<string, Json>) => {
     logs.push({ level, message, ...(fields ? { fields } : {}) });

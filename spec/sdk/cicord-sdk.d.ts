@@ -634,8 +634,34 @@ export interface Logger {
   error(message: string, fields?: Record<string, Json>): void;
 }
 
+export interface KVEntry<T extends Json = Json> { value: T; version: string }
+export interface KVAtomic {
+  check(key: string, version: string | null | undefined): this;
+  set(key: string, value: Json, options?: { ttlSeconds?: number }): this;
+  delete(key: string): this;
+  increment(key: string, by?: number): this;
+  rankSet(name: string, member: string, score: number): this;
+  rankRemove(name: string, member: string): this;
+  commit(): Promise<{ok: boolean}>;
+}
+export interface RankedMember { member: string; score: number; rank: number }
+export interface Ranking {
+  add(member: string, delta: number): Promise<number>;
+  set(member: string, score: number): Promise<number>;
+  score(member: string): Promise<number | undefined>;
+  rank(member: string): Promise<number | undefined>;
+  top(options?: {limit?: number; offset?: number}): Promise<RankedMember[]>;
+  around(member: string, radius: number): Promise<RankedMember[]>;
+  remove(member: string): Promise<void>;
+  count(): Promise<number>;
+}
+
 /** Key-value storage scoped to the plugin instance. Values are JSON. @capability storage.kv */
 export interface KV {
+  getEntry<T extends Json = Json>(key: string): Promise<KVEntry<T> | undefined>;
+  getMany<T extends Json = Json>(keys: readonly string[]): Promise<(T | undefined)[]>;
+  atomic(): KVAtomic;
+  ranking(name: string): Ranking;
   get<T extends Json = Json>(key: string): Promise<T | undefined>;
   set(key: string, value: Json, options?: { ttlSeconds?: number }): Promise<void>;
   delete(key: string): Promise<void>;
@@ -934,6 +960,11 @@ export declare function definePlugin(definition: PluginDefinition): PluginDefini
  * handler that created them and cancelled when it times out.
  */
 declare global {
+  interface Crypto {
+    getRandomValues<T extends Uint8Array>(view: T): T;
+    randomUUID(): `${string}-${string}-${string}-${string}-${string}`;
+  }
+  var crypto: Crypto;
   function setTimeout(callback: (...args: any[]) => void, ms?: number, ...args: any[]): number;
   function clearTimeout(id: number | undefined): void;
   function setInterval(callback: (...args: any[]) => void, ms?: number, ...args: any[]): number;

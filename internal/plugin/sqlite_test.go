@@ -93,3 +93,29 @@ export default definePlugin({
 		t.Fatal("owned channel not deleted")
 	}
 }
+
+func TestAdvancedStorageAndCryptoInVM(t *testing.T) {
+	store, err := sqlite.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	h := start(t, `
+ import {command,definePlugin} from "@cicord/sdk";
+ export default definePlugin({commands:{run:command({description:"advanced",async run(ctx,it){
+ const k=ctx.kv, r=k.ranking("xp");
+ const won=await k.atomic().check("m",null).set("m",null).rankSet("xp","m",10).commit();
+ const both=await k.getMany(["m","missing"]);
+ if (!won.ok||both[0]!==null||both[1]!==undefined||!(await k.getEntry("m")).version) throw Error("atomic");
+ if (await r.rank("m")!==1 || (await r.around("m",0))[0].member!=="m") throw Error("rank");
+ const a=new Uint8Array(32); if (crypto.getRandomValues(a)!==a || a.every(x=>x===0)) throw Error("random");
+ const id=crypto.randomUUID();if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)) throw Error("uuid");
+ await it.reply("passed");
+ }})}});`, func(e *Env) { e.KV = store.KV("plugin:test/storage/s") })
+	if err := h.command("run", nil, discord.Resolved{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := contentOf(h.responses()[0]); got != "passed" {
+		t.Fatal(got)
+	}
+}
