@@ -604,6 +604,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const botUser = makeUser({ id: "bot", username: options.bot?.username ?? "TestBot", bot: true });
 
   const messages = new Map<string, Message>();
+  const dmReceipts=new Set<string>();
   const history = new Map<string, Message[]>(); // channel id → messages, oldest first
   let messageSeq = 0;
   const pinned = new Set<string>();
@@ -1024,12 +1025,14 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         });
         bans.set(user.id, { user, ...(opts.reason ? { reason: opts.reason } : {}) });
       },
-      async send(input) {
+      async send(input,options) {
         need("discord.dm.send");
         const dm =
           channels.get(`dm-${user.id}`) ??
           register(undefined, { name: "dm", type: "dm", id: `dm-${user.id}` });
-        return post(dm, input, `dm:${user.id}`);
+        const m=post(dm,input,`dm:${user.id}`);
+        if(options?.retractable) dmReceipts.add(m.id);
+        return m;
       },
       async moveTo(ref, reason) {
         need("discord.voice.move");
@@ -1311,6 +1314,16 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     name: options.server?.name ?? "Test Server",
     ...(options.server?.iconUrl ? { iconUrl: options.server.iconUrl } : {}),
     ...(ownerId !== undefined ? { ownerId } : {}),
+    async retractDM(id){
+      need("discord.dm.send");
+      if(!dmReceipts.delete(id)) return;
+      const m=messages.get(id);
+      if(m) {
+        messages.delete(id);
+        history.set(m.channel.id,(history.get(m.channel.id)??[]).filter(v=>v.id!==id));
+        deletedMessages.push({id});
+      }
+    },
     async ban(id, opts = {}) {
       need("discord.members.moderate");
       if (

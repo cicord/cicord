@@ -1012,6 +1012,7 @@ func (r *Runtime) shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, h := range hosts {
+		h.stopDM()
 		_ = h.session.Close(ctx)
 	}
 	if r.analyticsDone != nil {

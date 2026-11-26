@@ -554,6 +554,10 @@ func (l *loader) checkBots(repo *Repo) {
 				})
 			}
 		}
+		if route := b.Spec.DirectMessages; route != nil && !names[route.Instance] {
+			const path = "/spec/directMessages/instance"
+			l.sink.errorf(b.File, doc.lineOf(path), path, "unknown DM receiver instance %q", route.Instance)
+		}
 	}
 	sort.Slice(repo.Instances, func(i, j int) bool {
 		a, b := repo.Instances[i], repo.Instances[j]

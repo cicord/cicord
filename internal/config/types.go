@@ -510,14 +510,19 @@ type Bot struct {
 	File string `yaml:"-" json:"-"`
 }
 
+type DirectMessageRoute struct {
+	Instance string `yaml:"instance" json:"instance"`
+}
+
 type BotSpec struct {
-	ApplicationID string           `yaml:"applicationId" json:"applicationId"`
-	Token         TokenRef         `yaml:"token" json:"token"`
-	Profile       *BotProfile      `yaml:"profile,omitempty" json:"profile,omitempty"`
-	Presence      *Presence        `yaml:"presence,omitempty" json:"presence,omitempty"`
-	Servers       []BotServer      `yaml:"servers" json:"servers"`
-	Intents       []string         `yaml:"intents,omitempty" json:"intents,omitempty"`
-	Plugins       []PluginInstance `yaml:"plugins,omitempty" json:"plugins,omitempty"`
+	DirectMessages *DirectMessageRoute `yaml:"directMessages,omitempty" json:"directMessages,omitempty"`
+	ApplicationID  string              `yaml:"applicationId" json:"applicationId"`
+	Token          TokenRef            `yaml:"token" json:"token"`
+	Profile        *BotProfile         `yaml:"profile,omitempty" json:"profile,omitempty"`
+	Presence       *Presence           `yaml:"presence,omitempty" json:"presence,omitempty"`
+	Servers        []BotServer         `yaml:"servers" json:"servers"`
+	Intents        []string            `yaml:"intents,omitempty" json:"intents,omitempty"`
+	Plugins        []PluginInstance    `yaml:"plugins,omitempty" json:"plugins,omitempty"`
 }
 
 type TokenRef struct {

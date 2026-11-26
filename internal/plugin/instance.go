@@ -97,11 +97,12 @@ type Env struct {
 	// Access is the server's spec.access (Member.access).
 	Access Access
 
-	KV        state.KV          // already scoped to the instance; nil: kv calls fail
-	Tasks     state.TaskWriter  // nil: ctx.schedule fails
-	TaskScope string            // Task.Scope for tasks created by this instance
-	Resources state.ResourceMap // records plugin-owned channels; nil: not recorded
-	Portal    PortalLinker      // nil: ctx.portal.link fails
+	DMReceipts state.KV          // host-owned retractable DM receipts, never exposed through ctx.kv
+	KV         state.KV          // already scoped to the instance; nil: kv calls fail
+	Tasks      state.TaskWriter  // nil: ctx.schedule fails
+	TaskScope  string            // Task.Scope for tasks created by this instance
+	Resources  state.ResourceMap // records plugin-owned channels; nil: not recorded
+	Portal     PortalLinker      // nil: ctx.portal.link fails
 	// Publish sends a cross-plugin event. topic is namespaced: "<plugin>.<topic>".
 	Publish func(topic string, payload json.RawMessage) error
 

@@ -156,6 +156,7 @@ var eventIntents = map[string][]string{
 	"memberJoin":        {"ServerMembers"},
 	"memberLeave":       {"ServerMembers"},
 	"memberUpdate":      {"ServerMembers"},
+	"directMessage":     {"DirectMessages"},
 	"messageCreate":     {"ServerMessages"},
 	"messageUpdate":     {"ServerMessages"},
 	"messageDelete":     {"ServerMessages"},
@@ -263,6 +264,9 @@ func EventName(ev discord.Event) string {
 	case discord.MemberUpdateEvent:
 		return "memberUpdate"
 	case discord.MessageCreateEvent:
+		if e.Message.ServerID == "" {
+			return "directMessage"
+		}
 		return "messageCreate"
 	case discord.MessageUpdateEvent:
 		return "messageUpdate"

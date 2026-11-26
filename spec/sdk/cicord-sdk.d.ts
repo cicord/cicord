@@ -317,8 +317,8 @@ export interface Member {
   kick(reason?: string): Promise<void>;
   /** @capability discord.members.moderate */
   ban(options?: { reason?: string; deleteMessagesSeconds?: number }): Promise<void>;
-  /** Direct message. @capability discord.dm.send */
-  send(message: MessageInput): Promise<Message>;
+  /** Direct message. An optional receipt permits later retraction by this instance. @capability discord.dm.send */
+  send(message: MessageInput, options?: {retractable?:boolean}): Promise<Message>;
   /**
    * Move the member, who must be connected to voice, to a voice channel. The bot needs Move
    * Members, and Connect in the destination (whose user limit does not apply to moves).
@@ -419,6 +419,8 @@ export interface Server {
   incident(actions: {invitesDisabledUntil?:Date; dmsDisabledUntil?:Date}): Promise<void>;
   /** Request a full sync of the active YAML revision. @capability server.sync */
   requestSync(reason: string): Promise<void>;
+  /** Remove a DM previously sent as retractable by this instance. @capability discord.dm.send */
+  retractDM(messageId:Snowflake): Promise<void>;
   invites():Promise<ServerInvite[]>;
   /** Up to 100 recent entries. Requires discord.auditlog.read and ServerModeration. */
   auditLog(options?:{action?: string;actorId?:Snowflake;before?:Snowflake;limit?:number}):Promise<AuditLogEntry[]>;
@@ -952,6 +954,8 @@ export interface EventHandlers {
   memberLeave?(ctx: Context, user: User): Awaitable<void>;
   /** @intent ServerMembers */
   memberUpdate?(ctx: Context, member: Member, previous: Member | undefined): Awaitable<void>;
+  /** Delivered only after the bot host selects a server and validates membership. @intent DirectMessages */
+  directMessage?(ctx: Context, message: Message): Awaitable<void>;
   /** @intent ServerMessages (+ MessageContent to read message.content) */
   messageCreate?(ctx: Context, message: Message): Awaitable<void>;
   /** @intent ServerMessages */

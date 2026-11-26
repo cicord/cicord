@@ -314,8 +314,8 @@
       const o = options || {};
       await acall("member.ban", { userId: this.id, reason: o.reason, deleteMessagesSeconds: o.deleteMessagesSeconds });
     },
-    async send(message) {
-      return mkMessage(await acall("member.send", { userId: this.id, message: msgIn(message) }));
+    async send(message,options) {
+      return mkMessage(await acall("member.send", { userId: this.id, message: msgIn(message),retractable:options && options.retractable }));
     },
     async moveTo(channel, reason) {
       if (channel === null || channel === undefined) throw new TypeError("moveTo: a voice channel is required (use disconnect() to disconnect)");
@@ -480,6 +480,7 @@
       async members(options = {}) { return freeze((await acall("server.members",options)).map(mkMember)); },
       audience(channel) { return freeze(hcall("server.audience",{ref:refIn(channel)})); },
       compareAudience(source,destination) { return hcall("server.compareAudience",{source:refIn(source),destination:refIn(destination)}); },
+      async retractDM(messageId){await acall("dm.retract",{messageId});},
       async ban(userId, options = {}) {
         await acall("member.ban", {userId: String(userId), reason: options.reason, deleteMessagesSeconds: options.deleteMessagesSeconds});
       },
@@ -790,6 +791,7 @@
       case "memberJoin": return [mkMember(d.member)];
       case "memberLeave": return [mkUser(d.user)];
       case "memberUpdate": return [mkMember(d.member), d.previous ? mkMember(d.previous) : undefined];
+      case "directMessage":
       case "messageCreate":
       case "messageUpdate": return [mkMessage(d.message)];
       case "messageDelete": return [freeze({ id: d.id, channel: mkChannel(d.channel) })];

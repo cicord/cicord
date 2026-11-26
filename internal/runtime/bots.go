@@ -27,6 +27,7 @@ import (
 // botHost is one connected bot identity: a session plus the routing table of the
 // active revision, swapped atomically.
 type botHost struct {
+	dm        directMessages
 	rt        *Runtime
 	key       string
 	tokenHash string
@@ -47,12 +48,13 @@ type botHost struct {
 }
 
 type routing struct {
-	byServer    map[string][]*instanceRT          // serverID → instances
-	byName      map[string]map[string]*instanceRT // instance name → serverID → instance
-	commands    map[string]map[string]*instanceRT // serverID → command → instance
-	reconcilers map[string]*serverRT              // serverID → server (when this bot reconciles it)
-	caches      map[string]*serverCache           // serverID → cache
-	serverKeys  map[string]string                 // serverID → server key, for the servers of the bot's spec
+	dmOwner, dmLocale string
+	byServer          map[string][]*instanceRT          // serverID → instances
+	byName            map[string]map[string]*instanceRT // instance name → serverID → instance
+	commands          map[string]map[string]*instanceRT // serverID → command → instance
+	reconcilers       map[string]*serverRT              // serverID → server (when this bot reconciles it)
+	caches            map[string]*serverCache           // serverID → cache
+	serverKeys        map[string]string                 // serverID → server key, for the servers of the bot's spec
 }
 
 // syncCommands registers the slash commands of the instances of a server, unless the same
@@ -250,6 +252,7 @@ func (r *Runtime) dropBot(key string) {
 	if h != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		h.stopDM()
 		_ = h.session.Close(ctx)
 	}
 }
@@ -365,7 +368,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 			return srt.cache.members.List(ctx, host.session, srt.cfg.Spec.DiscordID)
 		},
 		OwnerID: func() string { return discord.CurrentGuildOwner(host.session, srt.cfg.Spec.DiscordID) }, Access: pluginAccess(srt.cfg.Spec.Access),
-		KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
+		DMReceipts: r.opts.Store.KV("dm-receipts:" + in.ID()), KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources: ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
 		Portal:    &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, Store: r.opts.Store, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name, MaxTTL: 24 * time.Hour},
 		Publish: func(topic string, payload json.RawMessage) error {
@@ -414,8 +417,14 @@ func (h *botHost) install(ctx context.Context, a *active) {
 		h.routing.Store(rt)
 		return
 	}
+	if b.Spec.DirectMessages != nil {
+		rt.dmOwner = b.Spec.DirectMessages.Instance
+	}
 	for _, sk := range b.Spec.ServerKeys() {
 		if s := a.servers[sk]; s != nil {
+			if rt.dmLocale == "" && s.cfg.Spec.Portal != nil {
+				rt.dmLocale = s.cfg.Spec.Portal.Locale
+			}
 			rt.caches[s.cfg.Spec.DiscordID] = s.cache
 			if s.bot == h.key {
 				rt.reconcilers[s.cfg.Spec.DiscordID] = s
@@ -517,6 +526,22 @@ func (h *botHost) install(ctx context.Context, a *active) {
 
 // handle is the gateway event handler (called sequentially by the session).
 func (h *botHost) handle(ev discord.Event) {
+	if m, ok := ev.(discord.MessageCreateEvent); ok && m.Message.ServerID == "" {
+		if !m.Message.Author.Bot && h.routing.Load().dmOwner != "" {
+			h.queueDM(func() { h.routeDM(m.Message, time.Now()) })
+		}
+		return
+	}
+	if e, ok := ev.(discord.InteractionCreateEvent); ok && e.Interaction.ServerID == "" {
+		if strings.HasPrefix(e.Interaction.CustomID, dmSelect) {
+			h.queueDM(func() { h.selectDM(e.Interaction, time.Now()) })
+			return
+		}
+		if strings.HasPrefix(e.Interaction.CustomID, "dm/") {
+			h.queueDM(func() { h.routeDMComponent(e.Interaction) })
+			return
+		}
+	}
 	h.rt.diag.observe(ev)
 	if c := h.rt.collector; c != nil {
 		c.Handle(h.key, ev) // before the early returns below (interactions, own messages)

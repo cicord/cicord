@@ -189,6 +189,7 @@ func init() {
 		"server.overlays":        opOverlayList,
 		"server.incident":        opIncident,
 		"server.requestSync":     opRequestSync,
+		"dm.retract":             opRetractDM,
 	}
 }
 
@@ -594,8 +595,10 @@ func opChannelMessages(i *Instance, _ *invocation, args json.RawMessage) (func(c
 		return nil, argErr("messages(): limit must be between 1 and 100")
 	}
 	return func(ctx context.Context) (any, error) {
-		if _, err := i.channelScope(ctx, a.ChannelID); err != nil {
+		if dm, err := i.channelScope(ctx, a.ChannelID); err != nil {
 			return nil, err
+		} else if dm {
+			return nil, argErr("DM history belongs to the bot conversation and cannot be read by a server instance")
 		}
 		list, err := i.env.Discord.ListMessages(ctx, a.ChannelID, discord.ListMessagesParams{Limit: a.Limit, Before: a.Before, After: a.After})
 		if err != nil {
@@ -626,8 +629,10 @@ func opChannelMessage(i *Instance, _ *invocation, args json.RawMessage) (func(co
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
-		if _, err := i.channelScope(ctx, a.ChannelID); err != nil {
+		if dm, err := i.channelScope(ctx, a.ChannelID); err != nil {
 			return nil, err
+		} else if dm {
+			return nil, argErr("DM history belongs to the bot conversation and cannot be read by a server instance")
 		}
 		m, err := i.env.Discord.GetMessage(ctx, a.ChannelID, a.MessageID)
 		if errors.Is(err, discord.ErrNotFound) {
@@ -784,6 +789,7 @@ func opMessageReact(i *Instance, _ *invocation, args json.RawMessage) (func(cont
 // ───────────────────────────────────────────────────────────── members
 
 type memberArgs struct {
+	Retractable           bool         `json:"retractable"`
 	UserID                string       `json:"userId"`
 	Role                  ref          `json:"role"`
 	Reason                string       `json:"reason"`
@@ -1031,6 +1037,20 @@ func opMemberSend(i *Instance, _ *invocation, args json.RawMessage) (func(contex
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
+		for _, row := range mc.Components {
+			for j := range row.Components {
+				c := &row.Components[j]
+				if c.CustomID != "" {
+					c.CustomID = "dm/" + i.env.ServerID + "/" + c.CustomID
+					if len(c.CustomID) > MaxCustomIDLength {
+						return nil, argErr("DM component id is too long")
+					}
+				}
+			}
+		}
+		if a.Retractable && i.env.DMReceipts == nil {
+			return nil, errors.New("DM receipt storage unavailable")
+		}
 		ch, err := i.env.Discord.CreateDM(ctx, a.UserID)
 		if err != nil {
 			return nil, err
@@ -1040,7 +1060,52 @@ func opMemberSend(i *Instance, _ *invocation, args json.RawMessage) (func(contex
 		if err != nil {
 			return nil, err
 		}
+		if a.Retractable {
+			value, _ := json.Marshal(ch.ID)
+			if err := i.env.DMReceipts.Set(ctx, m.ID, value, 0); err != nil {
+				// A successful retractable send always has a durable receipt.
+				_ = i.env.Discord.DeleteMessage(ctx, ch.ID, m.ID, "")
+				return nil, err
+			}
+		}
 		return i.messageDTO(m), nil
+	}, nil
+}
+
+// A receipt is scoped by bot, instance and server. A plugin cannot retract a message
+// from a different server even when both installations share the same Discord DM.
+func opRetractDM(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capDMSend); err != nil {
+		return nil, err
+	}
+	a, err := decode[struct {
+		MessageID string `json:"messageId"`
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkSnowflake("message", a.MessageID); err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context) (any, error) {
+		if i.env.DMReceipts == nil {
+			return nil, errors.New("DM receipt storage unavailable")
+		}
+		raw, err := i.env.DMReceipts.Get(ctx, a.MessageID)
+		if errors.Is(err, state.ErrNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		var channel string
+		if err := json.Unmarshal(raw, &channel); err != nil {
+			return nil, err
+		}
+		if err := i.env.Discord.DeleteMessage(ctx, channel, a.MessageID, ""); err != nil && !errors.Is(err, discord.ErrNotFound) {
+			return nil, err
+		}
+		return nil, i.env.DMReceipts.Delete(ctx, a.MessageID)
 	}, nil
 }
 
