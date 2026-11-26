@@ -253,15 +253,15 @@ async function evaluate(cdp, expression) {
 }
 
 /**
- * Calls fn in the page with args passed as values (Runtime.callFunctionOn), never spliced
- * into the source: fn is a function of this script, args are data.
+ * Calls fn in the page with values passed as arguments (Runtime.callFunctionOn), never
+ * spliced into the source: fn is a function of this script, values are data.
  */
-async function call(cdp, fn, ...args) {
+async function call(cdp, fn, ...values) {
   const { result: global } = await cdp.send("Runtime.evaluate", { expression: "globalThis" });
   const r = await cdp.send("Runtime.callFunctionOn", {
     objectId: global.objectId,
     functionDeclaration: fn.toString(),
-    arguments: args.map((value) => ({ value })),
+    arguments: values.map((value) => ({ value })),
     awaitPromise: true,
     returnByValue: true,
   });
