@@ -1,3 +1,4 @@
+import { CicordApiError } from "@cicord/client";
 import { Button } from "@cicord/ui";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -43,13 +44,35 @@ interface Page {
   items: Entry[];
   cursor?: string;
 }
+// The portal allows 120 requests a minute per member, in bursts of 60: two pages a second
+// stay under it. A 429 or 503 waits for Retry-After and asks for the same page again.
+const EXPORT_PAGE_GAP_MS = 500;
+const EXPORT_RETRIES = 5;
+const MAX_RETRY_WAIT_MS = 60_000;
+function pause(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener("abort", stop);
+      resolve();
+    }, ms);
+    const stop = () => {
+      window.clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", stop, { once: true });
+  });
+}
+const retryable = (e: unknown): e is CicordApiError =>
+  e instanceof CicordApiError && (e.status === 429 || e.status === 503);
 function AuditExport({ filters }: { filters: Filters }) {
   const c = useCopy(),
     { api } = useScope(),
     active = useRef<AbortController | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(),
-    [done, setDone] = useState(false);
+    [done, setDone] = useState(false),
+    [progress, setProgress] = useState<{ entries: number; waiting: boolean }>();
   useEffect(
     () => () => {
       active.current?.abort();
@@ -63,17 +86,25 @@ function AuditExport({ filters }: { filters: Filters }) {
     setBusy(true);
     setError(undefined);
     setDone(false);
+    setProgress({ entries: 0, waiting: false });
     try {
       const chunks: BlobPart[] = ["["];
       const seen = new Set<string>();
       let cursor: string | undefined,
-        first = true;
+        first = true,
+        entries = 0;
       do {
-        const page: Page = await api.get<Page>(
-          "/export",
-          { ...filters, cursor },
-          { signal: abort.signal },
-        );
+        let page: Page | undefined;
+        for (let attempt = 0; !page; attempt++) {
+          try {
+            page = await api.get<Page>("/export", { ...filters, cursor }, { signal: abort.signal });
+          } catch (e) {
+            if (!retryable(e) || attempt >= EXPORT_RETRIES) throw e;
+            setProgress({ entries, waiting: true });
+            await pause(Math.min((e.retryAfter ?? 2) * 1000, MAX_RETRY_WAIT_MS), abort.signal);
+            setProgress({ entries, waiting: false });
+          }
+        }
         if (abort.signal.aborted) return;
         for (const item of page.items) {
           chunks.push(
@@ -88,10 +119,13 @@ function AuditExport({ filters }: { filters: Filters }) {
           );
           first = false;
         }
+        entries += page.items.length;
+        setProgress({ entries, waiting: false });
         cursor = page.cursor;
         if (cursor) {
           if (seen.has(cursor)) throw new Error("invalid export cursor");
           seen.add(cursor);
+          await pause(EXPORT_PAGE_GAP_MS, abort.signal);
         }
       } while (cursor);
       chunks.push("]");
@@ -116,6 +150,19 @@ function AuditExport({ filters }: { filters: Filters }) {
           ? c("Preparing export…", "Préparation de l’export…")
           : c("Export matching entries", "Exporter les entrées filtrées")}
       </Button>
+      {busy && progress ? (
+        <span role="status">
+          {progress.waiting
+            ? c(
+                `${progress.entries} entries so far. The server asked to slow down: retrying shortly…`,
+                `${progress.entries} entrées pour l’instant. Le serveur demande de ralentir : nouvel essai sous peu…`,
+              )
+            : c(
+                `${progress.entries} entries so far…`,
+                `${progress.entries} entrées pour l’instant…`,
+              )}
+        </span>
+      ) : null}
       {done ? <span role="status">{c("Export ready.", "Export prêt.")}</span> : null}
       {error ? <Failure error={error} /> : null}
     </>

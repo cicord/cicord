@@ -4,6 +4,7 @@ import {
   codeForStatus,
   createCicordClient,
   onboardingApi,
+  partialPrivacyReport,
   SseParser,
   type FetchLike,
   type AdminEvent,
@@ -72,6 +73,24 @@ describe("transport", () => {
     }
   });
 
+  test("a 429 carries the Retry-After delay in seconds", async () => {
+    const { fetch } = mockFetch(
+      () =>
+        new Response(JSON.stringify({ error: { code: "rate_limited", message: "slow down" } }), {
+          status: 429,
+          headers: { "Content-Type": "application/json", "Retry-After": "2" },
+        }),
+    );
+    const err = await createCicordClient({ fetch })
+      .portal.me("s")
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CicordApiError);
+    expect(err).toMatchObject({ status: 429, code: "rate_limited", retryAfter: 2 });
+    const plain = await createCicordClient({ fetch: async () => json({}, 500) })
+      .portal.me("s")
+      .catch((e: unknown) => e);
+    expect((plain as CicordApiError).retryAfter).toBeUndefined();
+  });
   test("API errors become CicordApiError with diagnostics", async () => {
     const diagnostics = [{ severity: "error", path: "/message", message: "too long" }];
     const { fetch } = mockFetch(() =>
@@ -304,6 +323,36 @@ describe("admin & machine", () => {
       "PUT /api/v1/servers/s/plugins/b/i/config",
     ]);
     expect(calls[12]?.body).toEqual({ config: { a: 1 }, scope: "base", revision: "r" });
+  });
+
+  test("orphaned data list, purge with confirmation and partial erasure report", async () => {
+    const usage = { scope: "plugin:b/gone/s", records: 2, rankings: 1, index: 0, tasks: 0 };
+    const report = {
+      complete: false,
+      plugins: [{ instance: "b/i", status: "ok" }],
+      tasksErased: 0,
+      interopErased: 0,
+    };
+    const { fetch, calls } = mockFetch((c) => {
+      if (c.url.endsWith("/orphaned-data"))
+        return json({ items: [{ ...usage, instance: "b/gone" }] });
+      if (c.url.endsWith("/purge")) return json(usage);
+      return json({ error: { code: "unavailable", message: "retry it" }, report }, 503);
+    });
+    const client = createCicordClient({ fetch });
+    await expect(client.admin.orphanedData("s")).resolves.toEqual([
+      { ...usage, instance: "b/gone" },
+    ]);
+    await expect(client.admin.purgeOrphanedData("s", "b/gone")).resolves.toEqual(usage);
+    expect(calls[1]?.method).toBe("POST");
+    expect(calls[1]?.body).toEqual({ instance: "b/gone", confirm: "b/gone" });
+    const err = await client.admin
+      .memberData("s", "erase", "123456789012345678")
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CicordApiError);
+    expect((err as CicordApiError).code).toBe("unavailable");
+    expect(partialPrivacyReport(err)).toEqual(report);
+    expect(partialPrivacyReport(new Error("x"))).toBeUndefined();
   });
 
   test("paged plugin list, single instance and uninstall", async () => {

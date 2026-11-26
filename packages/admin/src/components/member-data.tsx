@@ -1,5 +1,5 @@
-import type { PrivacyReport } from "@cicord/client";
-import { useCicord } from "@cicord/react";
+import { partialPrivacyReport, type PrivacyReport } from "@cicord/client";
+import { useCicord, useCicordQuery } from "@cicord/react";
 import { useState } from "react";
 import { useTranslation } from "../i18n/index.ts";
 import {
@@ -13,6 +13,7 @@ import {
   AlertDialogTrigger,
 } from "./ui/alert-dialog.tsx";
 import { Button } from "./ui/button.tsx";
+import { toastError } from "./errors.tsx";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.tsx";
 import { Input } from "./ui/input.tsx";
 import { Label } from "./ui/label.tsx";
@@ -24,7 +25,8 @@ export function MemberData({ serverKey }: { serverKey: string }) {
     [pending, setPending] = useState(false);
   const [report, setReport] = useState<PrivacyReport>(),
     [error, setError] = useState("");
-  const valid = /^[1-9][0-9]{0,19}$/.test(id);
+  // A Discord user snowflake: shorter numbers (counts, votes) are never member IDs.
+  const valid = /^[1-9][0-9]{16,19}$/.test(id);
   async function run(action: "export" | "erase") {
     setError("");
     setReport(undefined);
@@ -32,7 +34,12 @@ export function MemberData({ serverKey }: { serverKey: string }) {
     try {
       setReport(await client.admin.memberData(serverKey, action, id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // An erasure that failed part-way returns what already ran: show it and offer a retry.
+      const partial = partialPrivacyReport(e);
+      if (partial) setReport(partial);
+      setError(
+        partial ? t("memberData.failedPartway") : e instanceof Error ? e.message : String(e),
+      );
     } finally {
       setPending(false);
     }
@@ -117,11 +124,110 @@ export function MemberData({ serverKey }: { serverKey: string }) {
                 </li>
               ))}
             </ul>
+            {report.plugins.some((p) => p.status === "orphaned") && (
+              <p className="text-sm text-muted-foreground">{t("memberData.orphanedHint")}</p>
+            )}
             <Button variant="outline" className="justify-self-start" onClick={download}>
               {t("memberData.download")}
             </Button>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Data left by installations removed from the manifest. Their hooks cannot run, so a
+ * member erasure stays incomplete until the admin purges it (typing the name to confirm).
+ */
+export function OrphanedData({ serverKey }: { serverKey: string }) {
+  const { t } = useTranslation(),
+    { client } = useCicord();
+  const orphans = useCicordQuery(["admin", "server", serverKey, "orphaned-data"], (signal) =>
+    client.admin.orphanedData(serverKey, { signal }),
+  );
+  const [target, setTarget] = useState(""),
+    [typed, setTyped] = useState(""),
+    [purging, setPurging] = useState(false);
+  async function purge(instance: string) {
+    setPurging(true);
+    try {
+      await client.admin.purgeOrphanedData(serverKey, instance);
+      await orphans.refetch();
+    } catch (e) {
+      toastError(e, t("orphanedData.failed"));
+    } finally {
+      setPurging(false);
+      setTarget("");
+      setTyped("");
+    }
+  }
+  const items = orphans.data ?? [];
+  if (!items.length) return null;
+  return (
+    <Card aria-labelledby="orphaned-data-title">
+      <CardHeader className="flex-col gap-0.5">
+        <CardTitle id="orphaned-data-title">{t("orphanedData.title")}</CardTitle>
+        <CardDescription>{t("orphanedData.description")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-2 text-sm">
+          {items.map((o) => (
+            <li key={o.instance} className="flex flex-wrap items-center justify-between gap-x-4">
+              <span className="grid">
+                <span className="font-medium">{o.instance}</span>
+                <span className="text-muted-foreground">
+                  {t("orphanedData.counts", {
+                    records: o.records,
+                    rankings: o.rankings,
+                    index: o.index,
+                    tasks: o.tasks,
+                  })}
+                </span>
+              </span>
+              <AlertDialog
+                open={target === o.instance}
+                onOpenChange={(open) => {
+                  setTarget(open ? o.instance : "");
+                  setTyped("");
+                }}
+              >
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={purging}>
+                    {t("orphanedData.purge")}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogTitle>
+                    {t("orphanedData.question", { instance: o.instance })}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>{t("orphanedData.effect")}</AlertDialogDescription>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="orphan-confirm">
+                      {t("orphanedData.confirmLabel", { instance: o.instance })}
+                    </Label>
+                    <Input
+                      id="orphan-confirm"
+                      autoComplete="off"
+                      value={typed}
+                      onChange={(e) => setTyped(e.target.value.trim())}
+                    />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t("memberData.cancel")}</AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={typed !== o.instance || purging}
+                      onClick={() => void purge(o.instance)}
+                    >
+                      {t("orphanedData.purge")}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );

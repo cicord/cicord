@@ -43,3 +43,26 @@ test("a French user-menu interaction uses its locale and canonical handler name"
   });
   expect(result.replies).toEqual(["Ouvert"]);
 });
+
+// internal/plugin/locales.go:16-31 and internal/locales/catalog.go:104-161.
+test("translations are capped at 64 KiB per text and per variable, like the runtime", () => {
+  const t = createTestContext({ locales: { en: { many: "{v}{v}{v}{v}{v}", one: "<{v}>" } } });
+  const { i18n } = t.ctx;
+  const big = "é".repeat(16 << 10); // 32 KiB of UTF-8
+  expect(i18n.t("one", { v: big })).toBe(`<${big}>`);
+  // Five copies of 32 KiB cross 64 KiB while the text is built.
+  expect(() => i18n.t("many", { v: big })).toThrow(
+    new TypeError('i18n.t "many": translated text exceeds 65536 bytes'),
+  );
+  expect(() => i18n.t("one", { v: "x".repeat((64 << 10) + 1) })).toThrow(
+    new TypeError("i18n.t: a variable exceeds 65536 bytes"),
+  );
+  expect(i18n.t("one", { v: "x".repeat((64 << 10) - 2) })).toHaveLength(64 << 10);
+  expect(() => i18n.t("one", { v: "x".repeat((64 << 10) - 1) })).toThrow(TypeError);
+  expect(() => i18n.t("k".repeat(257))).toThrow(new TypeError("invalid translation arguments"));
+  const vars = Object.fromEntries(Array.from({ length: 51 }, (_, i) => ["v" + i, i]));
+  expect(() => i18n.t("one", vars)).toThrow(new TypeError("invalid translation arguments"));
+  // Values other than strings, numbers and booleans keep the placeholder.
+  expect(i18n.t("one", { v: null as unknown as string })).toBe("<{v}>");
+  expect(i18n.t("one", { v: false })).toBe("<false>");
+});

@@ -31,6 +31,8 @@ function setup(config: Record<string, unknown> = {}) {
       general: { name: "general" },
       voice: { name: "Voice", type: "voice" },
     },
+    // servers/<server>.yaml spec.access: the staff routes need the moderator level.
+    access: { moderators: { roles: ["mod"] } },
     members: [{ id: "1", username: "mia", roles: ["mod"] }],
   });
 }

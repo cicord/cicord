@@ -59,6 +59,7 @@ export const en: Messages = {
     ticketsTitle: "Tickets",
     ticketsText: "Member requests waiting for the team.",
     notMember: "Your Discord account is not a member of this server yet. Join it, then come back.",
+    busy: "Too many requests right now, or the server is unavailable. Retry in a few seconds.",
   },
 
   onboarding: {
@@ -147,6 +148,8 @@ export const en: Messages = {
     empty: "No tickets here.",
     forbidden: "For the moderation team only.",
     failed: "Could not load the tickets.",
+    loadMore: "Load more",
+    moreFailed: "Could not load more tickets.",
     loginTitle: "Sign in to see the tickets",
   },
 

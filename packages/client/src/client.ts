@@ -8,7 +8,9 @@ import {
 } from "./sse.ts";
 import type {
   AdminEvent,
+  OrphanedInstance,
   PrivacyReport,
+  ScopeUsage,
   PortalAnalytics,
   PortalAnalyticsPeriod,
   AddRegistryRequest,
@@ -19,7 +21,7 @@ import type {
   AnalyticsSummaryQuery,
   AuditEntry,
   AuditQuery,
-  DeadTask,
+  DeadLetterPage,
   InteropGraph,
   InstallResult,
   InteractionResult,
@@ -395,7 +397,12 @@ export class CicordClient {
       // A revoked or expired token: forget it so the app shows the logged-out state.
       if (response.status === 401 && this.session()?.token && !this.#options.token)
         this.#setSession(null);
-      throw CicordApiError.fromResponse(response.status, response.statusText, parsed);
+      throw CicordApiError.fromResponse(
+        response.status,
+        response.statusText,
+        parsed,
+        retryAfterSeconds(response.headers.get("Retry-After")),
+      );
     }
     return parsed as T;
   }
@@ -739,6 +746,11 @@ export class CicordClient {
         ...(resume ? { body: { resume: true } } : {}),
       });
     },
+    /**
+     * `POST /servers/{server}/privacy/{export|erase}` (admin). `userId` is a Discord user
+     * snowflake (17 to 20 digits). An erasure that fails part-way rejects with `unavailable`
+     * (503); `partialPrivacyReport(error)` then gives what already ran, and a retry is safe.
+     */
     memberData: (
       server: string,
       action: "export" | "erase",
@@ -748,6 +760,32 @@ export class CicordClient {
       this.#api<PrivacyReport>("POST", `/servers/${seg(server)}/privacy/${action}`, {
         ...options,
         body: { userId },
+      }),
+    /**
+     * `GET /servers/{server}/orphaned-data` (admin): installations no longer in the
+     * manifest that still hold data on the server.
+     */
+    orphanedData: async (server: string, options?: CallOptions): Promise<OrphanedInstance[]> =>
+      (
+        await this.#api<Items<OrphanedInstance>>(
+          "GET",
+          `/servers/${seg(server)}/orphaned-data`,
+          options,
+        )
+      ).items,
+    /**
+     * `POST /servers/{server}/orphaned-data/purge` (admin): deletes everything the
+     * uninstalled installation `instance` (`<bot>/<instance>`) left on the server. Rejects
+     * with `conflict` (409) when the installation is still in the manifest.
+     */
+    purgeOrphanedData: (
+      server: string,
+      instance: string,
+      options?: CallOptions,
+    ): Promise<ScopeUsage> =>
+      this.#api<ScopeUsage>("POST", `/servers/${seg(server)}/orphaned-data/purge`, {
+        ...options,
+        body: { instance, confirm: instance },
       }),
     /** `GET /servers/{server}/pause` (moderator) — the pause and the pending plan. */
     pauseState: (server: string, options?: CallOptions): Promise<PauseState> =>
@@ -779,9 +817,20 @@ export class CicordClient {
       ).items,
     interop: (server: string, options?: CallOptions): Promise<InteropGraph> =>
       this.#api<InteropGraph>("GET", `/servers/${seg(server)}/interop`, options),
-    deadLetters: async (server: string, options?: CallOptions): Promise<DeadTask[]> =>
-      (await this.#api<Items<DeadTask>>("GET", `/servers/${seg(server)}/dead-letters`, options))
-        .items,
+    /**
+     * `GET /servers/{server}/dead-letters?limit&cursor` (admin): the oldest failed tasks
+     * (100 by default, at most 500), with the server's `total` and `truncated` when more
+     * follow. Pass the page's `nextCursor` as `cursor` to read the next page.
+     */
+    deadLetters: (
+      server: string,
+      query: { limit?: number; cursor?: string } = {},
+      options?: CallOptions,
+    ): Promise<DeadLetterPage> =>
+      this.#api<DeadLetterPage>("GET", `/servers/${seg(server)}/dead-letters`, {
+        query: { limit: query.limit, cursor: query.cursor },
+        ...options,
+      }),
     deadEvent: (server: string, id: string, options?: CallOptions): Promise<Json> =>
       this.#api<Json>("GET", `/servers/${seg(server)}/dead-letters/${seg(id)}/event`, options),
     resolveDeadLetter: (server: string, id: string, decision: "retry" | "discard"): Promise<void> =>
@@ -1207,6 +1256,14 @@ export class CicordClient {
       options,
     );
   }
+}
+
+/** `Retry-After` in seconds: delta-seconds or an HTTP date (RFC 9110 §10.2.3). */
+function retryAfterSeconds(value: string | null): number | undefined {
+  if (!value) return undefined;
+  if (/^\d+$/.test(value.trim())) return Number(value.trim());
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? undefined : Math.max(0, Math.ceil((at - Date.now()) / 1000));
 }
 
 async function readBody(response: Response): Promise<Json | string | undefined> {

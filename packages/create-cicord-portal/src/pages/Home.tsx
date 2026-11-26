@@ -1,6 +1,6 @@
-import { isSafeUrl, type OnboardingSteps } from "@cicord/client";
+import { CicordApiError, isSafeUrl, type OnboardingSteps } from "@cicord/client";
 import { useLinkTokenLogin, useMe, useMember, usePluginQuery } from "@cicord/react";
-import { LinkIcon, Markdown, Notice, Spinner } from "@cicord/ui";
+import { Button, LinkIcon, Markdown, Notice, Spinner } from "@cicord/ui";
 import type { ReactNode } from "react";
 import { useT } from "../i18n/index.tsx";
 import { ServerMark, SignIn, usePages, usePlugin, useServer } from "../portal.tsx";
@@ -83,9 +83,24 @@ function MemberHome({ name }: { name: string }) {
   );
 
   if (member.status === "error") {
-    return (
+    // Only the runtime's 403 means "not a member"; a 429, a 5xx or a network error is
+    // temporary and must not tell a member they are not one.
+    const notMember = member.error instanceof CicordApiError && member.error.status === 403;
+    return notMember ? (
       <Notice tone="info" title={t.home.hello(name)}>
         {t.home.notMember}
+      </Notice>
+    ) : (
+      <Notice
+        tone="error"
+        title={t.home.hello(name)}
+        action={
+          <Button size="sm" variant="secondary" onClick={() => void member.refetch()}>
+            {t.onboarding.retry}
+          </Button>
+        }
+      >
+        {t.home.busy}
       </Notice>
     );
   }

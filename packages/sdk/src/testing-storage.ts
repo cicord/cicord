@@ -12,12 +12,49 @@ const finite = (n: number) => {
   return n;
 };
 
-export function testStorage(data: Map<string, Json>, need: () => void): KV {
+// The runtime's plugin storage limits (internal/state/advanced.go:60-74, enforced by the
+// triggers of internal/state/*/migrations/0011_plugin_storage_v2.sql).
+const RUNTIME_LIMITS = {
+  /** KV entries plus ranking members of one installation. */
+  entries: 1_000_000,
+  /** Key and value bytes of each entry; name and member bytes plus 16 of each ranking member. */
+  bytes: 256 << 20,
+  /** Members of one ranking. */
+  boardMembers: 250_000,
+  /** Key and value bytes of one kv.list page (always at least one entry). */
+  listBytes: 4 << 20,
+};
+const QUOTA = "plugin storage quota exceeded";
+const utf8 = (s: string) => Buffer.byteLength(s);
+
+export function testStorage(
+  data: Map<string, Json>,
+  need: () => void,
+  limits: Readonly<typeof RUNTIME_LIMITS> = RUNTIME_LIMITS,
+): KV {
   const expiry = new Map<string, number>();
   const versions = new Map<string, string>();
   const rankings = new Map<string, Map<string, number>>();
   let members = 0;
+  // Bytes like the database counts them. `weights` follows `data`; entries a test seeds
+  // directly in the raw map are weighed on the next write.
+  const weights = new Map<string, number>();
+  let kvBytes = 0,
+    rankBytes = 0;
+  const weigh = () => {
+    if (weights.size === data.size) return;
+    weights.clear();
+    kvBytes = 0;
+    for (const [k, v] of data) {
+      const w = utf8(k) + utf8(JSON.stringify(v));
+      weights.set(k, w);
+      kvBytes += w;
+    }
+  };
   const erase = (key: string) => {
+    weigh();
+    kvBytes -= weights.get(key) ?? 0;
+    weights.delete(key);
     data.delete(key);
     versions.delete(key);
     expiry.delete(key);
@@ -32,17 +69,23 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
     return v === undefined ? undefined : { version: v, value: structuredClone(data.get(key)!) };
   };
   const checkQuota = () => {
-    if (data.size + members > 1_000_000) throw new Error("plugin storage quota exceeded");
+    if (data.size + members > limits.entries || kvBytes + rankBytes > limits.bytes)
+      throw new Error(QUOTA);
   };
   const put = (key: string, value: Json, ttl?: number) => {
     validKey(key);
     const raw = JSON.stringify(value);
-    if (raw === undefined || Buffer.byteLength(raw) > 1 << 20)
-      throw new TypeError("invalid KV value");
+    if (raw === undefined || utf8(raw) > 1 << 20) throw new TypeError("invalid KV value");
     if (ttl !== undefined && (!Number.isFinite(ttl) || ttl < 0 || ttl >= 9223372036.854776))
       throw new TypeError("invalid TTL");
-    if (!data.has(key) && data.size + members >= 1_000_000)
-      throw new Error("plugin storage quota exceeded");
+    weigh();
+    // Like the insert and update triggers: the write that crosses a quota fails.
+    const weight = utf8(key) + utf8(raw),
+      before = weights.get(key) ?? 0;
+    if (!data.has(key) && data.size + members >= limits.entries) throw new Error(QUOTA);
+    if (kvBytes - before + weight + rankBytes > limits.bytes) throw new Error(QUOTA);
+    kvBytes += weight - before;
+    weights.set(key, weight);
     data.set(key, JSON.parse(raw));
     versions.set(key, randomUUID());
     if (ttl) expiry.set(key, Date.now() + ttl * 1000);
@@ -61,19 +104,29 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
     validKey(name);
     validKey(member);
     let board = rankings.get(name);
+    const weight = utf8(name) + utf8(member) + 16;
     if (score === undefined) {
-      if (board?.delete(member)) members--;
+      if (board?.delete(member)) {
+        members--;
+        rankBytes -= weight;
+      }
       if (board?.size === 0) rankings.delete(name);
       return;
     }
     finite(score);
-    if (!board?.has(member) && data.size + members >= 1_000_000)
-      throw new Error("plugin storage quota exceeded");
+    if (!board?.has(member)) {
+      weigh();
+      if ((board?.size ?? 0) >= limits.boardMembers)
+        throw new Error("ranking member limit exceeded");
+      if (data.size + members >= limits.entries || kvBytes + rankBytes + weight > limits.bytes)
+        throw new Error(QUOTA);
+      members++;
+      rankBytes += weight;
+    }
     if (!board) {
       board = new Map();
       rankings.set(name, board);
     }
-    if (!board.has(member)) members++;
     board.set(member, score);
   };
   return {
@@ -116,8 +169,22 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
           (k) => k.startsWith(opts.prefix ?? "") && order(k, opts.cursor ?? "") > 0 && version(k),
         )
         .toSorted(order);
-      const items = keys.slice(0, limit).map((key) => ({ key, value: read(key)!.value as T }));
-      return keys.length > limit ? { items, cursor: items.at(-1)!.key } : { items };
+      // Cut by count and by bytes like the runtime (internal/state/internal/advanced/
+      // space.go:340-360): the page ends before the entry that would cross 4 MiB.
+      const items: { key: string; value: T }[] = [];
+      let size = 0,
+        more = false;
+      for (const key of keys) {
+        const value = read(key)!.value as T;
+        const weight = utf8(key) + utf8(JSON.stringify(value));
+        if (items.length === limit || (items.length > 0 && size + weight > limits.listBytes)) {
+          more = true;
+          break;
+        }
+        size += weight;
+        items.push({ key, value });
+      }
+      return more ? { items, cursor: items.at(-1)!.key } : { items };
     },
     atomic() {
       const checks: Array<() => boolean> = [],
@@ -126,8 +193,9 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
         boards = new Set<string>();
       let done = false;
       const admit = () => {
+        // sdk.js and space.go:186: at most 128 checks and mutations per transaction.
         if (done || checks.length + writes.length >= 128)
-          throw new Error("closed or full transaction");
+          throw new TypeError("kv.atomic: closed or full transaction");
       };
       const mutate = (key: string, op: () => void, board?: string) => {
         admit();
@@ -162,21 +230,25 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
         },
         async commit() {
           need();
-          if (done) throw new Error("transaction already committed");
+          if (done) throw new TypeError("transaction already committed");
           done = true;
           if (!checks.every((check) => check())) return { ok: false };
+          weigh();
           const before = [...touched].map(
-            (k) => [k, data.get(k), versions.get(k), expiry.get(k)] as const,
+            (k) => [k, data.get(k), versions.get(k), expiry.get(k), weights.get(k)] as const,
           );
           const previous = [...boards].map((n) => [n, new Map(rankings.get(n))] as const);
-          const count = members;
+          const count = members,
+            savedKv = kvBytes,
+            savedRank = rankBytes;
           try {
             for (const op of writes) op();
             checkQuota();
           } catch (error) {
-            for (const [k, v, ver, exp] of before) {
+            for (const [k, v, ver, exp, w] of before) {
               erase(k);
               if (v !== undefined) data.set(k, v);
+              if (w !== undefined) weights.set(k, w);
               if (ver !== undefined) versions.set(k, ver);
               if (exp !== undefined) expiry.set(k, exp);
             }
@@ -185,6 +257,8 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
               else rankings.delete(n);
             }
             members = count;
+            kvBytes = savedKv;
+            rankBytes = savedRank;
             throw error;
           }
           return { ok: true };

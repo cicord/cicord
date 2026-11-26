@@ -1,7 +1,7 @@
 import { createCicordClient, type PortalPlugin } from "@cicord/client";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test } from "vite-plus/test";
+import { afterEach, expect, test, vi } from "vite-plus/test";
 import { App } from "../src/App.tsx";
 import { portalServer, user } from "../src/mock/data.ts";
 import { navigate } from "../src/router.tsx";
@@ -11,7 +11,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
   localStorage.clear();
 });
-type Reply = { status?: number; body: unknown };
+type Reply = { status?: number; body: unknown; headers?: Record<string, string> };
 function fixture(
   initialPath: string,
   opts: {
@@ -23,8 +23,11 @@ function fixture(
   const requests: { method: string; path: string; body: unknown }[] = [];
   window.history.replaceState(null, "", initialPath);
   const server = { ...portalServer, plugins: opts.plugins };
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json", ...headers },
+    });
   const client = createCicordClient({
     fetch: async (input, init) => {
       const url = new URL(input, window.location.origin);
@@ -45,7 +48,7 @@ function fixture(
           method = init.method ?? "GET";
         requests.push({ method, path, body });
         const r = opts.handler?.(method, path, body, url.searchParams);
-        if (r) return json(r.body, r.status);
+        if (r) return json(r.body, r.status, r.headers);
       }
       return json({ error: { code: "not_found" } }, 404);
     },
@@ -136,6 +139,101 @@ test("visual challenge sends only the selected response and displays the result"
   await u.click(screen.getByRole("button", { name: "Verify my account" }));
   await screen.findByText("Your account is verified.");
   expect(r.at(-1)?.body).toEqual({ id: "nonce", answer: 2 });
+});
+test("typed challenge posts the code as an upper-case string", async () => {
+  const u = userEvent.setup();
+  const r = fixture("/verification/challenge", {
+    role: "member",
+    plugins: [verification],
+    handler: (method) => ({
+      body:
+        method === "GET"
+          ? {
+              id: "nonce",
+              method: "visual",
+              kind: "typed",
+              image: "data:image/png;base64,aA==",
+              length: 5,
+              prompt: "Type the code shown in the image.",
+            }
+          : { verified: true },
+    }),
+  });
+  const input = await screen.findByLabelText("Code shown in the image");
+  expect(input.getAttribute("autocomplete")).toBe("off");
+  expect(input.getAttribute("inputmode")).toBe("text");
+  expect(input.getAttribute("maxlength")).toBe("9"); // room for pasted spaces
+  expect(screen.queryByRole("radio")).toBeNull();
+  const submit = screen.getByRole("button", { name: "Verify my account" });
+  await u.type(input, "ab3");
+  expect((submit as HTMLButtonElement).disabled).toBe(true);
+  await u.type(input, "k9");
+  await u.click(submit);
+  await screen.findByText("Your account is verified.");
+  expect(r.at(-1)?.body).toEqual({ id: "nonce", answer: "AB3K9" });
+});
+test("a rejected typed code marks the field and offers only a new challenge", async () => {
+  const u = userEvent.setup();
+  let gets = 0;
+  const r = fixture("/verification/challenge", {
+    role: "member",
+    plugins: [verification],
+    handler: (method) =>
+      method === "GET"
+        ? {
+            body: {
+              id: "nonce" + ++gets,
+              method: "visual",
+              kind: "typed",
+              charset: "digits",
+              image: "data:image/png;base64,aA==",
+              length: 4,
+              prompt: "Type the code.",
+            },
+          }
+        : { status: 422, body: { error: "challenge_failed" } },
+  });
+  const input = await screen.findByLabelText("Code shown in the image");
+  expect(input.getAttribute("inputmode")).toBe("numeric");
+  await u.type(input, "1234");
+  await u.click(screen.getByRole("button", { name: "Verify my account" }));
+  await screen.findByText(/can only be tried once/);
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(input.getAttribute("aria-describedby")).toMatch(/-error$/);
+  expect(
+    screen.getByRole<HTMLButtonElement>("button", { name: "Verify my account" }).disabled,
+  ).toBe(true);
+  await u.click(screen.getByRole("button", { name: "Try a new challenge" }));
+  await waitFor(() => expect(gets).toBe(2));
+  const fresh = await screen.findByLabelText("Code shown in the image");
+  await waitFor(() => expect(fresh.getAttribute("aria-invalid")).toBeNull());
+  expect(r.filter((x) => x.method === "POST")).toHaveLength(1);
+});
+test("a locked typed challenge shows the rate limit, not a rejected code", async () => {
+  const u = userEvent.setup();
+  fixture("/verification/challenge", {
+    role: "member",
+    plugins: [verification],
+    handler: (method) =>
+      method === "GET"
+        ? {
+            body: {
+              id: "nonce",
+              method: "typed",
+              kind: "typed",
+              image: "data:image/png;base64,aA==",
+              length: 4,
+              prompt: "Type the code.",
+            },
+          }
+        : { status: 429, body: { error: "try_later" } },
+  });
+  const input = await screen.findByLabelText("Code shown in the image");
+  await u.type(input, " ab12 ");
+  await u.click(screen.getByRole("button", { name: "Verify my account" }));
+  await screen.findByText("Too many attempts. Try again later.");
+  expect(input.getAttribute("aria-invalid")).toBeNull();
+  expect(screen.queryByText(/can only be tried once/)).toBeNull();
 });
 test("moderator decisions update the queue, and filters reach only the selected instance", async () => {
   let approved = false;
@@ -272,6 +370,86 @@ test("public giveaway displays its commitment and never reads the staff entrant 
   expect(screen.getByText("secret-after-close")).toBeTruthy();
   expect(screen.queryByText("Staff participant list")).toBeNull();
   expect(r.map((x) => x.path)).toEqual(["desk/giveaways/giveaways/7"]);
+});
+test("a giveaway draw reads every entrant page before showing anything", async () => {
+  const page = (cursor: string | null) =>
+    cursor === null
+      ? { entries: [{ userId: "30", weight: 1 }], entriesCursor: "p2" }
+      : { entries: [{ userId: "4", weight: 2 }] };
+  const r = fixture("/giveaways/7", {
+    role: "member",
+    plugins: [plugin("giveaways", ["GET /giveaways/:id"])],
+    handler: (_m, _p, _b, search) => ({
+      body: {
+        id: "7",
+        prize: "Game key",
+        state: "ended",
+        closesAt: 123456,
+        commitment: "abc123",
+        entrants: 2,
+        winners: ["30"],
+        ...page(search.get("cursor")),
+      },
+    }),
+  });
+  await screen.findByText("Game key");
+  expect(r.length % 2).toBe(0); // each read is the first page plus the second
+  // Both pages, sorted by numeric id like the verifier.
+  const rows = screen.getAllByRole("row").slice(1);
+  expect(rows.map((row) => row.textContent)).toEqual(["42", "301"]);
+});
+test("a draw that changes between entrant pages is not shown", async () => {
+  fixture("/giveaways/7", {
+    role: "member",
+    plugins: [plugin("giveaways", ["GET /giveaways/:id"])],
+    handler: (_m, _p, _b, search) => ({
+      body: {
+        id: "7",
+        prize: "Game key",
+        state: "ended",
+        closesAt: 1,
+        commitment: search.get("cursor") ? "redrawn" : "abc123",
+        entrants: 2,
+        winners: [],
+        entries: [{ userId: search.get("cursor") ? "2" : "1", weight: 1 }],
+        ...(search.get("cursor") ? {} : { entriesCursor: "p2" }),
+      },
+    }),
+  });
+  await screen.findByText("The request could not be completed.");
+  expect(screen.queryByText("Game key")).toBeNull();
+});
+test("the staff entrant list loads more pages on demand", async () => {
+  const u = userEvent.setup();
+  const r = fixture("/giveaways/7", {
+    role: "moderator",
+    plugins: [plugin("giveaways", ["GET /giveaways/:id", "GET /giveaways/:id/entries"])],
+    handler: (_m, path, _b, search) =>
+      path.endsWith("/entries")
+        ? {
+            body: search.get("cursor")
+              ? { entries: [{ userId: "9", weight: 1 }] }
+              : { entries: [{ userId: "8", weight: 1 }], entriesCursor: "next" },
+          }
+        : {
+            body: {
+              id: "7",
+              prize: "Game key",
+              state: "open",
+              closesAt: 1,
+              commitment: "abc",
+              entrants: 2,
+              winners: [],
+            },
+          },
+  });
+  await u.click(await screen.findByText("Staff participant list"));
+  await screen.findByText("8");
+  expect(screen.queryByText("9")).toBeNull();
+  await u.click(screen.getByRole("button", { name: "Load more" }));
+  await screen.findByText("9");
+  expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  expect(r.filter((x) => x.path.endsWith("/entries"))).toHaveLength(2);
 });
 test("polls render only counts, even when a response contains extra identities", async () => {
   fixture("/polls/1", {
@@ -424,6 +602,75 @@ test("audit filters target exact fields, and a denied re-read clears earlier tex
   expect(screen.queryByText("Previously visible record")).toBeNull();
   expect(matched).toBe(true);
   expect(r.every((x) => x.path.endsWith("/search"))).toBe(true);
+});
+test("audit export paces its pages and retries the same cursor after a 429", async () => {
+  const u = userEvent.setup();
+  const saved: string[] = [];
+  const created = vi.spyOn(URL, "createObjectURL").mockImplementation(() => "blob:audit");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const OriginalBlob = globalThis.Blob;
+  vi.stubGlobal(
+    "Blob",
+    class extends OriginalBlob {
+      constructor(parts: BlobPart[], opts?: BlobPropertyBag) {
+        super(parts, opts);
+        saved.push(parts.filter((x): x is string => typeof x === "string").join(""));
+      }
+    },
+  );
+  let limited = false;
+  const cursors: (string | null)[] = [];
+  fixture("/audit-log", {
+    role: "moderator",
+    plugins: [plugin("audit-log", ["GET /search", "GET /export"])],
+    handler: (_m, path, _b, q) => {
+      if (!path.endsWith("/export")) return { body: { items: [] } };
+      cursors.push(q.get("cursor"));
+      if (!q.get("cursor"))
+        return {
+          body: { items: [{ id: "a", at: 1, category: "roles", text: "one" }], cursor: "p2" },
+        };
+      if (!limited) {
+        limited = true;
+        return {
+          status: 429,
+          body: { error: { code: "rate_limited" } },
+          headers: { "Retry-After": "0" },
+        };
+      }
+      return { body: { items: [{ id: "b", at: 2, category: "roles", text: "two" }] } };
+    },
+  });
+  await u.click(await screen.findByRole("button", { name: "Export matching entries" }));
+  await screen.findByText("Export ready.", {}, { timeout: 4000 });
+  expect(cursors).toEqual([null, "p2", "p2"]);
+  expect(created).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(saved.at(-1) ?? "")).toEqual([
+    { id: "a", at: 1, category: "roles", text: "one" },
+    { id: "b", at: 2, category: "roles", text: "two" },
+  ]);
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+test("audit export gives up after a few rate-limited retries", async () => {
+  const u = userEvent.setup();
+  let calls = 0;
+  fixture("/audit-log", {
+    role: "moderator",
+    plugins: [plugin("audit-log", ["GET /search", "GET /export"])],
+    handler: (_m, path) => {
+      if (!path.endsWith("/export")) return { body: { items: [] } };
+      calls++;
+      return {
+        status: 429,
+        body: { error: { code: "rate_limited" } },
+        headers: { "Retry-After": "0" },
+      };
+    },
+  });
+  await u.click(await screen.findByRole("button", { name: "Export matching entries" }));
+  await screen.findByText("Too many attempts. Try again later.", {}, { timeout: 4000 });
+  expect(calls).toBe(6); // the first try and five retries
 });
 test("public calendar subscribes directly to the discovered instance's ICS feed", async () => {
   fixture("/calendar", {

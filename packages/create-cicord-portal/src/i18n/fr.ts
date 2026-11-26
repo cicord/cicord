@@ -62,6 +62,7 @@ export const fr = {
     ticketsText: "Les demandes des membres à traiter.",
     notMember:
       "Ton compte Discord n'est pas encore membre de ce serveur. Rejoins-le, puis reviens ici.",
+    busy: "Trop de requêtes pour le moment, ou le serveur est indisponible. Réessaie dans quelques secondes.",
   },
 
   onboarding: {
@@ -155,6 +156,8 @@ export const fr = {
     empty: "Aucun ticket ici.",
     forbidden: "Réservé à l'équipe de modération.",
     failed: "Impossible de charger les tickets.",
+    loadMore: "Afficher plus",
+    moreFailed: "Impossible de charger plus de tickets.",
     loginTitle: "Connecte-toi pour voir les tickets",
   },
 

@@ -6,9 +6,11 @@
  */
 import type {
   AuditEntry,
+  DeadTask,
   Diagnostic,
   FetchLike,
   HumanError,
+  IncidentOverlay,
   InteractionResult,
   Json,
   Message,
@@ -115,6 +117,22 @@ interface MockState {
   versions?: Record<string, MockVersion>;
   /** Enforcement paused on the server (POST /servers/{server}/pause), absent otherwise. */
   paused?: PauseInfo;
+  /** Data left by uninstalled installations (GET /servers/{server}/orphaned-data). */
+  orphans?: MockOrphan[];
+  /** Parked tasks and event deliveries (GET /servers/{server}/dead-letters). */
+  deadLetters?: DeadTask[];
+  /** Temporary plugin restrictions (the plan's overlays). */
+  overlays?: IncidentOverlay[];
+  /** Plugin secrets set from the console, by "<bot>/<instance>" (names only). */
+  pluginSecrets?: Record<string, string[]>;
+}
+
+interface MockOrphan {
+  instance: string;
+  records: number;
+  rankings: number;
+  index: number;
+  tasks: number;
 }
 
 interface MockVersion {
@@ -233,6 +251,19 @@ function seed(): MockState {
       { bot: "moderator", instance: "welcome", base: welcomeBase, override: welcomeOverride },
       { bot: "moderator", instance: "onboarding", base: onboardingBase, override: {} },
     ],
+    orphans: [{ instance: "moderator/old-tickets", records: 14, rankings: 3, index: 0, tasks: 1 }],
+    deadLetters: [
+      {
+        id: "welcome-dm-retry",
+        scope: `plugin:moderator/welcome/${SERVER_KEY}`,
+        name: "sendWelcomeDM",
+        runAt: ago(90),
+        attempts: 5,
+        failures: 5,
+        reason: "handler_error",
+      },
+    ],
+    overlays: [],
     history: [
       ...[1, 6, 11, 16].map((minutes, i) => ({
         id: 10 - i,
@@ -509,6 +540,13 @@ export interface MockRuntimeOptions {
    * version and acme/giveaways is installed at an older version (default false).
    */
   demoUpdates?: boolean;
+  /**
+   * Discord's audit log shows actions by the bot that Cicord did not make (the server's
+   * `unconfirmedAudit` warning; default false).
+   */
+  demoUnconfirmedAudit?: boolean;
+  /** Extra parked tasks on the server, to exercise "Load more" in Diagnostics (default 0). */
+  demoDeadLetters?: number;
   /** Analytics of the server (src/mock/analytics.ts; default "full"). */
   analytics?: MockAnalyticsVariant;
   /** Clock of the generated analytics (ms; default Date.now). */
@@ -538,6 +576,16 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         instance: p.name,
       });
     }
+    for (let n = 0; n < (options.demoDeadLetters ?? 0); n++)
+      s.deadLetters?.push({
+        id: `demo-${String(n).padStart(3, "0")}`,
+        scope: `plugin:moderator/onboarding/${SERVER_KEY}`,
+        name: "remind",
+        runAt: ago(60 - (n % 30)),
+        attempts: 5,
+        failures: 5,
+        reason: "handler_error",
+      });
     if (options.demoUpdates) {
       s.versions = {};
       const welcome = bundledPlugins.find((p) => p.name === "welcome")!;
@@ -754,10 +802,54 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     features: ["ANIMATED_ICON", "INVITE_SPLASH"],
     community: false,
     ...(state.paused ? { paused: state.paused } : {}),
+    ...(options.demoUnconfirmedAudit
+      ? {
+          unconfirmedAudit: {
+            bot: "moderator",
+            count: 3,
+            first: ago(42),
+            last: ago(7),
+            lastEntry: "1300000000000000003",
+            lastAction: "role.update",
+          },
+        }
+      : {}),
   });
+
+  /** GET /dead-letters: oldest first (runAt, then id), paged by an opaque keyset cursor. */
+  const deadLetterPage = (url: URL): Response => {
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500)
+      return fail(400, "invalid", "limit must be between 1 and 500");
+    const all = (state.deadLetters ?? []).toSorted((a, b) =>
+      a.runAt === b.runAt ? (a.id < b.id ? -1 : 1) : a.runAt < b.runAt ? -1 : 1,
+    );
+    let after: { runAt: string; id: string } | undefined;
+    const cursor = url.searchParams.get("cursor");
+    if (cursor) {
+      try {
+        after = JSON.parse(atob(cursor)) as { runAt: string; id: string };
+      } catch {
+        return fail(400, "invalid", "invalid cursor");
+      }
+    }
+    const rest = after
+      ? all.filter((d) => d.runAt > after.runAt || (d.runAt === after.runAt && d.id > after.id))
+      : all;
+    const items = rest.slice(0, limit);
+    const last = items.at(-1);
+    const more = rest.length > limit && last;
+    return json({
+      items,
+      total: all.length,
+      truncated: !!more,
+      nextCursor: more ? btoa(JSON.stringify({ runAt: last.runAt, id: last.id })) : null,
+    });
+  };
 
   const plan = () => ({
     server: SERVER_KEY,
+    overlays: state.overlays ?? [],
     changes: state.drift
       ? [
           {
@@ -2135,22 +2227,97 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       if (method === "GET" && rest === "/plan") return staff(() => json(plan()), true);
       if (method === "POST" && (rest === "/privacy/export" || rest === "/privacy/erase"))
         return staff(() => {
-          if (!/^[1-9][0-9]{0,19}$/.test(jsonText(body["userId"])))
-            return fail(400, "invalid", "Expected a Discord member ID.");
+          if (!/^[1-9][0-9]{16,19}$/.test(jsonText(body["userId"])))
+            return fail(
+              400,
+              "invalid",
+              "Expected a Discord member ID (a snowflake of 17 to 20 digits).",
+            );
           return json({
             complete: false,
-            plugins: state.instances.map((i) => ({
-              instance: i.bot + "/" + i.instance,
-              status: "undeclared",
-            })),
+            plugins: [
+              ...state.instances.map((i) => ({
+                instance: i.bot + "/" + i.instance,
+                status: "undeclared",
+              })),
+              ...(state.orphans ?? []).map((o) => ({ instance: o.instance, status: "orphaned" })),
+            ],
             tasksErased: 0,
             interopErased: 0,
           });
         }, true);
+      if (method === "GET" && rest === "/orphaned-data")
+        return staff(
+          () =>
+            json({
+              items: (state.orphans ?? []).map((o) => ({
+                ...o,
+                scope: `plugin:${o.instance}/${SERVER_KEY}`,
+              })),
+            }),
+          true,
+        );
+      if (method === "POST" && rest === "/orphaned-data/purge")
+        return staff((who) => {
+          const instance = jsonText(body["instance"]);
+          if (!instance || jsonText(body["confirm"]) !== instance)
+            return fail(400, "invalid", '"confirm" must repeat the installation name.');
+          if (state.instances.some((i) => i.bot + "/" + i.instance === instance))
+            return fail(409, "conflict", "This installation is in the active revision.");
+          const orphan = (state.orphans ?? []).find((o) => o.instance === instance);
+          if (!orphan) return fail(404, "not_found", "No data left by this installation.");
+          state.orphans = (state.orphans ?? []).filter((o) => o !== orphan);
+          const { instance: _name, ...counts } = orphan;
+          const usage = { scope: `plugin:${instance}/${SERVER_KEY}`, ...counts };
+          addAudit(`discord:${who}`, "plugin.data.purge", instance, usage);
+          changed();
+          return json(usage);
+        }, true);
       if (method === "GET" && rest === "/interop")
         return staff(() => json({ edges: [], features: {} }), true);
       if (method === "GET" && rest === "/dead-letters")
-        return staff(() => json({ items: [] }), true);
+        return staff(() => deadLetterPage(url), true);
+      const dead = /^\/dead-letters\/([^/]+)\/(retry|discard|event)$/.exec(rest);
+      if (dead && (method === "POST") !== (dead[2] === "event"))
+        return staff((v) => {
+          const id = decodeURIComponent(dead[1]!);
+          const task = (state.deadLetters ?? []).find((d) => d.id === id);
+          if (dead[2] === "event")
+            return task?.event
+              ? json({ id, topic: task.name })
+              : fail(404, "not_found", "no such event dead letter");
+          if (!task) return fail(404, "not_found", "no such dead letter");
+          state.deadLetters = (state.deadLetters ?? []).filter((d) => d !== task);
+          addAudit(`discord:${v}`, "task." + dead[2], id, {});
+          changed();
+          return new Response(null, { status: 204 });
+        }, true);
+      const overlay = /^\/overlays\/(.+)\/([^/]+)$/.exec(rest);
+      if (method === "DELETE" && overlay)
+        return staff((v) => {
+          const origin = overlay[1]!.split("/").map(decodeURIComponent).join("/");
+          const id = decodeURIComponent(overlay[2]!);
+          const found = (state.overlays ?? []).find((o) => o.origin === origin && o.id === id);
+          if (!found) return fail(404, "not_found", "no such overlay");
+          state.overlays = (state.overlays ?? []).filter((o) => o !== found);
+          addAudit(`discord:${v}`, "overlay.remove", `${origin}/${id}`, {});
+          changed();
+          return new Response(null, { status: 204 });
+        }, true);
+      const secret = /^\/plugins\/([^/]+)\/([^/]+)\/secrets\/([^/]+)$/.exec(rest);
+      if (method === "PUT" && secret)
+        return staff((v) => {
+          const key = `${decodeURIComponent(secret[1]!)}/${decodeURIComponent(secret[2]!)}`;
+          if (!state.instances.some((i) => `${i.bot}/${i.instance}` === key))
+            return fail(404, "not_found", "unknown plugin instance");
+          if (!jsonText(body["value"])) return fail(400, "invalid", "value is required");
+          const name = decodeURIComponent(secret[3]!);
+          const names = new Set(state.pluginSecrets?.[key] ?? []).add(name);
+          state.pluginSecrets = { ...state.pluginSecrets, [key]: [...names].toSorted() };
+          addAudit(`discord:${v}`, "plugin.secret.set", `${key}/${name}`, {});
+          changed();
+          return new Response(null, { status: 204 });
+        }, true);
       if (method === "GET" && rest === "/diagnostics")
         return staff(
           () =>
@@ -2336,6 +2503,11 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       }
       if (method === "POST" && sim === "/commands") return runCommand(body);
       if (method === "POST" && sim === "/components") return clickComponent(body);
+      // The mock's plugins post no polls and open no modals.
+      if (method === "POST" && sim === "/poll-votes")
+        return fail(404, "not_found", "mock: no poll on this message");
+      if (method === "POST" && sim === "/modals")
+        return fail(404, "not_found", "mock: no modal is open");
     }
     return fail(404, "not_found", `mock: no route ${method} ${path}`);
   }

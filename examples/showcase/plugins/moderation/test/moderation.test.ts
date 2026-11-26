@@ -380,7 +380,9 @@ describe("webhook and routes", () => {
       user: "1",
       options: { member: user(t, "2"), reason: "spam" },
     });
-    const res = await callRoute(plugin, t, "DELETE /warnings/2", { viewer: "1" });
+    // An admin route: "6" holds the admin role of spec.access (the moderator "1" gets 403).
+    expect((await callRoute(plugin, t, "DELETE /warnings/2", { viewer: "1" })).status).toBe(403);
+    const res = await callRoute(plugin, t, "DELETE /warnings/2", { viewer: "6" });
     expect(res.body).toEqual({ cleared: 1 });
     expect(logs(t).at(-1)?.title).toBe("Case #2 · Warnings cleared");
     expect((await callRoute(plugin, t, "GET /warnings/2", { viewer: "1" })).body).toEqual({

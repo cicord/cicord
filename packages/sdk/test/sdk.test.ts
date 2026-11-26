@@ -63,16 +63,22 @@ describe("testing harness", () => {
 
   test("routes: params, query, access and envelopes", async () => {
     const t = createTestContext({ roles: { pc: { name: "PC" } }, members: [{ id: "1" }] });
+    const json = {
+      "cache-control": "no-store",
+      "content-type": "application/json; charset=utf-8",
+      vary: "Cookie, Authorization",
+      "x-content-type-options": "nosniff",
+    };
     expect(await callRoute(plugin, t, "GET /items/42?q=x", { viewer: "1" })).toEqual({
       status: 200,
       body: { id: "42", q: "x" },
-      headers: {},
+      headers: json,
     });
     expect((await callRoute(plugin, t, "GET /items/42")).status).toBe(401);
     expect((await callRoute(plugin, t, "GET /items/42", { viewer: "2" })).status).toBe(403);
     expect((await callRoute(plugin, t, "GET /nope", { viewer: "1" })).status).toBe(404);
     const created = await callRoute(plugin, t, "POST /roles", { viewer: "1" });
-    expect(created).toEqual({ status: 201, body: { ok: true }, headers: {} });
+    expect(created).toEqual({ status: 201, body: { ok: true }, headers: json });
     expect(t.member("1")?.hasRole("pc")).toBe(true);
     expect(t.roleChanges).toEqual([{ member: "1", role: "pc", action: "add" }]);
   });
@@ -285,4 +291,44 @@ describe("fakes", () => {
       vi.useRealTimers();
     }
   });
+});
+
+// internal/plugin/status.go and internal/runtime/runtime.go:188.
+test("status lines can be read back, like the instance status", () => {
+  const t = createTestContext();
+  t.ctx.status.set("captcha", "Turnstile secret missing: using the visual challenge");
+  t.ctx.status.set("grant", "needs discord.members.moderate");
+  expect(Object.fromEntries(t.status)).toEqual({
+    captcha: "Turnstile secret missing: using the visual challenge",
+    grant: "needs discord.members.moderate",
+  });
+  t.ctx.status.set("captcha", null);
+  t.ctx.status.set("grant", "");
+  expect(t.status.size).toBe(0);
+  expect(() => t.ctx.status.set("", "x")).toThrow(new TypeError("invalid feature diagnostic"));
+  expect(() => t.ctx.status.set("k".repeat(97), "x")).toThrow(TypeError);
+  expect(() => t.ctx.status.set("k", "x".repeat(321))).toThrow(TypeError);
+  for (let i = 0; i < 33; i++) t.ctx.status.set("line" + i, "m" + i);
+  expect(t.status.size).toBe(32);
+  expect(t.status.has("line32")).toBe(false);
+  t.ctx.status.set("line0", "updated");
+  expect(t.status.get("line0")).toBe("updated");
+});
+
+// The runtime's rule (internal/plugin/convert.go:390, disgoadapter/mapping.go:944): only
+// gateway messages carry the author's member; REST reads and sent messages do not.
+test("received messages carry the author's member, fetched and sent ones do not", async () => {
+  const t = createTestContext({
+    channels: { chat: { name: "chat" } },
+    members: [{ id: "1", username: "alice", nickname: "Al" }],
+  });
+  const alice = t.member("1")!;
+  const received = t.receive("chat", alice.user, "hello");
+  expect(received.member?.displayName).toBe("Al");
+  expect(received.content).toBe("hello");
+  const chat = t.ctx.server.channel("chat");
+  expect((await chat.message(received.id))?.member).toBeUndefined();
+  expect((await chat.messages()).map((m) => m.member)).toEqual([undefined]);
+  expect((await received.reply("hi")).member).toBeUndefined();
+  expect(t.receive("chat", { ...alice.user, id: "2" }, "x").member).toBeUndefined();
 });

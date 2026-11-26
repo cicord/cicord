@@ -156,7 +156,11 @@ describe("layout", () => {
     };
     const { user } = await start("/servers/pixel-haven/diagnostics", (url, init) => {
       if (url.pathname.endsWith("/dead-letters"))
-        return Response.json({ items: discarded ? [] : [task] });
+        return Response.json(
+          discarded
+            ? { items: [], total: 0, truncated: false }
+            : { items: [task], total: 120, truncated: true },
+        );
       if (url.pathname.endsWith("/dead-letters/t1/discard") && init.method === "POST") {
         discarded = true;
         return new Response(null, { status: 204 });
@@ -164,6 +168,8 @@ describe("layout", () => {
       return undefined;
     });
     await user.click(await screen.findByRole("button", { name: "Discard task" }));
+    const failed = screen.getByRole("region", { name: "Failed tasks and event deliveries" });
+    expect(within(failed).getByRole("status").textContent).toContain("oldest 1 of 120");
     expect(discarded).toBe(false);
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(await screen.findByText("expire")).toBeTruthy();

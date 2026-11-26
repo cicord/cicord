@@ -5,7 +5,9 @@ import { useT } from "../i18n/index.tsx";
 import { navigate } from "../router.tsx";
 import { featureUrl } from "./catalog.ts";
 import {
+  type AllPages,
   Empty,
+  Failure,
   FeatureLink,
   Outcome,
   Paging,
@@ -165,8 +167,32 @@ interface DrawView {
   round?: number;
   history?: string[];
   entries?: Entry[];
+  /** Next page of `entries` (`?cursor=`), absent on the last page. */
+  entriesCursor?: string;
   redacted?: boolean;
 }
+// The giveaway routes return entrants in pages of 1,000, in storage order.
+const byUserId = (a: Entry, b: Entry) => {
+  const x = BigInt(/^\d+$/.test(a.userId) ? a.userId : 0),
+    y = BigInt(/^\d+$/.test(b.userId) ? b.userId : 0);
+  return x < y ? -1 : x > y ? 1 : a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0;
+};
+/**
+ * The draw's public facts must be read from one state: every page repeats them, and a page
+ * that disagrees (a redraw while loading) fails the read instead of mixing two draws.
+ */
+const drawPages: AllPages<DrawView> = {
+  cursor: (d) => d.entriesCursor,
+  merge(all, page) {
+    for (const k of ["state", "commitment", "seed", "entrantsHash", "round", "entrants"] as const)
+      if (all[k] !== page[k]) throw new Error("the draw changed while it was loading");
+    const entries = [...(all.entries ?? []), ...(page.entries ?? [])].toSorted(byUserId);
+    const merged: DrawView = { ...all, entries };
+    if (page.entriesCursor) merged.entriesCursor = page.entriesCursor;
+    else delete merged.entriesCursor;
+    return merged;
+  },
+};
 function Entries({ entries }: { entries: Entry[] }) {
   const c = useCopy();
   return entries.length ? (
@@ -192,24 +218,68 @@ function Entries({ entries }: { entries: Entry[] }) {
     <Empty />
   );
 }
+interface EntryPage {
+  entries: Entry[];
+  entriesCursor?: string;
+}
 function StaffEntries({ id }: { id: string }) {
   const c = useCopy(),
     [opened, set] = useState(false);
-  const read = useRead<{ entries: Entry[] }>(
-    opened ? "/giveaways/" + encodeURIComponent(id) + "/entries" : undefined,
-  );
+  const path = "/giveaways/" + encodeURIComponent(id) + "/entries";
+  const read = useRead<EntryPage>(opened ? path : undefined);
   return (
     <details onToggle={(e) => set(e.currentTarget.open)}>
       <summary>{c("Staff participant list", "Liste des participants pour l’équipe")}</summary>
-      {opened ? <Result read={read}>{(d) => <Entries entries={d.entries} />}</Result> : null}
+      {opened ? (
+        <Result read={read}>
+          {(first) => <MoreEntries key={read.snapshot?.key} first={first} path={path} />}
+        </Result>
+      ) : null}
     </details>
+  );
+}
+/** The first page of entrants, then one more page per "Load more" (`entriesCursor`). */
+function MoreEntries({ first, path }: { first: EntryPage; path: string }) {
+  const c = useCopy(),
+    { api } = useScope();
+  const [loaded, setLoaded] = useState<EntryPage>(first);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const next = loaded.entriesCursor;
+  async function more() {
+    if (!next || pending) return;
+    setPending(true);
+    setError(undefined);
+    try {
+      const page = await api.get<EntryPage>(path, { cursor: next });
+      setLoaded((all) => ({
+        entries: [...all.entries, ...page.entries],
+        ...(page.entriesCursor ? { entriesCursor: page.entriesCursor } : {}),
+      }));
+    } catch (e) {
+      setError(e);
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <>
+      <Entries entries={loaded.entries} />
+      {next ? (
+        <Button variant="secondary" disabled={pending} onClick={() => void more()}>
+          {c("Load more", "Afficher plus")}
+        </Button>
+      ) : null}
+      {error ? <Failure error={error} retry={() => void more()} /> : null}
+    </>
   );
 }
 export function Draw({ id }: { id: string }) {
   const c = useCopy(),
     date = useDate(),
     { staff, plugin } = useScope();
-  const read = useRead<DrawView>("/giveaways/" + encodeURIComponent(id));
+  // Every page of entrants is read before anything is shown, so the published list is whole.
+  const read = useRead<DrawView>("/giveaways/" + encodeURIComponent(id), undefined, drawPages);
   return (
     <Result read={read}>
       {(d) => (

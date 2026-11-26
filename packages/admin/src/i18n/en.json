@@ -17,13 +17,27 @@
     "complete": "All plugins reported",
     "partial": "Some plugins could not verify this request",
     "download": "Download JSON report",
+    "failedPartway": "The erasure stopped part-way. The steps that ran are listed below; erase again to finish.",
+    "orphanedHint": "An uninstalled installation still holds data about this member. Purge its data below to complete the erasure.",
     "status": {
       "ok": "Completed",
       "failed": "Hook failed",
       "unavailable": "Plugin unavailable",
       "undeclared": "No policy declared",
-      "no-member-data": "No member data"
+      "no-member-data": "No member data",
+      "disabled": "Installation disabled",
+      "orphaned": "Uninstalled, data kept"
     }
+  },
+  "orphanedData": {
+    "title": "Data of uninstalled plugins",
+    "description": "These installations were removed from git, but their stored data is kept. Purge it once you no longer need it.",
+    "counts": "{{records}} records, {{rankings}} ranking entries, {{index}} index documents, {{tasks}} tasks",
+    "purge": "Purge data",
+    "question": "Purge all data of {{instance}}?",
+    "effect": "Records, rankings, index documents, queued tasks and DM receipts of this installation are deleted. This cannot be undone. Reinstalling it later starts empty.",
+    "confirmLabel": "Type {{instance}} to confirm",
+    "failed": "Could not purge the data"
   },
   "app": {
     "admin": "admin",
@@ -306,6 +320,12 @@
     },
     "failedTimes_one": "Failed once",
     "failedTimes_other": "Failed {{count}} times",
+    "unconfirmedAudit": {
+      "title": "Unexplained actions by bot {{bot}}",
+      "text_one": "Discord's audit log shows {{count}} action by this bot that Cicord did not make (last: {{action}}).",
+      "text_other": "Discord's audit log shows {{count}} actions by this bot that Cicord did not make (last: {{action}}).",
+      "hint": "Someone else may be using the bot's token. Check the audit log, and reset the token in the Discord Developer Portal if you do not recognize these actions. The warning clears a day after the last one."
+    },
     "facts": {
       "revision": "Active revision",
       "lastSync": "Last sync",
@@ -1493,6 +1513,8 @@
     "eventPayload": "Event payload",
     "disabledFeatures": "Disabled features",
     "deadLetters": "Failed tasks and event deliveries",
+    "deadLettersTruncated": "Showing the oldest {{shown}} of {{total}}.",
+    "loadMore": "Load more",
     "attempts": "{{count}} attempts",
     "retryTask": "Retry task",
     "discardTask": "Discard task",

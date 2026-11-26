@@ -38,6 +38,7 @@ describe("role.members()", () => {
       mention: "<@&role-staff>",
       position: 1,
       mentionable: false,
+      permissions: "0",
     });
     expect(JSON.parse(JSON.stringify(t.ctx.server.role("mod")))).toMatchObject({ id: "900" });
     expect(typeof t.member("9")!.roles[0].members).toBe("function");

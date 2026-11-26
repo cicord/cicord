@@ -113,3 +113,27 @@ describe("voice", () => {
     await expect(t.ctx.server.voiceMembers("hub")).rejects.toThrow("ServerVoiceStates");
   });
 });
+
+// internal/plugin/ops.go:1540-1770: createChannel provisionKey and its recovery.
+test("a provisionKey returns the channel it created while it exists", async () => {
+  const t = createTestContext();
+  const { server } = t.ctx;
+  const key = "room:trigger-1:42";
+  expect(await server.recoverOwnedChannel({ provisionKey: key })).toEqual({ status: "missing" });
+  const first = await server.createChannel({ name: "Room", type: "voice", provisionKey: key });
+  const replay = await server.createChannel({ name: "Room", type: "voice", provisionKey: key });
+  expect(replay.id).toBe(first.id);
+  expect(t.createdChannels).toHaveLength(1);
+  expect(await server.recoverOwnedChannel({ provisionKey: key })).toEqual({
+    status: "owned",
+    id: first.id,
+  });
+  // Once the channel is gone, the key is forgotten and a new channel is created.
+  await server.deleteChannel({ id: first.id });
+  expect(await server.recoverOwnedChannel({ provisionKey: key })).toEqual({ status: "missing" });
+  await server.createChannel({ name: "Room", type: "voice", provisionKey: key });
+  expect(t.createdChannels).toHaveLength(2);
+  await expect(
+    server.createChannel({ name: "Room", provisionKey: "k".repeat(201) }),
+  ).rejects.toThrow(new TypeError("provisionKey must be a string of at most 200 bytes"));
+});

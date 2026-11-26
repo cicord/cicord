@@ -12,6 +12,11 @@ interface Item {
   type: string;
   createdAt: string;
 }
+interface TicketPage {
+  items: Item[];
+  cursor?: string;
+}
+const dedupe = (items: Item[]) => [...new Map(items.map((i) => [i.id, i])).values()];
 interface Person {
   id: string;
   displayName: string;
@@ -29,7 +34,38 @@ interface Detail extends Item {
 export function TicketDesk({ plugin }: { plugin: PortalPlugin }) {
   const t = useT();
   const q = t.tickets;
-  const staff = usePluginQuery<{ items: Item[] }>(plugin, "/tickets");
+  const { client } = useCicord();
+  const server = useServer();
+  // GET /tickets is paged (at most 50 per page, newest first): `cursor` continues it, and a
+  // selective page may be short or empty while still carrying one.
+  const staff = usePluginQuery<TicketPage>(plugin, "/tickets");
+  const [more, setMore] = useState<{ first: TicketPage; items: Item[]; cursor?: string }>();
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
+  // A refetched first page restarts the list.
+  const pages = staff.data && more?.first === staff.data ? more : undefined;
+  const staffItems = staff.data && dedupe([...staff.data.items, ...(pages?.items ?? [])]);
+  const nextCursor = pages ? pages.cursor : staff.data?.cursor;
+  async function loadMore() {
+    const first = staff.data;
+    if (!first || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setMoreFailed(false);
+    try {
+      const page = await client
+        .plugin(server.key, plugin.bot, plugin.instance)
+        .get<TicketPage>("/tickets", { cursor: nextCursor });
+      setMore({
+        first,
+        items: [...(pages?.items ?? []), ...page.items],
+        ...(page.cursor ? { cursor: page.cursor } : {}),
+      });
+    } catch {
+      setMoreFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
   const mine = usePluginQuery<{ items: Item[] }>(plugin, "/tickets/mine");
   const [tab, setTab] = useState<"mine" | "staff">("staff");
   const [selected, select] = useState(
@@ -43,8 +79,10 @@ export function TicketDesk({ plugin }: { plugin: PortalPlugin }) {
     queue && staff.data ? plugin : undefined,
     "/tickets/stats",
   );
-  const items = list.data?.items.filter((i) => filter === "all" || i.status === filter) ?? [];
-  const activeStaff = queue && !!staff.data?.items.some((item) => item.id === selected);
+  const listItems = queue ? staffItems : mine.data?.items;
+  const items = listItems?.filter((i) => filter === "all" || i.status === filter) ?? [];
+  const activeStaff = queue && !!staffItems?.some((item) => item.id === selected);
+  const canLoadMore = queue && !!nextCursor;
   return (
     <div className="page tickets">
       <header className="page__header">
@@ -108,7 +146,7 @@ export function TicketDesk({ plugin }: { plugin: PortalPlugin }) {
       ) : !list.data ? (
         <Spinner label={t.loading} />
       ) : items.length === 0 ? (
-        <Notice>{q.empty}</Notice>
+        !canLoadMore && <Notice>{q.empty}</Notice>
       ) : (
         <ul className="ticket-list">
           {items.map((i) => (
@@ -130,6 +168,14 @@ export function TicketDesk({ plugin }: { plugin: PortalPlugin }) {
           ))}
         </ul>
       )}
+      {list.data && canLoadMore && (
+        <div>
+          <Button variant="secondary" disabled={loadingMore} onClick={() => void loadMore()}>
+            {q.loadMore}
+          </Button>
+        </div>
+      )}
+      {queue && moreFailed && <Notice tone="error">{q.moreFailed}</Notice>}
       {selected && /^\d+$/.test(selected) && list.data && (
         <TicketDetail
           key={selected + activeStaff}

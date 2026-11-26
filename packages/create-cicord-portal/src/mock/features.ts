@@ -27,6 +27,12 @@ export const demoPlugins: PortalPlugin[] = [
   },
   {
     bot: "community",
+    instance: "giveaways",
+    plugin: "giveaways",
+    routes: ["GET /giveaways/:id", "GET /giveaways/:id/entries"],
+  },
+  {
+    bot: "community",
     instance: "announcements",
     plugin: "announcements",
     routes: ["GET /scheduled", "POST /preview", "POST /compose"],
@@ -58,6 +64,29 @@ export function mockFeatures() {
     },
     { id: "game-night", name: "Friday community game night", start: "2026-12-11T19:00:00Z" },
   ];
+  const entrants = [
+    { userId: "1002", weight: 1 },
+    { userId: "1005", weight: 2 },
+    { userId: "1007", weight: 1 },
+  ];
+  const draw = {
+    id: "7",
+    prize: "Winter Cup jersey",
+    state: "ended",
+    closesAt: 1795363200000,
+    commitment: "5f1c0e9a8b7d6c5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e",
+    entrants: entrants.length,
+    winners: ["1005"],
+    seed: "c0ffee",
+  };
+  // Entrants come in pages of 1,000 with `entriesCursor`, absent on the last page.
+  const entryPage = (search: URLSearchParams) => {
+    const start = Number(search.get("cursor") ?? 0) || 0;
+    const entries = entrants.slice(start, start + 1000);
+    return start + 1000 < entrants.length
+      ? { entries, entriesCursor: String(start + 1000) }
+      : { entries };
+  };
   let birthday: { day: number; month: number } | null = null,
     verified = false,
     queued = true;
@@ -105,6 +134,10 @@ export function mockFeatures() {
         p.reason = input.reason;
         return json(p);
       }
+    }
+    if (instance === "giveaways") {
+      if (route === "/giveaways/7") return json({ ...draw, ...entryPage(search) });
+      if (route === "/giveaways/7/entries") return staff ? json(entryPage(search)) : denied();
     }
     if (!role) return denied();
     if (instance === "birthdays" && route === "/birthday") {

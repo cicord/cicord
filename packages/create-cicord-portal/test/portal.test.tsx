@@ -234,3 +234,101 @@ test("ticket staff can assign, reply privately or publicly, and lose detail acce
   expect(await screen.findByText("Could not load the tickets.")).toBeTruthy();
   expect(screen.queryByText("A delivery question")).toBeNull();
 }, 15000);
+
+test("the staff ticket list follows the cursor on demand, past an empty page", async () => {
+  const runtime = createMockRuntime();
+  const user = userEvent.setup();
+  const pages: (string | null)[] = [];
+  const ticket = (id: string, subject: string) => ({
+    id,
+    subject,
+    type: "general",
+    status: "open",
+    createdAt: "2026-01-01T12:00:00Z",
+  });
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+  const client = createCicordClient({
+    fetch: async (input, init) => {
+      const url = new URL(input, window.location.origin);
+      if (url.pathname.endsWith("/plugins/moderator/tickets/tickets")) {
+        const cursor = url.searchParams.get("cursor");
+        pages.push(cursor);
+        if (!cursor) return json({ items: [ticket("9", "Newest ticket")], cursor: "c1" });
+        // A selective page can be empty and still continue.
+        if (cursor === "c1") return json({ items: [], cursor: "c2" });
+        return json({ items: [ticket("3", "Oldest ticket")] });
+      }
+      if (url.pathname.endsWith("/tickets/mine")) return json({ items: [] });
+      const response = await runtime.fetch(input, init);
+      if (
+        url.pathname.endsWith("/portal/my-community") ||
+        url.pathname.endsWith("/portal/servers")
+      ) {
+        const data = await response.json();
+        for (const server of data.items ?? [data])
+          for (const p of server.plugins ?? [])
+            if (p.plugin === "tickets") p.routes.push("GET /tickets/:id/transcript");
+        return json(data);
+      }
+      return response;
+    },
+  });
+  window.history.replaceState(null, "", "/tickets?role=moderator&cicord_token=signed");
+  render(<App config={{ client, login: () => {}, mock: true }} />);
+  await screen.findByRole("button", { name: /Newest ticket/ }, { timeout: 4000 });
+  await user.click(screen.getByRole("button", { name: "Load more" }));
+  await screen.findByRole("button", { name: "Load more" });
+  expect(pages).toEqual([null, "c1"]);
+  await user.click(screen.getByRole("button", { name: "Load more" }));
+  await screen.findByRole("button", { name: /Oldest ticket/ });
+  expect(screen.getByRole("button", { name: /Newest ticket/ })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  expect(pages).toEqual([null, "c1", "c2"]);
+}, 15000);
+
+test("home tells a member apart from a rate-limited or failing membership check", async () => {
+  const runtime = createMockRuntime();
+  let answer: { status: number; code: string } = { status: 429, code: "rate_limited" };
+  const client = createCicordClient({
+    fetch: async (input, init) => {
+      const path = new URL(input, window.location.origin).pathname;
+      if (path.endsWith("/portal/my-community/me"))
+        return new Response(
+          JSON.stringify({ error: { code: answer.code, message: answer.code } }),
+          {
+            status: answer.status,
+            headers: { "Content-Type": "application/json", "Retry-After": "2" },
+          },
+        );
+      return runtime.fetch(input, init);
+    },
+  });
+  window.history.replaceState(null, "", "/?cicord_token=signed");
+  const { unmount } = render(<App config={{ client, login: () => {}, mock: true }} />);
+  expect(
+    await screen.findByText(/Too many requests right now/, {}, { timeout: 4000 }),
+  ).toBeTruthy();
+  expect(screen.queryByText(/not a member of this server/)).toBeNull();
+  unmount();
+  for (const next of [
+    { status: 503, code: "unavailable" },
+    { status: 403, code: "forbidden" },
+  ]) {
+    answer = next;
+    sessionStorage.clear();
+    window.history.replaceState(null, "", "/?cicord_token=signed");
+    const view = render(<App config={{ client, login: () => {}, mock: true }} />);
+    if (next.status === 403) {
+      expect(
+        await screen.findByText(/not a member of this server/, {}, { timeout: 4000 }),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Too many requests right now/)).toBeNull();
+    } else {
+      expect(
+        await screen.findByText(/Too many requests right now/, {}, { timeout: 4000 }),
+      ).toBeTruthy();
+    }
+    view.unmount();
+  }
+}, 15000);

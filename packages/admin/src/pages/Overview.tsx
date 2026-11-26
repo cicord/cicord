@@ -17,7 +17,7 @@ import {
   Time,
 } from "../components/common.tsx";
 import { LiveSummary } from "../components/discord.tsx";
-import { ErrorState, HumanErrorCallout } from "../components/errors.tsx";
+import { Callout, ErrorState, HumanErrorCallout } from "../components/errors.tsx";
 import { HistoryList } from "../components/history.tsx";
 import { PauseButton, PausedBadge } from "../components/pause.tsx";
 import {
@@ -151,6 +151,24 @@ export function OverviewPage({ serverKey }: { serverKey: string }) {
             ) : undefined
           }
         />
+      ) : null}
+
+      {s.unconfirmedAudit && s.unconfirmedAudit.count > 0 ? (
+        <Callout
+          tone="warning"
+          title={t("overview.unconfirmedAudit.title", { bot: s.unconfirmedAudit.bot })}
+          meta={
+            <span data-testid="unconfirmed-audit">
+              <Time iso={s.unconfirmedAudit.first} /> – <Time iso={s.unconfirmedAudit.last} />
+            </span>
+          }
+          hint={t("overview.unconfirmedAudit.hint")}
+        >
+          {t("overview.unconfirmedAudit.text", {
+            count: s.unconfirmedAudit.count,
+            action: s.unconfirmedAudit.lastAction,
+          })}
+        </Callout>
       ) : null}
 
       <Card>

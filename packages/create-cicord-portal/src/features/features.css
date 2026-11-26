@@ -114,6 +114,23 @@
   gap: 0.4rem;
   min-height: 2.75rem;
 }
+.feature-form .feature-code {
+  max-width: 14rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.feature-form .feature-code[aria-invalid="true"] {
+  border-color: var(--cicord-danger-text);
+}
+.feature-hint,
+.feature-field-error {
+  margin: 0.3rem 0 0;
+  font-size: 0.9rem;
+}
+.feature-field-error {
+  color: var(--cicord-danger-text);
+}
 .feature-challenge {
   display: block;
   max-width: 100%;

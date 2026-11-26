@@ -77,19 +77,44 @@ export function Failure({ error, retry }: { error: unknown; retry?: () => void }
 type Snapshot<T> = { key: string; data: T } | { key: string; error: unknown };
 // The caller supplies the response contract of a discovered endpoint.
 // eslint-disable-next-line typescript/no-unnecessary-type-parameters
-export function useRead<T>(path: string | undefined, query?: Query) {
+/**
+ * Reads every page before showing anything: `cursor` gives the next page's `?cursor=`
+ * (undefined on the last one) and `merge` folds a page into what was read so far.
+ */
+export interface AllPages<T> {
+  cursor: (page: T) => string | undefined;
+  merge: (all: T, page: T) => T;
+}
+const MAX_PAGES = 1000;
+export function useRead<T>(path: string | undefined, query?: Query, pages?: AllPages<T>) {
   const { api } = useScope();
   const key = JSON.stringify([path, query]);
   const [revision, refresh] = useState(0);
   const identity = key + "#" + revision;
   const [snapshot, set] = useState<Snapshot<T>>();
+  const paging = useRef(pages);
+  paging.current = pages;
   useEffect(() => {
     if (!path) return undefined;
     const abort = new AbortController();
     const [, params] = JSON.parse(key) as [string, Query | undefined];
     const load = async () => {
       try {
-        const data = await api.get<T>(path, params, { signal: abort.signal });
+        let data: T = await api.get<T>(path, params, { signal: abort.signal });
+        const all = paging.current;
+        const seen = new Set<string>();
+        if (all) {
+          let cursor = all.cursor(data);
+          while (cursor !== undefined) {
+            // A cursor that repeats, or an endless list, is an error rather than a hang.
+            if (seen.has(cursor) || seen.size >= MAX_PAGES)
+              throw new Error("pagination did not end");
+            seen.add(cursor);
+            const page: T = await api.get<T>(path, { ...params, cursor }, { signal: abort.signal });
+            data = all.merge(data, page);
+            cursor = all.cursor(page);
+          }
+        }
         if (!abort.signal.aborted) set({ key: identity, data });
       } catch (error) {
         if (!abort.signal.aborted) set({ key: identity, error });

@@ -187,6 +187,24 @@ export interface ServerStatus {
    * to it. `sync` still reports the drift from git.
    */
   paused?: PauseInfo;
+  /**
+   * Set when Discord's audit log recorded actions by a project bot that Cicord did not emit
+   * (someone else may be using the bot token). Advisory; expires a day after the last one.
+   */
+  unconfirmedAudit?: UnconfirmedAudit;
+}
+
+/** Audited actions by a project bot that match no operation Cicord emitted. */
+export interface UnconfirmedAudit {
+  /** Key of the bot. */
+  bot: string;
+  count: number;
+  first: Timestamp;
+  last: Timestamp;
+  /** Discord audit log entry id of the last one. */
+  lastEntry: string;
+  /** Name of the last action, e.g. `role.update`. */
+  lastAction: string;
 }
 
 /** Who paused enforcement on a server, when and why. */
@@ -263,6 +281,17 @@ export interface DeadTask {
   attempts: number;
   failures: number;
   reason: string;
+}
+
+/** `GET /servers/{server}/dead-letters`: the oldest dead letters of a server. */
+export interface DeadLetterPage {
+  items: DeadTask[];
+  /** Dead letters of the server, including those the page leaves out. */
+  total: number;
+  /** True when more dead letters follow this page. */
+  truncated: boolean;
+  /** Opaque cursor of the next page (`deadLetters(server, {cursor})`); null on the last page. */
+  nextCursor: string | null;
 }
 
 export interface FeatureAdvisory {
@@ -1664,12 +1693,24 @@ export interface PortalAnalytics {
   heatmap: number[][];
 }
 
-/** Server-wide result of a member export or erasure. */
+/**
+ * Server-wide result of a member export or erasure. `orphaned`: an uninstalled
+ * installation still holds data that mentions the member; its hooks cannot run, so the
+ * report is incomplete until an admin purges that installation's data
+ * (`admin.purgeOrphanedData`).
+ */
 export interface PrivacyReport {
   complete: boolean;
   plugins: {
     instance: string;
-    status: "ok" | "failed" | "unavailable" | "undeclared" | "no-member-data";
+    status:
+      | "ok"
+      | "failed"
+      | "unavailable"
+      | "undeclared"
+      | "no-member-data"
+      | "disabled"
+      | "orphaned";
     records?: {
       name: string;
       policy: "erase" | "anonymize" | "retain";
@@ -1681,4 +1722,20 @@ export interface PrivacyReport {
   }[];
   tasksErased: number;
   interopErased: number;
+}
+
+/** Rows one plugin installation holds in each storage table. */
+export interface ScopeUsage {
+  /** `plugin:<bot>/<instance>/<server>`. */
+  scope: string;
+  records: number;
+  rankings: number;
+  index: number;
+  tasks: number;
+}
+
+/** Data an uninstalled installation left on a server (`GET /servers/{server}/orphaned-data`). */
+export interface OrphanedInstance extends ScopeUsage {
+  /** `<bot>/<instance>`. */
+  instance: string;
 }

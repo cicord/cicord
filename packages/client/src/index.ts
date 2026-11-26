@@ -20,7 +20,7 @@ export type {
   StoredSession,
   TokenStore,
 } from "./client.ts";
-export { CicordApiError, codeForStatus, isCicordApiError } from "./errors.ts";
+export { CicordApiError, codeForStatus, isCicordApiError, partialPrivacyReport } from "./errors.ts";
 export { openEventStream, SseParser } from "./sse.ts";
 export type { EventStream, EventStreamOptions, ServerSentEvent, StreamFetch } from "./sse.ts";
 export { onboardingApi } from "./onboarding.ts";

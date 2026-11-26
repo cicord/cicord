@@ -1,5 +1,6 @@
+import { CicordApiError } from "@cicord/client";
 import { Button, Notice } from "@cicord/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Empty,
   Failure,
@@ -141,8 +142,111 @@ type Challenge =
   | { verified: boolean }
   | { state: string; retryAt?: number }
   | { id: string; method: "button" }
-  | { id: string; method: "visual"; image: string; choices: number[]; prompt: string }
+  | {
+      id: string;
+      method: "visual";
+      kind?: undefined;
+      image: string;
+      choices: number[];
+      prompt: string;
+    }
+  | TypedChallenge
   | { id: string; method: Provider; siteKey: string };
+/**
+ * A code drawn in the image, typed by the member: `length` characters (4 to 8) from
+ * `charset` ("alphanumeric" by default: A–Z and 0–9). The answer is posted as a string,
+ * trimmed and upper-cased; the plugin compares it case-insensitively.
+ */
+interface TypedChallenge {
+  id: string;
+  /** The plugin's method name ("typed"; "visual" is accepted too): `kind` decides the form. */
+  method: "typed" | "visual";
+  kind: "typed";
+  image: string;
+  length: number;
+  charset?: "digits" | "alphanumeric";
+  prompt: string;
+}
+function TypedCode({
+  value,
+  code,
+  setCode,
+  rejected,
+}: {
+  value: TypedChallenge;
+  code: string;
+  setCode: (code: string) => void;
+  rejected: boolean;
+}) {
+  const c = useCopy(),
+    id = useId();
+  const digits = value.charset === "digits";
+  const length = Math.min(8, Math.max(4, Math.trunc(value.length) || 4));
+  return (
+    <fieldset>
+      <legend>{value.prompt}</legend>
+      {value.image.startsWith("data:image/png;base64,") ? (
+        <img
+          className="feature-challenge"
+          src={value.image}
+          alt={c(
+            "Verification image with a code to type",
+            "Image de vérification contenant un code à saisir",
+          )}
+        />
+      ) : null}
+      <label htmlFor={id + "-code"}>
+        {c("Code shown in the image", "Code affiché dans l’image")}
+      </label>
+      <input
+        id={id + "-code"}
+        name="answer"
+        className="feature-code"
+        required
+        value={code}
+        minLength={length}
+        maxLength={length + 4}
+        pattern={
+          String.raw`\s*` + (digits ? "[0-9]" : "[A-Za-z0-9]") + `{${length}}` + String.raw`\s*`
+        }
+        inputMode={digits ? "numeric" : "text"}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize={digits ? "off" : "characters"}
+        spellCheck={false}
+        readOnly={rejected}
+        aria-invalid={rejected || undefined}
+        aria-describedby={id + (rejected ? "-error" : "-hint")}
+        onChange={(e) => setCode(e.target.value)}
+      />
+      {rejected ? (
+        <p id={id + "-error"} className="feature-field-error" role="alert">
+          {c(
+            "This code was not accepted, and the challenge can only be tried once. Get a new one.",
+            "Ce code n’a pas été accepté, et la vérification ne peut être tentée qu’une fois. Demandez-en une nouvelle.",
+          )}
+        </p>
+      ) : (
+        <p id={id + "-hint"} className="feature-hint">
+          {digits
+            ? c(`${length} digits.`, `${length} chiffres.`)
+            : c(
+                `${length} letters or digits. Upper and lower case are the same.`,
+                `${length} lettres ou chiffres. Majuscules et minuscules sont équivalentes.`,
+              )}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+const typedAnswer = (value: TypedChallenge, code: string) => {
+  const answer = code.trim().toUpperCase();
+  const length = Math.min(8, Math.max(4, Math.trunc(value.length) || 4));
+  const valid = new RegExp(
+    (value.charset === "digits" ? "^[0-9]" : "^[A-Z0-9]") + `{${length}}$`,
+  ).test(answer);
+  return valid ? answer : undefined;
+};
 function ChallengeState({ state }: { state: Exclude<Challenge, { id: string }> }) {
   const c = useCopy(),
     date = useDate();
@@ -180,6 +284,7 @@ function Attempt({
   const c = useCopy(),
     write = useWrite();
   const [answer, setAnswer] = useState<number>(),
+    [code, setCode] = useState(""),
     [token, setToken] = useState(""),
     [result, setResult] = useState<Exclude<Challenge, { id: string }>>();
   if (result)
@@ -191,16 +296,28 @@ function Attempt({
         ) : null}
       </>
     );
-  const visual = value.method === "visual";
+  const typed = "kind" in value && value.kind === "typed" ? value : undefined;
+  const pick = value.method === "visual" && value.kind !== "typed" ? value : undefined;
+  const visual = pick !== undefined;
+  const typedCode = typed ? typedAnswer(typed, code) : undefined;
+  // Every checked attempt consumes the challenge: after a 422 only a new one can be tried.
+  // Other errors (429 lock, 503, network) keep the generic failure notice.
+  const rejected =
+    typed !== undefined && write.error instanceof CicordApiError && write.error.status === 422;
+  const failed = typed !== undefined && write.error !== undefined;
   return (
     <form
       className="feature-form"
       onSubmit={(e) => {
         e.preventDefault();
+        if (typed && (typedCode === undefined || failed)) return;
         void write.run<Exclude<Challenge, { id: string }>>(
           "POST",
           "/challenge",
-          { id: value.id, ...(visual ? { answer } : token ? { token } : {}) },
+          {
+            id: value.id,
+            ...(typed ? { answer: typedCode } : visual ? { answer } : token ? { token } : {}),
+          },
           (r) => {
             setToken("");
             setResult(r);
@@ -208,18 +325,19 @@ function Attempt({
         );
       }}
     >
-      {visual ? (
+      {typed ? <TypedCode value={typed} code={code} setCode={setCode} rejected={rejected} /> : null}
+      {pick ? (
         <fieldset>
-          <legend>{value.prompt}</legend>
-          {value.image.startsWith("data:image/png;base64,") ? (
+          <legend>{pick.prompt}</legend>
+          {pick.image.startsWith("data:image/png;base64,") ? (
             <img
               className="feature-challenge"
-              src={value.image}
+              src={pick.image}
               alt={c("Verification image", "Image de vérification")}
             />
           ) : null}
           <div className="feature-actions">
-            {value.choices.map((n) => (
+            {pick.choices.map((n) => (
               <label className="feature-choice" key={n}>
                 <input
                   type="radio"
@@ -241,12 +359,24 @@ function Attempt({
       <Button
         type="submit"
         disabled={
-          write.pending || (visual ? answer === undefined : value.method !== "button" && !token)
+          write.pending ||
+          failed ||
+          (typed
+            ? typedCode === undefined
+            : visual
+              ? answer === undefined
+              : value.method !== "button" && !token)
         }
       >
         {c("Verify my account", "Vérifier mon compte")}
       </Button>
-      {write.error ? <Failure error={write.error} retry={reload} /> : null}
+      {rejected ? (
+        <Button variant="secondary" onClick={reload}>
+          {c("Try a new challenge", "Nouvelle vérification")}
+        </Button>
+      ) : write.error ? (
+        <Failure error={write.error} retry={reload} />
+      ) : null}
     </form>
   );
 }

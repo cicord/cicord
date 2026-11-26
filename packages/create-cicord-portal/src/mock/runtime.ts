@@ -215,15 +215,23 @@ export function createMockRuntime() {
         return auth(() =>
           viewerRole() === "member"
             ? error(403, "forbidden", "this route requires the moderator role")
-            : json({
-                items: tickets.filter(
-                  (t) => !query.get("status") || t.status === query.get("status"),
-                ),
-              }),
+            : json(ticketPage(query)),
         );
       default:
         return error(404, "not_found", `mock: no route ${method} ${path}`);
     }
+  };
+
+  // GET /tickets pages newest first, 50 per page, with an opaque cursor that is absent on
+  // the last page (tickets plugin contract).
+  const ticketPage = (query: URLSearchParams) => {
+    const after = query.get("cursor");
+    const matching = tickets.filter(
+      (t) => !query.get("status") || t.status === query.get("status"),
+    );
+    const start = after ? matching.findIndex((t) => t.id === after) + 1 : 0;
+    const items = matching.slice(start, start + 50);
+    return start + 50 < matching.length ? { items, cursor: items.at(-1)!.id } : { items };
   };
 
   const fetch: FetchLike = async (input, init) => {

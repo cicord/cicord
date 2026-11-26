@@ -39,6 +39,8 @@ test("server diagnostics exposes directed contracts, missing grants and event pa
               reason: "handler failed",
             },
           ],
+          total: 1,
+          truncated: false,
         };
       if (path.endsWith("/e1/event")) {
         payloadReads++;

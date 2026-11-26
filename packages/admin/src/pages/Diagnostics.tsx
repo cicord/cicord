@@ -1,5 +1,6 @@
 /** Diagnostics: the setup wizard's live checklist, re-runnable at any time. */
 import { useState } from "react";
+import type { DeadTask } from "@cicord/client";
 import { useCicord } from "@cicord/react";
 import { RotateCw } from "lucide-react";
 import { Page, PageHeader, Time } from "../components/common.tsx";
@@ -43,25 +44,49 @@ export function DiagnosticsPage({ serverKey }: { serverKey: string }) {
 function FailedTasks({ serverKey }: { serverKey: string }) {
   const { t } = useTranslation();
   const { client } = useCicord();
-  const list = usePoll((signal) => client.admin.deadLetters(serverKey, { signal }), 15_000);
+  const list = usePoll((signal) => client.admin.deadLetters(serverKey, {}, { signal }), 15_000);
   const action = useAction();
   const [payload, setPayload] = useState<{ id: string; value: string } | null>(null);
   const [discard, setDiscard] = useState<string | null>(null);
+  // Pages loaded with "Load more", after the polled first page. Keyset cursors keep them
+  // valid while letters are resolved; a resolved letter is dropped locally.
+  const [more, setMore] = useState<{ items: DeadTask[]; next: string | null } | null>(null);
   function decide(id: string, decision: "retry" | "discard") {
     void action.run(async () => {
       await client.admin.resolveDeadLetter(serverKey, id, decision);
       setDiscard(null);
+      setMore((m) => (m ? { ...m, items: m.items.filter((task) => task.id !== id) } : m));
       list.refresh();
     });
   }
   if (list.error) return <SetupError error={list.error} />;
-  if (!list.data?.length) return null;
+  if (!list.data?.items.length) return null;
+  const next = (more ? more.next : list.data.nextCursor) ?? null;
+  const partial = next !== null || (!more && list.data.truncated);
+  const items = [...list.data.items];
+  for (const task of more?.items ?? []) {
+    if (!items.some((shown) => shown.id === task.id)) items.push(task);
+  }
+  function loadMore(cursor: string) {
+    void action.run(async () => {
+      const page = await client.admin.deadLetters(serverKey, { cursor });
+      setMore((m) => ({ items: [...(m?.items ?? []), ...page.items], next: page.nextCursor }));
+    });
+  }
   return (
     <section className="mb-6" aria-label={t("diagnostics.deadLetters")}>
       <h2 className="mb-2 font-semibold">{t("diagnostics.deadLetters")}</h2>
       {action.error ? <SetupError error={action.error} /> : null}
+      {partial && (
+        <p role="status" className="mb-2 text-sm text-muted-foreground">
+          {t("diagnostics.deadLettersTruncated", {
+            shown: items.length,
+            total: Math.max(list.data.total, items.length),
+          })}
+        </p>
+      )}
       <ul className="divide-y rounded-md border px-3">
-        {list.data.map((task) => (
+        {items.map((task) => (
           <li key={task.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div>
               <p className="font-medium">{task.name}</p>
@@ -140,6 +165,17 @@ function FailedTasks({ serverKey }: { serverKey: string }) {
           </li>
         ))}
       </ul>
+      {next !== null && (
+        <Button
+          className="mt-2"
+          size="sm"
+          variant="outline"
+          disabled={action.pending}
+          onClick={() => loadMore(next)}
+        >
+          {t("diagnostics.loadMore")}
+        </Button>
+      )}
     </section>
   );
 }

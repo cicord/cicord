@@ -113,3 +113,35 @@ export type _Types = [
   >,
   Assert<Equals<AllowedMentions["users"], AllowedMentions["roles"]>>,
 ];
+
+// Role.permissions is Discord's decimal bitfield (internal/discord/names.go:16-67).
+test("roles expose their permissions as Discord's decimal bitfield", () => {
+  const t = createTestContext({
+    roles: {
+      admin: { name: "Admin", permissions: ["Administrator"] },
+      mod: { name: "Mod", permissions: ["KickMembers", "ManageRoles", "SendPolls", "PinMessages"] },
+      plain: { name: "Plain" },
+    },
+  });
+  const perms = (key: string) => t.ctx.server.role(key).permissions;
+  expect(perms("admin")).toBe("8");
+  expect(BigInt(perms("mod") ?? "")).toBe((1n << 1n) | (1n << 28n) | (1n << 49n) | (1n << 51n));
+  expect(perms("plain")).toBe("0");
+});
+
+test("cicordBotIds lists the test bot and the project's other bots", () => {
+  const t = createTestContext({ server: { otherCicordBotIds: ["42"] } });
+  expect(t.ctx.server.cicordBotIds).toEqual([t.ctx.bot.user.id, "42"]);
+  expect(createTestContext().ctx.server.cicordBotIds).toEqual([t.ctx.bot.user.id]);
+});
+
+test("the bot's own permissions come from its member entry, to test degraded modes", async () => {
+  const t = createTestContext({
+    roles: { mover: { name: "Mover", permissions: ["MoveMembers"] } },
+    members: [{ id: "bot", roles: ["mover"] }],
+  });
+  const bot = await t.ctx.server.member(t.ctx.bot.user.id);
+  expect(bot?.permissions).toContain("MoveMembers");
+  expect(bot?.permissions).not.toContain("ManageServer");
+  expect(await createTestContext().ctx.server.member("bot")).toBeUndefined();
+});

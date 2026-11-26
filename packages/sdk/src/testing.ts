@@ -22,6 +22,11 @@
  * Voice: `harness.setVoice(userId, channel)` connects, moves or (with `null`) disconnects a
  * member and returns the `VoiceStateUpdate` to pass to a `voiceStateUpdate` handler;
  * `member.moveTo()` / `disconnect()` update the same voice states (`voiceMoves` records them).
+ *
+ * Interop: `callProvider` runs a provider query or action like the host, in a fresh module
+ * realm without `onStart`, read-only for queries, with contract validation;
+ * `fakeProviders` gives a consumer peers that validate its input. `ctx.privacy.pseudonym`
+ * only works inside `eraseMember` / `exportMember`, for that member.
  */
 import { createHash } from "node:crypto";
 import type {
@@ -54,6 +59,7 @@ import type {
   ModalInteraction,
   Permission,
   PluginDefinition,
+  RawRouteResponse,
   ReplyInput,
   Role,
   RoleRef,
@@ -65,8 +71,22 @@ import type {
   VoiceStateUpdate,
 } from "@cicord/sdk";
 import { createHmac } from "node:crypto";
+import { checkRenderSpec } from "./testing-render.js";
 import { testStorage } from "./testing-storage.js";
 import { CapabilityError, PluginUnavailableError } from "./index.js";
+export {
+  callProvider,
+  contractViolation,
+  fakeProviders,
+  readOnlyContext,
+  type ContractSchema,
+  type FakeProvider,
+  type ProviderCall,
+  type ProviderLoader,
+} from "./testing-interop.js";
+
+/** The host's error for `ctx.privacy.pseudonym` outside a privacy hook for that member. */
+const PSEUDONYM_SCOPE = "privacy.pseudonym is scoped to the member of the current privacy hook";
 
 // ───────────────────────────────────────────────────────────── options
 
@@ -200,6 +220,11 @@ export interface TestContextOptions {
     protection?: Awaited<ReturnType<Server["protection"]>>;
     /** Permissions of `@everyone` (part of every `member.permissions`). Default none. */
     everyonePermissions?: Permission[];
+    /**
+     * `ctx.server.cicordBotIds`: the user ids of the project's other bots on this server.
+     * The test bot's own id is always included.
+     */
+    otherCicordBotIds?: string[];
   };
   /** spec.access of the server: `member.access` is "admin" / "moderator" for these. */
   access?: { admins?: TestPrincipals; moderators?: TestPrincipals };
@@ -276,7 +301,14 @@ export interface TestHarness {
   readonly ctx: Context;
   /** Run the administrative erase hook, including scoped removal of member-tagged index data. */
   eraseMember(plugin: PluginDefinition, userId: string): Promise<{ erased: number }>;
+  /** Run the administrative export hook. Like erase, it may pseudonymize only `userId`. */
+  exportMember(plugin: PluginDefinition, userId: string): Promise<Json>;
   /** Seed a received message, including interaction follow-ups. */
+  /**
+   * A message received from `author`, as `messageCreate` or `directMessage` get it: it has
+   * `member` when the author is a member of the test server. The stored copy that
+   * `channel.messages()` and `channel.message(id)` return has no `member`, like Discord.
+   */
   receive(channel: string | undefined, author: User, input: MessageInput): Message;
   setReaction(messageId: string, emoji: string, userId: string, present?: boolean): void;
   readonly crossposts: Set<string>;
@@ -313,6 +345,11 @@ export interface TestHarness {
   readonly requests: { url: string; init: Parameters<Context["http"]["fetch"]>[1] }[];
   /** Raw KV contents (values are JSON clones; expired keys are dropped on access). */
   readonly kv: Map<string, Json>;
+  /**
+   * The instance status lines set with `ctx.status.set(key, message)`, by key, as the admin
+   * shows them. `null` or `""` removes a line; like the runtime, at most 32 lines are kept.
+   */
+  readonly status: ReadonlyMap<string, string>;
   /** Live member (roles reflect role changes). */
   member(userId: string): Member | undefined;
   addMember(init: TestMemberInit): Member;
@@ -405,6 +442,20 @@ const ALL_PERMISSIONS = [
 type MissingPermissions = Exclude<Permission, (typeof ALL_PERMISSIONS)[number]>;
 const allPermissionsListed: [MissingPermissions] extends [never] ? true : never = true;
 void allPermissionsListed;
+
+/**
+ * Discord's permission bitfield as a decimal string, like `Role.permissions`. Bits follow
+ * internal/discord/names.go:16-67: ALL_PERMISSIONS is in bit order, except that bits 47 and
+ * 48 are unused (SendPolls is 49).
+ */
+function permissionBitfield(permissions: readonly Permission[]): string {
+  let bits = 0n;
+  for (const p of permissions) {
+    const i = (ALL_PERMISSIONS as readonly Permission[]).indexOf(p);
+    if (i >= 0) bits |= 1n << BigInt(i < 47 ? i : i + 2);
+  }
+  return bits.toString();
+}
 
 const SNOWFLAKE = /^\d{1,20}$/;
 const MAX_MENTION_IDS = 100;
@@ -579,14 +630,18 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         throw new TypeError("invalid attachment content type");
     }
   };
+  const attachmentBytes = new Map<string, Uint8Array>();
   const attachment = (f: UploadFile): Attachment => {
     validateFiles({ files: [f] });
     const data = new Uint8Array(f.data);
     const id = String(++attachmentSeq);
+    const url = `https://cdn.discordapp.com/attachments/test/${id}/${encodeURIComponent(f.name)}`;
+    // Render sources can be these CDN URLs: the size check reads their bytes.
+    attachmentBytes.set(url, data);
     return {
       id,
       filename: f.name,
-      url: `https://cdn.discordapp.com/attachments/test/${id}/${encodeURIComponent(f.name)}`,
+      url,
       contentType: f.contentType,
       description: f.description,
       size: data.length,
@@ -666,6 +721,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       mentionable: r.mentionable ?? false,
       managed: r.managed ?? false,
       declaredMembers: r.declaredMembers ?? r.holders !== undefined,
+      permissions: permissionBitfield(r.permissions ?? []),
     });
     roles.set(key, role);
     rolePermissions.set(id, r.permissions ?? []);
@@ -1435,6 +1491,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       );
     },
     ...(options.server?.preferredLocale ? { preferredLocale: options.server.preferredLocale } : {}),
+    cicordBotIds: Object.freeze([
+      botUser.id,
+      ...(options.server?.otherCicordBotIds ?? []).filter((id) => id !== botUser.id),
+    ]),
     async members(opts = {}) {
       return memberList(opts);
     },
@@ -1652,8 +1712,16 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       need("discord.members.read");
       return members.get(userId);
     },
-    async recoverOwnedChannel(topic) {
+    async recoverOwnedChannel(request) {
       need("discord.channels.manage");
+      // internal/plugin/ops.go:1540-1600: by provisionKey ("owned" or "missing") or by topic.
+      if (typeof request !== "string" && request.provisionKey !== "") {
+        const id = provisioned(request.provisionKey);
+        return id ? { status: "owned", id } : { status: "missing" };
+      }
+      const topic = typeof request === "string" ? request : "";
+      if (!topic || Array.from(topic).length > 1024)
+        throw new TypeError("provide the original provisioning topic");
       const found = createdChannels.filter(
         (c) => c.options.topic === topic && channels.has(c.channel.id),
       );
@@ -1672,6 +1740,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       }
       for (const target of Object.keys(opts.overwrites ?? {})) checkTarget("createChannel", target);
       voiceSettings("createChannel", opts.type === "voice", opts);
+      // internal/plugin/ops.go:1680-1720: a provisionKey whose channel still exists returns
+      // that channel instead of creating another one.
+      const key = opts.provisionKey;
+      if (key) {
+        const existing = provisioned(key);
+        if (existing) return channels.get(existing)!;
+      }
       const channel = register(undefined, {
         name: opts.name,
         type: opts.type ?? "text",
@@ -1689,6 +1764,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       for (const [target, o] of Object.entries(opts.overwrites ?? {}))
         ows.set(target, { allow: [...(o.allow ?? [])], deny: [...(o.deny ?? [])] });
       channelOverwrites.set(channel.id, ows);
+      if (key) provisions.set(key, channel.id);
       return channel;
     },
     async editChannel(ref, opts) {
@@ -1790,13 +1866,48 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
             options.locales?.[name]?.[key] ?? options.locales?.[name.split("-")[0] ?? name]?.[key];
           if (template !== undefined) break;
         }
-        return (template ?? key).replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (original, k: string) =>
-          Object.hasOwn(vars, k) ? String(vars[k]) : original,
+        // internal/plugin/locales.go:16-31 and internal/locales/catalog.go:134-161.
+        if (utf8Length(key) > 256 || Object.keys(vars).length > 50)
+          throw new TypeError("invalid translation arguments");
+        for (const v of Object.values(vars))
+          if (typeof v === "string" && utf8Length(v) > MAX_TEXT)
+            throw new TypeError(`i18n.t: a variable exceeds ${MAX_TEXT} bytes`);
+        const value = template ?? key;
+        if (utf8Length(value) > MAX_TEXT) throw textTooLong(key);
+        let delta = 0;
+        const out = value.replace(
+          /\{([a-zA-Z][a-zA-Z0-9_]*)\}/g,
+          (original, k: string, at: number) => {
+            const v: unknown = Object.hasOwn(vars, k) ? vars[k] : undefined;
+            // Strings, numbers and booleans are substituted; anything else keeps the placeholder.
+            const sub =
+              typeof v === "string" || typeof v === "number" || typeof v === "boolean"
+                ? String(v)
+                : original;
+            // Checked while building, so a repeated placeholder cannot build a huge string.
+            delta += utf8Length(sub) - utf8Length(original);
+            if (utf8Length(value.slice(0, at + original.length)) + delta > MAX_TEXT)
+              throw textTooLong(key);
+            return sub;
+          },
         );
+        if (utf8Length(out) > MAX_TEXT) throw textTooLong(key);
+        return out;
       },
     };
   }
+  // createChannel provisionKey → channel id, per installation. A key whose channel is gone
+  // is forgotten, like the host (which also forgets keys after 30 days).
+  const provisions = new Map<string, string>();
+  const provisioned = (key: unknown): string | undefined => {
+    if (typeof key !== "string" || new TextEncoder().encode(key).length > 200)
+      throw new TypeError("provisionKey must be a string of at most 200 bytes");
+    const id = provisions.get(key);
+    if (id !== undefined && !channels.has(id)) provisions.delete(key);
+    return provisions.get(key);
+  };
   const featureReports = new Map<string, boolean>();
+  const statusLines = new Map<string, string>();
   const ctx: Context = {
     i18n: translator(),
 
@@ -1817,14 +1928,12 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     render: {
       async image(spec) {
         need("render");
-        if (
-          !Number.isInteger(spec.width) ||
-          !Number.isInteger(spec.height) ||
-          Math.min(spec.width, spec.height) < 1 ||
-          Math.max(spec.width, spec.height) > 2048 ||
-          (spec.layers?.length ?? 0) > 64
-        )
-          throw new Error("invalid render dimensions or layer count");
+        checkRenderSpec(spec, (key) => {
+          if (key.startsWith("url:")) return attachmentBytes.get(key.slice(4));
+          const file = assets.get(key.slice("asset:".length));
+          if (!file) throw new Error("unknown plugin asset");
+          return file;
+        });
         if (!options.renderImage)
           throw new Error("createTestContext: pass renderImage to test card rendering");
         return options.renderImage(spec);
@@ -1896,11 +2005,11 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     config,
     log: { debug: log("debug"), info: log("info"), warn: log("warn"), error: log("error") },
     privacy: {
-      async pseudonym(userId) {
-        const hash = createHmac("sha256", "cicord-test-privacy")
-          .update(server.id + "\0" + userId)
-          .digest("hex");
-        return "deleted-user-" + hash.slice(0, 16);
+      // Like the host: a pseudonym exists only for the subject of the current privacy hook
+      // (eraseMember / exportMember), so anonymized records cannot be linked back to a
+      // live member from ordinary handlers.
+      async pseudonym() {
+        throw new Error(PSEUDONYM_SCOPE);
       },
     },
     kv,
@@ -1918,8 +2027,23 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
     },
     status: {
+      // internal/plugin/status.go and internal/runtime/runtime.go:188 (featureStatus).
       set(key, message) {
-        if (message) log("warn")(key + ": " + message);
+        if (
+          typeof key !== "string" ||
+          key.length === 0 ||
+          utf8Length(key) > 96 ||
+          (message !== null && message !== undefined && typeof message !== "string") ||
+          utf8Length(message ?? "") > 320
+        )
+          throw new TypeError("invalid feature diagnostic");
+        if (!message) {
+          statusLines.delete(key);
+          return;
+        }
+        log("warn")(key + ": " + message);
+        // At most 32 lines: a new key beyond them is dropped, an existing one is updated.
+        if (statusLines.has(key) || statusLines.size < 32) statusLines.set(key, message);
       },
     },
     secrets: {
@@ -2076,6 +2200,18 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
 
   testTranslators.set(ctx, translator);
 
+  function privacyHook(subject: string): Context["privacy"] {
+    return {
+      async pseudonym(member) {
+        if (member !== subject) throw new Error(PSEUDONYM_SCOPE);
+        const hash = createHmac("sha256", "cicord-test-privacy")
+          .update(server.id + "\0" + member)
+          .digest("hex");
+        return "deleted-user-" + hash.slice(0, 16);
+      },
+    };
+  }
+
   return {
     ctx,
     async eraseMember(plugin, userId) {
@@ -2083,13 +2219,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       const tag = "member-" + userId;
       const scoped: Context = {
         ...ctx,
-        privacy: {
-          async pseudonym(member) {
-            if (member !== userId)
-              throw new Error("pseudonym is scoped to the member of the current privacy hook");
-            return ctx.privacy.pseudonym(member);
-          },
-        },
+        privacy: privacyHook(userId),
         index(name, opts) {
           const api = ctx.index(name, opts);
           if (!grants || grants.has("storage.index")) return api;
@@ -2112,6 +2242,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         for (const [id, doc] of docs) if (doc.tags?.includes(tag)) docs.delete(id);
       return result;
     },
+    async exportMember(plugin, userId) {
+      if (!plugin.privacy) throw new Error("plugin has no privacy hooks");
+      return plugin.privacy.export({ ...ctx, privacy: privacyHook(userId) }, userId);
+    },
     attachment,
     validateFiles,
     onceFor: onceFor(),
@@ -2132,6 +2266,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     threads,
     requests,
     kv: kvData,
+    status: statusLines,
     member: (id) => members.get(id),
     addMember,
     receive(ref, author, input) {
@@ -2140,7 +2275,14 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         : (channels.get("interaction-channel") ??
           register(undefined, { id: "interaction-channel", name: "interaction" }));
       if (!channel) throw new Error("unknown channel");
-      return makeMessage(channel, author, input);
+      const message = makeMessage(channel, author, input);
+      // Like the gateway payload: a received message carries its author's member (in a DM,
+      // the member of this server, as `directMessage` gets it). Fetched and sent messages
+      // (history, channel.message(), send/reply results) have none, like Discord's REST API.
+      const member = members.get(author.id);
+      if (!member) return message;
+      const view = Object.defineProperties({}, Object.getOwnPropertyDescriptors(message));
+      return Object.defineProperty(view, "member", { value: member, enumerable: true }) as Message;
     },
     setReaction,
     crossposts,
@@ -2177,6 +2319,12 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   };
 }
 
+// internal/locales/catalog.go:104: a translated text, and each string variable, is at most 64 KiB.
+const MAX_TEXT = 64 << 10;
+const utf8Length = (s: string) => new TextEncoder().encode(s).length;
+const textTooLong = (key: string) =>
+  new TypeError(`i18n.t ${JSON.stringify(key)}: translated text exceeds ${MAX_TEXT} bytes`);
+
 // ───────────────────────────────────────────────────────────── routes
 
 export interface RouteCall {
@@ -2198,15 +2346,16 @@ export interface RouteResult {
  * The runtime's reading of `RouteResponse`: an object whose only keys are `status` (number),
  * `body` and `headers` is a response envelope; anything else is a 200 JSON body.
  */
+const isRawRouteResponse = (response: RouteResponse): response is RawRouteResponse =>
+  !!response &&
+  typeof response === "object" &&
+  !Array.isArray(response) &&
+  typeof response.status === "number" &&
+  "raw" in response &&
+  "contentType" in response;
+
 export function normalizeRouteResponse(response: RouteResponse): RouteResult {
-  if (
-    response &&
-    typeof response === "object" &&
-    !Array.isArray(response) &&
-    typeof response.status === "number" &&
-    "raw" in response &&
-    "contentType" in response
-  ) {
+  if (isRawRouteResponse(response)) {
     if (
       typeof response.raw !== "string" ||
       typeof response.contentType !== "string" ||
@@ -2240,10 +2389,67 @@ export function normalizeRouteResponse(response: RouteResponse): RouteResult {
   return { status: 200, body: response, headers: {} };
 }
 
+// internal/api/auth.go:155-187: a route requires a role at least this high.
+const ROUTE_ROLES = { public: 0, scoped: 0, member: 1, moderator: 2, admin: 3 } as const;
+const routeFailure = (status: number, code: string, message: string): RouteResult => ({
+  status,
+  body: { error: { code, message } },
+  headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+});
+
+/**
+ * internal/api/portal.go:302 (routeHeader): the response headers a plugin route may set.
+ * Cookies, redirects, CORS, security and hop-by-hop headers are dropped.
+ */
+function routeHeader(name: string, isPublic: boolean): boolean {
+  const lk = name.toLowerCase();
+  switch (lk) {
+    case "content-disposition":
+    case "content-language":
+    case "etag":
+    case "last-modified":
+    case "expires":
+    case "retry-after":
+      return true;
+    case "cache-control":
+      return isPublic;
+  }
+  return (
+    lk.startsWith("x-") &&
+    !lk.startsWith("x-cicord-") &&
+    ![
+      "x-content-type-options",
+      "x-frame-options",
+      "x-forwarded-for",
+      "x-forwarded-host",
+      "x-forwarded-proto",
+    ].includes(lk)
+  );
+}
+
+/**
+ * What the runtime accepts from a handler (internal/plugin/sdk.js routeOut and
+ * internal/plugin/instance.go:1380-1414): an integer status of 200 to 599, string header
+ * values, at most 4 MiB serialized. Anything else fails the route.
+ */
+function checkRouteResult(response: RouteResponse, result: RouteResult): void {
+  if (!Number.isInteger(result.status) || result.status < 200 || result.status > 599)
+    throw new Error(`invalid route status ${String(result.status)}`);
+  if (Object.values(result.headers).some((v) => typeof v !== "string"))
+    throw new Error("route header values must be strings");
+  const serialized = isRawRouteResponse(response)
+    ? `raw\n${result.status}\n${response.contentType}\n${response.raw}`
+    : (JSON.stringify({ status: result.status, body: result.body, headers: result.headers }) ?? "");
+  if (new TextEncoder().encode(serialized).length > 4 << 20)
+    throw new Error("route response exceeds 4 MiB");
+}
+
 /**
  * Calls a plugin route like the runtime does. `route` is `"<METHOD> <path>"`; the path may
  * be concrete (`"POST /answers/42"`) and is matched against declared patterns (`/answers/:id`).
- * Route `access` is checked: anonymous viewers get 401 unless the route is public.
+ * Like internal/api/portal.go: route `access` is checked (`401` for anonymous viewers of
+ * non-public routes, `403` below the route's role: member, moderator or admin), an invalid
+ * response is a `500`, plugin headers are filtered and the core's own are added.
  */
 export async function callRoute(
   plugin: PluginDefinition,
@@ -2262,43 +2468,34 @@ export async function callRoute(
     const params = matchPath(pattern, path);
     if (!params) continue;
 
+    const access: keyof typeof ROUTE_ROLES = definition.access ?? "member";
+    const need = ROUTE_ROLES[access];
     let viewer: { user: User; member?: Member } | undefined;
     if (call.viewer !== undefined) {
       const member = harness.member(call.viewer);
       viewer = member ? { user: member.user, member } : { user: makeUser({ id: call.viewer }) };
     }
-    if (definition.access !== "public" && !viewer) {
-      return {
-        status: 401,
-        body: { error: { code: "unauthenticated", message: "login required" } },
-        headers: {},
-      };
-    }
     const scoped = call.scopedLink
       ? harness.links.find((l) => l.url === call.scopedLink && l.scope)
       : undefined;
     const scope = scoped?.scope;
-    if (
-      definition.access === "scoped"
-        ? !scoped ||
-          scoped.revoked ||
-          (scoped.expiresAt ?? 0) <= Date.now() ||
-          scoped.member !== viewer?.user.id ||
-          (params.id !== undefined && params.id !== scope?.id)
-        : !!call.scopedLink
-    ) {
-      return {
-        status: 403,
-        headers: {},
-        body: { error: { code: "forbidden", message: "matching case link required" } },
-      };
-    }
-    if (definition.access === "member" && !viewer?.member) {
-      return {
-        status: 403,
-        body: { error: { code: "forbidden", message: "members only" } },
-        headers: {},
-      };
+    if (access === "scoped") {
+      if (!viewer) return routeFailure(401, "unauthenticated", "case sign-in required");
+      if (!scoped || scoped.member !== viewer.user.id)
+        return routeFailure(403, "forbidden", "a matching case link is required");
+      if (scoped.revoked || (scoped.expiresAt ?? 0) <= Date.now())
+        return routeFailure(403, "forbidden", "expired or revoked case link");
+      // instance.go:1352: a scoped route's :id must be the link's resource.
+      if (params.id !== undefined && params.id !== scope?.id)
+        return serveRoute({ status: 403, body: undefined, headers: {} }, false, true, false);
+    } else if (call.scopedLink) {
+      return routeFailure(403, "forbidden", "this session is restricted to its case");
+    } else if (viewer) {
+      const role = viewer.member ? ROUTE_ROLES[viewer.member.access ?? "member"] : 0;
+      if (role < need)
+        return routeFailure(403, "forbidden", `this route requires the ${access} role`);
+    } else if (need > 0) {
+      return routeFailure(401, "unauthenticated", "authentication required");
     }
     const response = await definition.handler(harness.ctx, {
       params,
@@ -2307,16 +2504,47 @@ export async function callRoute(
       ...(viewer ? { viewer } : {}),
       ...(scope ? { scope } : {}),
     });
-    const result = normalizeRouteResponse(response);
-    if (result.headers["x-content-type-options"] && definition.access !== "public")
-      result.headers["cache-control"] = "no-store";
-    return result;
+    let result: RouteResult;
+    try {
+      result = normalizeRouteResponse(response);
+      checkRouteResult(response, result);
+    } catch {
+      return routeFailure(500, "internal", "the plugin route failed");
+    }
+    return serveRoute(
+      result,
+      access === "public",
+      viewer !== undefined,
+      isRawRouteResponse(response),
+    );
   }
-  return {
-    status: 404,
-    body: { error: { code: "not_found", message: `no route ${method} ${path}` } },
-    headers: {},
-  };
+  return routeFailure(404, "not_found", "not found");
+}
+
+/** internal/api/portal.go:419-457: the HTTP answer the portal gets for a valid response. */
+function serveRoute(
+  result: RouteResult,
+  isPublic: boolean,
+  signedIn: boolean,
+  raw: boolean,
+): RouteResult {
+  const headers: Record<string, string> = {};
+  if (!raw)
+    for (const [k, v] of Object.entries(result.headers))
+      if (routeHeader(k, isPublic)) headers[k.toLowerCase()] = v;
+  headers["x-content-type-options"] = "nosniff";
+  headers["vary"] = "Cookie, Authorization";
+  if (!isPublic || signedIn) headers["cache-control"] = "no-store";
+  if (raw) {
+    headers["content-type"] = result.headers["content-type"]!;
+    return { status: result.status, body: result.body, headers };
+  }
+  if (result.body === undefined)
+    return { status: result.status === 200 ? 204 : result.status, body: undefined, headers };
+  headers["content-type"] = "application/json; charset=utf-8";
+  headers["cache-control"] = "no-store";
+  // The portal receives JSON: what does not serialize (undefined fields, Dates…) is converted.
+  return { status: result.status, body: JSON.parse(JSON.stringify(result.body)), headers };
 }
 
 function matchPath(pattern: string, path: string): Record<string, string> | undefined {
@@ -2416,7 +2644,9 @@ function fakeInteraction(
     checkMentions(message);
     result.followUps.push(message);
     // Follow-ups need no capability: the message is not recorded in `sent`.
-    return harness.receive(channel?.id, harness.ctx.bot.user, message);
+    const sent = harness.receive(channel?.id, harness.ctx.bot.user, message);
+    // A sent message has no `member`, like Discord's REST answer: return the stored copy.
+    return harness.message(sent.id) ?? sent;
   };
   return {
     id: `interaction-${kind}-${id}`,

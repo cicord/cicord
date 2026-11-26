@@ -1,4 +1,4 @@
-import type { ApiErrorCode, Diagnostic, Json } from "./types.ts";
+import type { ApiErrorCode, Diagnostic, Json, PrivacyReport } from "./types.ts";
 
 const CODE_BY_STATUS: Record<number, ApiErrorCode> = {
   400: "invalid",
@@ -11,6 +11,7 @@ const CODE_BY_STATUS: Record<number, ApiErrorCode> = {
   415: "invalid",
   421: "forbidden",
   422: "invalid",
+  429: "rate_limited",
   500: "internal",
   503: "unavailable",
 };
@@ -39,6 +40,8 @@ export class CicordApiError extends Error {
   readonly details: string | undefined;
   /** Humanized error code (`HumanErrorCode`), when the runtime explains the error. */
   readonly reason: string | undefined;
+  /** Seconds to wait before retrying, from the `Retry-After` header (429, 503). */
+  readonly retryAfter: number | undefined;
 
   constructor(init: {
     code: ApiErrorCode;
@@ -50,6 +53,7 @@ export class CicordApiError extends Error {
     hint?: string | undefined;
     details?: string | undefined;
     reason?: string | undefined;
+    retryAfter?: number | undefined;
   }) {
     super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
     this.name = "CicordApiError";
@@ -60,6 +64,7 @@ export class CicordApiError extends Error {
     this.hint = init.hint;
     this.details = init.details;
     this.reason = init.reason;
+    this.retryAfter = init.retryAfter;
   }
 
   /** Builds the error from a response status and its (already parsed) body. */
@@ -67,6 +72,7 @@ export class CicordApiError extends Error {
     status: number,
     statusText: string,
     body: Json | string | undefined,
+    retryAfter?: number,
   ): CicordApiError {
     if (body && typeof body === "object" && !Array.isArray(body)) {
       const error = (body as { error?: unknown }).error;
@@ -90,6 +96,7 @@ export class CicordApiError extends Error {
           hint: str(e.hint),
           details: str(e.details),
           reason: str(e.reason),
+          retryAfter,
         });
       }
     }
@@ -99,10 +106,26 @@ export class CicordApiError extends Error {
       status,
       message: text && text.length <= 200 ? text : statusText || `HTTP ${status}`,
       ...(body === undefined ? {} : { body }),
+      retryAfter,
     });
   }
 }
 
 export function isCicordApiError(error: unknown, code?: ApiErrorCode): error is CicordApiError {
   return error instanceof CicordApiError && (code === undefined || error.code === code);
+}
+
+/**
+ * The partial report of a member erasure that failed part-way (`admin.memberData`
+ * rejected with `unavailable`): what already ran before the failure. Undefined for any
+ * other error.
+ */
+export function partialPrivacyReport(error: unknown): PrivacyReport | undefined {
+  if (!(error instanceof CicordApiError) || !error.body || typeof error.body !== "object") {
+    return undefined;
+  }
+  const report = (error.body as { report?: unknown }).report;
+  return report && typeof report === "object" && Array.isArray((report as PrivacyReport).plugins)
+    ? (report as PrivacyReport)
+    : undefined;
 }
