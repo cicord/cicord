@@ -5,6 +5,7 @@
  * examples/showcase. State lives in sessionStorage so it
  * survives the reload that follows a login.
  */
+import { mockFeatures } from "./features.ts";
 import type { FetchLike } from "@cicord/client";
 import { leaderboard, onboardingConfig, portalServer, roles, tickets, user } from "./data.ts";
 
@@ -53,6 +54,7 @@ function viewerRole(): "member" | "moderator" | "admin" {
 
 export function createMockRuntime() {
   let state = load();
+  const features = mockFeatures();
   const save = (next: Partial<MockState>) => {
     state = { ...state, ...next };
     try {
@@ -170,6 +172,8 @@ export function createMockRuntime() {
   const route = (method: string, path: string, body: unknown, query: URLSearchParams): Response => {
     const auth = (fn: () => Response) =>
       state.loggedIn ? fn() : error(401, "unauthenticated", "login required");
+    const feature = features(method, path, body, query, state.loggedIn ? viewerRole() : undefined);
+    if (feature) return feature;
     const key = portalServer.key;
     switch (`${method} ${path}`) {
       case "POST /auth/link":

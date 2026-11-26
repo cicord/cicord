@@ -34,10 +34,28 @@ From the least to the most effort, a community can:
 | Profile | The member's roles and data | Sign-in |
 | Leaderboard | XP ranking | The [levels plugin](../../plugins/official/#levels) |
 | Tickets | Open tickets, for moderators | The [tickets plugin](../../plugins/official/#tickets) |
+| Community tools | Available activities, member forms and staff workflows at `/community` | An installed plugin exposing a supported route |
 | Developers | A live map of the SDK: session, every portal endpoint, every plugin route | Linked for moderators, admins and in development |
 
 A page that needs a plugin only appears when the server runs that plugin. `spec.portal.pages`
 turns off Onboarding, Profile, Leaderboard and Tickets. The interface is in English and French.
+
+**Plugin pages.** The Tools link lists the features exposed by the selected server.
+Each link keeps the bot and plugin instance, including when a server runs several
+instances of a plugin. Member and staff forms send requests to that instance under
+the current viewer’s session. The server checks access again on each request.
+
+| Audience | Available workflows |
+|---|---|
+| Everyone | Event calendar and ICS subscription, published suggestions, poll totals, giveaway draw proofs and season standings |
+| Members | Verification, personal moderation history, birthday preferences, invitation standings, tag search, wallet, transactions and reward shop |
+| Authorized staff | Moderation case filters, appeals, verification queue, announcements with previews and scheduling, shift coverage, suggestion decisions, transaction ledger, tag editing, unanswered questions, audit search and export, guard rules and incidents |
+
+A Discord case link can open an appeal or a verification result for a former member.
+The result page calls only its scoped plugin route. The staff shift editor also supports
+members granted a plugin-specific staff role. Calendar subscriptions point directly to
+the public ICS route. Reward orders reuse the same purchase identifier after a network
+interruption, so a retry can retrieve the order without charging twice.
 
 The reference portal has no activity page: the server activity that
 [`spec.analytics.portal`](../../self-hosting/analytics/#configuration) shares is shown by a

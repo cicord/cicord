@@ -248,3 +248,256 @@ test("members with a delegated staff role can save a local weekly shift", async 
     shifts: [{ day: 2, start: 540, minutes: 60 }],
   });
 });
+
+test("public giveaway displays its commitment and never reads the staff entrant list", async () => {
+  const r = fixture("/giveaways/7", {
+    plugins: [plugin("giveaways", ["GET /giveaways/:id", "GET /giveaways/:id/entries"])],
+    handler: () => ({
+      body: {
+        id: "7",
+        prize: "Game key",
+        state: "ended",
+        closesAt: 123456,
+        commitment: "abc123",
+        entrants: 3,
+        winners: ["W1"],
+        seed: "secret-after-close",
+        entrantsHash: "hash77",
+        redacted: true,
+      },
+    }),
+  });
+  await screen.findByText("Game key");
+  expect(screen.getByText("abc123")).toBeTruthy();
+  expect(screen.getByText("secret-after-close")).toBeTruthy();
+  expect(screen.queryByText("Staff participant list")).toBeNull();
+  expect(r.map((x) => x.path)).toEqual(["desk/giveaways/giveaways/7"]);
+});
+test("polls render only counts, even when a response contains extra identities", async () => {
+  fixture("/polls/1", {
+    role: "admin",
+    plugins: [plugin("polls", ["GET /polls/:id"])],
+    handler: () => ({
+      body: {
+        question: "Game night?",
+        status: "closed",
+        voters: 4,
+        closesAt: "2026-01-01",
+        choices: [{ label: "Friday", votes: 4, voterIds: ["private-person"] }],
+        voterIds: ["private-person"],
+      },
+    }),
+  });
+  await screen.findByText("Friday");
+  expect(screen.queryByText("private-person")).toBeNull();
+});
+test("staff suggestion decisions require a reason and retain status pagination after hidden rows", async () => {
+  const u = userEvent.setup();
+  let updated = false;
+  const r = fixture("/suggestions/moderation", {
+    role: "moderator",
+    plugins: [
+      plugin("suggestions", ["GET /suggestions/moderation", "POST /suggestions/:id/status"]),
+    ],
+    handler: (m, _p, b, q) => {
+      if (m === "POST") {
+        updated = (b as { reason: string }).reason === "On the calendar";
+        return { body: { id: "7", status: "approved", score: 2 } };
+      }
+      return {
+        body:
+          q.get("offset") === "100"
+            ? { items: [{ id: "8", score: 0, status: "open", body: "Second page" }] }
+            : {
+                items: [
+                  { id: "7", score: 2, status: updated ? "approved" : "open", body: "Meetup" },
+                ],
+                nextOffset: 100,
+              },
+      };
+    },
+  });
+  await u.click(await screen.findByText("Change status"));
+  await u.selectOptions(screen.getByLabelText("New status"), "approved");
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Save decision" }).disabled).toBe(
+    true,
+  );
+  await u.type(screen.getByLabelText("Decision reason"), "On the calendar");
+  await u.click(screen.getByRole("button", { name: "Save decision" }));
+  await waitFor(() => expect(updated).toBe(true));
+  await u.click(await screen.findByRole("button", { name: "Next" }));
+  await screen.findByText("Second page");
+  expect(r.filter((x) => x.method === "POST")).toHaveLength(1);
+});
+test("a retried purchase reuses the same UUID and refreshes the wallet after delivery", async () => {
+  const u = userEvent.setup();
+  let attempts = 0,
+    points = 10;
+  const r = fixture("/economy", {
+    role: "member",
+    plugins: [plugin("economy", ["GET /wallet", "GET /shop", "POST /shop/:id/buy", "GET /ledger"])],
+    handler: (m, p) => {
+      if (m === "POST") {
+        if (++attempts === 1) return { status: 503, body: { error: { code: "network" } } };
+        points = 5;
+        return { body: { itemId: "blue", orderId: "R-1", state: "delivered" } };
+      }
+      return {
+        body: p.endsWith("/shop")
+          ? { items: [{ id: "blue", label: "Blue role", price: 5 }] }
+          : { balance: points },
+      };
+    },
+  });
+  await u.click(await screen.findByRole("button", { name: "Buy Blue role" }));
+  await u.click(screen.getByRole("button", { name: /Confirm purchase/ }));
+  await screen.findByText("The request could not be completed.");
+  await u.click(screen.getByRole("button", { name: /Check purchase/ }));
+  await screen.findByText(/Reward delivered/);
+  expect(screen.getByText("5 points", { selector: "strong" })).toBeTruthy();
+  const buys = r.filter((x) => x.method === "POST");
+  expect(buys).toHaveLength(2);
+  expect(buys[0]?.body).toEqual(buys[1]?.body);
+  expect((buys[0]!.body as { purchaseId: string }).purchaseId).toMatch(/^[a-f0-9-]{36}$/);
+  expect(r.some((x) => x.path.endsWith("/ledger"))).toBe(false);
+});
+test("tag search honors Git ownership and content audience, and saves an editable tag", async () => {
+  const u = userEvent.setup();
+  const r = fixture("/tags", {
+    role: "moderator",
+    plugins: [plugin("tags", ["GET /tags", "PUT /tags/:name", "DELETE /tags/:name"])],
+    handler: () => ({
+      body: {
+        canEdit: true,
+        entries: [
+          { name: "policy", text: "Git policy", aliases: [], keywords: [], editable: false },
+          { name: "help", text: "Contact us", aliases: [], keywords: [], editable: true },
+        ],
+      },
+    }),
+  });
+  await screen.findByText("Git policy");
+  expect(screen.queryByRole("button", { name: "Edit policy" })).toBeNull();
+  await u.click(screen.getByRole("button", { name: "Edit help" }));
+  const content = screen.getByLabelText("Content");
+  await u.clear(content);
+  await u.type(content, "Ask staff");
+  await u.click(screen.getByRole("button", { name: "Save tag" }));
+  await screen.findByText("Tags updated.");
+  expect(r.find((x) => x.method === "PUT")).toMatchObject({
+    path: "desk/tags/tags/help",
+    body: { name: "help", text: "Ask staff" },
+  });
+});
+test("audit filters target exact fields, and a denied re-read clears earlier text", async () => {
+  const u = userEvent.setup();
+  let matched = false;
+  const r = fixture("/audit-log", {
+    role: "moderator",
+    plugins: [plugin("audit-log", ["GET /search", "GET /export"])],
+    handler: (_m, _p, _b, q) => {
+      if (
+        q.get("channel") === "123" &&
+        q.get("member") === "456" &&
+        q.get("category") === "roles" &&
+        q.get("q") === "change"
+      ) {
+        matched = true;
+        return { status: 403, body: { error: { code: "forbidden" } } };
+      }
+      return {
+        body: {
+          items: [
+            { id: "event-1", at: 10, category: "members", text: "Previously visible record" },
+          ],
+        },
+      };
+    },
+  });
+  await screen.findByText("Previously visible record");
+  await u.type(screen.getByLabelText("Channel ID"), "123");
+  await u.type(screen.getByLabelText("Member ID"), "456");
+  await u.selectOptions(screen.getByLabelText("Event type"), "roles");
+  await u.type(screen.getByLabelText("Search audit entries"), "change");
+  await u.click(screen.getByRole("button", { name: "Search" }));
+  await screen.findByText("You no longer have access to this information.");
+  expect(screen.queryByText("Previously visible record")).toBeNull();
+  expect(matched).toBe(true);
+  expect(r.every((x) => x.path.endsWith("/search"))).toBe(true);
+});
+test("public calendar subscribes directly to the discovered instance's ICS feed", async () => {
+  fixture("/calendar", {
+    plugins: [plugin("community-events", ["GET /calendar", "GET /calendar.ics"], "weekends")],
+    handler: () => ({
+      body: [{ id: "id", name: "Community meetup", start: "2026-12-12T12:00:00Z" }],
+    }),
+  });
+  await screen.findByText("Community meetup");
+  const link = screen.getByRole<HTMLAnchorElement>("link", { name: "Download calendar (.ics)" });
+  expect(link.href).toContain("/api/v1/portal/my-community/plugins/desk/weekends/calendar.ics");
+  expect(link.href).not.toContain("token");
+});
+
+test("guard blocklist adds a hash to the selected instance and refreshes confirmed entries", async () => {
+  let hashes: string[] = [];
+  const u = userEvent.setup();
+  const r = fixture("/guard/blocklist?bot=desk&instance=west", {
+    role: "moderator",
+    plugins: [
+      plugin("guard", ["GET /blocklist", "POST /blocklist"], "east"),
+      plugin("guard", ["GET /blocklist", "POST /blocklist"], "west"),
+    ],
+    handler: (method, _p, b) => {
+      if (method === "POST") hashes = [(b as { value: string }).value];
+      return { body: { domains: [], hashes } };
+    },
+  });
+  await u.selectOptions(await screen.findByLabelText("Type"), "hash");
+  await u.type(screen.getByLabelText("Image hash"), "82673f3e3c60c327");
+  await u.click(screen.getByRole("button", { name: "Add to blocklist" }));
+  await screen.findByText("82673f3e3c60c327", { selector: "code" });
+  expect(r.find((x) => x.method === "POST")).toMatchObject({
+    path: "desk/west/blocklist",
+    body: { action: "add", kind: "hash", value: "82673f3e3c60c327" },
+  });
+});
+test("moderator stats show reported counts and pass the server's opaque cursor", async () => {
+  const u = userEvent.setup();
+  let second = false;
+  fixture("/moderation/statistics", {
+    role: "admin",
+    plugins: [plugin("moderation", ["GET /stats/moderators"])],
+    handler: (_m, _p, _b, q) => {
+      second = q.get("cursor") === "opaque";
+      return {
+        body: {
+          items: [
+            { moderatorId: second ? "moderator-two" : "moderator-one", count: second ? 3 : 5 },
+          ],
+          next: second ? null : "opaque",
+        },
+      };
+    },
+  });
+  await screen.findByText("moderator-one");
+  await u.click(screen.getByRole("button", { name: "Next" }));
+  await screen.findByText("moderator-two");
+  expect(second).toBe(true);
+});
+test("verification recovery ignores untrusted invite URLs", async () => {
+  fixture("/verification/return/case-a", {
+    role: "former",
+    plugins: [verification],
+    handler: () => ({
+      body: {
+        result: "kicked",
+        at: null,
+        method: null,
+        retryAt: 1760000000000,
+        invite: "https://example.net/fake",
+      },
+    }),
+  });
+  await screen.findByText("Eligible to return");
+  expect(screen.queryByRole("link", { name: "Return to Discord" })).toBeNull();
+});

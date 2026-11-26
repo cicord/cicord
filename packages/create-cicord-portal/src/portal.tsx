@@ -298,9 +298,7 @@ export function Shell({ children }: { children: ReactNode }) {
               visible(f, !!role && !!user, atLeast(role, "moderator") && !!user) &&
               server.plugins.some((p) => published(f, p)),
           ) ? (
-            <NavLink to="/community">
-              {t.locale.startsWith("fr") ? "Outils communautaires" : "Community tools"}
-            </NavLink>
+            <NavLink to="/community">{t.locale.startsWith("fr") ? "Outils" : "Tools"}</NavLink>
           ) : null}
           {showDevelopers ? <NavLink to="/developers">{t.nav.developers}</NavLink> : null}
         </nav>

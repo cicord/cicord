@@ -40,7 +40,10 @@ function loadWidget(provider: Provider): Promise<Widget> {
   const waiting = new Promise<Widget>((resolve, reject) => {
     const ready = "cicordReady_" + provider,
       script = document.createElement("script");
+    let settled = false;
     const finish = (widget?: Widget) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       delete win[ready];
       if (widget) resolve(widget);
@@ -264,9 +267,13 @@ export function Verification() {
 export function Recovery({ id }: { id: string }) {
   const c = useCopy(),
     date = useDate();
-  const read = useRead<{ result: string; method: string | null; at: number | null }>(
-    "/return/" + encodeURIComponent(id),
-  );
+  const read = useRead<{
+    result: string;
+    method: string | null;
+    at: number | string | null;
+    retryAt?: number;
+    invite?: string;
+  }>("/return/" + encodeURIComponent(id));
   return (
     <Result read={read}>
       {(r) => (
@@ -277,6 +284,22 @@ export function Recovery({ id }: { id: string }) {
             <>
               <dt>{c("Method", "Méthode")}</dt>
               <dd>{r.method}</dd>
+            </>
+          ) : null}
+          {r.retryAt ? (
+            <>
+              <dt>{c("Eligible to return", "Retour possible le")}</dt>
+              <dd>{date(r.retryAt)}</dd>
+            </>
+          ) : null}
+          {r.invite && /^https:\/\/discord\.gg\/[A-Za-z0-9_-]+$/.test(r.invite) ? (
+            <>
+              <dt>{c("Invitation", "Invitation")}</dt>
+              <dd>
+                <a href={r.invite} referrerPolicy="no-referrer">
+                  {c("Return to Discord", "Rejoindre le serveur Discord")}
+                </a>
+              </dd>
             </>
           ) : null}
           {r.at ? (

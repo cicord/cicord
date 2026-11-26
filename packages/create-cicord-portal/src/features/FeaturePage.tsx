@@ -12,6 +12,11 @@ import { Shifts } from "./Shifts.tsx";
 import { Cases, MemberCases } from "./Moderation.tsx";
 import { Recovery, Queue, Verification } from "./Verification.tsx";
 import { Scope, useCopy, useScope } from "./shared.tsx";
+import { Draw, Draws, Ledger, Lookup, Season, Suggestions, Wallet } from "./Rewards.tsx";
+import { Tags, Unanswered } from "./Knowledge.tsx";
+import { Calendar, Invites, Poll } from "./Events.tsx";
+import { Incidents, ModeratorStats, Violations, Raids, Blocklist } from "./Security.tsx";
+import { Audit } from "./Audit.tsx";
 import "./features.css";
 
 function subscribe(listener: () => void) {
@@ -30,7 +35,7 @@ function Screen({ id, param }: { id: FeatureId; param: string }) {
     case "history":
       return <MemberCases id={scope.viewer} />;
     case "member":
-      return scope.staff || scope.viewer === param ? <MemberCases id={param} /> : <NotFound />;
+      return <MemberCases id={param} />;
     case "challenge":
       return <Verification />;
     case "recovery":
@@ -43,6 +48,48 @@ function Screen({ id, param }: { id: FeatureId; param: string }) {
       return <Birthdays />;
     case "shifts":
       return <Shifts />;
+    case "suggestions":
+      return <Suggestions moderation={false} />;
+    case "proposals":
+      return <Suggestions moderation />;
+    case "draws":
+      return <Draws />;
+    case "draw":
+      return <Draw id={param} />;
+    case "drawLookup":
+      return <Lookup kind="giveaway" />;
+    case "seasonLookup":
+      return <Lookup kind="season" />;
+    case "season":
+      return <Season id={param} />;
+    case "wallet":
+      return <Wallet />;
+    case "ledger":
+      return <Ledger staff />;
+    case "tags":
+      return <Tags />;
+    case "questions":
+      return <Unanswered />;
+    case "calendar":
+      return <Calendar />;
+    case "invites":
+      return <Invites />;
+    case "pollLookup":
+      return <Lookup kind="poll" />;
+    case "poll":
+      return <Poll id={param} />;
+    case "violations":
+      return <Violations />;
+    case "raids":
+      return <Raids />;
+    case "blocklist":
+      return <Blocklist />;
+    case "incidents":
+      return <Incidents />;
+    case "audit":
+      return <Audit />;
+    case "modStats":
+      return <ModeratorStats />;
     default:
       return <NotFound />;
   }
@@ -132,7 +179,7 @@ export function FeaturePage({ path }: { path: string }) {
   );
   if (exchanging === "pending" || (me.isLoading && feature.access !== "public"))
     return <Spinner label={t.loading} />;
-  if (exchanging === "error" && feature.access === "scoped")
+  if (exchanging === "error" && feature.access !== "public")
     return (
       <div className="page">
         {heading}
@@ -160,6 +207,7 @@ export function FeaturePage({ path }: { path: string }) {
         </section>
       );
   }
+  if (route.id === "member" && !staff && viewer !== route.param) return <NotFound />;
   return (
     <Scope.Provider value={{ api, plugin, viewer, staff }}>
       <section

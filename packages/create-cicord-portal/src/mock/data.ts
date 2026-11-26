@@ -1,3 +1,4 @@
+import { demoPlugins } from "./features.ts";
 /**
  * Mock data mirroring examples/basic: servers/my-community.yaml (roles, portal theme) and the
  * `onboarding` instance of bots/moderator/bot.yaml.
@@ -61,6 +62,7 @@ export const portalServer: PortalServer = {
   pages: { onboarding: true, profile: true, leaderboard: true, tickets: true },
   locale: "en",
   plugins: [
+    ...demoPlugins,
     {
       bot: "moderator",
       instance: "onboarding",

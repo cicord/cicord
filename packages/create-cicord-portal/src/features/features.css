@@ -153,3 +153,26 @@
     overflow-x: auto;
   }
 }
+
+.feature-directory {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  column-gap: 2rem;
+}
+
+.feature-directory a {
+  color: var(--cicord-text);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+  text-decoration-color: var(--cicord-line-strong);
+}
+.feature-directory a:hover,
+.feature-directory a:focus-visible {
+  color: var(--cicord-primary);
+  text-decoration-color: currentColor;
+}
+@media (max-width: 640px) {
+  .portal-nav__link {
+    white-space: nowrap;
+  }
+}
