@@ -265,6 +265,9 @@ func printUpdatePlan(w io.Writer, plan *setup.UpdatePlan, trust string) {
 	fmt.Fprintf(w, "%s: %s → %s (%s)\n", spec.Source, plan.Current.Version, spec.Version, trust)
 	for _, instance := range plan.Instances {
 		for _, change := range instance.SecretChanges {
+			if change.Before.Use != change.After.Use {
+				fmt.Fprintf(w, "  credential %s use on %s/%s/%s: %q -> %q\n", change.Name, instance.Bot, instance.Instance, instance.Server, change.Before.Use, change.After.Use)
+			}
 			budget := func(p setup.BoundPolicy) string {
 				if p.Budget == nil {
 					return "no provider cap"

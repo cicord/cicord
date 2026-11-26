@@ -44,9 +44,6 @@ func TestSecretFetch(t *testing.T) {
 	u, _ := url.Parse(srv.URL)
 	i := &Instance{grants: map[string]bool{"http.fetch": true}, limits: Limits{}.withDefaults(), egress: newEgress([]string{u.Host, "other.org"}, false, srv.Client(), 1024)}
 	i.env.Secret = func(n string) (string, []string, bool) {
-		if n == "HOOK" {
-			return srv.URL + "/form", []string{u.Host}, true
-		}
 		return marker, []string{u.Host}, n == "KEY"
 	}
 	for _, tt := range []struct {
@@ -54,7 +51,7 @@ func TestSecretFetch(t *testing.T) {
 		init map[string]any
 		ok   bool
 	}{
-		{"cicord-secret:HOOK", map[string]any{"form": map[string]string{"secret": "cicord-secret:KEY"}}, true},
+		{srv.URL + "/form", map[string]any{"form": map[string]string{"secret": "cicord-secret:KEY"}}, true},
 		{srv.URL + "/json", map[string]any{"json": map[string]string{"secret": "cicord-secret:KEY"}}, true},
 		{srv.URL + "/redirect", nil, false},
 		{"https://other.org", nil, false},

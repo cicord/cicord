@@ -84,3 +84,30 @@ func TestPluginConfigSchemaReferencesStayInDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidationRejectsReservedCredentialBindings(t *testing.T) {
+	dir := copyExample(t)
+	bot := filepath.Join(dir, "bots", "moderator", "bot.yaml")
+	manifest := filepath.Join(dir, "plugins", "welcome", "plugin.yaml")
+	edit(t, manifest, "spec:\n", "spec:\n  secrets:\n    - {name: STAFF_HOOK, use: webhook.send, hosts: [discord.com, hooks.slack.com]}\n")
+	edit(t, bot, "source: ../../plugins/welcome", "source: ../../plugins/welcome\n      secrets: {STAFF_HOOK: {secretRef: INIT_SENTINEL}}")
+	prev := "INIT_SENTINEL"
+	for _, name := range []string{"CICORD_PRIVACY_KEY", "CICORD_ALERT_WEBHOOK", "DISCORD_TOKEN_MODERATOR", "CICORD_REGISTRY_SIGNING_KEY", "CUSTOM_OPERATOR_GIT"} {
+		edit(t, bot, "STAFF_HOOK: {secretRef: "+prev+"}", "STAFF_HOOK: {secretRef: "+name+"}")
+		prev = name
+		_, ds := Load(dir, LoadOptions{HostSecretRefs: []string{"CUSTOM_OPERATOR_GIT"}})
+		if !ds.HasErrors() || !strings.Contains(ds.Err().Error(), "reserved for the host") {
+			t.Fatalf("expected reserved-binding diagnostic for %s", name)
+		}
+	}
+	edit(t, bot, "STAFF_HOOK: {secretRef: "+prev+"}", "STAFF_HOOK: {secretRef: CICORD_STAFF_WEBHOOK}")
+	_, ds := Load(dir, LoadOptions{})
+	if ds.HasErrors() {
+		t.Fatal(ds.Err())
+	}
+	edit(t, manifest, "[discord.com, hooks.slack.com]", "[other.example.org]")
+	_, ds = Load(dir, LoadOptions{})
+	if !ds.HasErrors() {
+		t.Fatal("arbitrary webhook destination approved")
+	}
+}

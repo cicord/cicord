@@ -344,6 +344,14 @@ function Instances({ review, serverKey }: { review: StoreUpdateReview; serverKey
               {i.secretChanges?.map((change) => (
                 <div key={change.name} className="mt-1 rounded border p-2">
                   <p className="font-mono font-medium">{change.name}</p>
+                  {change.before.use !== change.after.use && (
+                    <p>
+                      {t("store.update.secretUse", {
+                        before: change.before.use ?? t("store.update.secretFields"),
+                        after: change.after.use ?? t("store.update.secretFields"),
+                      })}
+                    </p>
+                  )}
                   <p>
                     {t("store.update.secretHosts", {
                       before: change.before.hosts.join(", ") || "—",

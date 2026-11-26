@@ -834,6 +834,7 @@ export interface InstanceFiles {
 
 /** Subset of WHATWG fetch, limited to hosts allowed in plugin.yaml. @capability http.fetch */
 export interface Http {
+  /** A whole-URL SecretRef requires use: webhook.send, POST and a JSON message. It returns status only. */
   fetch(url: string | SecretRef, init?: {
     method?: string;
     headers?: Record<string, string | SecretRef>;

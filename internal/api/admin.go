@@ -739,11 +739,7 @@ func (s *server) pluginItem(in runtime.InstanceInfo, key string, ro role, ups ma
 	}
 	if ro >= roleAdmin {
 		for _, decl := range m.Spec.Secrets {
-			ref, bound := in.Config.SecretRefs[decl.Name]
-			external := false
-			if bound && s.opts.Secret != nil {
-				_, external = s.opts.Secret(ref.SecretRef)
-			}
+			bound, external := s.pluginSecretBinding(in.Config, decl.Name)
 			it.Secrets = append(it.Secrets, pluginSecretView{Name: decl.Name, Description: decl.Description, Hosts: decl.Hosts, Required: decl.Required, Bound: bound, External: external})
 		}
 	}

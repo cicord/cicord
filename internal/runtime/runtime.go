@@ -41,7 +41,8 @@ type Options struct {
 	Connector     discord.Connector
 	Store         state.Store
 	// Secrets resolves secretRef names (environment variables when self-hosted).
-	Secrets func(name string) (string, bool)
+	HostSecretRefs []string // operator-selected repository credentials, unavailable to plugins
+	Secrets        func(name string) (string, bool)
 	// Resolver builds the registry plugin resolver for a revision directory (may be nil).
 	Resolver func(repoRoot string) config.PluginResolver
 	// Signer signs portal links; PortalURL is the public portal origin.
@@ -352,7 +353,7 @@ func (r *Runtime) LoadAndBuild(dir string) (*config.Repo, map[string]*builtPlugi
 	if r.opts.Resolver != nil {
 		resolver = r.opts.Resolver(dir)
 	}
-	repo, ds := config.Load(dir, config.LoadOptions{EngineVersion: version.Version, Resolver: resolver, PrivilegedIntents: r.enabledIntents})
+	repo, ds := config.Load(dir, config.LoadOptions{HostSecretRefs: r.opts.HostSecretRefs, EngineVersion: version.Version, Resolver: resolver, PrivilegedIntents: r.enabledIntents})
 	if ds.HasErrors() || repo == nil {
 		return repo, nil, ds, ds.Err()
 	}

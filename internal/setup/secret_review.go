@@ -17,6 +17,7 @@ type SecretBudgetView struct {
 	Limit    int    `json:"limit"`
 }
 type BoundPolicy struct {
+	Use    string            `json:"use,omitempty"`
 	Hosts  []string          `json:"hosts"`
 	Budget *SecretBudgetView `json:"budget,omitempty"`
 }
@@ -48,6 +49,7 @@ func boundPolicy(declarations []config.PluginSecret, name string, network []stri
 		if s.Name != name {
 			continue
 		}
+		p.Use = s.Use
 		for _, host := range s.Hosts {
 			for _, allowed := range network {
 				// Overlapping host patterns have a well-defined narrower member.
@@ -70,6 +72,9 @@ func boundPolicy(declarations []config.PluginSecret, name string, network []stri
 	return p
 }
 func widerPolicy(old, next BoundPolicy) bool {
+	if old.Use != next.Use && len(next.Hosts) > 0 {
+		return true
+	}
 	for _, h := range next.Hosts {
 		if !slices.ContainsFunc(old.Hosts, func(prev string) bool { return hostCovered(h, prev) }) {
 			return true
@@ -91,7 +96,7 @@ func boundChanges(old *config.Instance, pi config.PluginInstance, spec UpdateSpe
 		}
 		after := boundPolicy(spec.SecretDeclarations, name, network, cfg)
 		sameBudget := before.Budget == nil && after.Budget == nil || before.Budget != nil && after.Budget != nil && *before.Budget == *after.Budget
-		if sameBudget && slices.Equal(before.Hosts, after.Hosts) {
+		if sameBudget && before.Use == after.Use && slices.Equal(before.Hosts, after.Hosts) {
 			continue
 		}
 		changes = append(changes, SecretChange{name, before, after, widerPolicy(before, after)})

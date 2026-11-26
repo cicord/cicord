@@ -209,6 +209,7 @@
           "items": {"type": "object", "additionalProperties": false, "required": ["name","hosts"],
             "properties": {
               "name": {"$ref":"common.schema.json#/$defs/secretRef"},
+              "use":{"const":"webhook.send"},
               "budget":{"type":"object","required":["provider","dailyLimitConfig"],"additionalProperties":false,
                 "properties":{"provider":{"const":"anthropic-messages"},"dailyLimitConfig":{"type":"string","pattern":"^[a-zA-Z][a-zA-Z0-9_]{0,63}$"}}},
               "description": {"type":"string","maxLength":512}, "required":{"type":"boolean"},

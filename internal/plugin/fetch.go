@@ -288,6 +288,10 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 	if err != nil || !u.IsAbs() {
 		return nil, argErr("http.fetch: invalid URL")
 	}
+	sendOnly, err := i.checkWebhookSend(a.URL, u, &a.Init, materials)
+	if err != nil {
+		return nil, err
+	}
 	for _, s := range materials {
 		if i.env.BudgetedSecrets[s.name] && (budget != s.name || len(materials) != 1) {
 			return nil, errors.New("metered credential requires its approved request header")
@@ -333,7 +337,7 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 				return nil, errors.New("provider budget unavailable")
 			}
 		}
-		res, err := i.egress.do(ctx, method, u, a.Init.Headers, a.Init.Body, len(materials) > 0)
+		res, err := i.egress.do(ctx, method, u, a.Init.Headers, a.Init.Body, len(materials) > 0, sendOnly)
 		if err != nil {
 			if len(materials) > 0 {
 				return nil, errors.New("http.fetch: credentialed request failed")
@@ -360,7 +364,7 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 
 var strippedOnCrossHost = []string{"authorization", "cookie", "proxy-authorization"}
 
-func (e *egress) do(ctx context.Context, method string, u *url.URL, headers map[string]string, body *string, sensitive bool) (*fetchResult, error) {
+func (e *egress) do(ctx context.Context, method string, u *url.URL, headers map[string]string, body *string, sensitive, sendOnly bool) (*fetchResult, error) {
 	hdr := http.Header{}
 	for k, v := range headers {
 		switch strings.ToLower(k) {
@@ -388,6 +392,10 @@ func (e *egress) do(ctx context.Context, method string, u *url.URL, headers map[
 		resp, err := e.client.Do(req)
 		if err != nil {
 			return nil, err
+		}
+		if sendOnly {
+			resp.Body.Close()
+			return &fetchResult{Status: resp.StatusCode, Headers: map[string]string{}, Body: []byte{}}, nil
 		}
 		if loc := resp.Header.Get("Location"); isRedirect(resp.StatusCode) && loc != "" {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))

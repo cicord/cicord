@@ -42,7 +42,7 @@ func (i *Instance) downloadMedia(ctx context.Context, raw string, cdnOnly bool) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, i.limits.FetchTimeout)
 	defer cancel()
-	res, err := e.do(ctx, "GET", u, nil, nil, false)
+	res, err := e.do(ctx, "GET", u, nil, nil, false, false)
 	if err != nil {
 		return nil, err
 	}

@@ -1931,8 +1931,15 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
           throw new Error(
             "createTestContext: ctx.http.fetch is not faked; pass `fetch` in the options",
           );
+        const sendOnly = url.startsWith("cicord-secret:");
+        if (
+          sendOnly &&
+          (init?.method?.toUpperCase() !== "POST" || init.form || (!init.json && !init.body))
+        )
+          throw new Error("invalid webhook send");
         requests.push({ url, init });
-        const r = await options.fetch(url, init);
+        const raw = await options.fetch(url, init);
+        const r = sendOnly ? { ...raw, body: undefined, headers: {} } : raw;
         const body =
           typeof r.body === "string"
             ? r.body

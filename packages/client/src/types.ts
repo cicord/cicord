@@ -1449,6 +1449,7 @@ export interface InstalledPluginVersion {
 
 /** What an update changes for one instance on one server. */
 export interface PluginSecretPolicy {
+  use?: string;
   hosts: string[];
   budget?: { provider: string; config: string; limit: number };
 }

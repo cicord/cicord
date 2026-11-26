@@ -382,6 +382,19 @@ loopback, private (RFC 1918, `fc00::/7`), link-local (including the `169.254.169
 metadata address), CGNAT, multicast, unspecified and IPv4-mapped addresses. `cicord dev` relaxes the address checks and allows plain
 `http`, so a plugin can call a local service during development; `cicord serve` never does.
 
+### Sending a webhook with a bound credential
+
+Declare the logical webhook name, its allowed provider hosts and the send operation in the manifest.
+
+```yaml
+secrets:
+  - name: STAFF_WEBHOOK
+    use: webhook.send
+    hosts: [discord.com, hooks.slack.com]
+```
+
+Bind that name in `bot.yaml` and keep the incoming webhook URL in the operator secret store. For Discord, send a message with `ctx.http.fetch(ctx.secrets.ref("STAFF_WEBHOOK"), {method: "POST", json: {content: message}})`. Slack incoming webhooks use `{text: message}`. The host accepts the provider's exact incoming-webhook endpoint and returns the HTTP status. A reply carries empty headers and body. Credential declarations for API keys and captcha fields continue to use their approved header, form or JSON positions.
+
 ## Intents
 
 Event handlers need gateway intents, which the manifest must declare. A handler without its

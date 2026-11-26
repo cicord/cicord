@@ -74,6 +74,8 @@ type PluginResolver interface {
 }
 
 type LoadOptions struct {
+	// HostSecretRefs are additional machine-owned credentials selected by the operator.
+	HostSecretRefs []string
 	// EngineVersion is the running Cicord version, checked against cicord.yaml spec.engine.
 	// Empty skips the check.
 	EngineVersion string

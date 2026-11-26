@@ -36,13 +36,16 @@ func (l *loader) instanceResources(repo *Repo, spec PluginSpec, inst PluginInsta
 		if declared[d.Name] {
 			report("secrets", "duplicate secret declaration %q", d.Name)
 		}
+		if d.Use == "webhook.send" && (d.Budget != nil || len(d.Hosts) == 0 || slices.ContainsFunc(d.Hosts, func(h string) bool { return h != "discord.com" && h != "hooks.slack.com" })) {
+			report("secrets", "webhook.send requires exact Discord or Slack incoming webhook hosts")
+		}
 		if d.Budget != nil && (d.Budget.Provider != "anthropic-messages" || len(d.Hosts) != 1 || d.Hosts[0] != "api.anthropic.com") {
 			report("secrets", "a metered Anthropic secret must be restricted to api.anthropic.com")
 		}
 		declared[d.Name] = true
 	}
 	for n, binding := range inst.Secrets {
-		if repo.ReservedPluginRef(binding.SecretRef) {
+		if repo.ReservedPluginRef(binding.SecretRef) || slices.Contains(l.opts.HostSecretRefs, binding.SecretRef) {
 			report("secrets", "%q is reserved for the host and cannot be bound to a plugin", binding.SecretRef)
 		}
 		if !declared[n] {
@@ -59,7 +62,7 @@ func (l *loader) instanceResources(repo *Repo, spec PluginSpec, inst PluginInsta
 // from explicitly named plugin-provider bindings.
 func (r *Repo) ReservedPluginRef(name string) bool {
 	switch name {
-	case "CICORD_SECRET_KEY", "CICORD_DATABASE_URL", "CICORD_DISCORD_CLIENT_SECRET", "CICORD_GITHUB_APP_PRIVATE_KEY", "CICORD_GITHUB_APP_PRIVATE_KEY_FILE", "CICORD_GIT_TOKEN", "CICORD_LINK_SECRET", "CICORD_RUNTIME_TOKEN", "CICORD_WEBHOOK_SECRET":
+	case "CICORD_REGISTRY_SIGNING_KEY", "CICORD_PRIVACY_KEY", "CICORD_ALERT_WEBHOOK", "GITHUB_TOKEN", "GH_TOKEN", "CICORD_GITHUB_APP_ID", "CICORD_GITHUB_APP_INSTALLATION_ID", "CICORD_SECRET_KEY", "CICORD_DATABASE_URL", "CICORD_DISCORD_CLIENT_SECRET", "CICORD_GITHUB_APP_PRIVATE_KEY", "CICORD_GITHUB_APP_PRIVATE_KEY_FILE", "CICORD_GIT_TOKEN", "CICORD_LINK_SECRET", "CICORD_RUNTIME_TOKEN", "CICORD_WEBHOOK_SECRET":
 		return true
 	}
 	if strings.HasPrefix(name, "CICORD_REGISTRY_") && strings.HasSuffix(name, "_TOKEN") {
@@ -71,6 +74,13 @@ func (r *Repo) ReservedPluginRef(name string) bool {
 		}
 	}
 	if r != nil {
+		if r.Project != nil {
+			for _, reg := range r.Project.Spec.Registries {
+				if name != "" && name == reg.SecretRef {
+					return true
+				}
+			}
+		}
 		for _, b := range r.Bots {
 			if name == b.Spec.Token.SecretRef {
 				return true

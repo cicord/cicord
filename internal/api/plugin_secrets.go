@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/state"
 )
@@ -14,6 +15,19 @@ type pluginSecretView struct {
 	Required    bool     `json:"required"`
 	Bound       bool     `json:"bound"`
 	External    bool     `json:"external"`
+}
+
+// Both the write endpoint and the admin view use this gate before consulting
+// the operator resolver. A forbidden ref must not even reveal its presence.
+func (s *server) pluginSecretBinding(in config.Instance, name string) (bound, external bool) {
+	ref, ok := in.SecretRefs[name]
+	if !ok || s.rt.ReservedPluginRef(ref.SecretRef) {
+		return false, false
+	}
+	if s.opts.Secret != nil {
+		_, external = s.opts.Secret(ref.SecretRef)
+	}
+	return true, external
 }
 
 func (s *server) handlePluginSecret(w http.ResponseWriter, r *http.Request) {
@@ -34,15 +48,16 @@ func (s *server) handlePluginSecret(w http.ResponseWriter, r *http.Request) {
 		}
 		name := r.PathValue("name")
 		for _, spec := range c.Plugin.Manifest.Spec.Secrets {
-			binding, ok := c.SecretRefs[name]
-			if spec.Name != name || !ok {
+			if spec.Name != name {
 				continue
 			}
-			if s.opts.Secret != nil {
-				if _, ok := s.opts.Secret(binding.SecretRef); ok {
-					s.fail(w, httpErr(409, "conflict", "this binding is managed by the operator"))
-					return
-				}
+			bound, external := s.pluginSecretBinding(c, name)
+			if !bound {
+				continue
+			}
+			if external {
+				s.fail(w, httpErr(409, "conflict", "this binding is managed by the operator"))
+				return
 			}
 			var body struct {
 				Value string `json:"value"`

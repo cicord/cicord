@@ -1843,6 +1843,8 @@
       "confirm": "I trust {{publisher}}, the publisher of {{name}} from the unofficial source {{source}}, and grant version {{version}}:",
       "confirmSecretChanges": "Approve the expanded credential access shown for these installations",
       "secretChangesHint": "This approval applies to the displayed update, destination hosts and provider limits.",
+      "secretUse": "Credential use · {{before}} → {{after}}",
+      "secretFields": "HTTP credential fields",
       "secretHosts": "Destination hosts · {{before}} → {{after}}",
       "secretBudget": "Daily provider budget · {{before}} → {{after}}",
       "secretBudgetValue": "{{provider}}, {{count}} tokens per day ({{field}})",

@@ -3,6 +3,7 @@ package runtime
 import (
 	"crypto/sha256"
 	"fmt"
+	"slices"
 
 	"github.com/cicord/cicord/internal/config"
 )
@@ -13,9 +14,14 @@ func PluginSecretSlot(in config.Instance, name string) string {
 	return fmt.Sprintf("CICORD_PLUGIN_%X", sha256.Sum256([]byte(in.ID()+"\x00"+name+"\x00"+in.SecretRefs[name].SecretRef)))
 }
 
+// ReservedPluginRef also guards operator reads when an older configuration is inspected.
+func (r *Runtime) ReservedPluginRef(name string) bool {
+	return slices.Contains(r.opts.HostSecretRefs, name) || r.Repo().ReservedPluginRef(name)
+}
+
 func (r *Runtime) instanceSecret(in config.Instance, name string) (string, []string, bool) {
 	ref, ok := in.SecretRefs[name]
-	if !ok || r.opts.Secrets == nil {
+	if !ok || r.opts.Secrets == nil || r.ReservedPluginRef(ref.SecretRef) {
 		return "", nil, false
 	}
 	for _, s := range in.Plugin.Manifest.Spec.Secrets {

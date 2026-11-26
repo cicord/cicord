@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/secrets"
 )
@@ -62,5 +63,18 @@ func TestPluginSecretWriteOnly(t *testing.T) {
 	}
 	if _, ok := resolve("FIXTURE_BINDING"); ok {
 		t.Fatal("admin overwrote external binding")
+	}
+}
+
+func TestAdminSecretBindingDoesNotProbeOperatorSentinels(t *testing.T) {
+	s := &server{rt: runtime.New(runtime.Options{HostSecretRefs: []string{"OPERATOR_REPO_PAT"}})}
+	probed := 0
+	s.opts.Secret = func(string) (string, bool) { probed++; return "synthetic-probe-value", true }
+	for _, physical := range []string{"CICORD_PRIVACY_KEY", "CICORD_ALERT_WEBHOOK", "OPERATOR_REPO_PAT"} {
+		c := config.Instance{SecretRefs: map[string]config.TokenRef{"WEBHOOK_URL": {SecretRef: physical}}}
+		bound, external := s.pluginSecretBinding(c, "WEBHOOK_URL")
+		if bound || external || probed != 0 {
+			t.Fatal("the admin path probed a host-owned credential")
+		}
 	}
 }

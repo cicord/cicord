@@ -593,6 +593,7 @@ type ProviderBudget struct {
 }
 
 type PluginSecret struct {
+	Use         string          `yaml:"use,omitempty" json:"use,omitempty"`
 	Budget      *ProviderBudget `yaml:"budget,omitempty" json:"budget,omitempty"`
 	Name        string          `yaml:"name,omitempty" json:"name,omitempty"`
 	Description string          `yaml:"description,omitempty" json:"description,omitempty"`
