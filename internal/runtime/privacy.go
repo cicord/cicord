@@ -228,6 +228,9 @@ func (r *Runtime) memberReport(ctx context.Context, server, user, action string)
 			item.Records = inventory.Records
 		}
 		switch {
+		case i.cfg.Disabled() && (inventory == nil || len(inventory.Records) > 0):
+			item.Status = "disabled"
+			rep.Complete = false
 		case i.plugin == nil || (inst == nil && inventory != nil && len(inventory.Records) > 0):
 			item.Status = "unavailable"
 			rep.Complete = false

@@ -128,7 +128,7 @@ export interface Me {
 
 export type RuntimeMode = "serve" | "dev";
 export type SyncState = "Synced" | "OutOfSync" | "Unknown";
-export type HealthState = "Healthy" | "Progressing" | "Degraded" | "Missing";
+export type HealthState = "Healthy" | "Progressing" | "Degraded" | "Missing" | "Disabled";
 
 export interface Revision {
   /** Short identifier shown to users (7-char SHA, or content hash for local sources). */

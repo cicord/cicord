@@ -168,7 +168,7 @@ func Requirements(repo *config.Repo, serverKey, botKey string) (reconcile.Requir
 		r.Merge(sr)
 	}
 	for _, in := range repo.Instances {
-		if in.Server != serverKey || in.Bot != botKey {
+		if in.Disabled() || in.Server != serverKey || in.Bot != botKey {
 			continue
 		}
 		for _, g := range in.Grants {

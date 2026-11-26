@@ -145,7 +145,7 @@ func Plugins(repo *config.Repo) ([]typegen.RoutePlugin, error) {
 	sort.Strings(keys)
 	used := map[string]bool{}
 	for _, in := range repo.Instances {
-		if in.Plugin != nil {
+		if !in.Disabled() && in.Plugin != nil {
 			used[in.Plugin.Key] = true
 		}
 	}

@@ -3,7 +3,7 @@ export { Picker } from "./Picker.tsx";
 export type { PickerOption } from "./Picker.tsx";
 export { Markdown, isSafeUrl } from "./markdown.tsx";
 export { ChannelGlyph, Swatch } from "./refs.tsx";
-export { applyDefaults, editableFor, initialValue } from "./schema.ts";
+export { applyDefaults, editableFor, initialValue, installationSchema } from "./schema.ts";
 export type { JsonSchema } from "./schema.ts";
 export { changedTopLevel, diffConfig } from "./diff.ts";
 export type { FieldChange } from "./diff.ts";

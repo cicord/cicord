@@ -523,6 +523,9 @@ func (h *botHost) install(ctx context.Context, a *active) {
 			rt.serverKeys[s.cfg.Spec.DiscordID] = sk
 		}
 	}
+	if len(rt.byName[rt.dmOwner]) == 0 {
+		rt.dmOwner = ""
+	}
 	h.routing.Store(rt)
 
 	// slash commands per server

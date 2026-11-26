@@ -115,6 +115,12 @@ func resolvePeer(from *instanceRT, name string) (*instanceRT, error) {
 		if i.cfg.Server != from.cfg.Server || i.cfg.Plugin.Manifest.Metadata.Name != name {
 			continue
 		}
+		if i.cfg.Disabled() {
+			if choice == i.cfg.Bot+"/"+i.cfg.Name {
+				return nil, &plugin.InteropError{Code: "not_found", Message: "provider installation is disabled", Unavailable: true}
+			}
+			continue
+		}
 		found = true
 		if choice != "" && choice != i.cfg.Bot+"/"+i.cfg.Name {
 			continue

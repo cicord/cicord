@@ -12,6 +12,7 @@ const (
 	SyncOutOfSync = "OutOfSync"
 	SyncUnknown   = "Unknown"
 
+	HealthDisabled    = "Disabled"
 	HealthHealthy     = "Healthy"
 	HealthProgressing = "Progressing"
 	HealthDegraded    = "Degraded"

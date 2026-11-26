@@ -493,7 +493,9 @@ func (i *Instance) loadModule() error {
 
 // Stop runs onStop (bounded by Limits.StopTimeout and ctx), then releases the VM. Pending and
 // later calls fail with ErrStopped. Stop is idempotent.
-func (i *Instance) Stop(ctx context.Context) error {
+func (i *Instance) Disable()                       { _ = i.stop(context.Background(), false) }
+func (i *Instance) Stop(ctx context.Context) error { return i.stop(ctx, true) }
+func (i *Instance) stop(ctx context.Context, runStop bool) error {
 	i.stateMu.Lock()
 	prev := i.state
 	if prev == stateStopping || prev == stateStopped {
@@ -505,7 +507,7 @@ func (i *Instance) Stop(ctx context.Context) error {
 	i.stateMu.Unlock()
 
 	var stopErr error
-	if prev == stateStarted && hasStop {
+	if prev == stateStarted && runStop && hasStop {
 		sctx, cancel := context.WithTimeout(ctx, i.limits.StopTimeout)
 		if r := <-i.dispatch(sctx, "stop", "", nil, nil); r.err != nil {
 			stopErr = fmt.Errorf("plugin: onStop: %w", r.err)

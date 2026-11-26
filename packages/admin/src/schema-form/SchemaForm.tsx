@@ -531,7 +531,9 @@ function JsonControl(p: ControlProps) {
 function BooleanField(props: FieldProps) {
   const { schema, path, value, bare } = props;
   const { ctx, locked, errors, id } = useFieldState(path);
-  const checked = value === true;
+  const checked =
+    value === true ||
+    (value === undefined && schema["x-cicord-instance-switch"] === true && schema.default === true);
   const control = (
     <button
       type="button"

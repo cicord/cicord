@@ -30,6 +30,7 @@ import {
   mapDiagnostics,
   mergeErrors,
   SchemaForm,
+  installationSchema,
   validate,
   type FieldChange,
   type JsonObject,
@@ -56,7 +57,9 @@ export function PluginSettings({
   const status = useStatus();
   const [outcome, setOutcome] = useState<SaveOutcome | null>(null);
   const [scope, setScope] = useState<ConfigScope>("server");
-  const hasSettings = Object.keys((instance.schema as JsonSchema).properties ?? {}).length > 0;
+  const hasSettings =
+    instance.editable.includes("enabled") ||
+    Object.keys((instance.schema as JsonSchema).properties ?? {}).length > 0;
   const name = instance.plugin.displayName || instance.plugin.name;
   return (
     <section className="flex flex-col gap-3" aria-label={t("plugins.settings.label", { name })}>
@@ -152,9 +155,14 @@ function SettingsEditor({
 }) {
   const { t } = useTranslation();
   const { client, cache } = useCicord();
-  const schema = instance.schema as JsonSchema;
+  const schema = useMemo(
+    () => installationSchema(instance.schema as JsonSchema),
+    [instance.schema],
+  );
   // "server" edits the effective config on this server; "base" edits spec.plugins[].config.
-  const baseConfig = instance.baseConfig ? applyDefaults(schema, instance.baseConfig) : undefined;
+  const baseConfig = instance.baseConfig
+    ? applyDefaults(instance.schema as JsonSchema, instance.baseConfig)
+    : undefined;
   const baseline = scope === "base" && baseConfig ? baseConfig : instance.config;
   const overridden = Object.keys(instance.override ?? {}).toSorted();
   const [draft, setDraft] = useState<JsonObject>(baseline);

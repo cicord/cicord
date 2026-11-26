@@ -44,6 +44,25 @@ export interface JsonSchema {
   [key: string]: unknown;
 }
 
+/** Every installation has a host-owned activation switch, including legacy packages. */
+export function installationSchema(schema: JsonSchema): JsonSchema {
+  return {
+    ...schema,
+    "x-cicord-installation": true,
+    properties: {
+      ...schema.properties,
+      enabled: {
+        type: "boolean",
+        title: "Enabled",
+        default: true,
+        ...schema.properties?.enabled,
+        "x-cicord-instance-switch": true,
+        "x-cicord-access": "admin",
+      },
+    },
+  };
+}
+
 export type FieldKind =
   | "string"
   | "number"

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -476,25 +477,10 @@ func (l *loader) checkBots(repo *Repo) {
 				continue
 			}
 
-			network, files := l.instanceResources(repo, lp.Manifest.Spec, inst, b.File, base)
+			var files map[string][]byte
+			network := l.instanceResources(repo, lp.Manifest.Spec, inst, b.File, base)
 
-			// grants must cover requested capabilities
-			granted := map[string]bool{}
-			for _, g := range inst.Grants {
-				granted[g] = true
-			}
-			var missing []string
-			for _, c := range lp.Manifest.Spec.Capabilities {
-				if !HasGrant(inst.Grants, c) {
-					missing = append(missing, c)
-				}
-			}
-			if len(missing) > 0 {
-				l.sink.errorf(b.File, doc.lineOf(base+"/grants"), base+"/grants",
-					"plugin %q requests capabilities that are not granted: %s", lp.Manifest.Metadata.Name, strings.Join(missing, ", "))
-			}
-			l.checkPrivilegedIntents(b, bk, base, doc.lineOf(base), lp)
-
+			checkedActive := false
 			// servers of this instance
 			servers := b.Spec.ServerKeys()
 			if len(inst.Servers) > 0 {
@@ -539,29 +525,40 @@ func (l *loader) checkBots(repo *Repo) {
 						cfg = map[string]any{}
 					}
 				}
-				cfg = cloneMap(cfg)
-				if lp.SchemaDoc != nil {
-					ApplyDefaults(lp.SchemaDoc, cfg)
+				cfg = EffectiveConfig(lp, cfg, nil)
+				if !Disabled(cfg) && !checkedActive {
+					if len(inst.Files) > 0 && slices.Contains(inst.Grants, "files.read") {
+						files, err = LoadInstanceFiles(l.root, inst.Files)
+						if err != nil {
+							l.sink.errorf(b.File, doc.lineOf(base+"/files"), base+"/files", "%v", err)
+						}
+					}
+
+					var missing []string
+					for _, cap := range lp.Manifest.Spec.Capabilities {
+						if !HasGrant(inst.Grants, cap) {
+							missing = append(missing, cap)
+						}
+					}
+					if len(missing) > 0 {
+						l.sink.errorf(b.File, doc.lineOf(base+"/grants"), base+"/grants", "plugin %q requests capabilities that are not granted: %s", lp.Manifest.Metadata.Name, strings.Join(missing, ", "))
+					}
+					l.checkPrivilegedIntents(b, bk, base, doc.lineOf(base), lp)
+					checkedActive = true
 				}
 				cfgPath := base + "/config"
-				if lp.ConfigSchema != nil {
-					tmp := diagSink{}
-					if !validateValue(&tmp, doc, lp.ConfigSchema, cfg, cfgPath) {
-						for _, d := range tmp.ds {
-							d.Message = fmt.Sprintf("[server %s] %s", sk, d.Message)
-							l.sink.ds = append(l.sink.ds, d)
-						}
-						continue
-					}
+				ds := ValidateInstanceConfig(lp, cfg, sk, &srv.Spec, b.File, cfgPath, network)
+				for _, diagnostic := range ds {
+					diagnostic.Line = doc.lineOf(diagnostic.Path)
+					l.sink.ds = append(l.sink.ds, diagnostic)
 				}
-				problems := append(checkRefs(lp.SchemaDoc, cfg, &srv.Spec, ""), checkNetworkURLs(lp.SchemaDoc, lp.SchemaDoc, cfg, network, "", 0)...)
-				for _, problem := range append(problems, checkProviderLimits(lp.Manifest.Spec, cfg)...) {
-					p := cfgPath + problem.path
-					l.sink.errorf(b.File, doc.lineOf(p), p, "[server %s] %s", sk, problem.msg)
+				instanceFiles := files
+				if Disabled(cfg) {
+					instanceFiles = nil
 				}
 				repo.Instances = append(repo.Instances, Instance{
 					Bot: bk, Name: inst.Name, Server: sk, Plugin: lp, Grants: effectiveGrants(lp.Manifest.Spec, inst.Grants), Config: cfg, Features: l.features(lp.Manifest.Spec, inst.Grants, bk, cfg), Interop: inst.Interop,
-					NetworkAllow: network, SecretRefs: inst.Secrets, Files: files,
+					NetworkAllow: network, SecretRefs: inst.Secrets, Files: instanceFiles,
 				})
 			}
 		}

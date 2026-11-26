@@ -27,7 +27,7 @@ func (r *Runtime) InteropGraph(server string) InteropGraph {
 		return graph
 	}
 	for _, i := range a.instances {
-		if i.cfg.Server != server {
+		if i.cfg.Disabled() || i.cfg.Server != server {
 			continue
 		}
 		id := i.cfg.Bot + "/" + i.cfg.Name
@@ -41,7 +41,7 @@ func (r *Runtime) InteropGraph(server string) InteropGraph {
 			name, topic, _ := strings.Cut(sub.Topic, ".")
 			matched := false
 			for _, p := range a.instances {
-				if p.cfg.Server != server || p.cfg.Plugin.Manifest.Metadata.Name != name {
+				if p.cfg.Disabled() || p.cfg.Server != server || p.cfg.Plugin.Manifest.Metadata.Name != name {
 					continue
 				}
 				pub := p.cfg.Plugin.Manifest.Spec.Interop

@@ -95,6 +95,7 @@ import {
   mapDiagnostics,
   mergeErrors,
   SchemaForm,
+  installationSchema,
   validate,
   type JsonObject,
   type JsonSchema,
@@ -1103,7 +1104,7 @@ function InstallForm({
   const status = useStatus();
   const resources = useResources(serverKey);
   const ids = useId();
-  const schema = detail.schema as JsonSchema;
+  const schema = useMemo(() => installationSchema(detail.schema as JsonSchema), [detail.schema]);
   const hasSettings = Object.keys(schema.properties ?? {}).length > 0;
   const bots = (status.data?.bots ?? []).filter((b) => b.servers.includes(serverKey));
   const multiBot = bots.length > 1;

@@ -221,6 +221,8 @@ func (i *Instance) privateVM(ctx context.Context, frame CallFrame) (*Instance, e
 	if err != nil {
 		return nil, err
 	}
+	stopParent := context.AfterFunc(i.ctx, func() { vm.cancel(ErrStopped) })
+	context.AfterFunc(vm.ctx, func() { stopParent() })
 	vm.bg.frame = frame
 	if err := vm.Start(ctx); err != nil {
 		vm.shutdown()
@@ -245,7 +247,5 @@ func (i *Instance) privateMember(ctx context.Context, run func(*Instance) error)
 		return err
 	}
 	defer vm.shutdown()
-	stop := context.AfterFunc(i.ctx, func() { vm.cancel(ErrStopped) })
-	defer stop()
 	return run(vm)
 }

@@ -505,3 +505,11 @@ Next: the [plugin API](../api/).
 ### Package boundary at build time
 
 Cicord compiles each plugin with a read-only view of its package. Relative modules, local TypeScript aliases and dependencies shipped within the package resolve inside that view. `@cicord/sdk` is provided by the host. Ancestor workspaces, external symlinks and host files are unavailable to imports, TypeScript configuration, source maps and glob resolution. Keep plugin config schema references within the schema document, using `$defs` for shared definitions.
+
+### Disabling an installation
+
+Set `enabled: false` in the installation's `config` in `bot.yaml`, or change the **Enabled** switch in its admin settings. The switch may also be set in a server override. An inactive installation may use just `config: {enabled: false}`, including when the plugin's active config schema requires fields. This switch belongs to the host. Existing manifests and schemas can use it without a code change.
+
+The instance stays listed as **Disabled**. Its commands, routes, subscriptions and schedules are unavailable. Disabling stops its VM without invoking a shutdown hook. Already completed external effects and stored plugin data persist. Queued deliveries retain their payloads, attempts and deadlines while the installation is disabled. Re-enabling validates the full config, bindings and grants, then starts the installation normally. Overdue work resumes under the plugin's declared retry policy. Privacy erasures requested while the installation was disabled are applied before startup.
+
+To verify inactive behavior, save `enabled: false` in a YAML file and pass it to `cicord plugin test <directory> --config <file>`. The simulator checks that the disabled installation registered no executable handlers.

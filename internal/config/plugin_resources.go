@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-func (l *loader) instanceResources(repo *Repo, spec PluginSpec, inst PluginInstance, file, base string) ([]string, map[string][]byte) {
+func (l *loader) instanceResources(repo *Repo, spec PluginSpec, inst PluginInstance, file, base string) []string {
 	report := func(field, msg string, args ...any) {
 		p := base + "/" + field
 		l.sink.errorf(file, l.docs[file].lineOf(p), p, msg, args...)
@@ -49,18 +49,10 @@ func (l *loader) instanceResources(repo *Repo, spec PluginSpec, inst PluginInsta
 			report("secrets", "secret %q is not declared by the plugin", n)
 		}
 	}
-	if len(inst.Files) == 0 {
-		return allow, nil
-	}
-	if !slices.Contains(inst.Grants, "files.read") {
+	if len(inst.Files) > 0 && !slices.Contains(inst.Grants, "files.read") {
 		report("files", "instance files require files.read")
-		return allow, nil
 	}
-	files, err := LoadInstanceFiles(l.root, inst.Files)
-	if err != nil {
-		report("files", "%v", err)
-	}
-	return allow, files
+	return allow
 }
 
 // ReservedPluginRef separates the runtime's credentials and generated admin slots

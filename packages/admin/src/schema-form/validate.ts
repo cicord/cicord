@@ -30,6 +30,7 @@ export function validate(
   value: Json | undefined,
   resources?: ServerResources,
 ): FieldError[] {
+  if (schema["x-cicord-installation"] && isObject(value) && value.enabled === false) return [];
   const out: FieldError[] = [];
   check(schema, schema, value, [], out, resources);
   return out;

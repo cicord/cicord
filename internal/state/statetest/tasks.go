@@ -103,3 +103,33 @@ func testTaskConcurrentClaim(t *testing.T, b Backend) {
 		t.Fatalf("concurrent claims: got %d, want 1", claimed)
 	}
 }
+
+func testPausedTaskScopes(t *testing.T, b Backend) {
+	store, c := open(t, b)
+	q := store.Tasks()
+	ctx := t.Context()
+	now := c.Now()
+	for _, scope := range []string{"plugin:one/x/space", "plugin:two/x/space"} {
+		must(t, q.Schedule(ctx, state.Task{ID: scope + "/job", Scope: scope, Name: "job", RunAt: now}))
+	}
+	now = now.Add(96 * time.Hour)
+	jobs, err := q.ClaimDue(ctx, now, now.Add(time.Minute), "worker", 10, "plugin:one/x/space")
+	must(t, err)
+	if len(jobs) != 1 || jobs[0].Scope != "plugin:two/x/space" {
+		t.Fatal(jobs)
+	}
+	must(t, q.Acknowledge(ctx, jobs[0]))
+	for range 3 {
+		now = now.Add(time.Hour)
+		jobs, err = q.ClaimDue(ctx, now, now.Add(time.Minute), "worker", 10, "plugin:one/x/space")
+		must(t, err)
+		if len(jobs) != 0 {
+			t.Fatal(jobs)
+		}
+	}
+	jobs, err = q.ClaimDue(ctx, now, now.Add(time.Minute), "worker", 10)
+	must(t, err)
+	if len(jobs) != 1 || jobs[0].Attempt != 1 || jobs[0].Failures != 0 {
+		t.Fatal(jobs)
+	}
+}

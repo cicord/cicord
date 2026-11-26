@@ -280,9 +280,6 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 				return writeback.SetYAML(cur, append(slices.Clone(at), writeback.Key("grants")), v)
 			})
 		}
-		if !slices.Contains(plan.bots, u.key) {
-			plan.bots = append(plan.bots, u.key)
-		}
 		on := u.inst.Servers
 		if len(on) == 0 {
 			on = u.bot.Spec.ServerKeys()
@@ -304,6 +301,9 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 				srv = &s.Spec
 			}
 			cfg := config.EffectiveConfig(newLP, base, override)
+			if !config.Disabled(cfg) && !slices.Contains(plan.bots, u.key) {
+				plan.bots = append(plan.bots, u.key)
+			}
 			if ds := config.ValidateInstanceConfig(newLP, cfg, sk, srv, u.bot.File, fmt.Sprintf("/spec/plugins/%d/config", u.idx)); len(ds) > 0 {
 				ui.Diagnostics = ds
 			}

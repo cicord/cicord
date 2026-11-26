@@ -233,6 +233,9 @@ func (l *loader) features(s PluginSpec, grants []string, bot string, config map[
 	return out
 }
 func (in Instance) EffectiveIntents() []string {
+	if in.Disabled() {
+		return nil
+	}
 	s := in.Plugin.Manifest.Spec
 	out := slices.Clone(s.Intents)
 	for _, f := range s.Optional {
@@ -245,7 +248,7 @@ func (in Instance) EffectiveIntents() []string {
 func (r *Repo) ApplyOptionalIntents(bot string, enabled discord.Intents) {
 	for n := range r.Instances {
 		in := &r.Instances[n]
-		if in.Bot != bot {
+		if in.Bot != bot || in.Disabled() {
 			continue
 		}
 		for _, f := range in.Plugin.Manifest.Spec.Optional {
@@ -265,6 +268,9 @@ func (r *Repo) ApplyOptionalIntents(bot string, enabled discord.Intents) {
 func (l *loader) checkInterop(repo *Repo) {
 	seen := map[string]string{}
 	for _, i := range repo.Instances {
+		if i.Disabled() {
+			continue
+		}
 		s := i.Plugin.Manifest.Spec.Interop
 		for _, feature := range i.Plugin.Manifest.Spec.Optional {
 			if i.Features[feature.Feature] != "" {
@@ -277,7 +283,7 @@ func (l *loader) checkInterop(repo *Repo) {
 				}
 				provider, _, _ := strings.Cut(method, ".")
 				if !slices.ContainsFunc(repo.Instances, func(other Instance) bool {
-					return other.Server == i.Server && other.Plugin.Manifest.Metadata.Name == provider
+					return !other.Disabled() && other.Server == i.Server && other.Plugin.Manifest.Metadata.Name == provider
 				}) {
 					i.Features[feature.Feature] = provider + " not installed"
 					break
@@ -296,7 +302,7 @@ func (l *loader) checkInterop(repo *Repo) {
 			plugin, topic, _ := strings.Cut(sub.Topic, ".")
 			found, match := false, false
 			for _, j := range repo.Instances {
-				if j.Server != i.Server || j.Plugin.Manifest.Metadata.Name != plugin {
+				if j.Disabled() || j.Server != i.Server || j.Plugin.Manifest.Metadata.Name != plugin {
 					continue
 				}
 				found = true

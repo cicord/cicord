@@ -13,6 +13,7 @@ import {
   diffConfig,
   editableFor,
   initialValue,
+  installationSchema,
   isDuration,
   Markdown,
   mapDiagnostics,
@@ -499,4 +500,12 @@ describe("every widget kind (synthetic schema)", () => {
     ]);
     expect(validate(kitchen, {}, resources)).toEqual([{ pointer: "/count", message: "Required" }]);
   });
+});
+
+test("the host switch disables strict legacy config and reenables required-field validation", () => {
+  const schema = installationSchema(welcome);
+  expect(schema.properties?.enabled?.["x-cicord-access"]).toBe("admin");
+  expect(validate(schema, { enabled: false })).toEqual([]);
+  expect(validate(schema, { enabled: true }).length).toBeGreaterThan(0);
+  expect(validate(welcome, { enabled: false }).length).toBeGreaterThan(0);
 });

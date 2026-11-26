@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -90,7 +91,7 @@ func (q taskQueue) Due(ctx context.Context, now time.Time, limit int) ([]state.T
 }
 
 // ClaimDue atomically leases eligible tasks; a new receipt fences late workers.
-func (q taskQueue) ClaimDue(ctx context.Context, now, until time.Time, worker string, limit int) ([]state.TaskLease, error) {
+func (q taskQueue) ClaimDue(ctx context.Context, now, until time.Time, worker string, limit int, paused ...string) ([]state.TaskLease, error) {
 	if worker == "" || !until.After(now) {
 		return nil, errors.New("invalid task lease")
 	}
@@ -103,10 +104,14 @@ func (q taskQueue) ClaimDue(ctx context.Context, now, until time.Time, worker st
 		return nil, nil
 	}
 	receipt := worker + "/" + rand.Text()
+	if paused == nil {
+		paused = []string{}
+	}
+	pausedJSON, _ := json.Marshal(paused)
 	rows, err := q.s.w.QueryContext(ctx, `UPDATE tasks SET available_at = ?3, receipt = ?4, attempts = attempts + 1
- WHERE id IN (SELECT id FROM tasks AS candidate WHERE NOT dead AND (event_seq IS NULL OR NOT EXISTS (SELECT 1 FROM tasks prior WHERE prior.event_stream=candidate.event_stream AND NOT prior.dead AND prior.event_seq<candidate.event_seq)) AND COALESCE(available_at, run_at) <= ?1
+ WHERE id IN (SELECT id FROM tasks AS candidate WHERE NOT dead AND scope NOT IN (SELECT value FROM json_each(?5)) AND (event_seq IS NULL OR NOT EXISTS (SELECT 1 FROM tasks prior WHERE prior.event_stream=candidate.event_stream AND NOT prior.dead AND prior.event_seq<candidate.event_seq)) AND COALESCE(available_at, run_at) <= ?1
  ORDER BY COALESCE(available_at, run_at), id LIMIT ?2)
- RETURNING id, scope, name, payload, run_at, attempts, failures, event_seq IS NOT NULL`, cutoff, clampLimit(limit, state.DefaultDueLimit), expires, receipt)
+ RETURNING id, scope, name, payload, run_at, attempts, failures, event_seq IS NOT NULL`, cutoff, clampLimit(limit, state.DefaultDueLimit), expires, receipt, string(pausedJSON))
 	if err != nil {
 		return nil, err
 	}

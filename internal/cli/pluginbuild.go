@@ -614,7 +614,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 			return fmt.Errorf("config schema: %w", err)
 		}
 	}
-	if props, ok := schema["properties"].(map[string]any); ok {
+	if props, ok := schema["properties"].(map[string]any); ok && !config.Disabled(cfg) {
 		req, _ := schema["required"].([]any)
 		for _, r := range req {
 			k, _ := r.(string)
@@ -709,6 +709,14 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 			}
 		}
 		return runtime.PluginStatus{}
+	}
+	if p := inst(); p.Health == runtime.HealthDisabled {
+		instances := rt.Instances("test")
+		if len(instances) != 1 || instances[0].Definition != nil || len(world.Commands(testAppID, testServerID)) > 0 {
+			return errors.New("disabled installation registered executable handlers")
+		}
+		fmt.Fprintf(stdout, "ok   instance %s disabled\nPASS\n", name)
+		return nil
 	}
 	if p := inst(); p.Health != runtime.HealthHealthy {
 		fmt.Fprintf(stderr, "error: the plugin instance is %s: %s\n", p.Health, p.Message)

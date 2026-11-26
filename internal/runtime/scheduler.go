@@ -112,7 +112,13 @@ func (s *scheduler) runTasks(ctx context.Context, now time.Time) {
 		timeout = plugin.DefaultHandlerTimeout
 	}
 	queue := s.r.opts.Store.Tasks()
-	tasks, err := queue.ClaimDue(ctx, now, now.Add(2*timeout), s.worker, space)
+	var paused []string
+	for _, i := range a.instances {
+		if i.cfg.Disabled() {
+			paused = append(paused, instanceScope(i.cfg))
+		}
+	}
+	tasks, err := queue.ClaimDue(ctx, now, now.Add(2*timeout), s.worker, space, paused...)
 	if err != nil {
 		if ctx.Err() == nil {
 			s.r.log.Warn("claim due tasks", "err", err)
@@ -180,13 +186,16 @@ func (s *scheduler) deliverTask(ctx context.Context, inst *instanceRT, task stat
 	if ctx.Err() != nil {
 		return // shutdown leaves the lease recoverable
 	}
-	if err == nil {
+	switch {
+	case errors.Is(err, plugin.ErrStopped), errors.Is(err, plugin.ErrDeliverySuperseded):
+		err = queue.Release(ctx, task, time.Now(), "")
+	case err == nil:
 		err = queue.Acknowledge(ctx, task)
-	} else if errors.Is(err, errPrivacyRetry) {
+	case errors.Is(err, errPrivacyRetry):
 		// Keep the original legal enforcement timer recoverable while its plugin
 		// repairs member state. A blocked privacy operation is not a delivery failure.
 		err = queue.Release(ctx, task, time.Now().Add(time.Minute), "")
-	} else {
+	default:
 		s.r.log.Warn("task handler failed", "instance", inst.id(), "id", task.ID, "attempt", task.Attempt, "err", err)
 		// Never persist arbitrary plugin error text with the administrative record.
 		var retry time.Time

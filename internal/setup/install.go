@@ -112,10 +112,12 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 			"%s is already installed as %q.", pkg.DisplayName, instance)
 	}
 
-	if err := in.checkIntents(ctx, bot, pkg.DisplayName, pkg.PrivilegedIntents); err != nil {
-		return InstallResult{}, err
-	}
+	if !config.Disabled(t.Config) {
+		if err := in.checkIntents(ctx, bot, pkg.DisplayName, pkg.PrivilegedIntents); err != nil {
+			return InstallResult{}, err
+		}
 
+	}
 	pi := config.PluginInstance{Name: instance, Grants: slices.Clone(pkg.Capabilities)}
 	edits := map[string]writeback.EditFunc{}
 	switch {
@@ -184,6 +186,9 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 	}
 	out := InstallResult{Instance: instance, Mode: res.Mode, PullRequestURL: res.PullRequestURL, Health: runtime.HealthProgressing, Command: pkg.FirstCommand,
 		Warnings: routes.Warnings}
+	if config.Disabled(t.Config) {
+		out.Command = ""
+	}
 	if out.Mode == "" {
 		out.Mode = mode
 	}
@@ -435,6 +440,13 @@ func listFiles(dir string) ([]string, error) {
 		return nil, nil
 	}
 	return out, err
+}
+
+// ValidateActivation checks proposed config edits against the whole installation
+// (including grants, resource bindings, commands and the plugin build).
+func (in *Installer) ValidateActivation(revDir string, edits map[string]writeback.EditFunc) (config.Diagnostics, error) {
+	ds, _, err := in.validate(revDir, edits)
+	return ds, err
 }
 
 func (in *Installer) validate(revDir string, edits map[string]writeback.EditFunc) (config.Diagnostics, portalRoutes, error) {

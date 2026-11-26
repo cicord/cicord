@@ -55,7 +55,7 @@ const BG: Record<Tone, string> = {
 };
 
 const SYNC_STATES = ["Synced", "OutOfSync", "Unknown"] as const;
-const HEALTH_STATES = ["Healthy", "Progressing", "Degraded", "Missing"] as const;
+const HEALTH_STATES = ["Healthy", "Progressing", "Degraded", "Missing", "Disabled"] as const;
 export const HISTORY_STATES = [
   "succeeded",
   "failed",
@@ -79,6 +79,7 @@ const syncMeta: Record<SyncState, { tone: Tone; icon: LucideIcon }> = {
 
 const healthMeta: Record<HealthState, { tone: Tone }> = {
   Healthy: { tone: "success" },
+  Disabled: { tone: "neutral" },
   Progressing: { tone: "info" },
   Degraded: { tone: "danger" },
   Missing: { tone: "warning" },

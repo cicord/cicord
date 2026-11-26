@@ -630,6 +630,9 @@ func editableFields(schema map[string]any, r role) []string {
 	out := []string{}
 	props, _ := schema["properties"].(map[string]any)
 	for k, raw := range props {
+		if k == "enabled" && r < roleAdmin {
+			continue
+		}
 		sub, _ := raw.(map[string]any)
 		access, _ := sub["x-cicord-access"].(string)
 		if access == "" {
@@ -638,6 +641,9 @@ func editableFields(schema map[string]any, r role) []string {
 		if r >= roleAdmin || (r >= roleModerator && access == "moderator") {
 			out = append(out, k)
 		}
+	}
+	if r >= roleAdmin && !slices.Contains(out, "enabled") {
+		out = append(out, "enabled")
 	}
 	slices.Sort(out)
 	return out

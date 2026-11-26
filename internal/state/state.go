@@ -154,7 +154,7 @@ type TaskWriter interface {
 // TaskQueue persists scheduled work until successful delivery or operator disposal.
 type TaskQueue interface {
 	TaskWriter
-	ClaimDue(ctx context.Context, now, until time.Time, worker string, limit int) ([]TaskLease, error)
+	ClaimDue(ctx context.Context, now, until time.Time, worker string, limit int, pausedScopes ...string) ([]TaskLease, error)
 	Acknowledge(ctx context.Context, lease TaskLease) error
 	Consume(ctx context.Context, lease TaskLease) (bool, error)
 	// Release schedules another delivery or, with a zero retry time, parks the task

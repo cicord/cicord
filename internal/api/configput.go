@@ -12,6 +12,7 @@ import (
 
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/runtime"
+	"github.com/cicord/cicord/internal/setup"
 	"github.com/cicord/cicord/internal/state"
 	"github.com/cicord/cicord/internal/writeback"
 )
@@ -277,6 +278,18 @@ func (s *server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 	if ds.HasErrors() {
 		writeDiagnostics(w, "the configuration is invalid", ds.Errors())
 		return
+	}
+	if slices.Contains(changed, "enabled") && slices.ContainsFunc(servers, func(sk string) bool { return current[sk].Config.Disabled() && !config.Disabled(effective[sk]) }) {
+		in := setup.Installer{Runtime: s.rt}
+		checks, err := in.ValidateActivation(rev.Dir, map[string]writeback.EditFunc{bot.File: edit})
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if checks.HasErrors() {
+			writeDiagnostics(w, "the installation cannot be enabled", checks.Errors())
+			return
+		}
 	}
 	if len(changed) == 0 {
 		writeJSON(w, http.StatusOK, configPutResponse{Mode: writeback.ModeCommit, Revision: rev.ID})

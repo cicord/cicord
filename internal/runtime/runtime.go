@@ -370,8 +370,14 @@ func ValidatePluginCommands(repo *config.Repo) config.Diagnostics {
 func inspectRepoPlugins(repo *config.Repo) (map[string]*builtPlugin, config.Diagnostics) {
 	var ds config.Diagnostics
 	builds := map[string]*builtPlugin{}
-	keys := make([]string, 0, len(repo.Plugins))
-	for k := range repo.Plugins {
+	used := map[string]bool{}
+	for _, in := range repo.Instances {
+		if !in.Disabled() {
+			used[in.Plugin.Key] = true
+		}
+	}
+	keys := make([]string, 0, len(used))
+	for k := range used {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
@@ -397,6 +403,9 @@ func validateRepoCommands(repo *config.Repo, builds map[string]*builtPlugin) con
 	seen := map[pair]map[string]string{}
 	menuOwners := map[pair]map[discord.CommandType][]string{}
 	for _, in := range repo.Instances {
+		if in.Disabled() {
+			continue
+		}
 		bp := builds[in.Plugin.Key]
 		if bp == nil {
 			continue
@@ -511,6 +520,21 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 		r.metrics.activations.Inc("rejected")
 		return &RejectedError{Revision: rev.ID, Diagnostics: ds}
 	}
+	if cur != nil {
+		disabled := map[string]bool{}
+		for _, in := range repo.Instances {
+			if in.Disabled() {
+				disabled[in.ID()] = true
+			}
+		}
+		for _, i := range cur.instances {
+			if disabled[i.id()] {
+				if old := i.retire(); old != nil {
+					old.Disable()
+				}
+			}
+		}
+	}
 	next := &active{rev: rev, activatedAt: time.Now(), repo: repo, builds: builds, servers: map[string]*serverRT{}}
 
 	// 1. bot sessions
@@ -574,11 +598,19 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 	// 3. plugin instances
 	var pluginFailures []string // for the commit status
 	for _, in := range repo.Instances {
-		irt := &instanceRT{revision: next, cfg: in, plugin: builds[in.Plugin.Key], health: HealthProgressing, quit: make(chan struct{})}
+		irt := &instanceRT{revision: next, cfg: in, health: HealthProgressing, quit: make(chan struct{})}
+		if in.Disabled() {
+			irt.health, irt.message = HealthDisabled, "Disabled by instance configuration"
+		} else {
+			irt.plugin = builds[in.Plugin.Key]
+		}
 		next.instances = append(next.instances, irt)
 	}
 	for _, irt := range next.instances {
 		in := irt.cfg
+		if in.Disabled() {
+			continue
+		}
 		host := r.bot(in.Bot)
 		srt := next.servers[in.Server]
 		switch {
@@ -1184,6 +1216,9 @@ func (r *Runtime) instanceDeadCounts() map[string]int {
 func (r *Runtime) reportedHealth(i *instanceRT, dead int) (string, string, []FeatureAdvisory) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	if i.cfg.Disabled() {
+		return HealthDisabled, "Disabled by instance configuration", nil
+	}
 	var problems []string
 	var advice []FeatureAdvisory
 	features := i.featureState()
@@ -1397,15 +1432,19 @@ func (i *instanceRT) retire() *plugin.Instance {
 	return i.inst()
 }
 
-// install makes inst the running instance unless irt was retired meanwhile.
-func (i *instanceRT) install(inst *plugin.Instance) bool {
+// Serialize startup with retirement. After a disable has fenced a revision,
+// its supervisor cannot begin another VM or invoke an old startup hook.
+func (r *Runtime) restartInstance(ctx context.Context, h *botHost, s *serverRT, i *instanceRT) error {
 	i.swapMu.Lock()
 	defer i.swapMu.Unlock()
 	if i.retired {
-		return false
+		return plugin.ErrStopped
 	}
-	i.current.Store(inst)
-	return true
+	next, err := r.startInstance(ctx, h, s, i)
+	if err == nil {
+		i.current.Store(next)
+	}
+	return err
 }
 
 func (i *instanceRT) degraded(msg string) {
@@ -1449,16 +1488,15 @@ func (r *Runtime) supervise(host *botHost, srt *serverRT, irt *instanceRT) {
 			}
 			delay = min(delay*2, p.max)
 			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-			next, err := r.startInstance(ctx, host, srt, irt)
+			err := r.restartInstance(ctx, host, srt, irt)
 			cancel()
+			if errors.Is(err, plugin.ErrStopped) {
+				return
+			}
 			if err != nil {
 				r.metrics.restarts.Inc(append(labels, "failed")...)
 				cause = fmt.Errorf("restart failed: %w", err)
 				continue
-			}
-			if !irt.install(next) {
-				_ = next.Stop(context.Background())
-				return
 			}
 			r.metrics.restarts.Inc(append(labels, "succeeded")...)
 			break
