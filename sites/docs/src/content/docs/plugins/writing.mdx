@@ -269,7 +269,7 @@ instance's server, or to a DM channel the instance opened or received. Storage a
 
 ### Versioned events and plugin calls
 
-Declare integrations in the manifest. Each file in `contracts/` follows the local contract name and version. An event schema describes its payload. A method file contains separate `input` and `output` schemas. Contracts support typed objects, arrays, primitives, enums, bounds and local references. The host validates JSON in development and production. Run `cicord plugin typegen` to generate TypeScript declarations for installed contracts.
+Declare integrations in the manifest. Each file in `contracts/` follows the local contract name and version. An event schema describes its payload. A method file contains separate `input` and `output` schemas. Contracts support typed objects, arrays, primitives, enums, bounds and local references. The build checks literal topics and versions in publication calls, including the default version 1. Computed arguments are validated by the host on every publication. The host validates JSON in development and production. Run `cicord plugin typegen` to generate TypeScript declarations for installed contracts.
 
 ```yaml
 spec:

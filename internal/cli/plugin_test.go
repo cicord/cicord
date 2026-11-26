@@ -191,3 +191,32 @@ func TestPluginNewInRepo(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestPluginBuildLiteralEventVersions(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "contracts"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "plugin.yaml")
+	base := "apiVersion: cicord.dev/v1alpha1\nkind: Plugin\nmetadata: {name: polls, version: 1.0.0}\nspec:\n  engine: '>=0.1.0'\n  entry: ./index.ts\n  capabilities: [events.publish]\n"
+	writeFile(t, file, base+"  delivery: at-least-once\n  interop:\n    publishes: [{topic: closed, version: 2}]\n")
+	writeFile(t, filepath.Join(dir, "contracts", "closed.v2.json"), `{"type":"object"}`)
+	code := func(body string) {
+		writeFile(t, filepath.Join(dir, "index.ts"), `import {definePlugin} from "@cicord/sdk";export default definePlugin({async onStart(ctx){`+body+`}});`)
+	}
+	for _, tc := range []struct {
+		body string
+		exit int
+	}{{`await ctx.events.publish("closed",{}, {version:2})`, 0}, {`await ctx.events.publish("clsoed",{}, {version:2})`, 1}, {`await ctx.events.publish("closed",{}, {version:9})`, 1}, {`await ctx.events.publish(ctx.config.topic,{}, {version:ctx.config.version})`, 0}} {
+		code(tc.body)
+		n, out, err := run(t, "plugin", "build", dir)
+		if n != tc.exit {
+			t.Fatalf("build = %d (%s): %s %s", n, tc.body, out, err)
+		}
+	}
+	writeFile(t, file, base)
+	code(`await ctx.events.publish("arbitrary",{})`)
+	if n, out, _ := run(t, "plugin", "build", dir); n != 0 {
+		t.Fatal(out)
+	}
+}

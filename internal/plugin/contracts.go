@@ -3,40 +3,9 @@ package plugin
 import (
 	"fmt"
 	"slices"
-	"strconv"
-	"strings"
-	"text/scanner"
 
 	"github.com/cicord/cicord/internal/config"
 )
-
-// Scan the bundled script's tokens, ignoring comments, strings and template text.
-// Calculated topics still receive the authoritative check on every publication.
-func literalTopics(code string) []string {
-	var lex scanner.Scanner
-	lex.Init(strings.NewReader(code))
-	lex.Mode = scanner.ScanIdents | scanner.ScanStrings | scanner.ScanChars | scanner.ScanRawStrings | scanner.ScanComments | scanner.SkipComments
-	// JS strings and regexp literals may contain syntax outside Go's quoted constants.
-	lex.Error = func(*scanner.Scanner, string) {}
-	var recent [7]string
-	var topics []string
-	for tok := lex.Scan(); tok != scanner.EOF; tok = lex.Scan() {
-		copy(recent[:], recent[1:])
-		recent[6] = lex.TokenText()
-		if recent[0] != "." || recent[1] != "events" || recent[2] != "." || recent[3] != "publish" || recent[4] != "(" || (recent[6] != "," && recent[6] != ")") {
-			continue
-		}
-		text := recent[5]
-		if len(text) < 2 || text[0] != '"' {
-			continue
-		}
-		name, err := strconv.Unquote(text)
-		if err == nil {
-			topics = append(topics, name)
-		}
-	}
-	return topics
-}
 
 func (d *Definition) CheckInterop(spec config.PluginSpec, code string) []string {
 	var problems []string
@@ -76,11 +45,8 @@ func (d *Definition) CheckInterop(spec config.PluginSpec, code string) []string 
 		if spec.Delivery != "at-least-once" {
 			problems = append(problems, "spec.interop requires spec.delivery: at-least-once")
 		}
-		for _, name := range literalTopics(code) {
-			if !slices.ContainsFunc(s.Publishes, func(t config.Topic) bool { return t.Topic == name }) {
-				problems = append(problems, "undeclared literal event topic "+name)
-			}
-		}
+		problems = append(problems, checkPublications(code, s.Publishes)...)
+
 	}
 	return problems
 }

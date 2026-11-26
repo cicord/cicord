@@ -57,3 +57,24 @@ test("each external effect is replayed using its original action key", async () 
     expect(probe.result).toBe(true);
   }
 });
+
+// Represents the exact augmentation produced by plugin typegen for a v2 publisher.
+// Keep this type-only fixture separate from the harness's legacy dynamic context.
+function checkTypedPublications(
+  events: import("@cicord/sdk").Events<{ "closed.v2": { voters: string[] } }>,
+  dynamicTopic: string,
+  version: number,
+) {
+  void events.publish("closed", { voters: [] }, { version: 2 });
+  void events.publish(dynamicTopic, {}, { version });
+  void events.publish("closed", {}, { version });
+  // @ts-expect-error undeclared literal topic
+  void events.publish("clsoed", { voters: [] }, { version: 2 });
+  // @ts-expect-error undeclared literal version
+  void events.publish("closed", { voters: [] }, { version: 3 });
+  // @ts-expect-error default version is 1
+  void events.publish("closed", { voters: [] });
+  // @ts-expect-error version 2 requires voters
+  void events.publish("closed", {}, { version: 2 });
+}
+void checkTypedPublications;

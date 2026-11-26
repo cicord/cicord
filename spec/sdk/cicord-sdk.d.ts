@@ -851,15 +851,22 @@ export interface Http {
   }>;
 }
 
-/** Cross-plugin events scoped to the bot or the server, as declared by the publisher. */
-export interface Events {
-  /**
-   * Topic is namespaced by the publisher plugin name: `publish("levelUp", …)` from plugin
-   * `xp` is delivered to `subscriptions["xp.levelUp"]`. @capability events.publish
-   */
-  publish<N extends string, V extends number = 1>(
-    topic: N,
-    payload: `${N}.v${V}` extends keyof PublishedEvents ? PublishedEvents[`${N}.v${V}`] : Json,
+// A widened string or numeric expression is checked by the host. When typegen
+// has supplied contracts, literal names and literal/default versions must exist.
+type PublicationAllowed<C, N extends string, V extends number> =
+  keyof C extends never ? unknown
+  : string extends N ? unknown
+  : Extract<keyof C, `${N}.v${number}`> extends never ? never
+  : number extends V ? unknown
+  : `${N}.v${V}` extends keyof C ? unknown
+  : never;
+
+/** Cross-plugin events scoped to the bot or server as declared by the publisher. */
+export interface Events<C = PublishedEvents> {
+  /** @capability events.publish */
+  publish<const N extends string, const V extends number = 1>(
+    topic: N & PublicationAllowed<C, N, V>,
+    payload: `${N}.v${V}` extends keyof C ? C[`${N}.v${V}`] : Json,
     options?: { version?: V; idempotencyKey?: string },
   ): Promise<void>;
 }
