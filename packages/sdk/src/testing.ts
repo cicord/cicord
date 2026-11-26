@@ -772,7 +772,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
           throw new TypeError("limit must be 1–100");
         return [...(reactionUsers.get(id)?.get(emoji) ?? [])]
           .filter((uid) => !opts.after || idLess(opts.after, uid))
-          .sort((a, b) => (idLess(a, b) ? -1 : idLess(b, a) ? 1 : 0))
+          .toSorted((a, b) => (idLess(a, b) ? -1 : idLess(b, a) ? 1 : 0))
           .slice(0, limit)
           .map(
             (uid) =>
@@ -908,7 +908,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       async pins() {
         need("discord.messages.read");
         return [...pinned]
-          .reverse()
+          .toReversed()
           .map((messageID) => messages.get(messageID))
           .filter((m): m is Message => m?.channel.id === id);
       },
@@ -2609,7 +2609,7 @@ function validateLayoutInput(input: MessageInput) {
         for (const c of node.components) visit(c, "section");
         break;
       case "text":
-        if (!node.content || [...node.content].length > 4000) throw new TypeError("invalid text");
+        if (!node.content || codePoints(node.content) > 4000) throw new TypeError("invalid text");
         break;
       case "file":
         if (!node.file.url.startsWith("attachment://")) throw new TypeError("invalid file");

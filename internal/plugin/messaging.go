@@ -93,7 +93,7 @@ func messaging(op, grant string) asyncOp {
 			}
 			client, ok := i.env.Discord.(discord.MessagingClient)
 			if !ok {
-				return nil, errors.New("Discord client does not support extended messaging")
+				return nil, errors.New("extended messaging is unavailable on this Discord client")
 			}
 			switch op {
 			case "pin", "unpin":

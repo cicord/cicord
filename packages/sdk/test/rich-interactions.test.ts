@@ -1,8 +1,8 @@
-import { expect, it } from "vite-plus/test";
+import { expect, test } from "vite-plus/test";
 import { createTestContext, runContextMenu } from "../src/testing.ts";
 import { definePlugin } from "../src/index.ts";
 
-it("resolves context targets, checks the grant, and shares normal guild messages", async () => {
+test("resolves context targets, checks the grant, and shares normal guild messages", async () => {
   const h = createTestContext({
     roles: { moderator: { name: "Mod", permissions: ["ManageMessages"] } },
     members: [{ id: "10", roles: ["moderator"] }, { id: "20" }],

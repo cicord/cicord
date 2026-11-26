@@ -655,9 +655,10 @@ func (s *server) handleSimCommands(w http.ResponseWriter, r *http.Request) {
 			}
 			for _, c := range s.opts.Sim.Commands(app, sid) {
 				kind := ""
-				if c.Type == discord.UserMenu {
+				switch c.Type {
+				case discord.UserMenu:
 					kind = "user"
-				} else if c.Type == discord.MessageMenu {
+				case discord.MessageMenu:
 					kind = "message"
 				}
 				items = append(items, cmdOut{ContextMenu: kind, Bot: s.botKeyOf(app), Name: c.Name, Description: c.Description, Options: simOptions(c.Options)})

@@ -150,20 +150,22 @@ function ComponentView({
       <ComponentView key={index} node={n} resolver={resolver} disabled={disabled} onPick={onPick} />
     ));
   switch (node.type) {
-    case "button":
+    case "button": {
+      const customId = node.customId;
       return (
         <ComponentButton
           button={node}
           busy={disabled}
           onClick={
-            node.customId
+            customId
               ? async () => {
-                  await onPick(node.customId!, []);
+                  await onPick(customId, []);
                 }
               : undefined
           }
         />
       );
+    }
     case "select":
       return (
         <SelectMenu select={node} disabled={disabled} onPick={(v) => onPick(node.customId, v)} />
@@ -211,6 +213,7 @@ function ComponentView({
         </div>
       );
   }
+  return null;
 }
 
 function EntityInput({

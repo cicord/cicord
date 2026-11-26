@@ -45,7 +45,7 @@ func (s *session) ChannelPins(ctx context.Context, channel string) ([]discord.Me
 		}
 		before := page.Items[len(page.Items)-1].PinnedAt
 		if before == "" || q["before"] == before {
-			return nil, errors.New("Discord pin cursor did not advance")
+			return nil, errors.New("pin cursor from Discord did not advance")
 		}
 		q["before"] = before
 	}
@@ -112,7 +112,7 @@ func (s *session) SendAs(ctx context.Context, channel string, identity discord.W
 		return discord.Message{}, err
 	}
 	if h.Token == "" || h.ID == "" {
-		return discord.Message{}, errors.New("Discord returned a webhook without a credential")
+		return discord.Message{}, errors.New("missing credential in Discord webhook response")
 	}
 	body := struct {
 		wireMessageSend
@@ -128,7 +128,7 @@ func (s *session) SendAs(ctx context.Context, channel string, identity discord.W
 				return discord.Message{}, e
 			}
 		}
-		return discord.Message{}, errors.New("Discord webhook send failed")
+		return discord.Message{}, errors.New("webhook send failed")
 	}
 	return messageFromWire(out), nil
 }
