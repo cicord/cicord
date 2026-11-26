@@ -518,7 +518,7 @@ func (s *session) SendMessage(ctx context.Context, channelID string, m discord.M
 	var out wireMessage
 	body := messageSendToWire(m)
 	body.Nonce, body.EnforceNonce = m.Nonce, m.EnforceNonce
-	if err := s.do(ctx, "SendMessage", rest.CreateMessage.Compile(nil, channelID), body, &out); err != nil {
+	if err := s.doFiles(ctx, "SendMessage", rest.CreateMessage.Compile(nil, channelID), body, &out, m.Files); err != nil {
 		return discord.Message{}, err
 	}
 	return messageFromWire(out), nil
@@ -529,7 +529,7 @@ func (s *session) EditMessage(ctx context.Context, channelID, messageID string, 
 		return discord.Message{}, err
 	}
 	var out wireMessage
-	if err := s.do(ctx, "EditMessage", rest.UpdateMessage.Compile(nil, channelID, messageID), messageEditToWire(m), &out); err != nil {
+	if err := s.doFiles(ctx, "EditMessage", rest.UpdateMessage.Compile(nil, channelID, messageID), messageEditToWire(m), &out, m.Files); err != nil {
 		return discord.Message{}, err
 	}
 	return messageFromWire(out), nil
@@ -645,7 +645,11 @@ func (s *session) RespondInteraction(ctx context.Context, interactionID, token s
 	if err != nil {
 		return fmt.Errorf("discord RespondInteraction: %w", err)
 	}
-	return s.do(ctx, "RespondInteraction", rest.CreateInteractionResponse.Compile(nil, interactionID, pathEscape(token)), body, nil)
+	var files []discord.UploadFile
+	if r.Data != nil {
+		files = r.Data.Files
+	}
+	return s.doFiles(ctx, "RespondInteraction", rest.CreateInteractionResponse.Compile(nil, interactionID, pathEscape(token)), body, nil, files)
 }
 
 func (s *session) EditOriginalResponse(ctx context.Context, applicationID, token string, m discord.MessageCreate) (discord.Message, error) {
@@ -656,7 +660,7 @@ func (s *session) EditOriginalResponse(ctx context.Context, applicationID, token
 		return discord.Message{}, err
 	}
 	var out wireMessage
-	err := s.do(ctx, "EditOriginalResponse", rest.UpdateInteractionResponse.Compile(nil, applicationID, pathEscape(token)), messageEditToWire(m), &out)
+	err := s.doFiles(ctx, "EditOriginalResponse", rest.UpdateInteractionResponse.Compile(nil, applicationID, pathEscape(token)), messageEditToWire(m), &out, m.Files)
 	if err != nil {
 		return discord.Message{}, err
 	}
@@ -673,7 +677,7 @@ func (s *session) CreateFollowup(ctx context.Context, applicationID, token strin
 	body := messageSendToWire(m)
 	body.MessageReference = nil // not supported on webhook messages
 	var out wireMessage
-	err := s.do(ctx, "CreateFollowup", rest.CreateFollowupMessage.Compile(nil, applicationID, pathEscape(token)), body, &out)
+	err := s.doFiles(ctx, "CreateFollowup", rest.CreateFollowupMessage.Compile(nil, applicationID, pathEscape(token)), body, &out, m.Files)
 	if err != nil {
 		return discord.Message{}, err
 	}

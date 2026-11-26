@@ -42,6 +42,7 @@
       "properties": {
         "engine": { "$ref": "common.schema.json#/$defs/semverRange" },
         "locales": { "type": "string", "minLength": 1, "description": "Directory of locale JSON catalogues relative to the plugin." },
+        "assets": { "type": "string", "pattern": "^\\./", "description": "Plugin asset directory, at most 5 MiB total." },
         "entry": {
           "description": "TypeScript/JavaScript entry module, default-exporting definePlugin(...).",
           "$ref": "common.schema.json#/$defs/relativePath"

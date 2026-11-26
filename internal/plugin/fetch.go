@@ -260,7 +260,7 @@ type fetchInit struct {
 type fetchResult struct {
 	Status  int               `json:"status"`
 	Headers map[string]string `json:"headers"`
-	Body    string            `json:"body"`
+	Body    []byte            `json:"bytes"`
 }
 
 var fetchMethods = map[string]bool{"GET": true, "HEAD": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true, "OPTIONS": true}
@@ -322,7 +322,9 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 			}
 			return nil, fmt.Errorf("http.fetch %s %s: %w", method, u.Redacted(), err)
 		}
-		redactResponse(res, materials)
+		if err := redactResponse(res, materials, i.egress.maxBytes); err != nil {
+			return nil, err
+		}
 		return res, nil
 	}, nil
 }
@@ -396,7 +398,7 @@ func (e *egress) do(ctx context.Context, method string, u *url.URL, headers map[
 		if int64(len(data)) > e.maxBytes {
 			return nil, fmt.Errorf("response body larger than %d bytes", e.maxBytes)
 		}
-		out := &fetchResult{Status: resp.StatusCode, Headers: map[string]string{}, Body: string(data)}
+		out := &fetchResult{Status: resp.StatusCode, Headers: map[string]string{}, Body: data}
 		keys := make([]string, 0, len(resp.Header))
 		for k := range resp.Header {
 			keys = append(keys, k)

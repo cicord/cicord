@@ -136,6 +136,34 @@
     });
   }
 
+  const encodeBytes = Function.call.bind(Uint8Array.prototype.toBase64);
+  const decodeBytes = Uint8Array.fromBase64.bind(Uint8Array);
+  const sliceBytes = Function.call.bind(Uint8Array.prototype.subarray);
+  async function sendCall(op, args) {
+    const message = args.message;
+    if (!message || message.files === undefined) return acall(op, args);
+    if (!Array.isArray(message.files) || message.files.length > 10) throw new TypeError("files must be an array of at most 10 uploads");
+    const handles = [];
+    try {
+      const files = [];
+      for (const {name, data, contentType, description} of message.files) {
+        if (!(data instanceof Uint8Array)) throw new TypeError("file data must be a Uint8Array");
+        const size = data.byteLength;
+        let handle = 0;
+        for (let offset = 0; offset < size || offset === 0; offset += 32768) {
+          const chunk = sliceBytes(data, offset, Math.min(size, offset + 32768));
+          const id = await acall("upload.part", {handle, size, data: encodeBytes(chunk)});
+          if (handle === 0) handles.push(id);
+          handle = id;
+        }
+        files.push({name, contentType, description, handle});
+      }
+      return await acall(op, {...args, message: {...message, files}});
+    } finally {
+      for (const id of handles) hcall("upload.free", id);
+    }
+  }
+
   function msgIn(m) {
     if (typeof m === "string") return { content: m };
     if (m === null || typeof m !== "object") throw new TypeError("message must be a string or a message payload");
@@ -185,7 +213,7 @@
   }
 
   function mkAttachment(d) {
-    return freeze({ id: d.id, filename: d.filename, url: d.url, contentType: d.contentType || undefined, size: d.size });
+    return freeze({ id: d.id, filename: d.filename, url: d.url, contentType: d.contentType || undefined, size: d.size, description:d.description || undefined, async bytes(){return decodeBytes((await acall("attachment.bytes",{url:d.url})) || "");} });
   }
 
   const TextChannelProto = {
@@ -193,7 +221,7 @@
     async typing(){await acall("channel.typing",{channelId:this.id});},
     async sendAs(identity,message){return mkMessage(await acall("channel.sendAs",{channelId:this.id,identity,message:msgIn(message)}));},
     async send(message) {
-      return mkMessage(await acall("channel.send", { channelId: this.id, message: msgIn(message) }));
+      return mkMessage(await sendCall("channel.send", { channelId: this.id, message: msgIn(message) }));
     },
     async bulkDelete(ids, reason) {
       return acall("channel.bulkDelete", {channelId:this.id,ids,reason});
@@ -238,10 +266,10 @@
     async reactionUsers(emoji,options={}) {return (await acall("message.reactionUsers",{channelId:this.channel.id,messageId:this.id,emoji,limit:options.limit,after:options.after})).map(mkUser);},
     async removeReaction(emoji,userId){await acall("message.removeReaction",{channelId:this.channel.id,messageId:this.id,emoji,userId});},
     async reply(message) {
-      return mkMessage(await acall("message.reply", { channelId: this.channel.id, messageId: this.id, message: msgIn(message) }));
+      return mkMessage(await sendCall("message.reply", { channelId: this.channel.id, messageId: this.id, message: msgIn(message) }));
     },
     async edit(message) {
-      return mkMessage(await acall("message.edit", { channelId: this.channel.id, messageId: this.id, authorId: this.author && this.author.id, message: msgIn(message) }));
+      return mkMessage(await sendCall("message.edit", { channelId: this.channel.id, messageId: this.id, authorId: this.author && this.author.id, message: msgIn(message) }));
     },
     async delete(reason) {
       await acall("message.delete", { channelId: this.channel.id, messageId: this.id, reason });
@@ -315,7 +343,7 @@
       await acall("member.ban", { userId: this.id, reason: o.reason, deleteMessagesSeconds: o.deleteMessagesSeconds });
     },
     async send(message,options) {
-      return mkMessage(await acall("member.send", { userId: this.id, message: msgIn(message),retractable:options && options.retractable }));
+      return mkMessage(await sendCall("member.send", { userId: this.id, message: msgIn(message),retractable:options && options.retractable }));
     },
     async moveTo(channel, reason) {
       if (channel === null || channel === undefined) throw new TypeError("moveTo: a voice channel is required (use disconnect() to disconnect)");
@@ -362,14 +390,14 @@
   const InteractionProto = {
     get replied() { return hcall("it.state", { h: hOf(this) }).replied; },
     get deferred() { return hcall("it.state", { h: hOf(this) }).deferred; },
-    async reply(message) { await acall("it.reply", { h: hOf(this), message: replyIn(message) }); },
+    async reply(message) { await sendCall("it.reply", { h: hOf(this), message: replyIn(message) }); },
     async defer(options) { await acall("it.defer", { h: hOf(this), ephemeral: options && options.ephemeral }); },
-    async followUp(message) { return mkMessage(await acall("it.followUp", { h: hOf(this), message: replyIn(message) })); },
+    async followUp(message) { return mkMessage(await sendCall("it.followUp", { h: hOf(this), message: replyIn(message) })); },
     async showModal(modal) { await acall("it.showModal", { h: hOf(this), modal }); },
   };
   const ComponentProto = Object.create(InteractionProto);
   ComponentProto.update = async function (message) {
-    await acall("it.update", { h: hOf(this), message: msgIn(message) });
+    await sendCall("it.update", { h: hOf(this), message: msgIn(message) });
   };
 
   function baseInteraction(proto, d) {
@@ -597,12 +625,14 @@
     const http = freeze({
       async fetch(url, init) {
         const r = await acall("http.fetch", { url: String(url), init: init || {} });
-        const body = r.body;
+        const bytes = r.bytes || "";
+        const text = () => new g.TextDecoder().decode(decodeBytes(bytes));
         return freeze({
           status: r.status,
           headers: freeze(r.headers),
-          async text() { return body; },
-          async json() { return jparse(body); },
+          async text() { return text(); },
+          async bytes() { return decodeBytes(bytes); },
+          async json() { return jparse(text()); },
         });
       },
     });
@@ -620,6 +650,12 @@
     });
 
     return freeze({
+      assets: freeze({async read(path) {return decodeBytes(await acall("assets.read",{path}));}}),
+      render: freeze({async image(spec) {const data=await acall("render.image",spec);return {data:decodeBytes(data),contentType:"image/png"};}}),
+      media: freeze({
+        async hash(source, options) {return acall("media.hash",{url:typeof source==="string" ? source : source.url,algo:options.algo});},
+        distance(a,b) {return hcall("media.distance",{a,b});}
+      }),
       plugin: freeze(d.plugin),
       i18n: freeze({t(key,vars,options) {return hcall("i18n.t",{key,vars:vars||{},locale:options&&options.locale});}}),
       bot: freeze({ key: d.bot.key, user: mkUser(d.bot.user) }),
@@ -896,6 +932,47 @@
       return bytes.slice(0,8)+"-"+bytes.slice(8,12)+"-4"+bytes.slice(13,16)+"-"+variant+bytes.slice(17,20)+"-"+bytes.slice(20);
     }
   });
+  // QuickJS provides typed arrays and the built-in base64 codecs. Bridge UTF-8
+  // in bounded chunks, keeping surrogate pairs and multibyte sequences together.
+  g.TextEncoder = class TextEncoder {
+    get encoding() { return "utf-8"; }
+    encode(value = "") {
+      const s = String(value).toWellFormed();
+      const chunks = []; let length = 0;
+      for (let start = 0; start < s.length;) {
+        let end = Math.min(s.length, start + 65536);
+        if (end < s.length && s.charCodeAt(end) >= 0xdc00 && s.charCodeAt(end) <= 0xdfff) end--;
+        const block = decodeBytes(hraw(K_CALL, "utf8.encode", s.slice(start,end)));
+        chunks.push(block); length += block.length; start = end;
+      }
+      if (chunks.length === 1) return chunks[0];
+      const out = new Uint8Array(length); let offset=0;
+      for (const block of chunks) {out.set(block,offset);offset+=block.length;}
+      return out;
+    }
+  };
+  g.TextDecoder = class TextDecoder {
+    constructor(label = "utf-8", options = {}) {
+      if (!["utf-8","utf8","unicode-1-1-utf-8"].includes(String(label).trim().toLowerCase())) throw new RangeError("only UTF-8 is supported");
+      this.encoding = "utf-8"; this.fatal = !!options.fatal; this.ignoreBOM = !!options.ignoreBOM;
+    }
+    decode(value = new Uint8Array(), options = {}) {
+      if (options.stream) throw new TypeError("streaming decode is unavailable");
+      const data = ArrayBuffer.isView(value) ? new Uint8Array(value.buffer,value.byteOffset,value.byteLength) : new Uint8Array(value);
+      let text = "";
+      for (let start = 0; start < data.length;) {
+        let end=Math.min(start+65536,data.length);
+        if (end < data.length) {
+          let split=end;
+          while (split>end-3 && (data[split]&192)===128) split--;
+          if (data[split]>=192) end=split;
+        }
+        text += hraw(K_CALL,"utf8.decode",encodeBytes(sliceBytes(data,start,end)),this.fatal ? 1 : 0);
+        start=end;
+      }
+      return !this.ignoreBOM && text.charCodeAt(0)===0xfeff ? text.slice(1) : text;
+    }
+  };
   // Timer ids come from Go, which fires them with fireTimer(id, keep).
   const timers = new Map();
   function addTimer(fn, ms, repeat, a) {

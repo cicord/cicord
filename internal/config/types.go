@@ -596,6 +596,7 @@ type PluginSecret struct {
 type PluginSpec struct {
 	Locales      string            `yaml:"locales,omitempty" json:"locales,omitempty"`
 	Secrets      []PluginSecret    `yaml:"secrets,omitempty" json:"secrets,omitempty"`
+	Assets       string            `yaml:"assets,omitempty" json:"assets,omitempty"`
 	Engine       string            `yaml:"engine" json:"engine"`
 	Entry        string            `yaml:"entry" json:"entry"`
 	Capabilities []string          `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`

@@ -24,6 +24,8 @@
  * `member.moveTo()` / `disconnect()` update the same voice states (`voiceMoves` records them).
  */
 import type {
+  Attachment,
+  UploadFile,
   AutocompleteChoice,
   AutocompleteInteraction,
   Channel,
@@ -137,13 +139,21 @@ export interface TestFetchResponse {
   status?: number;
   headers?: Record<string, string>;
   /** Response body (string, or a JSON value that is serialized). */
-  body?: string | Json;
+  body?: Uint8Array | string | Json;
 }
 
 export interface TestContextOptions {
   /** Logical names only. The fake fetch sees opaque handles, never real credentials. */
   secrets?: string[];
   files?: Record<string, string | Uint8Array>;
+  /** Exact bytes of the plugin's packaged files, relative to spec.assets. */
+  assets?: Record<string, Uint8Array>;
+  /** Inject a renderer or image hasher for Node unit tests. cicord plugin test uses the real Go implementation. */
+  renderImage?: Context["render"]["image"];
+  hashImage?: Context["media"]["hash"];
+  /** Per-file upload limit. Defaults to an unboosted server's 10 MiB. */
+  uploadLimit?: number;
+
   /**
    * Plugin config. Defaults are applied only when `schema` is given (like the runtime does
    * with config.schema.json); otherwise pass every field the plugin reads.
@@ -250,6 +260,11 @@ export interface RoleChange {
 }
 
 export interface TestHarness {
+  /** Create a simulated Discord CDN attachment for an incoming slash option or message. */
+  attachment(file: UploadFile): Attachment;
+  /** Validate files using the simulated server limit. */
+  validateFiles(input: MessageInput): void;
+
   readonly ctx: Context;
   /** Seed a received message, including interaction follow-ups. */
   receive(channel: string | undefined, author: User, input: MessageInput): Message;
@@ -523,6 +538,61 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     if (grants && !grants.has(capability)) throw capabilityError(capability);
   };
 
+  let attachmentSeq = 0;
+  const validateFiles = (input: MessageInput) => {
+    if (typeof input === "string" || input.files === undefined) return;
+    if (!Array.isArray(input.files) || input.files.length > 10)
+      throw new TypeError("expected at most 10 files");
+    const names = new Set<string>();
+    for (const f of input.files) {
+      if (
+        !f.name ||
+        f.name === "." ||
+        f.name === ".." ||
+        Buffer.byteLength(f.name) > 255 ||
+        /[/\\]/u.test(f.name) ||
+        Array.from(f.name).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127) ||
+        names.has(f.name)
+      )
+        throw new TypeError("invalid or duplicate upload filename");
+      names.add(f.name);
+      if (
+        !(f.data instanceof Uint8Array) ||
+        f.data.byteLength > (options.uploadLimit ?? 10 * 1024 ** 2)
+      )
+        throw new TypeError("invalid bytes or attachment exceeds upload limit");
+      if (Array.from(f.description ?? "").length > 1024)
+        throw new TypeError("description exceeds 1024 characters");
+      if (f.contentType && (/[\r\n]/u.test(f.contentType) || !f.contentType.includes("/")))
+        throw new TypeError("invalid attachment content type");
+    }
+  };
+  const attachment = (f: UploadFile): Attachment => {
+    validateFiles({ files: [f] });
+    const data = new Uint8Array(f.data);
+    const id = String(++attachmentSeq);
+    return {
+      id,
+      filename: f.name,
+      url: `https://cdn.discordapp.com/attachments/test/${id}/${encodeURIComponent(f.name)}`,
+      contentType: f.contentType,
+      description: f.description,
+      size: data.length,
+      async bytes() {
+        need("discord.messages.read");
+        if (data.length > 8 * 1024 ** 2) throw new Error("attachment exceeds 8 MiB");
+        return data.slice();
+      },
+    };
+  };
+  const assets = new Map(
+    Object.entries(options.assets ?? {}).map(([path, data]) => [path, new Uint8Array(data)]),
+  );
+  if (
+    assets.size > 1024 ||
+    [...assets.values()].reduce((sum, v) => sum + v.length, 0) > 5 * 1024 ** 2
+  )
+    throw new Error("plugin assets exceed package quota");
   const logs: LogEntry[] = [];
   const sent: SentMessage[] = [];
   const roleChanges: RoleChange[] = [];
@@ -630,6 +700,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     reference?: Message["reference"],
     existing?: Message,
   ): Message => {
+    validateFiles(input);
+    validateLayoutInput(input);
     const id = existing?.id ?? String(1_000_000_000_000_000n + BigInt(++messageSeq));
     const message: Message = {
       // Snowflake-like ids (numeric strings growing with time), like Discord.
@@ -678,7 +750,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       content: typeof input === "string" ? input : (input.content ?? ""),
       author,
       channel,
-      attachments: [],
+      attachments:
+        typeof input !== "string" && input.files
+          ? input.files.map(attachment)
+          : (existing?.attachments ?? []),
       embeds: typeof input === "string" ? [] : (input.embeds ?? []).map((e) => ({ ...e })),
       createdAt: existing?.createdAt ?? new Date(),
       async reply(reply) {
@@ -691,8 +766,9 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
       async edit(next) {
         if (author.id !== botUser.id) need("discord.messages.manage");
+        const edited = makeMessage(channel, author, next, reference, message);
         edits.push({ id: message.id, message: next });
-        return makeMessage(channel, author, next, reference, message);
+        return edited;
       },
       async delete(reason) {
         need("discord.messages.manage");
@@ -711,13 +787,9 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     };
     messages.set(message.id, message);
     const list = history.get(channel.id) ?? [];
-    if (existing)
-      list.splice(
-        list.findIndex((m) => m.id === existing.id),
-        1,
-        message,
-      );
-    else list.push(message);
+    const index = existing ? list.findIndex((item) => item.id === existing.id) : -1;
+    if (index < 0) list.push(message);
+    else list[index] = message;
     history.set(channel.id, list);
     return message;
   };
@@ -732,6 +804,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     author = botUser,
   ): Message => {
     validateLayoutInput(input);
+    validateFiles(input);
     const allowedMentions = normalizeAllowedMentions(input, knownId);
     const key =
       typeof input !== "string" && input.nonce ? channel.id + "/" + input.nonce : undefined;
@@ -1506,6 +1579,63 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const ctx: Context = {
     i18n: translator(),
 
+    assets: {
+      async read(path) {
+        const file = assets.get(path);
+        if (
+          !file ||
+          path.length > 512 ||
+          path.includes("\\") ||
+          path.includes(":") ||
+          path.split("/").some((s) => !s || s === "." || s === "..")
+        )
+          throw new Error("unknown plugin asset");
+        return file.slice();
+      },
+    },
+    render: {
+      async image(spec) {
+        need("render");
+        if (
+          !Number.isInteger(spec.width) ||
+          !Number.isInteger(spec.height) ||
+          Math.min(spec.width, spec.height) < 1 ||
+          Math.max(spec.width, spec.height) > 2048 ||
+          (spec.layers?.length ?? 0) > 64
+        )
+          throw new Error("invalid render dimensions or layer count");
+        if (!options.renderImage)
+          throw new Error("createTestContext: pass renderImage to test card rendering");
+        return options.renderImage(spec);
+      },
+    },
+    media: {
+      async hash(source, opts) {
+        need("media.analyze");
+        if (!options.hashImage)
+          throw new Error("createTestContext: pass hashImage to test media analysis");
+        return options.hashImage(source, opts);
+      },
+      distance(a, b) {
+        need("media.analyze");
+        if (
+          a.length !== b.length ||
+          ![16, 64].includes(a.length) ||
+          !/^[0-9a-f]+$/iu.test(a) ||
+          !/^[0-9a-f]+$/iu.test(b)
+        )
+          throw new TypeError("expected equal-length hexadecimal digests");
+        let d = 0;
+        for (let i = 0; i < a.length; i++) {
+          let v = Number.parseInt(a.charAt(i), 16) ^ Number.parseInt(b.charAt(i), 16);
+          while (v) {
+            d++;
+            v &= v - 1;
+          }
+        }
+        return d;
+      },
+    },
     plugin: {
       name: options.plugin?.name ?? "test-plugin",
       version: options.plugin?.version ?? "0.0.0",
@@ -1605,11 +1735,20 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         requests.push({ url, init });
         const r = await options.fetch(url, init);
         const body =
-          typeof r.body === "string" ? r.body : r.body === undefined ? "" : JSON.stringify(r.body);
+          typeof r.body === "string"
+            ? r.body
+            : r.body instanceof Uint8Array
+              ? new TextDecoder().decode(r.body)
+              : r.body === undefined
+                ? ""
+                : JSON.stringify(r.body);
+        const bytes =
+          r.body instanceof Uint8Array ? new Uint8Array(r.body) : new TextEncoder().encode(body);
         return {
           status: r.status ?? 200,
           headers: r.headers ?? {},
           text: async () => body,
+          bytes: async () => bytes.slice(),
           json: async <T>() => JSON.parse(body) as T,
         };
       },
@@ -1670,6 +1809,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
 
   return {
     ctx,
+    attachment,
+    validateFiles,
     logs,
     sent,
     roleChanges,
@@ -1931,6 +2072,7 @@ function fakeInteraction(
   // Invalid allowedMentions throw, like the host.
   const checkMentions = (message: MessageInput | ReplyInput): void => {
     validateLayoutInput(message);
+    harness.validateFiles(message);
     normalizeAllowedMentions(message, known);
   };
   const followUp = async (message: ReplyInput): Promise<Message> => {

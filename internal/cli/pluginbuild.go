@@ -138,7 +138,7 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 		RequiredIntents: []string{}, Capabilities: append([]string{}, m.Spec.Capabilities...),
 		Warnings: []string{}, Errors: []string{},
 	}
-	res, err := build.Bundle(dir, m.Spec.Entry)
+	res, err := build.BundleAssets(dir, m.Spec.Entry, m.Spec.Assets)
 	if err != nil {
 		var be *build.Error
 		if errors.As(err, &be) {

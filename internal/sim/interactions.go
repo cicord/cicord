@@ -319,7 +319,7 @@ func (w *World) respondInteraction(a actor, interactionID, token string, r disco
 		if r.Data == nil {
 			return fail(badRequest("message response without data"))
 		}
-		if err := validateMessage(*r.Data); err != nil {
+		if err := w.validateMessage(*r.Data, ix.ServerID); err != nil {
 			return fail(err)
 		}
 		ms := w.newMessage(c, botUser, *r.Data, ephemeralFor(r.Data.Flags), answers)
@@ -343,7 +343,7 @@ func (w *World) respondInteraction(a actor, interactionID, token string, r disco
 			if r.Data == nil {
 				return fail(badRequest("update response without data"))
 			}
-			if err := validateMessage(*r.Data); err != nil {
+			if err := w.validateMessage(*r.Data, ix.ServerID); err != nil {
 				return fail(err)
 			}
 			w.editMessage(ms, *r.Data)
@@ -413,7 +413,7 @@ func (w *World) editOriginalResponse(a actor, applicationID, token string, m dis
 	if ms == nil {
 		return fail(notFound("unknown message %s", st.originalID))
 	}
-	if err := validateMessage(m); err != nil {
+	if err := w.validateMessage(m, st.ix.ServerID); err != nil {
 		return fail(err)
 	}
 	w.editMessage(ms, m)
@@ -439,7 +439,7 @@ func (w *World) createFollowup(a actor, applicationID, token string, m discord.M
 	if st.respType == discord.ResponseModal {
 		return fail(notFound("unknown webhook: no message to follow up after a modal"))
 	}
-	if err := validateMessage(m); err != nil {
+	if err := w.validateMessage(m, st.ix.ServerID); err != nil {
 		return fail(err)
 	}
 	var ms *messageState
@@ -847,6 +847,11 @@ func (w *World) convertOption(s *serverState, def discord.CommandOption, v any, 
 	case discord.OptionAttachment:
 		var att discord.Attachment
 		switch x := v.(type) {
+		case discord.UploadFile:
+			if err := discord.ValidateUploads([]discord.UploadFile{x}, discord.UploadLimit(s.info.PremiumTier)); err != nil {
+				return nil, err
+			}
+			att = w.uploads(s.info.ID, []discord.UploadFile{x})[0]
 		case discord.Attachment:
 			att = x
 		case string:

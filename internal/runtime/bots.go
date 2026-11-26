@@ -341,6 +341,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 			}
 			return cl.SetIncident(c, srt.cfg.Spec.DiscordID, actions)
 		},
+		UploadLimit: func() int { return discord.UploadLimit(srt.cache.Server().PremiumTier) },
 		ManagedResource: func(id string) (bool, bool) {
 			managed := srt.cache.Owner(id) == state.OwnerGit
 			return managed, managed && srt.cfg.Spec.SyncPolicy.SelfHeal() && !r.isPaused(in.Server)

@@ -173,7 +173,7 @@ func Plugins(repo *config.Repo) ([]typegen.RoutePlugin, error) {
 
 // Routes bundles the plugin in dir and returns the portal routes of its definition.
 func Routes(dir string, m *config.Plugin) ([]typegen.Route, error) {
-	res, err := build.Bundle(dir, m.Spec.Entry)
+	res, err := build.BundleAssets(dir, m.Spec.Entry, m.Spec.Assets)
 	if err != nil {
 		var be *build.Error
 		if errors.As(err, &be) && len(be.Messages) > 0 {

@@ -12,11 +12,18 @@ import (
 
 // ───────────────────────────────────────────────────────────── validation
 
-func validateMessage(m discord.MessageCreate) error {
+func (w *World) validateMessage(m discord.MessageCreate, server string) error {
+	tier := 0
+	if s := w.servers[server]; s != nil {
+		tier = s.info.PremiumTier
+	}
+	if err := discord.ValidateUploads(m.Files, discord.UploadLimit(tier)); err != nil {
+		return err
+	}
 	if utf8.RuneCountInString(m.Content) > 2000 {
 		return badRequest("content must be at most 2000 characters")
 	}
-	if m.Content == "" && len(m.Embeds) == 0 && len(m.Components) == 0 {
+	if m.Content == "" && len(m.Embeds) == 0 && len(m.Components) == 0 && len(m.Files) == 0 {
 		return badRequest("cannot send an empty message")
 	}
 	if len(m.Embeds) > 10 {
@@ -245,6 +252,7 @@ func (w *World) newMessage(c *channelState, author discord.User, m discord.Messa
 			msg.Member = cloneMemberPtr(mem)
 		}
 	}
+	msg.Attachments = w.uploads(c.ch.ID, m.Files)
 	ms := &messageState{msg: msg, nonce: m.Nonce}
 	w.messages[msg.ID] = ms
 	if ephemeralFor != "" {
@@ -270,6 +278,10 @@ func (w *World) editMessage(ms *messageState, m discord.MessageCreate) {
 		if c := w.channels[ms.msg.ChannelID]; c != nil {
 			ms.mentions = w.resolveMentions(c, ms.msg.Author.ID, m)
 		}
+	}
+	if m.Files != nil {
+		w.clearUploads(ms.msg.Attachments)
+		ms.msg.Attachments = w.uploads(ms.msg.ChannelID, m.Files)
 	}
 	ms.msg.Content = m.Content
 	ms.msg.Embeds = cloneEmbeds(m.Embeds)
@@ -385,7 +397,12 @@ func (w *World) sendMessage(a actor, channelID string, m discord.MessageCreate) 
 	if err := w.checkSend(a, c); err != nil {
 		return fail(err)
 	}
-	if err := validateMessage(m); err != nil {
+	if len(m.Files) > 0 && c.ch.Type != discord.ChannelDM {
+		if err := w.requireChannel(a, c, discord.MustPermissions("AttachFiles")); err != nil {
+			return discord.Message{}, err
+		}
+	}
+	if err := w.validateMessage(m, c.ch.ServerID); err != nil {
 		return fail(err)
 	}
 	if m.ReplyTo != "" {
@@ -443,7 +460,12 @@ func (w *World) editMessageCall(a actor, channelID, messageID string, m discord.
 	if ms.msg.Author.ID != a.userID {
 		return fail(forbidden("cannot edit a message authored by another user"))
 	}
-	if err := validateMessage(m); err != nil {
+	if len(m.Files) > 0 && c.ch.Type != discord.ChannelDM {
+		if err := w.requireChannel(a, c, discord.MustPermissions("AttachFiles")); err != nil {
+			return discord.Message{}, err
+		}
+	}
+	if err := w.validateMessage(m, c.ch.ServerID); err != nil {
 		return fail(err)
 	}
 	w.editMessage(ms, m)
@@ -511,6 +533,7 @@ func (w *World) deleteMessage(a actor, channelID, messageID, reason string) erro
 }
 
 func (w *World) removeMessage(c *channelState, ms *messageState) {
+	w.clearUploads(ms.msg.Attachments)
 	delete(w.messages, ms.msg.ID)
 	c.msgIDs = removeString(c.msgIDs, ms.msg.ID)
 	w.emit(discord.MessageDeleteEvent{ID: ms.msg.ID, ChannelID: c.ch.ID, ServerID: c.ch.ServerID})
@@ -776,7 +799,12 @@ func (w *World) SendMessageWith(userID, channelID string, m discord.MessageCreat
 	if err := w.checkSend(a, c); err != nil {
 		return discord.Message{}, err
 	}
-	if err := validateMessage(m); err != nil {
+	if len(m.Files) > 0 && c.ch.Type != discord.ChannelDM {
+		if err := w.requireChannel(a, c, discord.MustPermissions("AttachFiles")); err != nil {
+			return discord.Message{}, err
+		}
+	}
+	if err := w.validateMessage(m, c.ch.ServerID); err != nil {
 		return discord.Message{}, err
 	}
 	m.Flags &^= discord.MessageFlagEphemeral | msgFlagLoading

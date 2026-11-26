@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/url"
@@ -116,14 +117,23 @@ func (i *Instance) prepareFetch(rawURL string, a *fetchInit) ([]material, string
 	return used, dest, nil
 }
 
-func redactResponse(r *fetchResult, materials []material) {
+func redactResponse(r *fetchResult, materials []material, limit int64) error {
+	seen := map[string]bool{}
+	mask := []byte("[redacted]")
 	for _, s := range materials {
 		encoded, _ := json.Marshal(s.value)
 		for _, v := range []string{s.value, url.QueryEscape(s.value), string(encoded[1 : len(encoded)-1])} {
-			if v == "" {
+			if v == "" || seen[v] {
 				continue
 			}
-			r.Body = strings.ReplaceAll(r.Body, v, "[redacted]")
+			seen[v] = true
+			needle := []byte(v)
+			if n := bytes.Count(r.Body, needle); n > 0 {
+				if int64(len(r.Body))+int64(n)*int64(len(mask)-len(needle)) > limit {
+					return errors.New("credentialed response exceeds size limit")
+				}
+				r.Body = bytes.ReplaceAll(r.Body, needle, mask)
+			}
 			for k, h := range r.Headers {
 				if strings.Contains(k, strings.ToLower(v)) {
 					delete(r.Headers, k)
@@ -133,4 +143,5 @@ func redactResponse(r *fetchResult, materials []material) {
 			}
 		}
 	}
+	return nil
 }

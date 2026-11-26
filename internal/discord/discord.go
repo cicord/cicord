@@ -653,6 +653,7 @@ func IsSnowflake(s string) bool {
 type MessageCreate struct {
 	Nonce           string
 	EnforceNonce    bool
+	Files           []UploadFile
 	Content         string
 	Embeds          []Embed
 	Components      []Component
@@ -662,6 +663,7 @@ type MessageCreate struct {
 }
 
 type Attachment struct {
+	Description string
 	ID          string
 	Filename    string
 	URL         string

@@ -1332,6 +1332,9 @@ func (w *World) removeChannel(s *serverState, c *channelState) {
 	}
 	drop := func(x *channelState) {
 		for _, mid := range x.msgIDs {
+			if ms := w.messages[mid]; ms != nil {
+				w.clearUploads(ms.msg.Attachments)
+			}
 			delete(w.messages, mid)
 		}
 		delete(w.channels, x.ch.ID)

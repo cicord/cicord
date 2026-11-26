@@ -118,13 +118,20 @@ func init() {
 			}
 			return i.env.AFKChannelID(), nil
 		},
-		"i18n.t":       opTranslate,
-		"server.owner": opServerOwner,
-		"status.set":   opFeatureStatus,
-		"secrets.has":  opSecretHas,
-		"it.state":     opInteractionState,
+		"i18n.t":         opTranslate,
+		"upload.free":    opUploadFree,
+		"media.distance": opMediaDistance,
+		"server.owner":   opServerOwner,
+		"status.set":     opFeatureStatus,
+		"secrets.has":    opSecretHas,
+		"it.state":       opInteractionState,
 	}
 	asyncOps = map[string]asyncOp{
+		"upload.part":            opUploadPart,
+		"attachment.bytes":       opMediaRead(capMessagesRead),
+		"assets.read":            opAssetRead,
+		"media.hash":             opMediaRead("media.analyze"),
+		"render.image":           opRenderImage,
 		"channel.send":           opChannelSend,
 		"channel.bulkDelete":     opChannelBulkDelete,
 		"channel.purge":          opChannelPurge(false),
@@ -253,7 +260,22 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 	id := i.nextCall
 	i.inflight++
 	go func() {
-		res, err := work(inv.ctx)
+		// Bound binary responses through delivery to the VM. Waiting operations keep
+		// only their small inputs and share the normal handler deadline.
+		var release func()
+		switch op {
+		case "assets.read", "attachment.bytes", "render.image", "http.fetch":
+			select {
+			case i.binaryResults <- struct{}{}:
+				release = func() { <-i.binaryResults }
+			case <-inv.ctx.Done():
+			}
+		}
+		var res any
+		err := inv.ctx.Err()
+		if err == nil {
+			res, err = work(inv.ctx)
+		}
 		if err == nil {
 			inv.rememberAudience(res)
 		}
@@ -272,7 +294,10 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 			status = "undef"
 		}
 		sid := strconv.FormatInt(id, 10)
-		i.post(func() {
+		posted := i.post(func() {
+			if release != nil {
+				defer release()
+			}
 			i.inflight--
 			rerr := i.enter(inv, i.limits.SyncBudget, func(ctx context.Context) error {
 				_, err := i.vm.runAPI(ctx, "settle", sid, status, payload)
@@ -282,6 +307,9 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 				i.logger.Error("plugin host: settle host call", "op", op, "error", rerr)
 			}
 		})
+		if !posted && release != nil {
+			release()
+		}
 	}()
 	return id, nil
 }

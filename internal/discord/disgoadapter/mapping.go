@@ -868,6 +868,7 @@ func allowedMentionsToWire(a *discord.AllowedMentions) *wireAllowedMentions {
 
 func messageSendToWire(m discord.MessageCreate) wireMessageSend {
 	w := wireMessageSend{
+		Attachments:     uploadDescriptions(m.Files),
 		Content:         m.Content,
 		Embeds:          embedsToWire(m.Embeds),
 		Components:      componentsToWire(m.Components),
@@ -889,6 +890,10 @@ func messageEditToWire(m discord.MessageCreate) wireMessageEdit {
 		Embeds:          embedsToWire(m.Embeds),
 		Components:      componentsToWire(m.Components),
 		AllowedMentions: allowedMentionsToWire(m.AllowedMentions),
+	}
+	if m.Files != nil {
+		a := uploadDescriptions(m.Files)
+		w.Attachments = &a
 	}
 	if w.Embeds == nil {
 		w.Embeds = []wireEmbed{}
@@ -964,7 +969,7 @@ func isSystemMessage(t int) bool {
 }
 
 func attachmentFromWire(a wireAttachment) discord.Attachment {
-	return discord.Attachment{ID: a.ID, Filename: a.Filename, URL: a.URL, ContentType: a.ContentType, Size: a.Size}
+	return discord.Attachment{Description: a.Description, ID: a.ID, Filename: a.Filename, URL: a.URL, ContentType: a.ContentType, Size: a.Size}
 }
 
 // ───────────────────────────────────────────────────────────── commands

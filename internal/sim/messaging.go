@@ -175,7 +175,7 @@ func (c *Client) SendAs(ctx context.Context, ch string, identity discord.Webhook
 	if err = w.requireChannel(a, channel, discord.MustPermissions("ManageWebhooks")); err != nil {
 		return discord.Message{}, err
 	}
-	if err = validateMessage(msg); err != nil {
+	if err = w.validateMessage(msg, channel.ch.ServerID); err != nil {
 		return discord.Message{}, err
 	}
 	if channel.webhooks == nil {

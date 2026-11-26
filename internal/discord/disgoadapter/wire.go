@@ -351,6 +351,7 @@ type wireComponent struct {
 }
 
 type wireAttachment struct {
+	Description string `json:"description"`
 	ID          string `json:"id"`
 	Filename    string `json:"filename"`
 	URL         string `json:"url"`
@@ -430,6 +431,7 @@ type wireMessageReference struct {
 type wireMessageSend struct {
 	Nonce            string                `json:"nonce,omitempty"`
 	EnforceNonce     bool                  `json:"enforce_nonce,omitempty"`
+	Attachments      []uploadMetadata      `json:"attachments,omitempty"`
 	Content          string                `json:"content,omitempty"`
 	Embeds           []wireEmbed           `json:"embeds,omitempty"`
 	Components       []wireComponent       `json:"components,omitempty"`
@@ -440,6 +442,7 @@ type wireMessageSend struct {
 
 type wireMessageEdit struct {
 	Content         any                  `json:"content"`
+	Attachments     *[]uploadMetadata    `json:"attachments,omitempty"`
 	Embeds          []wireEmbed          `json:"embeds"`
 	Components      []wireComponent      `json:"components"`
 	AllowedMentions *wireAllowedMentions `json:"allowed_mentions,omitempty"`

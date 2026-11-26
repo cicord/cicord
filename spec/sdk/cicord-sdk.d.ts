@@ -128,12 +128,21 @@ export interface AllowedMentions {
   repliedUser?: boolean;
 }
 
+export interface UploadFile {
+  name: string;
+  data: Uint8Array;
+  contentType?: string;
+  description?: string;
+}
+
 export interface MessagePayload {
   /** Components V2. Exclusive with content, embeds and components. */
   layout?: Component[];
   /** Channel sends only. Discord deduplicates enforced nonces for the past few minutes. */
   nonce?: string;
   enforceNonce?: boolean;
+  /** Up to ten files. Embeds can use attachment://filename. */
+  files?: UploadFile[];
   content?: string;
   embeds?: Embed[];
   components?: ActionRow[];
@@ -146,6 +155,9 @@ export type MessageInput = string | MessagePayload;
 export type ReplyInput = string | (MessagePayload & { ephemeral?: boolean });
 
 export interface Attachment {
+  description?: string;
+  /** Read up to 8 MiB from the Discord CDN. @capability discord.messages.read */
+  bytes(): Promise<Uint8Array>;
   id: Snowflake;
   filename: string;
   url: string;
@@ -781,6 +793,7 @@ export interface Http {
   }): Promise<{
     status: number;
     headers: Record<string, string>;
+    bytes(): Promise<Uint8Array>;
     text(): Promise<string>;
     json<T = unknown>(): Promise<T>;
   }>;
@@ -809,8 +822,32 @@ export interface Portal {
   link(path: string, options?: { member?: Member | User; expiresInSeconds?: number }): Promise<string>;
 }
 
+export type ImageSource = {asset: string} | {url: string};
+export type ImageFont = "Inter" | "Noto" | "emoji" | {asset: string};
+export type ImageLayer =
+  | {type: "text"; x: number; y: number; text: string; size: number; color: string; font?: ImageFont; align?: "left" | "center" | "right"; maxWidth?: number; ellipsis?: boolean}
+  | {type: "image"; x: number; y: number; width: number; height: number; source: ImageSource; mask?: "circle" | "rounded"; radius?: number}
+  | {type: "rect"; x: number; y: number; width: number; height: number; color: string}
+  | {type: "progress"; x: number; y: number; width: number; height: number; color: string; value: number; trackColor?: string}
+  | {type: "chart"; x: number; y: number; width: number; height: number; color: string; kind: "bar" | "line"; values: number[]};
+
+export interface ImageSpec {
+  width: number;
+  height: number;
+  background?: string | {gradient: [string,string]} | ImageSource;
+  layers?: ImageLayer[];
+}
+
 export interface Context {
   readonly i18n: {t(key: string, vars?: Record<string,string|number|boolean>, options?: {locale?:string}): string};
+  readonly assets: {read(path: string): Promise<Uint8Array>};
+  /** Declarative PNG rendering, at most 2048 × 2048. @capability render */
+  readonly render: {image(spec: ImageSpec): Promise<{data: Uint8Array; contentType: "image/png"}>};
+  /** Image digests and bitwise Hamming distance of equal-length hexadecimal digests. @capability media.analyze */
+  readonly media: {
+    hash(source: Attachment | string, options: {algo: "sha256" | "phash" | "dhash"}): Promise<string>;
+    distance(a: string, b: string): number;
+  };
   readonly plugin: { readonly name: string; readonly version: string; readonly instance: string };
   readonly bot: { readonly key: string; readonly user: User };
   readonly server: Server;

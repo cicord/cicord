@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/text/encoding/unicode"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/plugin/qjs"
@@ -78,6 +81,25 @@ func newVM(ctx context.Context, h host, memory int64) (*vm, error) {
 	hostFn := func(kind int32, a, b string, n float64) qjs.Reply {
 		switch kind {
 		case kindCall:
+			// Pure UTF-8 codecs are available during module initialization too. Each
+			// chunk is capped independently of the ordinary SDK argument limit.
+			if a == "utf8.encode" || a == "utf8.decode" {
+				if len(b) > 512<<10 {
+					return qjs.Reply{Error: errorJSON(argErr("UTF-8 chunk exceeds limit"))}
+				}
+				if a == "utf8.encode" {
+					return qjs.Reply{Value: base64.StdEncoding.EncodeToString([]byte(b))}
+				}
+				data, err := base64.StdEncoding.DecodeString(b)
+				if err != nil {
+					return qjs.Reply{Error: errorJSON(err)}
+				}
+				if n == 1 && !utf8.Valid(data) {
+					return qjs.Reply{Error: errorJSON(argErr("invalid UTF-8"))}
+				}
+				out, _ := unicode.UTF8.NewDecoder().Bytes(data)
+				return qjs.Reply{Value: string(out)}
+			}
 			res, ok, err := h.call(a, b)
 			if err != nil {
 				return qjs.Reply{Error: errorJSON(err)}
@@ -330,6 +352,10 @@ func (inspectHost) resumeBudget()                             {}
 // expressions, route keys and access levels, and reports every problem at once
 // (*DefinitionError).
 func Inspect(code string) (*Definition, error) {
+	code, _, err := unpackAssets(code)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 	v, err := newVM(ctx, inspectHost{}, 0)

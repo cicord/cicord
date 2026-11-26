@@ -376,6 +376,7 @@ func (w *World) banMember(a actor, serverID, userID string, deleteSeconds int, r
 			for _, mid := range c.msgIDs {
 				ms := w.messages[mid]
 				if ms.msg.Author.ID == userID && !ms.msg.CreatedAt.Before(cutoff) {
+					w.clearUploads(ms.msg.Attachments)
 					delete(w.messages, mid)
 					w.emit(discord.MessageDeleteEvent{ID: mid, ChannelID: cid, ServerID: s.info.ID})
 					continue
@@ -414,17 +415,19 @@ func (w *World) updateSelf(a actor, p discord.SelfParams) (discord.User, error) 
 		u.user.Username = *p.Username
 	}
 	if p.Avatar != nil {
+		delete(w.cdn, u.user.AvatarURL)
 		if len(*p.Avatar) == 0 {
 			u.user.AvatarURL = ""
 		} else {
-			u.user.AvatarURL = "https://cdn.discordapp.com/avatars/" + a.userID + "/" + imageHash(*p.Avatar) + ".png"
+			u.user.AvatarURL = w.cdnPut(discord.CDNBase+"/avatars/"+a.userID+"/"+imageHash(*p.Avatar)+".png", *p.Avatar)
 		}
 	}
 	if p.Banner != nil {
+		delete(w.cdn, u.bannerURL)
 		if len(*p.Banner) == 0 {
 			u.bannerURL = ""
 		} else {
-			u.bannerURL = "https://cdn.discordapp.com/banners/" + a.userID + "/" + imageHash(*p.Banner) + ".png"
+			u.bannerURL = w.cdnPut(discord.CDNBase+"/banners/"+a.userID+"/"+imageHash(*p.Banner)+".png", *p.Banner)
 		}
 	}
 	// Keep member copies in sync with the user.

@@ -18,6 +18,7 @@
 package build
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -111,6 +112,11 @@ func noNodeBuiltins() api.Plugin {
 // Bundle bundles the entry file (relative to pluginDir, e.g. "./src/index.ts") and every
 // module it imports into a single script. The bundle is not minified.
 func Bundle(pluginDir, entry string) (Result, error) {
+	return BundleAssets(pluginDir, entry, "")
+}
+
+// BundleAssets packages the declared directory into the same immutable artifact as the code.
+func BundleAssets(pluginDir, entry, assets string) (Result, error) {
 	absDir, err := filepath.Abs(pluginDir)
 	if err != nil {
 		return Result{}, err
@@ -167,6 +173,17 @@ func Bundle(pluginDir, entry string) (Result, error) {
 	}
 	if out.Code == "" {
 		return Result{}, errors.New("build: esbuild produced no output")
+	}
+	if assets != "" {
+		files, err := ReadAssets(pluginDir, assets)
+		if err != nil {
+			return Result{}, err
+		}
+		data, err := json.Marshal(files)
+		if err != nil {
+			return Result{}, err
+		}
+		out.Code += AssetMarker + string(data) + "\n"
 	}
 	return out, nil
 }

@@ -183,7 +183,7 @@ func describe(fsys fs.FS, dir, tmp string, inspect bool) (Entry, error) {
 			return Entry{}, err
 		}
 	}
-	res, err := build.Bundle(work, m.Spec.Entry)
+	res, err := build.BundleAssets(work, m.Spec.Entry, m.Spec.Assets)
 	if err != nil {
 		return Entry{}, fmt.Errorf("build: %w", err)
 	}

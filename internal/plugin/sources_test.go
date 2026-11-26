@@ -1,9 +1,9 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -36,7 +36,7 @@ func TestSecretFetch(t *testing.T) {
 			t.Error("header substitution")
 		}
 		w.Header().Set("x-reflected", marker)
-		_, _ = io.WriteString(w, marker)
+		_, _ = w.Write(append(append([]byte{0, 255}, marker...), 0xfe))
 	}))
 	defer srv.Close()
 	u, _ := url.Parse(srv.URL)
@@ -72,8 +72,16 @@ func TestSecretFetch(t *testing.T) {
 			r, err = f(context.Background())
 			if err == nil {
 				data, _ := json.Marshal(r)
-				if strings.Contains(string(data), marker) {
-					t.Fatal("response exposed the credential")
+				var response struct {
+					Body    []byte            `json:"bytes"`
+					Headers map[string]string `json:"headers"`
+				}
+				if err := json.Unmarshal(data, &response); err != nil {
+					t.Fatal(err)
+				}
+				want := append(append([]byte{0, 255}, "[redacted]"...), 0xfe)
+				if !bytes.Equal(response.Body, want) || response.Headers["x-reflected"] != "[redacted]" {
+					t.Fatal("credentialed response did not preserve bytes around the redacted body and header")
 				}
 			}
 		}

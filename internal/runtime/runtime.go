@@ -433,7 +433,7 @@ func validateRepoCommands(repo *config.Repo, builds map[string]*builtPlugin) con
 }
 
 func buildPlugin(lp *config.LoadedPlugin) (*builtPlugin, error) {
-	res, err := build.Bundle(lp.Dir, lp.Manifest.Spec.Entry)
+	res, err := build.BundleAssets(lp.Dir, lp.Manifest.Spec.Entry, lp.Manifest.Spec.Assets)
 	if err != nil {
 		return nil, fmt.Errorf("build: %w", err)
 	}

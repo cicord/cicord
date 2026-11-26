@@ -20,6 +20,7 @@ import (
 	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/locales"
+	"github.com/cicord/cicord/internal/media"
 	"github.com/cicord/cicord/internal/plugin/qjs"
 	"github.com/cicord/cicord/internal/reconcile"
 	"github.com/cicord/cicord/internal/state"
@@ -33,6 +34,7 @@ type Env struct {
 	OverlayList     func(context.Context) ([]reconcile.Overlay, error)
 	RequestSync     func(context.Context, string) error
 	Incident        func(context.Context, discord.IncidentActions) error
+	UploadLimit     func() int // current server maximum bytes per file
 	ManagedResource func(string) (bool, bool)
 	AttributeAudit  func(context.Context, discord.AuditLogEntryEvent) discord.AuditLogEntryEvent
 	Operations      *discord.OperationScope
@@ -251,13 +253,17 @@ const (
 // Instance is one plugin running for one (bot, server): a QuickJS VM driven by a single
 // event-loop goroutine. All methods are safe for concurrent use.
 type Instance struct {
-	env    Env
-	def    *Definition
-	code   string
-	limits Limits
-	logger *slog.Logger
-	grants map[string]bool
-	egress *egress
+	assets        map[string][]byte
+	uploads       uploadStore
+	mediaSlots    chan struct{}
+	binaryResults chan struct{}
+	env           Env
+	def           *Definition
+	code          string
+	limits        Limits
+	logger        *slog.Logger
+	grants        map[string]bool
+	egress        *egress
 
 	ctx    context.Context // instance lifetime; its cause tells Stop from a crash
 	cancel context.CancelCauseFunc
@@ -313,9 +319,13 @@ func NewInstance(code string, def *Definition, env Env) (*Instance, error) {
 	if env.Logger == nil {
 		env.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	code, assets, err := unpackAssets(code)
+	if err != nil {
+		return nil, err
+	}
 	limits := env.Limits.withDefaults()
 	i := &Instance{
-		env:            env,
+		env: env, assets: assets, mediaSlots: make(chan struct{}, 2), binaryResults: make(chan struct{}, 4),
 		def:            def,
 		code:           code,
 		limits:         limits,
@@ -330,6 +340,11 @@ func NewInstance(code string, def *Definition, env Env) (*Instance, error) {
 	}
 	for _, g := range env.Grants {
 		i.grants[g] = true
+	}
+	if i.grants["render"] {
+		if err := media.Prepare(); err != nil {
+			return nil, err
+		}
 	}
 	i.logger = env.Logger.With("bot", env.BotKey, "plugin", env.PluginName, "instance", env.InstanceName, "server", env.ServerKey)
 	i.egress = newEgress(env.NetworkAllow, env.AllowPrivateNetworks, env.HTTPClient, limits.MaxResponseBytes)

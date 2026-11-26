@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cicord/cicord/internal/build"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -617,6 +618,12 @@ func (l *loader) loadPlugin(repo *Repo, b *Bot, base string, inst PluginInstance
 	if _, err := os.Stat(entry); err != nil {
 		l.sink.errorf(mdoc.file, mdoc.lineOf("/spec/entry"), "/spec/entry", "entry %q not found", m.Spec.Entry)
 		return nil
+	}
+	if m.Spec.Assets != "" {
+		if _, err := build.ReadAssets(dir, m.Spec.Assets); err != nil {
+			l.sink.errorf(mdoc.file, mdoc.lineOf("/spec/assets"), "/spec/assets", "%v", err)
+			return nil
+		}
 	}
 	if m.Spec.Config != nil {
 		sp := filepath.Join(dir, filepath.FromSlash(m.Spec.Config.Schema))

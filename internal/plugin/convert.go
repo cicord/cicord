@@ -68,6 +68,7 @@ type memberDTO struct {
 }
 
 type attachmentDTO struct {
+	Description string `json:"description,omitempty"`
 	ID          string `json:"id"`
 	Filename    string `json:"filename"`
 	URL         string `json:"url"`
@@ -413,7 +414,7 @@ func (i *Instance) contentVisible(m discord.Message) bool {
 }
 
 func attachmentDTOFrom(a discord.Attachment) attachmentDTO {
-	return attachmentDTO{ID: a.ID, Filename: a.Filename, URL: a.URL, ContentType: a.ContentType, Size: a.Size}
+	return attachmentDTO{Description: a.Description, ID: a.ID, Filename: a.Filename, URL: a.URL, ContentType: a.ContentType, Size: a.Size}
 }
 
 // ───────────────────────────────────────────────────────────── handler arguments
@@ -823,6 +824,7 @@ type messageInput struct {
 	Layout          []compIn    `json:"layout"`
 	Nonce           string      `json:"nonce"`
 	EnforceNonce    bool        `json:"enforceNonce"`
+	Files           []fileInput `json:"files"`
 	Content         *string     `json:"content"`
 	Embeds          []embedIn   `json:"embeds"`
 	Components      []rowIn     `json:"components"`
@@ -957,6 +959,11 @@ func (i *Instance) messageCreate(in messageInput, allowEphemeral bool) (discord.
 		mc.Nonce = in.Nonce
 		mc.EnforceNonce = in.EnforceNonce
 	}
+	var err error
+	mc.Files, err = i.messageFiles(in.Files)
+	if err != nil {
+		return mc, err
+	}
 	if in.Ephemeral != nil && !allowEphemeral {
 		return mc, argErr("ephemeral is only supported in interaction replies")
 	}
@@ -1012,7 +1019,7 @@ func (i *Instance) messageCreate(in messageInput, allowEphemeral bool) (discord.
 			return mc, argErr("%s", strings.TrimPrefix(err.Error(), discord.ErrBadRequest.Error()+": "))
 		}
 	}
-	if mc.Content == "" && len(mc.Embeds) == 0 && len(mc.Components) == 0 {
+	if mc.Content == "" && len(mc.Embeds) == 0 && len(mc.Components) == 0 && len(mc.Files) == 0 {
 		return mc, argErr("message is empty (set content, embeds or components)")
 	}
 	return mc, nil
