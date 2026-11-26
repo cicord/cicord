@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -197,6 +198,14 @@ func (s *server) simServerIDs() []string {
 
 func (s *server) handleSimState(w http.ResponseWriter, r *http.Request) {
 	wd := s.opts.Sim
+	actorID := r.URL.Query().Get("userId")
+	if actorID != "" {
+		if _, ok := wd.User(actorID); !ok {
+			notFoundHandler(w, r)
+			return
+		}
+	}
+
 	users := []userDTO{}
 	for _, u := range wd.Users() {
 		users = append(users, toUser(u))
@@ -206,10 +215,11 @@ func (s *server) handleSimState(w http.ResponseWriter, r *http.Request) {
 		bots = append(bots, toUser(u))
 	}
 	type memberOut struct {
-		User           userDTO  `json:"user"`
-		Nick           string   `json:"nick"`
-		Roles          []string `json:"roles"`
-		VoiceChannelID string   `json:"voiceChannelId,omitempty"`
+		User           userDTO    `json:"user"`
+		Nick           string     `json:"nick"`
+		Roles          []string   `json:"roles"`
+		VoiceChannelID string     `json:"voiceChannelId,omitempty"`
+		TimeoutUntil   *time.Time `json:"timedOutUntil,omitempty"`
 	}
 	type roleOut struct {
 		ID       string `json:"id"`
@@ -239,7 +249,23 @@ func (s *server) handleSimState(w http.ResponseWriter, r *http.Request) {
 		info, _ := wd.Server(sid)
 		so := serverOut{ID: sid, Name: info.Name, OwnerID: info.OwnerID, Channels: []channelOut{}, Roles: []roleOut{}, Members: []memberOut{}}
 		so.Key, _ = s.rt.ServerKeyByDiscordID(sid)
-		for _, c := range wd.Channels(sid) {
+		var visible []discord.Channel
+		if actorID == "" {
+			visible = wd.Channels(sid)
+		} else {
+			if _, ok := wd.Member(sid, actorID); !ok {
+				continue
+			}
+			var err error
+			visible, err = wd.UserClient(actorID).ListChannels(r.Context(), sid)
+			if err != nil {
+				s.fail(w, simErr(err))
+				return
+			}
+		}
+		visibleChannelIDs := make(map[string]bool, len(visible))
+		for _, c := range visible {
+			visibleChannelIDs[c.ID] = true
 			so.Channels = append(so.Channels, channelOut{ID: c.ID, Name: c.Name, Type: c.Type.String(), ParentID: c.ParentID, Position: c.Position})
 		}
 		for _, ro := range wd.Roles(sid) {
@@ -247,14 +273,21 @@ func (s *server) handleSimState(w http.ResponseWriter, r *http.Request) {
 		}
 		voice := map[string]string{}
 		for _, st := range wd.VoiceStates(sid) {
-			voice[st.UserID] = st.ChannelID
+			if visibleChannelIDs[st.ChannelID] {
+				voice[st.UserID] = st.ChannelID
+			}
 		}
+		canSeeTimeouts := actorID == "" || wd.Permissions(sid, "", actorID).Has(discord.MustPermissions("ModerateMembers"))
 		for _, m := range wd.Members(sid) {
+			var visibleTimeout *time.Time
+			if canSeeTimeouts || actorID == m.User.ID {
+				visibleTimeout = m.TimeoutUntil
+			}
 			roles := m.RoleIDs
 			if roles == nil {
 				roles = []string{}
 			}
-			so.Members = append(so.Members, memberOut{User: toUser(m.User), Nick: m.Nick, Roles: roles, VoiceChannelID: voice[m.User.ID]})
+			so.Members = append(so.Members, memberOut{User: toUser(m.User), Nick: m.Nick, Roles: roles, VoiceChannelID: voice[m.User.ID], TimeoutUntil: visibleTimeout})
 		}
 		servers = append(servers, so)
 	}
@@ -387,6 +420,16 @@ func (s *server) handleSimMessages(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if _, ok := s.opts.Sim.Channel(id); !ok {
 		notFoundHandler(w, r)
+		return
+	}
+	if actorID := r.URL.Query().Get("userId"); actorID != "" {
+		msgs, err := s.opts.Sim.UserClient(actorID).ListMessages(r.Context(), id, discord.ListMessagesParams{Limit: queryLimit(r)})
+		if err != nil {
+			s.fail(w, simErr(err))
+			return
+		}
+		slices.Reverse(msgs)
+		writeJSON(w, http.StatusOK, map[string]any{"items": toMessages(msgs)})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": toMessages(lastN(s.opts.Sim.Messages(id), queryLimit(r)))})
@@ -762,6 +805,11 @@ func (s *server) handleSimCommands(w http.ResponseWriter, r *http.Request) {
 		Description string         `json:"description"`
 		Options     []simOptionOut `json:"options"`
 	}
+	actorID, channelID := r.URL.Query().Get("userId"), r.URL.Query().Get("channelId")
+	if actorID != "" && (r.URL.Query().Get("serverId") == "" || channelID == "") {
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "provide serverId and channelId for a member command list"))
+		return
+	}
 	servers := s.simServerIDs()
 	if sid := r.URL.Query().Get("serverId"); sid != "" {
 		servers = []string{sid}
@@ -773,7 +821,18 @@ func (s *server) handleSimCommands(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				continue
 			}
-			for _, c := range s.opts.Sim.Commands(app, sid) {
+			var commands []discord.Command
+			if actorID == "" {
+				commands = s.opts.Sim.Commands(app, sid)
+			} else {
+				var err error
+				commands, err = s.opts.Sim.CommandsFor(app, sid, channelID, actorID)
+				if err != nil {
+					s.fail(w, simErr(err))
+					return
+				}
+			}
+			for _, c := range commands {
 				kind := ""
 				switch c.Type {
 				case discord.UserMenu:

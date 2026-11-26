@@ -852,7 +852,7 @@ func (w *World) listChannels(a actor, serverID string) ([]discord.Channel, error
 		return nil, forbidden("missing access to server %s", serverID)
 	}
 	all := w.serverChannels(s, false)
-	if !w.hideUnviewable || !a.isBot() {
+	if a.isBot() && !w.hideUnviewable {
 		return all, nil
 	}
 	out := all[:0]

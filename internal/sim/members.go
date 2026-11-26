@@ -250,6 +250,9 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 			next.TimeoutUntil = &until
 		}
 	}
+	if p.VoiceChannelID != nil && *p.VoiceChannelID != "" && w.timedOut(&next) {
+		return fail(forbidden("timed out members cannot join voice"))
+	}
 	if p.VoiceChannelID != nil {
 		// Checked last: the move is applied at once (it emits its voice state).
 		if err := w.moveVoice(a, s, userID, *p.VoiceChannelID); err != nil {
@@ -257,6 +260,11 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 		}
 	}
 	*m = next
+	if p.TimeoutUntil != nil && w.timedOut(m) {
+		if _, connected := w.activity(serverID).voice[userID]; connected {
+			w.setVoice(s, userID, "")
+		}
+	}
 	w.recordOK(a, "UpdateMember", serverID, userID, reason)
 	if p.Nick != nil || p.TimeoutUntil != nil || p.RoleIDs != nil {
 		w.emit(discord.MemberUpdateEvent{Member: cloneMember(*m), Previous: &prev})

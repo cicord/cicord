@@ -245,3 +245,33 @@ func (w *World) Commands(applicationID, serverID string) []discord.Command {
 	}
 	return out
 }
+
+// CommandsFor lists the commands shown to a particular member in a channel.
+// Commands remains the complete application registry for operator inspection.
+func (w *World) CommandsFor(applicationID, serverID, channelID, userID string) ([]discord.Command, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, _, ch, err := w.interactionContext(userID, serverID, channelID)
+	if err != nil {
+		return nil, err
+	}
+	if ch.ch.Type == discord.ChannelDM {
+		return nil, badRequest("guild commands require a server channel")
+	}
+	perms := w.channelPerms(ch, userID)
+	out := []discord.Command{}
+	for _, c := range w.commands[applicationID][serverID] {
+		if commandAllowed(c, perms) {
+			out = append(out, cloneCommand(c))
+		}
+	}
+	return out, nil
+}
+
+func commandAllowed(c discord.Command, perms discord.Permissions) bool {
+	if !perms.Has(permUseAppCommands) {
+		return false
+	}
+	required := c.DefaultMemberPermissions
+	return required == nil || perms == allPermissions || (*required != 0 && perms.Has(*required))
+}

@@ -285,6 +285,15 @@ func (w *World) SetVoiceMedia(serverID, userID string, stream, video bool) error
 	if !ok {
 		return notFound("member %s is not in voice", userID)
 	}
+	if stream || video {
+		c := w.channels[st.ChannelID]
+		if c == nil {
+			return notFound("unknown voice channel %s", st.ChannelID)
+		}
+		if err := w.requireChannel(actor{userID: userID}, c, discord.MustPermissions("Connect", "Stream")); err != nil {
+			return err
+		}
+	}
 	st.SelfStream, st.SelfVideo = stream, video
 	a.voice[userID] = st
 	w.emit(discord.VoiceStateUpdateEvent{State: st})

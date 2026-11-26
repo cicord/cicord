@@ -611,11 +611,8 @@ func (w *World) commandInteraction(userID, serverID, channelID, applicationID, n
 	if cmd == nil {
 		return ix, nil, nil, nil, notFound("unknown command %q", path[0])
 	}
-	if dmp := cmd.DefaultMemberPermissions; dmp != nil {
-		have := w.basePerms(s, userID)
-		if (*dmp == 0 && have != allPermissions) || !have.Has(*dmp) {
-			return ix, nil, nil, nil, forbidden("user %s may not use command %q", userID, path[0])
-		}
+	if !commandAllowed(*cmd, w.channelPerms(c, userID)) {
+		return ix, nil, nil, nil, forbidden("user %s may not use command %q", userID, path[0])
 	}
 	ix = discord.Interaction{ServerID: serverID, ChannelID: channelID, User: user, Member: member, CommandName: path[0]}
 	leaf := cmd.Options
@@ -1074,11 +1071,8 @@ func (w *World) InvokeContextMenu(userID, serverID, channelID, applicationID, na
 		if cmd.Name != name || cmd.Type != typ {
 			continue
 		}
-		if p := cmd.DefaultMemberPermissions; p != nil {
-			have := w.channelPerms(ch, userID)
-			if !have.Has(*p) || (*p == 0 && have != allPermissions) {
-				return failedHandle(w, forbidden("missing command permissions"))
-			}
+		if !commandAllowed(cmd, w.channelPerms(ch, userID)) {
+			return failedHandle(w, forbidden("missing command permissions"))
 		}
 		ix := discord.Interaction{Type: discord.InteractionCommand, ServerID: serverID, ChannelID: channelID, User: user, Member: member, CommandType: typ, CommandName: name}
 		switch typ {

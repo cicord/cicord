@@ -122,3 +122,11 @@ include `@everyone` (its ID is the server ID); `managed` marks integration roles
   "choices"?: [{ "name", "value" }],  // autocomplete results (status "replied")
   "error": "" }
 ```
+
+### Member and operator views
+
+Use `GET /sim/state?userId=<member>` to list the servers the chosen user has joined and the channels they can view. The simulator’s identity picker still includes all seeded users and bots. A member object can include `timedOutUntil`, an ISO timestamp. An expired timestamp permits normal participation again.
+
+Use `GET /sim/channels/<id>/messages?userId=<member>` to read history with that member’s current channel permissions (up to 100 messages, oldest first). `GET /sim/commands?serverId=<server>&channelId=<channel>&userId=<member>` lists the application commands available to the member in that channel. Omit the actor parameters for the operator’s full simulation inventory. These selectors are available only in the development simulator.
+
+Timeouts preserve existing access to readable guild history and personal bot DMs. They prevent sending guild messages, creating new emoji reactions, connecting to voice and enabling video or streaming. The simulator disconnects a member already in voice when the timeout takes effect. Discord documents an exception for choosing an emoji already present on a message. [Discord’s Time Out FAQ](https://support.discord.com/hc/en-us/articles/4413305239191-Time-Out-FAQ)

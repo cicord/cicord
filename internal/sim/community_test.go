@@ -58,3 +58,33 @@ func TestCommunityLifecycle(t *testing.T) {
 		t.Fatal(evs)
 	}
 }
+
+func TestNativePollMemberWithdrawsAndAuthorCloses(t *testing.T) {
+	f := newFixture(t, fixtureOpts{})
+	author := f.w.UserClient(f.owner.ID)
+	voter := f.w.UserClient(f.alice.ID)
+	channel := f.general.ID
+	m, err := author.SendMessage(ctx, channel, discord.MessageCreate{Poll: &discord.Poll{Question: "QA", DurationHours: 1, Answers: []discord.PollAnswer{{Text: "A"}, {Text: "B"}}}})
+	isErr(t, err, nil)
+	for _, step := range []struct {
+		answer int
+		add    bool
+		a, b   int
+	}{{2, true, 0, 1}, {2, false, 0, 0}, {1, true, 1, 0}} {
+		isErr(t, f.w.VotePoll(f.alice.ID, channel, m.ID, step.answer, step.add), nil)
+		for _, viewer := range []*Client{author, voter} {
+			message, err := viewer.GetMessage(ctx, channel, m.ID)
+			isErr(t, err, nil)
+			if message.PollResults.Answers[0].Votes != step.a || message.PollResults.Answers[1].Votes != step.b {
+				t.Fatal(message.PollResults)
+			}
+		}
+	}
+	_, err = voter.EndPoll(ctx, channel, m.ID)
+	isErr(t, err, discord.ErrForbidden)
+	final, err := author.EndPoll(ctx, channel, m.ID)
+	isErr(t, err, nil)
+	if !final.PollResults.Finalized || final.PollResults.Answers[0].Votes != 1 || final.PollResults.Answers[1].Votes != 0 {
+		t.Fatal(final.PollResults)
+	}
+}
