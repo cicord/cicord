@@ -266,3 +266,9 @@ for the "member" steps.
     the leave happened while the bot was down). Repeat without Administrator but with Move
     Members (the `@bot` overwrite of *Guilds* and the bot's member overwrite must keep it
     working).
+
+## Message operations
+
+`message.pin()`, `unpin()` and `removeReaction(emoji, userId?)` require `discord.messages.manage`. Pinning needs Discord's Pin Messages permission. Read pins with `channel.pins()` and list normal reaction users in pages of 1–100 with `message.reactionUsers(emoji, { limit, after })`. Both require `discord.messages.read`. A received message includes reaction counts, a Discord jump URL and an optional reply reference.
+
+Announcement crossposts and typing use `discord.messages.send`. A webhook send uses `channel.sendAs({ username, avatarUrl }, payload)` and the privileged `discord.webhooks.manage` grant. The runtime creates or reuses its own channel webhook. Plugins receive only the resulting message. For short channel-send retries supply the same `nonce` (up to 25 characters) and `enforceNonce: true`. Discord's deduplication window lasts a few minutes.

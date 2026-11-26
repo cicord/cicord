@@ -73,14 +73,17 @@ type attachmentDTO struct {
 }
 
 type messageDTO struct {
-	ID          string          `json:"id"`
-	Content     string          `json:"content"`
-	Author      *userDTO        `json:"author,omitempty"`
-	Member      *memberDTO      `json:"member,omitempty"`
-	Channel     channelDTO      `json:"channel"`
-	Attachments []attachmentDTO `json:"attachments"`
-	Embeds      []embedDTO      `json:"embeds"`
-	CreatedAt   string          `json:"createdAt,omitempty"`
+	URL         string                    `json:"url"`
+	Reactions   []discord.ReactionSummary `json:"reactions"`
+	Reference   *discord.MessageReference `json:"reference,omitempty"`
+	ID          string                    `json:"id"`
+	Content     string                    `json:"content"`
+	Author      *userDTO                  `json:"author,omitempty"`
+	Member      *memberDTO                `json:"member,omitempty"`
+	Channel     channelDTO                `json:"channel"`
+	Attachments []attachmentDTO           `json:"attachments"`
+	Embeds      []embedDTO                `json:"embeds"`
+	CreatedAt   string                    `json:"createdAt,omitempty"`
 }
 
 // embedDTO is a received embed, in the shape of the SDK's Embed (the one plugins send).
@@ -355,12 +358,23 @@ func (i *Instance) memberAccess(m discord.Member) string {
 	return "member"
 }
 
+func (i *Instance) messageURL(server, channel, id string) string {
+	if i.isDMChannel(channel) {
+		server = "@me"
+	} else if server == "" {
+		server = i.env.ServerID
+	}
+	return "https://discord.com/channels/" + server + "/" + channel + "/" + id
+}
 func (i *Instance) messageDTO(m discord.Message) messageDTO {
 	author := i.userDTO(m.Author)
 	dto := messageDTO{
-		ID: m.ID, Content: m.Content, Author: &author, Channel: i.channelDTO(m.ChannelID),
+		URL: i.messageURL(m.ServerID, m.ChannelID, m.ID), Reactions: m.Reactions, Reference: m.Reference, ID: m.ID, Content: m.Content, Author: &author, Channel: i.channelDTO(m.ChannelID),
 		Attachments: make([]attachmentDTO, 0, len(m.Attachments)), Embeds: make([]embedDTO, 0, len(m.Embeds)),
 		CreatedAt: jsTime(m.CreatedAt),
+	}
+	if dto.Reference == nil && m.ReplyToID != "" {
+		dto.Reference = &discord.MessageReference{MessageID: m.ReplyToID, ChannelID: m.ChannelID, ServerID: m.ServerID}
 	}
 	if m.Member != nil {
 		mem := *m.Member
@@ -545,7 +559,7 @@ func (i *Instance) eventDTO(ev discord.Event) eventDTO {
 // (one REST call per reaction is not made for them).
 func (i *Instance) reactionDTO(d *eventDTO, e discord.ReactionEvent) {
 	i.noteMessageChannel(discord.Message{ChannelID: e.ChannelID, ServerID: e.ServerID})
-	d.Message = &messageDTO{ID: e.MessageID, Channel: i.channelDTO(e.ChannelID), Attachments: []attachmentDTO{}}
+	d.Message = &messageDTO{URL: i.messageURL(e.ServerID, e.ChannelID, e.MessageID), ID: e.MessageID, Channel: i.channelDTO(e.ChannelID), Attachments: []attachmentDTO{}}
 	u := i.userDTO(discord.User{ID: e.UserID})
 	if e.Member != nil && (e.Member.User.ID == e.UserID || e.Member.User.ID == "") {
 		mu := e.Member.User
@@ -783,6 +797,8 @@ type payloadDTO struct {
 
 // messageInput mirrors MessagePayload / ReplyInput of cicord-sdk.d.ts.
 type messageInput struct {
+	Nonce           string      `json:"nonce"`
+	EnforceNonce    bool        `json:"enforceNonce"`
 	Content         *string     `json:"content"`
 	Embeds          []embedIn   `json:"embeds"`
 	Components      []rowIn     `json:"components"`
@@ -892,6 +908,13 @@ func ParseColor(s string) (int, error) {
 // messageCreate converts a message input. allowEphemeral is true for interaction replies.
 func (i *Instance) messageCreate(in messageInput, allowEphemeral bool) (discord.MessageCreate, error) {
 	var mc discord.MessageCreate
+	if utf8.RuneCountInString(in.Nonce) > 25 || (in.EnforceNonce && in.Nonce == "") {
+		return mc, argErr("nonce must be 1–25 characters when enforced")
+	}
+	if in.Nonce != "" {
+		mc.Nonce = in.Nonce
+		mc.EnforceNonce = in.EnforceNonce
+	}
 	if in.Ephemeral != nil && !allowEphemeral {
 		return mc, argErr("ephemeral is only supported in interaction replies")
 	}

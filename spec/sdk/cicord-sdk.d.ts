@@ -47,7 +47,7 @@ export type Permission =
   | "CreatePublicThreads" | "CreatePrivateThreads" | "UseExternalStickers"
   | "SendMessagesInThreads" | "UseEmbeddedActivities" | "ModerateMembers"
   | "ViewCreatorMonetizationAnalytics" | "UseSoundboard" | "CreateExpressions" | "CreateEvents"
-  | "UseExternalSounds" | "SendVoiceMessages" | "SendPolls" | "UseExternalApps";
+  | "UseExternalSounds" | "SendVoiceMessages" | "SendPolls" | "UseExternalApps" | "PinMessages";
 
 /** Thrown when a call needs a capability that is not granted in bot.yaml. */
 export declare class CapabilityError extends Error {
@@ -110,6 +110,9 @@ export interface AllowedMentions {
 }
 
 export interface MessagePayload {
+  /** Channel sends only. Discord deduplicates enforced nonces for the past few minutes. */
+  nonce?: string;
+  enforceNonce?: boolean;
   content?: string;
   embeds?: Embed[];
   components?: ActionRow[];
@@ -130,6 +133,19 @@ export interface Attachment {
 }
 
 export interface Message {
+  readonly url: string;
+  readonly reference?: { readonly messageId: Snowflake; readonly channelId?: Snowflake; readonly serverId?: Snowflake };
+  readonly reactions: readonly { readonly emoji: string; readonly count: number; readonly me: boolean }[];
+  /** @capability discord.messages.manage */
+  pin(): Promise<void>;
+  /** @capability discord.messages.manage */
+  unpin(): Promise<void>;
+  /** @capability discord.messages.send */
+  crosspost(): Promise<void>;
+  /** Normal reaction users, ascending by ID. Default 25, maximum 100. @capability discord.messages.read */
+  reactionUsers(emoji: string, options?: {limit?: number; after?: Snowflake}): Promise<User[]>;
+  /** Omitting userId removes the bot's reaction. @capability discord.messages.manage */
+  removeReaction(emoji: string, userId?: Snowflake): Promise<void>;
   readonly id: Snowflake;
   /**
    * Empty unless the plugin declares the MessageContent intent in plugin.yaml, or the
@@ -225,6 +241,12 @@ export interface PurgeFilter {
 }
 
 export interface TextChannel extends Channel {
+  /** @capability discord.messages.read */
+  pins(): Promise<Message[]>;
+  /** @capability discord.messages.send */
+  typing(): Promise<void>;
+  /** @capability discord.webhooks.manage */
+  sendAs(identity: {username: string; avatarUrl?: string}, message: MessageInput): Promise<Message>;
   /** Deletes up to 100 recent guild messages. Requires discord.messages.manage and discord.messages.read. */
   bulkDelete(ids: Snowflake[], reason?: string): Promise<number>;
   /** Scans up to limit messages, newest first. Old or nonmatching messages are counted as skipped. */

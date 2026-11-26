@@ -648,6 +648,8 @@ func IsSnowflake(s string) bool {
 
 // MessageCreate is used to send or edit (full replace of the given fields) a message.
 type MessageCreate struct {
+	Nonce           string
+	EnforceNonce    bool
 	Content         string
 	Embeds          []Embed
 	Components      []Component
@@ -664,7 +666,32 @@ type Attachment struct {
 	Size        int
 }
 
+type ReactionSummary struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+	Me    bool   `json:"me"`
+}
+type MessageReference struct {
+	MessageID string `json:"messageId"`
+	ChannelID string `json:"channelId,omitempty"`
+	ServerID  string `json:"serverId,omitempty"`
+}
+type WebhookIdentity struct {
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatarUrl,omitempty"`
+}
+type MessagingClient interface {
+	SetMessagePin(context.Context, string, string, bool) error
+	ChannelPins(context.Context, string) ([]Message, error)
+	Crosspost(context.Context, string, string) error
+	ReactionUsers(context.Context, string, string, string, int, string) ([]User, error)
+	RemoveUserReaction(context.Context, string, string, string, string) error
+	Typing(context.Context, string) error
+	SendAs(context.Context, string, WebhookIdentity, MessageCreate) (Message, error)
+}
 type Message struct {
+	Reactions   []ReactionSummary
+	Reference   *MessageReference
 	ID          string
 	ChannelID   string
 	ServerID    string // empty in DMs

@@ -502,7 +502,9 @@ func (s *session) SendMessage(ctx context.Context, channelID string, m discord.M
 		}
 	}
 	var out wireMessage
-	if err := s.do(ctx, "SendMessage", rest.CreateMessage.Compile(nil, channelID), messageSendToWire(m), &out); err != nil {
+	body := messageSendToWire(m)
+	body.Nonce, body.EnforceNonce = m.Nonce, m.EnforceNonce
+	if err := s.do(ctx, "SendMessage", rest.CreateMessage.Compile(nil, channelID), body, &out); err != nil {
 		return discord.Message{}, err
 	}
 	return messageFromWire(out), nil

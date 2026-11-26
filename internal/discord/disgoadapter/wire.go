@@ -356,6 +356,11 @@ type wireAttachment struct {
 }
 
 type wireMessage struct {
+	Reactions []struct {
+		Emoji wireEmoji
+		Count int
+		Me    bool
+	} `json:"reactions"`
 	ID              string           `json:"id"`
 	ChannelID       string           `json:"channel_id"`
 	GuildID         string           `json:"guild_id,omitempty"`
@@ -392,6 +397,8 @@ type wireInteractionMetadata struct {
 }
 
 type wireReceivedReference struct {
+	GuildID   string `json:"guild_id"`
+	ChannelID string `json:"channel_id"`
 	Type      int    `json:"type"` // 0 default (reply), 1 forward
 	MessageID string `json:"message_id"`
 }
@@ -418,6 +425,8 @@ type wireMessageReference struct {
 // interaction responses, followups). For edits, Content/Embeds/Components are sent
 // even when empty (full replace), see messageEditBody.
 type wireMessageSend struct {
+	Nonce            string                `json:"nonce,omitempty"`
+	EnforceNonce     bool                  `json:"enforce_nonce,omitempty"`
 	Content          string                `json:"content,omitempty"`
 	Embeds           []wireEmbed           `json:"embeds,omitempty"`
 	Components       []wireComponent       `json:"components,omitempty"`

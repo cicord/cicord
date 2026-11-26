@@ -244,6 +244,11 @@ export interface RoleChange {
 
 export interface TestHarness {
   readonly ctx: Context;
+  /** Seed a received message, including interaction follow-ups. */
+  receive(channel: string | undefined, author: User, input: MessageInput): Message;
+  setReaction(messageId: string, emoji: string, userId: string, present?: boolean): void;
+  readonly crossposts: Set<string>;
+  readonly typing: string[];
   readonly logs: LogEntry[];
   readonly sent: SentMessage[];
   readonly roleChanges: RoleChange[];
@@ -360,6 +365,7 @@ const ALL_PERMISSIONS = [
   "SendVoiceMessages",
   "SendPolls",
   "UseExternalApps",
+  "PinMessages",
 ] as const satisfies readonly Permission[];
 // Fails type-checking when the spec adds a permission that is missing above.
 type MissingPermissions = Exclude<Permission, (typeof ALL_PERMISSIONS)[number]>;
@@ -481,7 +487,10 @@ function makeUser(init: {
     username,
     displayName: init.displayName ?? username,
     ...(init.avatarUrl ? { avatarUrl: init.avatarUrl } : {}),
-    createdAt: /^\d{1,20}$/.test(init.id) && BigInt(init.id) <= 0xffffffffffffffffn ? new Date(Number(BigInt(init.id) >> 22n) + 1420070400000) : new Date(NaN),
+    createdAt:
+      /^\d{1,20}$/.test(init.id) && BigInt(init.id) <= 0xffffffffffffffffn
+        ? new Date(Number(BigInt(init.id) >> 22n) + 1420070400000)
+        : new Date(NaN),
     flags: Object.freeze([...(init.publicFlags ?? [])]),
     bot: init.bot ?? false,
     mention: `<@${init.id}>`,
@@ -528,24 +537,29 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const rolePermissions = new Map<string, readonly Permission[]>(); // role id → permissions
   // Methods on a prototype, like the host: a Role's own properties are its data (toEqual and
   // JSON.stringify see only them).
-  function memberList(opts: {limit?: number; after?: string}, role?: Role): Member[] {
-      const method = role ? "role.members()" : "server.members()";
-      need("discord.members.read");
-      if (options.intents && !options.intents.includes("ServerMembers"))
-        throw new Error(
-          method+" needs the ServerMembers intent: declare it in plugin.yaml (spec.intents)",
-        );
-      const limit = opts.limit ?? 100;
-      if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
-        throw new TypeError(method+": limit must be an integer between 1 and 1000");
-      const after = opts.after;
-      const held = [...members.values()]
-        .filter((m) => (!role || m.hasRole({ id: role.id })) && (after === undefined || idLess(after, m.id)))
-        .toSorted((a, b) => (idLess(a.id, b.id) ? -1 : idLess(b.id, a.id) ? 1 : 0));
-      return Object.freeze(held.slice(0, limit)) as Member[];
+  function memberList(opts: { limit?: number; after?: string }, role?: Role): Member[] {
+    const method = role ? "role.members()" : "server.members()";
+    need("discord.members.read");
+    if (options.intents && !options.intents.includes("ServerMembers"))
+      throw new Error(
+        method + " needs the ServerMembers intent: declare it in plugin.yaml (spec.intents)",
+      );
+    const limit = opts.limit ?? 100;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+      throw new TypeError(method + ": limit must be an integer between 1 and 1000");
+    const after = opts.after;
+    const held = [...members.values()]
+      .filter(
+        (m) =>
+          (!role || m.hasRole({ id: role.id })) && (after === undefined || idLess(after, m.id)),
+      )
+      .toSorted((a, b) => (idLess(a.id, b.id) ? -1 : idLess(b.id, a.id) ? 1 : 0));
+    return Object.freeze(held.slice(0, limit)) as Member[];
   }
   const roleProto: Pick<Role, "members"> = {
-    async members(this: Role, opts = {}) { return memberList(opts,this); },
+    async members(this: Role, opts = {}) {
+      return memberList(opts, this);
+    },
   };
   for (const [key, r] of Object.entries(options.roles ?? {})) {
     const id = r.id ?? `role-${key}`;
@@ -580,24 +594,91 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const messages = new Map<string, Message>();
   const history = new Map<string, Message[]>(); // channel id → messages, oldest first
   let messageSeq = 0;
-  const makeMessage = (channel: TextChannel, author: User, input: MessageInput): Message => {
+  const pinned = new Set<string>();
+  const crossposts = new Set<string>();
+  const typing: string[] = [];
+  const nonces = new Map<string, Message>();
+  const reactionUsers = new Map<string, Map<string, Set<string>>>();
+  function setReaction(messageId: string, emoji: string, userId: string, present = true) {
+    if (!messages.has(messageId)) throw new Error("unknown message");
+    const reactions = reactionUsers.get(messageId) ?? new Map<string, Set<string>>();
+    const users = reactions.get(emoji) ?? new Set<string>();
+    if (present) users.add(userId);
+    else users.delete(userId);
+    if (users.size) reactions.set(emoji, users);
+    else reactions.delete(emoji);
+    reactionUsers.set(messageId, reactions);
+  }
+  const makeMessage = (
+    channel: TextChannel,
+    author: User,
+    input: MessageInput,
+    reference?: Message["reference"],
+    existing?: Message,
+  ): Message => {
+    const id = existing?.id ?? String(1_000_000_000_000_000n + BigInt(++messageSeq));
     const message: Message = {
       // Snowflake-like ids (numeric strings growing with time), like Discord.
-      id: String(1_000_000_000_000_000n + BigInt(++messageSeq)),
+      id,
+      url: `https://discord.com/channels/${channel.type === "dm" ? "@me" : (options.server?.id ?? "server-1")}/${channel.id}/${id}`,
+      ...(reference ? { reference } : {}),
+      get reactions() {
+        return [...(reactionUsers.get(id) ?? [])].map(([emoji, users]) => ({
+          emoji,
+          count: users.size,
+          me: users.has(botUser.id),
+        }));
+      },
+      async pin() {
+        need("discord.messages.manage");
+        pinned.add(id);
+      },
+      async unpin() {
+        need("discord.messages.manage");
+        pinned.delete(id);
+      },
+      async crosspost() {
+        need("discord.messages.send");
+        if (channel.type !== "announcement" || crossposts.has(id))
+          throw new Error("cannot crosspost message");
+        crossposts.add(id);
+      },
+      async reactionUsers(emoji, opts = {}) {
+        need("discord.messages.read");
+        const limit = opts.limit ?? 25;
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+          throw new TypeError("limit must be 1–100");
+        return [...(reactionUsers.get(id)?.get(emoji) ?? [])]
+          .filter((uid) => !opts.after || idLess(opts.after, uid))
+          .sort((a, b) => (idLess(a, b) ? -1 : idLess(b, a) ? 1 : 0))
+          .slice(0, limit)
+          .map(
+            (uid) =>
+              members.get(uid)?.user ?? (uid === botUser.id ? botUser : makeUser({ id: uid })),
+          );
+      },
+      async removeReaction(emoji, userId) {
+        need("discord.messages.manage");
+        setReaction(id, emoji, userId ?? botUser.id, false);
+      },
       content: typeof input === "string" ? input : (input.content ?? ""),
       author,
       channel,
       attachments: [],
       embeds: typeof input === "string" ? [] : (input.embeds ?? []).map((e) => ({ ...e })),
-      createdAt: new Date(),
+      createdAt: existing?.createdAt ?? new Date(),
       async reply(reply) {
         need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
-        return post(channel, reply);
+        return post(channel, reply, undefined, {
+          messageId: id,
+          channelId: channel.id,
+          ...(channel.type === "dm" ? {} : { serverId: options.server?.id ?? "server-1" }),
+        });
       },
       async edit(next) {
         if (author.id !== botUser.id) need("discord.messages.manage");
         edits.push({ id: message.id, message: next });
-        return makeMessage(channel, author, next);
+        return makeMessage(channel, author, next, reference, message);
       },
       async delete(reason) {
         need("discord.messages.manage");
@@ -610,21 +691,50 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
       async react(emoji) {
         need("discord.reactions.manage");
+        setReaction(id, emoji, botUser.id);
         reactions.push({ message: message.id, emoji });
       },
     };
     messages.set(message.id, message);
     const list = history.get(channel.id) ?? [];
-    list.push(message);
+    if (existing)
+      list.splice(
+        list.findIndex((m) => m.id === existing.id),
+        1,
+        message,
+      );
+    else list.push(message);
     history.set(channel.id, list);
     return message;
   };
   /** Records a message sent by the bot. */
   const knownId = (id: string): boolean =>
     members.has(id) || [...roles.values()].some((r) => r.id === id);
-  const post = (channel: TextChannel, input: MessageInput, to?: string): Message => {
+  const post = (
+    channel: TextChannel,
+    input: MessageInput,
+    to?: string,
+    reference?: Message["reference"],
+    author = botUser,
+  ): Message => {
     const allowedMentions = normalizeAllowedMentions(input, knownId);
-    const message = makeMessage(channel, botUser, input);
+    const key =
+      typeof input !== "string" && input.nonce ? channel.id + "/" + input.nonce : undefined;
+    if (
+      typeof input !== "string" &&
+      ((input.nonce?.length ?? 0) > 25 || (input.enforceNonce && !input.nonce))
+    )
+      throw new TypeError("invalid message nonce");
+    const previous = key ? nonces.get(key) : undefined;
+    if (
+      typeof input !== "string" &&
+      input.enforceNonce &&
+      previous &&
+      Date.now() - previous.createdAt.getTime() < 300000
+    )
+      return previous;
+    const message = makeMessage(channel, author, input, reference);
+    if (key) nonces.set(key, message);
     sent.push({
       to: to ?? channel.key ?? channel.id,
       message: input,
@@ -645,6 +755,35 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       type: init.type ?? "text",
       ...(init.categoryId ? { categoryId: init.categoryId } : {}),
       mention: `<#${id}>`,
+      async pins() {
+        need("discord.messages.read");
+        return [...pinned]
+          .reverse()
+          .map((id) => messages.get(id))
+          .filter((m): m is Message => m?.channel.id === id);
+      },
+      async typing() {
+        need("discord.messages.send");
+        if (channel.type === "dm") need("discord.dm.send");
+        typing.push(id);
+      },
+      async sendAs(identity, input) {
+        need("discord.webhooks.manage");
+        if (channel.type === "dm" || !identity.username || identity.username.length > 80)
+          throw new Error("invalid webhook identity or channel");
+        return post(
+          channel,
+          input,
+          undefined,
+          undefined,
+          makeUser({
+            id: "webhook-" + id,
+            username: identity.username,
+            avatarUrl: identity.avatarUrl,
+            bot: true,
+          }),
+        );
+      },
       async send(input) {
         need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
         return post(channel, input);
@@ -791,11 +930,11 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       get roles() {
         return [...roles.values()].filter((r) => owned.has(r.id));
       },
-      ...(init.pending === undefined ? {} : {pending:init.pending}),
+      ...(init.pending === undefined ? {} : { pending: init.pending }),
       flags: Object.freeze([...(init.memberFlags ?? [])]),
-      ...(init.premiumSince ? {premiumSince:init.premiumSince} : {}),
-      ...(init.timedOutUntil ? {timedOutUntil:init.timedOutUntil} : {}),
-      ...(init.serverAvatarUrl ? {avatarUrl:init.serverAvatarUrl} : {}),
+      ...(init.premiumSince ? { premiumSince: init.premiumSince } : {}),
+      ...(init.timedOutUntil ? { timedOutUntil: init.timedOutUntil } : {}),
+      ...(init.serverAvatarUrl ? { avatarUrl: init.serverAvatarUrl } : {}),
       joinedAt: init.joinedAt ?? new Date(0),
       // Server-level, like the host: @everyone + roles; all for the owner and Administrator.
       get permissions() {
@@ -1068,8 +1207,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     return both ? "unknown" : "disjoint";
   }
   const server: Server = {
-    ...(options.server?.preferredLocale ? {preferredLocale:options.server.preferredLocale} : {}),
-    async members(opts = {}) { return memberList(opts); },
+    ...(options.server?.preferredLocale ? { preferredLocale: options.server.preferredLocale } : {}),
+    async members(opts = {}) {
+      return memberList(opts);
+    },
     async invites() {
       need("discord.invites.read");
       return [...(options.invites ?? [])];
@@ -1416,6 +1557,17 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     kv: kvData,
     member: (id) => members.get(id),
     addMember,
+    receive(ref, author, input) {
+      const channel = ref
+        ? channels.get(ref)
+        : (channels.get("interaction-channel") ??
+          register(undefined, { id: "interaction-channel", name: "interaction" }));
+      if (!channel) throw new Error("unknown channel");
+      return makeMessage(channel, author, input);
+    },
+    setReaction,
+    crossposts,
+    typing,
     message: (id) => messages.get(id),
     channel: (ref) => channels.get(ref),
     removeMember: (id) => {
@@ -1652,49 +1804,11 @@ function fakeInteraction(
     checkMentions(message);
     result.followUps.push(message);
     // Follow-ups need no capability: the message is not recorded in `sent`.
-    return {
-      id: `followup-${result.followUps.length}`,
-      content: typeof message === "string" ? message : (message.content ?? ""),
-      author: harness.ctx.bot.user,
-      channel: channel ?? {
-        id: "interaction-channel",
-        name: "interaction",
-        type: "text",
-        mention: "<#interaction-channel>",
-        send: async () => {
-          throw new Error("not supported in tests: pass `channel` in the call");
-        },
-        previewPurge: async () => {
-          throw new Error("pass a channel to test previewPurge");
-        },
-        bulkDelete: async () => {
-          throw new Error("pass a channel to test bulkDelete");
-        },
-        purge: async () => {
-          throw new Error("pass a channel to test purge");
-        },
-        messages: async () => [],
-        message: async () => undefined,
-        createThread: async () => {
-          throw new Error("not supported in tests: pass `channel` in the call");
-        },
-      },
-      attachments: [],
-      embeds: [],
-      createdAt: new Date(),
-      reply: async () => {
-        throw new Error("not supported in tests: pass `channel` in the call");
-      },
-      edit: async () => {
-        throw new Error("not supported in tests: pass `channel` in the call");
-      },
-      delete: async () => {},
-      react: async () => {},
-    };
+    return harness.receive(channel?.id, harness.ctx.bot.user, message);
   };
   return {
     id: `interaction-${kind}-${id}`,
-    ...(call.locale ? {locale:call.locale} : {}),
+    ...(call.locale ? { locale: call.locale } : {}),
     user,
     ...(member ? { member } : {}),
     ...(channel ? { channel } : {}),
@@ -1866,7 +1980,7 @@ export async function runAutocomplete(
     throw new Error(`unknown channel ${JSON.stringify(call.channel)} for the interaction`);
   const interaction: AutocompleteInteraction = {
     id: `interaction-autocomplete-${path}`,
-    ...(call.locale ? {locale:call.locale} : {}),
+    ...(call.locale ? { locale: call.locale } : {}),
     user: member?.user ?? makeUser({ id: call.user }),
     ...(member ? { member } : {}),
     ...(channel ? { channel } : {}),

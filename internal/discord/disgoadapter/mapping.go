@@ -901,6 +901,10 @@ func messageFromWire(w wireMessage) discord.Message {
 	}
 	if r := w.MessageReference; r != nil && r.Type == 0 && w.Type == messageTypeReply {
 		m.ReplyToID = r.MessageID
+		m.Reference = &discord.MessageReference{MessageID: r.MessageID, ChannelID: r.ChannelID, ServerID: r.GuildID}
+	}
+	for _, r := range w.Reactions {
+		m.Reactions = append(m.Reactions, discord.ReactionSummary{Emoji: emojiFromWire(&r.Emoji), Count: r.Count, Me: r.Me})
 	}
 	for _, st := range w.StickerItems {
 		m.StickerIDs = append(m.StickerIDs, st.ID)

@@ -34,7 +34,7 @@ var DefaultEveryonePermissions = discord.MustPermissions(
 	"UseApplicationCommands", "RequestToSpeak", "CreatePublicThreads",
 	"CreatePrivateThreads", "UseExternalStickers", "SendMessagesInThreads",
 	"UseEmbeddedActivities", "UseSoundboard", "UseExternalSounds",
-	"SendVoiceMessages", "SendPolls", "UseExternalApps",
+	"SendVoiceMessages", "SendPolls", "UseExternalApps", "PinMessages",
 )
 
 // Option configures a World.
@@ -133,9 +133,10 @@ type serverState struct {
 }
 
 type channelState struct {
-	ch      discord.Channel
-	msgIDs  []string  // non-ephemeral messages, oldest first
-	dmUsers [2]string // DMs: {user ID, bot user ID}
+	webhooks map[string]string
+	ch       discord.Channel
+	msgIDs   []string  // non-ephemeral messages, oldest first
+	dmUsers  [2]string // DMs: {user ID, bot user ID}
 }
 
 type reaction struct {
@@ -144,6 +145,8 @@ type reaction struct {
 }
 
 type messageState struct {
+	pinned       time.Time
+	nonce        string
 	msg          discord.Message
 	reactions    []*reaction
 	ephemeral    bool

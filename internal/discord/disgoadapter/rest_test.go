@@ -553,3 +553,18 @@ func TestAuditListPreservesEvidence(t *testing.T) {
 		t.Fatal(f.last().URI)
 	}
 }
+
+func TestManagedWebhookUsesOnlyOwnCredential(t *testing.T) {
+	f := newFakeDiscord(t)
+	s := f.connect(t).(discord.MessagingClient)
+	f.json("GET /channels/10/webhooks", 200, `[{"id":"123","name":"Cicord","type":1,"token":"foreign","user":{"id":"42"}},{"id":"234","name":"Cicord","type":1,"token":"local","user":{"id":"600"}}]`)
+	f.json("POST /webhooks/234/local", 200, `{"id":"5","channel_id":"10","webhook_id":"234","author":{"username":"News"}}`)
+	msg, err := s.SendAs(context.Background(), "10", discord.WebhookIdentity{Username: "News"}, discord.MessageCreate{Content: "published"})
+	if err != nil || msg.WebhookID != "234" {
+		t.Fatal(msg, err)
+	}
+	req := f.last()
+	if req.Auth != "" || req.Body.(map[string]any)["username"] != "News" {
+		t.Fatalf("invalid webhook execution")
+	}
+}

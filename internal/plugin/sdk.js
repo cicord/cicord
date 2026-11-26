@@ -188,6 +188,9 @@
   }
 
   const TextChannelProto = {
+    async pins(){return (await acall("channel.pins",{channelId:this.id})).map(mkMessage);},
+    async typing(){await acall("channel.typing",{channelId:this.id});},
+    async sendAs(identity,message){return mkMessage(await acall("channel.sendAs",{channelId:this.id,identity,message:msgIn(message)}));},
     async send(message) {
       return mkMessage(await acall("channel.send", { channelId: this.id, message: msgIn(message) }));
     },
@@ -228,6 +231,11 @@
   }
 
   const MessageProto = {
+    async pin(){await acall("message.pin",{channelId:this.channel.id,messageId:this.id});},
+    async unpin(){await acall("message.unpin",{channelId:this.channel.id,messageId:this.id});},
+    async crosspost(){await acall("message.crosspost",{channelId:this.channel.id,messageId:this.id});},
+    async reactionUsers(emoji,options={}) {return (await acall("message.reactionUsers",{channelId:this.channel.id,messageId:this.id,emoji,limit:options.limit,after:options.after})).map(mkUser);},
+    async removeReaction(emoji,userId){await acall("message.removeReaction",{channelId:this.channel.id,messageId:this.id,emoji,userId});},
     async reply(message) {
       return mkMessage(await acall("message.reply", { channelId: this.channel.id, messageId: this.id, message: msgIn(message) }));
     },
@@ -246,6 +254,7 @@
     if (!d) return undefined;
     const m = Object.create(MessageProto);
     m.id = d.id;
+    m.url=d.url; m.reference=d.reference ? freeze(d.reference) : undefined; m.reactions=freeze((d.reactions||[]).map(r=>freeze(r)));
     m.content = d.content || "";
     m.author = mkUser(d.author);
     m.member = d.member ? mkMember(d.member) : undefined;

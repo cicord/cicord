@@ -73,7 +73,7 @@
         "CreatePublicThreads", "CreatePrivateThreads", "UseExternalStickers",
         "SendMessagesInThreads", "UseEmbeddedActivities", "ModerateMembers",
         "ViewCreatorMonetizationAnalytics", "UseSoundboard", "CreateExpressions", "CreateEvents",
-        "UseExternalSounds", "SendVoiceMessages", "SendPolls", "UseExternalApps"
+        "UseExternalSounds", "SendVoiceMessages", "SendPolls", "UseExternalApps", "PinMessages"
       ]
     },
     "permissions": {
@@ -95,7 +95,7 @@
     "capability": {
       "description": "Plugin capability. See https://cicord.dev/docs/plugins/writing/#capabilities-and-grants for what each one allows.",
       "enum": [
-        "discord.messages.read", "discord.messages.send", "discord.messages.manage",
+        "discord.messages.read", "discord.messages.send", "discord.messages.manage", "discord.webhooks.manage",
         "discord.reactions.manage", "discord.members.read", "discord.members.manage",
         "discord.members.moderate", "discord.roles.assign", "discord.channels.read", "discord.auditlog.read", "discord.invites.read",
         "discord.channels.manage", "discord.threads.manage", "discord.voice.move", "discord.dm.send",

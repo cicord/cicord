@@ -522,6 +522,7 @@
     "capabilities": {
       "discord_messages_read": "Read messages",
       "discord_messages_send": "Send messages",
+      "discord_webhooks_manage": "Send messages under a custom webhook identity",
       "discord_messages_manage": "Manage messages",
       "discord_reactions_manage": "Manage reactions",
       "discord_members_read": "Read members",

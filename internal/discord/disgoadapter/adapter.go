@@ -113,6 +113,7 @@ func (c *connector) Connect(ctx context.Context, token string) (discord.Session,
 
 // session implements discord.Session.
 type session struct {
+	webhookMu      sync.Mutex
 	matchedContent atomic.Bool
 	cfg            config
 	token          string

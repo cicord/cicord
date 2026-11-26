@@ -50,17 +50,18 @@ const (
 // capability allows (when it is not Administrator). Capabilities missing here need none
 // (members.read and dm.send use the gateway member list and DMs).
 var capabilityPermissions = map[string]discord.Permissions{
-	capMessagesRead:    discord.MustPermissions("ViewChannel", "ReadMessageHistory"),
-	capMessagesSend:    discord.MustPermissions("ViewChannel", "SendMessages", "EmbedLinks"),
-	capMessagesManage:  discord.MustPermissions("ViewChannel", "ManageMessages"),
-	capReactions:       discord.MustPermissions("ViewChannel", "AddReactions", "ReadMessageHistory"),
-	capMembersManage:   discord.MustPermissions("ManageNicknames"),
-	capInvitesRead:     discord.MustPermissions("ManageServer"),
-	capAuditRead:       discord.MustPermissions("ViewAuditLog"),
-	capMembersModerate: discord.MustPermissions("ModerateMembers", "KickMembers", "BanMembers"),
-	capRolesAssign:     discord.MustPermissions("ManageRoles"),
-	capChannelsRead:    discord.MustPermissions("ViewChannel"),
-	capChannelsManage:  discord.MustPermissions("ViewChannel", "ManageChannels", "ManageRoles"),
+	capMessagesRead:           discord.MustPermissions("ViewChannel", "ReadMessageHistory"),
+	capMessagesSend:           discord.MustPermissions("ViewChannel", "SendMessages", "EmbedLinks"),
+	capMessagesManage:         discord.MustPermissions("ViewChannel", "ManageMessages", "PinMessages"),
+	"discord.webhooks.manage": discord.MustPermissions("ViewChannel", "ManageWebhooks"),
+	capReactions:              discord.MustPermissions("ViewChannel", "AddReactions", "ReadMessageHistory"),
+	capMembersManage:          discord.MustPermissions("ManageNicknames"),
+	capInvitesRead:            discord.MustPermissions("ManageServer"),
+	capAuditRead:              discord.MustPermissions("ViewAuditLog"),
+	capMembersModerate:        discord.MustPermissions("ModerateMembers", "KickMembers", "BanMembers"),
+	capRolesAssign:            discord.MustPermissions("ManageRoles"),
+	capChannelsRead:           discord.MustPermissions("ViewChannel"),
+	capChannelsManage:         discord.MustPermissions("ViewChannel", "ManageChannels", "ManageRoles"),
 	capThreadsManage: discord.MustPermissions("ViewChannel", "CreatePublicThreads", "CreatePrivateThreads",
 		"ManageThreads", "SendMessagesInThreads"),
 	// Moving a member needs MoveMembers, and Connect in the destination channel.
@@ -115,63 +116,71 @@ func init() {
 		"it.state":               opInteractionState,
 	}
 	asyncOps = map[string]asyncOp{
-		"channel.send":         opChannelSend,
-		"channel.bulkDelete":   opChannelBulkDelete,
-		"channel.purge":        opChannelPurge(false),
-		"channel.previewPurge": opChannelPurge(true),
-		"channel.messages":     opChannelMessages,
-		"channel.message":      opChannelMessage,
-		"channel.createThread": opChannelCreateThread,
-		"message.reply":        opMessageReply,
-		"message.edit":         opMessageEdit,
-		"message.delete":       opMessageDelete,
-		"message.react":        opMessageReact,
-		"member.setRoles":      opMemberSetRoles,
-		"member.addRole":       opMemberRole(true),
-		"member.removeRole":    opMemberRole(false),
-		"member.setNickname":   opMemberSetNickname,
-		"member.timeout":       opMemberTimeout,
-		"member.kick":          opMemberKick,
-		"server.unban":         opServerUnban,
-		"server.invites":       opServerInvites,
-		"server.auditLog":      opAuditLog,
-		"server.bans":          opServerBans,
-		"member.ban":           opMemberBan,
-		"member.send":          opMemberSend,
-		"member.moveTo":        opMemberMoveTo,
-		"server.member":        opServerMember,
-		"server.voiceMembers":  opServerVoiceMembers,
-		"role.members":         memberList(true),
-		"server.members":       memberList(false),
-		"server.createChannel": opServerCreateChannel,
-		"server.deleteChannel": opServerDeleteChannel,
-		"server.editChannel":   opServerEditChannel,
-		"kv.entries":           advancedOp("entries"),
-		"kv.atomic":            advancedOp("atomic"),
-		"kv.rank":              advancedOp("rank"),
-		"kv.get":               opKVGet,
-		"kv.set":               opKVSet,
-		"kv.delete":            opKVDelete,
-		"kv.increment":         opKVIncrement,
-		"kv.list":              opKVList,
-		"schedule.after":       opScheduleAfter,
-		"schedule.cancel":      opScheduleCancel,
-		"files.read":           opFile("read"),
-		"files.list":           opFile("list"),
-		"files.bytes":          opFile("bytes"),
-		"index.upsert":         opIndex("upsert"),
-		"index.search":         opIndex("search"),
-		"index.remove":         opIndex("remove"),
-		"index.clear":          opIndex("clear"),
-		"http.fetch":           opHTTPFetch,
-		"events.publish":       opEventsPublish,
-		"portal.link":          opPortalLink,
-		"portal.revoke":        opPortalRevoke,
-		"it.reply":             opInteractionReply,
-		"it.defer":             opInteractionDefer,
-		"it.followUp":          opInteractionFollowUp,
-		"it.showModal":         opInteractionShowModal,
-		"it.update":            opInteractionUpdate,
+		"channel.send":           opChannelSend,
+		"channel.bulkDelete":     opChannelBulkDelete,
+		"channel.purge":          opChannelPurge(false),
+		"channel.previewPurge":   opChannelPurge(true),
+		"channel.messages":       opChannelMessages,
+		"channel.message":        opChannelMessage,
+		"channel.createThread":   opChannelCreateThread,
+		"message.reply":          opMessageReply,
+		"message.edit":           opMessageEdit,
+		"message.delete":         opMessageDelete,
+		"message.react":          opMessageReact,
+		"member.setRoles":        opMemberSetRoles,
+		"member.addRole":         opMemberRole(true),
+		"member.removeRole":      opMemberRole(false),
+		"member.setNickname":     opMemberSetNickname,
+		"member.timeout":         opMemberTimeout,
+		"member.kick":            opMemberKick,
+		"server.unban":           opServerUnban,
+		"server.invites":         opServerInvites,
+		"server.auditLog":        opAuditLog,
+		"server.bans":            opServerBans,
+		"member.ban":             opMemberBan,
+		"member.send":            opMemberSend,
+		"member.moveTo":          opMemberMoveTo,
+		"server.member":          opServerMember,
+		"server.voiceMembers":    opServerVoiceMembers,
+		"role.members":           memberList(true),
+		"server.members":         memberList(false),
+		"server.createChannel":   opServerCreateChannel,
+		"server.deleteChannel":   opServerDeleteChannel,
+		"server.editChannel":     opServerEditChannel,
+		"kv.entries":             advancedOp("entries"),
+		"kv.atomic":              advancedOp("atomic"),
+		"kv.rank":                advancedOp("rank"),
+		"kv.get":                 opKVGet,
+		"kv.set":                 opKVSet,
+		"kv.delete":              opKVDelete,
+		"kv.increment":           opKVIncrement,
+		"kv.list":                opKVList,
+		"schedule.after":         opScheduleAfter,
+		"schedule.cancel":        opScheduleCancel,
+		"files.read":             opFile("read"),
+		"files.list":             opFile("list"),
+		"files.bytes":            opFile("bytes"),
+		"index.upsert":           opIndex("upsert"),
+		"index.search":           opIndex("search"),
+		"index.remove":           opIndex("remove"),
+		"index.clear":            opIndex("clear"),
+		"http.fetch":             opHTTPFetch,
+		"events.publish":         opEventsPublish,
+		"portal.link":            opPortalLink,
+		"portal.revoke":          opPortalRevoke,
+		"it.reply":               opInteractionReply,
+		"it.defer":               opInteractionDefer,
+		"it.followUp":            opInteractionFollowUp,
+		"it.showModal":           opInteractionShowModal,
+		"it.update":              opInteractionUpdate,
+		"message.pin":            messaging("pin", capMessagesManage),
+		"message.unpin":          messaging("unpin", capMessagesManage),
+		"message.crosspost":      messaging("crosspost", capMessagesSend),
+		"message.reactionUsers":  messaging("reactionUsers", capMessagesRead),
+		"message.removeReaction": messaging("removeReaction", capMessagesManage),
+		"channel.pins":           messaging("pins", capMessagesRead),
+		"channel.typing":         messaging("typing", capMessagesSend),
+		"channel.sendAs":         messaging("sendAs", "discord.webhooks.manage"),
 	}
 }
 
@@ -538,7 +547,7 @@ func opChannelSend(i *Instance, _ *invocation, args json.RawMessage) (func(conte
 		if err := i.require(i.sendCapability(dm)); err != nil {
 			return nil, err
 		}
-		m, err := i.env.Discord.SendMessage(ctx, a.ChannelID, mc)
+		m, err := i.env.Discord.SendMessage(ctx, a.ChannelID, i.scopeNonce(a.ChannelID, mc))
 		if err != nil {
 			return nil, err
 		}
@@ -676,7 +685,7 @@ func opMessageReply(i *Instance, _ *invocation, args json.RawMessage) (func(cont
 		if err := i.require(i.sendCapability(dm)); err != nil {
 			return nil, err
 		}
-		m, err := i.env.Discord.SendMessage(ctx, a.ChannelID, mc)
+		m, err := i.env.Discord.SendMessage(ctx, a.ChannelID, i.scopeNonce(a.ChannelID, mc))
 		if err != nil {
 			return nil, err
 		}
@@ -1019,7 +1028,7 @@ func opMemberSend(i *Instance, _ *invocation, args json.RawMessage) (func(contex
 			return nil, err
 		}
 		i.markDMChannel(ch.ID)
-		m, err := i.env.Discord.SendMessage(ctx, ch.ID, mc)
+		m, err := i.env.Discord.SendMessage(ctx, ch.ID, i.scopeNonce(ch.ID, mc))
 		if err != nil {
 			return nil, err
 		}

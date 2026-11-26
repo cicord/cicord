@@ -63,6 +63,7 @@ var permissionBits = map[string]uint{
 	"SendVoiceMessages":                46,
 	"SendPolls":                        49,
 	"UseExternalApps":                  50,
+	"PinMessages":                      51,
 }
 
 var intentBits = map[string]uint{

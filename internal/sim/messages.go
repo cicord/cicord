@@ -201,6 +201,12 @@ func (w *World) newMessage(c *channelState, author discord.User, m discord.Messa
 		CreatedAt:  w.now(),
 		ReplyToID:  m.ReplyTo,
 	}
+	for _, id := range c.webhooks {
+		if author.ID == id {
+			msg.WebhookID = id
+			break
+		}
+	}
 	if len(answers) > 0 && answers[0] != nil {
 		a := *answers[0]
 		msg.Interaction = &a
@@ -210,7 +216,7 @@ func (w *World) newMessage(c *channelState, author discord.User, m discord.Messa
 			msg.Member = cloneMemberPtr(mem)
 		}
 	}
-	ms := &messageState{msg: msg}
+	ms := &messageState{msg: msg, nonce: m.Nonce}
 	w.messages[msg.ID] = ms
 	if ephemeralFor != "" {
 		ms.ephemeral, ms.ephemeralFor = true, ephemeralFor
@@ -355,6 +361,20 @@ func (w *World) sendMessage(a actor, channelID string, m discord.MessageCreate) 
 	if m.ReplyTo != "" {
 		if r := w.messages[m.ReplyTo]; r == nil || r.ephemeral || r.msg.ChannelID != channelID {
 			return fail(badRequest("unknown message to reply to %s", m.ReplyTo))
+		}
+	}
+	if m.EnforceNonce && m.Nonce != "" {
+		for j := len(c.msgIDs) - 1; j >= 0; j-- {
+			old := w.messages[c.msgIDs[j]]
+			if old == nil {
+				continue
+			}
+			if w.now().Sub(old.msg.CreatedAt) > 5*time.Minute {
+				break
+			}
+			if old.msg.Author.ID == a.userID && old.nonce == m.Nonce {
+				return cloneMessage(old.msg), nil
+			}
 		}
 	}
 	m.Flags &^= discord.MessageFlagEphemeral | msgFlagLoading
@@ -504,15 +524,9 @@ func (w *World) listMessages(a actor, channelID string, p discord.ListMessagesPa
 			}
 		}
 	}
-	bot := w.botsByUser[a.userID]
 	out := make([]discord.Message, 0, len(picked))
 	for i := len(picked) - 1; i >= 0; i-- { // newest first, like Discord
-		m := w.messages[picked[i]].msg
-		if bot != nil {
-			m = w.redact(m, a.userID, bot.privileged.Has(intentMessageContent))
-		} else {
-			m = cloneMessage(m)
-		}
+		m := w.messageFor(a, w.messages[picked[i]])
 		out = append(out, m)
 	}
 	return out, nil
@@ -536,10 +550,7 @@ func (w *World) getMessage(a actor, channelID, messageID string) (discord.Messag
 	if err := w.readAccess(a, c); err != nil {
 		return discord.Message{}, err
 	}
-	if bot := w.botsByUser[a.userID]; bot != nil {
-		return w.redact(ms.msg, a.userID, bot.privileged.Has(intentMessageContent)), nil
-	}
-	return cloneMessage(ms.msg), nil
+	return w.messageFor(a, ms), nil
 }
 
 // readAccess checks the caller may read the history of c (ReadMessageHistory in server
@@ -558,6 +569,9 @@ func validEmoji(e string) bool {
 }
 
 func (w *World) react(a actor, add bool, channelID, messageID, emoji string, log bool) error {
+	return w.reactUser(a, add, channelID, messageID, emoji, log, a.userID)
+}
+func (w *World) reactUser(a actor, add bool, channelID, messageID, emoji string, log bool, userID string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	method := "RemoveOwnReaction"
@@ -589,6 +603,10 @@ func (w *World) react(a actor, add bool, channelID, messageID, emoji string, log
 	if add && r == nil {
 		need |= permAddReactions
 	}
+	if userID != a.userID {
+		need |= permManageMessages
+		method = "RemoveUserReaction"
+	}
 	if c.ch.Type == discord.ChannelDM {
 		need = 0
 	}
@@ -596,7 +614,7 @@ func (w *World) react(a actor, add bool, channelID, messageID, emoji string, log
 		return fail(err)
 	}
 	_ = fail(nil)
-	has := r != nil && containsString(r.users, a.userID)
+	has := r != nil && containsString(r.users, userID)
 	if add == has {
 		return nil // idempotent, like Discord's 204
 	}
@@ -605,9 +623,9 @@ func (w *World) react(a actor, add bool, channelID, messageID, emoji string, log
 			r = &reaction{emoji: emoji}
 			ms.reactions = append(ms.reactions, r)
 		}
-		r.users = append(r.users, a.userID)
+		r.users = append(r.users, userID)
 	} else {
-		r.users = removeString(r.users, a.userID)
+		r.users = removeString(r.users, userID)
 		if len(r.users) == 0 {
 			kept := ms.reactions[:0:0]
 			for _, x := range ms.reactions {
@@ -618,9 +636,9 @@ func (w *World) react(a actor, add bool, channelID, messageID, emoji string, log
 			ms.reactions = kept
 		}
 	}
-	ev := discord.ReactionEvent{ServerID: serverID, ChannelID: channelID, MessageID: messageID, UserID: a.userID, Emoji: emoji}
-	if s := w.servers[serverID]; s != nil && s.members[a.userID] != nil {
-		ev.Member = cloneMemberPtr(s.members[a.userID])
+	ev := discord.ReactionEvent{ServerID: serverID, ChannelID: channelID, MessageID: messageID, UserID: userID, Emoji: emoji}
+	if s := w.servers[serverID]; s != nil && s.members[userID] != nil {
+		ev.Member = cloneMemberPtr(s.members[userID])
 	}
 	if add {
 		w.emit(discord.ReactionAddEvent{ReactionEvent: ev})
