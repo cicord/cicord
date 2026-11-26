@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-26
+
 Cicord 0.2.0 is a large plugin platform release.
 
 - **Plugins get new SDK APIs.** Plugins can moderate, read the audit log and react to
@@ -1103,7 +1105,8 @@ First public release (pre-release, API `cicord.dev/v1alpha1`).
   multi-arch image `ghcr.io/cicord/cicord` with SBOM, provenance and an attestation in the
   registry; `@cicord/*` on npm through trusted publishing with provenance.
 
-[Unreleased]: https://github.com/cicord/cicord/compare/v0.1.11...HEAD
+[Unreleased]: https://github.com/cicord/cicord/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cicord/cicord/compare/v0.1.11...v0.2.0
 [0.1.11]: https://github.com/cicord/cicord/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/cicord/cicord/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/cicord/cicord/compare/v0.1.8...v0.1.9

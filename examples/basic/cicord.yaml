@@ -4,7 +4,7 @@ kind: Project
 metadata:
   name: my-community
 spec:
-  engine: ">=0.2.0-0 <0.3.0"
+  engine: ">=0.2.0 <0.3.0"
   source:
     provider: github
     repo: https://github.com/example/my-community-cicord
