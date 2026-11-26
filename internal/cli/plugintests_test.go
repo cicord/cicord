@@ -121,6 +121,7 @@ func TestPluginNewWithoutKit(t *testing.T) {
 // embedded in this binary and runs its unit tests for real: `npm install --offline`
 // (the only dependency is the vendored @cicord/sdk tarball) then `npm test`.
 func TestPluginNewTestsRunWithNode(t *testing.T) {
+	t.Setenv("npm_config_cache", t.TempDir())
 	if testing.Short() {
 		t.Skip("-short")
 	}

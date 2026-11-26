@@ -161,7 +161,7 @@ function SettingsEditor({
   );
   // "server" edits the effective config on this server; "base" edits spec.plugins[].config.
   const baseConfig = instance.baseConfig
-    ? applyDefaults(instance.schema as JsonSchema, instance.baseConfig)
+    ? applyDefaults(instance.schema, instance.baseConfig)
     : undefined;
   const baseline = scope === "base" && baseConfig ? baseConfig : instance.config;
   const overridden = Object.keys(instance.override ?? {}).toSorted();

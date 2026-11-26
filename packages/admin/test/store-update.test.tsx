@@ -115,7 +115,7 @@ describe("plugin updates", () => {
     const { user, sent } = setup(
       SERVER + "/store/cicord/welcome?update=1",
       async (url, init, runtime) => {
-        if (init.method !== "GET" || !url.pathname.endsWith("/welcome/update")) return;
+        if (init.method !== "GET" || !url.pathname.endsWith("/welcome/update")) return undefined;
         const review = await (await runtime.fetch(url.toString(), init)).json();
         review.secretReview = reviewId;
         review.instances[0].secretChanges = [

@@ -1338,10 +1338,10 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
                       id,
                       [...o.allow]
                         .filter((p) => p === "ViewChannel" || p === "ReadMessageHistory")
-                        .sort(),
+                        .toSorted(),
                       [...o.deny]
                         .filter((p) => p === "ViewChannel" || p === "ReadMessageHistory")
-                        .sort(),
+                        .toSorted(),
                     ]),
                 }),
               )
@@ -1657,7 +1657,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       const found = createdChannels.filter(
         (c) => c.options.topic === topic && channels.has(c.channel.id),
       );
-      if (found.length === 1) return { status: "owned", id: found[0]!.channel.id };
+      if (found.length === 1) return { status: "owned", id: found[0].channel.id };
       return { status: found.length ? "conflict" : "missing" };
     },
     async createChannel(opts) {
