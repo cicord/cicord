@@ -47,6 +47,7 @@ type Env struct {
 	// Grants are the capabilities granted in bot.yaml.
 	Grants []string
 	// NetworkAllow is plugin.yaml spec.network.allow.
+	Index        state.FullTextIndex
 	NetworkAllow []string
 	Secret       func(string) (string, []string, bool)
 	Files        map[string][]byte

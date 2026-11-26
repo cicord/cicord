@@ -681,6 +681,15 @@ export interface Scheduler {
 /** Opaque logical reference, resolved only by the host at an approved destination. */
 export type SecretRef = string & { readonly __secretRef: unique symbol };
 
+export interface IndexDocument { title?: string; text: string; tags?: string[]; meta?: Json }
+export interface IndexHit { id: string; score: number; snippet: string; meta: Json }
+export interface FullTextIndex {
+  upsert(id: string, document: IndexDocument): Promise<void>;
+  remove(id: string): Promise<void>;
+  clear(): Promise<void>;
+  search(query: string, options?: {limit?: number;tags?: string[]}): Promise<IndexHit[]>;
+}
+
 export interface InstanceFiles {
   list(glob?: string): Promise<string[]>;
   read(path: string): Promise<string>;
@@ -738,6 +747,7 @@ export interface Context {
   readonly schedule: Scheduler;
   readonly http: Http;
   readonly files: InstanceFiles;
+  index(name: string, options?: {language?: "en" | "fr"}): FullTextIndex;
   readonly secrets: {has(name: string): boolean; ref(name: string): SecretRef};
   readonly events: Events;
   readonly portal: Portal;

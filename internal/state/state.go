@@ -41,6 +41,7 @@ type Store interface {
 	Resources() ResourceMap
 	// KV returns the key-value space of a scope, e.g. "plugin:<bot>/<instance>/<server>".
 	KV(scope string) KV
+	Index(scope string) FullTextIndex
 	Tasks() TaskQueue
 	Audit() AuditLog
 	Syncs() SyncLog

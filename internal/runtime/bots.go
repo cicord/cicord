@@ -309,6 +309,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		BotKey:              in.Bot, InstanceName: in.Name, PluginName: m.Metadata.Name, PluginVersion: m.Metadata.Version,
 		Bot: host.session.Self(), ApplicationID: host.session.ApplicationID(),
 		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL, ServerPreferredLocale: srt.cache.Server().PreferredLocale,
+		Index:  r.opts.Store.Index(instanceScope(in)),
 		Config: in.Config, Grants: in.Grants, NetworkAllow: in.NetworkAllow, Files: in.Files, Secret: func(n string) (string, []string, bool) { return r.instanceSecret(in, n) }, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
 		MessageContent: slices.Contains(m.Spec.Intents, "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
 		ServerModeration:  slices.Contains(m.Spec.Intents, "ServerModeration"),

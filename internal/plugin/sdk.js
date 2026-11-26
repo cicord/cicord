@@ -607,6 +607,15 @@
       kv,
       schedule,
       files,
+      index(name, options = {}) {
+        const language = options.language || "en";
+        return freeze({
+          upsert(id, document) { return acall("index.upsert", {name,language,id,document}); },
+          remove(id) { return acall("index.remove", {name,language,id}); },
+          clear() { return acall("index.clear", {name,language}); },
+          search(query, options = {}) { return acall("index.search", {name,language,query,options}); },
+        });
+      },
       secrets,
       http,
       events,

@@ -1254,6 +1254,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       ? applyDefaults(options.schema, options.config ?? {})
       : (options.config ?? {});
 
+  const indices = new Map<string, Map<string,import("@cicord/sdk").IndexDocument>>();
   const ctx: Context = {
     plugin: {
       name: options.plugin?.name ?? "test-plugin",
@@ -1286,6 +1287,26 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         if (!this.has(name)) throw new Error("plugin secret is unavailable");
         return ("cicord-secret:" + name) as ReturnType<Context["secrets"]["ref"]>;
       },
+    },
+    index(name, options={}) {
+      const key = name+"|"+(options.language ?? "en");
+      const values=indices.get(key) ?? new Map<string,import("@cicord/sdk").IndexDocument>();
+      indices.set(key, values);
+      return {
+        async upsert(id, doc) {need("storage.index");values.set(id,structuredClone(doc));},
+        async remove(id) {need("storage.index");values.delete(id);},
+        async clear() {need("storage.index");values.clear();},
+        async search(query, {limit=10,tags=[]}={}) {
+          need("storage.index");
+          if(limit<1||limit>50) throw new Error("index limit must be 1 to 50");
+          const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+          return [...values].filter(([,doc])=>tags.every(tag=>doc.tags?.includes(tag))).map(([id,doc])=>{
+            const haystack = ((doc.title??"")+" "+doc.text).toLowerCase();
+            const score=terms.filter(t=>haystack.includes(t)).length/Math.max(terms.length,1);
+            return {id,score,snippet:doc.text.slice(0,250),meta:structuredClone(doc.meta??null)};
+          }).filter(r=>r.score>0).sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id)).slice(0,limit);
+        },
+      };
     },
     files: {
       async list(glob) {
