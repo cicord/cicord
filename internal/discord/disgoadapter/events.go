@@ -58,6 +58,7 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 			return nil, err
 		}
 		if g.Unavailable {
+			s.audiences.drop(g.ID)
 			return nil, nil
 		}
 		for _, m := range g.Members {
@@ -66,7 +67,7 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		if s.chunkingEnabled() {
 			s.requestMembers(g.ID)
 		}
-		avail, err := serverAvailable(d)
+		avail, err := s.serverAvailable(d)
 		if err != nil {
 			return nil, err
 		}
@@ -84,6 +85,7 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		if err := json.Unmarshal(d, &g); err != nil {
 			return nil, err
 		}
+		s.audiences.drop(g.ID)
 		if g.Unavailable {
 			return nil, nil // outage: the server comes back with a GUILD_CREATE
 		}

@@ -134,7 +134,8 @@ type session struct {
 	chunk    bool
 	closed   bool
 
-	servers serverTracker
+	servers   serverTracker
+	audiences audienceCache
 }
 
 var (
@@ -308,7 +309,7 @@ func (s *session) Open(ctx context.Context, intents discord.Intents, handler fun
 
 // onGatewayEvent runs on disgo's reader goroutine. Only raw payloads are used:
 // they are the exact Discord JSON, decoded into wire structs by translate.
-func (s *session) onGatewayEvent(gw gateway.Gateway, t gateway.EventType, _ int, data gateway.EventData) {
+func (s *session) onGatewayEvent(gw gateway.Gateway, t gateway.EventType, sequence int, data gateway.EventData) {
 	if t != gateway.EventTypeRaw {
 		return
 	}
@@ -316,12 +317,18 @@ func (s *session) onGatewayEvent(gw gateway.Gateway, t gateway.EventType, _ int,
 	if !ok || raw.Payload == nil {
 		return
 	}
+	sessionID := ""
+	if id := gw.SessionID(); id != nil {
+		sessionID = *id
+	}
 	payload, err := readAll(raw.Payload)
 	if err != nil {
+		s.audiences.observe(sessionID, sequence, nil, policyDispatch(raw.EventType))
 		s.logger.Warn("discord: reading gateway payload", slog.Any("err", err))
 		return
 	}
 	evs, err := s.translate(string(raw.EventType), payload)
+	s.audiences.observe(sessionID, sequence, evs, err != nil && policyDispatch(raw.EventType))
 	if err != nil {
 		s.logger.Warn("discord: decoding gateway event", slog.String("event", string(raw.EventType)), slog.Any("err", err))
 		return

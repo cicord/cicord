@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/state"
 )
 
 func TestPortalAudienceRevocation(t *testing.T) {
@@ -54,6 +57,21 @@ func TestPortalAudienceRevocation(t *testing.T) {
 	}
 	check(a, true)
 	check(b, false)
+	channelID, _ := e.rt.ResourceID(serverKey, state.KindChannel, "staff-chat")
+	channel, ok := e.world.Channel(channelID)
+	if !ok {
+		t.Fatal("missing staff channel")
+	}
+	denied := append([]discord.Overwrite{}, channel.Overwrites...)
+	denied = append(denied, discord.Overwrite{ID: staff.ID, Type: discord.OverwriteMember, Deny: discord.MustPermissions("ReadMessageHistory")})
+	if _, err := e.world.AdminUpdateChannel(channel.ID, discord.ChannelParams{Overwrites: &denied}); err != nil {
+		t.Fatal(err)
+	}
+	check(a, false)
+	if _, err := e.world.AdminUpdateChannel(channel.ID, discord.ChannelParams{Overwrites: &channel.Overwrites}); err != nil {
+		t.Fatal(err)
+	}
+	check(a, true)
 	role, ok := e.world.RoleByName(e.serverID(), "Moderator")
 	if !ok {
 		t.Fatal("missing moderator role")

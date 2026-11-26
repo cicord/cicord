@@ -47,6 +47,10 @@ func TestCompareAudiencePolicies(t *testing.T) {
 			t.Fatalf("unverified age granted history to %s", id)
 		}
 	}
+	unknown := NewAudience(Channel{ServerID: "1", ID: "31", Type: ChannelType(99)}, roles)
+	if unknown != nil || CompareAudience(unknown, open) != "unknown" {
+		t.Fatal("unrecognized channel kind was trusted")
+	}
 	private := NewAudience(Channel{ServerID: "1", ID: "30", Type: ChannelPrivateThread}, roles)
 	if got := CompareAudience(private, open); got != "unknown" {
 		t.Fatalf("private thread = %s", got)

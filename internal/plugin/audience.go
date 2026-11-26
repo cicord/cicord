@@ -40,46 +40,31 @@ func (inv *invocation) rememberAudience(v any) {
 	}
 }
 
-type audienceSnapshot interface {
-	Snapshot() ([]discord.Role, []discord.Channel)
-}
-type readSnapshot struct {
-	roles    []discord.Role
-	channels map[string]discord.Channel
-}
-
-func (i *Instance) readSnapshot() readSnapshot {
-	s := readSnapshot{channels: map[string]discord.Channel{}}
-	if r, ok := i.env.Resolver.(audienceSnapshot); ok {
-		roles, channels := r.Snapshot()
-		s.roles = roles
-		for _, ch := range channels {
-			if ch.ServerID == i.env.ServerID {
-				s.channels[ch.ID] = ch
-			}
-		}
+func (i *Instance) readSnapshot() discord.AudienceSnapshot {
+	if r, ok := i.env.Discord.(discord.AudienceSnapshotReader); ok {
+		return r.AudienceSnapshot(i.env.ServerID)
 	}
-	return s
+	return discord.AudienceSnapshot{}
 }
-func (i *Instance) audience(s readSnapshot, r ref) *discord.Audience {
+func (i *Instance) audience(s discord.AudienceSnapshot, r ref) *discord.Audience {
 	id, err := i.resolve(state.KindChannel, r)
 	if err != nil {
 		return nil
 	}
-	ch, ok := s.channels[id]
-	if !ok {
+	ch, ok := s.Channels[id]
+	if !ok || ch.ServerID != i.env.ServerID {
 		return nil
 	}
 	// Public threads inherit their parent's access. Private thread membership is
 	// additional information and cannot be inferred from parent permissions.
 	if ch.Type == discord.ChannelPublicThread || ch.Type == discord.ChannelAnnouncementThread {
-		parent, ok := s.channels[ch.ParentID]
-		if !ok {
+		parent, ok := s.Channels[ch.ParentID]
+		if !ok || parent.ServerID != ch.ServerID {
 			return nil
 		}
 		ch = parent
 	}
-	return discord.NewAudience(ch, s.roles)
+	return discord.NewAudience(ch, s.Roles)
 }
 
 type audienceDTO struct {
@@ -156,7 +141,7 @@ func opPermissionsIn(i *Instance, inv *invocation, args json.RawMessage) (any, e
 	if err != nil {
 		return nil, err
 	}
-	if inv == nil || i.env.OwnerID == nil {
+	if inv == nil {
 		return []string{}, nil
 	}
 	subject, ok := inv.audienceMembers.Load(p.User)
@@ -164,7 +149,8 @@ func opPermissionsIn(i *Instance, inv *invocation, args json.RawMessage) (any, e
 		return []string{}, nil
 	}
 	m := subject.(discord.Member)
-	policy := i.audience(i.readSnapshot(), p.Ref)
-	perms, _ := policy.Permissions(p.User, m.RoleIDs, i.env.OwnerID(), m.TimeoutUntil != nil && m.TimeoutUntil.After(time.Now()))
+	s := i.readSnapshot()
+	policy := i.audience(s, p.Ref)
+	perms, _ := policy.Permissions(p.User, m.RoleIDs, s.OwnerID, m.TimeoutUntil != nil && m.TimeoutUntil.After(time.Now()))
 	return perms.Names(), nil
 }

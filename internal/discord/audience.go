@@ -45,9 +45,26 @@ type Audience struct {
 	MemberOverrides map[string]Overwrite
 }
 
+// AudienceSnapshot is the current channel policy of one guild from one bot session.
+// An empty snapshot means the gateway cannot currently authorize a read.
+type AudienceSnapshot struct {
+	OwnerID  string
+	Roles    []Role
+	Channels map[string]Channel
+}
+
+type AudienceSnapshotReader interface {
+	AudienceSnapshot(serverID string) AudienceSnapshot
+}
+
 func NewAudience(ch Channel, roles []Role) *Audience {
-	if ch.ServerID == "" || ch.Type == ChannelDM || ch.Type == ChannelPrivateThread ||
-		ch.Type == ChannelPublicThread || ch.Type == ChannelAnnouncementThread {
+	if ch.ServerID == "" || ch.ID == "" {
+		return nil
+	}
+	switch ch.Type {
+	case ChannelText, ChannelVoice, ChannelCategory, ChannelAnnouncement, ChannelStage, ChannelForum, ChannelMedia:
+		// These guild channels apply the ordinary overwrite hierarchy.
+	default:
 		return nil
 	}
 	a := &Audience{Server: ch.ServerID, Channel: ch.ID, NSFW: ch.NSFW, Roles: map[string]Permissions{}, RoleOverrides: map[string]Overwrite{}, MemberOverrides: map[string]Overwrite{}}

@@ -69,6 +69,24 @@ func (s *Session) ApplicationFlags() int {
 	return discord.FlagsFromIntents(s.bot.privileged)
 }
 
+// AudienceSnapshot reads one live simulated guild, including active threads.
+func (s *Session) AudienceSnapshot(serverID string) discord.AudienceSnapshot {
+	s.w.mu.Lock()
+	defer s.w.mu.Unlock()
+	g := s.w.servers[serverID]
+	if s.closed || !s.opened || !s.intents.Has(intentServers) || g == nil || g.members[s.bot.userID] == nil {
+		return discord.AudienceSnapshot{}
+	}
+	out := discord.AudienceSnapshot{OwnerID: g.info.OwnerID, Roles: s.w.sortedRoles(g), Channels: map[string]discord.Channel{}}
+	for _, id := range g.channelIDs {
+		ch := s.w.channels[id]
+		if !s.w.hideUnviewable || s.w.channelPerms(ch, s.bot.userID).Has(permView) {
+			out.Channels[id] = cloneChannel(ch.ch)
+		}
+	}
+	return out
+}
+
 // Intents returns the intents the gateway was opened with.
 func (s *Session) Intents() discord.Intents {
 	s.w.mu.Lock()

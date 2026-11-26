@@ -959,8 +959,9 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
       permissionsIn(ref) {
         need("discord.channels.read");
-        if (!members.has(user.id)) return [];
-        return [...effective(policyChannel(ref), user.id, owned, user.id === ownerId)];
+        const channel = policyChannel(ref);
+        if (!members.has(user.id) || !channel || channelPolicy.get(channel.id)?.nsfw) return [];
+        return [...effective(channel, user.id, owned, user.id === ownerId)];
       },
       canView(ref) {
         const p = this.permissionsIn(ref);
@@ -1104,9 +1105,21 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const serverKey = options.server?.key ?? "test-server";
   function policyChannel(ref: ChannelRef | Channel) {
     const c = findChannel(typeof ref === "string" ? ref : { id: ref.id });
-    if (!c || c.type === "dm") return undefined;
+    if (!c) return undefined;
     const parent = channelPolicy.get(c.id)?.publicThreadParent;
-    return c.type === "thread" ? (parent ? findChannel(parent) : undefined) : c;
+    const channel = c.type === "thread" ? (parent ? findChannel(parent) : undefined) : c;
+    switch (channel?.type) {
+      case "text":
+      case "voice":
+      case "category":
+      case "announcement":
+      case "stage":
+      case "forum":
+      case "media":
+        return channel;
+      default:
+        return undefined;
+    }
   }
   function effective(
     channel: TextChannel | undefined,
@@ -1114,7 +1127,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     owned: Set<string>,
     owner = false,
   ): Set<Permission> {
-    if (!channel || channelPolicy.get(channel.id)?.nsfw) return new Set();
+    if (!channel) return new Set();
     const bits = new Set<Permission>(options.server?.everyonePermissions ?? []);
     for (const id of owned) for (const p of rolePermissions.get(id) ?? []) bits.add(p);
     if (owner || bits.has("Administrator")) return new Set(ALL_PERMISSIONS);
@@ -1165,11 +1178,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         out.public = false;
     }
     for (const r of roles.values())
-      if (reads(effective(channel, "", new Set([r.id])))) out.allowRoles.push(r.id);
+      if (!channelPolicy.get(channel.id)?.nsfw && reads(effective(channel, "", new Set([r.id]))))
+        out.allowRoles.push(r.id);
     for (const [key, ow] of channelOverwrites.get(channel.id) ?? []) {
       if (!key.startsWith("member:")) continue;
       const user = key.slice(7);
-      if (reads(effective(channel, user, new Set()))) out.allowMembers.push(user);
+      if (!channelPolicy.get(channel.id)?.nsfw && reads(effective(channel, user, new Set())))
+        out.allowMembers.push(user);
       if (ow.deny.includes("ViewChannel") || ow.deny.includes("ReadMessageHistory"))
         out.denyMembers.push(user);
     }

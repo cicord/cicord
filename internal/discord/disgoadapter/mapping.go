@@ -504,7 +504,8 @@ func channelFromWire(c wireChannel) discord.Channel {
 	for _, t := range c.AvailableTags {
 		out.Tags = append(out.Tags, discord.ForumTag{ID: t.ID, Name: t.Name, Moderated: t.Moderated, Emoji: joinEmoji(t.EmojiID, t.EmojiName)})
 	}
-	if len(c.PermissionOverwrites) > 0 {
+	// Keep an explicit empty policy distinct from a partial channel with no ACL data.
+	if c.PermissionOverwrites != nil {
 		out.Overwrites = make([]discord.Overwrite, 0, len(c.PermissionOverwrites))
 		for _, o := range c.PermissionOverwrites {
 			out.Overwrites = append(out.Overwrites, overwriteFromWire(o))

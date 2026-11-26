@@ -107,8 +107,11 @@ With `discord.channels.read`, `member.canView(channel)` checks **View Channel** 
 **Read Message History** using that handler's authenticated member or a member read in
 that handler. `member.permissionsIn(channel)` returns the effective permissions. A
 missing role, an unknown channel, a private thread with unverified membership or an
-age-restricted channel without verified age eligibility denies the read. The portal fetches a fresh member for each request, including when a staff
-role has just been removed.
+age-restricted channel without verified age eligibility denies the read. The portal
+fetches a fresh member for each request, including when a staff role has just been
+removed. Reads also require the current guild permissions from the bot’s gateway.
+While the gateway is disconnected or catching up, access checks deny the read and
+audience comparisons return `unknown`.
 
 Before copying content, use `ctx.server.compareAudience(source, destination)`. Permit
 the copy only for `same` or `narrower`. The comparison considers combinations of roles

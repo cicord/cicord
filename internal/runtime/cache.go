@@ -15,12 +15,16 @@ type serverCache struct {
 	key string
 	id  string
 
-	mu       sync.RWMutex
-	keyToID  map[state.ResourceKind]map[string]string
-	idToKey  map[string]resourceRef
-	channels map[string]discord.Channel
-	roles    map[string]discord.Role
-	server   discord.Server
+	refreshMu sync.Mutex
+	// While a REST refresh is in progress, retain the latest gateway mutation
+	// for each resource so that installing the older snapshot cannot undo it.
+	duringRefresh map[string]discord.Event
+	mu            sync.RWMutex
+	keyToID       map[state.ResourceKind]map[string]string
+	idToKey       map[string]resourceRef
+	channels      map[string]discord.Channel
+	roles         map[string]discord.Role
+	server        discord.Server
 
 	// members is the member listing of role.members() (its own lock).
 	members *memberList
@@ -44,6 +48,18 @@ func newServerCache(key, id string) *serverCache {
 
 // Refresh reloads mappings and live resources.
 func (c *serverCache) Refresh(ctx context.Context, cl discord.Client, rm state.ResourceMap) error {
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
+	if cl != nil {
+		c.mu.Lock()
+		c.duringRefresh = make(map[string]discord.Event)
+		c.mu.Unlock()
+		defer func() {
+			c.mu.Lock()
+			c.duringRefresh = nil
+			c.mu.Unlock()
+		}()
+	}
 	res, err := rm.List(ctx, c.key)
 	if err != nil {
 		return err
@@ -85,6 +101,9 @@ func (c *serverCache) Refresh(ctx context.Context, cl discord.Client, rm state.R
 			c.roles[r.ID] = r
 		}
 		c.server = srv
+		for _, ev := range c.duringRefresh {
+			c.applyEvent(ev)
+		}
 	}
 	return nil
 }
@@ -125,22 +144,39 @@ func (c *serverCache) Observe(ev discord.Event) {
 	c.members.Observe(ev)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	key := c.applyEvent(ev)
+	if c.duringRefresh != nil && key != "" {
+		c.duringRefresh[key] = ev
+	}
+}
+
+// applyEvent updates live resources and returns the ID changed. Snowflakes are
+// unique across roles and channels. The server shares its ID with @everyone.
+func (c *serverCache) applyEvent(ev discord.Event) string {
 	switch e := ev.(type) {
 	case discord.ChannelCreateEvent:
 		c.channels[e.Channel.ID] = e.Channel
+		return e.Channel.ID
 	case discord.ChannelUpdateEvent:
 		c.channels[e.Channel.ID] = e.Channel
+		return e.Channel.ID
 	case discord.ChannelDeleteEvent:
 		delete(c.channels, e.Channel.ID)
+		return e.Channel.ID
 	case discord.RoleCreateEvent:
 		c.roles[e.Role.ID] = e.Role
+		return e.Role.ID
 	case discord.RoleUpdateEvent:
 		c.roles[e.Role.ID] = e.Role
+		return e.Role.ID
 	case discord.RoleDeleteEvent:
 		delete(c.roles, e.RoleID)
+		return e.RoleID
 	case discord.ServerUpdateEvent:
 		c.server = e.Server
+		return "server"
 	}
+	return ""
 }
 
 // Remember records a mapping created at runtime (plugin-owned resources). It stays

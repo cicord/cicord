@@ -57,6 +57,10 @@ type wirePresence struct {
 
 // wireGuildAvailable is the part of GUILD_CREATE the analytics read.
 type wireGuildAvailable struct {
+	OwnerID     string           `json:"owner_id"`
+	Roles       []wireRole       `json:"roles"`
+	Channels    []wireChannel    `json:"channels"`
+	Threads     []wireChannel    `json:"threads"`
 	ID          string           `json:"id"`
 	Members     []wireMember     `json:"members"`
 	VoiceStates []wireVoiceState `json:"voice_states"`
@@ -242,11 +246,12 @@ func (s *session) translateAnalytics(t string, d []byte) ([]discord.Event, bool,
 }
 
 // serverAvailable decodes the voice states and presences of a GUILD_CREATE.
-func serverAvailable(d []byte) (discord.ServerAvailableEvent, error) {
+func (s *session) serverAvailable(d []byte) (discord.ServerAvailableEvent, error) {
 	var g wireGuildAvailable
 	if err := json.Unmarshal(d, &g); err != nil {
 		return discord.ServerAvailableEvent{}, err
 	}
+	s.audiences.replace(g)
 	ev := discord.ServerAvailableEvent{ServerID: g.ID}
 	// The voice states of GUILD_CREATE are partial (no member): the members array,
 	// which includes every member in voice, tells the bots.
