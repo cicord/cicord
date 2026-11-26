@@ -49,7 +49,7 @@ Or `brew install cicord/tap/cicord` (macOS, Linux), or `npm i -g @cicord/cli` (a
 Windows). Verified manual downloads, `go install` and building
 from source: [Installation](https://cicord.dev/docs/getting-started/installation/).
 
-Or the image: `docker run --rm ghcr.io/cicord/cicord:0.2.0 version`. A real-world
+Or the image: `docker run --rm ghcr.io/cicord/cicord:0.2.1 version`. A real-world
 configuration: the official community server's repository,
 [cicord/cicord-community](https://github.com/cicord/cicord-community).
 

@@ -1,6 +1,6 @@
 # Cicord developer tasks.
 GO ?= go
-VERSION ?= 0.2.0
+VERSION ?= 0.2.1
 SOURCE_REF ?= $(shell git rev-parse HEAD 2>/dev/null)
 LDFLAGS := -s -w -X github.com/cicord/cicord/internal/version.Version=$(VERSION) -X github.com/cicord/cicord/internal/version.SourceRef=$(SOURCE_REF) -X github.com/cicord/cicord/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 

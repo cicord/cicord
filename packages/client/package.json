@@ -1,6 +1,6 @@
 {
   "name": "@cicord/client",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Typed, framework-agnostic client for the Cicord runtime HTTP API v1.",
   "keywords": [
     "api-client",
