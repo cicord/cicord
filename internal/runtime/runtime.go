@@ -91,7 +91,10 @@ const (
 // Runtime is safe for concurrent use.
 type Runtime struct {
 	privacyFences sync.Map // logical server key → *plugin.PrivacyFence
+	syncRequests  sync.Map // installation ID → time of its last accepted requestSync
 	auditSlots    chan struct{}
+	auditMu       sync.Mutex
+	unconfirmed   map[string]*UnconfirmedAudit // Discord server ID → CORE-04 alert
 	opts          Options
 	log           *slog.Logger
 
@@ -1377,6 +1380,7 @@ func (r *Runtime) Status() Status {
 		if p, ok := r.Paused(key); ok {
 			ss.Paused = &p
 		}
+		ss.UnconfirmedAudit = r.unconfirmedAudit(ss.DiscordID)
 		ss.Name = s.cache.Server().Name
 		if ss.Name == "" && s.cfg.Spec.Profile != nil {
 			ss.Name = s.cfg.Spec.Profile.Name

@@ -50,6 +50,9 @@ func advancedOp(method string) asyncOp {
 				}
 			}
 			return func(ctx context.Context) (any, error) {
+				if err := reserveResult(ctx, 2*(maxKVListBytes+maxKVValue)); err != nil {
+					return nil, err
+				}
 				entries, err := kv.Entries(ctx, keys)
 				if err != nil {
 					return nil, err

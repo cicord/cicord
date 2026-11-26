@@ -138,7 +138,9 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 			fmt.Fprintf(cmd.ErrOrStderr(), "%s: no longer listed by its registry\n", src)
 			continue
 		}
-		latest, err := registry.LatestVersion(ctx, reg.URL, ie.Repo, ie.TagPrefix(name))
+		// The version an update would resolve: compatible with this engine and, for the
+		// official registry, not above its signed index.
+		latest, err := registry.LatestFor(ctx, reg.URL, name, ie, idx.SignedBy != "")
 		if err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s\n", src, registry.Redact(err.Error()))
 			continue

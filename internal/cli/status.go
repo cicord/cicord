@@ -406,6 +406,13 @@ func printFailures(ctx context.Context, stderr io.Writer, c *apiClient, st runti
 	}
 }
 
+// unconfirmedLine describes the CORE-04 alert of a server. It is advisory: it never
+// fails --wait (a false alarm must not block or roll back an update).
+func unconfirmedLine(u *runtime.UnconfirmedAudit) string {
+	return fmt.Sprintf("WARNING: %d audited action(s) by bot %s that Cicord did not emit since %s (last: %s); its token may be compromised",
+		u.Count, u.Bot, u.First.Local().Format(time.RFC3339), u.LastAction)
+}
+
 // pausedLine describes the pause of a server.
 func pausedLine(s runtime.ServerStatus) string {
 	p := s.Paused
@@ -427,12 +434,19 @@ func ready(st runtime.Status) bool {
 			return false
 		}
 		for _, p := range b.Plugins {
-			if p.Health != runtime.HealthHealthy {
+			if !pluginReady(p.Health) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// pluginReady reports whether a plugin instance health lets --wait succeed. An instance
+// disabled by configuration (enabled: false) is a declared, reviewed state, not a
+// pending one: waiting on it would never end.
+func pluginReady(health string) bool {
+	return health == runtime.HealthHealthy || health == runtime.HealthDisabled
 }
 
 func pendingServers(st runtime.Status) string {
@@ -442,7 +456,7 @@ func pendingServers(st runtime.Status) string {
 			parts = append(parts, fmt.Sprintf("bot %s (%s)", b.Key, b.Health))
 		}
 		for _, p := range b.Plugins {
-			if p.Health != runtime.HealthHealthy {
+			if !pluginReady(p.Health) {
 				parts = append(parts, fmt.Sprintf("plugin %s on %s (%s)", p.Instance, p.Server, p.Health))
 			}
 		}
@@ -528,6 +542,9 @@ func printStatus(w io.Writer, st runtime.Status) {
 		fmt.Fprintln(w, strings.TrimRight(line, " "))
 		if s.Paused != nil {
 			fmt.Fprintf(w, "    %s\n", pausedLine(s))
+		}
+		if u := s.UnconfirmedAudit; u != nil {
+			fmt.Fprintf(w, "    %s\n", unconfirmedLine(u))
 		}
 		if s.Message != "" {
 			fmt.Fprintf(w, "    %s\n", s.Message)

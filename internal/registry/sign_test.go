@@ -279,7 +279,7 @@ func TestImplicitOfficialRegistry(t *testing.T) {
 	}
 
 	plugin := initRepo(t, map[string]string{"plugin.yaml": manifest, "src/index.ts": "export default {}"}, "v1.2.0")
-	index := "plugins:\n  hello:\n    repo: " + plugin + "\n    verified: true\n"
+	index := "plugins:\n  hello:\n    repo: " + plugin + "\n    verified: true\n    version: 1.2.0\n"
 	key := useOfficial(t)
 	url := initRepo(t, map[string]string{"index.yaml": index})
 	writeSig(t, url, mustSign(t, index, envFor(url, 1), key))

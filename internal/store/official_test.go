@@ -246,7 +246,7 @@ func TestLockedOfficialDetailMatchesTable(t *testing.T) {
 			idx := officialIndex(true) // onboarding 0.0.1: the bundled 0.1.0 wins in the listing
 			return idx, nil
 		},
-		Latest: func(context.Context, string, string, string) (string, error) { return latest, nil },
+		Latest: func(context.Context, string, string, registry.IndexEntry, bool) (string, error) { return latest, nil },
 		Resolve: func(context.Context, []config.Registry, string, string, string) (*registry.Resolution, error) {
 			return &registry.Resolution{Entry: registry.LockEntry{Version: resolved, Commit: "c2", Integrity: "sha256-x"},
 				Dir: "../../examples/basic/plugins/onboarding"}, nil

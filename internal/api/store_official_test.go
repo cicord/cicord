@@ -131,6 +131,14 @@ func TestStoreImplicitOfficialRegistry(t *testing.T) {
 	// cicord.yaml registry), as official: no unofficial confirmation, the reviewed commit.
 	release(t, plugin, map[string]string{"plugin.yaml": strings.Replace(strings.Replace(helloManifest, "version: 1.0.0", "version: 1.1.0", 1),
 		"capabilities: [discord.messages.send]", "capabilities: [discord.messages.send, storage.kv]", 1)}, "v1.1.0")
+	// The official registry only installs what its signed index publishes: release 1.1.0
+	// there too.
+	index = strings.Replace(index, "version: 1.0.0", "version: 1.1.0", 1)
+	sig, err = registry.SignIndex([]byte(index), registry.Envelope{Registry: officialURL, Serial: 2, Expires: time.Now().Add(time.Hour)}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release(t, reg, map[string]string{"index.yaml": index, "index.yaml.sig": string(sig)}, "index-2")
 	c.expect(200, "POST", "/api/v1/store/refresh", nil)
 	var rv updateReviewTestDTO
 	c.expect(200, "GET", "/api/v1/store/cicord/hello/update", nil).json(t, &rv)

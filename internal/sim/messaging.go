@@ -65,7 +65,7 @@ func (c *Client) ChannelPins(ctx context.Context, ch string) ([]discord.Message,
 	return out, nil
 }
 func (w *World) messageFor(a actor, ms *messageState) discord.Message {
-	m := cloneMessage(ms.msg)
+	m := restMessage(ms.msg)
 	if p := m.PollResults; p != nil {
 		p.Finalized = p.Finalized || !w.now().Before(ms.expires)
 		for n, answer := range p.Answers {
@@ -196,5 +196,5 @@ func (c *Client) SendAs(ctx context.Context, ch string, identity discord.Webhook
 	m := w.newMessage(channel, discord.User{ID: hook, Username: identity.Username, AvatarURL: identity.AvatarURL, Bot: true}, msg, "")
 	m.msg.WebhookID = hook
 	w.recordOK(a, "SendAs", channel.ch.ServerID, m.msg.ID, "")
-	return cloneMessage(m.msg), nil
+	return restMessage(m.msg), nil
 }

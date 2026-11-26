@@ -201,20 +201,29 @@ func (s *Store) migrate(ctx context.Context) error {
 		)`); err != nil {
 			return fmt.Errorf("create schema_migrations: %w", err)
 		}
-		rows, err := tx.Query(ctx, `SELECT version FROM schema_migrations`)
+		rows, err := tx.Query(ctx, `SELECT version, name FROM schema_migrations`)
 		if err != nil {
 			return fmt.Errorf("read schema version: %w", err)
 		}
-		applied, err := pgx.CollectRows(rows, pgx.RowTo[int])
+		type appliedMigration struct {
+			Version int
+			Name    string
+		}
+		applied, err := pgx.CollectRows(rows, pgx.RowToStructByPos[appliedMigration])
 		if err != nil {
 			return fmt.Errorf("read schema version: %w", err)
 		}
 		done := map[int]bool{}
-		for _, v := range applied {
-			if v > latest {
-				return fmt.Errorf("database schema version %d is newer than this binary supports (%d)", v, latest)
+		names := map[int]string{}
+		for _, a := range applied {
+			if a.Version > latest {
+				return fmt.Errorf("database schema version %d is newer than this binary supports (%d)", a.Version, latest)
 			}
-			done[v] = true
+			done[a.Version] = true
+			names[a.Version] = a.Name
+		}
+		if err := storeutil.CheckApplied(names, ms); err != nil {
+			return err
 		}
 		for _, m := range ms {
 			if done[m.Version] {

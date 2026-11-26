@@ -89,6 +89,10 @@ type Options struct {
 	TokenSessionTTL time.Duration
 	// MemberCacheTTL caches Discord member lookups used for roles (default 30 s; <0 disables).
 	MemberCacheTTL time.Duration
+	// PortalRequestsPerMinute limits the portal requests of one signed-in Discord user
+	// (/portal/{server}/me, plugin routes, the members' analytics), with bursts of half
+	// of it; more answer 429 rate_limited (default 120; <0 disables).
+	PortalRequestsPerMinute int
 	// MaxBodyBytes limits JSON bodies (default 1 MiB); MaxUploadBytes the plan upload (default 32 MiB).
 	MaxBodyBytes   int64
 	MaxUploadBytes int64
@@ -133,9 +137,10 @@ type server struct {
 	log   *slog.Logger
 	mux   *http.ServeMux
 
-	members memberCache
-	writeMu sync.Mutex // serializes config write-backs
-	metrics *apiMetrics
+	members       memberCache
+	portalLimiter *userLimiter
+	writeMu       sync.Mutex // serializes config write-backs
+	metrics       *apiMetrics
 
 	// Admin host (hosts.go): normalized host:port of Options.AdminURL ("" without one),
 	// the default port and the scheme of that URL.
@@ -169,6 +174,9 @@ func newServer(opts Options) *server {
 	}
 	if opts.MemberCacheTTL == 0 {
 		opts.MemberCacheTTL = 30 * time.Second
+	}
+	if opts.PortalRequestsPerMinute == 0 {
+		opts.PortalRequestsPerMinute = 120
 	}
 	if opts.MaxBodyBytes == 0 {
 		opts.MaxBodyBytes = 1 << 20
@@ -205,6 +213,7 @@ func newServer(opts Options) *server {
 	s := &server{opts: opts, rt: opts.Runtime, store: opts.Store, log: opts.Logger, mux: http.NewServeMux(),
 		metrics: newAPIMetrics(opts.Metrics)}
 	s.members.entries = map[string]memberEntry{}
+	s.portalLimiter = newUserLimiter(opts.PortalRequestsPerMinute)
 	s.initAdminHost()
 	return s
 }
@@ -238,6 +247,8 @@ func (s *server) routes() {
 	h("POST /api/v1/servers/{server}/resume", s.handleResume)
 	h("GET /api/v1/servers/{server}/audit", s.handleAudit)
 	h("POST /api/v1/servers/{server}/privacy/{action}", s.handleMemberData)
+	h("GET /api/v1/servers/{server}/orphaned-data", s.handleOrphanedData)
+	h("POST /api/v1/servers/{server}/orphaned-data/purge", s.handlePurgeOrphanedData)
 	h("GET /api/v1/servers/{server}/dead-letters/{id}/event", s.handleDeadEvent)
 	h("GET /api/v1/servers/{server}/interop", s.handleInterop)
 	h("GET /api/v1/servers/{server}/dead-letters", s.handleDeadLetters)
@@ -518,6 +529,9 @@ func httpErr(status int, code, format string, args ...any) error {
 func (s *server) fail(w http.ResponseWriter, err error) {
 	var he *errHTTP
 	if errors.As(err, &he) {
+		if he.status == http.StatusTooManyRequests {
+			w.Header().Set("Retry-After", "2")
+		}
 		writeError(w, he.status, he.code, he.msg)
 		return
 	}

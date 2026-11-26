@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,9 +67,11 @@ func WithHiddenChannels() Option {
 
 // World is the simulated Discord universe. Create it with NewWorld.
 type World struct {
-	mu       sync.Mutex
-	now      func() time.Time
-	deadline time.Duration
+	mu sync.Mutex
+	// createJournalDelay: see SetCreateJournalDelay.
+	createJournalDelay time.Duration
+	now                func() time.Time
+	deadline           time.Duration
 	// hideUnviewable: ListChannels omits the channels a bot cannot view (WithHiddenChannels).
 	hideUnviewable bool
 	lastID         uint64
@@ -259,16 +262,67 @@ func (w *World) record(a actor, method, serverID, targetID, reason string, err e
 
 // recordOK appends a successful call to the log. Caller holds w.mu.
 func (w *World) recordOK(a actor, method, serverID, targetID, reason string) {
+	w.recordCall(a, method, serverID, targetID, reason, nil, nil)
+}
+
+// simAuditActions is Discord's audit-log entry for the calls whose entry the
+// simulator writes here (one entry, on the call's target). It is the simulator's own
+// table, from Discord's documentation, not the runtime's journal mapping, so that
+// attribution tests compare the runtime with Discord rather than with itself. Calls
+// with entries that depend on the previous state (channel and role updates, member
+// updates, kicks and bans, message deletions) write them where they are modelled.
+var simAuditActions = map[string]int{
+	"UpdateServer": 1, "CreateChannel": 10, "DeleteChannel": 12, "SetChannelPositions": 16,
+	"CreateRole": 30, "DeleteRole": 32, "SetRolePositions": 33,
+	"CreateWebhook": 50,
+	"CreateEmoji":   60, "UpdateEmoji": 61, "DeleteEmoji": 62,
+	"BulkDeleteMessages": 73,
+	"CreateSticker":      90, "UpdateSticker": 91, "DeleteSticker": 92,
+	"CreateEvent": 100, "EditEvent": 101, "DeleteEvent": 102,
+	"CreateThread":          110,
+	"CreateSoundboardSound": 130, "UpdateSoundboardSound": 131, "DeleteSoundboardSound": 132,
+	"CreateAutoModRule": 140, "UpdateAutoModRule": 141, "DeleteAutoModRule": 142,
+}
+
+// recordCall logs a successful call and journals it the way the Discord adapter
+// does: before the request when its effects are known, after Discord's response for
+// a creation (whose audit entry Discord may already have delivered). fields and
+// overwrites describe the request body like the adapter's (nil: unknown). Caller
+// holds w.mu.
+func (w *World) recordCall(a actor, method, serverID, targetID, reason string, fields, overwrites []string) {
+	var journal *discord.OperationScope
 	if a.operationContext != nil {
-		journal := discord.Operations(a.operationContext)
-		journal.Emitted(a.operationContext, method, targetID, w.now())
+		journal = discord.Operations(a.operationContext)
 		reason = journal.Reason(reason)
 	}
-	w.logCall(a, method, serverID, targetID, reason, nil)
-	switch method {
-	case "UpdateServer", "CreateChannel", "DeleteChannel", "CreateRole", "DeleteRole", "SetRolePositions", "SetChannelPositions", "CreateThread", "CreateAutoModRule", "UpdateAutoModRule", "DeleteAutoModRule", "BulkDeleteMessages":
-		w.auditWithReason(serverID, a.userID, discord.OperationAction(method), targetID, reason)
+	effects := discord.CallEffects(method, targetID, fields, overwrites)
+	created := strings.HasPrefix(method, "Create")
+	if journal != nil && !created {
+		journal.Journal(a.operationContext, method, effects, w.now())
 	}
+	w.logCall(a, method, serverID, targetID, reason, nil)
+	if code, ok := simAuditActions[method]; ok && serverID != "" {
+		w.auditWithReason(serverID, a.userID, code, targetID, reason)
+	}
+	if journal != nil && created {
+		at, ctx := w.now(), a.operationContext
+		if d := w.createJournalDelay; d > 0 {
+			go func() {
+				time.Sleep(d)
+				journal.Journal(ctx, method, effects, at)
+			}()
+		} else {
+			journal.Journal(ctx, method, effects, at)
+		}
+	}
+}
+
+// SetCreateJournalDelay delays the runtime's journal of creations, as when
+// Discord's REST response arrives after the gateway delivered the audit entry.
+func (w *World) SetCreateJournalDelay(d time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.createJournalDelay = d
 }
 
 func (w *World) logCall(a actor, method, serverID, targetID, reason string, err error) {
@@ -633,6 +687,15 @@ func cloneComponents(in []discord.Component) []discord.Component {
 		c.MinLength, c.MaxLength = cloneInt(c.MinLength), cloneInt(c.MaxLength)
 		out[i] = c
 	}
+	return out
+}
+
+// restMessage is a message as a REST call returns it (fetch, list, pins, and the result of a
+// send or an edit): Discord sends the author's member only on gateway MESSAGE_CREATE and
+// MESSAGE_UPDATE events, never in REST message objects.
+func restMessage(m discord.Message) discord.Message {
+	out := cloneMessage(m)
+	out.Member = nil
 	return out
 }
 

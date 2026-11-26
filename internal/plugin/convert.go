@@ -37,6 +37,9 @@ type roleDTO struct {
 	// Position and Mentionable are omitted when the role is not known (not cached).
 	Position    *int  `json:"position,omitempty"`
 	Mentionable *bool `json:"mentionable,omitempty"`
+	// Permissions is the role's Discord permission bitfield as a decimal string, like
+	// Discord's API. Omitted when the role is not known: unknown is never "no permissions".
+	Permissions *string `json:"permissions,omitempty"`
 }
 
 type channelDTO struct {
@@ -212,6 +215,8 @@ func (i *Instance) roleDTOFrom(r discord.Role) roleDTO {
 	pos, mentionable := r.Position, r.Mentionable
 	dto.Position, dto.Mentionable = &pos, &mentionable
 	dto.Managed = &r.Managed
+	perms := strconv.FormatUint(uint64(r.Permissions), 10)
+	dto.Permissions = &perms
 	dto.DeclaredMembers = slices.Contains(i.env.DeclaredMemberRoles, dto.Key)
 	return dto
 }

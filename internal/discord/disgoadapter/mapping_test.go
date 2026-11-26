@@ -1,6 +1,7 @@
 package disgoadapter
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -713,5 +714,16 @@ func TestLocalizedContextMenuWire(t *testing.T) {
 	}
 	if want := map[string]any{"type": float64(3), "name": "Open ticket on message", "name_localizations": map[string]any{"fr": "Ouvrir un ticket sur ce message"}}; !reflect.DeepEqual(wire, want) {
 		t.Fatalf("context menu wire = %s", b)
+	}
+}
+
+func TestLocalizedChoiceWire(t *testing.T) {
+	b, err := json.Marshal(commandOptionToWire(discord.CommandOption{Type: discord.OptionInteger, Name: "duration", Description: "d",
+		Choices: []discord.CommandChoice{{Name: "1 hour", Value: float64(60), Names: map[string]string{"fr": "1 heure"}}, {Name: "1 day", Value: float64(1440)}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte(`"choices":[{"name":"1 hour","name_localizations":{"fr":"1 heure"},"value":60},{"name":"1 day","value":1440}]`)) {
+		t.Fatalf("choice wire = %s", b)
 	}
 }

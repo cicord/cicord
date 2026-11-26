@@ -500,7 +500,11 @@ func (w *World) appendAudit(serverID, executorID string, actionType int, targetI
 	if server := w.servers[serverID]; server != nil {
 		server.audit = append(server.audit, e)
 	}
-	w.emit(e)
+	// Like Discord's GUILD_AUDIT_LOG_ENTRY_CREATE: the gateway entry carries only
+	// user_id. The REST history keeps the user (Get Guild Audit Log returns users).
+	gateway := e
+	gateway.Actor = nil
+	w.emit(gateway)
 }
 
 // Discord merges repeated deletions by one actor in one channel against messages

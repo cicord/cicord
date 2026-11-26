@@ -95,3 +95,28 @@ func TestPluginTestPrivateChannels(t *testing.T) {
 		}
 	}
 }
+
+// botPermissions replaces the bot's permissions after the first sync, so a scenario runs
+// the plugin in degraded mode.
+func TestPluginTestBotPermissions(t *testing.T) {
+	for _, bad := range []string{"botPermissions: [NotAPermission]\n", "botPermissions:\n" + strings.Repeat("  - ViewChannel\n", 65)} {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "test", "server.yaml"), bad)
+		if _, err := readTestServerFixture(dir); err == nil {
+			t.Errorf("accepted %q", bad[:min(len(bad), 40)])
+		}
+	}
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "plugin.yaml"), "apiVersion: cicord.dev/v1alpha1\nkind: Plugin\nmetadata: {name: probe, version: 1.0.0}\nspec:\n  engine: '>=0.1.0'\n  entry: ./index.ts\n  capabilities: [discord.members.read]\n")
+	writeFile(t, filepath.Join(dir, "index.ts"), `import {command,definePlugin} from "@cicord/sdk";export default definePlugin({commands:{perms:command({description:"Bot permissions",async run(ctx,it){
+ const me=await ctx.server.member(ctx.bot.user.id); await it.reply("manage="+me.permissions.includes("ManageServer")+" view="+me.permissions.includes("ViewChannel"));}})}});`)
+	code, out, errOut := run(t, "plugin", "test", dir)
+	if code != 0 || !strings.Contains(out, "manage=true view=true") {
+		t.Fatalf("default permissions: %d\n%s\n%s", code, out, errOut)
+	}
+	writeFile(t, filepath.Join(dir, "test", "server.yaml"), "botPermissions: [ViewChannel, SendMessages]\n")
+	code, out, errOut = run(t, "plugin", "test", dir)
+	if code != 0 || !strings.Contains(out, "ok   bot permissions: SendMessages, ViewChannel") || !strings.Contains(out, "manage=false view=true") {
+		t.Fatalf("dropped permissions: %d\n%s\n%s", code, out, errOut)
+	}
+}

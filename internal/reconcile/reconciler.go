@@ -160,16 +160,75 @@ func (r *Reconciler) planLive(ctx context.Context) (Plan, error) {
 	return r.planLiveTargets(ctx, nil)
 }
 
+// livePlan is a computed plan and the inputs it was computed from, before the
+// reconciler records drift or suspension state.
+type livePlan struct {
+	plan      Plan
+	suspended map[string]bool
+	mapped    []state.Resource
+	snap      Snapshot
+}
+
 func (r *Reconciler) planLiveTargets(ctx context.Context, targets OverlayTargets) (Plan, error) {
+	var overlays *OverlayState
+	if r.opts.Overlays != nil {
+		o, err := r.opts.Overlays(ctx)
+		if err != nil {
+			return Plan{}, err
+		}
+		overlays = &o
+	}
+	lp, err := r.computeLive(ctx, overlays, targets)
+	if err != nil {
+		return Plan{}, err
+	}
+	p := lp.plan
+	r.refreshManaged(lp.mapped)
+	r.emu.Lock()
+	r.suspended = lp.suspended
+	r.drifted = !p.Empty() || slices.ContainsFunc(p.Blocked, func(b Blocked) bool { return !waitsForBoost(b) })
+	r.lastDrift, r.lastDriftAt, r.driftValid = DriftOf(p), time.Now(), true
+	r.boostWaits = slices.ContainsFunc(p.Blocked, waitsForBoost)
+	r.seeExpressions(lp.snap)
+	r.emu.Unlock()
+	if p.preflight != nil {
+		// Nothing is applied: Sync stops here, and Plan callers show the error.
+		return p, p.preflight
+	}
+	return p, nil
+}
+
+// CheckOverlay plans a candidate overlay state against the live server without
+// applying or recording anything. It refuses an overlay whose overwrites would
+// remove the bot's own View Channel, Manage Channels or Manage Roles in a managed
+// channel: the preflight would then refuse every overlay sync until it expires.
+func (r *Reconciler) CheckOverlay(ctx context.Context, candidate OverlayState, targets OverlayTargets) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	lp, err := r.computeLive(ctx, &candidate, targets)
+	if err != nil {
+		return err
+	}
+	if pe := lp.plan.preflight; pe != nil {
+		var paths []string
+		for _, l := range pe.Lockouts {
+			if !l.Now {
+				paths = append(paths, l.Path+" ("+strings.Join(l.Lost, ", ")+")")
+			}
+		}
+		if len(paths) > 0 {
+			return fmt.Errorf("overlay would lock the bot out of %s", strings.Join(paths, ", "))
+		}
+	}
+	return nil
+}
+
+func (r *Reconciler) computeLive(ctx context.Context, overlays *OverlayState, targets OverlayTargets) (livePlan, error) {
 	desired := r.desired
 	var suspended map[string]bool
 	var notes []Note
 	var active []Overlay
-	if r.opts.Overlays != nil {
-		overlays, err := r.opts.Overlays(ctx)
-		if err != nil {
-			return Plan{}, err
-		}
+	if overlays != nil {
 		now := time.Now()
 		desired, suspended, notes = overlays.effective(desired, now)
 		for _, o := range overlays.Active {
@@ -181,51 +240,39 @@ func (r *Reconciler) planLiveTargets(ctx context.Context, targets OverlayTargets
 	sp := &desired.Spec
 	mapped, err := r.opts.Resources.List(ctx, r.serverKey())
 	if err != nil {
-		return Plan{}, fmt.Errorf("list resource map: %w", err)
+		return livePlan{}, fmt.Errorf("list resource map: %w", err)
 	}
 	snap, err := FetchWith(ctx, r.opts.Client, sp.DiscordID, r.opts.BotUserID, FetchOptionsFor(sp, mapped))
 	if err != nil {
-		return Plan{}, err
+		return livePlan{}, err
 	}
 	in := planInput{Desired: desired, Suspended: suspended, OverlayTargets: targets, Live: snap, Mapped: mapped, BotTop: snap.BotTopPosition(), BotUserID: r.opts.BotUserID,
 		Files: map[string][]byte{}, FileState: map[string]iconState{}}
 	dir := filepath.Join(r.opts.RepoRoot, filepath.Dir(filepath.FromSlash(r.desired.File)))
 	for name, rel := range parityFiles(sp) {
 		if in.Files[name], err = os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel))); err != nil {
-			return Plan{}, fmt.Errorf("%s: %w", name, err)
+			return livePlan{}, fmt.Errorf("%s: %w", name, err)
 		}
 		if in.FileState[name], err = r.loadImageState(ctx, name); err != nil {
-			return Plan{}, fmt.Errorf("load %s state: %w", name, err)
+			return livePlan{}, fmt.Errorf("load %s state: %w", name, err)
 		}
 	}
 	if sp.Profile != nil && sp.Profile.Icon != "" {
 		path := filepath.Join(r.opts.RepoRoot, filepath.Dir(filepath.FromSlash(r.desired.File)), filepath.FromSlash(sp.Profile.Icon))
 		if in.Icon, err = os.ReadFile(path); err != nil {
-			return Plan{}, fmt.Errorf("profile.icon: %w", err)
+			return livePlan{}, fmt.Errorf("profile.icon: %w", err)
 		}
 		if in.IconState, err = r.loadIconState(ctx); err != nil {
-			return Plan{}, fmt.Errorf("load icon state: %w", err)
+			return livePlan{}, fmt.Errorf("load icon state: %w", err)
 		}
 	}
 	p, err := computePlan(in)
 	if err != nil {
-		return Plan{}, err
+		return livePlan{}, err
 	}
 	p.Notes = append(p.Notes, notes...)
 	p.Overlays = active
-	r.refreshManaged(mapped)
-	r.emu.Lock()
-	r.suspended = suspended
-	r.drifted = !p.Empty() || slices.ContainsFunc(p.Blocked, func(b Blocked) bool { return !waitsForBoost(b) })
-	r.lastDrift, r.lastDriftAt, r.driftValid = DriftOf(p), time.Now(), true
-	r.boostWaits = slices.ContainsFunc(p.Blocked, waitsForBoost)
-	r.seeExpressions(snap)
-	r.emu.Unlock()
-	if p.preflight != nil {
-		// Nothing is applied: Sync stops here, and Plan callers show the error.
-		return p, p.preflight
-	}
-	return p, nil
+	return livePlan{plan: p, suspended: suspended, mapped: mapped, snap: snap}, nil
 }
 
 // Apply executes a plan produced by Plan: in phase order, recording mappings as soon

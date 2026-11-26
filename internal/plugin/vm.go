@@ -444,10 +444,13 @@ var (
 	// ErrCrashed: the instance's VM was discarded (memory limit, hard stop of code that
 	// ignored its budget, engine trap). Every pending and later call fails; the bot host
 	// restarts the instance (see Instance.Done).
-	ErrCrashed         = errors.New("plugin: instance crashed")
-	ErrStopped         = errors.New("plugin: instance stopped")
-	ErrNotStarted      = errors.New("plugin: instance not started")
-	ErrNoHandler       = errors.New("plugin: no handler")
-	ErrBusy            = errors.New("plugin: too many queued calls")
-	errInvalidArgument = errors.New("invalid argument")
+	ErrCrashed = errors.New("plugin: instance crashed")
+	// ErrCrashedByHandler is wrapped (with ErrCrashed) only in the result of the
+	// invocation whose own turn was running when the VM died.
+	ErrCrashedByHandler = errors.New("plugin: this handler crashed the instance")
+	ErrStopped          = errors.New("plugin: instance stopped")
+	ErrNotStarted       = errors.New("plugin: instance not started")
+	ErrNoHandler        = errors.New("plugin: no handler")
+	ErrBusy             = errors.New("plugin: too many queued calls")
+	errInvalidArgument  = errors.New("invalid argument")
 )

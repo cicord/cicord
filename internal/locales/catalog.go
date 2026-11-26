@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -99,9 +101,16 @@ func readFile(root *os.Root, name string, remaining int) ([]byte, error) {
 	return b, err
 }
 
+// MaxText bounds the substituted text of one message. A template of 8 KiB can repeat
+// a placeholder thousands of times, so the output is checked while it is built.
+const MaxText = 64 << 10
+
+// ErrTextTooLong reports a substitution whose result would exceed MaxText.
+var ErrTextTooLong = fmt.Errorf("translated text exceeds %d bytes", MaxText)
+
 // Text checks the exact tag then its base language for each preferred locale.
 // Substitutions run in one pass so a member name cannot introduce another variable.
-func (c Catalog) Text(key string, vars map[string]any, preferences ...string) string {
+func (c Catalog) Text(key string, vars map[string]any, preferences ...string) (string, error) {
 	value := key
 	found := false
 	for _, name := range append(preferences, "en") {
@@ -124,18 +133,58 @@ func (c Catalog) Text(key string, vars map[string]any, preferences ...string) st
 			break
 		}
 	}
-	return placeholder.ReplaceAllStringFunc(value, func(k string) string {
-		v, ok := vars[k[1:len(k)-1]]
-		if !ok {
-			return k
+	if len(value) > MaxText {
+		return "", ErrTextTooLong
+	}
+	var out strings.Builder
+	last := 0
+	for _, m := range placeholder.FindAllStringIndex(value, -1) {
+		k := value[m[0]:m[1]]
+		sub := k
+		if v, ok := vars[k[1:len(k)-1]]; ok {
+			switch n := v.(type) {
+			case string:
+				sub = n
+			case bool:
+				sub = fmt.Sprint(n)
+			case float64:
+				sub = jsNumber(n)
+			}
 		}
-		switch n := v.(type) {
-		case string:
-			return n
-		case bool, float64:
-			return fmt.Sprint(n)
-		default:
-			return k
+		if out.Len()+(m[0]-last)+len(sub) > MaxText {
+			return "", ErrTextTooLong
 		}
-	})
+		out.WriteString(value[last:m[0]])
+		out.WriteString(sub)
+		last = m[1]
+	}
+	if out.Len()+len(value)-last > MaxText {
+		return "", ErrTextTooLong
+	}
+	out.WriteString(value[last:])
+	return out.String(), nil
+}
+
+// jsNumber formats n as JavaScript's String(n) does, so a plugin's {count: 1234567} reads
+// "1234567", not Go's "1.234567e+06": plain decimals for 1e-6 <= |n| < 1e21, otherwise the
+// shortest exponent form ("1e+21", "1.5e-7").
+func jsNumber(n float64) string {
+	switch {
+	case math.IsNaN(n):
+		return "NaN"
+	case math.IsInf(n, 1):
+		return "Infinity"
+	case math.IsInf(n, -1):
+		return "-Infinity"
+	case n == 0:
+		return "0"
+	}
+	if a := math.Abs(n); a >= 1e-6 && a < 1e21 {
+		return strconv.FormatFloat(n, 'f', -1, 64)
+	}
+	s := strconv.FormatFloat(n, 'e', -1, 64) // 1.5e-07
+	mant, exp, _ := strings.Cut(s, "e")
+	sign := exp[:1]
+	exp = strings.TrimLeft(exp[1:], "0")
+	return mant + "e" + sign + exp
 }

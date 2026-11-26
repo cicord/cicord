@@ -53,8 +53,15 @@ func TestAuditAttributionRequiresActorTargetTypeAndTime(t *testing.T) {
 	if a := e.rt.attribute(t.Context(), entry); a.Certainty != "confirmed" {
 		t.Fatal("re-reading an already bound entry lost its proof")
 	}
-	if a := e.rt.attribute(t.Context(), otherEntry); a.Certainty != "probable" {
-		t.Fatalf("ambiguous operations: %+v", a)
+	// MOD-02: a second identical operation in the window confirms the second entry
+	// (operations already bound to an entry are skipped). Binding stays one to one.
+	if a := e.rt.attribute(t.Context(), otherEntry); a.Certainty != "confirmed" || a.Operation == nil || !a.Operation.At.Equal(now.Add(time.Millisecond)) {
+		t.Fatalf("second identical operation: %+v", a)
+	}
+	third := otherEntry
+	third.ID = strconv.FormatUint(uint64(now.UnixMilli()-1420070400000)<<22|2, 10)
+	if a := e.rt.attribute(t.Context(), third); a.Certainty != "probable" {
+		t.Fatalf("a third entry for two operations: %+v", a)
 	}
 }
 

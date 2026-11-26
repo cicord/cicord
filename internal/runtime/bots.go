@@ -157,6 +157,40 @@ func (r *Runtime) hosts() []*botHost {
 	return out
 }
 
+// projectBotIDs returns the Discord user ids of every bot of the project that lists the
+// server (ctx.server.cicordBotIds): the user of each connected session, and each configured
+// applicationId (a current Discord application's bot user has the application's id), so a
+// bot that is not connected (yet) is still named. Snowflakes are unique across Discord, so
+// an application id never names another user.
+func (r *Runtime) projectBotIDs(repo *config.Repo, server string) []string {
+	if repo == nil {
+		return nil
+	}
+	hosts := map[string]*botHost{}
+	for _, h := range r.hosts() {
+		hosts[h.key] = h
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	for _, key := range sortedKeys(repo.Bots) {
+		b := repo.Bots[key]
+		if b == nil || !slices.Contains(b.Spec.ServerKeys(), server) {
+			continue
+		}
+		if h := hosts[key]; h != nil {
+			add(h.session.Self().ID)
+		}
+		add(b.Spec.ApplicationID)
+	}
+	return out
+}
+
 // reconcilingBot returns the first connected bot (by key) that lists the server.
 func (r *Runtime) reconcilingBot(repo *config.Repo, server string) *botHost {
 	for _, key := range sortedKeys(repo.Bots) {
@@ -277,6 +311,44 @@ func toPresence(p *config.Presence) discord.Presence {
 
 func instanceScope(in config.Instance) string { return "plugin:" + in.ID() }
 
+// syncRequestInterval is the minimum time between two accepted requestSync calls
+// of one installation. Each accepted request is a full reconciliation (live
+// Discord fetch) and an audit entry, so a plugin cannot loop on it.
+var syncRequestInterval = 30 * time.Second
+
+// requestSync runs a plugin-requested full reconciliation of its server.
+func (r *Runtime) requestSync(c context.Context, in config.Instance, srt *serverRT, origin, reason string) error {
+	throttled := func() error {
+		if v, ok := r.syncRequests.Load(in.ID()); ok {
+			if wait := syncRequestInterval - time.Since(v.(time.Time)); wait > 0 {
+				return fmt.Errorf("a sync was already requested recently; retry in %s", wait.Round(time.Second))
+			}
+		}
+		return nil
+	}
+	if err := throttled(); err != nil {
+		return err
+	}
+	if !r.syncMu.TryLock() {
+		return errors.New("sync already in progress")
+	}
+	defer r.syncMu.Unlock()
+	// Concurrent requests serialize on syncMu: check again before accepting.
+	if err := throttled(); err != nil {
+		return err
+	}
+	a := r.Active()
+	if a == nil || a.servers[in.Server] != srt {
+		return errors.New("installation is activating")
+	}
+	r.syncRequests.Store(in.ID(), time.Now())
+	if _, err := r.opts.Store.Audit().Append(c, state.AuditEntry{Time: time.Now(), Server: in.Server, Actor: "plugin:" + origin, Action: "server.sync.request", Target: in.Server, Details: mustJSONReason(reason)}); err != nil {
+		return err
+	}
+	_, _, _, err := r.reconcileServer(c, a.rev, srt, triggerManual)
+	return err
+}
+
 // pluginAccess gives plugins the server's access levels (Member.access).
 func pluginAccess(a *config.Access) plugin.Access {
 	var out plugin.Access
@@ -331,19 +403,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		},
 		OverlayList: func(c context.Context) ([]reconcile.Overlay, error) { return r.Overlays(c, in.Server, origin) },
 		RequestSync: func(c context.Context, reason string) error {
-			if _, err := r.opts.Store.Audit().Append(c, state.AuditEntry{Time: time.Now(), Server: in.Server, Actor: "plugin:" + origin, Action: "server.sync.request", Target: in.Server, Details: mustJSONReason(reason)}); err != nil {
-				return err
-			}
-			if !r.syncMu.TryLock() {
-				return errors.New("sync already in progress")
-			}
-			defer r.syncMu.Unlock()
-			a := r.Active()
-			if a == nil || a.servers[in.Server] != srt {
-				return errors.New("installation is activating")
-			}
-			_, _, _, err := r.reconcileServer(c, a.rev, srt, triggerManual)
-			return err
+			return r.requestSync(c, in, srt, origin, reason)
 		},
 		Incident: func(c context.Context, actions discord.IncidentActions) error {
 			r.pauseMu.RLock()
@@ -385,7 +445,8 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		DeclaredMemberRoles: declaredMemberRoles, DeclaredRolesByUser: declaredRolesByUser,
 		BotKey: in.Bot, InstanceName: in.Name, PluginName: m.Metadata.Name, PluginVersion: m.Metadata.Version,
 		Bot: host.session.Self(), ApplicationID: host.session.ApplicationID(),
-		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL, ServerPreferredLocale: srt.cache.Server().PreferredLocale,
+		CicordBotIDs: func() []string { return r.projectBotIDs(irt.revision.repo, in.Server) },
+		ServerKey:    in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL, ServerPreferredLocale: srt.cache.Server().PreferredLocale,
 		Index:  r.opts.Store.Index(instanceScope(in)),
 		Config: in.Config, Grants: in.Grants, NetworkAllow: in.NetworkAllow, Files: in.Files, Secret: func(n string) (string, []string, bool) { return r.instanceSecret(in, n) }, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
 		ReportStatus:   irt.featureStatus,
@@ -403,7 +464,8 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		AFKChannelID: func() string { return srt.cache.Server().AFKChannelID },
 		OwnerID:      func() string { return discord.CurrentGuildOwner(host.session, srt.cfg.Spec.DiscordID) }, Access: pluginAccess(srt.cfg.Spec.Access),
 		DeferredSecrets: r.opts.DeferredSecrets, DeferredRecords: r.opts.Store.KV("private-replies:" + in.Server), DeferredSource: in.Plugin.Source + "#" + irt.plugin.hash,
-		DMReceipts: r.opts.Store.KV("dm-receipts:" + in.ID()), KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
+		ChannelProvisions: r.opts.Store.KV("channel-provisions:" + in.ID()),
+		DMReceipts:        r.opts.Store.KV("dm-receipts:" + in.ID()), KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources:          ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
 		Portal:             &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, Store: r.opts.Store, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name, MaxTTL: 24 * time.Hour},
 		IsolateMemberCalls: m.Spec.Interop != nil && len(m.Spec.Interop.Consumes.Actions)+len(m.Spec.Interop.Consumes.Queries) > 0,
@@ -595,17 +657,17 @@ func (h *botHost) install(ctx context.Context, a *active) {
 func (h *botHost) handle(ev discord.Event) {
 	if m, ok := ev.(discord.MessageCreateEvent); ok && m.Message.ServerID == "" {
 		if !m.Message.Author.Bot && h.routing.Load().dmOwner != "" {
-			h.queueDM(func() { h.routeDM(m.Message, time.Now()) })
+			h.acceptDMMessage(m.Message, time.Now())
 		}
 		return
 	}
 	if e, ok := ev.(discord.InteractionCreateEvent); ok && e.Interaction.ServerID == "" {
 		if strings.HasPrefix(e.Interaction.CustomID, dmSelect) {
-			h.queueDM(func() { h.selectDM(e.Interaction, time.Now()) })
+			h.acceptDMInteraction(e.Interaction, time.Now(), func() { h.selectDM(e.Interaction, time.Now()) })
 			return
 		}
 		if strings.HasPrefix(e.Interaction.CustomID, "dm/") {
-			h.queueDM(func() { h.routeDMComponent(e.Interaction) })
+			h.acceptDMInteraction(e.Interaction, time.Now(), func() { h.routeDMComponent(e.Interaction) })
 			return
 		}
 	}
@@ -753,11 +815,11 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 		return
 	}
 	if it.ServerID == "" { // Historical bot messages with an unqualified component ID.
-		h.queueDM(func() {
+		h.acceptDMInteraction(it, time.Now(), func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			m, err := h.session.GetMember(ctx, target.serverID, it.User.ID)
-			if err == nil && m.User.ID == it.User.ID {
+			m, found, err := h.dmMember(ctx, rt, target.serverID, it.User.ID)
+			if err == nil && found {
 				it.Member = &m
 				h.dispatchInteraction(target, it, kind, localID)
 			}

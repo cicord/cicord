@@ -77,14 +77,22 @@ func (o Overlay) Validate(now time.Time) error {
 		for target, patch := range ch.Overwrites {
 			member, hasPrefix := strings.CutPrefix(target, "member:")
 			validMember := hasPrefix && memberID.MatchString(member)
-			if target != "@everyone" && target != "@bot" && !targetID.MatchString(target) && !validMember {
+			if target != "@everyone" && target != "@bot" && target != AllOverwrites && !targetID.MatchString(target) && !validMember {
 				return errors.New("invalid overwrite target")
 			}
 			if len(patch.Deny)+len(patch.Neutral) == 0 {
 				return errors.New("an overwrite must specify deny or neutral")
 			}
-			if _, err := discord.ParsePermissions(patch.Deny); err != nil {
+			if target == AllOverwrites && len(patch.Deny) > 0 {
+				return errors.New(`the "*" overwrite target accepts neutral only; deny on @everyone instead`)
+			}
+			deny, err := discord.ParsePermissions(patch.Deny)
+			if err != nil {
 				return err
+			}
+			if target == BotTarget && deny&(permView|permManageChannels|permManageRoles) != 0 {
+				// The preflight would refuse every sync until the overlay expires.
+				return errors.New("an overlay cannot deny the bot View Channel, Manage Channels or Manage Roles")
 			}
 			if _, err := discord.ParsePermissions(patch.Neutral); err != nil {
 				return err
@@ -92,6 +100,48 @@ func (o Overlay) Validate(now time.Time) error {
 		}
 	}
 	return nil
+}
+
+// AllOverwrites is the overlay overwrite target meaning "every overwrite the
+// channel already has". It accepts only neutral: it strips those permissions from
+// the allow of each existing role and member overwrite, so a lock (an @everyone
+// deny) also holds against roles such as `verified: allow [SendMessages]`. It never
+// creates an overwrite and skips @everyone, @bot and the staff of spec.access.
+const AllOverwrites = "*"
+
+// staffTargets are the overwrite keys AllOverwrites leaves alone: the roles and
+// users of spec.access.admins and spec.access.moderators.
+func staffTargets(s *config.Server) map[string]bool {
+	out := map[string]bool{"@everyone": true, BotTarget: true}
+	if a := s.Spec.Access; a != nil {
+		for _, p := range []*config.Principals{a.Admins, a.Moderators} {
+			if p == nil {
+				continue
+			}
+			for _, r := range p.Roles {
+				out[r] = true
+			}
+			for _, u := range p.Users {
+				out["member:"+u] = true
+			}
+		}
+	}
+	return out
+}
+
+func neutralizeAllows(ows map[string]config.OverwriteSpec, names []string, skip map[string]bool) {
+	neutral, _ := discord.ParsePermissions(names)
+	for target, p := range ows {
+		if skip[target] {
+			continue
+		}
+		allow, _ := discord.ParsePermissions(p.Allow)
+		if allow&neutral == 0 {
+			continue
+		}
+		p.Allow = (allow &^ neutral).Names()
+		ows[target] = p
+	}
 }
 
 // OverlayTargets records the fields to converge, including those to restore after removal.
@@ -134,6 +184,7 @@ func (s OverlayState) effective(base *config.Server, now time.Time) (*config.Ser
 	}
 	suspended := map[string]bool{}
 	var notes []Note
+	staff := staffTargets(base)
 	for _, o := range s.Active {
 		if !o.Until.After(now) {
 			continue
@@ -172,6 +223,10 @@ func (s OverlayState) effective(base *config.Server, now time.Time) (*config.Ser
 					off := false
 					ch.SyncWithCategory = &off
 					for target, v := range patch.Overwrites {
+						if target == AllOverwrites {
+							neutralizeAllows(ch.Overwrites, v.Neutral, staff)
+							continue
+						}
 						if targetID.MatchString(target) {
 							if _, ok := next.Spec.Roles[target]; !ok {
 								notes = append(notes, Note{Kind: "overlay", Key: origin, Message: "Overlay " + origin + ": missing role " + target})

@@ -63,3 +63,24 @@ func TestSetRolesKeepsGitMemberAssignment(t *testing.T) {
 		t.Fatalf("protected role: %v", err)
 	}
 }
+
+// MOD-10: single-role writes must not bypass the git-declared membership that
+// setRoles already protects.
+func TestMemberRoleRefusesDeclaredMembership(t *testing.T) {
+	h := start(t, `import {definePlugin} from "@cicord/sdk";export default definePlugin({});`, func(e *Env) { e.Grants = []string{capRolesAssign}; e.DeclaredMemberRoles = []string{"member"} })
+	for _, add := range []bool{true, false} {
+		for _, role := range []string{`"member"`, `{"id":"200"}`} {
+			_, err := opMemberRole(add)(h.inst, nil, json.RawMessage(`{"userId":"42","role":`+role+`}`))
+			if err == nil || !strings.Contains(err.Error(), "declared in git") || !strings.Contains(err.Error(), "suspendDeclaredRoles") {
+				t.Fatalf("add=%v role=%s: %v", add, role, err)
+			}
+		}
+	}
+	run, err := opMemberRole(true)(h.inst, nil, json.RawMessage(`{"userId":"42","role":"moderator"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t.Context()); err != nil {
+		t.Fatalf("undeclared role: %v", err)
+	}
+}

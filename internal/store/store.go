@@ -137,10 +137,9 @@ type Service struct {
 	// PublicOnly makes https fetches refuse non-public addresses (registry.WithPublicOnly):
 	// set when the Store serves admin UI users, who must not reach the runtime's network.
 	PublicOnly bool
-	// Latest returns the highest release of a plugin repository listed by a registry, for
-	// the tag prefix of the plugin (IndexEntry.TagPrefix; default registry.LatestVersion:
-	// tags only, no clone). Cached like indexes.
-	Latest func(ctx context.Context, registryURL, repoURL, tagPrefix string) (string, error)
+	// Latest returns the version an update of a registry plugin resolves (default
+	// registry.LatestFor: engine-aware, capped by a signed index). Cached like indexes.
+	Latest func(ctx context.Context, registryURL, name string, ie registry.IndexEntry, signed bool) (string, error)
 	// Changed is called when what the Store lists changed without a new revision: a
 	// background refresh found other versions or updates, or a plugin page resolved a newer
 	// version than the cached one. The admin console refetches its Store pages (the
@@ -509,7 +508,7 @@ func (s *Service) RegistryDetail(ctx context.Context, repo *config.Repo, reg con
 	}
 	fill(&d, e)
 	// What was just resolved is the latest version: keep the update check in line.
-	key := latestKey(ie.Repo, ie.TagPrefix(name))
+	key := latestKey(name, ie, c.idx.SignedBy != "")
 	s.mu.Lock()
 	if s.tags == nil {
 		s.tags = map[string]cachedLatest{}

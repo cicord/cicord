@@ -101,6 +101,10 @@ func TestInteropMixedVersionsAndCalls(t *testing.T) {
     - name: legacy
       source: ../../plugins/legacy
       grants: [events.subscribe,storage.kv]
+    - name: second
+      source: ../../plugins/polls
+      interop: {targets: {levels: rewards/points}}
+      grants: [events.publish, events.subscribe,storage.kv,portal.routes, plugins.query:levels.read, plugins.call:levels.credit, plugins.query:missing.read, plugins.query:levels.loop]
 `)
 		write("bots/rewards/bot.yaml", fmt.Sprintf(`apiVersion: cicord.dev/v1alpha1
 kind: Bot
@@ -112,7 +116,7 @@ spec:
   plugins:
     - name: points
       source: ../../plugins/levels
-      interop: {targets: {levels: rewards/points},allowCallers: [moderator/polls,rewards/points]}
+      interop: {targets: {levels: rewards/points},allowCallers: [moderator/polls,moderator/second,rewards/points]}
       grants: [events.publish,events.subscribe,storage.kv,plugins.query:levels.loop]
 `, secondApp))
 	}, -1, extra)
@@ -231,7 +235,43 @@ spec:
 	if err := <-erased; err != nil {
 		t.Fatal(err)
 	}
-
+	// SEC-P-02: receipts are namespaced by caller. Another granted caller using
+	// the same key runs its own action instead of colliding with the first one.
+	if got := request("second", `{"op":"action","input":{"amount":7},"opts":{"idempotencyKey":"poll:4:u"}}`); got != `{"total":57}` {
+		t.Fatalf("second caller: %s", got)
+	}
+	if got := caller(`{"op":"action","input":{"amount":50},"opts":{"idempotencyKey":"poll:4:u"}}`); got != `{"total":50}` {
+		t.Fatalf("replay of the first caller: %s", got)
+	}
+	if got := caller(`{"op":"action","input":{"amount":3},"opts":{"idempotencyKey":"poll:4:u"}}`); !strings.Contains(got, `"code":"invalid_input"`) {
+		t.Fatalf("reused key with other input: %s", got)
+	}
+	// The receipt binds who the call is on behalf of, not their access level: the same
+	// request retried after the member was promoted replays the original outcome instead
+	// of failing with invalid_input, another member reusing the key is refused, and a new
+	// call reaches the provider with the current access.
+	modRole, ok := e.rt.ResourceID("my-community", state.KindRole, "moderator")
+	if !ok {
+		t.Fatal("moderator role not deployed")
+	}
+	as := func(user discord.User, roles []string, body string) string {
+		t.Helper()
+		resp, _, err := e.rt.HandleRoute(ctx, "my-community", "moderator", "polls", "POST", "/probe", plugin.RouteRequest{Body: json.RawMessage(body), Viewer: &plugin.RouteViewer{User: user, Member: &discord.Member{User: user, RoleIDs: roles}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(resp.Body)
+	}
+	retry := `{"op":"action","input":{"amount":50},"opts":{"idempotencyKey":"poll:4:u"}}`
+	if got := as(e.bot, []string{modRole}, retry); got != `{"total":50}` {
+		t.Fatalf("retry after an access change: %s", got)
+	}
+	if got := as(discord.User{ID: "123456789012345679", Username: "other"}, nil, retry); !strings.Contains(got, `"code":"invalid_input"`) {
+		t.Fatalf("another member reused the key: %s", got)
+	}
+	if got := as(e.bot, []string{modRole}, `{"op":"query"}`); !strings.Contains(got, `"access":"moderator"`) || !strings.Contains(got, `"total":57`) {
+		t.Fatalf("fresh call after promotion: %s", got)
+	}
 }
 
 func TestOptionalFeaturesKeepHealthyAndNeverHideOperationalProblems(t *testing.T) {

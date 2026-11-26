@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"fmt"
 	"github.com/cicord/cicord/internal/state"
 	"github.com/cicord/cicord/internal/state/statetest"
 	"testing"
@@ -15,7 +16,21 @@ func TestPluginStorageQuota(t *testing.T) {
 
 func TestRankAt100k(t *testing.T) {
 	s := mustOpen(t, newSchema(t))
-	_, err := s.pool.Exec(t.Context(), `INSERT INTO rankings(scope,name,member,score,position) SELECT 'plugin:b/levels/s','xp',n::text,100000-n,n FROM generate_series(1,100000) n`)
+	_, err := s.pool.Exec(t.Context(), `INSERT INTO rankings(scope,name,member,score) SELECT 'plugin:b/levels/s','xp',n::text,100000-n FROM generate_series(1,100000) n`)
 	must(t, err)
 	statetest.RankAt100k(t, s.KV("plugin:b/levels/s").(state.AdvancedKV))
+}
+
+func TestPluginStorageByteQuota(t *testing.T) {
+	s := mustOpen(t, newSchema(t))
+	_, err := s.pool.Exec(t.Context(), fmt.Sprintf("INSERT INTO plugin_storage_usage(scope,entries,bytes) VALUES('plugin:b/i/s',0,%d)", state.PluginStorageBytes-100))
+	must(t, err)
+	statetest.StorageByteQuota(t, s.KV("plugin:b/i/s").(state.AdvancedKV))
+}
+
+func TestRankingMemberCap(t *testing.T) {
+	s := mustOpen(t, newSchema(t))
+	_, err := s.pool.Exec(t.Context(), fmt.Sprintf("INSERT INTO ranking_sizes(scope,name,members) VALUES('plugin:b/i/s','xp',%d)", state.MaxRankingMembers-1))
+	must(t, err)
+	statetest.RankingMemberCap(t, s.KV("plugin:b/i/s").(state.AdvancedKV))
 }

@@ -275,28 +275,43 @@ func (s Space) Atomic(ctx context.Context, checks []state.KVCheck, ops []state.K
 	return r, nil
 }
 
+// List pages by count and by bytes (state.MaxKVListBytes). Sizes are read first
+// from the index and record headers, so a page never loads more values than it
+// returns, whatever the limit (review finding m7).
 func (s Space) List(ctx context.Context, prefix string, limit int, cursor string) ([]state.KVItem, string, error) {
 	defer s.readLock()()
 	limit = storeutil.ClampLimit(limit, state.DefaultKVListLimit)
-	q := "SELECT key,value FROM kv WHERE scope=?1 AND key>=?2 AND key>?3 AND (expires_at IS NULL OR expires_at>?4)"
+	where := "scope=?1 AND key>=?2 AND key>?3 AND (expires_at IS NULL OR expires_at>?4)"
 	args := []any{s.Scope, s.bytes(prefix), s.bytes(cursor), s.Now().UnixNano()}
 	if end, ok := storeutil.PrefixEnd(prefix); ok {
-		q += " AND key<?5"
+		where += " AND key<?5"
 		args = append(args, s.bytes(end))
 	}
-	args = append(args, limit+1)
-	q += " ORDER BY key LIMIT ?" + strconv.Itoa(len(args))
-	rows, err := s.reader().QueryContext(ctx, s.query(q), args...)
+	n, last, more, err := s.listSizes(ctx, where, args, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	items := []state.KVItem{}
+	if n == 0 {
+		return items, "", nil
+	}
+	q := "SELECT key,value FROM kv WHERE " + where + " AND key<=?" + strconv.Itoa(len(args)+1) + " ORDER BY key LIMIT ?" + strconv.Itoa(len(args)+2)
+	rows, err := s.reader().QueryContext(ctx, s.query(q), append(args, s.bytes(last), n)...)
 	if err != nil {
 		return nil, "", err
 	}
 	defer rows.Close()
-	items := []state.KVItem{}
+	size := 0
 	for rows.Next() {
 		var item state.KVItem
 		var value []byte
 		if err := rows.Scan(&item.Key, &value); err != nil {
 			return nil, "", err
+		}
+		// A value rewritten between the two reads can be larger: cut there.
+		if size += len(item.Key) + len(value); size > state.MaxKVListBytes && len(items) > 0 {
+			more = true
+			break
 		}
 		item.Value = value
 		items = append(items, item)
@@ -304,10 +319,46 @@ func (s Space) List(ctx context.Context, prefix string, limit int, cursor string
 	if err := rows.Err(); err != nil {
 		return nil, "", err
 	}
-	if len(items) > limit {
-		return items[:limit], items[limit-1].Key, nil
+	return items, pageCursor(items, n, last, more), nil
+}
+
+// pageCursor is the cursor after a page read in two steps. The size read and the
+// value read can see different snapshots: entries deleted in between shorten the
+// page, and entries inserted before last push it out of the page. In both cases
+// the page did not reach last, so a cursor is returned.
+func pageCursor(items []state.KVItem, n int, last string, more bool) string {
+	switch {
+	case len(items) == 0:
+		return last
+	case more || len(items) < n || items[len(items)-1].Key != last:
+		return items[len(items)-1].Key
 	}
-	return items, "", nil
+	return ""
+}
+
+// listSizes reads the keys and value sizes of up to limit+1 entries, and returns
+// how many of them fit one page, the last key that fits and whether more follow.
+func (s Space) listSizes(ctx context.Context, where string, args []any, limit int) (n int, last string, more bool, err error) {
+	rows, err := s.reader().QueryContext(ctx, s.query("SELECT key,octet_length(value) FROM kv WHERE "+where+" ORDER BY key LIMIT ?"+strconv.Itoa(len(args)+1)), append(args, limit+1)...)
+	if err != nil {
+		return 0, "", false, err
+	}
+	defer rows.Close()
+	total := 0
+	for rows.Next() {
+		var key string
+		var size int
+		if err := rows.Scan(&key, &size); err != nil {
+			return 0, "", false, err
+		}
+		if n == limit || (n > 0 && total+len(key)+size > state.MaxKVListBytes) {
+			return n, last, true, nil
+		}
+		n++
+		total += len(key) + size
+		last = key
+	}
+	return n, last, false, rows.Err()
 }
 
 // InteropTx lets the host write validated action outbox records in the same

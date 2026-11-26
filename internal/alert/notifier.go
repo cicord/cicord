@@ -418,6 +418,12 @@ type snapshot struct {
 			At     time.Time `json:"at"`
 			Reason string    `json:"reason"`
 		} `json:"paused"`
+		UnconfirmedAudit *struct {
+			Bot        string    `json:"bot"`
+			Count      int       `json:"count"`
+			First      time.Time `json:"first"`
+			LastAction string    `json:"lastAction"`
+		} `json:"unconfirmedAudit"`
 	} `json:"servers"`
 	Bots []struct {
 		Key     string `json:"key"`
@@ -518,6 +524,17 @@ func (n *Notifier) conditions(s snapshot) []condition {
 			out = append(out, condition{key: "server/" + sv.Key + "/paused", immediate: true, detail: detail,
 				msg:           Message{Severity: SeverityWarning, Title: "Server paused", Server: sv.Key, ServerName: sv.Name, Bot: sv.Bot, Workflow: "pause", Revision: rev, Link: n.link(serverPath(sv.Key, ""))},
 				resolvedTitle: "Server resumed", resolved: "Cicord enforces this server's configuration again."})
+		}
+		if u := sv.UnconfirmedAudit; u != nil && u.Count > 0 {
+			// CORE-04: one incident per burst (First), however many entries it has.
+			detail := "Discord recorded " + plural(u.Count, "audited action") + " by the bot that Cicord did not emit"
+			if u.LastAction != "" {
+				detail += " (last: " + sanitize(u.LastAction) + ")"
+			}
+			detail += ". Someone else may be using its token: check the server's audit log and rotate the token if you did not make these changes."
+			out = append(out, condition{key: "server/" + sv.Key + "/audit", fingerprint: u.First.UTC().Format(time.RFC3339Nano), detail: detail,
+				msg:           Message{Severity: SeverityCritical, Title: "Bot token possibly compromised", Server: sv.Key, ServerName: sv.Name, Bot: u.Bot, Workflow: "audit attribution", Revision: rev, Link: n.link(serverPath(sv.Key, ""))},
+				resolvedTitle: "No more unconfirmed bot activity", resolved: "No unconfirmed audited action by the bot for a day."})
 		}
 	}
 

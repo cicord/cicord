@@ -78,12 +78,24 @@ type Spec struct {
 	Layers        []Layer
 }
 
+// Render envelope. One RGBA canvas pixel is 4 bytes, and the canvas, the decoded
+// sources and the PNG encoder share the worker's 16 MiB: a 2048×2048 canvas alone
+// would fill it. Sides stay up to 2048 for banners, the area is capped.
+const (
+	MaxSide         = 2048
+	MaxCanvasPixels = 1 << 19 // e.g. 1024×512, 724×724, 2048×256
+	MaxSourcePixels = 1 << 19 // all distinct image sources of one render, decoded once each
+)
+
 func Path(key string) string { sum := sha256.Sum256([]byte(key)); return hex.EncodeToString(sum[:]) }
 
 // Inputs verifies size/count bounds before the host resolves any external resources.
 func (s Spec) Inputs() ([]string, error) {
-	if s.Width < 1 || s.Height < 1 || s.Width > 2048 || s.Height > 2048 || len(s.Layers) > 64 {
+	if s.Width < 1 || s.Height < 1 || s.Width > MaxSide || s.Height > MaxSide || len(s.Layers) > 64 {
 		return nil, errors.New("image size must be 1..2048, with at most 64 layers")
+	}
+	if s.Width*s.Height > MaxCanvasPixels {
+		return nil, fmt.Errorf("image area %d×%d exceeds %d pixels (for example 1024×512 or 2048×256)", s.Width, s.Height, MaxCanvasPixels)
 	}
 	var out []string
 	seen := map[string]bool{}

@@ -420,7 +420,7 @@ func (w *World) editOriginalResponse(a actor, applicationID, token string, m dis
 	st.loading, st.edited = false, true
 	w.notify(st)
 	w.recordOK(a, "EditOriginalResponse", ms.msg.ServerID, ms.msg.ID, "")
-	return cloneMessage(ms.msg), nil
+	return restMessage(ms.msg), nil
 }
 
 func (w *World) createFollowup(a actor, applicationID, token string, m discord.MessageCreate) (discord.Message, error) {
@@ -465,7 +465,7 @@ func (w *World) createFollowup(a actor, applicationID, token string, m discord.M
 	st.followupIDs = append(st.followupIDs, ms.msg.ID)
 	w.notify(st)
 	w.recordOK(a, "CreateFollowup", ms.msg.ServerID, ms.msg.ID, "")
-	return cloneMessage(ms.msg), nil
+	return restMessage(ms.msg), nil
 }
 
 // ───────────────────────────────────────────────────────────── user side

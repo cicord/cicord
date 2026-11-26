@@ -5,14 +5,18 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"image"
 	"image/png"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/media"
 )
 
 type mediaTransport struct {
@@ -128,5 +132,68 @@ func TestAttachmentReadAtLimit(t *testing.T) {
 		if got := contentOf(h.responses()[0]); !strings.Contains(got, tc.want) {
 			t.Fatalf("read %s: %s", tc.path, got)
 		}
+	}
+}
+
+// Downloads wait on the network without a process-wide worker slot (review MJ2,
+// SEC-B-05): with every slot taken, attachment.bytes completes and media.hash
+// still reaches its host; the hash then waits for a slot for the decode only.
+func TestMediaDownloadsDoNotHoldWorkerSlots(t *testing.T) {
+	var img bytes.Buffer
+	_ = png.Encode(&img, image.NewGray(image.Rect(0, 0, 8, 8)))
+	requested := make(chan string, 4)
+	src := `import {command,definePlugin} from "@cicord/sdk";
+ export default definePlugin({commands:{
+  read:command({description:"read",options:{file:{type:"attachment",description:"file"}},async run(ctx,it){await it.reply(String((await it.options.file.bytes()).length))}}),
+  hash:command({description:"hash",async run(ctx,it){await it.reply(await ctx.media.hash("https://files.example.org/image",{algo:"dhash"}))}})}});`
+	h := start(t, src, func(e *Env) {
+		e.Grants = []string{"media.analyze", "discord.messages.read"}
+		e.NetworkAllow = []string{"files.example.org"}
+		e.HTTPClient = &http.Client{Transport: mediaTransport{func(r *http.Request) *http.Response {
+			requested <- r.URL.Path
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(img.Bytes())), Header: http.Header{}}
+		}}}
+	})
+	var held []func()
+	for {
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		release, err := media.Acquire(ctx)
+		cancel()
+		if err != nil {
+			break
+		}
+		held = append(held, release)
+	}
+	releaseAll := func() {
+		for _, r := range held {
+			r()
+		}
+		held = nil
+	}
+	defer releaseAll()
+	r := discord.Resolved{Attachments: map[string]discord.Attachment{"42": {URL: discord.CDNBase + "/a.png"}}}
+	if err := h.command("read", []discord.InteractionOption{{Name: "file", Type: discord.OptionAttachment, Value: "42"}}, r); err != nil {
+		t.Fatal(err)
+	}
+	if got := contentOf(h.responses()[0]); got != strconv.Itoa(img.Len()) {
+		t.Fatalf("attachment.bytes with every worker slot taken: %q", got)
+	}
+	<-requested
+	done := make(chan error, 1)
+	go func() { done <- h.command("hash", nil, discord.Resolved{}) }()
+	select {
+	case p := <-requested:
+		if p != "/image" {
+			t.Fatal(p)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("media.hash did not start its download while the worker slots were taken")
+	}
+	releaseAll()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := contentOf(h.responses()[1]); len(got) != 16 {
+		t.Fatalf("hash: %q", got)
 	}
 }

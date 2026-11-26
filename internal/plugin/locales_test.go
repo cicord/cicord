@@ -75,3 +75,36 @@ func TestContextMenuCollisionWithFallback(t *testing.T) {
 		t.Fatalf("expected French menu collision, got %v", err)
 	}
 }
+
+// Fixed choices are translated from commands.<command>.options.<option>.choices.<value>
+// (subcommands: commands.<command>.<subcommand>.options...), the value staying the key.
+func TestLocalizedChoices(t *testing.T) {
+	def, err := Inspect(bundleSource(t, `import {command,definePlugin} from "@cicord/sdk";export default definePlugin({commands:{
+ timeout:command({description:"Timeout",options:{duration:{type:"integer",description:"Duration",choices:[{name:"1 hour",value:60},{name:"1 day",value:1440}]}},run(){}}),
+ mod:command({description:"Moderation",subcommands:{ban:{description:"Ban",options:{reason:{type:"string",description:"Reason",choices:[{name:"Spam",value:"spam"}]}},run(){}}}})}});`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr := map[string]string{
+		"commands.timeout.options.duration.choices.60": "1 heure",
+		"commands.mod.ban.options.reason.choices.spam": "Pourriel",
+	}
+	if err := def.ApplyLocales(locales.Catalog{"fr": fr, "en": {"commands.timeout.options.duration.choices.1440": "One day"}}); err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]discord.Command{}
+	for _, c := range def.DiscordCommands() {
+		byName[c.Name] = c
+	}
+	choices := byName["timeout"].Options[0].Choices
+	if choices[0].Name != "1 hour" || choices[0].Value != float64(60) || choices[0].Names["fr"] != "1 heure" || choices[1].Names["en-US"] != "One day" || choices[1].Names["fr"] != "" {
+		t.Fatalf("timeout choices %+v", choices)
+	}
+	if c := byName["mod"].Options[0].Options[0].Choices[0]; c.Names["fr"] != "Pourriel" || c.Value != "spam" {
+		t.Fatalf("subcommand choice %+v", c)
+	}
+	fr["commands.timeout.options.duration.choices.60"] = strings.Repeat("x", 101)
+	if err := def.ApplyLocales(locales.Catalog{"fr": fr}); err == nil {
+		t.Fatal("accepted a choice name of 101 characters")
+	}
+}

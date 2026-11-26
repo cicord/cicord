@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"slices"
 	"sort"
 	"time"
 	"unicode/utf8"
@@ -75,6 +76,33 @@ func (w *World) dropMember(s *serverState, userID string) {
 			w.removeRole(s, roleID)
 		}
 	}
+}
+
+// SetBotPermissions replaces the permissions of the bot's managed role, as a server owner
+// does in Server Settings > Roles, so tests can drop a permission the bot needs (for
+// example ManageServer or MoveMembers) and check the plugin's degraded mode. Like Discord,
+// it emits a role update (the runtime's role cache follows it) and an audit log entry.
+// Other roles the bot holds (and @everyone) still grant what they grant. The bot must have
+// been added with non-zero permissions (it then has a managed role).
+func (w *World) SetBotPermissions(serverID, botUserID string, perms discord.Permissions) (discord.Role, error) {
+	w.mu.Lock()
+	s, err := w.server(serverID)
+	if err != nil {
+		w.mu.Unlock()
+		return discord.Role{}, err
+	}
+	roleID := ""
+	for id, bot := range s.managedBy {
+		if bot == botUserID {
+			roleID = id
+			break
+		}
+	}
+	w.mu.Unlock()
+	if roleID == "" {
+		return discord.Role{}, badRequest("bot %s has no managed role in server %s: add it with non-zero permissions", botUserID, serverID)
+	}
+	return w.updateRole(w.ownerOf(serverID), serverID, roleID, discord.RoleParams{Permissions: &perms}, "")
 }
 
 // AddBotToServer simulates an OAuth bot invite: the bot joins the server and, when
@@ -265,10 +293,21 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 			w.setVoice(s, userID, "")
 		}
 	}
-	w.recordOK(a, "UpdateMember", serverID, userID, reason)
+	fields := []string{}
+	for name, set := range map[string]bool{"roles": p.RoleIDs != nil, "nick": p.Nick != nil, "communication_disabled_until": p.TimeoutUntil != nil, "channel_id": p.VoiceChannelID != nil} {
+		if set {
+			fields = append(fields, name)
+		}
+	}
+	w.recordCall(a, "UpdateMember", serverID, userID, reason, fields, nil)
 	if p.Nick != nil || p.TimeoutUntil != nil || p.RoleIDs != nil {
 		w.emit(discord.MemberUpdateEvent{Member: cloneMember(*m), Previous: &prev})
 		w.auditMemberUpdate(serverID, a.userID, prev, next, a.auditReason(reason))
+	}
+	if p.RoleIDs != nil && !sameRoles(prev.RoleIDs, next.RoleIDs) {
+		// A PATCH that replaces the roles is logged as member.roleUpdate, apart
+		// from member.update for the nickname or timeout.
+		w.auditWithReason(serverID, a.userID, discord.AuditMemberRoleUpdate, userID, a.auditReason(reason))
 	}
 	return cloneMember(*m), nil
 }
@@ -506,4 +545,11 @@ func (w *World) Bans(serverID string) []string {
 	out := sortedKeys(s.bans)
 	sort.Strings(out)
 	return out
+}
+
+func sameRoles(a, b []string) bool {
+	x, y := slices.Clone(a), slices.Clone(b)
+	slices.Sort(x)
+	slices.Sort(y)
+	return slices.Equal(x, y)
 }

@@ -10,7 +10,6 @@ import (
 	"image/draw"
 	_ "image/gif"
 	_ "image/jpeg"
-	"image/png"
 	"io"
 	"math"
 	"strings"
@@ -41,10 +40,61 @@ func fill(dst *image.RGBA, r image.Rectangle, c color.Color) {
 	draw.Draw(dst, r, image.NewUniform(c), image.Point{}, draw.Over)
 }
 
-func Draw(spec Spec, read func(string) ([]byte, error), out io.Writer) error {
+// sources decodes each input once per render, however many layers use it, and
+// charges every distinct image to one pixel budget.
+type sources struct {
+	read   func(string) ([]byte, error)
+	images map[string]image.Image
+	fonts  map[string]*opentype.Font
+	pixels int64
+}
+
+func (s *sources) image(key string) (image.Image, error) {
+	if img, ok := s.images[key]; ok {
+		return img, nil
+	}
+	b, err := s.read(key)
+	if err != nil {
+		return nil, err
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	px := int64(cfg.Width) * int64(cfg.Height)
+	if cfg.Width <= 0 || cfg.Height <= 0 || s.pixels+px > MaxSourcePixels {
+		return nil, fmt.Errorf("image sources exceed %d decoded pixels in total (%d×%d)", MaxSourcePixels, cfg.Width, cfg.Height)
+	}
+	s.pixels += px
+	img, _, err := image.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	s.images[key] = img
+	return img, nil
+}
+
+func (s *sources) font(key string) (*opentype.Font, error) {
+	if f, ok := s.fonts[key]; ok {
+		return f, nil
+	}
+	b, err := s.read(key)
+	if err != nil {
+		return nil, err
+	}
+	f, err := opentype.Parse(b)
+	if err != nil {
+		return nil, err
+	}
+	s.fonts[key] = f
+	return f, nil
+}
+
+func Draw(spec Spec, readInput func(string) ([]byte, error), out io.Writer) error {
 	if _, err := spec.Inputs(); err != nil {
 		return err
 	}
+	read := &sources{read: readInput, images: map[string]image.Image{}, fonts: map[string]*opentype.Font{}}
 	dst := image.NewRGBA(image.Rect(0, 0, spec.Width, spec.Height))
 	bg := spec.Background
 	switch {
@@ -106,29 +156,18 @@ func Draw(spec Spec, read func(string) ([]byte, error), out io.Writer) error {
 			chart(dst, r, l, c)
 		}
 	}
-	encoder := png.Encoder{CompressionLevel: png.BestSpeed}
-	return encoder.Encode(out, dst)
+	return encodePNG(out, dst)
 }
-func picture(dst *image.RGBA, r image.Rectangle, l Layer, read func(string) ([]byte, error)) error {
+func picture(dst *image.RGBA, r image.Rectangle, l Layer, read *sources) error {
 	key, err := l.Source.Key()
 	if err != nil {
 		return err
 	}
-	b, err := read(key)
+	src, err := read.image(key)
 	if err != nil {
 		return err
 	}
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > 4<<20 {
-		return errors.New("image exceeds pixel limit")
-	}
-	src, _, err := image.Decode(bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
+	cfg := image.Config{Width: src.Bounds().Dx(), Height: src.Bounds().Dy()}
 	w, h := r.Dx(), r.Dy()
 	radius := l.Radius
 	switch l.Mask {
@@ -145,25 +184,43 @@ func picture(dst *image.RGBA, r image.Rectangle, l Layer, read func(string) ([]b
 	default:
 		return errors.New("unknown image mask")
 	}
+	fast, _ := src.(image.RGBA64Image)
 	clipped := r.Intersect(dst.Bounds())
+	bounds := src.Bounds()
+	// Source columns depend only on x: compute them once instead of per pixel.
+	columns := make([]int, clipped.Dx())
+	for x := range columns {
+		columns[x] = bounds.Min.X + (clipped.Min.X+x-r.Min.X)*cfg.Width/w
+	}
+	circle, rounded := l.Mask == "circle", l.Mask == "rounded"
 	for y := clipped.Min.Y; y < clipped.Max.Y; y++ {
-		for x := clipped.Min.X; x < clipped.Max.X; x++ {
-			px, py := x-r.Min.X, y-r.Min.Y
-			if l.Mask == "circle" {
+		py := y - r.Min.Y
+		sy := bounds.Min.Y + py*cfg.Height/h
+		row := dst.PixOffset(clipped.Min.X, y)
+		for n, sx := range columns {
+			px := clipped.Min.X + n - r.Min.X
+			if circle {
 				dx, dy := float64(px)+0.5-float64(w)/2, float64(py)+0.5-float64(h)/2
 				if dx*dx+dy*dy > float64(radius*radius) {
 					continue
 				}
 			}
-			if l.Mask == "rounded" {
+			if rounded {
 				dx, dy := max(radius-px-1, px-(w-radius), 0), max(radius-py-1, py-(h-radius), 0)
 				if dx*dx+dy*dy > radius*radius {
 					continue
 				}
 			}
-			sr, sg, sb, sa := src.At(src.Bounds().Min.X+px*cfg.Width/w, src.Bounds().Min.Y+py*cfg.Height/h).RGBA()
-			i := dst.PixOffset(x, y)
-			p := dst.Pix[i : i+4]
+			var sr, sg, sb, sa uint32
+			if fast != nil {
+				// RGBA64At returns a struct: At would box one color per pixel, and the
+				// allocations dominated the render time inside the worker.
+				c := fast.RGBA64At(sx, sy)
+				sr, sg, sb, sa = uint32(c.R), uint32(c.G), uint32(c.B), uint32(c.A)
+			} else {
+				sr, sg, sb, sa = src.At(sx, sy).RGBA()
+			}
+			p := dst.Pix[row+4*n : row+4*n+4]
 			inv := uint32(65535) - sa
 			p[0] = overChannel(sr, p[0], inv)
 			p[1] = overChannel(sg, p[1], inv)
@@ -179,16 +236,12 @@ func overChannel(src uint32, dst uint8, inverseAlpha uint32) uint8 {
 	return uint8((src>>8 + uint32(dst)*inverseAlpha/65535) & 255)
 }
 
-func label(dst *image.RGBA, l Layer, c color.Color, read func(string) ([]byte, error)) error {
+func label(dst *image.RGBA, l Layer, c color.Color, read *sources) error {
 	key, err := l.Font.Key()
 	if err != nil {
 		return err
 	}
-	b, err := read(key)
-	if err != nil {
-		return err
-	}
-	f, err := opentype.Parse(b)
+	f, err := read.font(key)
 	if err != nil {
 		return err
 	}

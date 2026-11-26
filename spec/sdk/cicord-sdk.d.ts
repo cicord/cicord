@@ -203,6 +203,15 @@ export interface Message {
    */
   readonly content: string;
   readonly author: User;
+  /**
+   * The author's member, when Discord sends it: set on messages received through the
+   * `messageCreate` event (and `messageUpdate` when the payload includes it) in a server,
+   * from the gateway payload; `undefined` for webhook messages and authors no longer in
+   * the server. Fetched messages (`channel.messages()`, `channel.message(id)`) and the
+   * message returned by `send`/`reply`/`edit` never carry it: Discord's REST message
+   * objects have no member, so call `ctx.server.member(message.author.id)` when you need
+   * one. In `directMessage`, it is the validated member of the selected server.
+   */
   readonly member?: Member;
   readonly channel: TextChannel;
   readonly attachments: readonly Attachment[];
@@ -257,6 +266,14 @@ export interface Role {
   readonly position?: number;
   /** Whether anyone may mention the role. `undefined` when the role is not known. */
   readonly mentionable?: boolean;
+  /**
+   * The permissions the role grants server-wide: Discord's permission bitfield as a decimal
+   * string, as in Discord's API (compare bits with `BigInt`, e.g.
+   * `(BigInt(role.permissions) & (1n << 3n)) !== 0n` for Administrator). `undefined` when
+   * the role is not known (not cached yet, or an older engine): treat it as unknown, never
+   * as "no permissions", and refuse what you cannot check.
+   */
+  readonly permissions?: string;
   /**
    * The members holding the role, in ascending user id order: at most `limit` (default 100,
    * at most 1000), those after the user id `after` (to page past `limit`). Discord has no
@@ -397,6 +414,15 @@ export interface CreateChannelOptions {
   userLimit?: number;
   /** Voice channels: bits per second, 8000–384000 (above 96000 needs server boosts). */
   bitrate?: number;
+  /**
+   * Idempotency key of this provisioning (at most 200 bytes), e.g. `room:${triggerId}:${userId}`.
+   * While a channel created with the same key still exists and this installation owns it,
+   * `createChannel` returns that channel instead of creating another one, so a handler
+   * replayed after a crash between `createChannel` and its own `kv.set` finds its channel.
+   * Keys are per installation, stored as a digest and forgotten after 30 days or once the
+   * channel is gone. Use it for channels without a topic (voice); see `recoverOwnedChannel`.
+   */
+  provisionKey?: string;
 }
 
 /**
@@ -455,6 +481,17 @@ export interface Overlay {
   id: string;
   reason: string;
   until: Date;
+  /**
+   * Keyed by channel key or `"*"` (every managed channel). Overwrite targets are
+   * `"@everyone"`, `"@bot"`, a role key, `"member:<id>"`, or `"*"`: every overwrite the
+   * channel already has, except `@everyone`, `@bot` and the `spec.access` admin and
+   * moderator roles and users. `"*"` takes `neutral` only and never creates an overwrite.
+   * A lock that must hold against `verified: allow [SendMessages]` combines both:
+   *
+   * ```ts
+   * { "@everyone": { deny: ["SendMessages"] }, "*": { neutral: ["SendMessages"] } }
+   * ```
+   */
   channels?: Record<string, {slowmodeSeconds?: number; overwrites?: Record<string, { deny?: Permission[]; neutral?: Permission[] }> }>;
   server?: {verificationLevel: "low" | "medium" | "high" | "highest"};
   members?: Record<Snowflake, {suspendDeclaredRoles: true}>;
@@ -483,6 +520,13 @@ export interface Server {
  /** Current guild policy and eligible resources visible to this bot. A failed or incomplete read returns known:false. @capability discord.channels.read */
  protection():Promise<ServerProtection>;
   readonly preferredLocale?: string;
+  /**
+   * The Discord user ids of every bot this Cicord project runs on this server (all bots
+   * and instances, this one's bot included), in ascending order. Read at each access, so a
+   * bot that connects later appears. Use it to exempt the project's own bots from
+   * automatic sanctions (Cicord never sanctions itself). No grant needed.
+   */
+  readonly cicordBotIds: readonly Snowflake[];
   /** Paginated by ascending user id. Shares the role.members() cache, grant and intent. */
   members(options?: { limit?: number; after?: Snowflake }): Promise<Member[]>;
   /** Send a DM even after the recipient left or was banned. @capability discord.dm.send */
@@ -539,9 +583,11 @@ export interface Server {
    * the category's (Discord syncs it). @capability discord.channels.manage
    */
   createChannel(options: CreateChannelOptions): Promise<TextChannel>;
-  /** Recover a provisioning request by its exact, unique channel topic. An existing
-   * channel without this installation's ownership receipt is never returned as owned. */
-  recoverOwnedChannel(topic:string):Promise<{status:"missing"|"owned"|"conflict";id?:Snowflake}>;
+  /** Recover a provisioning request by its exact, unique channel topic, or by the
+   * `provisionKey` it was created with (`{provisionKey}`: "owned" or "missing", never
+   * "conflict"). An existing channel without this installation's ownership receipt is never
+   * returned as owned. @capability discord.channels.manage */
+  recoverOwnedChannel(request:string|{provisionKey:string}):Promise<{status:"missing"|"owned"|"conflict";id?:Snowflake}>;
   /**
    * Edit a channel owned by this plugin instance (created by `createChannel`); overwrites
    * are patched, see `EditChannelOptions`. @capability discord.channels.manage
@@ -1008,7 +1054,7 @@ export declare function action<I = Json, O = Json>(handler: Action<I, O>): Actio
 export interface Context {
   readonly i18n: {t(key: string, vars?: Record<string,string|number|boolean>, options?: {locale?:string}): string};
   readonly assets: {read(path: string): Promise<Uint8Array>};
-  /** Declarative PNG rendering, at most 2048 × 2048. @capability render */
+  /** Experimental. Declarative PNG rendering: sides of at most 2048 and an area of at most 524,288 pixels (e.g. 1024 × 512). @capability render */
   readonly render: {image(spec: ImageSpec): Promise<{data: Uint8Array; contentType: "image/png"}>};
   /** Image digests and bitwise Hamming distance of equal-length hexadecimal digests. @capability media.analyze */
   readonly media: {
@@ -1201,7 +1247,13 @@ export interface EventHandlers {
   memberLeave?(ctx: Context, user: User, previous?: Member): Awaitable<void>;
   /** @intent ServerMembers */
   memberUpdate?(ctx: Context, member: Member, previous: Member | undefined): Awaitable<void>;
-  /** Delivered only after the bot host selects a server and validates membership. @intent DirectMessages */
+  /**
+   * Delivered only after the bot host selects a server and validates membership (from the
+   * server's member listing when it is fresh, else from Discord). A user who sends DMs
+   * faster than the host routes them (a burst of 10, then one per second) or finds the
+   * bot's DM queue full is told to try again in a moment; those DMs are not delivered.
+   * @intent DirectMessages
+   */
   directMessage?(ctx: Context, message: Message): Awaitable<void>;
   /** @intent ServerMessages (+ MessageContent to read message.content) */
   messageCreate?(ctx: Context, message: Message): Awaitable<void>;

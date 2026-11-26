@@ -14,8 +14,9 @@ import (
 
 // Update kinds.
 const (
-	// UpdateRegistry: the cicord.lock version of a registry plugin is not the highest
-	// release tag of its repository (any major version).
+	// UpdateRegistry: the cicord.lock version of a registry plugin is below the version
+	// `cicord plugin update` resolves (registry.LatestFor: the highest release of any major
+	// version whose spec.engine admits this engine, capped by a signed index).
 	UpdateRegistry = "registry"
 	// UpdateBundled: a copy of an official plugin (plugins/<name>/) is older than the
 	// version bundled in this binary.
@@ -96,8 +97,10 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 		return out
 	}
 	type job struct {
-		key, repoURL, prefix, current string
-		reg                           config.Registry
+		key, name, current string
+		entry              registry.IndexEntry
+		signed             bool
+		reg                config.Registry
 	}
 	var jobs []job
 	for _, r := range regs {
@@ -122,7 +125,7 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 			if !ok || !ok2 {
 				continue
 			}
-			jobs = append(jobs, job{key: key, repoURL: ie.Repo, prefix: ie.TagPrefix(name), current: le.Version, reg: r})
+			jobs = append(jobs, job{key: key, name: name, entry: ie, signed: c.idx.SignedBy != "", current: le.Version, reg: r})
 		}
 	}
 	var mu sync.Mutex
@@ -131,7 +134,7 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			latest := s.latest(ctx, j.reg, j.repoURL, j.prefix, mode)
+			latest := s.latest(ctx, j.reg, j.name, j.entry, j.signed, mode)
 			if level := registry.UpdateLevel(j.current, latest); level != "" {
 				mu.Lock()
 				out[j.key] = UpdateInfo{Kind: UpdateRegistry, Current: j.current, Latest: latest, Level: level}
@@ -143,15 +146,24 @@ func (s *Service) updates(ctx context.Context, repo *config.Repo, mode FetchMode
 	return out
 }
 
-// latestKey is the cache key of the latest version of a plugin: its repository and tag
-// prefix (the plugins of a monorepo share the repository, not the tags).
-func latestKey(repoURL, tagPrefix string) string {
-	return config.NormalizeRegistryURL(repoURL) + "#" + tagPrefix
+// latestKey is the cache key of the latest version of a plugin: its repository, tag prefix
+// and path (the plugins of a monorepo share the repository, not the tags), and for a signed
+// index the version it publishes (the ceiling of an update): a refreshed signed index that
+// publishes a newer version is looked up again instead of serving the old answer.
+func latestKey(name string, ie registry.IndexEntry, signed bool) string {
+	key := config.NormalizeRegistryURL(ie.Repo) + "#" + ie.TagPrefix(name) + "#" + ie.Path
+	if signed {
+		key += "#signed:" + ie.Version
+	}
+	return key
 }
 
-// latest returns the highest release of a plugin repository ("" when unknown).
-func (s *Service) latest(ctx context.Context, reg config.Registry, repoURL, tagPrefix string, mode FetchMode) string {
-	key := latestKey(repoURL, tagPrefix)
+// latest returns the version `cicord plugin update` would resolve for a registry plugin
+// ("" when unknown): registry.LatestFor, the highest release whose spec.engine admits the
+// running engine and, for a signed index, not above the version it publishes. The update
+// badge therefore never offers a version this engine refuses.
+func (s *Service) latest(ctx context.Context, reg config.Registry, name string, ie registry.IndexEntry, signed bool, mode FetchMode) string {
+	key := latestKey(name, ie, signed)
 	s.mu.Lock()
 	c, ok := s.tags[key]
 	s.mu.Unlock()
@@ -163,7 +175,7 @@ func (s *Service) latest(ctx context.Context, reg config.Registry, repoURL, tagP
 	}
 	f := s.Latest
 	if f == nil {
-		f = registry.LatestVersion
+		f = registry.LatestFor
 	}
 	t := s.FetchTimeout
 	if t == 0 {
@@ -171,7 +183,7 @@ func (s *Service) latest(ctx context.Context, reg config.Registry, repoURL, tagP
 	}
 	fctx, cancel := context.WithTimeout(s.withToken(s.guard(ctx), reg), t)
 	defer cancel()
-	v, err := f(fctx, reg.URL, repoURL, tagPrefix)
+	v, err := f(fctx, reg.URL, name, ie, signed)
 	c = cachedLatest{version: v, err: err, at: s.now()}
 	s.mu.Lock()
 	if s.tags == nil {

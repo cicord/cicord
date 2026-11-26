@@ -20,7 +20,7 @@ func (p packageFS) Open(name string) (fs.File, error) {
 	}
 	parts := strings.Split(name, "/")
 	for j, part := range parts {
-		switch part {
+		switch strings.ToLower(part) { // case-insensitive filesystems also resolve ".GIT"
 		case ".git", ".cicord", ".cicord-integrity":
 			return nil, fs.ErrNotExist
 		}

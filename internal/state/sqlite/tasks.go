@@ -182,7 +182,23 @@ func (q taskQueue) DeadCounts(ctx context.Context) (map[string]int, error) {
 const deadTaskServer = `dead AND substr(scope,1,7)='plugin:' AND substr(scope,length(scope)-length(?1))='/' || ?1`
 
 func (q taskQueue) DeadLetters(ctx context.Context, server string, limit int) ([]state.DeadTask, error) {
-	rows, err := q.s.r.QueryContext(ctx, `SELECT scope,id,name,run_at,attempts,failures,last_failure,event_seq IS NOT NULL FROM tasks WHERE `+deadTaskServer+` ORDER BY run_at,id LIMIT ?2`, server, clampLimit(limit, state.DefaultDueLimit))
+	return q.DeadLettersAfter(ctx, server, state.DeadCursor{}, limit)
+}
+
+// DeadLettersAfter pages by keyset on (run_at, id): id is the primary key, so the order
+// is total and stable under concurrent inserts and resolutions.
+func (q taskQueue) DeadLettersAfter(ctx context.Context, server string, after state.DeadCursor, limit int) ([]state.DeadTask, error) {
+	query := `SELECT scope,id,name,run_at,attempts,failures,last_failure,event_seq IS NOT NULL FROM tasks WHERE ` + deadTaskServer
+	args := []any{server, clampLimit(limit, state.DefaultDueLimit)}
+	if !after.IsZero() {
+		n, err := toNanos("cursor", after.RunAt)
+		if err != nil {
+			return nil, err
+		}
+		query += ` AND (run_at > ?3 OR (run_at = ?3 AND id > ?4))`
+		args = append(args, n, after.ID)
+	}
+	rows, err := q.s.r.QueryContext(ctx, query+` ORDER BY run_at,id LIMIT ?2`, args...)
 	if err != nil {
 		return nil, err
 	}

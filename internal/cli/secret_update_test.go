@@ -27,7 +27,7 @@ func TestPluginUpdateBindsCredentialApproval(t *testing.T) {
 	}
 	original := string(data)
 	re := regexp.MustCompile(`(?m)^([ ]*)source: acme/hello$`)
-	changed := re.ReplaceAllString(original, "${0}\n${1}secrets: {API_KEY: {secretRef: TEST_PROVIDER}}")
+	changed := re.ReplaceAllString(original, "${0}\n${1}secrets: {API_KEY: {secretRef: CICORD_TEST_PROVIDER}}")
 	if original == changed {
 		t.Fatal("missing fixture source")
 	}

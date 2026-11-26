@@ -22,14 +22,18 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/version"
 )
 
 const LockFile = "cicord.lock"
@@ -424,6 +428,7 @@ func commitFiles(c *object.Commit, sub string) (map[string][]byte, error) {
 // bounded traversal cost. Only ordinary file contents contribute to the lock hash.
 func packageFiles(tree *object.Tree, maxFiles int, maxTotal, maxFile int64) (map[string][]byte, error) {
 	files := map[string][]byte{}
+	folded := map[string]string{}
 	var total int64
 	walk := object.NewTreeWalker(tree, true, nil)
 	defer walk.Close()
@@ -446,6 +451,9 @@ func packageFiles(tree *object.Tree, maxFiles int, maxTotal, maxFile int64) (map
 		}
 		if len(files) >= maxFiles {
 			return nil, ErrRegistryLimit
+		}
+		if err := checkFoldCollision(folded, name); err != nil {
+			return nil, err
 		}
 		f, err := tree.TreeEntryFile(&entry)
 		if err != nil {
@@ -470,6 +478,24 @@ func packageFiles(tree *object.Tree, maxFiles int, maxTotal, maxFile int64) (map
 		total += f.Size
 	}
 
+}
+
+// checkFoldCollision refuses a package path that names the same file or directory as
+// another one on a case-insensitive or normalization-insensitive filesystem (macOS,
+// Windows): "src/index.ts" and "src/Index.ts", or "src/x.ts" and "SRC/y.ts". Such a tree
+// would be cached with one file overwriting the other, so what is built would depend on
+// the filesystem and on write order, not on the locked tree.
+func checkFoldCollision(seen map[string]string, name string) error {
+	parts := strings.Split(name, "/")
+	for i := range parts {
+		p := strings.Join(parts[:i+1], "/")
+		key := cases.Fold().String(norm.NFC.String(p))
+		if prev, ok := seen[key]; ok && prev != p {
+			return fmt.Errorf("unsafe package filename: %q and %q are the same path on case-insensitive filesystems", prev, p)
+		}
+		seen[key] = p
+	}
+	return nil
 }
 
 // Integrity is the content hash of a plugin ("sha256-<base64>") over its files sorted by
@@ -532,7 +558,7 @@ func FetchIndex(ctx context.Context, url string) (*Index, error) {
 			}
 			sig = []byte(s)
 		}
-		proof = indexProof{content, string(sig)}
+		proof = indexProof{Index: content, Signature: string(sig), Fetched: time.Now()}
 		err := checkSerial(ctx, func() (Envelope, error) {
 			env, id, err := VerifyIndex([]byte(content), sig, officialKeys(), VerifyOptions{Registries: officialURLs()})
 			signedBy = id
@@ -616,67 +642,161 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	if err != nil {
 		return nil, err
 	}
+	ceiling, err := indexCeiling(idx, ie, source)
+	if err != nil {
+		return nil, err
+	}
 	refs, err := listRefs(ctx, ie.Repo)
 	if err != nil {
 		return nil, fmt.Errorf("list release tags of %s: %w", Redact(ie.Repo), err)
 	}
-	var best *semver.Version
-	var tagRef *plumbing.Reference
+	cands := releaseCandidates(refs, prefix, c, ceiling)
+	if len(cands) == 0 {
+		return nil, fmt.Errorf("no version of %s matches %q", source, versionRange)
+	}
+	var refused []refusedRelease
+	for n, cand := range cands {
+		if n == maxEngineProbes {
+			break
+		}
+		// A release already known to require another engine is skipped without a fetch.
+		if engine, ok := cachedEngine(ie.Repo, cand.ref, ie.Path); ok && !EngineAccepts(engine) {
+			refused = append(refused, refusedRelease{cand.v.String(), engine})
+			continue
+		}
+		rel, err := fetchRelease(ctx, source, ie, prefix, cand)
+		if err != nil {
+			return nil, err
+		}
+		rememberEngine(ie.Repo, cand.ref, ie.Path, rel.manifest.Spec.Engine)
+		if !EngineAccepts(rel.manifest.Spec.Engine) {
+			refused = append(refused, refusedRelease{cand.v.String(), rel.manifest.Spec.Engine})
+			continue
+		}
+		dir, err := installRelease(ctx, cacheDir, source, rel)
+		if err != nil {
+			return nil, err
+		}
+		saveIndexProof(filepath.Join(cacheDir, "official-index-proof.json"), idx.proof)
+		rel.entry.Capabilities = rel.manifest.Spec.Capabilities
+		return &Resolution{Source: source, Entry: rel.entry, Dir: dir, Index: ie, Manifest: rel.manifest}, nil
+	}
+	return nil, noCompatibleRelease(source, versionRange, refused, len(cands) > maxEngineProbes)
+}
+
+// maxEngineProbes bounds the releases (newest first) whose plugin.yaml is fetched to find
+// one that supports the running engine: each probe is a shallow clone.
+const maxEngineProbes = 8
+
+// engineVersion is the running engine, checked against the spec.engine of plugin
+// manifests (a variable for tests).
+var engineVersion = func() string { return version.Version }
+
+// EngineAccepts reports whether a plugin manifest's spec.engine admits the running
+// engine, exactly like the loader (config.LoadOptions.EngineVersion): pre-release engines
+// match by semver precedence (version.EngineConstraint), a development build whose version
+// is not semver ("dev") admits every range, and an empty or invalid range admits none.
+func EngineAccepts(rng string) bool {
+	v, err := semver.NewVersion(engineVersion())
+	if err != nil {
+		return true
+	}
+	c, err := version.EngineConstraint(rng)
+	return err == nil && c.Check(v)
+}
+
+type candidate struct {
+	v   *semver.Version
+	ref *plumbing.Reference
+}
+
+// releaseCandidates lists the release tags with prefix that satisfy c, newest first,
+// without those above ceiling (nil: no ceiling).
+func releaseCandidates(refs []*plumbing.Reference, prefix string, c *semver.Constraints, ceiling *semver.Version) []candidate {
+	var out []candidate
 	for _, ref := range refs {
 		if !ref.Name().IsTag() {
 			continue
 		}
 		v, ok := tagVersion(ref.Name().Short(), prefix)
-		if ok && c.Check(v) && (best == nil || v.GreaterThan(best)) {
-			best, tagRef = v, ref
+		if !ok || !c.Check(v) || (ceiling != nil && v.GreaterThan(ceiling)) {
+			continue
 		}
+		out = append(out, candidate{v, ref})
 	}
-	if best == nil {
-		return nil, fmt.Errorf("no version of %s matches %q", source, versionRange)
+	sort.SliceStable(out, func(a, b int) bool { return out[a].v.GreaterThan(out[b].v) })
+	return out
+}
+
+// indexCeiling is the highest version a resolution may pick: for the official registry
+// (a verified, signed index) the version its entry publishes, so that a tag pushed to the
+// repository but not yet released through the signed index is never installed. Other
+// registries have no ceiling: their index is not authoritative.
+func indexCeiling(idx *Index, ie IndexEntry, source string) (*semver.Version, error) {
+	if idx.SignedBy == "" {
+		return nil, nil
 	}
-	repo, err := cloneRef(ctx, ie.Repo, tagRef.Name())
+	v, err := semver.NewVersion(ie.Version)
+	if err != nil {
+		return nil, fmt.Errorf("%s: the signed official index publishes no version of this plugin", source)
+	}
+	return v, nil
+}
+
+type refusedRelease struct{ version, engine string }
+
+func noCompatibleRelease(source, versionRange string, refused []refusedRelease, more bool) error {
+	running := engineVersion()
+	if len(refused) == 0 {
+		return fmt.Errorf("no version of %s matches %q", source, versionRange)
+	}
+	checked := ""
+	if more {
+		checked = fmt.Sprintf(" (checked the %d newest matching releases)", len(refused))
+	}
+	r := refused[0]
+	return fmt.Errorf("no version of %s matching %q supports Cicord %s%s: the newest, %s, requires Cicord %q; upgrade Cicord or pin an older range (%s@<range>)",
+		source, versionRange, running, checked, r.version, r.engine, source)
+}
+
+type release struct {
+	entry    LockEntry
+	files    map[string][]byte
+	manifest *config.Plugin
+}
+
+// fetchRelease downloads one candidate release tag and reads its files and manifest.
+func fetchRelease(ctx context.Context, source string, ie IndexEntry, prefix string, cand candidate) (*release, error) {
+	repo, err := cloneRef(ctx, ie.Repo, cand.ref.Name())
 	if err != nil {
 		return nil, err
 	}
-	fetched, err := repo.Reference(tagRef.Name(), true)
+	fetched, err := repo.Reference(cand.ref.Name(), true)
 	if err != nil {
 		return nil, err
 	}
-	if fetched.Hash() != tagRef.Hash() {
+	if fetched.Hash() != cand.ref.Hash() {
 		return nil, errors.New("selected release tag changed during fetch")
 	}
-	bestHash := fetched.Hash()
-	if tag, err := repo.TagObject(bestHash); err == nil {
-		bestHash = tag.Target
+	hash := fetched.Hash()
+	if tag, err := repo.TagObject(hash); err == nil {
+		hash = tag.Target
 	}
-	if iv, err := semver.NewVersion(ie.Version); err == nil && ie.Commit != "" && iv.Equal(best) && bestHash.String() != ie.Commit {
+	if iv, err := semver.NewVersion(ie.Version); err == nil && ie.Commit != "" && iv.Equal(cand.v) && hash.String() != ie.Commit {
 		return nil, fmt.Errorf("%s: tag %s points to %s, but the registry index published it at %s (the tag moved)",
-			source, ReleaseTag(prefix, best.String()), shortSHA(bestHash.String()), shortSHA(ie.Commit))
+			source, ReleaseTag(prefix, cand.v.String()), shortSHA(hash.String()), shortSHA(ie.Commit))
 	}
-	commit, err := repo.CommitObject(bestHash)
+	commit, err := repo.CommitObject(hash)
 	if err != nil {
 		return nil, err
 	}
-	entry := LockEntry{Version: best.String(), Repo: ie.Repo, Path: ie.Path, Commit: bestHash.String()}
+	entry := LockEntry{Version: cand.v.String(), Repo: ie.Repo, Path: ie.Path, Commit: hash.String()}
 	files, err := commitFiles(commit, ie.Path)
 	if err != nil {
 		return nil, fmt.Errorf("%s@%s: %w", source, entry.Version, err)
 	}
 	entry.Integrity = Integrity(files)
-	dir, err := cachePath(cacheDir, source, entry)
-	if err != nil {
-		return nil, err
-	}
-	parent, err := openCacheParent(cacheDir, dir)
-	if err != nil {
-		return nil, err
-	}
-	defer parent.Close()
-	if err = installCache(ctx, parent, filepath.Base(dir), entry.Integrity, files); err != nil {
-		return nil, err
-	}
-	saveIndexProof(filepath.Join(cacheDir, "official-index-proof.json"), idx.proof)
-	manifest, ok := files["plugin.yaml"]
+	raw, ok := files["plugin.yaml"]
 	if !ok {
 		where := "the repository root"
 		if ie.Path != "" {
@@ -685,11 +805,52 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 		return nil, fmt.Errorf("%s@%s has no plugin.yaml in %s", source, entry.Version, where)
 	}
 	var m config.Plugin
-	if err := yaml.Unmarshal(manifest, &m); err != nil {
+	if err := yaml.Unmarshal(raw, &m); err != nil {
 		return nil, fmt.Errorf("%s@%s: plugin.yaml: %w", source, entry.Version, err)
 	}
-	entry.Capabilities = m.Spec.Capabilities
-	return &Resolution{Source: source, Entry: entry, Dir: dir, Index: ie, Manifest: &m}, nil
+	return &release{entry: entry, files: files, manifest: &m}, nil
+}
+
+func installRelease(ctx context.Context, cacheDir, source string, rel *release) (string, error) {
+	dir, err := cachePath(cacheDir, source, rel.entry)
+	if err != nil {
+		return "", err
+	}
+	parent, err := openCacheParent(cacheDir, dir)
+	if err != nil {
+		return "", err
+	}
+	defer parent.Close()
+	return dir, installCache(ctx, parent, filepath.Base(dir), rel.entry.Integrity, rel.files)
+}
+
+// The spec.engine of release tags already read, by repository, tag object and plugin
+// path: a tag that moves gets a new hash, so an entry never goes stale.
+var (
+	enginesMu sync.Mutex
+	engines   = map[string]string{}
+)
+
+const maxCachedEngines = 4096
+
+func engineKey(repo string, ref *plumbing.Reference, sub string) string {
+	return config.NormalizeRegistryURL(repo) + "\x00" + ref.Hash().String() + "\x00" + sub
+}
+
+func cachedEngine(repo string, ref *plumbing.Reference, sub string) (string, bool) {
+	enginesMu.Lock()
+	defer enginesMu.Unlock()
+	e, ok := engines[engineKey(repo, ref, sub)]
+	return e, ok
+}
+
+func rememberEngine(repo string, ref *plumbing.Reference, sub, engine string) {
+	enginesMu.Lock()
+	defer enginesMu.Unlock()
+	if len(engines) >= maxCachedEngines {
+		clear(engines)
+	}
+	engines[engineKey(repo, ref, sub)] = engine
 }
 
 // ListTags lists the tag names of a git repository without cloning it (ls-remote).

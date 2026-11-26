@@ -264,11 +264,40 @@ func (s *Store) migrate(ctx context.Context) error {
 	if int(current.Int64) > latest {
 		return fmt.Errorf("state/sqlite: database schema version %d is newer than this binary supports (%d)", current.Int64, latest)
 	}
+	if err := s.checkAppliedMigrations(ctx, ms); err != nil {
+		return err
+	}
 
 	for _, m := range ms {
 		if err := s.applyMigration(ctx, m); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkAppliedMigrations refuses a database whose recorded migrations do not
+// match the embedded files by version and name (storeutil.CheckApplied).
+func (s *Store) checkAppliedMigrations(ctx context.Context, ms []storeutil.Migration) error {
+	rows, err := s.w.QueryContext(ctx, `SELECT version, name FROM schema_migrations`)
+	if err != nil {
+		return fmt.Errorf("state/sqlite: read applied migrations: %w", err)
+	}
+	defer rows.Close()
+	applied := map[int]string{}
+	for rows.Next() {
+		var v int
+		var name string
+		if err := rows.Scan(&v, &name); err != nil {
+			return fmt.Errorf("state/sqlite: read applied migrations: %w", err)
+		}
+		applied[v] = name
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("state/sqlite: read applied migrations: %w", err)
+	}
+	if err := storeutil.CheckApplied(applied, ms); err != nil {
+		return fmt.Errorf("state/sqlite: %w", err)
 	}
 	return nil
 }

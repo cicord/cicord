@@ -3,9 +3,12 @@ package sim
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -1275,15 +1278,26 @@ func (w *World) updateChannel(a actor, channelID string, p discord.ChannelParams
 	if !isThread(ch.Type) {
 		w.layoutChannels(s, req, []string{ch.ID})
 	}
-	w.recordOK(a, "UpdateChannel", serverID, channelID, reason)
+	// The adapter sends the overwrites of the request (or the parent's, to sync).
+	fields, sent := channelBodyFields(p), []string(nil)
+	if p.Overwrites != nil || (p.LockPermissions != nil && *p.LockPermissions && ch.ParentID != "") {
+		for _, o := range newOws {
+			sent = append(sent, o.ID)
+		}
+	}
+	w.recordCall(a, "UpdateChannel", serverID, channelID, reason, fields, sent)
+	// Discord writes channel.update for the channel's own fields, and one overwrite
+	// create, update or delete entry per changed overwrite.
 	var changes []discord.AuditLogChange
 	if previousChannel.Name != ch.Name {
 		changes = append(changes, discord.AuditLogChange{Key: "name", Old: auditValue(previousChannel.Name), New: auditValue(ch.Name)})
 	}
-	if p.Overwrites != nil {
-		changes = append(changes, discord.AuditLogChange{Key: "permission_overwrites", Old: auditValue(previousChannel.Overwrites), New: auditValue(ch.Overwrites)})
+	if len(changes) > 0 || slices.ContainsFunc(fields, func(f string) bool { return f != "permission_overwrites" }) {
+		w.auditWithReason(serverID, a.userID, 11, channelID, a.auditReason(reason), changes...)
 	}
-	w.auditWithReason(serverID, a.userID, 11, channelID, a.auditReason(reason), changes...)
+	if !isThread(ch.Type) {
+		w.auditOverwrites(s, a, channelID, previousChannel.Overwrites, ch.Overwrites, a.auditReason(reason))
+	}
 	w.emit(discord.ChannelUpdateEvent{Channel: c.ch})
 	w.emitChannelChanges(s, snap, ch.ID)
 	return cloneChannel(c.ch), nil
@@ -1519,4 +1533,59 @@ func (w *World) createThread(a actor, channelID string, p discord.ThreadParams) 
 	w.recordOK(a, "CreateThread", serverID, ch.ID, "")
 	w.emit(discord.ChannelCreateEvent{Channel: ch, NewThread: true})
 	return ch, nil
+}
+
+// channelBodyFields are the PATCH body keys the adapter sends for p.
+func channelBodyFields(p discord.ChannelParams) []string {
+	fields := []string{}
+	v := reflect.ValueOf(p)
+	for n := range v.NumField() {
+		f := v.Field(n)
+		name := v.Type().Field(n).Name
+		if name == "Type" || name == "Overwrites" || name == "LockPermissions" || f.Kind() != reflect.Pointer || f.IsNil() {
+			continue
+		}
+		fields = append(fields, name)
+	}
+	if p.Overwrites != nil || (p.LockPermissions != nil && *p.LockPermissions) {
+		fields = append(fields, "permission_overwrites")
+	}
+	return fields
+}
+
+// auditOverwrites writes Discord's overwrite entries (13 create, 14 update, 15
+// delete) on the channel, with the overwritten role or member in the options.
+// Caller holds w.mu.
+func (w *World) auditOverwrites(s *serverState, a actor, channelID string, before, after []discord.Overwrite, reason string) {
+	prev := map[string]discord.Overwrite{}
+	for _, o := range before {
+		prev[o.ID] = o
+	}
+	next := map[string]discord.Overwrite{}
+	for _, o := range after {
+		next[o.ID] = o
+	}
+	opts := func(o discord.Overwrite) map[string]json.RawMessage {
+		m := map[string]json.RawMessage{"id": auditValue(o.ID), "type": auditValue(strconv.Itoa(int(o.Type)))}
+		if o.Type == discord.OverwriteRole {
+			if r := s.roles[o.ID]; r != nil {
+				m["role_name"] = auditValue(r.Name)
+			}
+		}
+		return m
+	}
+	for _, o := range after {
+		old, existed := prev[o.ID]
+		switch {
+		case !existed:
+			w.appendAudit(s.info.ID, a.userID, discord.AuditOverwriteCreate, channelID, reason, opts(o))
+		case old.Allow != o.Allow || old.Deny != o.Deny:
+			w.appendAudit(s.info.ID, a.userID, discord.AuditOverwriteUpdate, channelID, reason, opts(o))
+		}
+	}
+	for _, o := range before {
+		if _, kept := next[o.ID]; !kept {
+			w.appendAudit(s.info.ID, a.userID, discord.AuditOverwriteDelete, channelID, reason, opts(o))
+		}
+	}
 }

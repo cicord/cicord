@@ -140,8 +140,8 @@ func resolvePeer(from *instanceRT, name string) (*instanceRT, error) {
 }
 
 type privacyGate interface {
-	WithReplayPrivacy(context.Context, string, json.RawMessage, func() error) (bool, error)
-	ErasedPayload(context.Context, string, json.RawMessage) (bool, error)
+	WithReplayPrivacy(context.Context, string, string, json.RawMessage, func() error) (bool, error)
+	ErasedPayload(context.Context, string, string, json.RawMessage) (bool, error)
 }
 
 func (r *Runtime) invokePeer(ctx context.Context, from *instanceRT, kind string, req plugin.Request, frame plugin.CallFrame) (out json.RawMessage, err error) {
@@ -152,7 +152,7 @@ func (r *Runtime) invokePeer(ctx context.Context, from *instanceRT, kind string,
 	payload, _ := json.Marshal([]any{frame.Principal, req.Input})
 	server := from.cfg.Server
 	if frame.PrivacyGuard {
-		erased, err := gate.ErasedPayload(ctx, server, payload)
+		erased, err := gate.ErasedPayload(ctx, server, instanceScope(from.cfg), payload)
 		if err != nil {
 			return nil, interopFailure("handler_error", "privacy state unavailable")
 		}
@@ -162,7 +162,7 @@ func (r *Runtime) invokePeer(ctx context.Context, from *instanceRT, kind string,
 		return r.runPeer(ctx, from, kind, req, frame)
 	}
 	frame.PrivacyGuard = true
-	erased, err := gate.WithReplayPrivacy(ctx, server, payload, func() error { var e error; out, e = r.runPeer(ctx, from, kind, req, frame); return e })
+	erased, err := gate.WithReplayPrivacy(ctx, server, instanceScope(from.cfg), payload, func() error { var e error; out, e = r.runPeer(ctx, from, kind, req, frame); return e })
 	if erased {
 		return nil, interopFailure("denied", "member data has been erased")
 	}
@@ -280,8 +280,18 @@ func (r *Runtime) runPeer(ctx context.Context, from *instanceRT, kind string, re
 	if err := dec.Decode(&input); err != nil {
 		return nil, interopFailure("invalid_input", "invalid JSON")
 	}
-	raw, _ := json.Marshal([]any{call, input})
-	actionID := stableID(in.ID(), req.Name, req.IdempotencyKey)
+	// The receipt is (provider, caller, action, key): keys derive from the caller's
+	// own origin, so another granted caller can neither squat nor probe them. The
+	// fingerprint binds the input and the principal's identity (user and resource
+	// scope): a stored result computed on behalf of one member is never returned to
+	// a request on behalf of another. The principal's access level is not part of
+	// it: a retry of the same request after the member's access changed replays the
+	// action's original outcome (the effect already happened) instead of failing
+	// with invalid_input; a new key reaches the provider, which re-checks access on
+	// every call. Caller provenance (source, verified) is not part of it either, so
+	// a retry still matches after a registry index refresh.
+	raw, _ := json.Marshal([]any{principalIdentity(call.OnBehalfOf), input})
+	actionID := stableID(in.ID(), from.cfg.ID(), req.Name, req.IdempotencyKey)
 	owner := rand.Text()
 	journal := r.opts.Store.Interop()
 	for {
@@ -300,7 +310,7 @@ func (r *Runtime) runPeer(ctx context.Context, from *instanceRT, kind string, re
 		}
 		if cached != nil {
 			if gate, ok := any(r).(privacyGate); ok {
-				erased, e := gate.ErasedPayload(ctx, in.Server, cached)
+				erased, e := gate.ErasedPayload(ctx, in.Server, "", cached)
 				if e != nil {
 					return nil, interopFailure("handler_error", "privacy state unavailable")
 				}
@@ -418,16 +428,28 @@ func checkedTask(ctx context.Context, inst *instanceRT, t state.TaskLease, r *Ru
 			return err
 		}
 		if !eventEnabled(inst, ev.Meta.Topic, ev.Meta.Version) {
-			return errors.New("event subscription unavailable")
+			return errSubscriptionUnavailable
 		}
 		data = ev.Payload
 		deliver = func(ctx context.Context) error { return inst.inst().DeliverEvent(ctx, ev) }
 	}
 	if gate, ok := any(r).(interface {
-		WithReplayPrivacy(context.Context, string, json.RawMessage, func() error) (bool, error)
+		WithReplayPrivacy(context.Context, string, string, json.RawMessage, func() error) (bool, error)
 	}); ok {
-		_, err := gate.WithReplayPrivacy(ctx, inst.cfg.Server, data, func() error { return deliver(plugin.WithPrivacyGuard(ctx)) })
+		_, err := gate.WithReplayPrivacy(ctx, inst.cfg.Server, instanceScope(inst.cfg), data, func() error { return deliver(plugin.WithPrivacyGuard(ctx)) })
 		return err
 	}
 	return deliver(ctx)
+}
+
+// principalIdentity is the part of a principal an action receipt binds: who the call is
+// on behalf of and in which resource scope, not their current access level.
+func principalIdentity(p *plugin.Principal) any {
+	if p == nil {
+		return nil
+	}
+	return struct {
+		UserID        string                `json:"userId"`
+		ResourceScope *plugin.ResourceScope `json:"resourceScope,omitempty"`
+	}{p.UserID, p.ResourceScope}
 }

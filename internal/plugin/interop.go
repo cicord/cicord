@@ -80,15 +80,12 @@ func (i *Instance) invocationKV(inv *invocation) state.KV {
 	return i.env.KV
 }
 
-var interopSlots = make(chan struct{}, 32)
-
 func (i *Instance) Invoke(ctx context.Context, kind, name string, input json.RawMessage, call Call, frame CallFrame) (json.RawMessage, error) {
-	select {
-	case interopSlots <- struct{}{}:
-		defer func() { <-interopSlots }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	release, err := interopPool(frame).acquire(ctx, i.env.ServerID)
+	if err != nil {
+		return nil, err
 	}
+	defer release()
 	vm, err := i.privateVM(ctx, frame)
 	if err != nil {
 		return nil, err
@@ -231,17 +228,14 @@ func (i *Instance) privateVM(ctx context.Context, frame CallFrame) (*Instance, e
 	return vm, nil
 }
 
-// Member requests and nested peer requests have separate admission pools: one
-// pool of callers waiting on their peers cannot consume all provider slots.
-var memberSlots = make(chan struct{}, 64)
-
+// Member requests and peer requests have separate admission pools (admission.go):
+// one pool of callers waiting on their peers cannot consume all provider slots.
 func (i *Instance) privateMember(ctx context.Context, run func(*Instance) error) error {
-	select {
-	case memberSlots <- struct{}{}:
-		defer func() { <-memberSlots }()
-	default:
+	release, ok := memberSlots.tryAcquire(i.env.ServerID)
+	if !ok {
 		return ErrBusy
 	}
+	defer release()
 	vm, err := i.privateVM(ctx, CallFrame{})
 	if err != nil {
 		return err

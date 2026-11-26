@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/discord"
@@ -127,6 +129,7 @@ func init() {
 		"upload.free":    opUploadFree,
 		"media.distance": opMediaDistance,
 		"server.owner":   opServerOwner,
+		"server.botIds":  opCicordBotIDs,
 		"status.set":     opFeatureStatus,
 		"secrets.has":    opSecretHas,
 		"it.state":       opInteractionState,
@@ -299,8 +302,9 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 		}
 		var res any
 		err := inv.ctx.Err()
+		hold := i.resultHold(inv) // results.go: host bytes until the VM has the result
 		if err == nil {
-			res, err = work(inv.ctx)
+			res, err = work(withResultHold(inv.ctx, hold))
 		}
 		if err == nil {
 			inv.rememberAudience(res)
@@ -308,6 +312,9 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 		var data []byte
 		if err == nil && res != nil {
 			data, err = json.Marshal(res)
+		}
+		if err == nil {
+			err = hold.fit(inv.ctx, len(data))
 		}
 		if err != nil && inv.ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
 			err = inv.alive()
@@ -321,6 +328,7 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 		}
 		sid := strconv.FormatInt(id, 10)
 		posted := i.post(func() {
+			defer hold.release()
 			if release != nil {
 				defer release()
 			}
@@ -333,8 +341,11 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 				i.logger.Error("plugin host: settle host call", "op", op, "error", rerr)
 			}
 		})
-		if !posted && release != nil {
-			release()
+		if !posted {
+			hold.release()
+			if release != nil {
+				release()
+			}
 		}
 	}()
 	return id, nil
@@ -520,6 +531,32 @@ func opServerOwner(i *Instance, _ *invocation, _ json.RawMessage) (any, error) {
 		return id, nil
 	}
 	return nil, nil
+}
+
+// opCicordBotIDs returns ctx.server.cicordBotIds: the Discord user ids of every bot of the
+// project on this server, the instance's own bot included. No capability: it only names
+// the project's own bots, so plugins (guard, P7) can always exempt them.
+func opCicordBotIDs(i *Instance, _ *invocation, _ json.RawMessage) (any, error) {
+	var ids []string
+	if i.env.CicordBotIDs != nil {
+		ids = slices.Clone(i.env.CicordBotIDs())
+	}
+	if i.env.Bot.ID != "" && !slices.Contains(ids, i.env.Bot.ID) {
+		ids = append(ids, i.env.Bot.ID)
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	slices.SortFunc(ids, func(a, b string) int {
+		if discord.SnowflakeLess(a, b) {
+			return -1
+		}
+		if discord.SnowflakeLess(b, a) {
+			return 1
+		}
+		return 0
+	})
+	return ids, nil
 }
 
 // ───────────────────────────────────────────────────────────── channel scope
@@ -967,6 +1004,15 @@ func opMemberRole(add bool) asyncOp {
 		if roleID == i.env.ServerID {
 			return nil, argErr("the @everyone role cannot be assigned")
 		}
+		protected, err := i.declaredMemberRoleIDs()
+		if err != nil {
+			return nil, err
+		}
+		if protected[roleID] {
+			// P1: git owns this membership. A plugin suspends it temporarily with a
+			// server.overlays member restriction instead of fighting the reconciler.
+			return nil, argErr("membership of role %s is declared in git; use an overlay with suspendDeclaredRoles instead", roleID)
+		}
 		return func(ctx context.Context) (any, error) {
 			var err error
 			if add {
@@ -993,6 +1039,20 @@ func opMemberRole(add bool) asyncOp {
 			return i.roleDTO(roleID), nil
 		}, nil
 	}
+}
+
+// declaredMemberRoleIDs resolves the roles whose membership bot.yaml or the
+// server manifest declares. Plugins never change that membership directly (P1).
+func (i *Instance) declaredMemberRoleIDs() (map[string]bool, error) {
+	protected := map[string]bool{}
+	for _, key := range i.env.DeclaredMemberRoles {
+		id, err := i.resolve(state.KindRole, ref{Key: key, set: true})
+		if err != nil {
+			return nil, err
+		}
+		protected[id] = true
+	}
+	return protected, nil
 }
 
 // opMemberSetRoles changes the full role set in one Discord PATCH. Before replacing
@@ -1028,13 +1088,9 @@ func opMemberSetRoles(i *Instance, inv *invocation, args json.RawMessage) (func(
 		ids = append(ids, id)
 		wanted[id] = true
 	}
-	protected := map[string]bool{}
-	for _, key := range i.env.DeclaredMemberRoles {
-		id, err := i.resolve(state.KindRole, ref{Key: key, set: true})
-		if err != nil {
-			return nil, err
-		}
-		protected[id] = true
+	protected, err := i.declaredMemberRoleIDs()
+	if err != nil {
+		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
 		member, err := i.env.Discord.GetMember(ctx, i.env.ServerID, a.UserID)
@@ -1485,9 +1541,30 @@ func opRecoverOwnedChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 	if err := i.require(capChannelsManage); err != nil {
 		return nil, err
 	}
-	a, err := decode[struct{ Topic string }](args)
+	a, err := decode[struct {
+		Topic        string `json:"topic"`
+		ProvisionKey string `json:"provisionKey"`
+	}](args)
 	if err != nil {
 		return nil, err
+	}
+	if a.ProvisionKey != "" {
+		if a.Topic != "" {
+			return nil, argErr("recoverOwnedChannel(): pass a topic or a provisionKey, not both")
+		}
+		if err := checkProvisionKey(a.ProvisionKey); err != nil {
+			return nil, err
+		}
+		return func(ctx context.Context) (any, error) {
+			ch, ok, err := i.provisioned(ctx, a.ProvisionKey)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return map[string]string{"status": "missing"}, nil
+			}
+			return map[string]string{"status": "owned", "id": ch.ID}, nil
+		}, nil
 	}
 	if a.Topic == "" || len([]rune(a.Topic)) > 1024 {
 		return nil, argErr("provide the original provisioning topic")
@@ -1536,12 +1613,18 @@ func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 			Allow []string `json:"allow"`
 			Deny  []string `json:"deny"`
 		} `json:"overwrites"`
+		ProvisionKey string `json:"provisionKey"`
 	}](args)
 	if err != nil {
 		return nil, err
 	}
 	if a.Name == "" || len([]rune(a.Name)) > 100 {
 		return nil, argErr("createChannel(): name must be 1-100 characters")
+	}
+	if a.ProvisionKey != "" {
+		if err := checkProvisionKey(a.ProvisionKey); err != nil {
+			return nil, err
+		}
 	}
 	p := discord.ChannelParams{Name: &a.Name}
 	switch a.Type {
@@ -1591,6 +1674,20 @@ func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 		p.Overwrites = &ows
 	}
 	return func(ctx context.Context) (any, error) {
+		if a.ProvisionKey != "" {
+			// One provisioning per key at a time: a replayed handler that races the
+			// original waits for it, then finds its channel.
+			i.provisionMu.Lock()
+			defer i.provisionMu.Unlock()
+			existing, ok, err := i.provisioned(ctx, a.ProvisionKey)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				i.markServerChannel(existing.ID)
+				return i.channelDTOFrom(existing), nil
+			}
+		}
 		ch, err := i.env.Discord.CreateChannel(ctx, i.env.ServerID, p, "cicord: created by plugin "+i.env.PluginName+" ("+i.env.InstanceName+")")
 		if err != nil {
 			return nil, err
@@ -1608,8 +1705,72 @@ func opServerCreateChannel(i *Instance, _ *invocation, args json.RawMessage) (fu
 		} else {
 			i.logger.Warn("plugin channel created without a resource map: ownership not recorded", "channel", ch.ID)
 		}
+		// After the ownership receipt: a recorded key always names an owned channel.
+		if a.ProvisionKey != "" {
+			raw, _ := json.Marshal(ch.ID)
+			if err := i.env.ChannelProvisions.Set(ctx, provisionHash(a.ProvisionKey), raw, provisionTTL); err != nil {
+				i.logger.Error("plugin channel created but its provisioning key could not be recorded", "channel", ch.ID, "error", err)
+			}
+		}
 		return i.channelDTOFrom(ch), nil
 	}, nil
+}
+
+// provisionTTL bounds how long a createChannel provisionKey is remembered: longer than any
+// redelivery of the handler that created the channel (failed deliveries park for 14 days).
+const provisionTTL = 30 * 24 * time.Hour
+
+func checkProvisionKey(key string) error {
+	if len(key) > 200 || !utf8.ValidString(key) {
+		return argErr("provisionKey must be a string of at most 200 bytes")
+	}
+	return nil
+}
+
+// provisionHash is the stored form of a provisionKey: plugins may derive keys from member
+// ids, and the host keeps only a digest of them.
+func provisionHash(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
+
+// provisioned returns the channel recorded for a provisionKey when it still exists and
+// this installation's ownership receipt names it. A stale record (channel deleted, or no
+// receipt) is dropped, so the next createChannel provisions a new channel.
+func (i *Instance) provisioned(ctx context.Context, key string) (discord.Channel, bool, error) {
+	if i.env.ChannelProvisions == nil || i.env.Resources == nil {
+		return discord.Channel{}, false, errors.New("channel provisioning storage unavailable")
+	}
+	h := provisionHash(key)
+	raw, err := i.env.ChannelProvisions.Get(ctx, h)
+	if errors.Is(err, state.ErrNotFound) {
+		return discord.Channel{}, false, nil
+	}
+	if err != nil {
+		return discord.Channel{}, false, err
+	}
+	var id string
+	if err := json.Unmarshal(raw, &id); err != nil || id == "" {
+		return discord.Channel{}, false, i.env.ChannelProvisions.Delete(ctx, h)
+	}
+	record, err := i.env.Resources.Get(ctx, i.env.ServerKey, state.KindChannel, i.env.BotKey+"/"+i.env.InstanceName+"/"+id)
+	if err != nil && !errors.Is(err, state.ErrNotFound) {
+		return discord.Channel{}, false, err
+	}
+	if err != nil || record.Owner != i.owner() || record.ID != id {
+		return discord.Channel{}, false, i.env.ChannelProvisions.Delete(ctx, h)
+	}
+	ch, err := i.env.Discord.GetChannel(ctx, id)
+	if errors.Is(err, discord.ErrNotFound) {
+		return discord.Channel{}, false, i.env.ChannelProvisions.Delete(ctx, h)
+	}
+	if err != nil {
+		return discord.Channel{}, false, err
+	}
+	if ch.ServerID != i.env.ServerID {
+		return discord.Channel{}, false, i.env.ChannelProvisions.Delete(ctx, h)
+	}
+	return ch, true, nil
 }
 
 // overwriteTarget parses an overwrite target of createChannel / editChannel: "@everyone",
@@ -1878,6 +2039,9 @@ func opKVGet(i *Instance, inv *invocation, args json.RawMessage) (func(context.C
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
+		if err := reserveResult(ctx, 2*maxKVValue); err != nil {
+			return nil, err
+		}
 		v, err := i.invocationKV(inv).Get(ctx, a.Key)
 		if errors.Is(err, state.ErrNotFound) {
 			return nil, nil
@@ -1954,6 +2118,10 @@ func opKVList(i *Instance, inv *invocation, args json.RawMessage) (func(context.
 		return nil, argErr("kv.list: limit must be between 1 and 1000")
 	}
 	return func(ctx context.Context) (any, error) {
+		// A page holds up to maxKVListBytes plus the entry that crosses it.
+		if err := reserveResult(ctx, 2*(maxKVListBytes+maxKVValue+int64(a.Limit)*maxKVKey)); err != nil {
+			return nil, err
+		}
 		items, next, err := i.invocationKV(inv).List(ctx, a.Prefix, a.Limit, a.Cursor)
 		if err != nil {
 			return nil, err

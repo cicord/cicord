@@ -8,6 +8,8 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/cicord/cicord/internal/discord"
 )
 
 type testSyncPolicy struct {
@@ -18,6 +20,18 @@ type testSyncPolicy struct {
 type testServerFixture struct {
 	SyncPolicy      *testSyncPolicy `yaml:"syncPolicy"`
 	PrivateChannels []string        `yaml:"privateChannels"`
+	// BotPermissions replaces the test bot's server-wide permissions (Administrator by
+	// default) once the plugin started, to exercise its degraded mode. [] leaves none.
+	BotPermissions *[]string `yaml:"botPermissions"`
+}
+
+// botPermissions is the parsed botPermissions of a fixture.
+func (f *testServerFixture) botPermissions() (discord.Permissions, bool) {
+	if f == nil || f.BotPermissions == nil {
+		return 0, false
+	}
+	p, _ := discord.ParsePermissions(*f.BotPermissions)
+	return p, true
 }
 
 // readTestServerFixture reads a bounded declaration for the disposable simulator.
@@ -62,8 +76,16 @@ func readTestServerFixture(pluginDir string) (*testServerFixture, error) {
 	if fixture.SyncPolicy != nil && fixture.SyncPolicy.SelfHeal == nil && fixture.SyncPolicy.DeletionProtection == nil {
 		return nil, errors.New("expected syncPolicy.selfHeal or syncPolicy.deletionProtection")
 	}
-	if fixture.SyncPolicy == nil && len(fixture.PrivateChannels) == 0 {
-		return nil, errors.New("expected syncPolicy or at least one privateChannels entry")
+	if fixture.SyncPolicy == nil && len(fixture.PrivateChannels) == 0 && fixture.BotPermissions == nil {
+		return nil, errors.New("expected syncPolicy, botPermissions or at least one privateChannels entry")
+	}
+	if p := fixture.BotPermissions; p != nil {
+		if len(*p) > 64 {
+			return nil, errors.New("botPermissions supports at most 64 permission names")
+		}
+		if _, err := discord.ParsePermissions(*p); err != nil {
+			return nil, fmt.Errorf("botPermissions: %w", err)
+		}
 	}
 	if len(fixture.PrivateChannels) > 32 {
 		return nil, errors.New("privateChannels supports at most 32 channel keys")

@@ -738,6 +738,19 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 		fmt.Fprintf(stdout, "info %s disabled: %s\n", f.Feature, f.Reason)
 	}
 	bot := seed.Bots["test"]
+	// test/server.yaml botPermissions: after the first sync (which needs the default
+	// Administrator), the bot keeps only these, so the scenario runs in degraded mode.
+	if perms, ok := fixture.botPermissions(); ok {
+		if _, err := world.SetBotPermissions(testServerID, bot.ID, perms); err != nil {
+			return fmt.Errorf("test/server.yaml botPermissions: %w", err)
+		}
+		world.WaitIdle()
+		names := strings.Join(perms.Names(), ", ")
+		if names == "" {
+			names = "none"
+		}
+		fmt.Fprintf(stdout, "ok   bot permissions: %s\n", names)
+	}
 	if cmds := world.Commands(testAppID, testServerID); len(cmds) > 0 {
 		var names []string
 		for _, c := range cmds {

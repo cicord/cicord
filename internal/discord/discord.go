@@ -768,6 +768,9 @@ const (
 type CommandChoice struct {
 	Name  string
 	Value any // string or float64
+	// Names are the translations of Name by Discord locale (name_localizations), for
+	// choices of registered commands.
+	Names map[string]string `json:",omitempty"`
 }
 
 // CommandLabels contains translations only. Canonical names remain stable IDs.

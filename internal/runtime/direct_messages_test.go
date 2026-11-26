@@ -178,7 +178,7 @@ func TestDirectMessageSelection(t *testing.T) {
 	// Advance the conversation beyond 24h without a day-long sleep.
 	h := rt.bot("first")
 	barrier := make(chan struct{})
-	h.queueDM(func() {
+	h.queueDM(user.ID, func() {
 		_ = h.saveChoice(ctx, user.ID, "support", b.ID, time.Now().Add(-time.Second))
 		close(barrier)
 	})

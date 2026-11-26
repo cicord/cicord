@@ -52,6 +52,9 @@ type ServerStatus struct {
 	// Paused is set while enforcement is paused on the server (nothing is applied; Sync
 	// still reports the drift from git).
 	Paused *PauseInfo `json:"paused,omitempty"`
+	// UnconfirmedAudit is set when Discord recorded audited actions by a project bot
+	// that Cicord did not emit (CORE-04: the bot token may be compromised).
+	UnconfirmedAudit *UnconfirmedAudit `json:"unconfirmedAudit,omitempty"`
 }
 
 type BotStatus struct {

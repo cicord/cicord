@@ -988,7 +988,7 @@ func commandOptionToWire(o discord.CommandOption) wireCommandOption {
 		Autocomplete: o.Autocomplete,
 	}
 	for _, ch := range o.Choices {
-		wo.Choices = append(wo.Choices, wireCommandChoice{Name: ch.Name, Value: ch.Value})
+		wo.Choices = append(wo.Choices, wireCommandChoice{Name: ch.Name, NameLocalizations: ch.Names, Value: ch.Value})
 	}
 	for _, sub := range o.Options {
 		wo.Options = append(wo.Options, commandOptionToWire(sub))

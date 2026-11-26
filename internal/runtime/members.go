@@ -68,6 +68,19 @@ func (l *memberList) List(ctx context.Context, cl discord.Client, serverID strin
 	}
 }
 
+// Lookup answers whether userID is a member from a listing younger than memberListTTL,
+// without listing: fresh is false when there is none (the caller asks Discord instead). It
+// never waits for a listing in flight.
+func (l *memberList) Lookup(userID string) (m discord.Member, member, fresh bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.members == nil || l.now().Sub(l.at) >= memberListTTL {
+		return discord.Member{}, false, false
+	}
+	m, member = l.members[userID]
+	return m, member, true
+}
+
 func (l *memberList) run(f *memberFetch, ml discord.MemberLister, serverID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), memberListTimeout)
 	defer cancel()

@@ -27,7 +27,7 @@ func TestStoreUpdateRequiresBoundSecretReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	re := regexp.MustCompile(`(?m)^([ ]*)source: acme/hello$`)
-	next := re.ReplaceAllString(string(raw), "${0}\n${1}secrets: {API_KEY: {secretRef: TEST_PROVIDER}}")
+	next := re.ReplaceAllString(string(raw), "${0}\n${1}secrets: {API_KEY: {secretRef: CICORD_TEST_PROVIDER}}")
 	if next == string(raw) {
 		t.Fatal("missing fixture source")
 	}

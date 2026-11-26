@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"unicode/utf8"
 
@@ -22,7 +23,7 @@ func opFile(method string) asyncOp {
 		if err != nil {
 			return nil, err
 		}
-		return func(context.Context) (any, error) {
+		return func(ctx context.Context) (any, error) {
 			if method == "list" {
 				if a.Glob != "" {
 					if _, err := config.MatchFileGlob(a.Glob, ""); err != nil {
@@ -55,6 +56,10 @@ func opFile(method string) asyncOp {
 			}
 			if !utf8.Valid(data) {
 				return nil, errors.New("file is not UTF-8")
+			}
+			// The string copy and its JSON encoding coexist until json.Marshal returns.
+			if err := reserveResult(ctx, 2*jsonStringLen(data)); err != nil {
+				return nil, fmt.Errorf("files.read %q: %w; read it in pages with files.bytes", a.Path, err)
 			}
 			return string(data), nil
 		}, nil

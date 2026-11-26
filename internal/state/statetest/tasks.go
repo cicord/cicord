@@ -133,3 +133,77 @@ func testPausedTaskScopes(t *testing.T, b Backend) {
 		t.Fatal(jobs)
 	}
 }
+
+// Dead letters page by a (run_at, id) keyset: ties on run_at are ordered by id, no page
+// repeats or skips a dead letter that stays parked, and letters parked or resolved while
+// paging do not shift the remaining pages.
+func testDeadLetterPaging(t *testing.T, b Backend) {
+	store, clock := open(t, b)
+	q, c := store.Tasks(), ctx(t)
+	base := clock.Now()
+	park := func(id string, at time.Time) {
+		t.Helper()
+		must(t, q.Schedule(c, state.Task{ID: id, Scope: "plugin:bot/inst/server-a", Name: "n", RunAt: at}))
+		leases, err := q.ClaimDue(c, at, at.Add(time.Minute), "w", 100)
+		must(t, err)
+		for _, l := range leases {
+			if l.ID == id {
+				must(t, q.Release(c, l, time.Time{}, "failed"))
+				return
+			}
+		}
+		t.Fatalf("task %s was not claimed", id)
+	}
+	// Byte order of ids: "B" < "a" < "b" (a collation-aware sort would differ).
+	for _, p := range []struct {
+		id  string
+		off time.Duration
+	}{{"b", 0}, {"a", 0}, {"B", 0}, {"c", time.Second}, {"d", 2 * time.Second}, {"e", 3 * time.Second}} {
+		park(p.id, base.Add(p.off))
+	}
+	must(t, q.Schedule(c, state.Task{ID: "other", Scope: "plugin:bot/inst/server-b", Name: "n", RunAt: base}))
+
+	var seen []string
+	var cursor state.DeadCursor
+	page := func() []state.DeadTask {
+		t.Helper()
+		items, err := q.DeadLettersAfter(c, "server-a", cursor, 2)
+		must(t, err)
+		for _, it := range items {
+			seen = append(seen, it.ID)
+		}
+		if len(items) > 0 {
+			last := items[len(items)-1]
+			cursor = state.DeadCursor{RunAt: last.RunAt, ID: last.ID}
+		}
+		return items
+	}
+	if got := page(); len(got) != 2 {
+		t.Fatalf("first page: %+v", got)
+	}
+	// Meanwhile: a letter parked before the cursor (seen on a later full listing, not on
+	// this pass), one after it (seen), and an unseen one resolved (not seen).
+	park("0early", base.Add(-time.Second))
+	park("f", base.Add(4*time.Second))
+	changed, err := q.ResolveDead(c, "server-a", "d", false, clock.Now())
+	must(t, err)
+	if !changed {
+		t.Fatal("discard did not find the dead letter")
+	}
+	for len(page()) == 2 {
+	}
+	want := []string{"B", "a", "b", "c", "e", "f"}
+	if len(seen) != len(want) {
+		t.Fatalf("paged %v, want %v", seen, want)
+	}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("paged %v, want %v", seen, want)
+		}
+	}
+	all, err := q.DeadLetters(c, "server-a", 100)
+	must(t, err)
+	if len(all) != 7 || all[0].ID != "0early" {
+		t.Fatalf("full listing: %+v", all)
+	}
+}

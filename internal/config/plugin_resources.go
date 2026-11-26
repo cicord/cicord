@@ -47,6 +47,8 @@ func (l *loader) instanceResources(repo *Repo, spec PluginSpec, inst PluginInsta
 	for n, binding := range inst.Secrets {
 		if repo.ReservedPluginRef(binding.SecretRef) || slices.Contains(l.opts.HostSecretRefs, binding.SecretRef) {
 			report("secrets", "%q is reserved for the host and cannot be bound to a plugin", binding.SecretRef)
+		} else if !PluginSecretRefAllowed(binding.SecretRef) {
+			report("secrets", "secret %q: plugin secretRef %q must start with %s (for example %s%s); rename the operator secret so other process credentials can never be bound to a plugin", n, binding.SecretRef, PluginSecretRefPrefix, PluginSecretRefPrefix, n)
 		}
 		if !declared[n] {
 			report("secrets", "secret %q is not declared by the plugin", n)
@@ -58,11 +60,28 @@ func (l *loader) instanceResources(repo *Repo, spec PluginSpec, inst PluginInsta
 	return allow
 }
 
+// PluginSecretRefPrefix is the allowlisted namespace of plugin secret bindings.
+// The runtime resolves a ref from the process environment, then the encrypted
+// store; only names in this namespace (minus the reserved ones) can reach a plugin,
+// so a bot.yaml line cannot hand it AWS_SECRET_ACCESS_KEY, PGPASSWORD or another
+// operator credential.
+const PluginSecretRefPrefix = "CICORD_"
+
+// PluginSecretRefAllowed reports whether name is in the plugin binding namespace.
+// Callers also check ReservedPluginRef.
+func PluginSecretRefAllowed(name string) bool {
+	tail, ok := strings.CutPrefix(name, PluginSecretRefPrefix)
+	return ok && tail != ""
+}
+
 // ReservedPluginRef separates the runtime's credentials and generated admin slots
 // from explicitly named plugin-provider bindings.
 func (r *Repo) ReservedPluginRef(name string) bool {
 	switch name {
-	case "CICORD_REGISTRY_SIGNING_KEY", "CICORD_PRIVACY_KEY", "CICORD_ALERT_WEBHOOK", "GITHUB_TOKEN", "GH_TOKEN", "CICORD_GITHUB_APP_ID", "CICORD_GITHUB_APP_INSTALLATION_ID", "CICORD_SECRET_KEY", "CICORD_DATABASE_URL", "CICORD_DISCORD_CLIENT_SECRET", "CICORD_GITHUB_APP_PRIVATE_KEY", "CICORD_GITHUB_APP_PRIVATE_KEY_FILE", "CICORD_GIT_TOKEN", "CICORD_LINK_SECRET", "CICORD_RUNTIME_TOKEN", "CICORD_WEBHOOK_SECRET":
+	case "CICORD_REGISTRY_SIGNING_KEY", "CICORD_PRIVACY_KEY", "CICORD_ALERT_WEBHOOK", "GITHUB_TOKEN", "GH_TOKEN", "CICORD_GITHUB_APP_ID", "CICORD_GITHUB_APP_INSTALLATION_ID", "CICORD_SECRET_KEY", "CICORD_DATABASE_URL", "CICORD_DISCORD_CLIENT_SECRET", "CICORD_GITHUB_APP_PRIVATE_KEY", "CICORD_GITHUB_APP_PRIVATE_KEY_FILE", "CICORD_GIT_TOKEN", "CICORD_LINK_SECRET", "CICORD_RUNTIME_TOKEN", "CICORD_WEBHOOK_SECRET",
+		// Host settings read from the environment: not secrets, but not a plugin's
+		// either (TestHostEnvironmentIsReserved keeps this list complete).
+		"CICORD_ADMIN_URL", "CICORD_ALLOW_PRIVATE_REGISTRIES", "CICORD_CACHE_DIR", "CICORD_COMPILER_CACHE_DIR", "CICORD_CORS_ORIGINS", "CICORD_DEV_OFFICIAL_REGISTRY", "CICORD_DISCORD_CLIENT_ID", "CICORD_FROM_NPM", "CICORD_MEDIA_HASH", "CICORD_METRICS_LISTEN", "CICORD_PUBLIC_URL", "CICORD_RUNTIME_URL":
 		return true
 	}
 	if strings.HasPrefix(name, "CICORD_REGISTRY_") && strings.HasSuffix(name, "_TOKEN") {

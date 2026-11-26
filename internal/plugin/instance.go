@@ -61,6 +61,9 @@ type Env struct {
 	ServerPreferredLocale string
 	ServerName            string
 	ServerIconURL         string
+	// CicordBotIDs returns the Discord user ids of every bot of the project on this server
+	// (ctx.server.cicordBotIds), read at each handler call.
+	CicordBotIDs func() []string
 
 	// Config is the effective config (defaults applied, overrides merged). It must be
 	// JSON-serializable; plugins see it deep-frozen.
@@ -130,12 +133,20 @@ type Env struct {
 	PublishVersion     func(context.Context, string, int, string, json.RawMessage) error
 	Publish            func(topic string, payload json.RawMessage) error
 
+	// ChannelProvisions is host-owned: createChannel provisionKey (hashed) → channel id,
+	// never exposed through ctx.kv. Nil: provisionKey is refused.
+	ChannelProvisions state.KV
+
 	Logger     *slog.Logger // nil: discarded
 	Limits     Limits
 	HTTPClient *http.Client // optional override for http.fetch (tests); egress name checks still apply
 	// OnHandler, when set, receives the outcome of every handler call (metrics). It is
 	// called from the goroutine delivering the result and must not block.
 	OnHandler func(HandlerResult)
+
+	// quota is the host memory of one installation (results in flight, staged
+	// uploads), shared with its private VMs, which copy Env. NewInstance sets it.
+	quota *installationQuota
 }
 
 // Access lists who holds the moderator and admin access levels of the server
@@ -320,6 +331,7 @@ type Instance struct {
 	imu          sync.Mutex
 	interactions map[string]*interaction
 
+	provisionMu    sync.Mutex // serializes createChannel calls with a provisionKey
 	chMu           sync.Mutex
 	serverChannels map[string]bool
 	dmChannels     map[string]bool
@@ -350,6 +362,9 @@ func NewInstance(code string, def *Definition, env Env) (*Instance, error) {
 		return nil, err
 	}
 	limits := env.Limits.withDefaults()
+	if env.quota == nil {
+		env.quota = newInstallationQuota()
+	}
 	i := &Instance{
 		env: env, assets: assets, mediaSlots: make(chan struct{}, 2), binaryResults: make(chan struct{}, 4),
 		def:            def,
@@ -737,7 +752,14 @@ func (i *Instance) enter(inv *invocation, budget time.Duration, fn func(ctx cont
 		}
 	}
 	if dead := i.vm.q.Dead(); dead != nil {
-		i.crash(i.deathCause(dead, budget))
+		cause := i.deathCause(dead, budget)
+		if inv != i.bg {
+			// Only the invocation whose turn was running when the VM died caused the
+			// crash. Every other pending or queued call only reports ErrCrashed, so a
+			// durable delivery can tell a poison task from its innocent neighbours.
+			inv.cancel(fmt.Errorf("%s %q: %w: %w: %w", inv.kind, inv.name, ErrCrashedByHandler, ErrCrashed, cause))
+		}
+		i.crash(cause)
 		return i.endedErr()
 	}
 	return err
@@ -1378,7 +1400,7 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 			return RouteResponse{}, errors.New("invalid raw response header")
 		}
 		status, err := strconv.Atoi(statusText)
-		if err != nil || status < 100 || status > 599 {
+		if err != nil || status < 200 || status > 599 {
 			return RouteResponse{}, errors.New("invalid raw response status")
 		}
 		switch mime {
@@ -1399,7 +1421,7 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 	if err := json.Unmarshal([]byte(r.data), &out); err != nil {
 		return RouteResponse{}, fmt.Errorf("plugin: route response: %w", err)
 	}
-	if out.Status < 100 || out.Status > 599 {
+	if out.Status < 200 || out.Status > 599 {
 		return RouteResponse{}, fmt.Errorf("plugin: route %s returned invalid status %d", route.Key(), out.Status)
 	}
 	return RouteResponse{Status: out.Status, Headers: out.Headers, Body: out.Body}, nil

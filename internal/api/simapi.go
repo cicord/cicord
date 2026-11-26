@@ -615,7 +615,7 @@ func interactionResult(h *sim.InteractionHandle) interactionResultDTO {
 	if st.ResponseType == discord.ResponseAutocomplete {
 		out.Choices = []choiceDTO{}
 		for _, c := range st.Choices {
-			out.Choices = append(out.Choices, choiceDTO(c))
+			out.Choices = append(out.Choices, choiceDTO{Name: c.Name, Value: c.Value})
 		}
 	}
 	return out
@@ -787,7 +787,7 @@ func simOptions(opts []discord.CommandOption) []simOptionOut {
 		oo := simOptionOut{Name: o.Name, Description: o.Description, Type: optionTypeNames[o.Type], Required: o.Required,
 			MinValue: o.MinValue, MaxValue: o.MaxValue, MinLength: o.MinLength, MaxLength: o.MaxLength, Autocomplete: o.Autocomplete}
 		for _, ch := range o.Choices {
-			oo.Choices = append(oo.Choices, choiceDTO(ch))
+			oo.Choices = append(oo.Choices, choiceDTO{Name: ch.Name, Value: ch.Value})
 		}
 		if o.IsSubcommand() {
 			oo.Options = simOptions(o.Options)

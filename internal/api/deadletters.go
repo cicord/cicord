@@ -1,10 +1,15 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cicord/cicord/internal/discord"
@@ -17,13 +22,87 @@ func (s *server) handleDeadLetters(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	items, err := s.rt.Store().Tasks().DeadLetters(r.Context(), serverKey, 100)
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > maxDeadLetters {
+			s.fail(w, httpErr(http.StatusBadRequest, "invalid", "limit must be between 1 and %d", maxDeadLetters))
+			return
+		}
+		limit = n
+	}
+	after, err := decodeDeadCursor(r.URL.Query().Get("cursor"))
+	if err != nil {
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "invalid cursor"))
+		return
+	}
+	queue := s.rt.Store().Tasks()
+	items, err := queue.DeadLettersAfter(r.Context(), serverKey, after, limit+1)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	truncated := len(items) > limit
+	var next *string
+	if truncated {
+		items = items[:limit]
+		last := items[len(items)-1]
+		c := encodeDeadCursor(state.DeadCursor{RunAt: last.RunAt, ID: last.ID})
+		next = &c
+	}
+	// The total counts every parked task of the server, including those of instances
+	// removed from the revision, so the admin knows how many the list leaves out.
+	counts, err := queue.DeadCounts(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	total := 0
+	for scope, n := range counts {
+		if strings.HasPrefix(scope, "plugin:") && strings.HasSuffix(scope, "/"+serverKey) {
+			total += n
+		}
+	}
+	total = max(total, len(items))
+	// truncated: more dead letters follow this page; nextCursor (null on the last page)
+	// continues the listing after its last item.
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "truncated": truncated, "nextCursor": next})
 }
+
+// A dead-letter cursor is opaque to clients: the (run_at, id) of the last item of a page,
+// as base64url JSON. Keyset paging keeps pages stable while letters are parked or resolved.
+type deadCursorJSON struct {
+	RunAt int64  `json:"t"`
+	ID    string `json:"id"`
+}
+
+func encodeDeadCursor(c state.DeadCursor) string {
+	raw, _ := json.Marshal(deadCursorJSON{RunAt: c.RunAt.UnixNano(), ID: c.ID})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeDeadCursor(v string) (state.DeadCursor, error) {
+	if v == "" {
+		return state.DeadCursor{}, nil
+	}
+	if len(v) > 1024 {
+		return state.DeadCursor{}, errors.New("cursor too long")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return state.DeadCursor{}, err
+	}
+	var c deadCursorJSON
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&c); err != nil || c.ID == "" {
+		return state.DeadCursor{}, errors.New("malformed cursor")
+	}
+	return state.DeadCursor{RunAt: time.Unix(0, c.RunAt).UTC(), ID: c.ID}, nil
+}
+
+// maxDeadLetters bounds one dead-letter listing (the oldest first).
+const maxDeadLetters = 500
 
 func (s *server) handleDeadLetterDecision(w http.ResponseWriter, r *http.Request) {
 	serverKey := r.PathValue("server")
@@ -95,9 +174,9 @@ func (s *server) handleDeadEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if gate, ok := any(s.rt).(interface {
-		ErasedPayload(context.Context, string, json.RawMessage) (bool, error)
+		ErasedPayload(context.Context, string, string, json.RawMessage) (bool, error)
 	}); ok {
-		erased, err := gate.ErasedPayload(r.Context(), key, data)
+		erased, err := gate.ErasedPayload(r.Context(), key, "", data)
 		if err != nil {
 			s.fail(w, err)
 			return

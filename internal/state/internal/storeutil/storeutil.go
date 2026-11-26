@@ -189,6 +189,42 @@ func LoadMigrations(fsys fs.FS, dir string) ([]Migration, error) {
 	return ms, nil
 }
 
+// CheckApplied compares the migrations recorded in a database (version → file
+// name) with the embedded ones. A recorded version must name the same file this
+// binary embeds for that version. Otherwise the database was migrated by a
+// build whose numbering differs (a renumbered or renamed migration, or a patch
+// release that used a number this binary assigns to another migration), and
+// skipping the embedded migration by version would silently leave the schema
+// incomplete. Versions newer than every embedded migration are reported by the
+// caller's downgrade check. File contents are not compared: names are stable
+// across releases, while a checksum would reject databases created by earlier
+// builds of a release candidate whose migration text was later amended.
+func CheckApplied(applied map[int]string, ms []Migration) error {
+	embedded := make(map[int]string, len(ms))
+	for _, m := range ms {
+		embedded[m.Version] = m.Name
+	}
+	latest := Latest(ms)
+	versions := make([]int, 0, len(applied))
+	for v := range applied {
+		versions = append(versions, v)
+	}
+	sort.Ints(versions)
+	for _, v := range versions {
+		if v > latest {
+			continue
+		}
+		want, ok := embedded[v]
+		if !ok {
+			return fmt.Errorf("database records migration %d (%q), which this binary does not have: the database was migrated by an incompatible build; restore a backup taken before that upgrade", v, applied[v])
+		}
+		if applied[v] != want {
+			return fmt.Errorf("database records migration %d as %q, but this binary's migration %d is %q: the database was migrated by an incompatible build; restore a backup taken before that upgrade", v, applied[v], v, want)
+		}
+	}
+	return nil
+}
+
 // Latest returns the highest version of ms (0 when empty).
 func Latest(ms []Migration) int {
 	if len(ms) == 0 {

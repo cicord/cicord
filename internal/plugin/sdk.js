@@ -162,7 +162,7 @@
         let handle = 0;
         for (let offset = 0; offset < size || offset === 0; offset += 32768) {
           const chunk = sliceBytes(data, offset, Math.min(size, offset + 32768));
-          const id = await acall("upload.part", {handle, size, data: encodeBytes(chunk)});
+          const id = await acall("upload.part", {handle, size, data: encodeBytes(chunk), op, h: args.h});
           if (handle === 0) handles.push(id);
           handle = id;
         }
@@ -219,6 +219,8 @@
       position: typeof d.position === "number" ? d.position : undefined,
       managed:d.managed, declaredMembers:d.declaredMembers,
       mentionable: typeof d.mentionable === "boolean" ? d.mentionable : undefined,
+      // Decimal Discord bitfield; undefined when the role is unknown (never "none").
+      permissions: typeof d.permissions === "string" ? d.permissions : undefined,
     }));
   }
 
@@ -532,6 +534,8 @@
       name: d.server.name,
       iconUrl: d.server.iconUrl || undefined,
       preferredLocale: d.server.preferredLocale || undefined,
+      // Read at each access: a bot of the project may connect after this instance started.
+      get cicordBotIds() { return freeze(hcall("server.botIds",{}).slice()); },
       async members(options = {}) { return freeze((await acall("server.members",options)).map(mkMember)); },
       audience(channel) { return freeze(hcall("server.audience",{ref:refIn(channel)})); },
       compareAudience(source,destination) { return hcall("server.compareAudience",{source:refIn(source),destination:refIn(destination)}); },
@@ -564,7 +568,7 @@
         const m = await acall("server.member", { userId: String(userId) });
         return m ? mkMember(m) : undefined;
       },
-      async recoverOwnedChannel(topic){return freeze(await acall("server.recoverOwnedChannel",{topic}));},
+      async recoverOwnedChannel(request){return freeze(await acall("server.recoverOwnedChannel",typeof request==="string"?{topic:request}:{provisionKey:request&&request.provisionKey}));},
       async createChannel(options) {
         if (!options || typeof options !== "object") throw new TypeError("createChannel: options are required");
         return mkChannel(await acall("server.createChannel", options));

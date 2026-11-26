@@ -244,6 +244,11 @@ func installCache(ctx context.Context, parent *os.Root, name, want string, files
 	if err != nil {
 		return err
 	}
+	// Publish only a staged tree that hashes to the lock: on a filesystem that folds case
+	// or normalization, two package paths could have landed in one file.
+	if !verifyCache(ctx, parent, stage, want, false) {
+		return errors.New("the plugin package cannot be cached on this filesystem: its staged files do not match the locked integrity")
+	}
 	cachePublish.Lock()
 	defer cachePublish.Unlock()
 	if verifyCache(ctx, parent, name, want, false) {

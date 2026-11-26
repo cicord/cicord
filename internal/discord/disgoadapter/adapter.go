@@ -199,38 +199,114 @@ func (s *session) do(ctx context.Context, op string, ep *rest.CompiledEndpoint, 
 			opts = append(opts, rest.WithReason(label))
 		}
 	}
-	err := mapError(op, s.rest.Do(ep, body, out, opts...))
-	if err == nil && scope != nil && ep.Endpoint.Method != http.MethodGet {
-		target := discord.AuditTarget(ep.Endpoint.Route, ep.URL)
-		switch o := out.(type) {
-		case *wireRole:
-			target = o.ID
-		case *wireChannel:
-			target = o.ID
-		case *wireMessage:
-			target = o.ID
-		case *wireEmoji:
-			target = o.ID
-		case *wireSticker:
-			target = o.ID
-		case *wireAutoModRule:
-			target = o.ID
+	journal := scope != nil && ep.Endpoint.Method != http.MethodGet
+	var method, target string
+	withdraw := func(context.Context) {}
+	created := journal && strings.HasPrefix(op, "Create")
+	if journal {
+		method, target = s.journalCall(op, ep, body)
+		if !created {
+			// CORE-04: journal before the request, so the gateway audit event of
+			// this call can never be attributed before its proof exists.
+			withdraw = scope.Journal(ctx, method, callEffects(method, target, body), time.Now())
 		}
-		method := op
-		if op == "UpdateMember" {
-			if m, ok := body.(map[string]any); ok {
-				if _, roles := m["roles"]; roles {
-					method = "SetMemberRoles"
+	}
+	sent := time.Now()
+	err := mapError(op, s.rest.Do(ep, body, out, opts...))
+	switch {
+	case !journal:
+	case err == nil && !created && time.Since(sent) > lateJournal:
+		// rest.Do waited for a rate limit (or retried a 429): Discord wrote its entry
+		// near the response, possibly outside the 30 s window of the first record.
+		// The spare row is harmless: each operation binds one entry at most.
+		scope.Journal(ctx, method, callEffects(method, target, body), time.Now())
+	case err == nil && created:
+		// The target of a creation is the created object, known from the response.
+		if id := createdID(out); id != "" {
+			target = id
+		}
+		scope.Journal(ctx, method, callEffects(method, target, body), time.Now())
+	case err != nil && rejected(err):
+		// Discord refused the call: nothing was audited. On a timeout or a 5xx the
+		// call may have taken effect, so its proof stays.
+		bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+		withdraw(bounded)
+		cancel()
+	}
+	return err
+}
+
+// lateJournal: a call that took longer is journaled again with its response time.
+var lateJournal = 5 * time.Second
+
+// journalCall is the journal method and audit target of a mutating call.
+func (s *session) journalCall(op string, ep *rest.CompiledEndpoint, body any) (method, target string) {
+	method, target = op, discord.AuditTarget(ep.Endpoint.Route, ep.URL)
+	switch op {
+	case "UpdateMember":
+		if m, ok := body.(map[string]any); ok {
+			if _, roles := m["roles"]; roles && len(m) == 1 {
+				method = "SetMemberRoles"
+			}
+		}
+	case "AddMemberRole", "RemoveMemberRole":
+		// Discord's member.roleUpdate audit targets the user, not the role.
+		target = discord.AuditTarget(strings.TrimSuffix(ep.Endpoint.Route, "/{role.id}"), ep.URL[:strings.LastIndex(ep.URL, "/")])
+	case "UpdateGuildProfile":
+		// Modify Current Member: Discord's member.update targets the bot itself.
+		target = s.Self().ID
+	}
+	return method, target
+}
+
+// callEffects reads the top-level fields and the overwrite targets of a PATCH body.
+func callEffects(method, target string, body any) []discord.Effect {
+	m, ok := body.(map[string]any)
+	if !ok {
+		return discord.CallEffects(method, target, nil, nil)
+	}
+	fields := make([]string, 0, len(m))
+	var overwrites []string
+	for k, v := range m {
+		fields = append(fields, k)
+		if k == "permission_overwrites" {
+			if ows, ok := v.([]wireOverwrite); ok {
+				for _, o := range ows {
+					overwrites = append(overwrites, o.ID)
 				}
 			}
 		}
-		if op == "AddMemberRole" || op == "RemoveMemberRole" {
-			// Discord's member.roleUpdate audit targets the user, not the role.
-			target = discord.AuditTarget(strings.TrimSuffix(ep.Endpoint.Route, "/{role.id}"), ep.URL[:strings.LastIndex(ep.URL, "/")])
-		}
-		scope.Emitted(ctx, method, target, time.Now())
 	}
-	return err
+	return discord.CallEffects(method, target, fields, overwrites)
+}
+
+func createdID(out any) string {
+	switch o := out.(type) {
+	case *wireRole:
+		return o.ID
+	case *wireChannel:
+		return o.ID
+	case *wireMessage:
+		return o.ID
+	case *wireEmoji:
+		return o.ID
+	case *wireSticker:
+		return o.ID
+	case *wireAutoModRule:
+		return o.ID
+	case *managedWebhook:
+		return o.ID
+	case *wireEvent:
+		return o.ID
+	case *wireSound:
+		return o.SoundID
+	}
+	return ""
+}
+
+// rejected reports a definite refusal by Discord (4xx): the call had no effect.
+func rejected(err error) bool {
+	return errors.Is(err, discord.ErrBadRequest) || errors.Is(err, discord.ErrForbidden) || errors.Is(err, discord.ErrNotFound) || errors.Is(err, discord.ErrInvalidToken)
 }
 
 // ───────────────────────────────────────────────────────────── gateway

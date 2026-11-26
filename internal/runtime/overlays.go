@@ -88,8 +88,8 @@ func (r *Runtime) persistOverlay(ctx context.Context, rt *serverRT, origin, id s
 		if err := v.Validate(time.Now()); err != nil {
 			return err
 		}
-		if len(d.Active) >= 256 {
-			return errors.New("server overlay limit reached")
+		if err := overlayQuota(d.Active, origin); err != nil {
+			return err
 		}
 		if v.Server != nil && d.OriginalVerification == "" {
 			// A cached gateway snapshot can predate a human change. Capture the
@@ -110,6 +110,15 @@ func (r *Runtime) persistOverlay(ctx context.Context, rt *serverRT, origin, id s
 		}
 		v.Origin = origin
 		d.Active = append(d.Active, *v)
+		if overlayOverwrites(*v) && rt.rec != nil {
+			// Refuse a self-lockout now rather than letting the preflight block
+			// every overlay sync of the server until it expires.
+			targets := reconcile.OverlayTargets{}
+			targets.Add(*v)
+			if err := rt.rec.CheckOverlay(ctx, d, targets); err != nil {
+				return err
+			}
+		}
 		d.Pending.Add(*v)
 		action = "overlay.apply"
 		sort.Slice(d.Active, func(i, j int) bool {
@@ -127,6 +136,44 @@ func (r *Runtime) persistOverlay(ctx context.Context, rt *serverRT, origin, id s
 		r.notify(ChangeStatus, "")
 	}
 	return err
+}
+
+// Overlay quotas. The server document is bounded, and each plugin installation
+// (origin) has its own share so one plugin's many quarantines or channel locks
+// cannot starve another's raid overlay: an origin holds at most
+// overlayOriginLimit overlays, the server overlayServerLimit, and an origin with
+// fewer than overlayOriginReserve overlays may still apply past the server limit
+// up to overlayHardLimit.
+const (
+	overlayServerLimit   = 256
+	overlayOriginLimit   = 128
+	overlayOriginReserve = 8
+	overlayHardLimit     = overlayServerLimit + 8*overlayOriginReserve
+)
+
+func overlayQuota(active []reconcile.Overlay, origin string) error {
+	own := 0
+	for _, o := range active {
+		if o.Origin == origin {
+			own++
+		}
+	}
+	switch {
+	case own >= overlayOriginLimit:
+		return fmt.Errorf("plugin overlay limit reached (%d active overlays)", overlayOriginLimit)
+	case len(active) >= overlayHardLimit, len(active) >= overlayServerLimit && own >= overlayOriginReserve:
+		return errors.New("server overlay limit reached")
+	}
+	return nil
+}
+
+func overlayOverwrites(o reconcile.Overlay) bool {
+	for _, c := range o.Channels {
+		if len(c.Overwrites) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Caller holds syncMu. Active revision selection, planning, applying, and settling

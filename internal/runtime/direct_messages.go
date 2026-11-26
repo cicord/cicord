@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"hash/fnv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cicord/cicord/internal/discord"
@@ -19,13 +21,46 @@ import (
 const dmSelect = "cicord:dm:"
 const dmTTL = 24 * time.Hour
 
+// DM routing limits (m5). Work is queued per user shard, so a slow Discord answer for one
+// user never holds the DMs, selections and components of the bot's other users.
+const (
+	dmShards = 16
+	// dmShardQueue bounds the queued work of a shard (dmShards × dmShardQueue in all).
+	dmShardQueue = 64
+	// A user's DMs and DM interactions spend a token each: dmBurst at once, then one per
+	// dmRefill. Beyond, the user is told to slow down before any member lookup runs.
+	dmBurst  = 10
+	dmRefill = time.Second
+	// dmLookupTimeout bounds one membership check; dmLookups run in parallel per DM.
+	dmLookupTimeout = 5 * time.Second
+	dmLookups       = 4
+	// Busy replies: at most dmNotices sends in flight, one per user per dmNoticeEvery.
+	dmNotices     = 4
+	dmNoticeEvery = 30 * time.Second
+)
+
 // All choices and held messages belong to a bot session, outside plugin storage.
-// Gateway callbacks enqueue short-lived work in arrival order without waiting on REST.
+// Gateway callbacks enqueue short-lived work in arrival order (per user) without waiting
+// on REST. Each shard's conversations are only touched by that shard's worker.
 type directMessages struct {
+	shards [dmShards]dmShard
+
+	limitMu sync.Mutex
+	limits  map[string]*dmBucket
+	notices atomic.Int32
+}
+
+type dmShard struct {
 	mu            sync.Mutex
 	queue         []func()
 	running       bool
 	conversations map[string]*conversation
+}
+
+type dmBucket struct {
+	tokens   float64
+	at       time.Time
+	noticeAt time.Time
 }
 
 type conversation struct {
@@ -36,41 +71,230 @@ type conversation struct {
 	timer                 *time.Timer
 }
 
-func (h *botHost) queueDM(f func()) {
-	d := &h.dm
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if len(d.queue) >= 1024 {
-		return
+func (d *directMessages) shard(user string) *dmShard {
+	f := fnv.New32a()
+	_, _ = f.Write([]byte(user))
+	return &d.shards[f.Sum32()%dmShards]
+}
+
+// queueDM runs f on the user's shard, after the work already queued there. It reports
+// false, without queuing, when the shard is full.
+func (h *botHost) queueDM(user string, f func()) bool {
+	return h.dm.shard(user).enqueue(f, false)
+}
+
+func (s *dmShard) enqueue(f func(), force bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.queue) >= dmShardQueue && !force {
+		return false
 	}
-	d.queue = append(d.queue, f)
-	if d.running {
-		return
+	s.queue = append(s.queue, f)
+	if s.running {
+		return true
 	}
-	d.running = true
+	s.running = true
 	go func() {
 		for {
-			d.mu.Lock()
-			if len(d.queue) == 0 {
-				d.running = false
-				d.mu.Unlock()
+			s.mu.Lock()
+			if len(s.queue) == 0 {
+				s.running = false
+				s.mu.Unlock()
 				return
 			}
-			task := d.queue[0]
-			d.queue[0] = nil
-			d.queue = d.queue[1:]
-			d.mu.Unlock()
+			task := s.queue[0]
+			s.queue[0] = nil
+			s.queue = s.queue[1:]
+			s.mu.Unlock()
 			task()
+		}
+	}()
+	return true
+}
+
+// allowDM spends one of the user's tokens. notice is true when the user should be told
+// (at most once per dmNoticeEvery) that the bot is busy.
+func (d *directMessages) allowDM(user string, now time.Time) (ok, notice bool) {
+	d.limitMu.Lock()
+	defer d.limitMu.Unlock()
+	if d.limits == nil {
+		d.limits = map[string]*dmBucket{}
+	}
+	b := d.limits[user]
+	if b == nil {
+		if len(d.limits) > 10000 {
+			for k, v := range d.limits {
+				if v.tokens+now.Sub(v.at).Seconds()/dmRefill.Seconds() >= dmBurst && now.Sub(v.noticeAt) > dmNoticeEvery {
+					delete(d.limits, k)
+				}
+			}
+			if len(d.limits) > 10000 {
+				d.limits = map[string]*dmBucket{}
+			}
+		}
+		b = &dmBucket{tokens: dmBurst, at: now}
+		d.limits[user] = b
+	}
+	b.tokens = min(dmBurst, b.tokens+now.Sub(b.at).Seconds()/dmRefill.Seconds())
+	b.at = now
+	if b.tokens >= 1 {
+		b.tokens--
+		return true, false
+	}
+	return false, d.noticeDueLocked(b, now)
+}
+
+// noticeDue reports whether a busy notice may be sent to the user now.
+func (d *directMessages) noticeDue(user string, now time.Time) bool {
+	d.limitMu.Lock()
+	defer d.limitMu.Unlock()
+	if d.limits == nil {
+		d.limits = map[string]*dmBucket{}
+	}
+	b := d.limits[user]
+	if b == nil {
+		b = &dmBucket{tokens: dmBurst, at: now}
+		d.limits[user] = b
+	}
+	return d.noticeDueLocked(b, now)
+}
+
+func (d *directMessages) noticeDueLocked(b *dmBucket, now time.Time) bool {
+	if now.Sub(b.noticeAt) < dmNoticeEvery {
+		return false
+	}
+	b.noticeAt = now
+	return true
+}
+
+// dmBusyText is the degraded-mode reply (P10) of a DM that is not routed now.
+func dmBusyText(rt *routing) string {
+	return dmText(rt, "Too many messages right now. Please try again in a moment.", "Trop de messages en ce moment. Réessayez dans un instant.")
+}
+
+// notifyBusy runs send off the gateway goroutine, with at most dmNotices in flight; a
+// notice that finds no slot is only logged.
+func (h *botHost) notifyBusy(why string, send func(context.Context) error) {
+	if h.dm.notices.Add(1) > dmNotices {
+		h.dm.notices.Add(-1)
+		h.rt.log.Warn("direct message not routed", "bot", h.key, "reason", why, "notice", "skipped")
+		return
+	}
+	h.rt.log.Warn("direct message not routed", "bot", h.key, "reason", why)
+	go func() {
+		defer h.dm.notices.Add(-1)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := send(ctx); err != nil {
+			h.rt.log.Warn("busy reply to a direct message failed", "bot", h.key, "err", err)
 		}
 	}()
 }
 
-func (h *botHost) conversation(rt *routing, user, channel string, now time.Time) *conversation {
-	d := &h.dm
-	if d.conversations == nil {
-		d.conversations = map[string]*conversation{}
+// acceptDMMessage rate limits and queues the routing of a DM, or tells its author to retry.
+func (h *botHost) acceptDMMessage(m discord.Message, now time.Time) {
+	user := m.Author.ID
+	ok, notice := h.dm.allowDM(user, now)
+	why := "rate limited"
+	if ok {
+		if h.queueDM(user, func() { h.routeDM(m, time.Now()) }) {
+			return
+		}
+		why, notice = "queue full", h.dm.noticeDue(user, now)
 	}
-	c := d.conversations[user]
+	if !notice {
+		h.rt.log.Debug("direct message not routed", "bot", h.key, "reason", why)
+		return
+	}
+	text := dmBusyText(h.routing.Load())
+	h.notifyBusy(why, func(ctx context.Context) error {
+		_, err := h.session.SendMessage(ctx, m.ChannelID, discord.MessageCreate{Content: text})
+		return err
+	})
+}
+
+// acceptDMInteraction is acceptDMMessage for a DM component or selection: a refused one is
+// answered (ephemeral) at once, within Discord's 3 s.
+func (h *botHost) acceptDMInteraction(it discord.Interaction, now time.Time, task func()) {
+	ok, _ := h.dm.allowDM(it.User.ID, now)
+	why := "rate limited"
+	if ok {
+		if h.queueDM(it.User.ID, task) {
+			return
+		}
+		why = "queue full"
+	}
+	text := dmBusyText(h.routing.Load())
+	h.notifyBusy(why, func(ctx context.Context) error {
+		return h.session.RespondInteraction(ctx, it.ID, it.Token, discord.InteractionResponse{Type: discord.ResponseMessage, Data: &discord.MessageCreate{Content: text, Flags: discord.MessageFlagEphemeral}})
+	})
+}
+
+// dmMember checks that user is a member of server sid: from the server's member listing
+// when it is fresh (member events keep it current), else from Discord, bounded by
+// dmLookupTimeout. found is false for a non-member.
+func (h *botHost) dmMember(ctx context.Context, rt *routing, sid, user string) (m discord.Member, found bool, err error) {
+	if c := rt.caches[sid]; c != nil {
+		if m, member, fresh := c.members.Lookup(user); fresh {
+			return m, member, nil
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, dmLookupTimeout)
+	defer cancel()
+	m, err = h.session.GetMember(ctx, sid, user)
+	if errors.Is(err, discord.ErrNotFound) {
+		return discord.Member{}, false, nil
+	}
+	if err != nil {
+		return discord.Member{}, false, err
+	}
+	return m, m.User.ID == user, nil
+}
+
+// eligibleServers returns the servers of the DM owner instance where user is a member,
+// checking at most dmLookups servers at a time.
+func (h *botHost) eligibleServers(ctx context.Context, rt *routing, user string) (map[string]discord.Member, error) {
+	targets := rt.byName[rt.dmOwner]
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		firstErr error
+		sem      = make(chan struct{}, dmLookups)
+		out      = map[string]discord.Member{}
+	)
+	for _, sid := range sortedKeys(targets) {
+		if !targets[sid].plugin.def.HasEvent("directMessage") {
+			continue
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			m, found, err := h.dmMember(ctx, rt, sid, user)
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case err != nil:
+				if firstErr == nil {
+					firstErr = err
+				}
+			case found:
+				out[sid] = m
+			}
+		}()
+	}
+	wg.Wait()
+	return out, firstErr
+}
+
+// conversation, forgetDM and remember run on the user's shard worker.
+func (h *botHost) conversation(rt *routing, user, channel string, now time.Time) *conversation {
+	s := h.dm.shard(user)
+	if s.conversations == nil {
+		s.conversations = map[string]*conversation{}
+	}
+	c := s.conversations[user]
 	if c != nil && c.owner == rt.dmOwner && c.channel == channel && c.expires.After(now) {
 		return c
 	}
@@ -79,21 +303,26 @@ func (h *botHost) conversation(rt *routing, user, channel string, now time.Time)
 }
 
 func (h *botHost) forgetDM(user string) {
-	if c := h.dm.conversations[user]; c != nil && c.timer != nil {
+	s := h.dm.shard(user)
+	if c := s.conversations[user]; c != nil && c.timer != nil {
 		c.timer.Stop()
 	}
-	delete(h.dm.conversations, user)
+	delete(s.conversations, user)
 }
 
 func (h *botHost) remember(user string, c *conversation) {
 	h.forgetDM(user)
-	h.dm.conversations[user] = c
+	s := h.dm.shard(user)
+	if s.conversations == nil {
+		s.conversations = map[string]*conversation{}
+	}
+	s.conversations[user] = c
 	c.timer = time.AfterFunc(dmTTL, func() {
-		h.queueDM(func() {
-			if h.dm.conversations[user] == c {
+		s.enqueue(func() {
+			if s.conversations[user] == c {
 				h.forgetDM(user)
 			}
-		})
+		}, true)
 	})
 }
 
@@ -164,24 +393,14 @@ func (h *botHost) routeDM(m discord.Message, now time.Time) {
 		}
 		return
 	}
-	targets := rt.byName[rt.dmOwner]
+	members, err := h.eligibleServers(ctx, rt, user)
+	if err != nil {
+		send(dmText(rt, "Membership could not be verified. Please try again.", "Impossible de vérifier votre adhésion. Réessayez."))
+		return
+	}
 	eligible := map[string]bool{}
-	for _, sid := range sortedKeys(targets) {
-		target := targets[sid]
-		if !target.plugin.def.HasEvent("directMessage") {
-			continue
-		}
-		mem, err := h.session.GetMember(ctx, sid, user)
-		if errors.Is(err, discord.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			send(dmText(rt, "Membership could not be verified. Please try again.", "Impossible de vérifier votre adhésion. Réessayez."))
-			return
-		}
-		if mem.User.ID == user {
-			eligible[sid] = true
-		}
+	for sid := range members {
+		eligible[sid] = true
 	}
 	choice, err := h.choice(ctx, user, rt.dmOwner, now)
 	if err != nil {
@@ -206,7 +425,7 @@ func (h *botHost) routeDM(m discord.Message, now time.Time) {
 				sid = id
 			}
 		}
-		h.deliverDM(ctx, rt, sid, m)
+		h.deliverDM(rt, sid, m, members[sid])
 		return
 	}
 	c = &conversation{owner: rt.dmOwner, channel: m.ChannelID, token: m.ID, offered: eligible, messages: []discord.Message{m}, expires: now.Add(dmTTL)}
@@ -241,8 +460,8 @@ func (h *botHost) selectDM(it discord.Interaction, now time.Time) {
 		return
 	}
 	sid := it.Values[0]
-	mem, err := h.session.GetMember(ctx, sid, user)
-	if err != nil || mem.User.ID != user || rt.byName[rt.dmOwner][sid] == nil {
+	mem, found, err := h.dmMember(ctx, rt, sid, user)
+	if err != nil || !found || rt.byName[rt.dmOwner][sid] == nil {
 		h.forgetDM(user)
 		answer(dmText(rt, "This server is unavailable.", "Ce serveur est indisponible."))
 		return
@@ -254,20 +473,18 @@ func (h *botHost) selectDM(it discord.Interaction, now time.Time) {
 	answer(dmText(rt, "Selected server: ", "Serveur choisi : ") + rt.serverKeys[sid])
 	h.forgetDM(user)
 	for _, m := range c.messages {
-		h.deliverDM(ctx, rt, sid, m)
+		h.deliverDM(rt, sid, m, mem)
 	}
 }
 
-func (h *botHost) deliverDM(ctx context.Context, rt *routing, sid string, m discord.Message) {
+// deliverDM hands a DM to the owner instance of server sid, with the member just verified
+// by the caller (dmMember).
+func (h *botHost) deliverDM(rt *routing, sid string, m discord.Message, mem discord.Member) {
 	if rt != h.routing.Load() {
 		return
 	}
 	target := rt.byName[rt.dmOwner][sid]
-	if target == nil || !target.plugin.def.HasEvent("directMessage") {
-		return
-	}
-	mem, err := h.session.GetMember(ctx, sid, m.Author.ID)
-	if err != nil || mem.User.ID != m.Author.ID {
+	if target == nil || !target.plugin.def.HasEvent("directMessage") || mem.User.ID != m.Author.ID {
 		return
 	}
 	m.Member = &mem
@@ -289,8 +506,8 @@ func (h *botHost) routeDMComponent(it discord.Interaction) {
 	if !ok || rt.byName[name][parts[1]] == nil {
 		return
 	}
-	member, err := h.session.GetMember(ctx, parts[1], it.User.ID)
-	if err != nil || member.User.ID != it.User.ID {
+	member, found, err := h.dmMember(ctx, rt, parts[1], it.User.ID)
+	if err != nil || !found {
 		return
 	}
 	it.CustomID = parts[2]
@@ -306,9 +523,12 @@ func (h *botHost) routeDMComponent(it discord.Interaction) {
 
 func (h *botHost) stopDM() {
 	h.routing.Store(&routing{})
-	h.queueDM(func() {
-		for user := range h.dm.conversations {
-			h.forgetDM(user)
-		}
-	})
+	for n := range h.dm.shards {
+		s := &h.dm.shards[n]
+		s.enqueue(func() {
+			for user := range s.conversations {
+				h.forgetDM(user)
+			}
+		}, true)
+	}
 }

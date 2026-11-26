@@ -56,3 +56,19 @@ type RankedMember struct {
 	Score  float64 `json:"score"`
 	Rank   int     `json:"rank"`
 }
+
+// Plugin storage quotas, enforced by the database (migration 0011) on every write
+// path, including imports and action transactions.
+const (
+	// PluginStorageEntries bounds the KV entries plus ranking members of one installation.
+	PluginStorageEntries = 1_000_000
+	// PluginStorageBytes bounds their size: key and value bytes of each entry,
+	// name and member bytes plus 16 of each ranking member.
+	PluginStorageBytes = 256 << 20
+	// MaxRankingMembers bounds one ranking. Ranks are counted on read over the
+	// score index, so this caps the cost of rank, around and deep top pages.
+	MaxRankingMembers = 250_000
+	// MaxKVListBytes cuts a kv.list page by size: the page ends before the entry
+	// that would cross it (always at least one entry).
+	MaxKVListBytes = 4 << 20
+)

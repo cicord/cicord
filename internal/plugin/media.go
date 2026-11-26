@@ -74,12 +74,9 @@ func opMediaRead(capability string) asyncOp {
 			return nil, argErr("unknown hash algorithm")
 		}
 		return func(ctx context.Context) (any, error) {
+			// The download waits on the network under this instance's slots only;
+			// media.Hash takes a process-wide worker slot for the decode alone.
 			return i.mediaWork(ctx, func() (any, error) {
-				release, err := media.Acquire(ctx)
-				if err != nil {
-					return nil, err
-				}
-				defer release()
 				b, err := i.downloadMedia(ctx, a.URL, !hash)
 				if err != nil {
 					return nil, err
@@ -87,7 +84,7 @@ func opMediaRead(capability string) asyncOp {
 				if !hash {
 					return b, nil
 				}
-				return media.Hash(b, a.Algo)
+				return media.Hash(ctx, b, a.Algo)
 			})
 		}, nil
 	}
@@ -119,12 +116,16 @@ func opRenderImage(i *Instance, _ *invocation, args json.RawMessage) (func(conte
 	}
 	return func(ctx context.Context) (any, error) {
 		return i.mediaWork(ctx, func() (any, error) {
-			return media.Render(ctx, args, inputs, func(ctx context.Context, key string) ([]byte, error) {
+			// All inputs share one fetch deadline: up to 64 CDN images must not
+			// each wait FetchTimeout. Render takes its worker slot after loading.
+			fetch, cancel := context.WithTimeout(ctx, i.limits.FetchTimeout)
+			defer cancel()
+			return media.Render(ctx, args, inputs, func(_ context.Context, key string) ([]byte, error) {
 				if p, ok := strings.CutPrefix(key, "asset:"); ok {
 					return i.readAsset(p)
 				}
 				if u, ok := strings.CutPrefix(key, "url:"); ok {
-					return i.downloadMedia(ctx, u, true)
+					return i.downloadMedia(fetch, u, true)
 				}
 				return nil, errors.New("invalid render source")
 			})

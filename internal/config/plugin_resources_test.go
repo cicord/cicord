@@ -100,6 +100,15 @@ func TestValidationRejectsReservedCredentialBindings(t *testing.T) {
 			t.Fatalf("expected reserved-binding diagnostic for %s", name)
 		}
 	}
+	// Only the plugin namespace is bindable: other process variables are refused.
+	for _, name := range []string{"AWS_SECRET_ACCESS_KEY", "PGPASSWORD", "CICORD_"} {
+		edit(t, bot, "STAFF_HOOK: {secretRef: "+prev+"}", "STAFF_HOOK: {secretRef: "+name+"}")
+		prev = name
+		_, ds := Load(dir, LoadOptions{})
+		if !ds.HasErrors() || !strings.Contains(ds.Err().Error(), "must start with CICORD_") {
+			t.Fatalf("expected namespace diagnostic for %s: %v", name, ds.Err())
+		}
+	}
 	edit(t, bot, "STAFF_HOOK: {secretRef: "+prev+"}", "STAFF_HOOK: {secretRef: CICORD_STAFF_WEBHOOK}")
 	_, ds := Load(dir, LoadOptions{})
 	if ds.HasErrors() {

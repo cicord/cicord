@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cicord/cicord/internal/auth"
@@ -187,65 +186,17 @@ func parseRole(s string) role {
 	return roleNone
 }
 
-type memberEntry struct {
-	member  *discord.Member // nil = not a member
-	expires time.Time
-}
-
-type memberCache struct {
-	mu      sync.Mutex
-	entries map[string]memberEntry
-}
-
-// member fetches (with a short cache) the Discord member of a user in a server; nil
-// when the user is not in the server.
-func (s *server) member(ctx context.Context, serverKey, userID string) (*discord.Member, error) {
-	return s.lookupMember(ctx, serverKey, userID, false)
-}
-
-func (s *server) lookupMember(ctx context.Context, serverKey, userID string, fresh bool) (*discord.Member, error) {
-	key := serverKey + "/" + userID
-	now := time.Now()
-	if !fresh && s.opts.MemberCacheTTL > 0 {
-		s.members.mu.Lock()
-		e, ok := s.members.entries[key]
-		s.members.mu.Unlock()
-		if ok && now.Before(e.expires) {
-			return e.member, nil
-		}
-	}
-	srv, ok := s.rt.ServerConfig(serverKey)
-	if !ok {
-		return nil, nil
-	}
-	cl, ok := s.rt.Client(serverKey)
-	if !ok {
-		return nil, httpErr(http.StatusServiceUnavailable, "unavailable", "no bot is connected to server %s", serverKey)
-	}
-	m, err := cl.GetMember(ctx, srv.Spec.DiscordID, userID)
-	var mp *discord.Member
-	switch {
-	case err == nil:
-		mp = &m
-	case errors.Is(err, discord.ErrNotFound):
-	default:
-		return nil, fmt.Errorf("get member: %w", err)
-	}
-	if s.opts.MemberCacheTTL > 0 {
-		s.members.mu.Lock()
-		if len(s.members.entries) > 10000 {
-			s.members.entries = map[string]memberEntry{}
-		}
-		s.members.entries[key] = memberEntry{member: mp, expires: now.Add(s.opts.MemberCacheTTL)}
-		s.members.mu.Unlock()
-	}
-	return mp, nil
-}
-
 // roleIn resolves the caller's role in a server (https://cicord.dev/docs/reference/http-api/authentication/). portal is true for
 // portal endpoints; sessions created from a portal link are limited to that server and,
 // outside the portal, to the member role.
 func (s *server) roleIn(ctx context.Context, id *identity, serverKey string, portal bool) (role, *discord.Member, error) {
+	return s.resolveRole(ctx, id, serverKey, portal, false)
+}
+
+// resolveRole is roleIn; fresh re-reads a positive member from Discord (SDK-23: plugin
+// routes decide what the viewer may read at read time). Portal resolutions are rate
+// limited per user, so a looping client cannot spend the bot's REST budget.
+func (s *server) resolveRole(ctx context.Context, id *identity, serverKey string, portal, fresh bool) (role, *discord.Member, error) {
 	if id == nil || id.data.Case != nil {
 		return roleNone, nil, nil
 	}
@@ -259,7 +210,10 @@ func (s *server) roleIn(ctx context.Context, id *identity, serverKey string, por
 	if id.data.LinkServer != "" && id.data.LinkServer != serverKey {
 		return roleNone, nil, nil
 	}
-	m, err := s.lookupMember(ctx, serverKey, id.user.ID, portal)
+	if portal && !s.portalLimiter.allow(id.user.ID, time.Now()) {
+		return roleNone, nil, errRateLimited
+	}
+	m, err := s.lookupMember(ctx, serverKey, id.user.ID, fresh)
 	if err != nil {
 		return roleNone, nil, err
 	}

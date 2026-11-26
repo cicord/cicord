@@ -16,7 +16,7 @@ func TestPluginSecretWriteOnly(t *testing.T) {
 	var resolve func(string) (string, bool)
 	e := startFull(t, func(dir string) {
 		for p, sub := range map[string][2]string{
-			"bots/moderator/bot.yaml":     {"source: ../../plugins/welcome", "source: ../../plugins/welcome\n      secrets: {API_KEY: {secretRef: FIXTURE_BINDING}}"},
+			"bots/moderator/bot.yaml":     {"source: ../../plugins/welcome", "source: ../../plugins/welcome\n      secrets: {API_KEY: {secretRef: CICORD_FIXTURE_BINDING}}"},
 			"plugins/welcome/plugin.yaml": {"spec:\n", "spec:\n  secrets:\n    - {name: API_KEY, required: true, hosts: [api.example.org]}\n"},
 		} {
 			path := filepath.Join(dir, p)
@@ -61,7 +61,7 @@ func TestPluginSecretWriteOnly(t *testing.T) {
 	if detail.Health != "Healthy" || strings.Contains(string(after.body), marker) {
 		t.Fatal("credential health or redaction")
 	}
-	if _, ok := resolve("FIXTURE_BINDING"); ok {
+	if _, ok := resolve("CICORD_FIXTURE_BINDING"); ok {
 		t.Fatal("admin overwrote external binding")
 	}
 }

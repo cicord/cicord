@@ -442,14 +442,14 @@ func (w *World) sendMessage(a actor, channelID string, m discord.MessageCreate) 
 				break
 			}
 			if old.msg.Author.ID == a.userID && old.nonce == m.Nonce {
-				return cloneMessage(old.msg), nil
+				return restMessage(old.msg), nil
 			}
 		}
 	}
 	m.Flags &^= discord.MessageFlagEphemeral | msgFlagLoading
 	ms := w.newMessage(c, w.users[a.userID].user, m, "")
 	w.recordOK(a, "SendMessage", serverID, ms.msg.ID, "")
-	return cloneMessage(ms.msg), nil
+	return restMessage(ms.msg), nil
 }
 
 func (w *World) channelMessage(channelID, messageID string) (*channelState, *messageState, error) {
@@ -492,7 +492,7 @@ func (w *World) editMessageCall(a actor, channelID, messageID string, m discord.
 	}
 	w.editMessage(ms, m)
 	w.recordOK(a, "EditMessage", serverID, messageID, "")
-	return cloneMessage(ms.msg), nil
+	return restMessage(ms.msg), nil
 }
 
 func (w *World) bulkDeleteMessages(a actor, channelID string, ids []string, reason string) error {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -134,6 +135,8 @@ func testAdvanced(t *testing.T, b Backend) {
 		t.Fatal("expected read conflict")
 	}
 
+	kvListPagesByBytes(t, kv)
+
 	type private interface {
 		VisitPrivacy(context.Context, func(string, json.RawMessage) error) error
 		PurgeTasks(context.Context, string, bool, func(string, json.RawMessage) bool) (int, error)
@@ -210,5 +213,84 @@ func RankAt100k(t *testing.T, kv state.AdvancedKV) {
 	t.Logf("100,000 members, exact rank + 10-entry arbitrary-offset page, 100 samples: p95 %s", times[94])
 	if times[94] >= time.Second {
 		t.Fatalf("rank and page p95 %s exceeds 1s", times[94])
+	}
+}
+
+// StorageByteQuota checks that the installation quota counts bytes, on insert
+// and on an update that grows a value (review finding MJ3). Backends seed the
+// usage of the scope at 100 bytes under state.PluginStorageBytes.
+func StorageByteQuota(t *testing.T, kv state.AdvancedKV) {
+	t.Helper()
+	ctx := t.Context()
+	small := json.RawMessage(`"` + strings.Repeat("a", 40) + `"`) // 42 bytes + key "k"
+	must(t, kv.Set(ctx, "k", small, 0))
+	large := json.RawMessage(`"` + strings.Repeat("a", 120) + `"`)
+	if err := kv.Set(ctx, "k", large, 0); err == nil {
+		t.Fatal("an update grew the installation past its byte quota")
+	}
+	if err := kv.Set(ctx, "other", large, 0); err == nil {
+		t.Fatal("an insert went past the byte quota")
+	}
+	if _, err := kv.Rank(ctx, state.RankOp{Name: "xp", Member: strings.Repeat("m", 60), Method: "set", Score: 1}); err == nil {
+		t.Fatal("a ranking member went past the byte quota")
+	}
+	raw, err := kv.Get(ctx, "k")
+	must(t, err)
+	if string(raw) != string(small) {
+		t.Fatal("a refused write leaked")
+	}
+	must(t, kv.Delete(ctx, "k"))
+	must(t, kv.Set(ctx, "other", json.RawMessage(`"`+strings.Repeat("a", 90)+`"`), 0)) // the delete gave the bytes back
+}
+
+// RankingMemberCap checks the board cap. Backends seed the size of board "xp"
+// one member under state.MaxRankingMembers.
+func RankingMemberCap(t *testing.T, kv state.AdvancedKV) {
+	t.Helper()
+	ctx := t.Context()
+	_, err := kv.Rank(ctx, state.RankOp{Name: "xp", Member: "last", Method: "set", Score: 1})
+	must(t, err)
+	if _, err := kv.Rank(ctx, state.RankOp{Name: "xp", Member: "over", Method: "set", Score: 1}); err == nil || !strings.Contains(err.Error(), "ranking member limit") {
+		t.Fatalf("board past its cap: %v", err)
+	}
+	_, err = kv.Rank(ctx, state.RankOp{Name: "xp", Member: "last", Method: "add", Score: 5})
+	must(t, err) // moving an existing member is always allowed
+	_, err = kv.Rank(ctx, state.RankOp{Name: "other", Member: "over", Method: "set", Score: 1})
+	must(t, err) // the cap is per board
+	_, err = kv.Rank(ctx, state.RankOp{Name: "xp", Member: "last", Method: "remove"})
+	must(t, err)
+	_, err = kv.Rank(ctx, state.RankOp{Name: "xp", Member: "over", Method: "set", Score: 1})
+	must(t, err)
+}
+
+// kvListPagesByBytes: a page stops before the entry that would cross
+// state.MaxKVListBytes, and the cursor continues after the last entry returned.
+func kvListPagesByBytes(t *testing.T, kv state.AdvancedKV) {
+	t.Helper()
+	ctx := t.Context()
+	big := json.RawMessage(`"` + strings.Repeat("v", 1<<20-2) + `"`)
+	for i := range 6 {
+		must(t, kv.Set(ctx, fmt.Sprintf("big/%d", i), big, 0))
+	}
+	var keys []string
+	cursor := ""
+	for pages := 0; ; pages++ {
+		items, next, err := kv.List(ctx, "big/", 100, cursor)
+		must(t, err)
+		size := 0
+		for _, it := range items {
+			size += len(it.Key) + len(it.Value)
+			keys = append(keys, it.Key)
+		}
+		if len(items) == 0 || size > state.MaxKVListBytes || pages > 6 {
+			t.Fatalf("page %d: %d items, %d bytes", pages, len(items), size)
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if len(keys) != 6 || keys[0] != "big/0" || keys[5] != "big/5" {
+		t.Fatalf("paged keys %v", keys)
 	}
 }

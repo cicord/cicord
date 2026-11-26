@@ -21,7 +21,7 @@ func (r *Runtime) ReservedPluginRef(name string) bool {
 
 func (r *Runtime) instanceSecret(in config.Instance, name string) (string, []string, bool) {
 	ref, ok := in.SecretRefs[name]
-	if !ok || r.opts.Secrets == nil || r.ReservedPluginRef(ref.SecretRef) {
+	if !ok || r.opts.Secrets == nil || r.ReservedPluginRef(ref.SecretRef) || !config.PluginSecretRefAllowed(ref.SecretRef) {
 		return "", nil, false
 	}
 	for _, s := range in.Plugin.Manifest.Spec.Secrets {

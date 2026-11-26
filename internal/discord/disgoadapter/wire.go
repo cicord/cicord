@@ -451,8 +451,9 @@ type wireMessageEdit struct {
 }
 
 type wireCommandChoice struct {
-	Name  string `json:"name"`
-	Value any    `json:"value"`
+	Name              string            `json:"name"`
+	NameLocalizations map[string]string `json:"name_localizations,omitempty"`
+	Value             any               `json:"value"`
 }
 
 type wireCommandOption struct {

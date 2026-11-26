@@ -66,3 +66,22 @@ func TestAddNumber(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckApplied(t *testing.T) {
+	ms := []Migration{{Version: 1, Name: "0001_init.sql"}, {Version: 2, Name: "0002_b.sql"}, {Version: 4, Name: "0004_d.sql"}}
+	for _, tc := range []struct {
+		name    string
+		applied map[int]string
+		ok      bool
+	}{
+		{"empty", map[int]string{}, true},
+		{"prefix", map[int]string{1: "0001_init.sql", 2: "0002_b.sql"}, true},
+		{"newer is the caller's downgrade check", map[int]string{1: "0001_init.sql", 9: "0009_future.sql"}, true},
+		{"renamed", map[int]string{1: "0001_init.sql", 2: "0002_other.sql"}, false},
+		{"gap version", map[int]string{1: "0001_init.sql", 3: "0003_hotfix.sql"}, false},
+	} {
+		if err := CheckApplied(tc.applied, ms); (err == nil) != tc.ok {
+			t.Errorf("%s: CheckApplied = %v, want ok=%v", tc.name, err, tc.ok)
+		}
+	}
+}

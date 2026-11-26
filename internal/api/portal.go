@@ -295,10 +295,21 @@ func (s *server) handlePortalMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": toUser(u), "member": s.memberDTO(key, m), "role": ro.String()})
 }
 
-// Headers a plugin route may not set.
-var blockedRouteHeaders = map[string]bool{
-	"set-cookie": true, "content-length": true, "transfer-encoding": true, "connection": true,
-	"content-type": true, "location": true, "content-security-policy": true, "strict-transport-security": true,
+// routeHeader reports whether a plugin route may set a response header. It is an
+// allowlist: a route cannot set cookies, redirects (Location, Refresh), CORS, security
+// or hop-by-hop headers (Connection, Upgrade…), nor clear site data. Plugin headers are
+// x-* (except the runtime's own x-cicord-*) and a few content headers.
+func routeHeader(name string, public bool) bool {
+	lk := strings.ToLower(name)
+	switch lk {
+	case "content-disposition", "content-language", "etag", "last-modified", "expires", "retry-after":
+		return true
+	case "cache-control":
+		// Non-public routes are always no-store; a public route may let caches keep it.
+		return public
+	}
+	return strings.HasPrefix(lk, "x-") && !strings.HasPrefix(lk, "x-cicord-") && lk != "x-content-type-options" &&
+		lk != "x-frame-options" && lk != "x-forwarded-for" && lk != "x-forwarded-host" && lk != "x-forwarded-proto"
 }
 
 func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +361,8 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "this session is restricted to its case"))
 		return
 	case id != nil && !id.bearer:
-		ro, m, err := s.roleIn(r.Context(), id, serverKey, true)
+		// The viewer's member decides what the plugin shows (member.canView): read it now.
+		ro, m, err := s.resolveRole(r.Context(), id, serverKey, true, true)
 		if err != nil {
 			s.fail(w, err)
 			return
@@ -393,9 +405,7 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 	if viewer != nil && !isSafeMethod(r.Method) {
 		// Plugins often change the viewer's roles (onboarding): do not serve the cached
 		// member to the portal's next /me.
-		s.members.mu.Lock()
-		delete(s.members.entries, serverKey+"/"+viewer.User.ID)
-		s.members.mu.Unlock()
+		s.dropMember(serverKey, viewer.User.ID)
 	}
 	if errors.Is(err, runtime.ErrNotFound) {
 		notFoundHandler(w, r)
@@ -406,19 +416,27 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusInternalServerError, "internal", "the plugin route failed"))
 		return
 	}
-	for k, v := range resp.Headers {
-		lk := strings.ToLower(k)
-		if blockedRouteHeaders[lk] || strings.HasPrefix(lk, "access-control-") {
-			continue
-		}
-		w.Header().Set(k, v)
-	}
 	status := resp.Status
 	if status == 0 {
 		status = http.StatusOK
 	}
+	if status < 200 || status > 599 {
+		// 1xx would let a plugin answer "101 Switching Protocols" on the connection.
+		s.log.Warn("plugin route returned an invalid status", "server", serverKey, "bot", botKey, "instance", inst, "route", route.Key(), "status", status)
+		s.fail(w, httpErr(http.StatusInternalServerError, "internal", "the plugin route failed"))
+		return
+	}
+	public := route.Access == "public"
+	for k, v := range resp.Headers {
+		if routeHeader(k, public) {
+			w.Header().Set(k, v)
+		}
+	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if route.Access != "public" {
+	// A public route may answer differently to a signed-in viewer: never let a shared
+	// cache keep that answer, and key the anonymous one on the credentials.
+	w.Header().Add("Vary", "Cookie, Authorization")
+	if !public || viewer != nil {
 		w.Header().Set("Cache-Control", "no-store")
 	}
 	if resp.Raw != nil {

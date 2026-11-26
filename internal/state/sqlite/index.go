@@ -2,7 +2,11 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
 	"strings"
 
 	"github.com/cicord/cicord/internal/state"
@@ -65,9 +69,23 @@ func (f fullText) Search(ctx context.Context, name, lang, q string, opts state.I
 		opts.Tags = []string{}
 	}
 	tags, _ := json.Marshal(opts.Tags)
+	var owner int64
+	err = f.s.r.QueryRowContext(ctx, "SELECT id FROM plugin_index_owners WHERE scope=? AND name=?", f.scope, name).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return out, nil // nothing was ever indexed under this name
+	}
+	if err != nil {
+		return nil, err
+	}
+	// The owner column restricts the match itself to this index, so bm25 ranks
+	// only its documents and the cost follows its own matches. bm25 statistics
+	// (document count, average length, term frequencies) stay table-wide, so the
+	// score keeps the 0.2.0-rc.1 scale, r/(r+1e-6) (FTS5 clamps the weight of a
+	// term found in most documents to 1e-6), but only at two decimals: the raw
+	// digits let a plugin probe other installations' corpora.
 	// FTS5 requires a table identifier in MATCH, bm25 and snippet.
 	// The language selects a fixed table name. All search data is bound.
-	const english = `SELECT d.id, -bm25(plugin_fts_en,3.0,1.0), snippet(plugin_fts_en,1,'','','…',32),d.meta
+	const english = `SELECT d.id, -bm25(plugin_fts_en,3.0,1.0,0.0), snippet(plugin_fts_en,1,'','','…',32),d.meta
 	FROM plugin_fts_en JOIN plugin_index_docs d ON d.rowid=plugin_fts_en.rowid
 	WHERE plugin_fts_en MATCH ? AND d.scope=? AND d.name=? AND NOT EXISTS
 	(SELECT value FROM json_each(?) EXCEPT SELECT value FROM json_each(d.tags))
@@ -76,7 +94,8 @@ func (f fullText) Search(ctx context.Context, name, lang, q string, opts state.I
 	if lang == "fr" {
 		statement = strings.ReplaceAll(english, "plugin_fts_en", "plugin_fts_fr")
 	}
-	rows, err := f.s.r.QueryContext(ctx, statement, strings.Join(terms, " OR "), f.scope, name, string(tags), opts.Limit)
+	match := fmt.Sprintf("owner : o%d AND {title body} : (%s)", owner, strings.Join(terms, " OR "))
+	rows, err := f.s.r.QueryContext(ctx, statement, match, f.scope, name, string(tags), opts.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +106,7 @@ func (f fullText) Search(ctx context.Context, name, lang, q string, opts state.I
 		if err := rows.Scan(&r.ID, &r.Score, &r.Snippet, &meta); err != nil {
 			return nil, err
 		}
-		r.Score /= r.Score + 0.000001
+		r.Score = math.Floor(r.Score/(r.Score+0.000001)*100) / 100
 		r.Meta = json.RawMessage(meta)
 		out = append(out, r)
 	}

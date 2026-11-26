@@ -161,11 +161,27 @@ type TaskQueue interface {
 	// as a dead letter. An empty failure defers an unavailable handler.
 	Release(ctx context.Context, lease TaskLease, retry time.Time, failure string) error
 	DeadCounts(ctx context.Context) (map[string]int, error)
+	// DeadLetters returns the first limit dead letters of a server, ordered by RunAt then
+	// ID (byte order).
 	DeadLetters(ctx context.Context, server string, limit int) ([]DeadTask, error)
+	// DeadLettersAfter is DeadLetters continued strictly after a cursor (the RunAt and ID of
+	// the last item of the previous page; the zero cursor starts at the beginning). The
+	// order is total (IDs are unique), so pages never repeat or skip a dead letter that
+	// stays parked, whatever is parked or resolved meanwhile.
+	DeadLettersAfter(ctx context.Context, server string, after DeadCursor, limit int) ([]DeadTask, error)
 	ResolveDead(ctx context.Context, server, id string, retry bool, now time.Time) (bool, error)
 	// Due returns tasks with RunAt <= now, oldest first (ties by ID, byte order).
 	Due(ctx context.Context, now time.Time, limit int) ([]Task, error)
 }
+
+// DeadCursor is a position in the dead-letter order (RunAt, then ID).
+type DeadCursor struct {
+	RunAt time.Time
+	ID    string
+}
+
+// IsZero reports whether the cursor is the start of the listing.
+func (c DeadCursor) IsZero() bool { return c.ID == "" && c.RunAt.IsZero() }
 
 // DeadTask omits the payload: it may contain private member or message data.
 type DeadTask struct {

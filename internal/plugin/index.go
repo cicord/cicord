@@ -43,6 +43,14 @@ func opIndex(method string) asyncOp {
 			case "upsert":
 				return nil, i.env.Index.Upsert(ctx, a.Name, a.Language, a.ID, a.Document)
 			case "search":
+				// Each result carries up to 256 KiB of meta and a short snippet.
+				limit := int64(a.Options.Limit)
+				if limit <= 0 {
+					limit = 10
+				}
+				if err := reserveResult(ctx, 2*min(limit, 50)*(264<<10)); err != nil {
+					return nil, err
+				}
 				return i.env.Index.Search(ctx, a.Name, a.Language, a.Query, a.Options)
 			case "remove":
 				return nil, i.env.Index.Remove(ctx, a.Name, a.ID)

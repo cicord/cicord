@@ -53,6 +53,7 @@ func (c *Client) CreateEvent(ctx context.Context, id string, e discord.Scheduled
 	a.scheduled[e.ID] = e
 	a.eventIDs = append(a.eventIDs, e.ID)
 	a.events[e.ID] = &discord.ScheduledEventInterest{ID: e.ID, Name: e.Name, Status: e.Status}
+	c.w.recordOK(c.actorFor(ctx), "CreateEvent", id, e.ID, "")
 	c.w.emit(discord.CommunityEvent{Name: "scheduledEventCreate", ServerID: id, Event: e, EventID: e.ID})
 	return e, nil
 }
@@ -70,6 +71,7 @@ func (c *Client) EditEvent(ctx context.Context, id string, e discord.ScheduledEv
 	e.Status = old.Status
 	a.scheduled[e.ID] = e
 	a.events[e.ID].Name = e.Name
+	c.w.recordOK(c.actorFor(ctx), "EditEvent", id, e.ID, "")
 	c.w.emit(discord.CommunityEvent{Name: "scheduledEventUpdate", ServerID: id, Event: e, EventID: e.ID})
 	return e, nil
 }
@@ -88,6 +90,7 @@ func (c *Client) DeleteEvent(ctx context.Context, id, eid string) error {
 	delete(a.events, eid)
 	delete(a.interested, eid)
 	a.eventIDs = slices.DeleteFunc(a.eventIDs, func(i string) bool { return i == eid })
+	c.w.recordOK(c.actorFor(ctx), "DeleteEvent", id, eid, "")
 	c.w.emit(discord.CommunityEvent{Name: "scheduledEventDelete", ServerID: id, Event: e, EventID: eid})
 	return nil
 }
@@ -163,7 +166,7 @@ func (c *Client) EndPoll(ctx context.Context, ch, id string) (discord.Message, e
 	}
 	ms.msg.PollResults.Finalized = true
 	c.w.emit(discord.MessageUpdateEvent{Message: cloneMessage(ms.msg)})
-	return cloneMessage(ms.msg), nil
+	return restMessage(ms.msg), nil
 }
 func (c *Client) PollVoters(ctx context.Context, ch, id string, a int, after string) ([]string, error) {
 	if _, err := c.GetMessage(ctx, ch, id); err != nil {
