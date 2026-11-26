@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net/url"
 	"os"
 	"path"
@@ -33,6 +34,9 @@ func (l *loader) instanceResources(spec PluginSpec, inst PluginInstance, file, b
 		if declared[d.Name] {
 			report("secrets", "duplicate secret declaration %q", d.Name)
 		}
+		if d.Budget != nil && (d.Budget.Provider != "anthropic-messages" || len(d.Hosts) != 1 || d.Hosts[0] != "api.anthropic.com") {
+			report("secrets", "a metered Anthropic secret must be restricted to api.anthropic.com")
+		}
 		declared[d.Name] = true
 	}
 	for n := range inst.Secrets {
@@ -52,6 +56,32 @@ func (l *loader) instanceResources(spec PluginSpec, inst PluginInstance, file, b
 		report("files", "%v", err)
 	}
 	return allow, files
+}
+
+func (d PluginSecret) BudgetLimit(cfg map[string]any) (int, bool) {
+	if d.Budget == nil {
+		return 0, false
+	}
+	n, ok := cfg[d.Budget.DailyLimitConfig].(float64)
+	if !ok || math.Trunc(n) != n || n < 1 || n > 10000000 {
+		return 0, false
+	}
+	return int(n), true
+}
+
+func checkProviderLimits(spec PluginSpec, cfg map[string]any) []refProblem {
+	var out []refProblem
+	if cfg["enabled"] == false {
+		return out
+	}
+	for _, d := range spec.Secrets {
+		if d.Budget != nil {
+			if _, ok := d.BudgetLimit(cfg); !ok {
+				out = append(out, refProblem{path: "/" + d.Budget.DailyLimitConfig, msg: "provider daily token budget must be an integer from 1 to 10000000"})
+			}
+		}
+	}
+	return out
 }
 
 // MatchFileGlob matches slash-separated repository paths. A ** segment spans zero or more directories.

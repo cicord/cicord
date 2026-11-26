@@ -587,11 +587,17 @@ type PluginMetadata struct {
 	Keywords    []string `yaml:"keywords,omitempty" json:"keywords,omitempty"`
 }
 
+type ProviderBudget struct {
+	Provider         string `yaml:"provider" json:"provider"`
+	DailyLimitConfig string `yaml:"dailyLimitConfig" json:"dailyLimitConfig"`
+}
+
 type PluginSecret struct {
-	Name        string   `yaml:"name,omitempty" json:"name,omitempty"`
-	Description string   `yaml:"description,omitempty" json:"description,omitempty"`
-	Required    bool     `yaml:"required,omitempty" json:"required,omitempty"`
-	Hosts       []string `yaml:"hosts,omitempty" json:"hosts,omitempty"`
+	Budget      *ProviderBudget `yaml:"budget,omitempty" json:"budget,omitempty"`
+	Name        string          `yaml:"name,omitempty" json:"name,omitempty"`
+	Description string          `yaml:"description,omitempty" json:"description,omitempty"`
+	Required    bool            `yaml:"required,omitempty" json:"required,omitempty"`
+	Hosts       []string        `yaml:"hosts,omitempty" json:"hosts,omitempty"`
 }
 
 type PrivacyRecord struct {

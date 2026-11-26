@@ -307,6 +307,12 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		}
 	}
 	origin := in.Bot + "/" + in.Name
+	budgeted := map[string]bool{}
+	for _, s := range m.Spec.Secrets {
+		if s.Budget != nil {
+			budgeted[s.Name] = true
+		}
+	}
 	env := plugin.Env{
 		Locales: in.Plugin.Locales,
 		OverlayApply: func(c context.Context, o reconcile.Overlay) error {
@@ -349,6 +355,10 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 			return r.restoreMemberData(ctx, in.Server, instanceScope(in), inst)
 		},
 		AnalyticsSummary: r.pluginSummary(in.Server, srt),
+		BudgetedSecrets:  budgeted,
+		ReserveBudget: func(ctx context.Context, name string, units int) (func(context.Context, int) error, error) {
+			return r.reserveProvider(ctx, in, name, units)
+		},
 		ManagedResource: func(id string) (bool, bool) {
 			managed := srt.cache.Owner(id) == state.OwnerGit
 			return managed, managed && srt.cfg.Spec.SyncPolicy.SelfHeal() && !r.isPaused(in.Server)

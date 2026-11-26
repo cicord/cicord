@@ -276,6 +276,10 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 	if err != nil {
 		return nil, err
 	}
+	price, budget, err := i.providerCharge(a.URL, a.Init)
+	if err != nil {
+		return nil, err
+	}
 	materials, rawURL, err := i.prepareFetch(a.URL, &a.Init)
 	if err != nil {
 		return nil, err
@@ -285,6 +289,9 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 		return nil, argErr("http.fetch: invalid URL")
 	}
 	for _, s := range materials {
+		if i.env.BudgetedSecrets[s.name] && (budget != s.name || len(materials) != 1) {
+			return nil, errors.New("metered credential requires its approved request header")
+		}
 		if u.Scheme != "https" || newEgress(s.hosts, false, nil, 0).checkURL(u) != nil {
 			return nil, fmt.Errorf("%w: destination outside secret host grant", ErrEgressDenied)
 		}
@@ -312,6 +319,20 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 	return func(ctx context.Context) (any, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
+		var settle func(context.Context, int) error
+		if budget != "" {
+			if i.env.ReserveBudget == nil {
+				return nil, errors.New("provider budget unavailable")
+			}
+			var err error
+			settle, err = i.env.ReserveBudget(ctx, budget, price)
+			if errors.Is(err, ErrBudgetExhausted) {
+				return &fetchResult{Status: 429, Headers: map[string]string{"x-cicord-budget": "exhausted"}}, nil
+			}
+			if err != nil {
+				return nil, errors.New("provider budget unavailable")
+			}
+		}
 		res, err := i.egress.do(ctx, method, u, a.Init.Headers, a.Init.Body, len(materials) > 0)
 		if err != nil {
 			if len(materials) > 0 {
@@ -321,6 +342,14 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 				return nil, fmt.Errorf("http.fetch %s %s: timed out after %s", method, u.Redacted(), timeout)
 			}
 			return nil, fmt.Errorf("http.fetch %s %s: %w", method, u.Redacted(), err)
+		}
+		if settle != nil {
+			cost := providerUsage(res, price)
+			cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			defer cancel()
+			if err := settle(cctx, cost); err != nil {
+				return nil, errors.New("provider budget reconciliation unavailable")
+			}
 		}
 		if err := redactResponse(res, materials, i.egress.maxBytes); err != nil {
 			return nil, err

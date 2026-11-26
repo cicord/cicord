@@ -551,7 +551,8 @@ func (l *loader) checkBots(repo *Repo) {
 						continue
 					}
 				}
-				for _, problem := range append(checkRefs(lp.SchemaDoc, cfg, &srv.Spec, ""), checkNetworkURLs(lp.SchemaDoc, lp.SchemaDoc, cfg, network, "", 0)...) {
+				problems := append(checkRefs(lp.SchemaDoc, cfg, &srv.Spec, ""), checkNetworkURLs(lp.SchemaDoc, lp.SchemaDoc, cfg, network, "", 0)...)
+				for _, problem := range append(problems, checkProviderLimits(lp.Manifest.Spec, cfg)...) {
 					p := cfgPath + problem.path
 					l.sink.errorf(b.File, doc.lineOf(p), p, "[server %s] %s", sk, problem.msg)
 				}

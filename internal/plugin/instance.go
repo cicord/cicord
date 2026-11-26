@@ -61,11 +61,13 @@ type Env struct {
 	// Grants are the capabilities granted in bot.yaml.
 	Grants []string
 	// NetworkAllow is plugin.yaml spec.network.allow.
-	Index        state.FullTextIndex
-	ReportStatus func(key, message string)
-	NetworkAllow []string
-	Secret       func(string) (string, []string, bool)
-	Files        map[string][]byte
+	Index           state.FullTextIndex
+	BudgetedSecrets map[string]bool
+	ReserveBudget   func(context.Context, string, int) (func(context.Context, int) error, error)
+	ReportStatus    func(key, message string)
+	NetworkAllow    []string
+	Secret          func(string) (string, []string, bool)
+	Files           map[string][]byte
 	// AllowPrivateNetworks disables the egress address checks and allows plain http
 	// (tests and `cicord dev` only).
 	AllowPrivateNetworks bool

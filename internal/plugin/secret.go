@@ -12,6 +12,7 @@ import (
 const secretPrefix = "cicord-secret:"
 
 type material struct {
+	name  string
 	value string
 	hosts []string
 }
@@ -44,7 +45,7 @@ func (i *Instance) prepareFetch(rawURL string, a *fetchInit) ([]material, string
 		if !ok {
 			return "", errors.New("secret is missing or undeclared")
 		}
-		used = append(used, material{v, hosts})
+		used = append(used, material{name: name, value: v, hosts: hosts})
 		return v, nil
 	}
 	dest, err := resolve(rawURL)
