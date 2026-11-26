@@ -19,7 +19,7 @@ func TestWebhookHandleOnlySendsAndReturnsStatus(t *testing.T) {
 	value := discordURL
 	client := &http.Client{Transport: providerTestTransport(func(r *http.Request) (*http.Response, error) {
 		requests++
-		if r.Method != "POST" || r.URL.String() != value || r.Header.Get("Content-Type") != "application/json" {
+		if r.Method != http.MethodPost || r.URL.String() != value || r.Header.Get("Content-Type") != "application/json" {
 			t.Fatal("unexpected outgoing request")
 		}
 		// The credential appears as only a path segment, including in response headers.
@@ -92,7 +92,7 @@ func TestWebhookSendVMProjection(t *testing.T) {
 			return "https://discord.com/api/webhooks/123/opaque-test-segment", e.NetworkAllow, name == "HOOK"
 		}
 		e.HTTPClient = &http.Client{Transport: providerTestTransport(func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 200, Header: http.Header{"X-Token": {"opaque-test-segment"}}, Body: io.NopCloser(strings.NewReader(`{"token":"opaque-test-segment"}`))}, nil
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"X-Token": {"opaque-test-segment"}}, Body: io.NopCloser(strings.NewReader(`{"token":"opaque-test-segment"}`))}, nil
 		})}
 	})
 	if err := h.command("notice", nil, discord.Resolved{}); err != nil {
