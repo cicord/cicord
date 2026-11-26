@@ -1,9 +1,9 @@
 name: ci
-# Runs on every push to main and every pull request. Actions are pinned to commit SHAs (tag in
+# Runs on main, the 0.2 integration branch and every pull request. Actions are pinned to commit SHAs (tag in
 # the comment); Dependabot proposes updates. The workflow only reads the repository.
 on:
   push:
-    branches: [main]
+    branches: [main, feature/0.2.0]
   pull_request:
 
 permissions:
