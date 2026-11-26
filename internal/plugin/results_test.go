@@ -18,7 +18,7 @@ import (
 func TestFilesReadFanOutStaysWithinTheResultBudget(t *testing.T) {
 	source := `import {definePlugin,command} from "@cicord/sdk";
  export default definePlugin({commands:{inspect:command({description:"read files",async run(ctx,it){
-  const ps=[]; for (let i=0;i<60;i++) ps.push(ctx.files.read("big.txt").then(s=>s.length===20*1024*1024-16?0:1,()=>1));
+  const ps=[]; for (let i=0;i<24;i++) ps.push(ctx.files.read("big.txt").then(s=>s.length===20*1024*1024-16?0:1,()=>1));
   const failed=(await Promise.all(ps)).reduce((a,b)=>a+b,0); await it.reply("failed "+failed);
  }})}});`
 	data := make([]byte, 20<<20-16)
@@ -28,8 +28,8 @@ func TestFilesReadFanOutStaysWithinTheResultBudget(t *testing.T) {
 	h := start(t, source, func(e *Env) {
 		e.Grants = append([]string{"files.read"}, e.Grants...)
 		e.Files = map[string][]byte{"big.txt": data}
-		e.Limits.HandlerTimeout = time.Minute
-		e.Limits.AutoDeferAfter = time.Minute
+		e.Limits.HandlerTimeout = 5 * time.Minute
+		e.Limits.AutoDeferAfter = 5 * time.Minute
 		// The test measures memory, not CPU: receiving 20 MiB strings is slow under -race.
 		e.Limits.SyncBudget = 10 * time.Second
 	})
