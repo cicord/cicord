@@ -9,6 +9,7 @@ import type {
   SimCommand,
   SimModal,
   SimServer,
+  SimPollVoteRequest,
   User,
 } from "@cicord/client";
 import { useCicord } from "@cicord/react";
@@ -690,7 +691,18 @@ function ChannelView({
   busy: string | null;
   onComponent: (m: Message, customId: string, values: string[]) => Promise<void>;
 }) {
+  const { client } = useCicord();
+  const toast = useToast();
   const messages = useSimMessages(channelId, viewer?.id);
+  async function vote(request: SimPollVoteRequest) {
+    try {
+      await client.sim.pollVote(request);
+    } catch (error) {
+      toast.push({ tone: "bad", title: i18n.t("sim.poll.voteFailed"), text: errorMessage(error) });
+    } finally {
+      await messages.refetch();
+    }
+  }
   const channel = server.channels.find((c) => c.id === channelId);
   const scroll = useStickToBottom(messages.data?.length);
   return (
@@ -722,6 +734,9 @@ function ChannelView({
             viewer={viewer}
             busy={busy}
             onComponent={onComponent}
+            onPollVote={
+              viewer && server.members.some((m) => m.user.id === viewer.id) ? vote : undefined
+            }
           />
         )}
       </div>

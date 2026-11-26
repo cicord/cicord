@@ -6,9 +6,11 @@ import type {
   MessageEntitySelect,
   MessageEmbed,
   MessageSelect,
+  SimPollVoteRequest,
   User,
 } from "@cicord/client";
-import { useState } from "react";
+import { useId, useState } from "react";
+import { Check } from "lucide-react";
 import { Markdown, isSafeUrl } from "../schema-form/index.ts";
 import { IconExternal, IconEye } from "./kit.tsx";
 import { Avatar, Spinner } from "./kit.tsx";
@@ -26,6 +28,7 @@ export interface MessageListProps {
   /** Viewer of ephemeral messages (they are shown as "only visible to …"). */
   viewer?: User | undefined;
   onComponent?: (message: Message, customId: string, values: string[]) => Promise<void>;
+  onPollVote?: (vote: SimPollVoteRequest) => Promise<void>;
   /** Message ids with an interaction in flight. */
   busy?: string | null;
   botIds?: ReadonlySet<string>;
@@ -71,6 +74,7 @@ export function MessageItem({
   resolver,
   viewer,
   onComponent,
+  onPollVote,
   busy,
   botIds,
 }: Omit<MessageListProps, "messages"> & { message: Message; compact?: boolean }) {
@@ -110,6 +114,15 @@ export function MessageItem({
         {(m.embeds ?? []).map((e, i) => (
           <Embed key={i} embed={e} resolver={resolver} />
         ))}
+        {m.poll ? (
+          <NativePoll
+            key={viewer?.id}
+            message={m}
+            poll={m.poll}
+            viewer={viewer}
+            onVote={onPollVote}
+          />
+        ) : null}
         {(m.components ?? []).length ? (
           <div className="msg-components">
             {m.components.map((node, index) => (
@@ -131,6 +144,75 @@ export function MessageItem({
         ) : null}
       </div>
     </li>
+  );
+}
+
+function NativePoll({
+  message,
+  poll,
+  viewer,
+  onVote,
+}: {
+  message: Message;
+  poll: NonNullable<Message["poll"]>;
+  viewer: User | undefined;
+  onVote: MessageListProps["onPollVote"];
+}) {
+  const heading = useId();
+  const [pending, setPending] = useState(false);
+  async function toggle(answer: (typeof poll.answers)[number]) {
+    if (pending || poll.finalized || !viewer || !onVote) return;
+    setPending(true);
+    try {
+      await onVote({
+        userId: viewer.id,
+        channelId: message.channelId,
+        messageId: message.id,
+        answerId: answer.id,
+        voted: answer.meVoted !== true,
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <section className="sim-native-poll" aria-labelledby={heading} aria-busy={pending}>
+      <h3 id={heading}>{poll.question}</h3>
+      <p className="sim-poll-mode">
+        {i18n.t(
+          poll.finalized
+            ? "sim.poll.closed"
+            : poll.multiselect
+              ? "sim.poll.multipleChoices"
+              : "sim.poll.singleChoice",
+        )}
+      </p>
+      <div className="sim-poll-answers">
+        {poll.answers.map((answer) => {
+          const selected = !!viewer && answer.meVoted === true;
+          return (
+            <button
+              type="button"
+              key={answer.id}
+              aria-pressed={selected}
+              disabled={pending || poll.finalized || !viewer || !onVote}
+              onClick={() => void toggle(answer)}
+            >
+              <span className="sim-poll-label">
+                {answer.emoji && <span aria-hidden="true">{answer.emoji} </span>}
+                {answer.text}
+              </span>
+              <span className="sim-poll-count">
+                {i18n.t("sim.poll.votes", { count: answer.votes })}
+              </span>
+              <span className="sim-poll-mark" aria-hidden="true">
+                {selected && <Check size={15} strokeWidth={2.5} />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

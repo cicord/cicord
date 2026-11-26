@@ -490,6 +490,91 @@ describe("plugins table and instance page", () => {
 });
 
 describe("simulator", () => {
+  test("native polls fetch each actor’s vote and submit its answer ID through the client", async () => {
+    const voters = new Set<string>();
+    const votes: {
+      userId: string;
+      channelId: string;
+      messageId: string;
+      answerId: number;
+      voted: boolean;
+    }[] = [];
+    const { user } = setup("/admin/simulator", (url, init) => {
+      const channel = /\/sim\/channels\/([^/]+)\/messages$/.exec(url.pathname);
+      if (channel) {
+        const actor = url.searchParams.get("userId");
+        return json({
+          items: [
+            {
+              id: "native-poll",
+              channelId: channel[1],
+              serverId: "server",
+              author: {
+                id: "bot",
+                username: "cicord",
+                displayName: "Cicord",
+                avatarUrl: "",
+                bot: true,
+              },
+              content: "",
+              ephemeral: false,
+              components: [],
+              embeds: [],
+              createdAt: new Date().toISOString(),
+              poll: {
+                question: "Where should we meet?",
+                multiselect: false,
+                finalized: false,
+                answers: [
+                  {
+                    id: 7,
+                    text: "Garden",
+                    votes: 1 + voters.size,
+                    meVoted: actor !== null && voters.has(actor),
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      }
+      if (url.pathname.endsWith("/sim/poll-votes") && init.method === "POST") {
+        const vote = JSON.parse(String(init.body)) as (typeof votes)[number];
+        votes.push(vote);
+        if (vote.voted) voters.add(vote.userId);
+        else voters.delete(vote.userId);
+        return new Response(null, { status: 204 });
+      }
+      return undefined;
+    });
+    await loginAsOwner(user);
+    const answer = () => screen.getByRole("button", { name: /Garden/ });
+    await screen.findByRole("heading", { name: "Where should we meet?" });
+    expect(answer().getAttribute("aria-pressed")).toBe("false");
+    await user.click(answer());
+    await waitFor(() => expect(answer().getAttribute("aria-pressed")).toBe("true"));
+    const ownerVote = votes[0]!;
+    expect(ownerVote).toMatchObject({ messageId: "native-poll", answerId: 7, voted: true });
+    await user.click(screen.getByRole("button", { name: "alice joins the server" }));
+    await user.click(await screen.findByRole("button", { name: "Act as alice" }));
+    await waitFor(() => expect(answer().getAttribute("aria-pressed")).toBe("false"));
+    expect(answer().textContent).toContain("2 votes");
+    await user.click(answer());
+    await waitFor(() => expect(answer().getAttribute("aria-pressed")).toBe("true"));
+    expect(votes[1]!.userId).not.toBe(ownerVote.userId);
+    expect(votes[1]).toMatchObject({
+      messageId: "native-poll",
+      channelId: ownerVote.channelId,
+      answerId: 7,
+      voted: true,
+    });
+    await user.click(answer());
+    await waitFor(() => expect(answer().getAttribute("aria-pressed")).toBe("false"));
+    expect(votes[2]).toMatchObject({ userId: votes[1]!.userId, voted: false });
+    await user.click(screen.getByRole("button", { name: "Act as owner" }));
+    await waitFor(() => expect(answer().getAttribute("aria-pressed")).toBe("true"));
+  });
+
   test("join a user: welcome message, role, DM with the portal link; run a command; click a button", async () => {
     const { user } = setup("/admin/simulator");
     await loginAsOwner(user);

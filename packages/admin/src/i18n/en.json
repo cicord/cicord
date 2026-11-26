@@ -811,6 +811,14 @@
     }
   },
   "sim": {
+    "poll": {
+      "closed": "Voting ended",
+      "singleChoice": "Choose one answer",
+      "multipleChoices": "Choose one or more answers",
+      "votes_one": "{{count}} vote",
+      "votes_other": "{{count}} votes",
+      "voteFailed": "Could not update your vote"
+    },
     "channels": "Channels",
     "server": "Simulated server",
     "conversation": "Conversation",
