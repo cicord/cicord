@@ -10,7 +10,6 @@ package registry
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -328,9 +327,20 @@ func Materialize(ctx context.Context, cacheDir, source string, e LockEntry) (str
 	if err != nil {
 		return "", err
 	}
-	marker := filepath.Join(dir, ".cicord-integrity")
-	if data, err := os.ReadFile(marker); err == nil && strings.TrimSpace(string(data)) == e.Integrity {
+	parent, err := openCacheParent(cacheDir, dir)
+	if err != nil {
+		return "", err
+	}
+	defer parent.Close()
+	name := filepath.Base(dir)
+	if verifyCache(ctx, parent, name, e.Integrity, false) {
 		return dir, nil
+	}
+	// Pre-0.2 caches used a shortened commit and a marker. Recompute the tree
+	// before using them offline; all future writes use the full, content-specific path.
+	legacy := legacyCacheName(e)
+	if verifyCache(ctx, parent, legacy, e.Integrity, true) {
+		return filepath.Join(filepath.Dir(dir), legacy), nil
 	}
 	repo, err := cloneMem(ctx, e.Repo)
 	if err != nil {
@@ -338,27 +348,17 @@ func Materialize(ctx context.Context, cacheDir, source string, e LockEntry) (str
 	}
 	commit, err := repo.CommitObject(plumbing.NewHash(e.Commit))
 	if err != nil {
-		return "", fmt.Errorf("%s: commit %s not found: %w", e.Repo, e.Commit, err)
+		return "", fmt.Errorf("%s: commit %s not found: %w", Redact(e.Repo), e.Commit, err)
 	}
-	tmp := dir + ".tmp"
-	os.RemoveAll(tmp)
-	sum, err := exportTree(commit, e.Path, tmp)
+	files, err := commitFiles(commit, e.Path)
 	if err != nil {
-		os.RemoveAll(tmp)
 		return "", err
 	}
+	sum := Integrity(files)
 	if e.Integrity != "" && sum != e.Integrity {
-		os.RemoveAll(tmp)
 		return "", fmt.Errorf("integrity mismatch for %s@%s: lock has %s, content is %s", source, e.Version, e.Integrity, sum)
 	}
-	os.RemoveAll(dir)
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp, dir); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(marker, []byte(sum+"\n"), 0o644); err != nil {
+	if err = installCache(ctx, parent, name, sum, files); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -381,11 +381,17 @@ func cachePath(cacheDir, source string, e LockEntry) (string, error) {
 	if err := CheckPluginPath(e.Path); err != nil {
 		return "", fmt.Errorf("%s: %w", source, err)
 	}
-	dir := filepath.Join(cacheDir, reg, name, v.String()+"-"+shortSHA(e.Commit))
+	suffix := sha256.Sum256([]byte(e.Path + "\x00" + e.Integrity))
+	dir := filepath.Join(cacheDir, reg, name, fmt.Sprintf("%s-%s-%x", v.String(), e.Commit, suffix[:12]))
 	if rel, err := filepath.Rel(cacheDir, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("%s: cache path escapes the cache directory", source)
 	}
 	return dir, nil
+}
+
+func legacyCacheName(e LockEntry) string {
+	v, _ := semver.NewVersion(e.Version)
+	return v.String() + "-" + shortSHA(e.Commit)
 }
 
 var shaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -406,34 +412,28 @@ func cloneMem(ctx context.Context, url string) (*git.Repository, error) {
 	return r, nil
 }
 
-// exportTree writes the files of the commit's directory sub ("" = the whole tree) into dir,
-// relative to sub, and returns the integrity hash ("sha256-<base64>") over sorted (path,
-// content) pairs: a plugin hashes the same in its own repository and in a monorepo.
-func exportTree(c *object.Commit, sub, dir string) (string, error) {
+// commitFiles reads precisely the regular Git files covered by the lock.
+func commitFiles(c *object.Commit, sub string) (map[string][]byte, error) {
 	if err := CheckPluginPath(sub); err != nil {
-		return "", err
+		return nil, err
 	}
 	tree, err := c.Tree()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if sub != "" {
-		if tree, err = tree.Tree(sub); err != nil {
-			return "", fmt.Errorf("directory %s not found in commit %s: %w", sub, shortSHA(c.Hash.String()), err)
+		tree, err = tree.Tree(sub)
+		if err != nil {
+			return nil, fmt.Errorf("directory %s not found in commit %s: %w", sub, shortSHA(c.Hash.String()), err)
 		}
 	}
-	type entry struct {
-		name string
-		data []byte
-	}
-	var entries []entry
+	files := map[string][]byte{}
 	err = tree.Files().ForEach(func(f *object.File) error {
 		if f.Mode == filemode.Symlink || f.Mode == filemode.Submodule {
 			return nil
 		}
-		clean := path.Clean(f.Name)
-		if strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
-			return fmt.Errorf("unsafe path %q", f.Name)
+		if !fs.ValidPath(f.Name) || !filepath.IsLocal(filepath.FromSlash(f.Name)) || strings.ContainsAny(f.Name, "\\:") {
+			return errors.New("unsafe package filename")
 		}
 		rd, err := f.Reader()
 		if err != nil {
@@ -441,27 +441,12 @@ func exportTree(c *object.Commit, sub, dir string) (string, error) {
 		}
 		defer rd.Close()
 		data, err := io.ReadAll(rd)
-		if err != nil {
-			return err
+		if err == nil {
+			files[f.Name] = data
 		}
-		entries = append(entries, entry{clean, data})
-		return nil
+		return err
 	})
-	if err != nil {
-		return "", err
-	}
-	files := make(map[string][]byte, len(entries))
-	for _, e := range entries {
-		files[e.name] = e.data
-		p := filepath.Join(dir, filepath.FromSlash(e.name))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return "", err
-		}
-		if err := os.WriteFile(p, e.data, 0o644); err != nil {
-			return "", err
-		}
-	}
-	return Integrity(files), nil
+	return files, err
 }
 
 // Integrity is the content hash of a plugin ("sha256-<base64>") over its files sorted by
@@ -474,10 +459,10 @@ func Integrity(files map[string][]byte) string {
 	sort.Strings(names)
 	h := sha256.New()
 	for _, n := range names {
-		fmt.Fprintf(h, "%s\x00%d\x00", n, len(files[n]))
+		integrityHeader(h, n, int64(len(files[n])))
 		h.Write(files[n])
 	}
-	return "sha256-" + base64.StdEncoding.EncodeToString(h.Sum(nil))
+	return integrityDigest(h)
 }
 
 // ───────────────────────────────────────────────────────────── add / update
@@ -628,7 +613,7 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list the tags of %s: %w", ie.Repo, err)
+		return nil, fmt.Errorf("list the tags of %s: %w", Redact(ie.Repo), err)
 	}
 	if best == nil {
 		return nil, fmt.Errorf("no version of %s matches %q", source, versionRange)
@@ -642,22 +627,26 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 		return nil, err
 	}
 	entry := LockEntry{Version: best.String(), Repo: ie.Repo, Path: ie.Path, Commit: bestHash.String()}
+	files, err := commitFiles(commit, ie.Path)
+	if err != nil {
+		return nil, fmt.Errorf("%s@%s: %w", source, entry.Version, err)
+	}
+	entry.Integrity = Integrity(files)
 	dir, err := cachePath(cacheDir, source, entry)
 	if err != nil {
 		return nil, err
 	}
-	os.RemoveAll(dir)
-	sum, err := exportTree(commit, ie.Path, dir)
+	parent, err := openCacheParent(cacheDir, dir)
 	if err != nil {
-		return nil, fmt.Errorf("%s@%s: %w", source, entry.Version, err)
-	}
-	entry.Integrity = sum
-	saveIndexProof(filepath.Join(cacheDir, "official-index-proof.json"), idx.proof)
-	if err := os.WriteFile(filepath.Join(dir, ".cicord-integrity"), []byte(sum+"\n"), 0o644); err != nil {
 		return nil, err
 	}
-	manifest, err := os.ReadFile(filepath.Join(dir, "plugin.yaml"))
-	if err != nil {
+	defer parent.Close()
+	if err = installCache(ctx, parent, filepath.Base(dir), entry.Integrity, files); err != nil {
+		return nil, err
+	}
+	saveIndexProof(filepath.Join(cacheDir, "official-index-proof.json"), idx.proof)
+	manifest, ok := files["plugin.yaml"]
+	if !ok {
 		where := "the repository root"
 		if ie.Path != "" {
 			where = ie.Path

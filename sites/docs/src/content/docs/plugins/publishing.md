@@ -262,3 +262,7 @@ with these commands, using the production key `10d3620231e083f8` (public key in
   expires within 10 days.
 
 It signs whatever is on `main`: branch protection (required reviews) is the real trust root.
+
+### Verified offline packages
+
+On a cache hit Cicord hashes the sorted file paths, sizes and bytes and compares the result with the integrity in `cicord.lock`. Existing verified caches work offline. Changed, missing or additional files and symbolic links trigger a fresh download of the pinned commit. The replacement becomes available after its content hash matches. If the origin is unavailable, validation reports an error and the changed cache stays ineligible.
