@@ -476,7 +476,7 @@ of date), for CI.`,
 			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(out, []byte(content), 0o644); err != nil { //nolint:gosec // G703: output path chosen by the user running the CLI
+			if err := os.WriteFile(out, []byte(content), 0o644); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", out)

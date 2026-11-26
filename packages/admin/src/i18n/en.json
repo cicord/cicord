@@ -145,7 +145,10 @@
       }
     },
     "health": {
-      "Disabled": {"label":"Disabled","description":"Installed and paused by its configuration."},
+      "Disabled": {
+        "label": "Disabled",
+        "description": "Installed and paused by its configuration."
+      },
       "Healthy": {
         "label": "Healthy",
         "description": "Running normally."

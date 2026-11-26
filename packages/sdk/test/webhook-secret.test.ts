@@ -4,7 +4,11 @@ import { createTestContext } from "../src/testing.ts";
 test("opaque webhook sends expose status alone in the SDK harness", async () => {
   const t = createTestContext({
     secrets: ["HOOK"],
-    fetch: () => ({ status: 201, headers: { "x-reflected": "fixture" }, body: { token: "fixture" } }),
+    fetch: () => ({
+      status: 201,
+      headers: { "x-reflected": "fixture" },
+      body: { token: "fixture" },
+    }),
   });
   const ref = t.ctx.secrets.ref("HOOK");
   await expect(t.ctx.http.fetch(ref, { method: "GET" })).rejects.toThrow("webhook");
