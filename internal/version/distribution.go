@@ -19,7 +19,7 @@ var SourceRef string
 // Go run and source archives can omit the VCS stamp. This published source baseline
 // implements the branch SDK. Snapshot CI explicitly supplies the engine version when
 // installing it. An ordinary source binary prefers its own embedded VCS commit.
-const snapshotBaseline = "cdaf13a2ec56cc1f46c29c245c9e824e05a3d2db"
+const snapshotBaseline = "25e50db5a14c082966877fc39b6ebde329be7b27"
 
 var commitRef = regexp.MustCompile("^[0-9a-f]{40}$")
 var pseudoRef = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]*[0-9]{14}-[0-9a-f]{12}$`)

@@ -23,7 +23,7 @@ jobs:
         with:
           go-version: stable
       # Pin the engine that generated this repository and update it with the runtime.
-      - run: go install -ldflags="-X github.com/cicord/cicord/internal/version.Version=0.2.0-rc.1 -X github.com/cicord/cicord/internal/version.SourceRef=cdaf13a2ec56cc1f46c29c245c9e824e05a3d2db" github.com/cicord/cicord/cmd/cicord@cdaf13a2ec56cc1f46c29c245c9e824e05a3d2db
+      - run: go install -ldflags="-X github.com/cicord/cicord/internal/version.Version=0.2.0-rc.1 -X github.com/cicord/cicord/internal/version.SourceRef=25e50db5a14c082966877fc39b6ebde329be7b27" github.com/cicord/cicord/cmd/cicord@25e50db5a14c082966877fc39b6ebde329be7b27
       - run: cicord validate
 
   plan:
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      - run: go install -ldflags="-X github.com/cicord/cicord/internal/version.Version=0.2.0-rc.1 -X github.com/cicord/cicord/internal/version.SourceRef=cdaf13a2ec56cc1f46c29c245c9e824e05a3d2db" github.com/cicord/cicord/cmd/cicord@cdaf13a2ec56cc1f46c29c245c9e824e05a3d2db
+      - run: go install -ldflags="-X github.com/cicord/cicord/internal/version.Version=0.2.0-rc.1 -X github.com/cicord/cicord/internal/version.SourceRef=25e50db5a14c082966877fc39b6ebde329be7b27" github.com/cicord/cicord/cmd/cicord@25e50db5a14c082966877fc39b6ebde329be7b27
       - run: cicord plan --remote --comment
         env:
           CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      - run: go install -ldflags="-X github.com/cicord/cicord/internal/version.Version=0.2.0-rc.1 -X github.com/cicord/cicord/internal/version.SourceRef=cdaf13a2ec56cc1f46c29c245c9e824e05a3d2db" github.com/cicord/cicord/cmd/cicord@cdaf13a2ec56cc1f46c29c245c9e824e05a3d2db
+      - run: go install -ldflags="-X github.com/cicord/cicord/internal/version.Version=0.2.0-rc.1 -X github.com/cicord/cicord/internal/version.SourceRef=25e50db5a14c082966877fc39b6ebde329be7b27" github.com/cicord/cicord/cmd/cicord@25e50db5a14c082966877fc39b6ebde329be7b27
       # The runtime pulls the merged commit (webhook or polling); wait for it to be applied.
       - run: cicord status --wait --revision ${{ github.sha }} --timeout 10m
         env:
