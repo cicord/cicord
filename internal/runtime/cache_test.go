@@ -63,3 +63,23 @@ func TestRefreshPreservesConcurrentChannelDeny(t *testing.T) {
 		t.Fatal("REST refresh rolled back gateway revocation")
 	}
 }
+
+func TestServerInfoUsesCurrentGuildOwner(t *testing.T) {
+	e := startExample(t)
+	s := e.rt.Active().servers["my-community"]
+	previous := s.cache.Server()
+	currentOwner := previous.OwnerID
+	previous.OwnerID = "obsolete-owner"
+	s.cache.Observe(discord.ServerUpdateEvent{Server: previous})
+	srv, ok := e.rt.ServerInfo(s.key)
+	if !ok || currentOwner == "" || srv.OwnerID != currentOwner {
+		t.Fatalf("portal owner from stale resource cache: %q (want %q)", srv.OwnerID, currentOwner)
+	}
+	if err := e.rt.bot(s.bot).session.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	srv, ok = e.rt.ServerInfo(s.key)
+	if !ok || srv.OwnerID != "" {
+		t.Fatalf("disconnected session authorized owner %q", srv.OwnerID)
+	}
+}

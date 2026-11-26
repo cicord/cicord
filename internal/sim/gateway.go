@@ -71,11 +71,22 @@ func (s *Session) ApplicationFlags() int {
 
 // AudienceSnapshot reads one live simulated guild, including active threads.
 func (s *Session) AudienceSnapshot(serverID string) discord.AudienceSnapshot {
+	return s.guildPolicySnapshot(serverID, true)
+}
+
+func (s *Session) GuildOwnerID(serverID string) string {
+	return s.guildPolicySnapshot(serverID, false).OwnerID
+}
+
+func (s *Session) guildPolicySnapshot(serverID string, includeResources bool) discord.AudienceSnapshot {
 	s.w.mu.Lock()
 	defer s.w.mu.Unlock()
 	g := s.w.servers[serverID]
 	if s.closed || !s.opened || !s.intents.Has(intentServers) || g == nil || g.members[s.bot.userID] == nil {
 		return discord.AudienceSnapshot{}
+	}
+	if !includeResources {
+		return discord.AudienceSnapshot{OwnerID: g.info.OwnerID}
 	}
 	out := discord.AudienceSnapshot{OwnerID: g.info.OwnerID, Roles: s.w.sortedRoles(g), Channels: map[string]discord.Channel{}}
 	for _, id := range g.channelIDs {

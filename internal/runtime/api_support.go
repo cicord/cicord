@@ -24,7 +24,14 @@ func (r *Runtime) ServerInfo(key string) (discord.Server, bool) {
 	if a == nil || a.servers[key] == nil {
 		return discord.Server{}, false
 	}
-	s := a.servers[key].cache.Server()
+	srv := a.servers[key]
+	s := srv.cache.Server()
+	// A former owner may still be a member. Never grant them an exemption
+	// from the display cache while the gateway is recovering.
+	s.OwnerID = ""
+	if host := r.bot(srv.bot); host != nil {
+		s.OwnerID = discord.CurrentGuildOwner(host.session, srv.cfg.Spec.DiscordID)
+	}
 	return s, s.ID != ""
 }
 

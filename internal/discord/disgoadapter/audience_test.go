@@ -63,11 +63,17 @@ func TestAudienceGatewayRecovery(t *testing.T) {
 	// A fresh READY at the library may become visible before the adapter has
 	// handled it. Guild ACLs in the old session must already be inaccessible.
 	gw.id = "second"
+	if owner := discord.CurrentGuildOwner(s, "1"); owner != "" {
+		t.Fatalf("former session still authorized owner %q", owner)
+	}
 	check(false, false)
 	dispatch("READY", ready)
 	check(false, false)
-	dispatch("GUILD_CREATE", guild+denied+"]}")
+	dispatch("GUILD_CREATE", strings.Replace(guild, `"owner_id":"2"`, `"owner_id":"4"`, 1)+denied+"]}")
 	check(true, false)
+	if owner := discord.CurrentGuildOwner(s, "1"); owner != "4" {
+		t.Fatalf("reconnected guild owner = %q", owner)
+	}
 	dispatch("GUILD_DELETE", `{"id":"1","unavailable":true}`)
 	check(false, false)
 	dispatch("GUILD_CREATE", guild+ch+"]}")

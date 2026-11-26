@@ -115,6 +115,14 @@ func (c *audienceCache) observe(sessionID string, sequence int, events []discord
 // awaiting GUILD_CREATE after a fresh READY. On RESUMED the replayed ACL events
 // have already been applied on the reader before the session becomes usable.
 func (s *session) AudienceSnapshot(serverID string) discord.AudienceSnapshot {
+	return s.guildPolicySnapshot(serverID, true)
+}
+
+func (s *session) GuildOwnerID(serverID string) string {
+	return s.guildPolicySnapshot(serverID, false).OwnerID
+}
+
+func (s *session) guildPolicySnapshot(serverID string, includeResources bool) discord.AudienceSnapshot {
 	s.mu.Lock()
 	gw := s.gw
 	s.mu.Unlock()
@@ -131,6 +139,9 @@ func (s *session) AudienceSnapshot(serverID string) discord.AudienceSnapshot {
 	id, seq := gw.SessionID(), gw.LastSequenceReceived()
 	if id == nil || *id != c.sessionID || seq == nil || *seq != c.sequence {
 		return discord.AudienceSnapshot{}
+	}
+	if !includeResources {
+		return discord.AudienceSnapshot{OwnerID: p.owner}
 	}
 	return discord.AudienceSnapshot{OwnerID: p.owner, Roles: slices.Collect(maps.Values(p.roles)), Channels: maps.Clone(p.channels)}
 }

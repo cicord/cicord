@@ -57,6 +57,15 @@ type AudienceSnapshotReader interface {
 	AudienceSnapshot(serverID string) AudienceSnapshot
 }
 
+// CurrentGuildOwner returns the owner from a synchronized guild session. Clients
+// without a current gateway view cannot establish an ownership exemption.
+func CurrentGuildOwner(client Client, serverID string) string {
+	if reader, ok := client.(interface{ GuildOwnerID(string) string }); ok {
+		return reader.GuildOwnerID(serverID)
+	}
+	return ""
+}
+
 func NewAudience(ch Channel, roles []Role) *Audience {
 	if ch.ServerID == "" || ch.ID == "" {
 		return nil
