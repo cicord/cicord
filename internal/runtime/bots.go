@@ -43,18 +43,21 @@ type botHost struct {
 	cmdHashes          map[string]string // serverID → hash of the last command set
 	cmdSync            sync.Mutex        // serializes SetServerCommands calls
 	profileHash        string
+	guildProfileMu     sync.Mutex
 	guildProfileHashes map[string][32]byte
 	presence           string
 }
 
 type routing struct {
-	dmOwner, dmLocale string
-	byServer          map[string][]*instanceRT          // serverID → instances
-	byName            map[string]map[string]*instanceRT // instance name → serverID → instance
-	commands          map[string]map[string]*instanceRT // serverID → command → instance
-	reconcilers       map[string]*serverRT              // serverID → server (when this bot reconciles it)
-	caches            map[string]*serverCache           // serverID → cache
-	serverKeys        map[string]string                 // serverID → server key, for the servers of the bot's spec
+	dmOwner, dmLocale        string
+	guildProfiles            map[string]config.BotServer
+	profileRoot, profileFile string
+	byServer                 map[string][]*instanceRT          // serverID → instances
+	byName                   map[string]map[string]*instanceRT // instance name → serverID → instance
+	commands                 map[string]map[string]*instanceRT // serverID → command → instance
+	reconcilers              map[string]*serverRT              // serverID → server (when this bot reconciles it)
+	caches                   map[string]*serverCache           // serverID → cache
+	serverKeys               map[string]string                 // serverID → server key, for the servers of the bot's spec
 }
 
 // syncCommands registers the slash commands of the instances of a server, unless the same
@@ -107,7 +110,9 @@ func (h *botHost) serverMembership(rt *routing, ev discord.Event) {
 		go func() { // the gateway handler must not block on REST
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			h.syncCommands(ctx, h.routing.Load(), sid)
+			current := h.routing.Load()
+			h.syncCommands(ctx, current, sid)
+			h.applyGuildProfile(ctx, current, sid, true)
 		}()
 	case discord.ServerLeaveEvent:
 		h.cmdMu.Lock()
@@ -472,6 +477,13 @@ func (h *botHost) install(ctx context.Context, a *active) {
 	if b.Spec.DirectMessages != nil {
 		rt.dmOwner = b.Spec.DirectMessages.Instance
 	}
+	rt.profileRoot, rt.profileFile = a.repo.Root, b.File
+	rt.guildProfiles = map[string]config.BotServer{}
+	for _, binding := range b.Spec.Servers {
+		if srv := a.repo.Servers[binding.Key]; srv != nil && binding.Profile != nil {
+			rt.guildProfiles[srv.Spec.DiscordID] = binding
+		}
+	}
 	for _, sk := range b.Spec.ServerKeys() {
 		if s := a.servers[sk]; s != nil {
 			if rt.dmLocale == "" && s.cfg.Spec.Portal != nil {
@@ -513,18 +525,8 @@ func (h *botHost) install(ctx context.Context, a *active) {
 	}
 
 	// Per-server appearance is applied to this bot's member identity only.
-	for _, binding := range b.Spec.Servers {
-		srv := a.repo.Servers[binding.Key]
-		if srv == nil {
-			continue
-		}
-		if binding.Profile == nil {
-			delete(h.guildProfileHashes, srv.Spec.DiscordID)
-			continue
-		}
-		if err := h.syncGuildProfile(ctx, a.repo.Root, b.File, binding, srv.Spec.DiscordID); err != nil {
-			h.rt.log.Warn("update guild bot profile", "bot", h.key, "server", binding.Key, "err", err)
-		}
+	for sid := range rt.serverKeys {
+		h.applyGuildProfile(ctx, rt, sid, false)
 	}
 
 	// profile
@@ -740,6 +742,25 @@ func hasEventIntents(in config.Instance, name string) bool {
 		}
 	}
 	return true
+}
+
+// Serialize activations with a bot rejoining its guild. Rejoining creates a new member identity.
+func (h *botHost) applyGuildProfile(ctx context.Context, rt *routing, sid string, joined bool) {
+	h.guildProfileMu.Lock()
+	defer h.guildProfileMu.Unlock()
+	if rt != h.routing.Load() {
+		return
+	}
+	binding, ok := rt.guildProfiles[sid]
+	if !ok || joined {
+		delete(h.guildProfileHashes, sid)
+	}
+	if !ok {
+		return
+	}
+	if err := h.syncGuildProfile(ctx, rt.profileRoot, rt.profileFile, binding, sid); err != nil {
+		h.rt.log.Warn("update guild bot profile", "bot", h.key, "server", binding.Key, "err", err)
+	}
 }
 
 func (h *botHost) syncGuildProfile(ctx context.Context, root, file string, b config.BotServer, serverID string) error {

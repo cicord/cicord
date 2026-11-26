@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"github.com/cicord/cicord/internal/discord"
 	"os"
 	"path/filepath"
 	"testing"
@@ -65,4 +66,15 @@ func TestGuildBotProfile(t *testing.T) {
 	if u, _ := s.world.User(s.bot.ID); u.Username == "Concierge" {
 		t.Fatal("guild profile changed global identity")
 	}
+	if err := s.world.AdminKickMember(s.serverID, s.bot.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.world.AddBotToServer(s.serverID, s.bot.ID, discord.MustPermissions("Administrator")); err != nil {
+		t.Fatal(err)
+	}
+	s.waitFor("profile restored after re-invite", func() bool {
+		m, ok := s.world.Member(s.serverID, s.bot.ID)
+		return ok && m.Nick == "Concierge" && m.Bio == "Community events"
+	})
+
 }
