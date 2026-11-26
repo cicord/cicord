@@ -23,6 +23,7 @@
  * member and returns the `VoiceStateUpdate` to pass to a `voiceStateUpdate` handler;
  * `member.moveTo()` / `disconnect()` update the same voice states (`voiceMoves` records them).
  */
+import { createHash } from "node:crypto";
 import type {
   Attachment,
   UploadFile,
@@ -1317,6 +1318,11 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   function audienceOf(channel: TextChannel | undefined): Audience {
     const out = {
       known: !!channel,
+      ...(channel?{fingerprint:createHash("sha256").update(JSON.stringify({
+        channel:channel.id,ownerId,nsfw:channelPolicy.get(channel.id)?.nsfw,
+        permissions:options.server?.everyonePermissions,roles:[...rolePermissions],
+        overwrites:[...(channelOverwrites.get(channel.id)??[])].map(([id,o])=>[id,[...o.allow].filter(p=>p==="ViewChannel" || p==="ReadMessageHistory").sort(),[...o.deny].filter(p=>p==="ViewChannel" || p==="ReadMessageHistory").sort()]),
+      })).digest("hex")} : {}),
       public: false,
       allowRoles: [] as string[],
       allowMembers: [] as string[],

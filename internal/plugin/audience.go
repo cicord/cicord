@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"slices"
 	"time"
@@ -68,6 +70,7 @@ func (i *Instance) audience(s discord.AudienceSnapshot, r ref) *discord.Audience
 }
 
 type audienceDTO struct {
+	Fingerprint  string   `json:"fingerprint,omitempty"`
 	Known        bool     `json:"known"`
 	Public       bool     `json:"public"`
 	AllowRoles   []string `json:"allowRoles"`
@@ -92,6 +95,8 @@ func opAudience(i *Instance, _ *invocation, args json.RawMessage) (any, error) {
 	if policy == nil {
 		return out, nil
 	}
+	out.Fingerprint = audienceFingerprint(i.ownerID(), policy)
+
 	out.Public = policy.Public()
 	for id := range policy.Roles {
 		if id == policy.Server {
@@ -153,4 +158,30 @@ func opPermissionsIn(i *Instance, inv *invocation, args json.RawMessage) (any, e
 	policy := i.audience(s, p.Ref)
 	perms, _ := policy.Permissions(p.User, m.RoleIDs, s.OwnerID, m.TimeoutUntil != nil && m.TimeoutUntil.After(time.Now()))
 	return perms.Names(), nil
+}
+
+// Include all principals and all permissions that affect reading. A send-only
+// change when archiving a channel does not change its reader policy.
+func audienceFingerprint(owner string, p *discord.Audience) string {
+	if owner == "" || p == nil {
+		return ""
+	}
+	mask := contentRead | discord.MustPermissions("Administrator")
+	roles := map[string]discord.Permissions{}
+	for id, perms := range p.Roles {
+		roles[id] = perms & mask
+	}
+	readOverwrites := func(src map[string]discord.Overwrite) map[string][2]discord.Permissions {
+		result := map[string][2]discord.Permissions{}
+		for id, o := range src {
+			a, d := o.Allow&contentRead, o.Deny&contentRead
+			if a|d != 0 {
+				result[id] = [2]discord.Permissions{a, d}
+			}
+		}
+		return result
+	}
+	raw, _ := json.Marshal([]any{p.Server, p.Channel, owner, p.NSFW, roles, p.Everyone.Allow & contentRead, p.Everyone.Deny & contentRead, readOverwrites(p.RoleOverrides), readOverwrites(p.MemberOverrides)})
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
 }

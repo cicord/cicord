@@ -434,6 +434,8 @@ export interface EditChannelOptions {
 
 export type AudienceRelation = "same" | "narrower" | "wider" | "disjoint" | "unknown";
 export interface Audience {
+  /** Opaque version of all read-policy inputs. Available only for a known policy. */
+  readonly fingerprint?:string;
   readonly known: boolean;
   readonly public: boolean;
   readonly allowRoles: readonly Snowflake[];
