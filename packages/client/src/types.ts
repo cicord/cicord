@@ -1119,6 +1119,12 @@ export interface MessageEmbed {
 }
 
 export interface Message {
+  poll?: {
+    question: string;
+    answers: { id: number; text: string; emoji?: string; votes: number; meVoted?: boolean }[];
+    multiselect: boolean;
+    finalized: boolean;
+  };
   id: string;
   channelId: string;
   /** Absent for DMs. */
@@ -1189,6 +1195,14 @@ export interface SimCommandRequest {
    * (`options` are the other options already filled in); the result carries `choices`.
    */
   autocomplete?: { option: string; value: string };
+}
+
+export interface SimPollVoteRequest {
+  userId: string;
+  channelId: string;
+  messageId: string;
+  answerId: number;
+  voted: boolean;
 }
 
 export interface SimComponentRequest {

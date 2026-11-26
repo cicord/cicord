@@ -66,6 +66,12 @@ func (c *Client) ChannelPins(ctx context.Context, ch string) ([]discord.Message,
 }
 func (w *World) messageFor(a actor, ms *messageState) discord.Message {
 	m := cloneMessage(ms.msg)
+	if p := m.PollResults; p != nil {
+		p.Finalized = p.Finalized || !w.now().Before(ms.expires)
+		for n, answer := range p.Answers {
+			p.Answers[n].MeVoted = ms.votes[answer.ID][a.userID]
+		}
+	}
 	m.Reactions = make([]discord.ReactionSummary, 0, len(ms.reactions))
 	for _, r := range ms.reactions {
 		m.Reactions = append(m.Reactions, discord.ReactionSummary{Emoji: r.emoji, Count: len(r.users), Me: slices.Contains(r.users, a.userID)})

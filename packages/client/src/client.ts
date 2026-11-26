@@ -44,6 +44,7 @@ import type {
   SimCommand,
   SimCommandRequest,
   SimComponentRequest,
+  SimPollVoteRequest,
   SimModalRequest,
   SimSendMessageRequest,
   SimState,
@@ -1153,6 +1154,9 @@ export class CicordClient {
         body: { options: {}, ...request },
         ...options,
       }),
+    /** Casts or withdraws the current user's vote on a native Discord poll. */
+    pollVote: (request: SimPollVoteRequest, options?: CallOptions): Promise<void> =>
+      this.#api<void>("POST", "/sim/poll-votes", { body: request, ...options }),
     /** `POST /sim/components` — clicks a button / picks select values. */
     component: (request: SimComponentRequest, options?: CallOptions): Promise<InteractionResult> =>
       this.#api<InteractionResult>("POST", "/sim/components", {

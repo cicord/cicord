@@ -285,6 +285,7 @@ func (s *server) routes() {
 	h("POST /api/v1/sim/messages", s.simOnly(s.handleSimSend))
 	h("POST /api/v1/sim/commands", s.simOnly(s.handleSimCommand))
 	h("GET /api/v1/sim/commands", s.simOnly(s.handleSimCommands))
+	h("POST /api/v1/sim/poll-votes", s.simOnly(s.handleSimPollVote))
 	h("POST /api/v1/sim/components", s.simOnly(s.handleSimComponent))
 	h("POST /api/v1/sim/modals", s.simOnly(s.handleSimModal))
 	h("GET /api/v1/sim/events", s.simOnly(s.handleSimEvents))

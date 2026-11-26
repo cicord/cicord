@@ -31,8 +31,9 @@ type wirePoll struct {
 	Results  *struct {
 		Final  bool `json:"is_finalized"`
 		Counts []struct {
-			ID    int `json:"id"`
-			Count int `json:"count"`
+			ID      int  `json:"id"`
+			Count   int  `json:"count"`
+			MeVoted bool `json:"me_voted"`
 		} `json:"answer_counts"`
 	} `json:"results,omitempty"`
 }
@@ -59,15 +60,16 @@ func pollFromWire(w *wirePoll) *discord.Poll {
 		return nil
 	}
 	p := &discord.Poll{Question: w.Question.Text, Multiselect: w.Multi}
-	counts := map[int]int{}
+	counts := map[int]discord.PollAnswer{}
 	if w.Results != nil {
 		p.Finalized = w.Results.Final
 		for _, c := range w.Results.Counts {
-			counts[c.ID] = c.Count
+			counts[c.ID] = discord.PollAnswer{Votes: c.Count, MeVoted: c.MeVoted}
 		}
 	}
 	for _, a := range w.Answers {
-		ans := discord.PollAnswer{ID: a.ID, Text: a.Media.Text, Votes: counts[a.ID]}
+		ans := counts[a.ID]
+		ans.ID, ans.Text = a.ID, a.Media.Text
 		if e := a.Media.Emoji; e != nil {
 			ans.Emoji = e.Name
 			if e.ID != "" {

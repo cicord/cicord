@@ -15,6 +15,16 @@ func TestCommunityLifecycle(t *testing.T) {
 	isErr(t, err, nil)
 	isErr(t, f.w.VotePoll(f.alice.ID, c, m.ID, 1, true), nil)
 	isErr(t, f.w.VotePoll(f.alice.ID, c, m.ID, 2, true), nil)
+	for _, as := range []string{f.alice.ID, f.owner.ID} {
+		view, err := f.w.UserClient(as).GetMessage(ctx, c, m.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		answers := view.PollResults.Answers
+		if answers[0].MeVoted || answers[1].MeVoted != (as == f.alice.ID) || answers[1].Votes != 1 {
+			t.Fatalf("user %s received another voter's selection: %+v", as, answers)
+		}
+	}
 	ids, err := admin.PollVoters(ctx, c, m.ID, 2, "")
 	isErr(t, err, nil)
 	if len(ids) != 1 || ids[0] != f.alice.ID {

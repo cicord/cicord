@@ -9,10 +9,11 @@ import (
 )
 
 type PollAnswer struct {
-	ID    int    `json:"id,omitempty"`
-	Text  string `json:"text"`
-	Emoji string `json:"emoji,omitempty"`
-	Votes int    `json:"votes"`
+	ID      int    `json:"id,omitempty"`
+	Text    string `json:"text"`
+	Emoji   string `json:"emoji,omitempty"`
+	Votes   int    `json:"votes"`
+	MeVoted bool   `json:"meVoted,omitempty"`
 }
 type Poll struct {
 	Question      string       `json:"question"`

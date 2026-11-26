@@ -29,6 +29,8 @@ named after `profile.username` or its key) invited with `Administrator`, and the
 | GET | `/api/v1/sim/users/{id}/dms?limit=50` | `{"items": [Message]}`: DMs received by the user from bots, oldest first. |
 | POST | `/api/v1/sim/messages` | `{"userId", "channelId", "content"}`: `201 Message`. |
 | POST | `/api/v1/sim/commands` | `{"userId", "serverId", "channelId", "bot", "name", "options": {}, "autocomplete"?: {"option", "value"}}`: `InteractionResult` ([below](#slash-commands)). |
+| POST | `/api/v1/sim/poll-votes` | `{"userId", "channelId", "messageId", "answerId", "voted"}` casts (`true`) or removes (`false`) a native poll vote. Returns `204`. Read the message’s `poll.answers[].votes` for the totals. |
+| POST | `/api/v1/sim/channels/{id}/permissions` | Replaces the channel overwrites as the simulated operator. Pass `{"overwrites": [{"id", "type", "allow", "deny"}]}` with role or member IDs and arrays of permission names. Returns `204`. |
 | POST | `/api/v1/sim/components` | `{"userId", "channelId"?, "messageId", "customId", "values": []}`: `InteractionResult` (a select when `customId` is a select menu of the message, a button click otherwise). |
 | POST | `/api/v1/sim/modals` | `{"userId", "serverId", "channelId", "bot", "customId", "fields": {"<input id>": "value"}}`: `InteractionResult` (submits a modal shown by a previous interaction). |
 | GET | `/api/v1/sim/commands?serverId=` | `{"items": [{"bot", "name", "description", "options": [...]}]}`: the registered commands, of every simulated server by default. |

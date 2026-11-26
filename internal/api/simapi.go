@@ -61,6 +61,7 @@ type componentDTO struct {
 }
 
 type messageDTO struct {
+	Poll       *discord.Poll  `json:"poll,omitempty"`
 	ID         string         `json:"id"`
 	ChannelID  string         `json:"channelId"`
 	ServerID   string         `json:"serverId,omitempty"`
@@ -124,7 +125,7 @@ func toComponents(cs []discord.Component) []componentDTO {
 func toMessage(m discord.Message) messageDTO {
 	out := messageDTO{ID: m.ID, ChannelID: m.ChannelID, ServerID: m.ServerID, Author: toUser(m.Author), Content: m.Content,
 		Embeds: []embedDTO{}, Components: toComponents(m.Components), Ephemeral: m.Flags&discord.MessageFlagEphemeral != 0,
-		CreatedAt: m.CreatedAt, EditedAt: m.EditedAt}
+		CreatedAt: m.CreatedAt, EditedAt: m.EditedAt, Poll: m.PollResults}
 	for _, e := range m.Embeds {
 		d := embedDTO{Title: e.Title, Description: e.Description, URL: e.URL, Color: colorHex(e.Color), Timestamp: e.Timestamp,
 			ImageURL: e.ImageURL, ThumbnailURL: e.ThumbURL}
@@ -595,6 +596,29 @@ func findComponentType(cs []discord.Component, customID string) (discord.Compone
 		}
 	}
 	return 0, false
+}
+
+func (s *server) handleSimPollVote(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		UserID    string `json:"userId"`
+		ChannelID string `json:"channelId"`
+		MessageID string `json:"messageId"`
+		AnswerID  int    `json:"answerId"`
+		Voted     *bool  `json:"voted"`
+	}
+	if err := s.decodeJSON(w, r, &body); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if body.Voted == nil || body.UserID == "" || body.ChannelID == "" || body.MessageID == "" {
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "provide userId, channelId, messageId, answerId and voted"))
+		return
+	}
+	if err := s.opts.Sim.VotePoll(body.UserID, body.ChannelID, body.MessageID, body.AnswerID, *body.Voted); err != nil {
+		s.fail(w, simErr(err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) handleSimComponent(w http.ResponseWriter, r *http.Request) {
