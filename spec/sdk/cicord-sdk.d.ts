@@ -241,6 +241,10 @@ export interface TextChannel extends Channel {
 }
 
 export interface Member {
+  /** Effective permissions for the current invocation. Missing information returns an empty list. */
+  permissionsIn(channel: ChannelRef | Channel): readonly Permission[];
+  /** Both ViewChannel and ReadMessageHistory are required to expose past content. */
+  canView(channel: ChannelRef | Channel): boolean;
   readonly user: User;
   readonly id: Snowflake;
   readonly nickname?: string;
@@ -339,7 +343,19 @@ export interface EditChannelOptions {
   reason?: string;
 }
 
+export type AudienceRelation = "same" | "narrower" | "wider" | "disjoint" | "unknown";
+export interface Audience {
+  readonly known: boolean;
+  readonly public: boolean;
+  readonly allowRoles: readonly Snowflake[];
+  readonly allowMembers: readonly Snowflake[];
+  readonly denyMembers: readonly Snowflake[];
+}
+
 export interface Server {
+  /** Read policy summary. Use compareAudience for copies, which also checks combinations of roles. */
+  audience(channel: ChannelRef | Channel): Audience;
+  compareAudience(source: ChannelRef | Channel, destination: ChannelRef | Channel): AudienceRelation;
   /** Ban a user, including one outside the server. @capability discord.members.moderate */
   ban(userId: Snowflake, options?: { reason?: string; deleteMessagesSeconds?: number }): Promise<void>;
   /** Lift a ban. Already unbanned is success. @capability discord.members.moderate */

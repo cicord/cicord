@@ -44,11 +44,12 @@ type channelDTO struct {
 }
 
 type memberDTO struct {
-	User        userDTO   `json:"user"`
-	Nick        string    `json:"nick,omitempty"`
-	DisplayName string    `json:"displayName"`
-	Roles       []roleDTO `json:"roles"`
-	JoinedAt    string    `json:"joinedAt,omitempty"`
+	subject     discord.Member // host-only permission input, never serialized
+	User        userDTO        `json:"user"`
+	Nick        string         `json:"nick,omitempty"`
+	DisplayName string         `json:"displayName"`
+	Roles       []roleDTO      `json:"roles"`
+	JoinedAt    string         `json:"joinedAt,omitempty"`
 	// Permissions: server-level permission names (see memberPermissions).
 	Permissions []string `json:"permissions"`
 	// Access: "member", "moderator" or "admin" (see memberAccess).
@@ -235,6 +236,7 @@ func (i *Instance) channelDTO(id string) channelDTO {
 
 func (i *Instance) memberDTO(m discord.Member) memberDTO {
 	dto := memberDTO{
+		subject:     m,
 		User:        i.userDTO(m.User),
 		Nick:        m.Nick,
 		DisplayName: m.DisplayName(),

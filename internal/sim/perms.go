@@ -72,21 +72,7 @@ func (w *World) channelPerms(c *channelState, userID string) discord.Permissions
 	if m == nil {
 		return 0
 	}
-	var roleAllow, roleDeny, memAllow, memDeny discord.Permissions
-	for _, ow := range c.ch.Overwrites {
-		switch {
-		case ow.Type == discord.OverwriteRole && ow.ID == s.info.ID:
-			p = p&^ow.Deny | ow.Allow
-		case ow.Type == discord.OverwriteRole && m.HasRole(ow.ID):
-			roleAllow |= ow.Allow
-			roleDeny |= ow.Deny
-		case ow.Type == discord.OverwriteMember && ow.ID == userID:
-			memAllow |= ow.Allow
-			memDeny |= ow.Deny
-		}
-	}
-	p = p&^roleDeny | roleAllow
-	p = p&^memDeny | memAllow
+	p = discord.ApplyOverwrites(p, s.info.ID, userID, m.RoleIDs, c.ch.Overwrites)
 	if w.timedOut(m) {
 		p &= permTimeoutRestricted
 	}

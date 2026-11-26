@@ -101,6 +101,21 @@ warn about a declared `ServerMembers` without member handlers when the plugin ha
 `discord.members.read`. In tests, `createTestContext({ intents: [...] })` applies the same
 check.
 
+### Channel audiences
+
+With `discord.channels.read`, `member.canView(channel)` checks **View Channel** and
+**Read Message History** using that handler's authenticated member or a member read in
+that handler. `member.permissionsIn(channel)` returns the effective permissions. A
+missing role, an unknown channel or a private thread with unverified membership denies
+the read. The portal fetches a fresh member for each request, including when a staff
+role has just been removed.
+
+Before copying content, use `ctx.server.compareAudience(source, destination)`. Permit
+the copy only for `same` or `narrower`. The comparison considers combinations of roles
+and individual overrides, including access for future members. `unknown` includes
+partially overlapping audiences and a restricted source with an unrestricted-age
+destination. `ctx.server.audience(channel)` provides a summary for display.
+
 ### Moderation
 
 With `discord.members.moderate`, `ctx.server.ban(userId, options)` can ban a user who has

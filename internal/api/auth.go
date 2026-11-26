@@ -199,9 +199,13 @@ type memberCache struct {
 // member fetches (with a short cache) the Discord member of a user in a server; nil
 // when the user is not in the server.
 func (s *server) member(ctx context.Context, serverKey, userID string) (*discord.Member, error) {
+	return s.lookupMember(ctx, serverKey, userID, false)
+}
+
+func (s *server) lookupMember(ctx context.Context, serverKey, userID string, fresh bool) (*discord.Member, error) {
 	key := serverKey + "/" + userID
 	now := time.Now()
-	if s.opts.MemberCacheTTL > 0 {
+	if !fresh && s.opts.MemberCacheTTL > 0 {
 		s.members.mu.Lock()
 		e, ok := s.members.entries[key]
 		s.members.mu.Unlock()
@@ -254,7 +258,7 @@ func (s *server) roleIn(ctx context.Context, id *identity, serverKey string, por
 	if id.data.LinkServer != "" && id.data.LinkServer != serverKey {
 		return roleNone, nil, nil
 	}
-	m, err := s.member(ctx, serverKey, id.user.ID)
+	m, err := s.lookupMember(ctx, serverKey, id.user.ID, portal)
 	if err != nil {
 		return roleNone, nil, err
 	}

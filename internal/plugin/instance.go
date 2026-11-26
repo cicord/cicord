@@ -752,14 +752,17 @@ type invResult struct {
 // invocation is one handler run. Its context bounds every host call made by its code
 // (attributed per turn, see currentInv).
 type invocation struct {
-	id      uint64
-	kind    string
-	name    string
-	ctx     context.Context
-	cancel  context.CancelCauseFunc
-	release context.CancelFunc
-	done    chan invResult
-	once    sync.Once
+	// Only member identities supplied by the host for this handler may be used to
+	// check channel access. Plugin arguments cannot invent role memberships.
+	audienceMembers sync.Map // user ID -> discord.Member
+	id              uint64
+	kind            string
+	name            string
+	ctx             context.Context
+	cancel          context.CancelCauseFunc
+	release         context.CancelFunc
+	done            chan invResult
+	once            sync.Once
 }
 
 func (inv *invocation) settle(r invResult) {
@@ -900,6 +903,7 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		return out
 	}
 	inv, stopCaller := i.newInvocation(caller, kind, name, timeout)
+	inv.rememberAudience(data)
 	queued = true
 
 	i.queued.Add(1)

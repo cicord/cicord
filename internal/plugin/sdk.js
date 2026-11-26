@@ -255,6 +255,13 @@
   const rolesOf = (m) => memberRoles.get(m) || [];
 
   const MemberProto = {
+    permissionsIn(channel) {
+      return freeze(hcall("member.permissionsIn", {userId:this.id,ref:refIn(channel)}) || []);
+    },
+    canView(channel) {
+      const p=this.permissionsIn(channel);
+      return p.includes("ViewChannel") && p.includes("ReadMessageHistory");
+    },
     get roles() { return freeze(rolesOf(this).slice()); },
     hasRole(role) {
       const id = hcall("resolve.role", { ref: role });
@@ -436,6 +443,8 @@
       key: d.server.key,
       name: d.server.name,
       iconUrl: d.server.iconUrl || undefined,
+      audience(channel) { return freeze(hcall("server.audience",{ref:refIn(channel)})); },
+      compareAudience(source,destination) { return hcall("server.compareAudience",{source:refIn(source),destination:refIn(destination)}); },
       async ban(userId, options = {}) {
         await acall("member.ban", {userId: String(userId), reason: options.reason, deleteMessagesSeconds: options.deleteMessagesSeconds});
       },

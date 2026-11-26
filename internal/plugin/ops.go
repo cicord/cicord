@@ -98,11 +98,14 @@ var (
 
 func init() {
 	syncOps = map[string]syncOp{
-		"resolve.role":   opResolveRole,
-		"server.channel": opServerChannel,
-		"server.role":    opServerRole,
-		"server.owner":   opServerOwner,
-		"it.state":       opInteractionState,
+		"resolve.role":           opResolveRole,
+		"server.channel":         opServerChannel,
+		"server.role":            opServerRole,
+		"server.audience":        opAudience,
+		"server.compareAudience": opCompareAudience,
+		"member.permissionsIn":   opPermissionsIn,
+		"server.owner":           opServerOwner,
+		"it.state":               opInteractionState,
 	}
 	asyncOps = map[string]asyncOp{
 		"channel.send":         opChannelSend,
@@ -206,6 +209,9 @@ func (i *Instance) callAsync(op, args string) (int64, error) {
 	i.inflight++
 	go func() {
 		res, err := work(inv.ctx)
+		if err == nil {
+			inv.rememberAudience(res)
+		}
 		var data []byte
 		if err == nil && res != nil {
 			data, err = json.Marshal(res)
@@ -763,7 +769,7 @@ func memberOp(i *Instance, capability string, args json.RawMessage) (memberArgs,
 }
 
 func opMemberRole(add bool) asyncOp {
-	return func(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	return func(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 		a, err := memberOp(i, capRolesAssign, args)
 		if err != nil {
 			return nil, err
@@ -785,6 +791,19 @@ func opMemberRole(add bool) asyncOp {
 			if err != nil {
 				return nil, err
 			}
+			if inv != nil {
+				if existing, ok := inv.audienceMembers.Load(a.UserID); ok {
+					member := existing.(discord.Member)
+					roles := slices.Clone(member.RoleIDs)
+					if add && !slices.Contains(roles, roleID) {
+						roles = append(roles, roleID)
+					} else if !add {
+						roles = slices.DeleteFunc(roles, func(id string) bool { return id == roleID })
+					}
+					member.RoleIDs = roles
+					inv.audienceMembers.Store(a.UserID, member)
+				}
+			}
 			return i.roleDTO(roleID), nil
 		}, nil
 	}
@@ -792,7 +811,7 @@ func opMemberRole(add bool) asyncOp {
 
 // opMemberSetRoles changes the full role set in one Discord PATCH. Before replacing
 // it, compare with current membership to protect both additions and implicit removals.
-func opMemberSetRoles(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+func opMemberSetRoles(i *Instance, inv *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	if err := i.require(capRolesAssign); err != nil {
 		return nil, err
 	}
@@ -846,7 +865,11 @@ func opMemberSetRoles(i *Instance, _ *invocation, args json.RawMessage) (func(co
 		if err != nil {
 			return nil, err
 		}
-		return i.memberDTO(result).Roles, nil
+		dto := i.memberDTO(result)
+		if inv != nil {
+			inv.rememberAudience(dto)
+		}
+		return dto.Roles, nil
 	}, nil
 }
 

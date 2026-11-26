@@ -30,6 +30,9 @@ import type {
   CommandInteraction,
   CommandWithSubcommandsDefinition,
   ComponentInteraction,
+  Audience,
+  AudienceRelation,
+  ChannelRef,
   Context,
   CreateChannelOptions,
   EditChannelOptions,
@@ -78,6 +81,10 @@ export interface TestPrincipals {
 }
 
 export interface TestChannelInit {
+  overwrites?: Record<string, { allow?: Permission[]; deny?: Permission[] }>;
+  nsfw?: boolean;
+  /** A thread is unreadable without a known public parent. */
+  publicThreadParent?: string;
   name: string;
   type?: Channel["type"];
   id?: string;
@@ -586,6 +593,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     return message;
   };
 
+  const channelPolicy = new Map<string, TestChannelInit>();
   const channels = new Map<string, TextChannel>(); // by key and by id
   const makeChannel = (key: string | undefined, init: TestChannelInit): TextChannel => {
     const id = init.id ?? (key ? `channel-${key}` : `channel-${channels.size + 1}`);
@@ -689,6 +697,18 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   };
   const register = (key: string | undefined, init: TestChannelInit): TextChannel => {
     const channel = makeChannel(key, init);
+    channelPolicy.set(channel.id, init);
+    if (init.overwrites) {
+      channelOverwrites.set(
+        channel.id,
+        new Map(
+          Object.entries(init.overwrites).map(([target, patch]) => [
+            target,
+            { allow: patch.allow ?? [], deny: patch.deny ?? [] },
+          ]),
+        ),
+      );
+    }
     if (key) channels.set(key, channel);
     channels.set(channel.id, channel);
     return channel;
@@ -744,6 +764,15 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
           return "admin" as const;
         if (inPrincipals(options.access?.moderators, user.id, owned)) return "moderator" as const;
         return "member" as const;
+      },
+      permissionsIn(ref) {
+        need("discord.channels.read");
+        if (!members.has(user.id)) return [];
+        return [...effective(policyChannel(ref), user.id, owned, user.id === ownerId)];
+      },
+      canView(ref) {
+        const p = this.permissionsIn(ref);
+        return p.includes("ViewChannel") && p.includes("ReadMessageHistory");
       },
       hasRole(ref) {
         const role = resolveRole(ref);
@@ -881,7 +910,126 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   };
 
   const serverKey = options.server?.key ?? "test-server";
+  function policyChannel(ref: ChannelRef | Channel) {
+    const c = findChannel(typeof ref === "string" ? ref : { id: ref.id });
+    if (!c || c.type === "dm") return undefined;
+    const parent = channelPolicy.get(c.id)?.publicThreadParent;
+    return c.type === "thread" ? (parent ? findChannel(parent) : undefined) : c;
+  }
+  function effective(
+    channel: TextChannel | undefined,
+    user: string,
+    owned: Set<string>,
+    owner = false,
+  ): Set<Permission> {
+    if (!channel) return new Set();
+    const bits = new Set<Permission>(options.server?.everyonePermissions ?? []);
+    for (const id of owned) for (const p of rolePermissions.get(id) ?? []) bits.add(p);
+    if (owner || bits.has("Administrator")) return new Set(ALL_PERMISSIONS);
+    function apply(allow: Iterable<Permission>, deny: Iterable<Permission>) {
+      for (const p of deny) bits.delete(p);
+      for (const p of allow) bits.add(p);
+    }
+    const overwrites = channelOverwrites.get(channel.id);
+    const everyone = overwrites?.get("@everyone");
+    if (everyone) apply(everyone.allow, everyone.deny);
+    const allow = new Set<Permission>(),
+      deny = new Set<Permission>();
+    for (const [target, ow] of overwrites ?? []) {
+      const role =
+        roles.get(target)?.id ?? (target.startsWith("role:") ? target.slice(5) : undefined);
+      if (role && owned.has(role)) {
+        for (const p of ow.allow) allow.add(p);
+        for (const p of ow.deny) deny.add(p);
+      }
+    }
+    apply(allow, deny);
+    const member = overwrites?.get("member:" + user);
+    if (member) apply(member.allow, member.deny);
+    return bits.has("ViewChannel") ? bits : new Set();
+  }
+  function reads(bits: Set<Permission>) {
+    return bits.has("ViewChannel") && bits.has("ReadMessageHistory");
+  }
+  function audienceOf(channel: TextChannel | undefined): Audience {
+    const out = {
+      known: !!channel,
+      public: false,
+      allowRoles: [] as string[],
+      allowMembers: [] as string[],
+      denyMembers: [] as string[],
+    };
+    if (!channel) return out;
+    out.public = reads(effective(channel, "", new Set())) && !channelPolicy.get(channel.id)?.nsfw;
+    for (const [target, ow] of channelOverwrites.get(channel.id) ?? []) {
+      const role = resolveRole(target.startsWith("role:") ? { id: target.slice(5) } : target);
+      if (
+        target !== "@everyone" &&
+        !(role && rolePermissions.get(role.id)?.includes("Administrator")) &&
+        ow.deny.some(
+          (p) => (p === "ViewChannel" || p === "ReadMessageHistory") && !ow.allow.includes(p),
+        )
+      )
+        out.public = false;
+    }
+    for (const r of roles.values())
+      if (reads(effective(channel, "", new Set([r.id])))) out.allowRoles.push(r.id);
+    for (const [key, ow] of channelOverwrites.get(channel.id) ?? []) {
+      if (!key.startsWith("member:")) continue;
+      const user = key.slice(7);
+      if (reads(effective(channel, user, new Set()))) out.allowMembers.push(user);
+      if (ow.deny.includes("ViewChannel") || ow.deny.includes("ReadMessageHistory"))
+        out.denyMembers.push(user);
+    }
+    return out;
+  }
+  function comparePolicies(
+    source: TextChannel | undefined,
+    destination: TextChannel | undefined,
+  ): AudienceRelation {
+    if (
+      !source ||
+      !destination ||
+      (channelPolicy.get(source.id)?.nsfw && !channelPolicy.get(destination.id)?.nsfw)
+    )
+      return "unknown";
+    if (source.id === destination.id) return "same";
+    const roleIds = [...roles.values()]
+      .filter((r) => !rolePermissions.get(r.id)?.includes("Administrator"))
+      .map((r) => r.id);
+    if (roleIds.length > 10) return "unknown"; // bounded reference oracle for unit fixtures
+    const users = new Set([""]);
+    for (const c of [source, destination])
+      for (const key of channelOverwrites.get(c.id)?.keys() ?? []) {
+        if (key.startsWith("member:")) users.add(key.slice(7));
+      }
+    let left = false,
+      right = false,
+      both = false;
+    for (let mask = 0; mask < 2 ** roleIds.length; mask++) {
+      const assigned = new Set(roleIds.filter((_, i) => (mask & (1 << i)) !== 0));
+      for (const user of users) {
+        const a = reads(effective(source, user, assigned)),
+          b = reads(effective(destination, user, assigned));
+        left ||= a && !b;
+        right ||= b && !a;
+        both ||= a && b;
+      }
+    }
+    if (!left && !right) return "same";
+    if (!right) return "narrower";
+    if (!left) return "wider";
+    return both ? "unknown" : "disjoint";
+  }
   const server: Server = {
+    audience(ref) {
+      need("discord.channels.read");
+      return audienceOf(policyChannel(ref));
+    },
+    compareAudience(source, destination) {
+      need("discord.channels.read");
+      return comparePolicies(policyChannel(source), policyChannel(destination));
+    },
     id: options.server?.id ?? "server-1",
     key: serverKey,
     name: options.server?.name ?? "Test Server",
