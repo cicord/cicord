@@ -89,6 +89,8 @@ const (
 	AuditMemberBanRemove  = 23
 	AuditMemberUpdate     = 24
 	AuditMemberRoleUpdate = 25
+	AuditMemberMove       = 26
+	AuditMemberDisconnect = 27
 	AuditMessageDelete    = 72
 )
 

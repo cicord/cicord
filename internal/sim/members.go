@@ -255,7 +255,7 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 	}
 	if p.VoiceChannelID != nil {
 		// Checked last: the move is applied at once (it emits its voice state).
-		if err := w.moveVoice(a, s, userID, *p.VoiceChannelID); err != nil {
+		if err := w.moveVoice(a, s, userID, *p.VoiceChannelID, reason); err != nil {
 			return fail(err)
 		}
 	}
@@ -268,7 +268,7 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 	w.recordOK(a, "UpdateMember", serverID, userID, reason)
 	if p.Nick != nil || p.TimeoutUntil != nil || p.RoleIDs != nil {
 		w.emit(discord.MemberUpdateEvent{Member: cloneMember(*m), Previous: &prev})
-		w.auditMemberUpdate(serverID, a.userID, prev, next)
+		w.auditMemberUpdate(serverID, a.userID, prev, next, a.auditReason(reason))
 	}
 	return cloneMember(*m), nil
 }

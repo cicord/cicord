@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"encoding/json"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -67,6 +68,16 @@ func TestMemberTimeoutAcrossTicketDMAndVoice(t *testing.T) {
 	until := start.Add(time.Minute)
 	_, err = f.sess.UpdateMember(t.Context(), server, actor, discord.MemberParams{TimeoutUntil: &until}, "consented one-minute check")
 	isErr(t, err, nil)
+	entries, err := f.sess.ListAuditLog(ctx, server, discord.AuditQuery{Action: discord.AuditMemberUpdate, Limit: 10})
+	isErr(t, err, nil)
+	if len(entries) != 1 || entries[0].UserID != f.bot.ID || entries[0].TargetID != actor || entries[0].Reason != "consented one-minute check" {
+		t.Fatalf("timeout audit: %+v", entries)
+	}
+	change, _ := entries[0].Change("communication_disabled_until")
+	var deadline time.Time
+	if err := json.Unmarshal(change.New, &deadline); err != nil || !deadline.Equal(until) {
+		t.Fatal(change, err)
+	}
 	if got := f.w.VoiceStates(server); len(got) != 0 {
 		t.Fatalf("still in voice: %+v", got)
 	}
@@ -168,6 +179,11 @@ func TestVoiceRoomLockPermitAndOwnerMovement(t *testing.T) {
 	_, err = f.sess.UpdateChannel(ctx, room.ID, discord.ChannelParams{Overwrites: &lock}, "permit member")
 	isErr(t, err, nil)
 	isErr(t, f.w.JoinVoice(f.alice.ID, room.ID), nil)
+	entries, err := f.sess.ListAuditLog(ctx, sid, discord.AuditQuery{Action: discord.AuditMemberMove, Limit: 10})
+	isErr(t, err, nil)
+	if len(entries) != 1 || entries[0].UserID != f.bot.ID || entries[0].Reason != "move owner" || string(entries[0].Options["channel_id"]) != string(auditValue(room.ID)) || string(entries[0].Options["count"]) != `"1"` {
+		t.Fatalf("move audit: %+v", entries)
+	}
 	if states := f.w.VoiceStates(sid); len(states) != 2 || states[0].ChannelID != room.ID || states[1].ChannelID != room.ID {
 		t.Fatal(states)
 	}

@@ -250,7 +250,7 @@ func (w *World) disconnectVoice(s *serverState, channelID string) {
 // voice, as UpdateMember's channel_id does: MoveMembers in the member's channel, and
 // Connect + MoveMembers in the destination (which ignores its user limit). Caller holds
 // w.mu.
-func (w *World) moveVoice(a actor, s *serverState, userID, channelID string) error {
+func (w *World) moveVoice(a actor, s *serverState, userID, channelID, reason string) error {
 	cur, ok := w.activity(s.info.ID).voice[userID]
 	if !ok {
 		return badRequest("target user is not connected to voice")
@@ -273,6 +273,13 @@ func (w *World) moveVoice(a actor, s *serverState, userID, channelID string) err
 		}
 	}
 	w.setVoice(s, userID, channelID)
+	if a.userID != userID && cur.ChannelID != channelID {
+		action := discord.AuditMemberMove
+		if channelID == "" {
+			action = discord.AuditMemberDisconnect
+		}
+		w.countedAudit(s.info.ID, a.userID, action, "", channelID, a.auditReason(reason))
+	}
 	return nil
 }
 
@@ -500,6 +507,12 @@ func (w *World) appendAudit(serverID, executorID string, actionType int, targetI
 // by the same author. REST sees the increased count under the original ID; the
 // gateway only receives the initial entry and Discord never identifies a message ID.
 func (w *World) auditMessageDelete(server, actor, author, channel, reason string) {
+	w.countedAudit(server, actor, discord.AuditMessageDelete, author, channel, reason)
+}
+
+// countedAudit preserves the first gateway entry and reason. The simulated
+// REST history increments a count for subsequent matching actions.
+func (w *World) countedAudit(server, actor string, action int, target, channel, reason string) {
 	history := w.servers[server].audit
 	cutoff := w.now().Add(-30 * time.Second)
 	for n := len(history) - 1; n >= 0; n-- {
@@ -507,11 +520,14 @@ func (w *World) auditMessageDelete(server, actor, author, channel, reason string
 		if discord.SnowflakeTime(e.ID).Before(cutoff) {
 			break
 		}
-		if e.ActionType != discord.AuditMessageDelete || e.UserID != actor || e.TargetID != author {
+		if e.ActionType != action || e.UserID != actor || e.TargetID != target {
 			continue
 		}
 		var from, count string
-		if json.Unmarshal(e.Options["channel_id"], &from) != nil || from != channel || json.Unmarshal(e.Options["count"], &count) != nil {
+		if channel != "" && (json.Unmarshal(e.Options["channel_id"], &from) != nil || from != channel) {
+			continue
+		}
+		if json.Unmarshal(e.Options["count"], &count) != nil {
 			continue
 		}
 		total, err := strconv.Atoi(count)
@@ -522,12 +538,16 @@ func (w *World) auditMessageDelete(server, actor, author, channel, reason string
 		e.Options["count"] = auditValue(strconv.Itoa(total + 1))
 		return
 	}
-	w.appendAudit(server, actor, discord.AuditMessageDelete, author, reason, map[string]json.RawMessage{"channel_id": auditValue(channel), "count": auditValue("1")})
+	opts := map[string]json.RawMessage{"count": auditValue("1")}
+	if channel != "" {
+		opts["channel_id"] = auditValue(channel)
+	}
+	w.appendAudit(server, actor, action, target, reason, opts)
 }
 
 // auditMemberUpdate logs a timeout change (MEMBER_UPDATE with communication_disabled_until)
 // and nickname changes made by someone else. Caller holds w.mu.
-func (w *World) auditMemberUpdate(serverID, executorID string, prev, next discord.Member) {
+func (w *World) auditMemberUpdate(serverID, executorID string, prev, next discord.Member, reason string) {
 	var changes []discord.AuditLogChange
 	if (prev.TimeoutUntil == nil) != (next.TimeoutUntil == nil) ||
 		prev.TimeoutUntil != nil && next.TimeoutUntil != nil && !prev.TimeoutUntil.Equal(*next.TimeoutUntil) {
@@ -546,7 +566,7 @@ func (w *World) auditMemberUpdate(serverID, executorID string, prev, next discor
 		changes = append(changes, discord.AuditLogChange{Key: "nick", Old: o, New: n})
 	}
 	if len(changes) > 0 {
-		w.auditLog(serverID, executorID, discord.AuditMemberUpdate, next.User.ID, changes...)
+		w.auditWithReason(serverID, executorID, discord.AuditMemberUpdate, next.User.ID, reason, changes...)
 	}
 }
 
