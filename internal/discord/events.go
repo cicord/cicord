@@ -3,6 +3,10 @@ package discord
 // Event is a gateway event delivered to Session.Open's handler.
 type Event interface{ isEvent() }
 
+type GatewayResumedEvent struct{}
+
+func (GatewayResumedEvent) isEvent() {}
+
 type ReadyEvent struct {
 	User      User
 	ServerIDs []string

@@ -1143,6 +1143,8 @@ export interface EventHandlers {
   pollVoteAdd?(ctx:Context,event:{channelId:Snowflake;messageId:Snowflake;userId:Snowflake;answerId:number}):Awaitable<void>;
   pollVoteRemove?(ctx:Context,event:{channelId:Snowflake;messageId:Snowflake;userId:Snowflake;answerId:number}):Awaitable<void>;
 
+  /** Guild availability or resumed gateway after live permissions are refreshed. */
+  serverAvailable?(ctx:Context):Awaitable<void>;
   channelCreate?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;
   channelUpdate?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;
   channelDelete?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;

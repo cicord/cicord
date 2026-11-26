@@ -195,8 +195,9 @@ var eventIntents = map[string][]string{
 	"pollVoteAdd":              {"ServerMessagePolls"},
 	"pollVoteRemove":           {"ServerMessagePolls"},
 	// Servers is always enabled (config.Repo.GatewayIntents): nothing to declare.
-	"serverJoin":  {},
-	"serverLeave": {},
+	"serverAvailable": {},
+	"serverJoin":      {},
+	"serverLeave":     {},
 }
 
 // EventNames lists the SDK event handler names (EventHandlers in cicord-sdk.d.ts).
@@ -292,6 +293,8 @@ func EventName(ev discord.Event) string {
 		return "reactionAdd"
 	case discord.ReactionRemoveEvent:
 		return "reactionRemove"
+	case discord.ServerAvailableEvent:
+		return "serverAvailable"
 	case discord.ServerJoinEvent:
 		return "serverJoin"
 	case discord.ServerLeaveEvent:

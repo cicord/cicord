@@ -602,6 +602,13 @@ func (h *botHost) handle(ev discord.Event) {
 			return
 		}
 	}
+	if _, ok := ev.(discord.GatewayResumedEvent); ok {
+		rt := h.routing.Load()
+		for sid := range rt.byServer {
+			h.afterAvailability(rt, sid)
+		}
+		return
+	}
 	h.rt.diag.observe(ev)
 	if c := h.rt.collector; c != nil {
 		c.Handle(h.key, ev) // before the early returns below (interactions, own messages)
@@ -618,6 +625,9 @@ func (h *botHost) handle(ev discord.Event) {
 		h.rt.notify(ChangeSync, s.key)
 	}
 	switch e := ev.(type) {
+	case discord.ServerAvailableEvent:
+		h.afterAvailability(rt, e.ServerID)
+		return
 	case discord.InteractionCreateEvent:
 		h.routeInteraction(rt, e.Interaction)
 		return
@@ -637,6 +647,32 @@ func (h *botHost) handle(ev discord.Event) {
 		return
 	}
 	h.dispatchPlugins(rt, ev)
+}
+
+// A full reconnect can miss changes made while offline. Subscribers receive this
+// notification only after authoritative channel and role data has replaced the old cache.
+func (h *botHost) afterAvailability(rt *routing, sid string) {
+	cache := rt.caches[sid]
+	if cache == nil {
+		return
+	}
+	for _, i := range rt.byServer[sid] {
+		if !i.plugin.def.HasEvent("serverAvailable") {
+			continue
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := cache.Refresh(ctx, h.session, h.rt.Store().Resources()); err != nil {
+				h.rt.log.Warn("refresh permissions after gateway reconnect", "server", sid, "err", err)
+				return
+			}
+			if rt == h.routing.Load() {
+				h.dispatchPlugins(rt, discord.ServerAvailableEvent{ServerID: sid})
+			}
+		}()
+		break
+	}
 }
 
 func (h *botHost) dispatchPlugins(rt *routing, ev discord.Event) {

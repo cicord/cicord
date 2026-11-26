@@ -43,6 +43,8 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		return evs, err
 	}
 	switch t {
+	case "RESUMED":
+		return []discord.Event{discord.GatewayResumedEvent{}}, nil
 	case "READY":
 		var r wireReady
 		if err := json.Unmarshal(d, &r); err != nil {
