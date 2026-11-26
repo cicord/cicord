@@ -161,7 +161,10 @@ export interface Message {
 
 // ───────────────────────────────────────────────────────────── server entities
 
+export type UserFlag = "staff" | "partner" | "hypesquad" | "bugHunterLevel1" | "hypesquadOnlineHouse1" | "hypesquadOnlineHouse2" | "hypesquadOnlineHouse3" | "premiumEarlySupporter" | "teamPseudoUser" | "bugHunterLevel2" | "verifiedBot" | "verifiedDeveloper" | "certifiedModerator" | "botHTTPInteractions";
 export interface User {
+  readonly createdAt: Date;
+  readonly flags: readonly UserFlag[];
   readonly id: Snowflake;
   readonly username: string;
   readonly displayName: string;
@@ -241,6 +244,11 @@ export interface TextChannel extends Channel {
 }
 
 export interface Member {
+  readonly pending?: boolean;
+  readonly flags: readonly ("didRejoin" | "completedOnboarding" | "bypassesVerification")[];
+  readonly premiumSince?: Date;
+  readonly timedOutUntil?: Date;
+  readonly avatarUrl?: string;
   /** Effective permissions for the current invocation. Missing information returns an empty list. */
   permissionsIn(channel: ChannelRef | Channel): readonly Permission[];
   /** Both ViewChannel and ReadMessageHistory are required to expose past content. */
@@ -361,6 +369,9 @@ export interface AuditLogEntry {
 }
 
 export interface Server {
+  readonly preferredLocale?: string;
+  /** Paginated by ascending user id. Shares the role.members() cache, grant and intent. */
+  members(options?: { limit?: number; after?: Snowflake }): Promise<Member[]>;
   invites():Promise<ServerInvite[]>;
   /** Up to 100 recent entries. Requires discord.auditlog.read and ServerModeration. */
   auditLog(options?:{action?: string;actorId?:Snowflake;before?:Snowflake;limit?:number}):Promise<AuditLogEntry[]>;
@@ -418,6 +429,7 @@ export interface Server {
  * `reply()` edits the deferred response transparently.
  */
 export interface Interaction {
+  readonly locale?: string;
   readonly id: Snowflake;
   readonly user: User;
   readonly member?: Member;
@@ -452,6 +464,7 @@ export interface FocusedOption {
  * returns the choices.
  */
 export interface AutocompleteInteraction {
+  readonly locale?: string;
   readonly id: Snowflake;
   readonly user: User;
   readonly member?: Member;

@@ -34,10 +34,11 @@ type Env struct {
 	Bot             discord.User
 	ApplicationID   string
 
-	ServerKey     string
-	ServerID      string
-	ServerName    string
-	ServerIconURL string
+	ServerKey             string
+	ServerID              string
+	ServerPreferredLocale string
+	ServerName            string
+	ServerIconURL         string
 
 	// Config is the effective config (defaults applied, overrides merged). It must be
 	// JSON-serializable; plugins see it deep-frozen.

@@ -408,11 +408,12 @@ type SoundParams struct {
 // ───────────────────────────────────────────────────────────── users & members
 
 type User struct {
-	ID         string
-	Username   string
-	GlobalName string // display name, may be empty
-	AvatarURL  string
-	Bot        bool
+	PublicFlags uint64
+	ID          string
+	Username    string
+	GlobalName  string // display name, may be empty
+	AvatarURL   string
+	Bot         bool
 }
 
 // DisplayName returns GlobalName if set, Username otherwise.
@@ -430,11 +431,14 @@ type Ban struct {
 }
 
 type Member struct {
-	ServerID string
-	User     User
-	Nick     string
-	RoleIDs  []string
-	JoinedAt time.Time
+	Pending      *bool
+	PremiumSince *time.Time
+	AvatarURL    string
+	ServerID     string
+	User         User
+	Nick         string
+	RoleIDs      []string
+	JoinedAt     time.Time
 	// TimeoutUntil is set while the member is timed out.
 	TimeoutUntil *time.Time
 	// Flags are Discord's guild member flags (MemberFlagCompletedOnboarding…).
@@ -815,6 +819,7 @@ type Resolved struct {
 }
 
 type Interaction struct {
+	Locale        string
 	ID            string
 	Token         string
 	ApplicationID string

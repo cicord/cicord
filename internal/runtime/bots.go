@@ -310,7 +310,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		DeclaredMemberRoles: declaredMemberRoles,
 		BotKey:              in.Bot, InstanceName: in.Name, PluginName: m.Metadata.Name, PluginVersion: m.Metadata.Version,
 		Bot: host.session.Self(), ApplicationID: host.session.ApplicationID(),
-		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL,
+		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL, ServerPreferredLocale: srt.cache.Server().PreferredLocale,
 		Config: in.Config, Grants: in.Grants, NetworkAllow: network, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
 		MessageContent: slices.Contains(m.Spec.Intents, "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
 		ServerModeration:  slices.Contains(m.Spec.Intents, "ServerModeration"),

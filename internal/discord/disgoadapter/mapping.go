@@ -194,7 +194,7 @@ func reactionEmojiPath(s string) (string, error) {
 
 func userFromWire(u wireUser) discord.User {
 	return discord.User{
-		ID:         u.ID,
+		ID: u.ID, PublicFlags: u.PublicFlags,
 		Username:   u.Username,
 		GlobalName: deref(u.GlobalName),
 		AvatarURL:  cdnImage("avatars", u.ID, u.Avatar),
@@ -225,6 +225,10 @@ func memberFromWire(serverID string, m wireMember, user *wireUser) discord.Membe
 	if m.CommunicationDisabledUntil != nil && !m.CommunicationDisabledUntil.IsZero() {
 		t := *m.CommunicationDisabledUntil
 		out.TimeoutUntil = &t
+	}
+	out.Pending, out.PremiumSince = m.Pending, m.PremiumSince
+	if out.ServerID != "" && out.User.ID != "" {
+		out.AvatarURL = cdnImage("guilds/"+out.ServerID+"/users/"+out.User.ID, "avatars", m.Avatar)
 	}
 	out.Flags = discord.MemberFlags(m.Flags)
 	return out
@@ -1154,7 +1158,7 @@ func resolvedFromWire(serverID string, r *wireResolved) discord.Resolved {
 
 func interactionFromWire(w wireInteraction) discord.Interaction {
 	in := discord.Interaction{
-		ID:            w.ID,
+		ID: w.ID, Locale: w.Locale,
 		Token:         w.Token,
 		ApplicationID: w.ApplicationID,
 		Type:          discord.InteractionType(w.Type),

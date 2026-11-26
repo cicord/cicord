@@ -10,6 +10,10 @@ simulator (reconciler, bot host, plugin host, scheduler, SQLite store). The last
 the manual check on real Discord: **to verify** unless noted; the
 [checklist](#checklist-on-real-discord) at the end lists the precise steps.
 
+## Members and locale
+
+Use `server.members({ limit, after })` to page through members in ascending user ID order. It shares the cache, `discord.members.read` grant and `ServerMembers` intent with `role.members()`. The default page size is 100 and the maximum is 1000. Members include screening, onboarding, boosts, timeouts and guild avatars as supplied by Discord. The host derives account creation dates from snowflakes and exposes documented public user flags. `interaction.locale` and `server.preferredLocale` carry Discord language tags when available. See `TestServerMembersMetadata` in `internal/plugin`.
+
 ## Where the tests are
 
 The Go tests run with `go test ./...`:

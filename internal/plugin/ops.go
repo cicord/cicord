@@ -138,7 +138,8 @@ func init() {
 		"member.moveTo":        opMemberMoveTo,
 		"server.member":        opServerMember,
 		"server.voiceMembers":  opServerVoiceMembers,
-		"role.members":         opRoleMembers,
+		"role.members":         memberList(true),
+		"server.members":       memberList(false),
 		"server.createChannel": opServerCreateChannel,
 		"server.deleteChannel": opServerDeleteChannel,
 		"server.editChannel":   opServerEditChannel,
@@ -1075,71 +1076,81 @@ const (
 
 // opRoleMembers lists the members holding a role, in ascending user ID order. Discord has
 // no such endpoint: the server's members are listed (Env.Members) and filtered.
-func opRoleMembers(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
-	if err := i.require(capMembersRead); err != nil {
-		return nil, err
+func memberList(role bool) asyncOp {
+	scope := "server.members()"
+	if role {
+		scope = "role.members()"
 	}
-	if !i.env.ServerMembers {
-		return nil, errors.New("role.members() needs the ServerMembers intent: declare it in plugin.yaml (spec.intents) " +
-			"and enable Server Members Intent for the bot in the Discord developer portal")
-	}
-	a, err := decode[struct {
-		Role  ref      `json:"role"`
-		Limit *float64 `json:"limit"`
-		After string   `json:"after"`
-	}](args)
-	if err != nil {
-		return nil, err
-	}
-	roleID, err := i.resolve(state.KindRole, a.Role)
-	if err != nil {
-		return nil, err
-	}
-	if roleID == i.env.ServerID {
-		return nil, argErr("role.members(): every member has the @everyone role; pass a role")
-	}
-	limit := defaultRoleMembers
-	if a.Limit != nil {
-		l := *a.Limit
-		if l != float64(int(l)) || l < 1 || l > maxRoleMembers {
-			return nil, argErr("role.members(): limit must be an integer between 1 and %d", maxRoleMembers)
-		}
-		limit = int(l)
-	}
-	if a.After != "" {
-		if err := checkSnowflake("user", a.After); err != nil {
+	return func(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+		if err := i.require(capMembersRead); err != nil {
 			return nil, err
 		}
-	}
-	list := i.env.Members
-	if list == nil {
-		ml, ok := i.env.Discord.(discord.MemberLister)
-		if !ok {
-			return nil, errors.New("role.members(): this Discord client cannot list members")
+		if !i.env.ServerMembers {
+			return nil, errors.New(scope + " needs the ServerMembers intent: declare it in plugin.yaml (spec.intents) " +
+				"and enable Server Members Intent for the bot in the Discord developer portal")
 		}
-		list = func(ctx context.Context) ([]discord.Member, error) { return ml.ListMembers(ctx, i.env.ServerID) }
-	}
-	return func(ctx context.Context) (any, error) {
-		all, err := list(ctx)
+		a, err := decode[struct {
+			Role  ref      `json:"role"`
+			Limit *float64 `json:"limit"`
+			After string   `json:"after"`
+		}](args)
 		if err != nil {
-			return nil, fmt.Errorf("role.members(): %w", err)
+			return nil, err
 		}
-		var held []discord.Member
-		for _, m := range all {
-			if m.HasRole(roleID) && (a.After == "" || discord.SnowflakeLess(a.After, m.User.ID)) {
-				held = append(held, m)
+		var roleID string
+		if role {
+			roleID, err = i.resolve(state.KindRole, a.Role)
+			if err != nil {
+				return nil, err
+			}
+			if roleID == i.env.ServerID {
+				return nil, argErr("role.members(): every member has the @everyone role; pass a role")
 			}
 		}
-		sort.Slice(held, func(x, y int) bool { return discord.SnowflakeLess(held[x].User.ID, held[y].User.ID) })
-		if len(held) > limit {
-			held = held[:limit]
+		limit := defaultRoleMembers
+		if a.Limit != nil {
+			l := *a.Limit
+			if l != float64(int(l)) || l < 1 || l > maxRoleMembers {
+				return nil, argErr(scope+": limit must be an integer between 1 and %d", maxRoleMembers)
+			}
+			limit = int(l)
 		}
-		out := make([]memberDTO, 0, len(held))
-		for _, m := range held {
-			out = append(out, i.memberDTO(m))
+		if a.After != "" {
+			if err := checkSnowflake("user", a.After); err != nil {
+				return nil, err
+			}
 		}
-		return out, nil
-	}, nil
+		list := i.env.Members
+		if list == nil {
+			ml, ok := i.env.Discord.(discord.MemberLister)
+			if !ok {
+				return nil, errors.New(scope + ": this Discord client cannot list members")
+			}
+			list = func(ctx context.Context) ([]discord.Member, error) { return ml.ListMembers(ctx, i.env.ServerID) }
+		}
+		return func(ctx context.Context) (any, error) {
+			all, err := list(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", scope, err)
+			}
+			var held []discord.Member
+			for _, m := range all {
+				if (!role || m.HasRole(roleID)) && (a.After == "" || discord.SnowflakeLess(a.After, m.User.ID)) {
+					held = append(held, m)
+				}
+			}
+			sort.Slice(held, func(x, y int) bool { return discord.SnowflakeLess(held[x].User.ID, held[y].User.ID) })
+			if len(held) > limit {
+				held = held[:limit]
+			}
+			out := make([]memberDTO, 0, len(held))
+			for _, m := range held {
+				out = append(out, i.memberDTO(m))
+			}
+			return out, nil
+		}, nil
+	}
+
 }
 
 // errVoiceStatesUnknown: the runtime has not received the server's voice states yet (the

@@ -63,6 +63,24 @@ func addMembers(h *harness) {
 	}
 }
 
+func TestServerMembersMetadata(t *testing.T) {
+	const src = `import {command,definePlugin} from "@cicord/sdk"; export default definePlugin({commands:{staff:command({description:"list", async run(ctx,it){
+ const members=await ctx.server.members({after:"9",limit:1}); const m=members[0]; await it.reply(JSON.stringify({id:m.id,created:m.user.createdAt.toISOString(),flags:m.user.flags,memberFlags:m.flags,pending:m.pending,locale:ctx.server.preferredLocale}));
+ }})}})`
+	h := start(t, src, func(e *Env) { e.ServerMembers = true; e.ServerPreferredLocale = "fr" })
+	addMembers(h)
+	m := h.dc.members["42"]
+	m.User.PublicFlags = (1 << 16) | (1 << 20)
+	m.Flags = 5
+	pending := false
+	m.Pending = &pending
+	h.dc.members["42"] = m
+	got := staffReply(t, h)
+	want := map[string]any{"id": "42", "created": "2015-01-01T00:00:00.000Z", "flags": []any{"verifiedBot"}, "memberFlags": []any{"didRejoin", "bypassesVerification"}, "pending": false, "locale": "fr"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v, want %#v", got, want)
+	}
+}
 func TestRoleMembers(t *testing.T) {
 	h := start(t, roleMembersPlugin, roleMembersEnv)
 	addMembers(h)

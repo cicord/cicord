@@ -97,6 +97,7 @@ type World struct {
 }
 
 type userState struct {
+	locale      string
 	user        discord.User
 	dmsDisabled bool
 	presence    *discord.Presence

@@ -16,11 +16,13 @@ import (
 // ───────────────────────────────────────────────────────────── Go → JS
 
 type userDTO struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-	AvatarURL   string `json:"avatarUrl,omitempty"`
-	Bot         bool   `json:"bot"`
+	CreatedAt   string   `json:"createdAt,omitempty"`
+	Flags       []string `json:"flags"`
+	ID          string   `json:"id"`
+	Username    string   `json:"username"`
+	DisplayName string   `json:"displayName"`
+	AvatarURL   string   `json:"avatarUrl,omitempty"`
+	Bot         bool     `json:"bot"`
 }
 
 type roleDTO struct {
@@ -44,12 +46,17 @@ type channelDTO struct {
 }
 
 type memberDTO struct {
-	subject     discord.Member // host-only permission input, never serialized
-	User        userDTO        `json:"user"`
-	Nick        string         `json:"nick,omitempty"`
-	DisplayName string         `json:"displayName"`
-	Roles       []roleDTO      `json:"roles"`
-	JoinedAt    string         `json:"joinedAt,omitempty"`
+	Pending       *bool          `json:"pending,omitempty"`
+	Flags         []string       `json:"flags"`
+	PremiumSince  string         `json:"premiumSince,omitempty"`
+	TimedOutUntil string         `json:"timedOutUntil,omitempty"`
+	AvatarURL     string         `json:"avatarUrl,omitempty"`
+	subject       discord.Member // host-only permission input, never serialized
+	User          userDTO        `json:"user"`
+	Nick          string         `json:"nick,omitempty"`
+	DisplayName   string         `json:"displayName"`
+	Roles         []roleDTO      `json:"roles"`
+	JoinedAt      string         `json:"joinedAt,omitempty"`
 	// Permissions: server-level permission names (see memberPermissions).
 	Permissions []string `json:"permissions"`
 	// Access: "member", "moderator" or "admin" (see memberAccess).
@@ -143,8 +150,28 @@ func jsTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
+func flagNames(mask uint64, names []string) []string {
+	out := []string{}
+	for bit, name := range names {
+		if name != "" && mask&(1<<bit) != 0 {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+var publicUserFlagNames = []string{"staff", "partner", "hypesquad", "bugHunterLevel1", "", "", "hypesquadOnlineHouse1", "hypesquadOnlineHouse2", "hypesquadOnlineHouse3", "premiumEarlySupporter", "teamPseudoUser", "", "", "", "bugHunterLevel2", "", "verifiedBot", "verifiedDeveloper", "certifiedModerator", "botHTTPInteractions"}
+var memberFlagNames = []string{"didRejoin", "completedOnboarding", "bypassesVerification"}
+
+func optionalTime(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return jsTime(*t)
+}
+
 func (i *Instance) userDTO(u discord.User) userDTO {
-	return userDTO{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName(), AvatarURL: u.AvatarURL, Bot: u.Bot}
+	return userDTO{CreatedAt: jsTime(discord.SnowflakeTime(u.ID)), Flags: flagNames(u.PublicFlags, publicUserFlagNames), ID: u.ID, Username: u.Username, DisplayName: u.DisplayName(), AvatarURL: u.AvatarURL, Bot: u.Bot}
 }
 
 func colorString(c int) string {
@@ -236,7 +263,7 @@ func (i *Instance) channelDTO(id string) channelDTO {
 
 func (i *Instance) memberDTO(m discord.Member) memberDTO {
 	dto := memberDTO{
-		subject:     m,
+		subject: m, Pending: m.Pending, Flags: flagNames(uint64(m.Flags), memberFlagNames), PremiumSince: optionalTime(m.PremiumSince), TimedOutUntil: optionalTime(m.TimeoutUntil), AvatarURL: m.AvatarURL,
 		User:        i.userDTO(m.User),
 		Nick:        m.Nick,
 		DisplayName: m.DisplayName(),
@@ -381,10 +408,11 @@ type contextDTO struct {
 		User userDTO `json:"user"`
 	} `json:"bot"`
 	Server struct {
-		ID      string `json:"id"`
-		Key     string `json:"key"`
-		Name    string `json:"name"`
-		IconURL string `json:"iconUrl,omitempty"`
+		PreferredLocale string `json:"preferredLocale,omitempty"`
+		ID              string `json:"id"`
+		Key             string `json:"key"`
+		Name            string `json:"name"`
+		IconURL         string `json:"iconUrl,omitempty"`
 	} `json:"server"`
 	Config map[string]any `json:"config"`
 }
@@ -394,6 +422,7 @@ func (i *Instance) contextDTO() contextDTO {
 	d.Plugin.Name, d.Plugin.Version, d.Plugin.Instance = i.env.PluginName, i.env.PluginVersion, i.env.InstanceName
 	d.Bot.Key, d.Bot.User = i.env.BotKey, i.userDTO(i.env.Bot)
 	d.Server.ID, d.Server.Key, d.Server.Name, d.Server.IconURL = i.env.ServerID, i.env.ServerKey, i.env.ServerName, i.env.ServerIconURL
+	d.Server.PreferredLocale = i.env.ServerPreferredLocale
 	d.Config = i.env.Config
 	if d.Config == nil {
 		d.Config = map[string]any{}
@@ -516,7 +545,7 @@ func (i *Instance) eventDTO(ev discord.Event) eventDTO {
 func (i *Instance) reactionDTO(d *eventDTO, e discord.ReactionEvent) {
 	i.noteMessageChannel(discord.Message{ChannelID: e.ChannelID, ServerID: e.ServerID})
 	d.Message = &messageDTO{ID: e.MessageID, Channel: i.channelDTO(e.ChannelID), Attachments: []attachmentDTO{}}
-	u := userDTO{ID: e.UserID}
+	u := i.userDTO(discord.User{ID: e.UserID})
 	if e.Member != nil && (e.Member.User.ID == e.UserID || e.Member.User.ID == "") {
 		mu := e.Member.User
 		mu.ID = e.UserID
@@ -537,6 +566,7 @@ type optionDTO struct {
 }
 
 type interactionDTO struct {
+	Locale      string            `json:"locale,omitempty"`
 	Handle      string            `json:"handle"`
 	ID          string            `json:"id"`
 	User        userDTO           `json:"user"`
@@ -567,7 +597,7 @@ func (i *Instance) interactionDTO(x *interaction, localID string) interactionDTO
 	if user.ID == "" && it.Member != nil {
 		user = it.Member.User
 	}
-	d := interactionDTO{Handle: x.handle, ID: it.ID, User: i.userDTO(user)}
+	d := interactionDTO{Locale: it.Locale, Handle: x.handle, ID: it.ID, User: i.userDTO(user)}
 	if it.Member != nil {
 		m := *it.Member
 		if m.User.ID == "" {
@@ -675,6 +705,7 @@ func (i *Instance) optionDTOs(opts []discord.InteractionOption, res discord.Reso
 // other options are the raw values typed so far (IDs for users, roles, channels): Discord
 // sends no resolved data with an autocomplete.
 type autocompleteDTO struct {
+	Locale     string         `json:"locale,omitempty"`
 	ID         string         `json:"id"`
 	User       userDTO        `json:"user"`
 	Member     *memberDTO     `json:"member,omitempty"`
@@ -694,7 +725,7 @@ func (i *Instance) autocompleteDTO(it discord.Interaction, path []string, opts [
 	if user.ID == "" && it.Member != nil {
 		user = it.Member.User
 	}
-	d := autocompleteDTO{ID: it.ID, User: i.userDTO(user), Command: path[0], Options: map[string]any{}}
+	d := autocompleteDTO{Locale: it.Locale, ID: it.ID, User: i.userDTO(user), Command: path[0], Options: map[string]any{}}
 	d.Group, d.Subcommand = pathParts(path)
 	if it.Member != nil {
 		m := *it.Member

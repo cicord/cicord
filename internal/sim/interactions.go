@@ -214,7 +214,22 @@ func (w *World) notify(st *interactionState) {
 }
 
 // startInteraction registers and dispatches an interaction. Caller holds w.mu.
+// SetUserLocale sets the language Discord sends on interactions from this user.
+func (w *World) SetUserLocale(userID, locale string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	u := w.users[userID]
+	if u == nil {
+		return notFound("unknown user %s", userID)
+	}
+	u.locale = locale
+	return nil
+}
+
 func (w *World) startInteraction(ix discord.Interaction, bot *botState) *interactionState {
+	if u := w.users[ix.User.ID]; u != nil {
+		ix.Locale = u.locale
+	}
 	ix.ID = w.newID()
 	ix.Token = randomToken("ix.")
 	ix.ApplicationID = bot.appID

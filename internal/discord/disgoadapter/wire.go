@@ -16,11 +16,12 @@ import (
 )
 
 type wireUser struct {
-	ID         string  `json:"id"`
-	Username   string  `json:"username"`
-	GlobalName *string `json:"global_name"`
-	Avatar     *string `json:"avatar"`
-	Bot        bool    `json:"bot"`
+	PublicFlags uint64  `json:"public_flags"`
+	ID          string  `json:"id"`
+	Username    string  `json:"username"`
+	GlobalName  *string `json:"global_name"`
+	Avatar      *string `json:"avatar"`
+	Bot         bool    `json:"bot"`
 }
 
 type wireApplication struct {
@@ -29,6 +30,9 @@ type wireApplication struct {
 }
 
 type wireMember struct {
+	Pending                    *bool      `json:"pending"`
+	PremiumSince               *time.Time `json:"premium_since"`
+	Avatar                     *string    `json:"avatar"`
 	User                       *wireUser  `json:"user,omitempty"`
 	Nick                       *string    `json:"nick"`
 	Roles                      []string   `json:"roles"`
@@ -527,6 +531,7 @@ func (f *flexID) UnmarshalJSON(b []byte) error {
 }
 
 type wireInteraction struct {
+	Locale        string               `json:"locale"`
 	ID            string               `json:"id"`
 	ApplicationID string               `json:"application_id"`
 	Type          int                  `json:"type"`

@@ -151,6 +151,8 @@
       username: d.username || "",
       displayName: d.displayName || d.username || "",
       avatarUrl: d.avatarUrl || undefined,
+      createdAt: d.createdAt ? new Date(d.createdAt) : new Date(NaN),
+      flags: freeze(d.flags || []),
       bot: !!d.bot,
       mention: "<@" + d.id + ">",
     });
@@ -323,6 +325,11 @@
     m.nickname = d.nick || undefined;
     m.displayName = d.displayName || m.user.displayName;
     m.mention = "<@" + d.user.id + ">";
+    m.pending = d.pending;
+    m.flags = freeze(d.flags || []);
+    m.premiumSince = d.premiumSince ? new Date(d.premiumSince) : undefined;
+    m.timedOutUntil = d.timedOutUntil ? new Date(d.timedOutUntil) : undefined;
+    m.avatarUrl = d.avatarUrl || undefined;
     m.joinedAt = d.joinedAt ? new Date(d.joinedAt) : new Date(NaN);
     memberRoles.set(m, (d.roles || []).map(mkRole));
     m.permissions = Array.isArray(d.permissions) ? freeze(d.permissions.slice()) : undefined;
@@ -357,6 +364,7 @@
   function baseInteraction(proto, d) {
     const o = Object.create(proto);
     o.id = d.id;
+    o.locale = d.locale || undefined;
     o.user = mkUser(d.user);
     o.member = d.member ? mkMember(d.member) : undefined;
     o.channel = d.channel ? mkChannel(d.channel) : undefined;
@@ -392,6 +400,7 @@
   function mkAutocompleteInteraction(d) {
     return freeze({
       id: d.id,
+      locale: d.locale || undefined,
       user: mkUser(d.user),
       member: d.member ? mkMember(d.member) : undefined,
       channel: d.channel ? mkChannel(d.channel) : undefined,
@@ -449,6 +458,8 @@
       key: d.server.key,
       name: d.server.name,
       iconUrl: d.server.iconUrl || undefined,
+      preferredLocale: d.server.preferredLocale || undefined,
+      async members(options = {}) { return freeze((await acall("server.members",options)).map(mkMember)); },
       audience(channel) { return freeze(hcall("server.audience",{ref:refIn(channel)})); },
       compareAudience(source,destination) { return hcall("server.compareAudience",{source:refIn(source),destination:refIn(destination)}); },
       async ban(userId, options = {}) {

@@ -104,6 +104,12 @@ export interface TestMemberInit {
   /** Role keys (as in `roles`). */
   roles?: string[];
   joinedAt?: Date;
+  pending?: boolean;
+  memberFlags?: Member["flags"];
+  publicFlags?: User["flags"];
+  premiumSince?: Date;
+  timedOutUntil?: Date;
+  serverAvatarUrl?: string;
 }
 
 export interface TestFetchResponse {
@@ -143,6 +149,7 @@ export interface TestContextOptions {
     key?: string;
     name?: string;
     iconUrl?: string;
+    preferredLocale?: string;
     /** `ctx.server.ownerId`; the owner has every permission and the admin access level. */
     ownerId?: string;
     /** Permissions of `@everyone` (part of every `member.permissions`). Default none. */
@@ -437,6 +444,7 @@ export function applyDefaults<T extends Record<string, unknown>>(schema: object,
 }
 
 function makeUser(init: {
+  publicFlags?: User["flags"];
   id: string;
   username?: string;
   displayName?: string;
@@ -449,6 +457,8 @@ function makeUser(init: {
     username,
     displayName: init.displayName ?? username,
     ...(init.avatarUrl ? { avatarUrl: init.avatarUrl } : {}),
+    createdAt: /^\d{1,20}$/.test(init.id) && BigInt(init.id) <= 0xffffffffffffffffn ? new Date(Number(BigInt(init.id) >> 22n) + 1420070400000) : new Date(NaN),
+    flags: Object.freeze([...(init.publicFlags ?? [])]),
     bot: init.bot ?? false,
     mention: `<@${init.id}>`,
   };
@@ -494,22 +504,24 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const rolePermissions = new Map<string, readonly Permission[]>(); // role id → permissions
   // Methods on a prototype, like the host: a Role's own properties are its data (toEqual and
   // JSON.stringify see only them).
-  const roleProto: Pick<Role, "members"> = {
-    async members(this: Role, opts = {}) {
+  function memberList(opts: {limit?: number; after?: string}, role?: Role): Member[] {
+      const method = role ? "role.members()" : "server.members()";
       need("discord.members.read");
       if (options.intents && !options.intents.includes("ServerMembers"))
         throw new Error(
-          "role.members() needs the ServerMembers intent: declare it in plugin.yaml (spec.intents)",
+          method+" needs the ServerMembers intent: declare it in plugin.yaml (spec.intents)",
         );
       const limit = opts.limit ?? 100;
       if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
-        throw new TypeError("role.members(): limit must be an integer between 1 and 1000");
+        throw new TypeError(method+": limit must be an integer between 1 and 1000");
       const after = opts.after;
       const held = [...members.values()]
-        .filter((m) => m.hasRole({ id: this.id }) && (after === undefined || idLess(after, m.id)))
+        .filter((m) => (!role || m.hasRole({ id: role.id })) && (after === undefined || idLess(after, m.id)))
         .toSorted((a, b) => (idLess(a.id, b.id) ? -1 : idLess(b.id, a.id) ? 1 : 0));
       return Object.freeze(held.slice(0, limit)) as Member[];
-    },
+  }
+  const roleProto: Pick<Role, "members"> = {
+    async members(this: Role, opts = {}) { return memberList(opts,this); },
   };
   for (const [key, r] of Object.entries(options.roles ?? {})) {
     const id = r.id ?? `role-${key}`;
@@ -755,6 +767,11 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       get roles() {
         return [...roles.values()].filter((r) => owned.has(r.id));
       },
+      ...(init.pending === undefined ? {} : {pending:init.pending}),
+      flags: Object.freeze([...(init.memberFlags ?? [])]),
+      ...(init.premiumSince ? {premiumSince:init.premiumSince} : {}),
+      ...(init.timedOutUntil ? {timedOutUntil:init.timedOutUntil} : {}),
+      ...(init.serverAvatarUrl ? {avatarUrl:init.serverAvatarUrl} : {}),
       joinedAt: init.joinedAt ?? new Date(0),
       // Server-level, like the host: @everyone + roles; all for the owner and Administrator.
       get permissions() {
@@ -1027,6 +1044,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     return both ? "unknown" : "disjoint";
   }
   const server: Server = {
+    ...(options.server?.preferredLocale ? {preferredLocale:options.server.preferredLocale} : {}),
+    async members(opts = {}) { return memberList(opts); },
     async invites() {
       need("discord.invites.read");
       return [...(options.invites ?? [])];
@@ -1479,6 +1498,7 @@ function matchPath(pattern: string, path: string): Record<string, string> | unde
 // ───────────────────────────────────────────────────────────── interactions
 
 export interface InteractionCall {
+  locale?: string;
   /** Invoking user id. When it is a member of the test context, `interaction.member` is set. */
   user: string;
   /** Channel key or id of `interaction.channel` (a managed or created channel). */
@@ -1595,6 +1615,7 @@ function fakeInteraction(
   };
   return {
     id: `interaction-${kind}-${id}`,
+    ...(call.locale ? {locale:call.locale} : {}),
     user,
     ...(member ? { member } : {}),
     ...(channel ? { channel } : {}),
@@ -1766,6 +1787,7 @@ export async function runAutocomplete(
     throw new Error(`unknown channel ${JSON.stringify(call.channel)} for the interaction`);
   const interaction: AutocompleteInteraction = {
     id: `interaction-autocomplete-${path}`,
+    ...(call.locale ? {locale:call.locale} : {}),
     user: member?.user ?? makeUser({ id: call.user }),
     ...(member ? { member } : {}),
     ...(channel ? { channel } : {}),
