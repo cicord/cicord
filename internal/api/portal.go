@@ -308,8 +308,28 @@ func routeHeader(name string, public bool) bool {
 		// Non-public routes are always no-store; a public route may let caches keep it.
 		return public
 	}
-	return strings.HasPrefix(lk, "x-") && !strings.HasPrefix(lk, "x-cicord-") && lk != "x-content-type-options" &&
-		lk != "x-frame-options" && lk != "x-forwarded-for" && lk != "x-forwarded-host" && lk != "x-forwarded-proto"
+	if !strings.HasPrefix(lk, "x-") {
+		return false
+	}
+	for _, p := range reservedRouteHeaders {
+		if strings.HasPrefix(lk, p) {
+			return false
+		}
+	}
+	return true
+}
+
+// reservedRouteHeaders are x-* prefixes a plugin route cannot set: the runtime's own,
+// browser security headers, and the headers reverse proxies act on (nginx X-Accel-*
+// internal redirects, X-Sendfile and its lighttpd and LiteSpeed forms, forwarding and
+// rewrite headers). A proxy in front of Cicord would otherwise serve its own files or
+// internal locations on a plugin's behalf.
+var reservedRouteHeaders = []string{
+	"x-cicord-",
+	"x-content-type-options", "x-frame-options", "x-xss-protection",
+	"x-permitted-cross-domain-policies", "x-dns-prefetch-control",
+	"x-accel-", "x-sendfile", "x-lighttpd-", "x-litespeed-", "x-reproxy-",
+	"x-forwarded-", "x-real-ip", "x-original-", "x-rewrite-", "x-http-method",
 }
 
 func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {

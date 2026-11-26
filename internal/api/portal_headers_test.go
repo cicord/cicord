@@ -84,6 +84,13 @@ func TestRouteHeaderAllowlist(t *testing.T) {
 		"Refresh": {false, false}, "Set-Cookie": {false, false}, "Location": {false, false},
 		"Access-Control-Allow-Origin": {false, false}, "Content-Type": {false, false},
 		"Strict-Transport-Security": {false, false}, "X-Content-Type-Options": {false, false},
+		// Reverse proxies act on these: an nginx internal redirect or a sendfile would serve
+		// the proxy's own files or locations on the plugin's behalf.
+		"X-Accel-Redirect": {false, false}, "x-accel-buffering": {false, false}, "X-Sendfile": {false, false},
+		"X-Lighttpd-Send-File": {false, false}, "X-LiteSpeed-Location": {false, false},
+		"X-Reproxy-URL": {false, false}, "X-Forwarded-Prefix": {false, false}, "X-Real-IP": {false, false},
+		"X-Original-URL": {false, false}, "X-Rewrite-URL": {false, false}, "X-HTTP-Method-Override": {false, false},
+		"X-XSS-Protection": {false, false}, "X-RateLimit-Remaining": {true, true},
 	} {
 		if got := [2]bool{routeHeader(name, true), routeHeader(name, false)}; got != want {
 			t.Errorf("%s: %v, want %v", name, got, want)

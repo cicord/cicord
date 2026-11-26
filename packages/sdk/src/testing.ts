@@ -2414,18 +2414,28 @@ function routeHeader(name: string, isPublic: boolean): boolean {
     case "cache-control":
       return isPublic;
   }
-  return (
-    lk.startsWith("x-") &&
-    !lk.startsWith("x-cicord-") &&
-    ![
-      "x-content-type-options",
-      "x-frame-options",
-      "x-forwarded-for",
-      "x-forwarded-host",
-      "x-forwarded-proto",
-    ].includes(lk)
-  );
+  return lk.startsWith("x-") && !reservedRouteHeaders.some((p) => lk.startsWith(p));
 }
+
+/** internal/api/portal.go reservedRouteHeaders: x-* prefixes a route cannot set. */
+const reservedRouteHeaders = [
+  "x-cicord-",
+  "x-content-type-options",
+  "x-frame-options",
+  "x-xss-protection",
+  "x-permitted-cross-domain-policies",
+  "x-dns-prefetch-control",
+  "x-accel-",
+  "x-sendfile",
+  "x-lighttpd-",
+  "x-litespeed-",
+  "x-reproxy-",
+  "x-forwarded-",
+  "x-real-ip",
+  "x-original-",
+  "x-rewrite-",
+  "x-http-method",
+];
 
 /**
  * What the runtime accepts from a handler (internal/plugin/sdk.js routeOut and
