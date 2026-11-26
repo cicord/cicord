@@ -206,9 +206,10 @@ func (s *server) handleSimState(w http.ResponseWriter, r *http.Request) {
 		bots = append(bots, toUser(u))
 	}
 	type memberOut struct {
-		User  userDTO  `json:"user"`
-		Nick  string   `json:"nick"`
-		Roles []string `json:"roles"`
+		User           userDTO  `json:"user"`
+		Nick           string   `json:"nick"`
+		Roles          []string `json:"roles"`
+		VoiceChannelID string   `json:"voiceChannelId,omitempty"`
 	}
 	type roleOut struct {
 		ID       string `json:"id"`
@@ -244,16 +245,61 @@ func (s *server) handleSimState(w http.ResponseWriter, r *http.Request) {
 		for _, ro := range wd.Roles(sid) {
 			so.Roles = append(so.Roles, roleOut{ID: ro.ID, Name: ro.Name, Color: colorHex(ro.Color), Position: ro.Position, Managed: ro.Managed})
 		}
+		voice := map[string]string{}
+		for _, st := range wd.VoiceStates(sid) {
+			voice[st.UserID] = st.ChannelID
+		}
 		for _, m := range wd.Members(sid) {
 			roles := m.RoleIDs
 			if roles == nil {
 				roles = []string{}
 			}
-			so.Members = append(so.Members, memberOut{User: toUser(m.User), Nick: m.Nick, Roles: roles})
+			so.Members = append(so.Members, memberOut{User: toUser(m.User), Nick: m.Nick, Roles: roles, VoiceChannelID: voice[m.User.ID]})
 		}
 		servers = append(servers, so)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": users, "bots": bots, "servers": servers})
+}
+
+// Drive the same member operations and permission checks as a simulated Discord client.
+func (s *server) handleSimVoice(w http.ResponseWriter, r *http.Request) {
+	world := s.opts.Sim
+	serverID, userID := r.PathValue("id"), r.PathValue("userId")
+	var err error
+	if r.Method == http.MethodDelete {
+		err = world.LeaveVoice(serverID, userID)
+	} else {
+		var b struct {
+			ChannelID string `json:"channelId"`
+		}
+		if err := s.decodeJSON(w, r, &b); err != nil {
+			s.fail(w, err)
+			return
+		}
+		ch, ok := world.Channel(b.ChannelID)
+		if !ok || ch.ServerID != serverID {
+			notFoundHandler(w, r)
+			return
+		}
+		err = world.JoinVoice(userID, ch.ID)
+	}
+	if err != nil {
+		s.fail(w, simErr(err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) handleSimReaction(w http.ResponseWriter, r *http.Request) {
+	react := s.opts.Sim.AddReaction
+	if r.Method == http.MethodDelete {
+		react = s.opts.Sim.RemoveReaction
+	}
+	if err := react(r.PathValue("userId"), r.PathValue("id"), r.PathValue("messageId"), r.PathValue("emoji")); err != nil {
+		s.fail(w, simErr(err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) handleSimCreateUser(w http.ResponseWriter, r *http.Request) {

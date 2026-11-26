@@ -27,6 +27,9 @@ named after `profile.username` or its key) invited with `Administrator`, and the
 | POST | `/api/v1/sim/servers/{id}/boosts` | `{"count": n}`: sets the number of boosts (2, 7 and 14 boosts give levels 1, 2 and 3, and the features they unlock). Returns `{"id", "boostLevel", "boostCount", "features"}`. Seeding also honors the server annotations `sim.cicord.dev/boosts: "<n>"` and `sim.cicord.dev/features: "A,B"`. |
 | GET | `/api/v1/sim/channels/{id}/messages?limit=50` | `{"items": [Message]}`: the last `limit` (≤ 500) messages, oldest first. |
 | GET | `/api/v1/sim/users/{id}/dms?limit=50` | `{"items": [Message]}`: DMs received by the user from bots, oldest first. |
+| PUT | `/api/v1/sim/servers/{id}/members/{userId}/voice` | `{"channelId":"…"}` joins or moves the member, checking Connect and the room limit. The state snapshot includes `voiceChannelId` on connected members. Returns 204. |
+| DELETE | `/api/v1/sim/servers/{id}/members/{userId}/voice` | Disconnects the member and emits the voice-state update. Returns 204. |
+| PUT, DELETE | `/api/v1/sim/channels/{id}/messages/{messageId}/reactions/{emoji}/{userId}` | The member adds or removes their own reaction, applying channel permissions. URL-encode the emoji. Returns 204. |
 | POST | `/api/v1/sim/messages` | `{"userId", "channelId", "content"}`: `201 Message`. |
 | POST | `/api/v1/sim/commands` | `{"userId", "serverId", "channelId", "bot", "name", "options": {}, "autocomplete"?: {"option", "value"}}`: `InteractionResult` ([below](#slash-commands)). |
 | POST | `/api/v1/sim/poll-votes` | `{"userId", "channelId", "messageId", "answerId", "voted"}` casts (`true`) or removes (`false`) a native poll vote. Returns `204`. Read the message’s `poll.answers[].votes` for the totals. |
