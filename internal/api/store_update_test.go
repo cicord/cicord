@@ -76,11 +76,19 @@ type updateReviewTestDTO struct {
 	}
 	Diff struct {
 		Capabilities struct{ Added, Removed []string }
+		MadeOptional []struct {
+			Name     string
+			Features []string
+		}
 	}
 	Instances []struct {
 		Server, Bot, Instance, Range, NewRange string
 		GrantsAdded, GrantsRemoved             []string
-		Diagnostics                            []map[string]any
+		GrantsKept                             []struct {
+			Name     string
+			Features []string
+		}
+		Diagnostics []map[string]any
 	}
 	Files *struct {
 		Changed, Added, Removed []string
@@ -240,7 +248,10 @@ func TestStoreUpdateRegistryPlugin(t *testing.T) {
 }
 
 // A copy of an official plugin (plugins/welcome) older than the bundled version: detected,
-// updated when unmodified, refused when modified unless forced.
+// updated when unmodified, refused when modified unless forced. The old version required
+// discord.roles.assign (optional feature defaultRole in the new one) and scheduler (no
+// longer declared): the instance keeps the first, loses the second, and the rest of
+// bot.yaml is left as it was.
 func TestStoreUpdateBundledCopy(t *testing.T) {
 	files, err := catalog.Official().PluginFiles("welcome")
 	if err != nil {
@@ -254,7 +265,9 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 		_ = os.RemoveAll(pd)
 		for rel, data := range files {
 			if rel == "plugin.yaml" {
-				data = []byte(strings.Replace(string(data), "version: 0.2.0", "version: 0.0.9", 1))
+				m := strings.Replace(string(data), "version: 0.2.0", "version: 0.0.9", 1)
+				m = strings.Replace(m, "  capabilities:\n", "  capabilities:\n    - scheduler\n    - discord.roles.assign\n", 1)
+				data = []byte(m)
 			}
 			full := filepath.Join(pd, filepath.FromSlash(rel))
 			_ = os.MkdirAll(filepath.Dir(full), 0o755)
@@ -262,7 +275,12 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 		}
 		// A file of the old version that the new one no longer ships.
 		_ = os.WriteFile(filepath.Join(pd, "src", "old.ts"), []byte("export {};\n"), 0o644)
+		bot := filepath.Join(dir, "bots", "moderator", "bot.yaml")
+		data, _ = os.ReadFile(bot)
+		_ = os.WriteFile(bot, []byte(strings.Replace(string(data), "        - storage.kv\n", "        - storage.kv\n        - scheduler\n", 1)), 0o644)
 	}, nil, nil)
+	botFile := filepath.Join(e.dir, "bots", "moderator", "bot.yaml")
+	before, _ := os.ReadFile(botFile)
 	c := e.client()
 	c.login(e.seed.Owner.ID)
 
@@ -277,6 +295,23 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 	if !rv.Available || !rv.Modified || rv.Files == nil || len(rv.Files.Removed) != 1 || rv.Files.Removed[0] != "src/old.ts" ||
 		len(rv.Files.Changed) != 1 || rv.Files.Changed[0] != "plugin.yaml" {
 		t.Fatalf("review = %+v", rv)
+	}
+	if d := rv.Diff; len(d.Capabilities.Removed) != 1 || d.Capabilities.Removed[0] != "scheduler" ||
+		len(d.MadeOptional) != 1 || d.MadeOptional[0].Name != "discord.roles.assign" || d.MadeOptional[0].Features[0] != "defaultRole" {
+		t.Errorf("diff = %+v", d)
+	}
+	for _, i := range rv.Instances {
+		if i.Instance != "welcome" {
+			continue
+		}
+		kept := map[string]string{}
+		for _, k := range i.GrantsKept {
+			kept[k.Name] = strings.Join(k.Features, ",")
+		}
+		if len(i.GrantsAdded) != 0 || len(i.GrantsRemoved) != 1 || i.GrantsRemoved[0] != "scheduler" ||
+			kept["discord.roles.assign"] != "defaultRole" || kept["discord.dm.send"] != "onboarding" || kept["portal.links"] != "onboarding" || len(kept) != 3 {
+			t.Errorf("welcome grants: added %v, removed %v, kept %v", i.GrantsAdded, i.GrantsRemoved, kept)
+		}
 	}
 	update := "/api/v1/store/cicord/welcome/update"
 	if r := c.do("POST", update, map[string]any{"version": "0.0.1"}); r.status != 409 || !strings.Contains(string(r.body), `"changed"`) {
@@ -296,6 +331,11 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(e.dir, "plugins", "welcome", "plugin.yaml"))
 	if !strings.Contains(string(data), "version: 0.2.0") {
 		t.Errorf("plugin.yaml:\n%s", data)
+	}
+	// Only the grant that is no longer declared is removed: bot.yaml is otherwise unchanged.
+	after, _ := os.ReadFile(botFile)
+	if want := strings.Replace(string(before), "        - storage.kv\n        - scheduler\n", "        - storage.kv\n", 1); string(after) != want {
+		t.Errorf("bot.yaml after the update:\n%s\nwant:\n%s", after, want)
 	}
 	inst.Update = nil
 	c.expect(200, "GET", "/api/v1/servers/"+serverKey+"/plugins/moderator/welcome", nil).json(t, &inst)

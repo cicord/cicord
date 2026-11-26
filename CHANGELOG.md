@@ -6,6 +6,31 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`cicord plugin update` and the Store's update no longer drop grants that a plugin moved
+  to an optional feature.** An update used to set an instance's grants to the new version's
+  required capabilities only. For example, `cicord/welcome` 0.1.1 → 0.2.0 dropped
+  `discord.roles.assign`, `discord.dm.send` and `portal.links`, now declared by the
+  `defaultRole` and `onboarding` features. An instance with `autoRole` set then silently
+  stopped assigning the role. `cicord/polls` lost `discord.threads.manage` (feature
+  `discussionThread`) the same way. Updates now keep every grant that the new version still
+  declares, whether required or in an optional feature, and add newly required
+  capabilities. They remove only the grants that are no longer declared at all. The review
+  (CLI output, and `grantsKept` and `diff.madeOptional` in the Store's update review) lists
+  each grant kept for an optional feature and each grant removed because it is no longer
+  declared. A capability or intent that became optional is no longer shown as removed. If
+  you already applied a 0.2.0 update, check the `grants` of your instances against the
+  plugins' optional features.
+- **`cicord plugin update` and the Store's update edit bot.yaml minimally.** Only the
+  instance's `version` and `grants` values change. Flow sequences and maps, blank lines
+  between entries, comment alignment and emoji stay as written. A flow `grants` list stays a
+  flow list, wrapped and aligned like the original. Any layout that cannot be edited in
+  place safely falls back to the previous full re-encoding.
+- **`cicord validate` warns when a config switch turns on an optional feature whose
+  capability is not granted** (a feature `when` switch set to `true`): the feature stays
+  disabled at runtime.
+
 ## [0.2.0] - 2026-11-26
 
 Cicord 0.2.0 is a large plugin platform release.

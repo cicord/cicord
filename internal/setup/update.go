@@ -25,9 +25,9 @@ import (
 //
 // A plugin version is shared by every instance using it: the cicord.lock entry of a
 // registry plugin, or the plugins/<name>/ copy of an official plugin. An update changes
-// it for all of them in one write-back, with each instance's grants set to what the new
-// version requests and, for registry plugins, its version range widened when the new
-// version is outside it.
+// it for all of them in one write-back, with each instance's grants brought in line with
+// the new version (see UpdateGrants) and, for registry plugins, its version range widened
+// when the new version is outside it.
 
 // UpdateSpec is the version an update installs.
 type UpdateSpec struct {
@@ -37,6 +37,9 @@ type UpdateSpec struct {
 	Name, DisplayName, Version string
 	Capabilities, Intents      []string
 	PrivilegedIntents, Network []string
+	// Optional are the optional features of the new version (their capabilities stay
+	// granted to the instances that grant them).
+	Optional []config.OptionalFeature
 	// Schema is the config schema of the new version (nil: none).
 	Schema map[string]any
 	// Lock is the cicord.lock entry of a registry plugin.
@@ -59,10 +62,17 @@ type ListDiff struct {
 // Empty reports whether nothing changes.
 func (d ListDiff) Empty() bool { return len(d.Added) == 0 && len(d.Removed) == 0 }
 
-// PermissionDiff compares what the new version requests with the installed one.
+// PermissionDiff compares what the new version requests with the installed one. Added
+// lists what the new version requires and the installed one did not; Removed what the new
+// version no longer declares at all (neither required nor in an optional feature).
 type PermissionDiff struct {
 	Capabilities ListDiff `json:"capabilities"`
-	Intents      ListDiff `json:"intents"`
+	// MadeOptional: capabilities the installed version required that the new one declares
+	// in optional features only. Instances that grant them keep them.
+	MadeOptional []OptionalGrant `json:"madeOptional"`
+	Intents      ListDiff        `json:"intents"`
+	// IntentsMadeOptional: the same for intents (requested while their feature is granted).
+	IntentsMadeOptional []OptionalGrant `json:"intentsMadeOptional"`
 	// PrivilegedIntents must be enabled in the Discord developer portal.
 	PrivilegedIntents ListDiff `json:"privilegedIntents"`
 	Network           ListDiff `json:"network"`
@@ -78,6 +88,15 @@ type InstalledVersion struct {
 	Intents           []string `json:"intents"`
 	PrivilegedIntents []string `json:"privilegedIntents"`
 	Network           []string `json:"network"`
+	// Optional are the optional features of the installed version (when its manifest is
+	// loaded).
+	Optional []config.OptionalFeature `json:"optional,omitempty"`
+}
+
+// OptionalGrant is a capability (or intent) declared by optional features.
+type OptionalGrant struct {
+	Name     string   `json:"name"`
+	Features []string `json:"features"`
 }
 
 // UpdateInstance is what the update changes for one instance on one server.
@@ -90,9 +109,13 @@ type UpdateInstance struct {
 	// update writes ("" when it stays).
 	Range    string `json:"range,omitempty"`
 	NewRange string `json:"newRange,omitempty"`
-	// GrantsAdded and GrantsRemoved change the instance's grants (bot.yaml).
+	// GrantsAdded and GrantsRemoved change the instance's grants (bot.yaml): Added are
+	// capabilities the new version requires, Removed grants it no longer declares.
 	GrantsAdded   []string `json:"grantsAdded"`
 	GrantsRemoved []string `json:"grantsRemoved"`
+	// GrantsKept are the instance's grants kept for an optional feature of the new version
+	// (not required by it).
+	GrantsKept []OptionalGrant `json:"grantsKept"`
 	// Diagnostics: the instance's current config is not valid for the new version's
 	// config schema (it must be fixed first).
 	Diagnostics config.Diagnostics `json:"diagnostics"`
@@ -215,7 +238,8 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 		}
 	}
 	if cur != nil {
-		plan.Current = InstalledVersion{Version: cur.Metadata.Version, Capabilities: nonNil(cur.Spec.Capabilities), Intents: nonNil(cur.Spec.Intents), Network: []string{}}
+		plan.Current = InstalledVersion{Version: cur.Metadata.Version, Capabilities: nonNil(cur.Spec.Capabilities), Intents: nonNil(cur.Spec.Intents), Network: []string{},
+			Optional: cur.Spec.Optional}
 		if cur.Spec.Network != nil {
 			plan.Current.Network = nonNil(cur.Spec.Network.Allow)
 		}
@@ -236,12 +260,7 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 		}
 	}
 	plan.Current.PrivilegedIntents = privileged(plan.Current.Intents)
-	plan.Diff = PermissionDiff{
-		Capabilities:      diff(plan.Current.Capabilities, spec.Capabilities),
-		Intents:           diff(plan.Current.Intents, spec.Intents),
-		PrivilegedIntents: diff(plan.Current.PrivilegedIntents, spec.PrivilegedIntents),
-		Network:           diff(plan.Current.Network, spec.Network),
-	}
+	plan.Diff = permissionDiff(plan.Current, spec)
 
 	current := map[string]*config.Instance{}
 	for n := range repo.Instances {
@@ -263,21 +282,22 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 				newRange = "^" + spec.Version
 			}
 		}
-		grants := diff(u.inst.Grants, spec.Capabilities)
+		grants := UpdateGrants(u.inst.Grants, spec)
+		// Minimal edits (writeback.PatchYAML): the rest of bot.yaml keeps its layout.
 		if newRange != "" {
 			r := newRange
 			botEdits[u.bot.File] = append(botEdits[u.bot.File], func(cur []byte) ([]byte, error) {
-				return writeback.SetYAML(cur, append(slices.Clone(at), writeback.Key("version")), r)
+				return writeback.PatchYAML(cur, append(slices.Clone(at), writeback.Key("version")), r)
 			})
 		}
-		if !grants.Empty() || len(u.inst.Grants) != len(spec.Capabilities) {
-			caps := slices.Clone(spec.Capabilities)
+		if !slices.Equal(grants.Grants, u.inst.Grants) {
+			caps := slices.Clone(grants.Grants)
 			botEdits[u.bot.File] = append(botEdits[u.bot.File], func(cur []byte) ([]byte, error) {
 				var v any = caps
 				if len(caps) == 0 {
 					v = nil
 				}
-				return writeback.SetYAML(cur, append(slices.Clone(at), writeback.Key("grants")), v)
+				return writeback.PatchYAML(cur, append(slices.Clone(at), writeback.Key("grants")), v)
 			})
 		}
 		on := u.inst.Servers
@@ -287,7 +307,7 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 		for _, sk := range on {
 			servers[sk] = true
 			ui := UpdateInstance{Server: sk, Bot: u.key, Instance: u.inst.Name, NewRange: newRange,
-				GrantsAdded: grants.Added, GrantsRemoved: grants.Removed, Diagnostics: config.Diagnostics{}}
+				GrantsAdded: grants.Added, GrantsRemoved: grants.Removed, GrantsKept: grants.Kept, Diagnostics: config.Diagnostics{}}
 			if !spec.Bundled() {
 				ui.Range = u.inst.Version
 			}
@@ -511,6 +531,97 @@ func updatedHealth(rt *runtime.Runtime, plan *UpdatePlan) []UpdateInstanceHealth
 		out = append(out, h)
 	}
 	return out
+}
+
+// GrantChange is what an update does to an instance's grants.
+type GrantChange struct {
+	// Grants is the new list: the current grants the new version still declares, in their
+	// order, then the capabilities it newly requires.
+	Grants []string
+	// Added: newly required capabilities; Removed: grants no longer declared (sorted).
+	Added, Removed []string
+	// Kept: current grants kept for an optional feature only.
+	Kept []OptionalGrant
+}
+
+// UpdateGrants computes an instance's grants after an update to spec. A grant is kept
+// when the new version still declares it, required or in any optional feature (an
+// optional feature that is configured keeps working); it is dropped only when the new
+// version no longer declares it at all. Capabilities the new version requires that are
+// not granted yet are added. Matching follows the loader (config.GrantDeclared,
+// config.HasGrant): a wildcard grant such as plugins.query:xp.* is kept while it covers a
+// declared capability.
+func UpdateGrants(current []string, spec UpdateSpec) GrantChange {
+	declared := slices.Clone(spec.Capabilities)
+	for _, f := range spec.Optional {
+		declared = append(declared, f.Capabilities...)
+	}
+	out := GrantChange{Grants: []string{}, Added: []string{}, Removed: []string{}, Kept: []OptionalGrant{}}
+	for _, g := range current {
+		if !config.GrantDeclared(declared, g) {
+			if !slices.Contains(out.Removed, g) {
+				out.Removed = append(out.Removed, g)
+			}
+			continue
+		}
+		out.Grants = append(out.Grants, g)
+		if config.GrantDeclared(spec.Capabilities, g) || slices.ContainsFunc(out.Kept, func(k OptionalGrant) bool { return k.Name == g }) {
+			continue
+		}
+		var features []string
+		for _, f := range spec.Optional {
+			if config.GrantDeclared(f.Capabilities, g) {
+				features = append(features, f.Feature)
+			}
+		}
+		out.Kept = append(out.Kept, OptionalGrant{Name: g, Features: features})
+	}
+	for _, c := range spec.Capabilities {
+		if !config.HasGrant(out.Grants, c) {
+			out.Grants = append(out.Grants, c)
+			out.Added = append(out.Added, c)
+		}
+	}
+	slices.Sort(out.Added)
+	slices.Sort(out.Removed)
+	return out
+}
+
+// permissionDiff compares the installed version with the new one (see PermissionDiff).
+func permissionDiff(cur InstalledVersion, spec UpdateSpec) PermissionDiff {
+	curCaps, curIntents := config.PluginSpec{Capabilities: cur.Capabilities, Intents: cur.Intents, Optional: cur.Optional}.Declared()
+	newCaps, newIntents := config.PluginSpec{Capabilities: spec.Capabilities, Intents: spec.Intents, Optional: spec.Optional}.Declared()
+	removed := func(before, after []string) []string { return diff(before, after).Removed }
+	featuresOf := func(name string, intents bool) []string {
+		var out []string
+		for _, f := range spec.Optional {
+			list := f.Capabilities
+			if intents {
+				list = f.Intents
+			}
+			if slices.Contains(list, name) {
+				out = append(out, f.Feature)
+			}
+		}
+		return out
+	}
+	madeOptional := func(required, newRequired, newDeclared []string, intents bool) []OptionalGrant {
+		out := []OptionalGrant{}
+		for _, x := range diff(required, newRequired).Removed {
+			if slices.Contains(newDeclared, x) {
+				out = append(out, OptionalGrant{Name: x, Features: featuresOf(x, intents)})
+			}
+		}
+		return out
+	}
+	return PermissionDiff{
+		Capabilities:        ListDiff{Added: diff(cur.Capabilities, spec.Capabilities).Added, Removed: removed(curCaps, newCaps)},
+		MadeOptional:        madeOptional(cur.Capabilities, spec.Capabilities, newCaps, false),
+		Intents:             ListDiff{Added: diff(cur.Intents, spec.Intents).Added, Removed: removed(curIntents, newIntents)},
+		IntentsMadeOptional: madeOptional(cur.Intents, spec.Intents, newIntents, true),
+		PrivilegedIntents:   diff(cur.PrivilegedIntents, spec.PrivilegedIntents),
+		Network:             diff(cur.Network, spec.Network),
+	}
 }
 
 // diff lists what b adds to a and removes from it (sorted).

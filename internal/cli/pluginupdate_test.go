@@ -209,3 +209,80 @@ func TestPluginAddUpdateKeepPortalRouteTypes(t *testing.T) {
 		t.Error("the route types changed although they could not be generated")
 	}
 }
+
+// An update keeps the grants the new version still declares in an optional feature (an
+// instance configured for it keeps working), removes those it no longer declares, adds the
+// newly required ones, and leaves the rest of bot.yaml as written.
+func TestPluginUpdateKeepsOptionalGrants(t *testing.T) {
+	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
+	v1 := strings.Replace(updManifest, "[discord.messages.send]", "[discord.messages.send, discord.roles.assign, scheduler]", 1)
+	plugin := commitRepo(t, map[string]string{"plugin.yaml": v1, "src/index.ts": `import {definePlugin} from "@cicord/sdk"; export default definePlugin({});`}, "v1.0.0")
+	reg := commitRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: " + plugin + "\n"})
+	dir := t.TempDir()
+	if code, _, errOut := run(t, "init", dir, "--server", "srv", "--bot", "bot"); code != 0 {
+		t.Fatalf("init: %s", errOut)
+	}
+	if code, _, errOut := run(t, "registry", "add", "acme", reg, "--dir", dir); code != 0 {
+		t.Fatalf("registry add: %s", errOut)
+	}
+	if code, _, errOut := run(t, "plugin", "add", "acme/hello", "--bot", "bot", "--dir", dir); code != 0 {
+		t.Fatalf("plugin add: %s", errOut)
+	}
+	// Written by hand: flow sequences, blank lines, aligned comments.
+	botFile := filepath.Join(dir, "bots", "bot", "bot.yaml")
+	bot := readFile(t, botFile)
+	i := strings.Index(bot, "  plugins:")
+	if i < 0 {
+		t.Fatalf("bot.yaml:\n%s", bot)
+	}
+	bot = bot[:i] + `  plugins:
+    # Says hello.
+    - name: hello
+      source: acme/hello
+      version: ^1.0.0
+      grants: [discord.messages.send, discord.roles.assign, scheduler]
+      config:
+        rules: [ { a: 1, b: 2 } ]   # aligned
+        other: true                 # comments
+
+    - name: hello-too
+      source: acme/hello
+      version: ^1.0.0
+      grants: [ scheduler, discord.messages.send, discord.roles.assign ]
+`
+	writeFile(t, botFile, bot)
+	if code, _, errOut := run(t, "validate", dir); code != 0 {
+		t.Fatalf("validate: %s", errOut)
+	}
+
+	v2 := strings.Replace(strings.Replace(updManifest, "1.0.0", "2.0.0", 1), "[discord.messages.send]",
+		"[discord.messages.send, storage.kv]\n  optional:\n    - feature: defaultRole\n      capabilities: [discord.roles.assign]", 1)
+	tagRelease(t, plugin, map[string]string{"plugin.yaml": v2}, "v2.0.0")
+	code, out, errOut := run(t, "plugin", "update", "acme/hello", "--dir", dir)
+	if code != 0 {
+		t.Fatalf("update: %d %s %s", code, out, errOut)
+	}
+	for _, want := range []string{
+		"~ capability discord.roles.assign is now optional (feature defaultRole): kept where granted",
+		"- capability scheduler (no longer declared)",
+		"bot/hello: grants kept for optional features: discord.roles.assign (feature defaultRole)",
+		"bot/hello: grants removed (no longer declared): scheduler",
+		"bot/hello: grants added (required): storage.kv",
+		"bot/hello-too: grants removed (no longer declared): scheduler",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("review lacks %q:\n%s", want, out)
+		}
+	}
+	want := strings.NewReplacer(
+		"version: ^1.0.0", "version: ^2.0.0",
+		"grants: [discord.messages.send, discord.roles.assign, scheduler]", "grants: [discord.messages.send, discord.roles.assign, storage.kv]",
+		"grants: [ scheduler, discord.messages.send, discord.roles.assign ]", "grants: [ discord.messages.send, discord.roles.assign, storage.kv ]",
+	).Replace(bot)
+	if got := readFile(t, botFile); got != want {
+		t.Errorf("bot.yaml:\n%s\nwant:\n%s", got, want)
+	}
+	if code, _, errOut := run(t, "validate", dir); code != 0 {
+		t.Errorf("validate after update: %s", errOut)
+	}
+}

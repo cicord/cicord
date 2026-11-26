@@ -161,10 +161,13 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
   "detail": StoreDetail,                     // the new version: send its version/commit/integrity back
   "current": { "version": "1.0.0", "commit"?: "…", "integrity"?: "…", "repo"?: "…",
                "capabilities": [], "intents": [], "privilegedIntents": [], "network": [] },
-  "diff": { "capabilities": {"added": [], "removed": []}, "intents": {…},
-            "privilegedIntents": {…}, "network": {…} },
+  "diff": { "capabilities": {"added": [], "removed": []},
+            "madeOptional": [{ "name": "discord.roles.assign", "features": ["defaultRole"] }],
+            "intents": {…}, "intentsMadeOptional": [], "privilegedIntents": {…}, "network": {…} },
   "instances": [{ "server", "bot", "instance", "range"?: "^1.0.0", "newRange"?: "^2.0.0",
-                  "grantsAdded": [], "grantsRemoved": [], "diagnostics": [Diagnostic] }],
+                  "grantsAdded": [], "grantsRemoved": [],
+                  "grantsKept": [{ "name": "discord.roles.assign", "features": ["defaultRole"] }],
+                  "diagnostics": [Diagnostic] }],
   "files"?: { "changed": [], "added": [], "removed": [] },   // bundled copies (plugin-relative)
   "modified": false, "repoChanged": false, "servers": ["my-community"], "configValid": true,
   "missingAdmin": [], "restricted": [{ "server", "instances": 2 }] }
@@ -175,7 +178,14 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
   the new config schema and `x-cicord-ref`. An incompatible settings change shows up here
   before anything is written (`configValid: false`).
 - `newRange` is written when the new version is outside the instance's `version` range
-  (`^<new>`); `grantsAdded` and `grantsRemoved` make the grants what the new version requests.
+  (`^<new>`). `grantsAdded` are the capabilities the new version requires that the instance
+  does not grant yet. `grantsRemoved` are the grants the new version no longer declares at all.
+  `grantsKept` are the grants kept only because an optional feature of the new version declares
+  them. Every other grant stays.
+- `diff.capabilities.added` is what the new version requires and the installed one did not;
+  `removed` is what it no longer declares, required or optional. `madeOptional` lists what the
+  installed version required and the new one only declares in optional features. `intents`
+  and `intentsMadeOptional` work the same way for intents.
 - `repoChanged`: the registry index now points to another repository than `cicord.lock`.
 - `missingAdmin`: servers running the plugin where the caller is not admin. Their instances
   are **not** detailed (no config diagnostics, grants or names, and they are left out of

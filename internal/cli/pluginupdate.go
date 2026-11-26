@@ -34,8 +34,10 @@ func newPluginUpdateCmd() *cobra.Command {
 registry plugins (cicord.lock) and copies of the official plugins (plugins/<name>/).
 
 With a plugin, updates every instance using it: the cicord.lock entry, the version range of
-each instance when the new version is outside it, and the grants (set to what the new
-version requests). Copies of official plugins (cicord/<name>) are rewritten from the plugins
+each instance when the new version is outside it, and the grants: capabilities the new
+version requires are added, grants it still declares (required or for an optional feature)
+are kept, and grants it no longer declares are removed. Only these values change in
+bot.yaml; the rest of the file keeps its layout. Copies of official plugins (cicord/<name>) are rewritten from the plugins
 bundled in this binary; a locally modified copy is only overwritten with --force.
 Review the printed capability changes before committing.
 
@@ -204,7 +206,7 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 		}
 		spec = setup.UpdateSpec{SecretDeclarations: e.SecretDeclarations, Source: source, Name: name, DisplayName: e.DisplayName, Version: e.Version,
 			Capabilities: e.Capabilities, Intents: e.Intents, PrivilegedIntents: e.PrivilegedIntents, Network: e.Network,
-			Schema: e.Schema, Files: files}
+			Optional: e.Optional, Schema: e.Schema, Files: files}
 	} else {
 		rng := to
 		if rng == "" {
@@ -232,7 +234,7 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 		lock := res.Entry
 		spec = setup.UpdateSpec{SecretDeclarations: e.SecretDeclarations, Source: source, Name: name, DisplayName: e.DisplayName, Version: lock.Version,
 			Capabilities: e.Capabilities, Intents: e.Intents, PrivilegedIntents: e.PrivilegedIntents, Network: e.Network,
-			Schema: e.Schema, Lock: &lock, Range: to}
+			Optional: e.Optional, Schema: e.Schema, Lock: &lock, Range: to}
 	}
 	plan, err := setup.PlanUpdate(repo, spec)
 	if err != nil {
@@ -287,14 +289,17 @@ func printUpdatePlan(w io.Writer, plan *setup.UpdatePlan, trust string) {
 		fmt.Fprintf(w, "  ! the registry now points to another repository: %s\n", where)
 	}
 	d := plan.Diff
-	if d.Capabilities.Empty() && d.Intents.Empty() && d.Network.Empty() {
+	if d.Capabilities.Empty() && d.Intents.Empty() && d.Network.Empty() && len(d.MadeOptional)+len(d.IntentsMadeOptional) == 0 {
 		fmt.Fprintln(w, "  Requests the same capabilities, intents and network access.")
 	}
 	for _, c := range d.Capabilities.Added {
 		fmt.Fprintf(w, "  + capability %s\n", c)
 	}
 	for _, c := range d.Capabilities.Removed {
-		fmt.Fprintf(w, "  - capability %s\n", c)
+		fmt.Fprintf(w, "  - capability %s (no longer declared)\n", c)
+	}
+	for _, c := range d.MadeOptional {
+		fmt.Fprintf(w, "  ~ capability %s is now optional (%s): kept where granted\n", c.Name, features(c.Features))
 	}
 	for _, in := range d.Intents.Added {
 		note := ""
@@ -304,7 +309,10 @@ func printUpdatePlan(w io.Writer, plan *setup.UpdatePlan, trust string) {
 		fmt.Fprintf(w, "  + intent %s%s\n", in, note)
 	}
 	for _, in := range d.Intents.Removed {
-		fmt.Fprintf(w, "  - intent %s\n", in)
+		fmt.Fprintf(w, "  - intent %s (no longer declared)\n", in)
+	}
+	for _, in := range d.IntentsMadeOptional {
+		fmt.Fprintf(w, "  ~ intent %s is now optional (%s): requested while the feature is granted\n", in.Name, features(in.Features))
 	}
 	for _, h := range d.Network.Added {
 		fmt.Fprintf(w, "  + network %s\n", h)
@@ -312,14 +320,30 @@ func printUpdatePlan(w io.Writer, plan *setup.UpdatePlan, trust string) {
 	for _, h := range d.Network.Removed {
 		fmt.Fprintf(w, "  - network %s\n", h)
 	}
+	// Grants and version ranges are per instance (the same on each of its servers).
 	seen := map[string]bool{}
 	for _, i := range plan.Instances {
 		k := i.Bot + "/" + i.Instance
-		if seen[k] || i.NewRange == "" {
+		if seen[k] {
 			continue
 		}
 		seen[k] = true
-		fmt.Fprintf(w, "  %s: version %s → %s\n", k, orAny(i.Range), i.NewRange)
+		if i.NewRange != "" {
+			fmt.Fprintf(w, "  %s: version %s → %s\n", k, orAny(i.Range), i.NewRange)
+		}
+		if len(i.GrantsAdded) > 0 {
+			fmt.Fprintf(w, "  %s: grants added (required): %s\n", k, strings.Join(i.GrantsAdded, ", "))
+		}
+		if len(i.GrantsKept) > 0 {
+			kept := make([]string, 0, len(i.GrantsKept))
+			for _, g := range i.GrantsKept {
+				kept = append(kept, fmt.Sprintf("%s (%s)", g.Name, features(g.Features)))
+			}
+			fmt.Fprintf(w, "  %s: grants kept for optional features: %s\n", k, strings.Join(kept, ", "))
+		}
+		if len(i.GrantsRemoved) > 0 {
+			fmt.Fprintf(w, "  %s: grants removed (no longer declared): %s\n", k, strings.Join(i.GrantsRemoved, ", "))
+		}
 	}
 	if f := plan.Files; f != nil {
 		fmt.Fprintf(w, "  %s/: %d changed, %d added, %d deleted\n", catalog.PluginDir(spec.Name), len(f.Changed), len(f.Added), len(f.Removed))
@@ -337,6 +361,14 @@ func hasCopy(repo *config.Repo, name string) bool {
 		}
 	}
 	return false
+}
+
+// features names optional features ("feature defaultRole", "features a, b").
+func features(names []string) string {
+	if len(names) == 1 {
+		return "feature " + names[0]
+	}
+	return "features " + strings.Join(names, ", ")
 }
 
 func orAny(s string) string {

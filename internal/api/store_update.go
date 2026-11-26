@@ -76,7 +76,7 @@ func (s *server) updateSpec(ctx context.Context, repo *config.Repo, reg *config.
 		return store.Detail{}, setup.UpdateSpec{}, err
 	}
 	spec := setup.UpdateSpec{SecretDeclarations: d.SecretDeclarations, Source: source + "/" + name, Name: d.Name, DisplayName: d.DisplayName, Version: d.Version,
-		Capabilities: d.Capabilities, Intents: d.Intents, PrivilegedIntents: d.PrivilegedIntents, Network: d.Network, Schema: d.Schema}
+		Capabilities: d.Capabilities, Intents: d.Intents, PrivilegedIntents: d.PrivilegedIntents, Network: d.Network, Optional: d.Optional, Schema: d.Schema}
 	if reg == nil {
 		files, err := s.catalogOf().PluginFiles(name)
 		if err != nil {

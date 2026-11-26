@@ -546,6 +546,7 @@ func (l *loader) checkBots(repo *Repo) {
 						l.sink.errorf(b.File, doc.lineOf(base+"/grants"), base+"/grants", "plugin %q requests capabilities that are not granted: %s", lp.Manifest.Metadata.Name, strings.Join(missing, ", "))
 					}
 					l.checkPrivilegedIntents(b, bk, base, doc.lineOf(base), lp)
+					l.checkSwitchedFeatures(b.File, doc.lineOf(base+"/grants"), base+"/grants", lp.Manifest.Metadata.Name, lp.Manifest.Spec, inst.Grants, cfg)
 					checkedActive = true
 				}
 				cfgPath := base + "/config"

@@ -95,8 +95,11 @@ shows:
 - whether the current settings are still valid with the new config schema.
 
 Updating rewrites the lock entry, widens the instances' version range when needed
-(`^1.0.0` → `^2.0.0`) and sets their grants to what the new version requests, for every
-instance at once (the version is shared), so it needs the admin role on every server where the
+(`^1.0.0` → `^2.0.0`) and updates their grants, for every instance at once (the version is
+shared). Capabilities the new version requires are added. Grants it still declares, required
+or for an optional feature, are kept, so a configured optional feature keeps working. Grants
+it no longer declares are removed. Only these values change in `bot.yaml`; the rest of the
+file keeps its layout. Updating needs the admin role on every server where the
 plugin runs. Unofficial sources ask again for an explicit confirmation restating what is newly
 granted. As for installs, the code updated to is exactly the reviewed code: if the release
 changed in between, the update is refused (`409 changed`) and asks for a new review.

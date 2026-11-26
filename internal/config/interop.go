@@ -185,6 +185,16 @@ func HasGrant(grants []string, cap string) bool {
 }
 func effectiveGrants(s PluginSpec, grants []string) []string {
 	caps, _ := s.Declared()
+	return grantsFor(caps, grants)
+}
+
+// GrantDeclared reports whether grant g is meaningful for a plugin declaring caps
+// (required and optional capabilities): it is one of them, a wildcard grant covering one
+// (plugins.query:xp.*), or an instance of a declared wildcard. It is the rule the loader
+// applies to an instance's grants (Instance.Grants).
+func GrantDeclared(caps []string, g string) bool { return len(grantsFor(caps, []string{g})) > 0 }
+
+func grantsFor(caps, grants []string) []string {
 	var out []string
 	for _, cap := range caps {
 		if HasGrant(grants, cap) {
@@ -203,15 +213,8 @@ func (l *loader) features(s PluginSpec, grants []string, bot string, config map[
 	out := map[string]string{}
 	for _, f := range s.Optional {
 		var missing []string
-		if f.When != "" {
-			var value any = config
-			for _, part := range strings.Split(strings.TrimPrefix(f.When, "/"), "/") {
-				m, _ := value.(map[string]any)
-				value = m[strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")]
-			}
-			if flag, ok := value.(bool); !ok || !flag {
-				missing = append(missing, "disabled by "+f.When)
-			}
+		if f.When != "" && !switchedOn(f.When, config) {
+			missing = append(missing, "disabled by "+f.When)
 		}
 		for _, cap := range f.Capabilities {
 			if !HasGrant(grants, cap) {
@@ -232,6 +235,39 @@ func (l *loader) features(s PluginSpec, grants []string, bot string, config map[
 	}
 	return out
 }
+
+// switchedOn reports whether the boolean config switch at JSON pointer when is true.
+func switchedOn(when string, config map[string]any) bool {
+	var value any = config
+	for _, part := range strings.Split(strings.TrimPrefix(when, "/"), "/") {
+		m, _ := value.(map[string]any)
+		value = m[strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")]
+	}
+	flag, ok := value.(bool)
+	return ok && flag
+}
+
+// checkSwitchedFeatures warns when the config switches an optional feature on (its
+// `when` switch is true) while a capability of the feature is not granted: the feature
+// stays disabled, which the config does not show.
+func (l *loader) checkSwitchedFeatures(file string, line int, path, plugin string, s PluginSpec, grants []string, config map[string]any) {
+	for _, f := range s.Optional {
+		if f.When == "" || !switchedOn(f.When, config) {
+			continue
+		}
+		var missing []string
+		for _, cap := range f.Capabilities {
+			if !HasGrant(grants, cap) {
+				missing = append(missing, cap)
+			}
+		}
+		if len(missing) > 0 {
+			l.sink.warnf(file, line, path, "plugin %q: config %s turns on optional feature %s, but %s is not granted: the feature stays disabled",
+				plugin, f.When, f.Feature, strings.Join(missing, ", "))
+		}
+	}
+}
+
 func (in Instance) EffectiveIntents() []string {
 	if in.Disabled() {
 		return nil

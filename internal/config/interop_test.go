@@ -33,3 +33,31 @@ func TestInteropOptionalIntents(t *testing.T) {
 		t.Fatal(disabled)
 	}
 }
+
+// A config switch (optional feature `when`) turned on while the feature's capability is not
+// granted is a warning: the feature stays disabled, which the config does not show.
+func TestSwitchedOnFeatureWithoutGrantWarns(t *testing.T) {
+	spec := PluginSpec{Optional: []OptionalFeature{
+		{Feature: "content", When: "/cacheContent", Capabilities: []string{"discord.messages.read"}},
+		{Feature: "always", Capabilities: []string{"render"}},
+	}}
+	for _, c := range []struct {
+		cfg    map[string]any
+		grants []string
+		warn   bool
+	}{
+		{map[string]any{"cacheContent": true}, nil, true},
+		{map[string]any{"cacheContent": true}, []string{"discord.messages.read"}, false},
+		{map[string]any{"cacheContent": false}, nil, false},
+		{map[string]any{}, nil, false},
+	} {
+		l := &loader{}
+		l.checkSwitchedFeatures("bot.yaml", 3, "/spec/plugins/0/grants", "audit-log", spec, c.grants, c.cfg)
+		if got := len(l.sink.ds) == 1 && l.sink.ds[0].Severity == SeverityWarning; got != c.warn || (!c.warn && len(l.sink.ds) > 0) {
+			t.Errorf("%v %v: %v", c.cfg, c.grants, l.sink.ds)
+		}
+	}
+	if got := (&loader{}).features(spec, nil, "bot", map[string]any{"cacheContent": true}); got["content"] != "discord.messages.read not granted" || got["always"] != "render not granted" {
+		t.Errorf("features = %v", got)
+	}
+}
