@@ -48,6 +48,10 @@ jobs:
           if [ -n "$unformatted" ]; then echo "Run gofmt -w on:"; echo "$unformatted"; exit 1; fi
       - name: Documentation in one place (sites/docs)
         run: scripts/check-docs.sh
+      - name: Verify the embedded plugin compiler
+        run: |
+          go generate ./internal/build
+          git diff --exit-code -- internal/build/compiler.wasm.gz
       - run: go vet ./...
       - run: go test -race ./...
       - run: CGO_ENABLED=0 go build -o bin/cicord ./cmd/cicord

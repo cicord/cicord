@@ -202,7 +202,7 @@ func ReadContract(dir string, m *config.Plugin) (string, error) {
 	if !filepath.IsLocal(rel) {
 		return "", fmt.Errorf("spec.routes.types %q must be inside the plugin directory", m.Spec.Routes.Types)
 	}
-	data, err := os.ReadFile(filepath.Join(dir, rel))
+	data, err := build.ReadPackageFile(dir, rel)
 	if err != nil {
 		return "", fmt.Errorf("spec.routes.types: %w", err)
 	}

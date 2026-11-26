@@ -140,6 +140,7 @@ func compilePluginConfigSchema(url string, raw []byte) (*jsonschema.Schema, map[
 	}
 	c := jsonschema.NewCompiler()
 	c.DefaultDraft(jsonschema.Draft2020)
+	c.UseLoader(jsonschema.SchemeURLLoader{}) // plugin schemas resolve only resources embedded in this document
 	if err := c.AddResource(url, doc); err != nil {
 		return nil, nil, err
 	}

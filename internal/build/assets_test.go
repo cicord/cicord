@@ -40,3 +40,23 @@ func TestBoundedAssetPackage(t *testing.T) {
 		t.Fatal("accepted oversized assets")
 	}
 }
+
+func TestManifestFilesUsePackageRoot(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "pkg")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	sibling := filepath.Join(parent, "ordinary.json")
+	if err := os.WriteFile(sibling, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(sibling, filepath.Join(dir, "link.json")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"../ordinary.json", sibling, "link.json"} {
+		if _, err := ReadPackageFile(dir, name); err == nil {
+			t.Errorf("accepted undeclared package path %q", name)
+		}
+	}
+}

@@ -231,3 +231,54 @@ func TestMissingEntry(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestReviewedPackageBoundary(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "plugin")
+	src := filepath.Join(dir, "src")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, contents string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(contents), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sample := filepath.Join(parent, "sample.ts")
+	write(sample, `export default "ordinary sample";`)
+	write(filepath.Join(parent, "base.json"), `{"compilerOptions":{"baseUrl":".","paths":{"sample-alias":["sample.ts"]}}}`)
+	write(filepath.Join(dir, "tsconfig.json"), `{"extends":"../base.json"}`)
+	if err := os.Symlink(sample, filepath.Join(src, "linked.ts")); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(src, "indirect.ts"), `export {default} from "./linked";`)
+	for _, tc := range []struct{ name, entry, contents string }{
+		{"entry", "../sample.ts", ""}, {"transitive symlink", "src/index.ts", `export {default} from "./indirect";`},
+		{"adjacent import", "src/index.ts", `export {default} from "../../sample";`},
+		{"absolute entry", sample, ""}, {"parent tsconfig alias", "src/index.ts", `export {default} from "sample-alias";`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			write(filepath.Join(src, "index.ts"), tc.contents)
+			_, err := Bundle(dir, tc.entry)
+			var diag *Error
+			if !errors.As(err, &diag) || len(diag.Messages) == 0 {
+				t.Fatalf("wanted structured error, got %v", err)
+			}
+		})
+	}
+	// An ordinary dependency physically shipped inside the reviewed package still works.
+	pkg := filepath.Join(dir, "node_modules", "example-dep")
+	if err := os.MkdirAll(pkg, 0755); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(pkg, "package.json"), `{"exports":"./main.js"}`)
+	write(filepath.Join(pkg, "main.js"), `export const name="packaged example";`)
+	write(filepath.Join(dir, "tsconfig.json"), `{"compilerOptions":{"paths":{"local":["./src/local.ts"]}}}`)
+	write(filepath.Join(src, "local.ts"), `export {name} from "example-dep";`)
+	write(filepath.Join(src, "index.ts"), `export {name} from "local";`)
+	res, err := Bundle(dir, "src/index.ts")
+	if err != nil || !strings.Contains(res.Code, "packaged example") {
+		t.Fatal("reviewed dependency and local alias", err)
+	}
+}

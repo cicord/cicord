@@ -21,15 +21,19 @@ func AssetPath(path string) bool {
 // ReadAssets snapshots regular files beneath the plugin root. Root confines opens even
 // across symlink races. Directories and symlinks have a separate entry quota.
 func ReadAssets(dir, spec string) (map[string][]byte, error) {
-	rel, ok := strings.CutPrefix(spec, "./")
-	if !ok || !AssetPath(rel) {
-		return nil, fmt.Errorf("assets: invalid asset directory %q", spec)
-	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
+	return readAssets(root, spec)
+}
+
+func readAssets(root *os.Root, spec string) (map[string][]byte, error) {
+	rel, ok := strings.CutPrefix(spec, "./")
+	if !ok || !AssetPath(rel) {
+		return nil, fmt.Errorf("assets: invalid asset directory %q", spec)
+	}
 	for p := rel; p != "."; p = filepath.Dir(p) {
 		st, err := root.Lstat(p)
 		if err != nil {

@@ -160,7 +160,11 @@ func describe(fsys fs.FS, dir, tmp string, inspect bool) (Entry, error) {
 		e.PrivilegedIntents = nonNil((in & discord.PrivilegedIntents).Names())
 	}
 	if m.Spec.Config != nil && m.Spec.Config.Schema != "" {
-		data, err := fs.ReadFile(fsys, path.Join(dir, path.Clean(m.Spec.Config.Schema)))
+		rel := path.Clean(m.Spec.Config.Schema)
+		if !fs.ValidPath(rel) {
+			return e, fmt.Errorf("config schema must be inside the plugin directory")
+		}
+		data, err := fs.ReadFile(fsys, path.Join(dir, rel))
 		if err != nil {
 			return Entry{}, err
 		}

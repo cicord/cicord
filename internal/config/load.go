@@ -114,6 +114,9 @@ func (l *loader) readDoc(abs string) *document {
 		l.sink.errorf(file, 0, "", "%v", err)
 		return nil
 	}
+	return l.parseDoc(file, data)
+}
+func (l *loader) parseDoc(file string, data []byte) *document {
 	doc, err := parseDocument(file, data)
 	if err != nil {
 		l.sink.errorf(file, 0, "", "invalid YAML: %v", err)
@@ -588,6 +591,10 @@ func (l *loader) loadPlugin(repo *Repo, b *Bot, base string, inst PluginInstance
 			l.sink.errorf(b.File, doc.lineOf(base+"/source"), base+"/source", "plugin path %q escapes the repository", inst.Source)
 			return nil
 		}
+		if err := LocalPathError(l.root, l.rel(dir)); err != nil {
+			l.sink.errorf(b.File, doc.lineOf(base+"/source"), base+"/source", "plugin source: %v", err)
+			return nil
+		}
 		key = dir
 	} else {
 		if l.opts.Resolver == nil {
@@ -605,7 +612,13 @@ func (l *loader) loadPlugin(repo *Repo, b *Bot, base string, inst PluginInstance
 	if lp, ok := repo.Plugins[key]; ok {
 		return lp
 	}
-	mdoc := l.readDoc(filepath.Join(dir, "plugin.yaml"))
+	manifestFile := l.rel(filepath.Join(dir, "plugin.yaml"))
+	manifest, err := build.ReadPackageFile(dir, "plugin.yaml")
+	if err != nil {
+		l.sink.errorf(manifestFile, 0, "", "%v", err)
+		return nil
+	}
+	mdoc := l.parseDoc(manifestFile, manifest)
 	if mdoc == nil {
 		return nil
 	}
@@ -621,8 +634,7 @@ func (l *loader) loadPlugin(repo *Repo, b *Bot, base string, inst PluginInstance
 		l.sink.errorf(b.File, 0, base+"/source", "plugin %q locales: %v", key, err)
 		return nil
 	}
-	entry := filepath.Join(dir, filepath.FromSlash(m.Spec.Entry))
-	if _, err := os.Stat(entry); err != nil {
+	if err := build.CheckPackageFile(dir, m.Spec.Entry); err != nil {
 		l.sink.errorf(mdoc.file, mdoc.lineOf("/spec/entry"), "/spec/entry", "entry %q not found", m.Spec.Entry)
 		return nil
 	}
@@ -634,7 +646,7 @@ func (l *loader) loadPlugin(repo *Repo, b *Bot, base string, inst PluginInstance
 	}
 	if m.Spec.Config != nil {
 		sp := filepath.Join(dir, filepath.FromSlash(m.Spec.Config.Schema))
-		raw, err := os.ReadFile(sp)
+		raw, err := build.ReadPackageFile(dir, m.Spec.Config.Schema)
 		if err != nil {
 			l.sink.errorf(mdoc.file, mdoc.lineOf("/spec/config/schema"), "/spec/config/schema", "%v", err)
 			return nil

@@ -39,7 +39,7 @@ func init() {
 
 // readManifest decodes <dir>/plugin.yaml.
 func readManifest(dir string) (*config.Plugin, error) {
-	data, err := os.ReadFile(filepath.Join(dir, "plugin.yaml"))
+	data, err := build.ReadPackageFile(dir, "plugin.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("%s is not a plugin directory: %w", dir, err)
 	}
@@ -428,7 +428,7 @@ of date), for CI.`,
 			}
 			var schema []byte
 			if m.Spec.Config != nil && m.Spec.Config.Schema != "" {
-				if schema, err = os.ReadFile(filepath.Join(dir, filepath.FromSlash(m.Spec.Config.Schema))); err != nil {
+				if schema, err = build.ReadPackageFile(dir, m.Spec.Config.Schema); err != nil {
 					return err
 				}
 			}
@@ -606,7 +606,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	}
 	var schema map[string]any
 	if m.Spec.Config != nil && m.Spec.Config.Schema != "" {
-		data, err := os.ReadFile(filepath.Join(absPlugin, filepath.FromSlash(m.Spec.Config.Schema)))
+		data, err := build.ReadPackageFile(absPlugin, m.Spec.Config.Schema)
 		if err != nil {
 			return err
 		}

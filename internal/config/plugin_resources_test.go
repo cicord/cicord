@@ -69,3 +69,18 @@ func TestProviderBudgetSchemaDefault(t *testing.T) {
 		t.Fatalf("default (%T) was rejected", cfg["tokens"])
 	}
 }
+
+func TestPluginConfigSchemaReferencesStayInDocument(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "sibling.json")
+	if err := os.WriteFile(file, []byte(`{"type":"string"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	base := "file://" + filepath.ToSlash(filepath.Join(dir, "config.json"))
+	if _, _, err := compilePluginConfigSchema(base, []byte(`{"$ref":"sibling.json"}`)); err == nil {
+		t.Fatal("schema compiler loaded undeclared sibling")
+	}
+	if _, _, err := compilePluginConfigSchema(base, []byte(`{"$defs":{"name":{"type":"string"}},"$ref":"#/$defs/name"}`)); err != nil {
+		t.Fatal(err)
+	}
+}
