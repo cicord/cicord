@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	mrand "math/rand/v2"
+	mrand "math/rand/v2" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- retry jitter, not a secret
 	"sync"
 	"time"
 
