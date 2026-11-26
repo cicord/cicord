@@ -927,7 +927,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     owned: Set<string>,
     owner = false,
   ): Set<Permission> {
-    if (!channel) return new Set();
+    if (!channel || channelPolicy.get(channel.id)?.nsfw) return new Set();
     const bits = new Set<Permission>(options.server?.everyonePermissions ?? []);
     for (const id of owned) for (const p of rolePermissions.get(id) ?? []) bits.add(p);
     if (owner || bits.has("Administrator")) return new Set(ALL_PERMISSIONS);

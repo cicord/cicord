@@ -8,6 +8,7 @@ test("private content follows the member's current role and individual overrides
     members: [{ id: "2", roles: ["staff"] }, { id: "3" }],
     channels: {
       public: { name: "General" },
+      adult: { name: "Adult", nsfw: true },
       staff: {
         name: "Staff",
         overwrites: {
@@ -20,6 +21,7 @@ test("private content follows the member's current role and individual overrides
   });
   const member = h.member("2")!;
   expect(member.canView("staff")).toBe(true);
+  expect(member.canView("adult")).toBe(false);
   expect(h.member("3")!.canView("staff")).toBe(false);
   expect(h.ctx.server.compareAudience("staff", "public")).toBe("wider");
   expect(h.ctx.server.compareAudience("public", "staff")).toBe("narrower");

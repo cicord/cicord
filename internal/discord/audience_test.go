@@ -41,6 +41,12 @@ func TestCompareAudiencePolicies(t *testing.T) {
 	if got := CompareAudience(channel("21", everyone), split); got != "wider" {
 		t.Fatalf("combined roles: %s", got)
 	}
+	restricted := NewAudience(Channel{ServerID: "1", ID: "restricted", Type: ChannelText, NSFW: true}, roles)
+	for _, id := range []string{"42", "owner"} {
+		if p, known := restricted.Permissions(id, nil, "owner", false); known || p.Has(readBoth) {
+			t.Fatalf("unverified age granted history to %s", id)
+		}
+	}
 	private := NewAudience(Channel{ServerID: "1", ID: "30", Type: ChannelPrivateThread}, roles)
 	if got := CompareAudience(private, open); got != "unknown" {
 		t.Fatalf("private thread = %s", got)

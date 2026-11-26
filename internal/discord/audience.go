@@ -78,7 +78,8 @@ func NewAudience(ch Channel, roles []Role) *Audience {
 }
 
 func (a *Audience) Permissions(user string, roles []string, owner string, timedOut bool) (Permissions, bool) {
-	if a == nil || owner == "" || user == "" {
+	// The Discord API does not prove that the portal viewer passed the age gate.
+	if a == nil || a.NSFW || owner == "" || user == "" {
 		return 0, false
 	}
 	if user == owner {

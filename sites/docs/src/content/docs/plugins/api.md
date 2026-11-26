@@ -106,8 +106,8 @@ check.
 With `discord.channels.read`, `member.canView(channel)` checks **View Channel** and
 **Read Message History** using that handler's authenticated member or a member read in
 that handler. `member.permissionsIn(channel)` returns the effective permissions. A
-missing role, an unknown channel or a private thread with unverified membership denies
-the read. The portal fetches a fresh member for each request, including when a staff
+missing role, an unknown channel, a private thread with unverified membership or an
+age-restricted channel without verified age eligibility denies the read. The portal fetches a fresh member for each request, including when a staff
 role has just been removed.
 
 Before copying content, use `ctx.server.compareAudience(source, destination)`. Permit
