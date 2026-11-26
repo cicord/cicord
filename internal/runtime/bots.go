@@ -327,7 +327,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		OwnerID: func() string { return srt.cache.Server().OwnerID }, Access: pluginAccess(srt.cfg.Spec.Access),
 		KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources: ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
-		Portal:    &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, MaxTTL: 24 * time.Hour},
+		Portal:    &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, Store: r.opts.Store, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name, MaxTTL: 24 * time.Hour},
 		Publish: func(topic string, payload json.RawMessage) error {
 			r.publish(in.Bot, srt.cfg.Spec.DiscordID, topic, payload)
 			return nil

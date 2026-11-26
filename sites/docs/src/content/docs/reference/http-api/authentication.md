@@ -178,3 +178,20 @@ Endpoints that need a role on a server answer:
 - `401` without a session;
 - `404` for an unknown server key;
 - `403` when the role is insufficient (`"requires the <role> role on server <key>"`).
+
+### Case links
+
+A plugin with `portal.links` can issue a link with
+`ctx.portal.link("/appeals", {user: userId, scope: {kind: "case", id: "42"}, expiresInSeconds: 604800})`.
+The portal client recognizes the `cicord_scope` parameter, clears it from browser history,
+and starts Discord OAuth. Cookie and token-mode portals both use this flow. Configure
+Discord OAuth before enabling appeals. The user can authenticate after leaving the guild
+or receiving a ban. A forwarded link requires the original recipient's Discord identity.
+
+Declare the plugin route with `access: "scoped"`. Read the authorized case from
+`request.scope.id` and the user from `request.viewer.user.id`. Use the signed case ID
+for every read and write. A route declaring `:id` gets an additional host-side comparison.
+The case session has access only to scoped plugin routes on the issuing installation.
+Expired links require a new link from the issuer. To invalidate all links and current
+sessions for the case, call `ctx.portal.revoke({kind: "case", id: "42"})`. New links
+issued after revocation use the new case generation.

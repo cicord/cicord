@@ -536,9 +536,10 @@
     });
 
     const portal = freeze({
+      async revoke(scope) { await acall("portal.revoke", scope); },
       async link(path, options) {
         const o = options || {};
-        return acall("portal.link", { path, userId: o.member ? o.member.id : undefined, expiresInSeconds: o.expiresInSeconds });
+        return acall("portal.link", { path, userId: o.scope ? (typeof o.user === "string" ? o.user : o.user?.id) : o.member?.id, scope: o.scope, expiresInSeconds: o.expiresInSeconds });
       },
     });
 
@@ -740,6 +741,7 @@
         params: freeze(d.params || {}),
         query: freeze(d.query || {}),
         body: d.body,
+        scope: d.scope ? freeze(d.scope) : undefined,
         viewer: d.viewer ? freeze({ user: mkUser(d.viewer.user), member: d.viewer.member ? mkMember(d.viewer.member) : undefined }) : undefined,
       })];
     }

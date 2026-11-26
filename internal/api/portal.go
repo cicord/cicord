@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin"
@@ -322,7 +323,32 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 		need = roleMember
 	}
 	var viewer *plugin.RouteViewer
-	if id != nil && !id.bearer {
+	var grant *auth.ScopedGrant
+	if route.Access == "scoped" {
+		if id == nil {
+			s.fail(w, httpErr(http.StatusUnauthorized, "unauthenticated", "case sign-in required"))
+			return
+		}
+		claim := id.data.Case
+		if claim == nil || claim.Scope == nil || claim.UserID != id.user.ID || claim.Server != serverKey || claim.Scope.Bot != botKey || claim.Scope.Instance != inst {
+			s.fail(w, httpErr(http.StatusForbidden, "forbidden", "a matching case link is required"))
+			return
+		}
+		ok, err := claim.Current(r.Context(), s.store)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if !ok {
+			s.fail(w, httpErr(http.StatusForbidden, "forbidden", "expired or revoked case link"))
+			return
+		}
+		grant = claim.Scope
+		viewer = &plugin.RouteViewer{User: id.user}
+	} else if id != nil && id.data.Case != nil {
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "this session is restricted to its case"))
+		return
+	} else if id != nil && !id.bearer {
 		ro, m, err := s.roleIn(r.Context(), id, serverKey, true)
 		if err != nil {
 			s.fail(w, err)
@@ -342,7 +368,7 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := plugin.RouteRequest{Query: map[string]string{}, Viewer: viewer}
+	req := plugin.RouteRequest{Query: map[string]string{}, Viewer: viewer, Grant: grant, ExpectedAccess: route.Access}
 	for k, v := range r.URL.Query() {
 		if len(v) > 0 {
 			req.Query[k] = v[0]

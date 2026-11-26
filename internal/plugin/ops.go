@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/state"
 )
@@ -153,6 +154,7 @@ func init() {
 		"http.fetch":           opHTTPFetch,
 		"events.publish":       opEventsPublish,
 		"portal.link":          opPortalLink,
+		"portal.revoke":        opPortalRevoke,
 		"it.reply":             opInteractionReply,
 		"it.defer":             opInteractionDefer,
 		"it.followUp":          opInteractionFollowUp,
@@ -1780,9 +1782,10 @@ func opPortalLink(i *Instance, _ *invocation, args json.RawMessage) (func(contex
 		return nil, errors.New("portal.link: no community portal is configured")
 	}
 	a, err := decode[struct {
-		Path             string  `json:"path"`
-		UserID           string  `json:"userId"`
-		ExpiresInSeconds float64 `json:"expiresInSeconds"`
+		Scope            *auth.ResourceScope `json:"scope"`
+		Path             string              `json:"path"`
+		UserID           string              `json:"userId"`
+		ExpiresInSeconds float64             `json:"expiresInSeconds"`
 	}](args)
 	if err != nil {
 		return nil, err
@@ -1799,7 +1802,37 @@ func opPortalLink(i *Instance, _ *invocation, args json.RawMessage) (func(contex
 		return nil, argErr("portal.link: expiresInSeconds must be positive")
 	}
 	ttl := time.Duration(a.ExpiresInSeconds * float64(time.Second))
+	if a.Scope != nil {
+		scoped, ok := i.env.Portal.(scopedLinker)
+		if !ok {
+			return nil, errors.New("scoped links unavailable")
+		}
+		if a.ExpiresInSeconds > 7*24*3600 {
+			return nil, argErr("scoped link lifetime exceeds seven days")
+		}
+		return func(ctx context.Context) (any, error) { return scoped.ScopedLink(ctx, a.Path, a.UserID, ttl, *a.Scope) }, nil
+	}
 	return func(context.Context) (any, error) {
 		return i.env.Portal.Link(a.Path, a.UserID, ttl)
 	}, nil
+}
+
+type scopedLinker interface {
+	ScopedLink(context.Context, string, string, time.Duration, auth.ResourceScope) (string, error)
+	Revoke(context.Context, auth.ResourceScope) error
+}
+
+func opPortalRevoke(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capPortalLinks); err != nil {
+		return nil, err
+	}
+	scope, err := decode[auth.ResourceScope](args)
+	if err != nil {
+		return nil, err
+	}
+	l, ok := i.env.Portal.(scopedLinker)
+	if !ok {
+		return nil, errors.New("scoped links unavailable")
+	}
+	return func(ctx context.Context) (any, error) { return nil, l.Revoke(ctx, scope) }, nil
 }

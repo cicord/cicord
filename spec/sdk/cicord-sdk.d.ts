@@ -676,7 +676,13 @@ export interface Events {
   publish(topic: string, payload: Json): Promise<void>;
 }
 
+export interface CaseScope { readonly kind: "case"; readonly id: string }
+
 export interface Portal {
+  /** Requires a matching Discord OAuth identity. A scoped session can only visit scoped routes of its issuer. */
+  link(path: string, options: { user: Snowflake | User | Member; scope: CaseScope; expiresInSeconds?: number }): Promise<string>;
+  /** Invalidates existing links and sessions for this installation and case. */
+  revoke(scope: CaseScope): Promise<void>;
   /**
    * Signed, short-lived URL to a page of the community portal. When `member` is given, the
    * portal session is pre-authenticated for that member. @capability portal.links
@@ -700,12 +706,13 @@ export interface Context {
 
 // ───────────────────────────────────────────────────────────── portal routes
 
-export type Access = "public" | "member" | "moderator" | "admin";
+export type Access = "scoped" | "public" | "member" | "moderator" | "admin";
 
 export interface RouteRequest {
   readonly params: Readonly<Record<string, string>>;
   readonly query: Readonly<Record<string, string>>;
   readonly body: Json | undefined;
+  readonly scope?: CaseScope;
   /** Authenticated viewer, present unless access is "public" and the viewer is anonymous. */
   readonly viewer?: { readonly user: User; readonly member?: Member };
 }
@@ -760,6 +767,7 @@ export interface TypedRouteRequest<K extends string, T extends RouteTypes> {
   readonly params: Readonly<RouteParams<K>>;
   readonly query: { readonly [Q in keyof T["query"]]?: string } & Readonly<Record<string, string>>;
   readonly body: (T extends { body?: infer B } ? B : Json) | undefined;
+  readonly scope?: CaseScope;
   /** Authenticated viewer, present unless access is "public" and the viewer is anonymous. */
   readonly viewer?: { readonly user: User; readonly member?: Member };
 }

@@ -122,18 +122,19 @@ func (s *server) createTokenSession(ctx context.Context, u discord.User, d sessi
 
 // authCode is the one-time code of the OAuth token flow (KV "api:authcode").
 type authCode struct {
-	User   discord.User `json:"user"`
-	Origin string       `json:"origin"` // origin allowed to redeem it ("" = the runtime's own)
+	Session sessionData  `json:"session"`
+	User    discord.User `json:"user"`
+	Origin  string       `json:"origin"` // origin allowed to redeem it ("" = the runtime's own)
 }
 
 // issueAuthCode stores a one-time code for u and returns the redirect URL carrying it.
-func (s *server) issueAuthCode(ctx context.Context, u discord.User, redirect string) (string, error) {
+func (s *server) issueAuthCode(ctx context.Context, u discord.User, redirect string, session sessionData) (string, error) {
 	target, origin, ok := s.tokenRedirect(redirect)
 	if !ok {
 		target, origin = "/", ""
 	}
 	code := auth.RandomID(24)
-	data, _ := json.Marshal(authCode{User: u, Origin: origin})
+	data, _ := json.Marshal(authCode{User: u, Origin: origin, Session: session})
 	if err := s.store.KV("api:authcode").Set(ctx, code, data, authCodeTTL); err != nil {
 		return "", err
 	}
@@ -178,7 +179,23 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "this login code belongs to another origin"))
 		return
 	}
-	out, err := s.createTokenSession(r.Context(), c.User, sessionData{Method: "oauth", Origin: c.Origin}, 0)
+	session := c.Session
+	session.Method = "oauth"
+	session.Origin = c.Origin
+	var ttl time.Duration
+	if claim := session.Case; claim != nil {
+		ok, err := claim.Current(r.Context(), s.store)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if !ok {
+			s.fail(w, httpErr(http.StatusForbidden, "forbidden", "expired or revoked case link"))
+			return
+		}
+		ttl = time.Until(time.Unix(claim.Expires, 0))
+	}
+	out, err := s.createTokenSession(r.Context(), c.User, session, ttl)
 	if err != nil {
 		s.fail(w, err)
 		return

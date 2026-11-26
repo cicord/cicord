@@ -35,6 +35,7 @@ import type {
   AuditLogEntry,
   ServerInvite,
   ChannelRef,
+  CaseScope,
   Context,
   CreateChannelOptions,
   EditChannelOptions,
@@ -226,7 +227,14 @@ export interface TestHarness {
   readonly logs: LogEntry[];
   readonly sent: SentMessage[];
   readonly roleChanges: RoleChange[];
-  readonly links: { path: string; member?: string; url: string }[];
+  readonly links: {
+    path: string;
+    member?: string;
+    scope?: CaseScope;
+    expiresAt?: number;
+    revoked?: boolean;
+    url: string;
+  }[];
   readonly published: { topic: string; payload: Json }[];
   readonly scheduled: { id: string; delayMs: number; task: string; payload?: Json }[];
   /** Message edits (`message.edit()`), in order. */
@@ -1327,9 +1335,43 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
     },
     portal: {
-      async link(path, opts) {
+      async revoke(scope) {
         need("portal.links");
-        const memberId = opts?.member?.id;
+        for (const link of links)
+          if (link.scope?.id === scope.id && link.scope.kind === scope.kind) link.revoked = true;
+      },
+      async link(
+        path,
+        opts?: {
+          member?: Member | User;
+          user?: User | Member | string;
+          scope?: CaseScope;
+          expiresInSeconds?: number;
+        },
+      ) {
+        need("portal.links");
+        const memberId =
+          typeof opts?.user === "string" ? opts.user : (opts?.user?.id ?? opts?.member?.id);
+        if (opts?.scope) {
+          if (
+            !memberId ||
+            opts.scope.kind !== "case" ||
+            !/^[A-Za-z0-9_-]{1,128}$/.test(opts.scope.id) ||
+            (opts.expiresInSeconds ?? 0) > 604800 ||
+            (opts.expiresInSeconds ?? 0) < 0
+          )
+            throw new Error("invalid case link");
+          const url = new URL(path, portalUrl);
+          url.searchParams.set("cicord_scope", String(links.length + 1));
+          links.push({
+            path,
+            member: memberId,
+            scope: { ...opts.scope },
+            expiresAt: Date.now() + (opts.expiresInSeconds || 900) * 1000,
+            url: url.toString(),
+          });
+          return url.toString();
+        }
         const token = `test-${memberId ?? "anonymous"}`;
         const url = `${portalUrl}${path.startsWith("/") ? path : `/${path}`}?cicord_token=${token}`;
         links.push({ path, ...(memberId ? { member: memberId } : {}), url });
@@ -1393,6 +1435,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
 // ───────────────────────────────────────────────────────────── routes
 
 export interface RouteCall {
+  /** Signed link issued by this harness to the OAuth viewer. */
+  scopedLink?: string;
   /** User id of the viewer (must be a member of the test context), or undefined (anonymous). */
   viewer?: string;
   body?: Json;
@@ -1459,6 +1503,25 @@ export async function callRoute(
         headers: {},
       };
     }
+    const scoped = call.scopedLink
+      ? harness.links.find((l) => l.url === call.scopedLink && l.scope)
+      : undefined;
+    const scope = scoped?.scope;
+    if (
+      definition.access === "scoped"
+        ? !scoped ||
+          scoped.revoked ||
+          (scoped.expiresAt ?? 0) <= Date.now() ||
+          scoped.member !== viewer?.user.id ||
+          (params.id !== undefined && params.id !== scope?.id)
+        : !!call.scopedLink
+    ) {
+      return {
+        status: 403,
+        headers: {},
+        body: { error: { code: "forbidden", message: "matching case link required" } },
+      };
+    }
     if (definition.access === "member" && !viewer?.member) {
       return {
         status: 403,
@@ -1471,6 +1534,7 @@ export async function callRoute(
       query,
       body: call.body,
       ...(viewer ? { viewer } : {}),
+      ...(scope ? { scope } : {}),
     });
     return normalizeRouteResponse(response);
   }

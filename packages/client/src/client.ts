@@ -219,7 +219,7 @@ export interface ExchangeLinkTokenOptions {
 }
 
 /** Query parameters a login may leave in the URL (removed by `exchangeLinkToken`). */
-export const LOGIN_PARAMS = ["cicord_token", "cicord_code"] as const;
+export const LOGIN_PARAMS = ["cicord_token", "cicord_code", "cicord_scope"] as const;
 
 const isRawBody = (body: unknown): boolean =>
   typeof body === "string" ||
@@ -484,15 +484,27 @@ export class CicordClient {
       const token = url.searchParams.get(param);
       // A token-mode OAuth login comes back with a one-time code.
       const code = this.authMode === "token" ? url.searchParams.get(codeParam) : null;
-      if (!token && !code) return this.#pendingLink ?? Promise.resolve(null);
+      const scope = url.searchParams.get("cicord_scope");
+      if (!token && !code && !scope) return this.#pendingLink ?? Promise.resolve(null);
 
       url.searchParams.delete(param);
       url.searchParams.delete(codeParam);
+      url.searchParams.delete("cicord_scope");
       const history = options.history ?? globalHistory();
       const clean = `${url.pathname}${url.search}${url.hash}`;
       if (history) history.replaceState(history.state ?? null, "", clean);
       else location.href = url.toString();
 
+      if (scope) {
+        const target = new URL(
+          this.auth.loginUrl(this.authMode === "token" ? url.toString() : clean),
+          url,
+        );
+        target.searchParams.set("case_token", scope);
+        if (location.assign) location.assign(target.toString());
+        else location.href = target.toString();
+        return Promise.resolve(null);
+      }
       const exchange = token ? this.auth.link(token) : this.auth.redeem(code as string);
       const pending = exchange.finally(() => {
         if (this.#pendingLink === pending) this.#pendingLink = undefined;

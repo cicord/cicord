@@ -28,9 +28,10 @@ const (
 
 // sessionData is stored as state.Session.Data.
 type sessionData struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName,omitempty"`
-	AvatarURL   string `json:"avatarUrl,omitempty"`
+	Case        *auth.LinkClaims `json:"case,omitempty"`
+	Username    string           `json:"username"`
+	DisplayName string           `json:"displayName,omitempty"`
+	AvatarURL   string           `json:"avatarUrl,omitempty"`
 	// Method: "oauth" | "link" | "dev".
 	Method string `json:"method"`
 	// LinkServer restricts a session created from a portal link to that server.
@@ -245,7 +246,7 @@ func (s *server) lookupMember(ctx context.Context, serverKey, userID string, fre
 // portal endpoints; sessions created from a portal link are limited to that server and,
 // outside the portal, to the member role.
 func (s *server) roleIn(ctx context.Context, id *identity, serverKey string, portal bool) (role, *discord.Member, error) {
-	if id == nil {
+	if id == nil || id.data.Case != nil {
 		return roleNone, nil, nil
 	}
 	srv, ok := s.rt.ServerConfig(serverKey)
@@ -409,6 +410,10 @@ func (s *server) handleLink(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusUnauthorized, "unauthenticated", "invalid link token"))
 		return
 	}
+	if claims.Scope != nil {
+		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "case links require Discord OAuth"))
+		return
+	}
 	if claims.UserID == "" {
 		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "this link is anonymous and cannot sign you in"))
 		return
@@ -535,7 +540,8 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // ───────────────────────────────────────────────────────────── Discord OAuth2
 
 type oauthState struct {
-	Redirect string `json:"redirect"`
+	CaseToken string `json:"caseToken,omitempty"`
+	Redirect  string `json:"redirect"`
 	// Mode "token": the callback redirects with a one-time code instead of a cookie.
 	Mode string `json:"mode,omitempty"`
 }
@@ -644,6 +650,13 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		stv = oauthState{Redirect: target, Mode: "token"}
 	}
+	if tok := r.URL.Query().Get("case_token"); tok != "" {
+		if _, err := s.caseClaims(r.Context(), tok); err != nil {
+			s.fail(w, err)
+			return
+		}
+		stv.CaseToken = tok
+	}
 	st := auth.RandomID(24)
 	data, _ := json.Marshal(stv)
 	if err := s.store.KV("api:oauth").Set(r.Context(), st, data, 10*time.Minute); err != nil {
@@ -700,8 +713,24 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, httpErr(http.StatusUnauthorized, "unauthenticated", "Discord login failed"))
 		return
 	}
+	d := sessionData{Method: "oauth"}
+	var ttl time.Duration
+	if os.CaseToken != "" {
+		claims, err := s.caseClaims(r.Context(), os.CaseToken)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if claims.UserID != u.ID {
+			s.fail(w, httpErr(http.StatusForbidden, "forbidden", "sign in with the Discord account this case link was sent to"))
+			return
+		}
+		d.Case = &claims
+		d.LinkServer = claims.Server
+		ttl = time.Until(time.Unix(claims.Expires, 0))
+	}
 	if os.Mode == "token" {
-		target, err := s.issueAuthCode(r.Context(), u, os.Redirect)
+		target, err := s.issueAuthCode(r.Context(), u, os.Redirect, d)
 		if err != nil {
 			s.fail(w, err)
 			return
@@ -710,7 +739,7 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, target, http.StatusFound)
 		return
 	}
-	if _, err := s.createSession(w, r, u, sessionData{Method: "oauth"}, 0); err != nil {
+	if _, err := s.createSession(w, r, u, d, ttl); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -778,4 +807,22 @@ func (s *server) doJSON(req *http.Request, out any) error {
 		return fmt.Errorf("%s", resp.Status)
 	}
 	return json.Unmarshal(data, out)
+}
+
+func (s *server) caseClaims(ctx context.Context, token string) (auth.LinkClaims, error) {
+	if err := s.requireRuntime(); err != nil {
+		return auth.LinkClaims{}, err
+	}
+	c, err := s.rt.Signer().Verify(token)
+	if err != nil || c.Scope == nil {
+		return c, httpErr(http.StatusUnauthorized, "unauthenticated", "invalid or expired case link; request a new link")
+	}
+	ok, err := c.Current(ctx, s.store)
+	if err != nil {
+		return c, err
+	}
+	if !ok {
+		return c, httpErr(http.StatusForbidden, "forbidden", "case link revoked; request a new link")
+	}
+	return c, nil
 }

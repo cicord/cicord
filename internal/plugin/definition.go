@@ -468,7 +468,7 @@ var optionTypes = map[string]discord.CommandOptionType{
 }
 
 var routeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true}
-var routeAccess = map[string]bool{"public": true, "member": true, "moderator": true, "admin": true}
+var routeAccess = map[string]bool{"public": true, "scoped": true, "member": true, "moderator": true, "admin": true}
 
 // buildDefinition validates the described plugin and converts it. All problems are
 // reported at once.
@@ -579,7 +579,7 @@ func buildDefinition(dp describedPlugin) (*Definition, error) {
 			continue
 		}
 		if !routeAccess[r.Access] {
-			fail("routes[%q].access must be one of public, member, moderator, admin (got %q)", r.Name, r.Access)
+			fail("routes[%q].access must be one of public, scoped, member, moderator, admin (got %q)", r.Name, r.Access)
 			continue
 		}
 		rd.Access = r.Access

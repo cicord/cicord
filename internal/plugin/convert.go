@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/state"
 )
@@ -756,10 +757,11 @@ func (i *Instance) autocompleteDTO(it discord.Interaction, path []string, opts [
 }
 
 type routeDTO struct {
-	Params map[string]string `json:"params"`
-	Query  map[string]string `json:"query"`
-	Body   json.RawMessage   `json:"body,omitempty"`
-	Viewer *viewerDTO        `json:"viewer,omitempty"`
+	Scope  *auth.ResourceScope `json:"scope,omitempty"`
+	Params map[string]string   `json:"params"`
+	Query  map[string]string   `json:"query"`
+	Body   json.RawMessage     `json:"body,omitempty"`
+	Viewer *viewerDTO          `json:"viewer,omitempty"`
 }
 
 type viewerDTO struct {

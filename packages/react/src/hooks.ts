@@ -144,7 +144,11 @@ const exchanges = new WeakMap<object, Map<string, Promise<Me | null>>>();
 function urlCredential(param: string, tokenMode: boolean): string | null {
   if (typeof location === "undefined") return null;
   const params = new URL(location.href).searchParams;
-  return params.get(param) ?? (tokenMode ? params.get("cicord_code") : null);
+  return (
+    params.get("cicord_scope") ??
+    params.get(param) ??
+    (tokenMode ? params.get("cicord_code") : null)
+  );
 }
 
 /**

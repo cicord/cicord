@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin/qjs"
 	"github.com/cicord/cicord/internal/state"
@@ -183,7 +184,9 @@ func (l Limits) withDefaults() Limits {
 
 // RouteRequest is a portal request routed to a plugin route.
 type RouteRequest struct {
-	Query map[string]string
+	Grant          *auth.ScopedGrant
+	ExpectedAccess string
+	Query          map[string]string
 	// Body is the JSON request body (nil when absent).
 	Body   json.RawMessage
 	Viewer *RouteViewer // nil for anonymous viewers
@@ -1167,6 +1170,18 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 		return RouteResponse{}, fmt.Errorf("%w for route %s %s", ErrNoHandler, method, path)
 	}
 	dto := routeDTO{Params: params, Query: req.Query, Body: req.Body}
+	if req.ExpectedAccess != "" && req.ExpectedAccess != route.Access {
+		return RouteResponse{}, ErrNoHandler
+	}
+	if route.Access == "scoped" {
+		g := req.Grant
+		if g == nil || g.Bot != i.env.BotKey || g.Instance != i.env.InstanceName || g.Plugin != i.env.PluginName || !g.Valid() || req.Viewer == nil || (params["id"] != "" && params["id"] != g.ID) {
+			return RouteResponse{Status: 403}, nil
+		}
+		dto.Scope = &g.ResourceScope
+	} else if req.Grant != nil {
+		return RouteResponse{Status: 403}, nil
+	}
 	if dto.Query == nil {
 		dto.Query = map[string]string{}
 	}
