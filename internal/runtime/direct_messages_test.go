@@ -2,10 +2,12 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/sim"
@@ -55,7 +57,9 @@ func TestDirectMessageSelection(t *testing.T) {
 		write("bots/"+key+"/bot.yaml", doc("Bot", key, fmt.Sprintf("  applicationId: '%s'\n  token: {secretRef: %s}\n  servers: [a,b]\n  directMessages: {instance: support}\n  plugins:\n    - {name: support, source: ../../plugins/help, grants: [storage.kv, discord.dm.send]}", app, secret)))
 	}
 	write("plugins/help/plugin.yaml", "apiVersion: cicord.dev/v1alpha1\nkind: Plugin\nmetadata: {name: help, version: 0.1.0}\nspec: {entry: ./src/index.ts, engine: '>=0.1.0', intents: [DirectMessages], capabilities: [storage.kv, discord.dm.send]}\n")
-	write("plugins/help/src/index.ts", `import {definePlugin} from "@cicord/sdk"; export default definePlugin({events:{async directMessage(ctx,m){await ctx.kv.set(m.content,ctx.server.id); await m.member.send("received "+ctx.server.key)}}});`)
+	write("plugins/help/src/index.ts", `import {definePlugin} from "@cicord/sdk"; export default definePlugin({events:{async directMessage(ctx,m){if(m.content.startsWith("retract ")){await ctx.server.retractDM(m.content.slice(8))} else {
+ const dm=await m.member.send("received "+ctx.server.key,{retractable:true});await ctx.kv.set("lastReceipt",dm.id)}
+ await ctx.kv.set(m.content,ctx.server.id)}}});`)
 	src, err := source.NewLocal(dir, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -127,11 +131,37 @@ func TestDirectMessageSelection(t *testing.T) {
 	if stored("first", "a", "original") || stored("second", "b", "other") {
 		t.Fatal("crossed tenant boundaries")
 	}
+	// A retractable DM is private to its issuer, even for another installation on
+	// the very same bot DM channel. The receipt survives individual handler calls.
+	raw, err := db.KV("plugin:first/support/b").Get(ctx, "lastReceipt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt string
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	text := "retract " + receipt
+	send("second", text)
+	e.waitFor("foreign retraction ignored", func() bool { return stored("second", "a", text) })
+	alive := func() bool {
+		for _, m := range w.DMs(user.ID, bots["first"].ID) {
+			if m.ID == receipt {
+				return true
+			}
+		}
+		return false
+	}
+	if !alive() {
+		t.Fatal("foreign instance retracted a DM")
+	}
+	send("first", text)
+	e.waitFor("own retraction", func() bool { return stored("first", "b", text) && !alive() })
 	// Advance the conversation beyond 24h without a day-long sleep.
 	h := rt.bot("first")
 	barrier := make(chan struct{})
 	h.queueDM(func() {
-		h.dm.conversations[user.ID].expires = h.dm.conversations[user.ID].expires.Add(-dmTTL)
+		_ = h.saveChoice(ctx, user.ID, "support", b.ID, time.Now().Add(-time.Second))
 		close(barrier)
 	})
 	<-barrier

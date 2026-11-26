@@ -2,6 +2,10 @@ package runtime
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -9,6 +13,7 @@ import (
 
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin"
+	"github.com/cicord/cicord/internal/state"
 )
 
 const dmSelect = "cicord:dm:"
@@ -24,11 +29,11 @@ type directMessages struct {
 }
 
 type conversation struct {
-	owner, channel, server, token string
-	expires                       time.Time
-	messages                      []discord.Message
-	offered                       map[string]bool
-	timer                         *time.Timer
+	owner, channel, token string
+	expires               time.Time
+	messages              []discord.Message
+	offered               map[string]bool
+	timer                 *time.Timer
 }
 
 func (h *botHost) queueDM(f func()) {
@@ -92,6 +97,46 @@ func (h *botHost) remember(user string, c *conversation) {
 	})
 }
 
+// A remembered choice outlives a gateway reconnect. The bot's own namespace
+// contains only the selected instance/server and expiry, keyed by a bot-specific HMAC.
+type dmChoice struct {
+	Owner, Server string
+	Expires       time.Time
+}
+
+func (h *botHost) choiceStore() state.KV {
+	return h.rt.Store().KV("dm-choice:" + h.session.ApplicationID())
+}
+func (h *botHost) choiceKey(user string) string {
+	mac := hmac.New(sha256.New, []byte(h.tokenHash))
+	mac.Write([]byte(user))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+func (h *botHost) choice(ctx context.Context, user, owner string, now time.Time) (string, error) {
+	raw, err := h.choiceStore().Get(ctx, h.choiceKey(user))
+	if errors.Is(err, state.ErrNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var c dmChoice
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return "", err
+	}
+	if c.Owner != owner || !now.Before(c.Expires) {
+		return "", h.choiceStore().Delete(ctx, h.choiceKey(user))
+	}
+	return c.Server, nil
+}
+func (h *botHost) saveChoice(ctx context.Context, user, owner, server string, expires time.Time) error {
+	raw, err := json.Marshal(dmChoice{owner, server, expires})
+	if err != nil {
+		return err
+	}
+	return h.choiceStore().Set(ctx, h.choiceKey(user), raw, dmTTL)
+}
+
 func dmText(rt *routing, en, fr string) string {
 	if strings.HasPrefix(rt.dmLocale, "fr") {
 		return fr
@@ -111,7 +156,7 @@ func (h *botHost) routeDM(m discord.Message, now time.Time) {
 	}
 	user := m.Author.ID
 	c := h.conversation(rt, user, m.ChannelID, now)
-	if c != nil && c.server == "" {
+	if c != nil {
 		if len(c.messages) < 10 {
 			c.messages = append(c.messages, m)
 		} else {
@@ -138,8 +183,13 @@ func (h *botHost) routeDM(m discord.Message, now time.Time) {
 			eligible[sid] = true
 		}
 	}
-	if c != nil && !eligible[c.server] {
-		h.forgetDM(user)
+	choice, err := h.choice(ctx, user, rt.dmOwner, now)
+	if err != nil {
+		send(dmText(rt, "Unable to load your server choice. Please retry.", "Votre choix de serveur est indisponible. Réessayez."))
+		return
+	}
+	if choice != "" && !eligible[choice] {
+		_ = h.choiceStore().Delete(ctx, h.choiceKey(user))
 		send(dmText(rt, "Your previous server is unavailable. Send a new message to start again.", "Votre serveur précédent est indisponible. Envoyez un nouveau message."))
 		return
 	}
@@ -147,10 +197,10 @@ func (h *botHost) routeDM(m discord.Message, now time.Time) {
 		send(dmText(rt, "No server accepts your direct messages.", "Aucun serveur ne prend vos messages privés."))
 		return
 	}
-	if c != nil || len(eligible) == 1 {
+	if choice != "" || len(eligible) == 1 {
 		sid := ""
-		if c != nil {
-			sid = c.server
+		if choice != "" {
+			sid = choice
 		} else {
 			for id := range eligible {
 				sid = id
@@ -186,7 +236,7 @@ func (h *botHost) selectDM(it discord.Interaction, now time.Time) {
 	answer := func(msg string) {
 		_ = h.session.RespondInteraction(ctx, it.ID, it.Token, discord.InteractionResponse{Type: discord.ResponseUpdateMessage, Data: &discord.MessageCreate{Content: msg, Components: []discord.Component{}}})
 	}
-	if it.Type != discord.InteractionComponent || len(it.Values) != 1 || c == nil || c.server != "" || c.token != strings.TrimPrefix(it.CustomID, dmSelect) || !c.offered[it.Values[0]] {
+	if it.Type != discord.InteractionComponent || len(it.Values) != 1 || c == nil || c.token != strings.TrimPrefix(it.CustomID, dmSelect) || !c.offered[it.Values[0]] {
 		answer(dmText(rt, "This choice has expired.", "Ce choix a expiré."))
 		return
 	}
@@ -197,8 +247,12 @@ func (h *botHost) selectDM(it discord.Interaction, now time.Time) {
 		answer(dmText(rt, "This server is unavailable.", "Ce serveur est indisponible."))
 		return
 	}
+	if err := h.saveChoice(ctx, user, c.owner, sid, now.Add(dmTTL)); err != nil {
+		_ = h.session.RespondInteraction(ctx, it.ID, it.Token, discord.InteractionResponse{Type: discord.ResponseMessage, Data: &discord.MessageCreate{Content: dmText(rt, "Unable to save this choice. Please retry.", "Impossible d’enregistrer ce choix. Réessayez.")}})
+		return
+	}
 	answer(dmText(rt, "Selected server: ", "Serveur choisi : ") + rt.serverKeys[sid])
-	h.remember(user, &conversation{owner: c.owner, channel: c.channel, server: sid, expires: now.Add(dmTTL)})
+	h.forgetDM(user)
 	for _, m := range c.messages {
 		h.deliverDM(ctx, rt, sid, m)
 	}
