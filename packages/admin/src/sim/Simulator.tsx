@@ -5,6 +5,7 @@ import type {
   InteractionResult,
   Json,
   Message,
+  MessageComponent,
   SimCommand,
   SimModal,
   SimServer,
@@ -39,6 +40,23 @@ import { CommandRunner, type AutocompleteChoice } from "./CommandRunner.tsx";
 import { useSimLive } from "./live.ts";
 import { MessageItem, MessageList, type MentionResolver } from "./MessageView.tsx";
 import { i18n } from "../i18n/index.ts";
+
+function buttonLabel(components: MessageComponent[], customId: string): string | undefined {
+  for (const node of components) {
+    if (node.type === "button" && node.customId === customId) return node.label;
+    if ("components" in node && node.components) {
+      const label = buttonLabel(node.components, customId);
+      if (label) return label;
+    }
+    if (
+      "accessory" in node &&
+      node.accessory?.type === "button" &&
+      node.accessory.customId === customId
+    )
+      return node.accessory.label;
+  }
+  return undefined;
+}
 
 type View = { kind: "channel"; id: string } | { kind: "dm"; userId: string };
 
@@ -227,7 +245,7 @@ function Playground({
         customId,
         values,
       });
-      const name = customId;
+      const name = buttonLabel(message.components, customId) || customId;
       const label = values.length
         ? i18n.t("sim.result.picked", { values: values.join(", ") })
         : i18n.t("sim.result.clicked", { name });

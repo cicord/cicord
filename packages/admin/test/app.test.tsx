@@ -507,7 +507,10 @@ describe("simulator", () => {
     // Slash command as the owner
     await user.click(screen.getByRole("button", { name: /general/ }));
     await user.click(screen.getByRole("tab", { name: "Slash command" }));
-    await user.selectOptions(await screen.findByLabelText("Command"), "moderator/welcome-preview");
+    await user.selectOptions(
+      await screen.findByLabelText("Command"),
+      screen.getByRole("option", { name: "welcome-preview" }),
+    );
     await user.click(screen.getByRole("button", { name: "Run /welcome-preview" }));
     const result = await screen.findByRole("status", { name: "Interaction result" });
     expect(within(result).getByText("replied")).toBeTruthy();

@@ -1237,6 +1237,9 @@ export interface PluginDefinition {
 }
 
 /** Entry point of a plugin: `export default definePlugin({ ... })`. */
+export declare function definePlugin<S extends NonNullable<PluginDefinition["subscriptions"]>>(
+  definition: PluginDefinition & {subscriptions: S},
+): PluginDefinition & {subscriptions: S};
 export declare function definePlugin(definition: PluginDefinition): PluginDefinition;
 
 // ───────────────────────────────────────────────────────────── globals

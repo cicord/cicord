@@ -102,7 +102,7 @@ describe("CommandRunner subcommands", () => {
       },
     );
 
-    await user.selectOptions(select, "cicord/polls admin purge");
+    await user.selectOptions(select, screen.getByRole("option", { name: "polls admin purge" }));
     await user.click(screen.getByRole("button", { name: /polls admin purge/ }));
     expect(onRun).toHaveBeenLastCalledWith(
       expect.objectContaining({ name: "polls admin purge" }),

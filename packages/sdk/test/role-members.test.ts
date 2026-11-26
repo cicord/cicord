@@ -32,6 +32,8 @@ describe("role.members()", () => {
     expect(t.ctx.server.role("staff")).toEqual({
       id: "role-staff",
       key: "staff",
+      declaredMembers: false,
+      managed: false,
       name: "Staff",
       mention: "<@&role-staff>",
       position: 1,
