@@ -928,6 +928,14 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
           }),
         );
       },
+      async memberOverwrite(userId) {
+        need("discord.channels.read");
+        if (!channels.has(id) || channel.type === "dm")
+          throw new Error("memberOverwrite requires a current guild channel");
+        if (!userId) throw new Error("expected a member ID");
+        const row = channelOverwrites.get(id)?.get("member:" + userId);
+        return row ? { allow: [...row.allow].sort(), deny: [...row.deny].sort() } : undefined;
+      },
       async send(input) {
         need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
         return post(channel, input);
@@ -1565,7 +1573,14 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         ...(categoryId ? { categoryId } : {}),
       });
       createdChannels.push({ channel, options: opts });
-      const ows = new Map<string, TestOverwrite>();
+      const inherited =
+        categoryId && !opts.overwrites ? channelOverwrites.get(categoryId) : undefined;
+      const ows = new Map<string, TestOverwrite>(
+        Array.from(inherited ?? [], ([target, row]) => [
+          target,
+          { allow: [...row.allow], deny: [...row.deny] },
+        ]),
+      );
       for (const [target, o] of Object.entries(opts.overwrites ?? {}))
         ows.set(target, { allow: [...(o.allow ?? [])], deny: [...(o.deny ?? [])] });
       channelOverwrites.set(channel.id, ows);

@@ -220,6 +220,10 @@
     async pins(){return (await acall("channel.pins",{channelId:this.id})).map(mkMessage);},
     async typing(){await acall("channel.typing",{channelId:this.id});},
     async sendAs(identity,message){return mkMessage(await acall("channel.sendAs",{channelId:this.id,identity,message:msgIn(message)}));},
+    async memberOverwrite(userId) {
+      const row = await acall("channel.memberOverwrite", {channelId:this.id, userId});
+      return row ? deepFreeze(row) : undefined;
+    },
     async send(message) {
       return mkMessage(await sendCall("channel.send", { channelId: this.id, message: msgIn(message) }));
     },

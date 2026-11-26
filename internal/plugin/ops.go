@@ -208,7 +208,8 @@ func init() {
 		"dm.retract":             opRetractDM,
 		"privacy.pseudonym":      opPrivacyPseudonym,
 		"events.list":            communityOp("list"), "events.create": communityOp("create"), "events.edit": communityOp("edit"), "events.delete": communityOp("delete"), "events.users": communityOp("users"),
-		"message.endPoll": pollOp(false), "message.pollVoters": pollOp(true), "analytics.summary": opAnalytics,
+		"channel.memberOverwrite": opChannelMemberOverwrite,
+		"message.endPoll":         pollOp(false), "message.pollVoters": pollOp(true), "analytics.summary": opAnalytics,
 	}
 }
 

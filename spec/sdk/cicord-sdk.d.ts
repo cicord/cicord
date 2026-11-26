@@ -271,6 +271,11 @@ export interface Role {
 }
 
 export interface Channel {
+  /** Current member-specific allow/deny row on this guild channel. Synchronized children
+   * carry their category's rows. For the category itself, look it up by categoryId and
+   * call memberOverwrite there. Absent rows resolve to undefined. DMs are unsupported.
+   * @capability discord.channels.read */
+  memberOverwrite(userId: Snowflake): Promise<{allow: Permission[]; deny: Permission[]} | undefined>;
   readonly id: Snowflake;
   /** Key in servers/<server>.yaml when the channel is managed by Cicord. */
   readonly key?: string;
