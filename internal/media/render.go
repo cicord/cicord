@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"testing/fstest"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/cicord/cicord/internal/media/paint"
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
@@ -25,7 +27,7 @@ var wasm []byte
 //go:embed fonts/*.ttf
 var fonts embed.FS
 var prepared = sync.OnceValues(func() (*renderer, error) {
-	ctx := context.Background()
+	ctx := experimental.WithCompilationWorkers(context.Background(), min(runtime.GOMAXPROCS(0), 16))
 	rt := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithMemoryLimitPages(256).WithCloseOnContextDone(true))
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
 		_ = rt.Close(ctx)

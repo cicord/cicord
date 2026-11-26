@@ -48,17 +48,18 @@ jobs:
           if [ -n "$unformatted" ]; then echo "Run gofmt -w on:"; echo "$unformatted"; exit 1; fi
       - name: Documentation in one place (sites/docs)
         run: scripts/check-docs.sh
-      - name: Verify the embedded plugin compiler
+      - name: Verify the embedded plugin compiler and card renderer
         run: |
-          go generate ./internal/build
-          git diff --exit-code -- internal/build/compiler.wasm.gz
+          go generate ./internal/build ./internal/media
+          git diff --exit-code -- internal/build/compiler.wasm.gz internal/media/renderer.wasm
       - run: go vet ./...
       - name: Check package confinement with a cold compiler
         run: |
           compiler_cache="$(mktemp -d "$RUNNER_TEMP/cicord-compiler.XXXXXXXX")"
           echo "CICORD_COMPILER_CACHE_DIR=$compiler_cache" >> "$GITHUB_ENV"
           CICORD_COMPILER_CACHE_DIR="$compiler_cache" go test -count=1 -run '^TestReviewedPackageBoundary$' ./internal/build
-      - run: go test -race ./...
+      # Keep CPU available for the real 300 ms sandbox deadline on the shared runner.
+      - run: go test -race -p 2 ./...
       - run: CGO_ENABLED=0 go build -o bin/cicord ./cmd/cicord
       - run: ./bin/cicord validate examples/basic
       - run: ./bin/cicord validate examples/showcase
