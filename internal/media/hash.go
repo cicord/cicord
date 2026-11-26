@@ -21,8 +21,8 @@ import (
 const MaxBytes = 8 << 20
 
 func Distance(a, b string) (int, error) {
-	if len(a) != len(b) || len(a) != 16 && len(a) != 64 {
-		return 0, errors.New("distance requires equal-length 64- or 256-bit hexadecimal hashes")
+	if len(a) != len(b) {
+		return 0, errors.New("distance requires equal-length hexadecimal digests")
 	}
 	x, err := hex.DecodeString(a)
 	if err != nil {

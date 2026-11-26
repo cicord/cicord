@@ -1620,9 +1620,9 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         need("media.analyze");
         if (
           a.length !== b.length ||
-          ![16, 64].includes(a.length) ||
-          !/^[0-9a-f]+$/iu.test(a) ||
-          !/^[0-9a-f]+$/iu.test(b)
+          a.length % 2 !== 0 ||
+          !/^[0-9a-f]*$/iu.test(a) ||
+          !/^[0-9a-f]*$/iu.test(b)
         )
           throw new TypeError("expected equal-length hexadecimal digests");
         let d = 0;

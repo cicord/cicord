@@ -106,6 +106,9 @@ func TestPerceptualReencoding(t *testing.T) {
 	if _, err := Hash([]byte("not an image"), "sha256"); err == nil {
 		t.Fatal("hashed non-image")
 	}
+	if d, err := Distance("ff", "00"); err != nil || d != 8 {
+		t.Errorf("one-byte Hamming distance = %d, %v", d, err)
+	}
 	if _, err := Distance("bad", "bad"); err == nil {
 		t.Fatal("accepted invalid hashes")
 	}
