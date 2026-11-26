@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useT } from "../i18n/index.tsx";
 import { SignIn, usePlugin } from "../portal.tsx";
 
+import { TicketDesk } from "./TicketDesk.tsx";
+
 type Filter = TicketStatus | "all";
 
 /**
@@ -17,7 +19,9 @@ export function Tickets() {
   const plugin = usePlugin("tickets", "GET /tickets");
   const [filter, setFilter] = useState<Filter>("open");
   const list = usePluginQuery<TicketList>(
-    plugin && me.data ? { bot: plugin.bot, instance: plugin.instance } : undefined,
+    plugin && me.data && !plugin.routes.includes("GET /tickets/:id/transcript")
+      ? { bot: plugin.bot, instance: plugin.instance }
+      : undefined,
     "/tickets",
     filter === "all" ? {} : { query: { status: filter } },
   );
@@ -37,6 +41,8 @@ export function Tickets() {
       </div>
     );
   }
+  if (plugin?.routes.includes("GET /tickets/:id/transcript"))
+    return <TicketDesk key={me.data.user.id} plugin={plugin} />;
   const forbidden = list.error instanceof CicordApiError && list.error.code === "forbidden";
   const date = new Intl.DateTimeFormat(t.locale, { dateStyle: "medium", timeStyle: "short" });
 

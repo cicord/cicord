@@ -109,6 +109,24 @@ export const fr = {
   },
 
   tickets: {
+    create: "Ouvrir un ticket",
+    type: "Type de ticket",
+    details: "Détails",
+    createFailed: "Impossible d’ouvrir le ticket. Vérifiez vos tickets ouverts puis réessayez.",
+
+    team: "File de l’équipe",
+    mine: "Mes tickets",
+    rating: "Note de satisfaction",
+    assigned: "Responsable",
+    unassigned: "Non attribué",
+    notes: "Notes internes",
+    write: "Rédiger",
+    reply: "Réponse au membre",
+    note: "Note privée",
+    saveNote: "Enregistrer la note",
+    send: "Envoyer la réponse",
+    transcript: "Transcription",
+
     title: "Tickets",
     lead: "Les demandes ouvertes par les membres avec /ticket.",
     all: "Tous",

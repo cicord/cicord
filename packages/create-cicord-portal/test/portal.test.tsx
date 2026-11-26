@@ -160,3 +160,76 @@ test("a signed link to /leaderboard (levels /rank) signs in on that page", async
   expect(await screen.findByRole("link", { name: /Alex/ }, { timeout: 4000 })).toBeTruthy(); // user chip
   expect(window.location.search).toBe("");
 });
+
+test("ticket staff can assign, reply privately or publicly, and lose detail access after revocation", async () => {
+  const runtime = createMockRuntime();
+  const user = userEvent.setup();
+  let allowed = true;
+  const posts: { path: string; body: unknown }[] = [];
+  const record = {
+    id: "12",
+    type: "billing",
+    subject: "Invoice check",
+    description: "A delivery question",
+    status: "open",
+    createdAt: "2026-01-01T12:00:00Z",
+    notes: [],
+    rating: null,
+    assignee: null,
+    messages: [],
+  };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  const client = createCicordClient({
+    fetch: async (input, init) => {
+      const path = new URL(input, window.location.origin).pathname;
+      const prefix = "/plugins/moderator/tickets";
+      if (path.includes(prefix)) {
+        const local = path.split(prefix)[1]!;
+        if (init.method === "POST") {
+          if (!allowed) return json({ error: { code: "forbidden", message: "Revoked" } }, 403);
+          posts.push({ path: local, body: JSON.parse(String(init.body)) });
+          return json(record);
+        }
+        if (local === "/tickets/mine") return json({ items: [] });
+        if (!allowed) return json({ error: { code: "forbidden", message: "Revoked" } }, 403);
+        if (local === "/tickets") return json({ items: [record] });
+        if (local === "/tickets/12") return json(record);
+        if (local === "/staff") return json({ items: [{ id: "42", displayName: "June" }] });
+        if (local === "/tickets/stats") return json({ rated: 1, mean: 4 });
+      }
+      const response = await runtime.fetch(input, init);
+      if (path.endsWith("/portal/my-community") || path.endsWith("/portal/servers")) {
+        const data = await response.json();
+        for (const server of data.items ?? [data])
+          for (const p of server.plugins ?? [])
+            if (p.plugin === "tickets") p.routes.push("GET /tickets/:id/transcript");
+        return json(data);
+      }
+      return response;
+    },
+  });
+  window.history.replaceState(null, "", "/tickets?role=moderator&cicord_token=signed");
+  render(<App config={{ client, login: () => {}, mock: true }} />);
+  await user.click(await screen.findByRole("button", { name: /Invoice check/ }));
+  expect(await screen.findByText("A delivery question")).toBeTruthy();
+  await user.selectOptions(await screen.findByLabelText("Assignee"), "42");
+  await user.selectOptions(await screen.findByLabelText("Write a"), "note");
+  await user.type(screen.getByRole("textbox", { name: "Private staff note" }), "Check invoice");
+  await user.click(screen.getByRole("button", { name: "Save note" }));
+  await screen.findByText("A delivery question");
+  await user.selectOptions(screen.getByLabelText("Write a"), "reply");
+  await user.type(screen.getByRole("textbox", { name: "Reply to member" }), "We have your invoice");
+  await user.click(screen.getByRole("button", { name: "Send reply" }));
+  await screen.findByText("A delivery question");
+  expect(posts).toEqual([
+    { path: "/tickets/12/assign", body: { userId: "42" } },
+    { path: "/tickets/12/notes", body: { content: "Check invoice" } },
+    { path: "/tickets/12/messages", body: { content: "We have your invoice" } },
+  ]);
+  await user.click(screen.getByRole("button", { name: /Invoice check/ }));
+  allowed = false;
+  await user.click(screen.getByRole("button", { name: /Invoice check/ }));
+  expect(await screen.findByText("Could not load the tickets.")).toBeTruthy();
+  expect(screen.queryByText("A delivery question")).toBeNull();
+}, 15000);

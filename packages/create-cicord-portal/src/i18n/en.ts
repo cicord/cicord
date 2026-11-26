@@ -101,6 +101,24 @@ export const en: Messages = {
   },
 
   tickets: {
+    create: "Open a ticket",
+    type: "Ticket type",
+    details: "Details",
+    createFailed: "Could not open this ticket. Check your open tickets and try again.",
+
+    team: "Team queue",
+    mine: "My tickets",
+    rating: "Rating",
+    assigned: "Assignee",
+    unassigned: "Unassigned",
+    notes: "Staff notes",
+    write: "Write a",
+    reply: "Reply to member",
+    note: "Private staff note",
+    saveNote: "Save note",
+    send: "Send reply",
+    transcript: "Transcript",
+
     title: "Tickets",
     lead: "Requests opened by members with /ticket.",
     all: "All",

@@ -1221,3 +1221,75 @@ code {
     aspect-ratio: 5 / 2;
   }
 }
+
+.ticket-desk__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+.ticket__select {
+  display: grid;
+  justify-items: start;
+  gap: 0.3rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.ticket__select small {
+  color: var(--cicord-muted);
+  font-weight: 400;
+}
+.ticket-detail {
+  display: grid;
+  gap: 1rem;
+  border-top: 1px solid var(--cicord-line);
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+}
+.ticket-detail h2,
+.ticket-detail p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ticket-detail p {
+  white-space: pre-wrap;
+}
+.ticket-detail form {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+}
+.ticket-detail textarea {
+  width: min(100%, 65ch);
+  min-height: 6rem;
+  padding: 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: var(--cicord-surface);
+  border: 1px solid var(--cicord-line);
+  border-radius: var(--cicord-radius-lg);
+}
+
+.ticket-compose {
+  justify-items: start;
+}
+.ticket-compose label {
+  display: grid;
+  gap: 0.4rem;
+  width: min(100%, 65ch);
+}
+.ticket-compose input,
+.ticket-compose select {
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--cicord-line);
+  background: var(--cicord-surface);
+  padding: 0.55rem;
+  border-radius: var(--cicord-radius-lg);
+}

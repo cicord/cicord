@@ -82,7 +82,11 @@ export function usePages(): Pages {
     profile: server.pages.profile,
     leaderboard: server.pages.leaderboard && !!levels,
     tickets: server.pages.tickets && !!tickets,
-    ticketsInNav: server.pages.tickets && !!tickets && atLeast(role, "moderator"),
+    ticketsInNav:
+      server.pages.tickets &&
+      !!tickets &&
+      (atLeast(role, "moderator") ||
+        (!!role && tickets.routes.includes("GET /tickets/:id/transcript"))),
   };
 }
 
