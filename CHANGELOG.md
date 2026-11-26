@@ -25,7 +25,8 @@ Cicord 0.2.0 is a large plugin platform release.
 
 ### Upgrading from 0.1.11
 
-Read this before you upgrade. **The database upgrade is one-way.**
+Read this before you upgrade. **The database upgrade is one-way.** The same steps are in
+[Upgrading](https://cicord.dev/docs/self-hosting/upgrading/#from-0111-to-020).
 
 1. **Back up the state first.** Back up the data directory (`cicord.db`, `secret.key`,
    `link.key`) or dump PostgreSQL.
@@ -158,6 +159,10 @@ Read this before you upgrade. **The database upgrade is one-way.**
     raises an alert ("Bot token possibly compromised"). It also adds a line to
     `cicord status` and sets `unconfirmedAudit` in the server status, which the admin server
     page shows. This is advisory and never changes health.
+  - **Bursts and failures:** gateway entries wait in a queue that holds a large first sync,
+    and a raid by one account costs one actor lookup. An entry that was not checked (the
+    queue overflowed, or the state store failed) never raises the alert. Subscribers get it
+    as `unknown`, and the runtime logs one warning per burst with the count.
 - **`CICORD_COMPILER_CACHE_DIR`:** a private native-code cache for the embedded compiler.
 
 #### Plugin SDK

@@ -287,7 +287,14 @@ claimed; two identical calls in the window confirm one entry each. An overwrite 
 matched with the call that replaced the overwrites (Discord's request does not name the
 removed overwrite). A gateway entry that arrives before its proof is checked again 1.5 seconds
 later. A missing match remains `probable`: the runtime then raises the "bot token possibly
-compromised" alert (see [Alerts](../../self-hosting/monitoring/#alerts)). Reorders
+compromised" alert (see [Alerts](../../self-hosting/monitoring/#alerts)). Only a check that ran
+can raise it. Gateway entries wait in a queue of 4,096, which holds the burst of a large
+first sync. An entry that does not fit is not checked and reaches `auditLogEntry` as
+`unknown`. An own entry whose check failed (a state store error or timeout, also on the
+second try) is `cicord` with certainty `unknown`. Neither raises the alert, and the runtime
+logs one warning per burst with the number of entries it could not check. Actors of gateway
+entries are looked up once per user and cached for 10 minutes, so a raid by one account costs
+one Discord call. Reorders
 (`channel.reorder`, `role.reorder`) are merged by Discord and never confirmed. Not verified
 against Discord, hence not journaled: the welcome screen, the widget and incident actions. A human may enter
 any audit reason. Use the attribution fields when reporting who acted, and treat missing
