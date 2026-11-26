@@ -114,6 +114,8 @@ export const en: Messages = {
   },
 
   tickets: {
+    cases: "Moderation history",
+    noCases: "No visible moderation cases.",
     create: "Open a ticket",
     type: "Ticket type",
     details: "Details",
@@ -125,7 +127,7 @@ export const en: Messages = {
     assigned: "Assignee",
     unassigned: "Unassigned",
     notes: "Staff notes",
-    write: "Write a",
+    write: "Message type",
     reply: "Reply to member",
     note: "Private staff note",
     saveNote: "Save note",

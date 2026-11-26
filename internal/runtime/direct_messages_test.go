@@ -54,12 +54,15 @@ func TestDirectMessageSelection(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		write("bots/"+key+"/bot.yaml", doc("Bot", key, fmt.Sprintf("  applicationId: '%s'\n  token: {secretRef: %s}\n  servers: [a,b]\n  directMessages: {instance: support}\n  plugins:\n    - {name: support, source: ../../plugins/help, grants: [storage.kv, discord.dm.send]}", app, secret)))
+		write("bots/"+key+"/bot.yaml", doc("Bot", key, fmt.Sprintf("  applicationId: '%s'\n  token: {secretRef: %s}\n  servers: [a,b]\n  directMessages: {instance: support}\n  plugins:\n    - {name: support, source: ../../plugins/help, grants: [storage.kv, discord.dm.send, discord.messages.read]}", app, secret)))
 	}
-	write("plugins/help/plugin.yaml", "apiVersion: cicord.dev/v1alpha1\nkind: Plugin\nmetadata: {name: help, version: 0.1.0}\nspec: {entry: ./src/index.ts, engine: '>=0.1.0', intents: [DirectMessages], capabilities: [storage.kv, discord.dm.send]}\n")
+	write("plugins/help/plugin.yaml", "apiVersion: cicord.dev/v1alpha1\nkind: Plugin\nmetadata: {name: help, version: 0.1.0}\nspec: {entry: ./src/index.ts, engine: '>=0.1.0', intents: [DirectMessages], capabilities: [storage.kv, discord.dm.send, discord.messages.read]}\n")
 	write("plugins/help/src/index.ts", `import {definePlugin} from "@cicord/sdk"; export default definePlugin({events:{async directMessage(ctx,m){if(m.content.startsWith("retract ")){await ctx.server.retractDM(m.content.slice(8))} else {
- const dm=await m.member.send("received "+ctx.server.key,{retractable:true});await ctx.kv.set("lastReceipt",dm.id)}
- await ctx.kv.set(m.content,ctx.server.id)}}});`)
+ const dm=await m.member.send({content:"received "+ctx.server.key,components:[{type:"row",components:[{type:"button",id:"ack",label:"Confirm",style:"primary"}]}]},{retractable:true});await ctx.kv.set("lastReceipt",dm.id)}
+ await ctx.kv.set(m.content,ctx.server.id)}},components:{async ack(ctx,i){
+ let protectedHistory=false;try{await i.channel.messages({limit:1})}catch{protectedHistory=true}
+ await ctx.kv.set("ack",protectedHistory && i.member.id===i.user.id && i.channel.type==="dm");await i.reply("received");
+ }}});`)
 	src, err := source.NewLocal(dir, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +95,7 @@ func TestDirectMessageSelection(t *testing.T) {
 		var msg discord.Message
 		e.waitFor("server selection", func() bool {
 			for _, m := range w.DMs(user.ID, bots[key].ID) {
-				if len(m.Components) > 0 {
+				if len(m.Components) > 0 && m.Components[0].Components[0].Type == discord.ComponentStringSelect {
 					msg = m
 					return true
 				}
@@ -140,6 +143,21 @@ func TestDirectMessageSelection(t *testing.T) {
 	var receipt string
 	if err := json.Unmarshal(raw, &receipt); err != nil {
 		t.Fatal(err)
+	}
+	for _, m := range w.DMs(user.ID, bots["first"].ID) {
+		if m.ID == receipt {
+			click := w.ClickButton(user.ID, m, m.Components[0].Components[0].CustomID)
+			if err := click.Err(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	e.waitFor("scoped DM component", func() bool {
+		value, _ := db.KV("plugin:first/support/b").Get(ctx, "ack")
+		return string(value) == "true"
+	})
+	if stored("first", "a", "ack") {
+		t.Fatal("DM component dispatched to the wrong tenant")
 	}
 	text := "retract " + receipt
 	send("second", text)

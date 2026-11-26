@@ -214,11 +214,11 @@ test("ticket staff can assign, reply privately or publicly, and lose detail acce
   await user.click(await screen.findByRole("button", { name: /Invoice check/ }));
   expect(await screen.findByText("A delivery question")).toBeTruthy();
   await user.selectOptions(await screen.findByLabelText("Assignee"), "42");
-  await user.selectOptions(await screen.findByLabelText("Write a"), "note");
+  await user.selectOptions(await screen.findByLabelText("Message type"), "note");
   await user.type(screen.getByRole("textbox", { name: "Private staff note" }), "Check invoice");
   await user.click(screen.getByRole("button", { name: "Save note" }));
   await screen.findByText("A delivery question");
-  await user.selectOptions(screen.getByLabelText("Write a"), "reply");
+  await user.selectOptions(screen.getByLabelText("Message type"), "reply");
   await user.type(screen.getByRole("textbox", { name: "Reply to member" }), "We have your invoice");
   await user.click(screen.getByRole("button", { name: "Send reply" }));
   await screen.findByText("A delivery question");

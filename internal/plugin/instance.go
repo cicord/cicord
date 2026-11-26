@@ -315,6 +315,9 @@ type Instance struct {
 	chMu           sync.Mutex
 	serverChannels map[string]bool
 	dmChannels     map[string]bool
+	dmMessages     map[string]bool
+	dmRecent       []string
+	dmNext         int
 }
 
 var instanceNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)

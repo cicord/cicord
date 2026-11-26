@@ -997,7 +997,8 @@ a {
   font-weight: 650;
   cursor: pointer;
 }
-.segmented__item[aria-checked="true"] {
+.segmented__item[aria-checked="true"],
+.segmented__item[aria-pressed="true"] {
   background: var(--cicord-primary);
   color: var(--cicord-primary-fg);
 }
@@ -1285,7 +1286,7 @@ code {
   width: min(100%, 65ch);
 }
 .ticket-compose input,
-.ticket-compose select {
+.tickets select {
   font: inherit;
   color: inherit;
   border: 1px solid var(--cicord-line);

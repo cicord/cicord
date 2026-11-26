@@ -700,7 +700,27 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 		}()
 		return
 	}
-	done := target.inst().DispatchInteraction(context.Background(), it, kind, localID)
+	if it.ServerID == "" { // Historical bot messages with an unqualified component ID.
+		h.queueDM(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			m, err := h.session.GetMember(ctx, target.serverID, it.User.ID)
+			if err == nil && m.User.ID == it.User.ID {
+				it.Member = &m
+				h.dispatchInteraction(target, it, kind, localID)
+			}
+		})
+		return
+	}
+	h.dispatchInteraction(target, it, kind, localID)
+}
+
+func (h *botHost) dispatchInteraction(target *instanceRT, it discord.Interaction, kind, localID string) {
+	inst := target.inst()
+	if inst == nil {
+		return
+	}
+	done := inst.DispatchInteraction(context.Background(), it, kind, localID)
 	go func() {
 		err := <-done
 		h.rt.handlerDone(target, err)

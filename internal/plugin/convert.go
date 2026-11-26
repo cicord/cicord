@@ -375,6 +375,9 @@ func (i *Instance) messageURL(server, channel, id string) string {
 	return "https://discord.com/channels/" + server + "/" + channel + "/" + id
 }
 func (i *Instance) messageDTO(m discord.Message) messageDTO {
+	if m.ServerID == "" && m.ID != "" && i.isDMChannel(m.ChannelID) {
+		i.rememberDMMessage(m.ID)
+	}
 	author := i.userDTO(m.Author)
 	dto := messageDTO{
 		URL: i.messageURL(m.ServerID, m.ChannelID, m.ID), Reactions: m.Reactions, Reference: m.Reference, ID: m.ID, Content: m.Content, Author: &author, Channel: i.channelDTO(m.ChannelID),

@@ -285,7 +285,7 @@ func (h *botHost) routeDMComponent(it discord.Interaction) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	name, _, ok := plugin.ParseCustomID(parts[2])
+	name, local, ok := plugin.ParseCustomID(parts[2])
 	if !ok || rt.byName[name][parts[1]] == nil {
 		return
 	}
@@ -294,9 +294,14 @@ func (h *botHost) routeDMComponent(it discord.Interaction) {
 		return
 	}
 	it.CustomID = parts[2]
-	it.ServerID = parts[1]
 	it.Member = &member
-	h.routeInteraction(rt, it)
+	kind := "component"
+	if it.Type == discord.InteractionModalSubmit {
+		kind = "modal"
+	} else if it.Type != discord.InteractionComponent {
+		return
+	}
+	h.dispatchInteraction(rt.byName[name][parts[1]], it, kind, local)
 }
 
 func (h *botHost) stopDM() {

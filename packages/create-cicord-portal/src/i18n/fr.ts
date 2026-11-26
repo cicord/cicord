@@ -122,6 +122,8 @@ export const fr = {
   },
 
   tickets: {
+    cases: "Historique de modération",
+    noCases: "Aucun dossier de modération visible.",
     create: "Ouvrir un ticket",
     type: "Type de ticket",
     details: "Détails",
@@ -133,7 +135,7 @@ export const fr = {
     assigned: "Responsable",
     unassigned: "Non attribué",
     notes: "Notes internes",
-    write: "Rédiger",
+    write: "Type de message",
     reply: "Réponse au membre",
     note: "Note privée",
     saveNote: "Enregistrer la note",

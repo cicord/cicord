@@ -324,7 +324,7 @@ func (x *interaction) replyCreate(in messageInput) (discord.MessageCreate, error
 		e = *in.Ephemeral
 	}
 	mc.Flags |= ephemeralFlags(e)
-	return mc, nil
+	return mc, x.i.scopeDMControls(x.it.ServerID == "", mc.Components)
 }
 
 func opInteractionReply(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
@@ -374,6 +374,9 @@ func opInteractionUpdate(i *Instance, _ *invocation, args json.RawMessage) (func
 	if err != nil {
 		return nil, err
 	}
+	if err := i.scopeDMControls(x.it.ServerID == "", mc.Components); err != nil {
+		return nil, err
+	}
 	return func(ctx context.Context) (any, error) { return nil, x.update(ctx, mc) }, nil
 }
 
@@ -391,6 +394,13 @@ func opInteractionShowModal(i *Instance, _ *invocation, args json.RawMessage) (f
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
+		if x.it.ServerID == "" {
+			id, err := i.scopeDMID(m.CustomID)
+			if err != nil {
+				return nil, err
+			}
+			m.CustomID = id
+		}
 		if err := x.showModal(ctx, m); err != nil {
 			return nil, fmt.Errorf("%w", err)
 		}

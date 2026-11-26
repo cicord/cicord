@@ -517,6 +517,60 @@ func (i *Instance) markServerChannel(id string) {
 	i.chMu.Unlock()
 }
 
+// DM channels span server instances. Only operations on a message actually delivered
+// to this VM are permitted. Durable bot-owned deletions use the separate receipt API.
+func (i *Instance) rememberDMMessage(id string) {
+	i.chMu.Lock()
+	defer i.chMu.Unlock()
+	if i.dmMessages == nil {
+		i.dmMessages = map[string]bool{}
+		i.dmRecent = make([]string, 4096)
+	}
+	if i.dmMessages[id] {
+		return
+	}
+	delete(i.dmMessages, i.dmRecent[i.dmNext])
+	i.dmMessages[id] = true
+	i.dmRecent[i.dmNext] = id
+	i.dmNext = (i.dmNext + 1) % len(i.dmRecent)
+}
+func (i *Instance) checkDMMessage(dm bool, id string) error {
+	if !dm {
+		return nil
+	}
+	i.chMu.Lock()
+	defer i.chMu.Unlock()
+	if !i.dmMessages[id] {
+		return argErr("DM message was not delivered to this instance")
+	}
+	return nil
+}
+func (i *Instance) scopeDMID(id string) (string, error) {
+	scoped := "dm/" + i.env.ServerID + "/" + id
+	if len(scoped) > MaxCustomIDLength {
+		return "", argErr("DM component id is too long")
+	}
+	return scoped, nil
+}
+func (i *Instance) scopeDMControls(dm bool, components []discord.Component) error {
+	if !dm {
+		return nil
+	}
+	for j := range components {
+		c := &components[j]
+		if c.CustomID != "" {
+			id, err := i.scopeDMID(c.CustomID)
+			if err != nil {
+				return err
+			}
+			c.CustomID = id
+		}
+		if err := i.scopeDMControls(dm, c.Components); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (i *Instance) markDMChannel(id string) {
 	i.chMu.Lock()
 	i.dmChannels[id] = true
@@ -600,6 +654,10 @@ func opChannelSend(i *Instance, _ *invocation, args json.RawMessage) (func(conte
 		if err != nil {
 			return nil, err
 		}
+		if err := i.scopeDMControls(dm, mc.Components); err != nil {
+			return nil, err
+		}
+
 		if err := i.require(i.sendCapability(dm)); err != nil {
 			return nil, err
 		}
@@ -678,8 +736,8 @@ func opChannelMessage(i *Instance, _ *invocation, args json.RawMessage) (func(co
 	return func(ctx context.Context) (any, error) {
 		if dm, err := i.channelScope(ctx, a.ChannelID); err != nil {
 			return nil, err
-		} else if dm {
-			return nil, argErr("DM history belongs to the bot conversation and cannot be read by a server instance")
+		} else if err := i.checkDMMessage(dm, a.MessageID); err != nil {
+			return nil, err
 		}
 		m, err := i.env.Discord.GetMessage(ctx, a.ChannelID, a.MessageID)
 		if errors.Is(err, discord.ErrNotFound) {
@@ -742,6 +800,13 @@ func opMessageReply(i *Instance, _ *invocation, args json.RawMessage) (func(cont
 		if err != nil {
 			return nil, err
 		}
+		if err := i.checkDMMessage(dm, a.MessageID); err != nil {
+			return nil, err
+		}
+		if err := i.scopeDMControls(dm, mc.Components); err != nil {
+			return nil, err
+		}
+
 		if err := i.require(i.sendCapability(dm)); err != nil {
 			return nil, err
 		}
@@ -779,6 +844,13 @@ func opMessageEdit(i *Instance, _ *invocation, args json.RawMessage) (func(conte
 		if err != nil {
 			return nil, err
 		}
+		if err := i.checkDMMessage(dm, a.MessageID); err != nil {
+			return nil, err
+		}
+		if err := i.scopeDMControls(dm, mc.Components); err != nil {
+			return nil, err
+		}
+
 		if own {
 			if err := i.require(i.sendCapability(dm)); err != nil {
 				return nil, err
@@ -804,9 +876,14 @@ func opMessageDelete(i *Instance, _ *invocation, args json.RawMessage) (func(con
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
-		if _, err := i.channelScope(ctx, a.ChannelID); err != nil {
+		dm, err := i.channelScope(ctx, a.ChannelID)
+		if err != nil {
 			return nil, err
 		}
+		if err := i.checkDMMessage(dm, a.MessageID); err != nil {
+			return nil, err
+		}
+
 		return nil, i.env.Discord.DeleteMessage(ctx, a.ChannelID, a.MessageID, a.Reason)
 	}, nil
 }
@@ -826,9 +903,14 @@ func opMessageReact(i *Instance, _ *invocation, args json.RawMessage) (func(cont
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
-		if _, err := i.channelScope(ctx, a.ChannelID); err != nil {
+		dm, err := i.channelScope(ctx, a.ChannelID)
+		if err != nil {
 			return nil, err
 		}
+		if err := i.checkDMMessage(dm, a.MessageID); err != nil {
+			return nil, err
+		}
+
 		return nil, i.env.Discord.AddReaction(ctx, a.ChannelID, a.MessageID, a.Emoji)
 	}, nil
 }
@@ -1084,16 +1166,8 @@ func opMemberSend(i *Instance, _ *invocation, args json.RawMessage) (func(contex
 		return nil, err
 	}
 	return func(ctx context.Context) (any, error) {
-		for _, row := range mc.Components {
-			for j := range row.Components {
-				c := &row.Components[j]
-				if c.CustomID != "" {
-					c.CustomID = "dm/" + i.env.ServerID + "/" + c.CustomID
-					if len(c.CustomID) > MaxCustomIDLength {
-						return nil, argErr("DM component id is too long")
-					}
-				}
-			}
+		if err := i.scopeDMControls(true, mc.Components); err != nil {
+			return nil, err
 		}
 		if a.Retractable && i.env.DMReceipts == nil {
 			return nil, errors.New("DM receipt storage unavailable")

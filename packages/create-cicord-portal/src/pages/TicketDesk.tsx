@@ -46,7 +46,7 @@ export function TicketDesk({ plugin }: { plugin: PortalPlugin }) {
   const items = list.data?.items.filter((i) => filter === "all" || i.status === filter) ?? [];
   const activeStaff = queue && !!staff.data?.items.some((t) => t.id === selected);
   return (
-    <main className="page tickets">
+    <div className="page tickets">
       <header className="page__header">
         <h1>{q.title}</h1>
       </header>
@@ -138,7 +138,7 @@ export function TicketDesk({ plugin }: { plugin: PortalPlugin }) {
           staff={activeStaff}
         />
       )}
-    </main>
+    </div>
   );
 }
 
@@ -155,6 +155,24 @@ function TicketDetail({ plugin, id, staff }: { plugin: PortalPlugin; id: string;
   const [revision, reload] = useState(0);
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState("reply");
+  const [history, setHistory] =
+    useState<{ number: number; action: string; status: string; reason: string }[]>();
+  const [historyBusy, setHistoryBusy] = useState(false);
+  async function loadHistory() {
+    setHistory(undefined);
+    setHistoryBusy(true);
+    try {
+      const data = await api().get<{
+        cases: { number: number; action: string; status: string; reason: string }[];
+      }>(path + "/cases");
+      setHistory(data.cases);
+    } catch {
+      setTicket(undefined);
+      setError(true);
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
   const assignees = usePluginQuery<{ items: Person[] }>(
     staff && ticket ? plugin : undefined,
     "/staff",
@@ -249,6 +267,33 @@ function TicketDetail({ plugin, id, staff }: { plugin: PortalPlugin; id: string;
               ))}
             </select>
           </label>
+          {plugin.routes.includes("GET /tickets/:id/cases") && (
+            <details
+              onToggle={(e) => {
+                if (e.currentTarget.open) void loadHistory();
+                else setHistory(undefined);
+              }}
+            >
+              <summary>{q.cases}</summary>
+              {historyBusy ? (
+                <Spinner label={t.loading} />
+              ) : history?.length ? (
+                <ul>
+                  {history.map((c) => (
+                    <li key={c.number}>
+                      <strong>
+                        #{c.number} · {c.action}
+                      </strong>{" "}
+                      · {c.status}
+                      <p>{c.reason}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{q.noCases}</p>
+              )}
+            </details>
+          )}
           {ticket.notes?.length ? (
             <section>
               <h3>{q.notes}</h3>
