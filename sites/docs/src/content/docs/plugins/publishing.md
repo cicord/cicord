@@ -266,3 +266,5 @@ It signs whatever is on `main`: branch protection (required reviews) is the real
 ### Verified offline packages
 
 On a cache hit Cicord hashes the sorted file paths, sizes and bytes and compares the result with the integrity in `cicord.lock`. Existing verified caches work offline. Changed, missing or additional files and symbolic links trigger a fresh download of the pinned commit. The replacement becomes available after its content hash matches. If the origin is unavailable, validation reports an error and the changed cache stays ineligible.
+
+Registry resolution lists release tags and fetches the selected tag shallowly. A locked installation requests its pinned commit. Older Git transports can use a bounded history fetch. The host allows two concurrent network fetches, each with a 45-second deadline. Reference advertisements and index files are limited to 4 MiB. Pack limits are 64 MiB transferred, 32,768 objects, 16 MiB per object and 128 MiB of expanded data including deltas. A plugin subtree can contain up to 4,096 files and 32 MiB.

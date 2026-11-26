@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -72,12 +73,15 @@ func verifyCache(ctx context.Context, parent *os.Root, dir, want string, legacy 
 	}
 	defer root.Close()
 	var names []string
-	err = fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
+	var total int64
+	visited := 0
+	err = walkCache(root, func(name string, d fs.DirEntry) error {
 		if err = ctx.Err(); err != nil {
 			return err
+		}
+		visited++
+		if visited > 2*maxPackageFiles+2 {
+			return ErrRegistryLimit
 		}
 		if d.IsDir() {
 			return nil
@@ -106,6 +110,14 @@ func verifyCache(ctx context.Context, parent *os.Root, dir, want string, legacy 
 				}
 			}
 		}
+		st, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if len(names) >= maxPackageFiles || st.Size() < 0 || st.Size() > maxObjectSize || st.Size() > maxPackageSize-total {
+			return ErrRegistryLimit
+		}
+		total += st.Size()
 		names = append(names, name)
 		return nil
 	})
@@ -123,6 +135,45 @@ func verifyCache(ctx context.Context, parent *os.Root, dir, want string, legacy 
 		}
 	}
 	return integrityDigest(h) == want
+}
+
+// Read directories in small batches so a changed cache cannot allocate a whole
+// oversized directory listing before the entry limit is checked.
+func walkCache(root *os.Root, visit func(string, fs.DirEntry) error) error {
+	pending := []string{"."}
+	for len(pending) > 0 {
+		current := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		f, err := root.Open(filepath.FromSlash(current))
+		if err != nil {
+			return err
+		}
+		err = func() error {
+			defer f.Close()
+			for {
+				items, err := f.ReadDir(64)
+				if err != nil && !errors.Is(err, io.EOF) {
+					return err
+				}
+				for _, item := range items {
+					p := path.Join(current, item.Name())
+					if e := visit(p, item); e != nil {
+						return e
+					}
+					if item.IsDir() {
+						pending = append(pending, p)
+					}
+				}
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+			}
+		}()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func hashCacheFile(root *os.Root, h hash.Hash, name string) error {

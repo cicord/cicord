@@ -106,6 +106,8 @@ func startStoreRepoWith(t *testing.T, prepare func(dir string)) (*env, string) {
 // startWithRegistry deploys examples/basic with the unofficial registry "acme" at reg
 // (CICORD_CACHE_DIR must be set) and plugin write-backs in commit mode.
 func startWithRegistry(t *testing.T, reg string, prepare func(dir string)) *env {
+	// This fixture serves its registry from ordinary local Git repositories.
+	t.Setenv("CICORD_ALLOW_PRIVATE_REGISTRIES", "true")
 	t.Helper()
 	cache := registry.DefaultCacheDir()
 	return startFull(t, func(dir string) {

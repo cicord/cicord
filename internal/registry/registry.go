@@ -24,12 +24,9 @@ import (
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
-	git "github.com/go-git/go-git/v5"
-	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/storage/memory"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cicord/cicord/internal/config"
@@ -342,7 +339,9 @@ func Materialize(ctx context.Context, cacheDir, source string, e LockEntry) (str
 	if verifyCache(ctx, parent, legacy, e.Integrity, true) {
 		return filepath.Join(filepath.Dir(dir), legacy), nil
 	}
-	repo, err := cloneMem(ctx, e.Repo)
+	_, pluginName, _ := CheckSource(source)
+	tag := ReleaseTag((IndexEntry{Path: e.Path}).TagPrefix(pluginName), e.Version)
+	repo, err := pinnedRepo(ctx, e.Repo, plumbing.NewHash(e.Commit), plumbing.NewTagReferenceName(tag))
 	if err != nil {
 		return "", err
 	}
@@ -403,15 +402,6 @@ func shortSHA(s string) string {
 	return s
 }
 
-func cloneMem(ctx context.Context, url string) (*git.Repository, error) {
-	r, err := git.CloneContext(ctx, memory.NewStorage(), nil, &git.CloneOptions{URL: url, Tags: git.AllTags, NoCheckout: true,
-		Auth: AuthFor(ctx, url)})
-	if err != nil {
-		return nil, fmt.Errorf("clone %s: %w", Redact(url), err)
-	}
-	return r, nil
-}
-
 // commitFiles reads precisely the regular Git files covered by the lock.
 func commitFiles(c *object.Commit, sub string) (map[string][]byte, error) {
 	if err := CheckPluginPath(sub); err != nil {
@@ -427,26 +417,59 @@ func commitFiles(c *object.Commit, sub string) (map[string][]byte, error) {
 			return nil, fmt.Errorf("directory %s not found in commit %s: %w", sub, shortSHA(c.Hash.String()), err)
 		}
 	}
+	return packageFiles(tree, maxPackageFiles, maxPackageSize, maxObjectSize)
+}
+
+// Count all visited entries so directories and ignored symbolic links also have
+// bounded traversal cost. Only ordinary file contents contribute to the lock hash.
+func packageFiles(tree *object.Tree, maxFiles int, maxTotal, maxFile int64) (map[string][]byte, error) {
 	files := map[string][]byte{}
-	err = tree.Files().ForEach(func(f *object.File) error {
-		if f.Mode == filemode.Symlink || f.Mode == filemode.Submodule {
-			return nil
+	var total int64
+	walk := object.NewTreeWalker(tree, true, nil)
+	defer walk.Close()
+	for visited := 0; ; visited++ {
+		name, entry, err := walk.Next()
+		if errors.Is(err, io.EOF) {
+			return files, nil
 		}
-		if !fs.ValidPath(f.Name) || !filepath.IsLocal(filepath.FromSlash(f.Name)) || strings.ContainsAny(f.Name, "\\:") {
-			return errors.New("unsafe package filename")
+		if err != nil {
+			return nil, err
+		}
+		if visited >= 2*maxFiles {
+			return nil, ErrRegistryLimit
+		}
+		if entry.Mode == filemode.Dir || entry.Mode == filemode.Symlink || entry.Mode == filemode.Submodule {
+			continue
+		}
+		if !fs.ValidPath(name) || !filepath.IsLocal(filepath.FromSlash(name)) || strings.ContainsAny(name, "\\:") {
+			return nil, errors.New("unsafe package filename")
+		}
+		if len(files) >= maxFiles {
+			return nil, ErrRegistryLimit
+		}
+		f, err := tree.TreeEntryFile(&entry)
+		if err != nil {
+			return nil, err
+		}
+		if f.Size < 0 || f.Size > maxFile || f.Size > maxTotal-total {
+			return nil, ErrRegistryLimit
 		}
 		rd, err := f.Reader()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		defer rd.Close()
-		data, err := io.ReadAll(rd)
-		if err == nil {
-			files[f.Name] = data
+		data, err := io.ReadAll(io.LimitReader(rd, f.Size+1))
+		_ = rd.Close()
+		if err != nil {
+			return nil, err
 		}
-		return err
-	})
-	return files, err
+		if int64(len(data)) != f.Size {
+			return nil, errors.New("invalid package file size")
+		}
+		files[name] = data
+		total += f.Size
+	}
+
 }
 
 // Integrity is the content hash of a plugin ("sha256-<base64>") over its files sorted by
@@ -475,7 +498,7 @@ func FetchIndex(ctx context.Context, url string) (*Index, error) {
 	if Trust(url) == TrustOfficial && !HasOfficialKeys() {
 		return nil, fmt.Errorf("%s: %w", Redact(url), ErrNoOfficialKey)
 	}
-	r, err := cloneMem(ctx, url)
+	r, err := cloneRef(ctx, url, plumbing.HEAD)
 	if err != nil {
 		return nil, err
 	}
@@ -490,6 +513,9 @@ func FetchIndex(ctx context.Context, url string) (*Index, error) {
 	f, err := c.File(IndexFile)
 	if err != nil {
 		return nil, fmt.Errorf("%s: no index.yaml: %w", Redact(url), err)
+	}
+	if f.Size < 0 || f.Size > maxRefsBytes {
+		return nil, fmt.Errorf("index.yaml: %w", ErrRegistryLimit)
 	}
 	content, err := f.Contents()
 	if err != nil {
@@ -590,33 +616,38 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 	if err != nil {
 		return nil, err
 	}
-	repo, err := cloneMem(ctx, ie.Repo)
+	refs, err := listRefs(ctx, ie.Repo)
 	if err != nil {
-		return nil, err
-	}
-	tags, err := repo.Tags()
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list release tags of %s: %w", Redact(ie.Repo), err)
 	}
 	var best *semver.Version
-	var bestHash plumbing.Hash
-	err = tags.ForEach(func(ref *plumbing.Reference) error {
-		// Tags that are not releases of this plugin (other prefix, not semver) are skipped.
+	var tagRef *plumbing.Reference
+	for _, ref := range refs {
+		if !ref.Name().IsTag() {
+			continue
+		}
 		v, ok := tagVersion(ref.Name().Short(), prefix)
 		if ok && c.Check(v) && (best == nil || v.GreaterThan(best)) {
-			h := ref.Hash()
-			if tag, err := repo.TagObject(h); err == nil { // annotated tag
-				h = tag.Target
-			}
-			best, bestHash = v, h
+			best, tagRef = v, ref
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list the tags of %s: %w", Redact(ie.Repo), err)
 	}
 	if best == nil {
 		return nil, fmt.Errorf("no version of %s matches %q", source, versionRange)
+	}
+	repo, err := cloneRef(ctx, ie.Repo, tagRef.Name())
+	if err != nil {
+		return nil, err
+	}
+	fetched, err := repo.Reference(tagRef.Name(), true)
+	if err != nil {
+		return nil, err
+	}
+	if fetched.Hash() != tagRef.Hash() {
+		return nil, errors.New("selected release tag changed during fetch")
+	}
+	bestHash := fetched.Hash()
+	if tag, err := repo.TagObject(bestHash); err == nil {
+		bestHash = tag.Target
 	}
 	if iv, err := semver.NewVersion(ie.Version); err == nil && ie.Commit != "" && iv.Equal(best) && bestHash.String() != ie.Commit {
 		return nil, fmt.Errorf("%s: tag %s points to %s, but the registry index published it at %s (the tag moved)",
@@ -663,8 +694,7 @@ func ResolveLatest(ctx context.Context, registries []config.Registry, cacheDir, 
 
 // ListTags lists the tag names of a git repository without cloning it (ls-remote).
 func ListTags(ctx context.Context, url string) ([]string, error) {
-	rem := git.NewRemote(memory.NewStorage(), &gitconfig.RemoteConfig{Name: "origin", URLs: []string{url}})
-	refs, err := rem.ListContext(ctx, &git.ListOptions{Auth: AuthFor(ctx, url)})
+	refs, err := listRefs(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", Redact(url), err)
 	}

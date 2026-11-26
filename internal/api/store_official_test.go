@@ -18,6 +18,8 @@ import (
 // registry here), source "cicord" lists its plugins without any cicord.yaml entry, and
 // installing one locks "cicord/<name>", which the runtime resolves.
 func TestStoreImplicitOfficialRegistry(t *testing.T) {
+	// This fixture serves its registry from ordinary local Git repositories.
+	t.Setenv("CICORD_ALLOW_PRIVATE_REGISTRIES", "true")
 	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
 	t.Setenv(registry.DevOfficialRegistryEnv, "")
 	pub, key, err := ed25519.GenerateKey(rand.Reader)

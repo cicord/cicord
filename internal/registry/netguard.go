@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -84,17 +85,38 @@ func init() {
 	guarded := http.DefaultTransport.(*http.Transport).Clone()
 	guarded.Proxy = nil // a proxy would hide the real destination from the guard
 	guarded.DialContext = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: guardedControl}).DialContext
-	client.InstallProtocol("https", githttp.NewClient(&http.Client{Transport: switchTransport{base: base, guarded: guarded}}))
+	transport := githttp.NewClient(&http.Client{Transport: switchTransport{base: base, guarded: guarded}})
+	client.InstallProtocol("https", transport)
+	client.InstallProtocol("http", transport)
 }
 
 // switchTransport sends WithPublicOnly requests to the guarded transport.
 type switchTransport struct{ base, guarded http.RoundTripper }
 
 func (t switchTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	transport := t.base
 	if publicOnly(r.Context()) {
-		return t.guarded.RoundTrip(r)
+		if r.URL.Scheme != "https" {
+			return nil, fmt.Errorf("%w: only HTTPS is allowed", ErrNotPublic)
+		}
+		transport = t.guarded
 	}
-	return t.base.RoundTrip(r)
+	response, err := transport.RoundTrip(r)
+	if err != nil {
+		return nil, err
+	}
+	if limited, _ := r.Context().Value(registryFetchKey{}).(bool); limited {
+		limit := int64(maxPackBytes)
+		if strings.HasSuffix(r.URL.Path, "/info/refs") {
+			limit = maxRefsBytes
+		}
+		if response.ContentLength > limit {
+			_ = response.Body.Close()
+			return nil, ErrRegistryLimit
+		}
+		response.Body = &limitedResponse{ReadCloser: response.Body, remaining: limit}
+	}
+	return response, nil
 }
 
 // AllowPrivateRegistries reports whether the operator lets registry fetches reach private
@@ -127,4 +149,21 @@ func CheckPublicHost(ctx context.Context, raw string) error {
 		}
 	}
 	return nil
+}
+
+type limitedResponse struct {
+	io.ReadCloser
+	remaining int64
+}
+
+func (r *limitedResponse) Read(p []byte) (int, error) {
+	if int64(len(p)) > r.remaining+1 {
+		p = p[:r.remaining+1]
+	}
+	n, err := r.ReadCloser.Read(p)
+	if int64(n) > r.remaining {
+		return 0, ErrRegistryLimit
+	}
+	r.remaining -= int64(n)
+	return n, err
 }
