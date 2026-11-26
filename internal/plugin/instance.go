@@ -1273,12 +1273,33 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 	if len(r.data) > maxRouteResponse {
 		return RouteResponse{}, fmt.Errorf("plugin: route %s returned more than %d bytes", route.Key(), maxRouteResponse)
 	}
+	if rest, ok := strings.CutPrefix(r.data, "raw\n"); ok {
+		statusText, rest, ok := strings.Cut(rest, "\n")
+		if !ok {
+			return RouteResponse{}, errors.New("invalid raw response header")
+		}
+		mime, body, ok := strings.Cut(rest, "\n")
+		if !ok {
+			return RouteResponse{}, errors.New("invalid raw response header")
+		}
+		status, err := strconv.Atoi(statusText)
+		if err != nil || status < 100 || status > 599 {
+			return RouteResponse{}, errors.New("invalid raw response status")
+		}
+		switch mime {
+		case "text/calendar", "text/csv", "text/plain", "text/markdown":
+		default:
+			return RouteResponse{}, errors.New("invalid raw response MIME type")
+		}
+		if len(body) > 2<<20 {
+			return RouteResponse{}, errors.New("raw route response exceeds 2 MiB")
+		}
+		return RouteResponse{Status: status, Raw: &body, ContentType: mime}, nil
+	}
 	var out struct {
-		Raw         *string           `json:"raw"`
-		ContentType string            `json:"contentType"`
-		Status      int               `json:"status"`
-		Headers     map[string]string `json:"headers"`
-		Body        json.RawMessage   `json:"body"`
+		Status  int               `json:"status"`
+		Headers map[string]string `json:"headers"`
+		Body    json.RawMessage   `json:"body"`
 	}
 	if err := json.Unmarshal([]byte(r.data), &out); err != nil {
 		return RouteResponse{}, fmt.Errorf("plugin: route response: %w", err)
@@ -1286,17 +1307,7 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 	if out.Status < 100 || out.Status > 599 {
 		return RouteResponse{}, fmt.Errorf("plugin: route %s returned invalid status %d", route.Key(), out.Status)
 	}
-	if out.Raw != nil {
-		switch out.ContentType {
-		case "text/calendar", "text/csv", "text/plain", "text/markdown":
-		default:
-			return RouteResponse{}, errors.New("invalid raw response MIME type")
-		}
-		if len(*out.Raw) > 2<<20 {
-			return RouteResponse{}, errors.New("raw route response exceeds 2 MiB")
-		}
-	}
-	return RouteResponse{Status: out.Status, Headers: out.Headers, Body: out.Body, Raw: out.Raw, ContentType: out.ContentType}, nil
+	return RouteResponse{Status: out.Status, Headers: out.Headers, Body: out.Body}, nil
 }
 
 // RunSchedule runs a `schedules` entry (requires scheduler). Computing when is the bot

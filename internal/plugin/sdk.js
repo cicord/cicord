@@ -901,7 +901,8 @@
     if (v === undefined) return { status: 204 };
     if (v && typeof v.status === "number" && "raw" in v && "contentType" in v) {
       if (typeof v.raw !== "string" || !["text/calendar", "text/csv", "text/plain", "text/markdown"].includes(v.contentType)) throw new Error("invalid raw route response");
-      return {status: v.status, raw: v.raw, contentType: v.contentType};
+      // Use a bounded ASCII header so JSON escaping never expands a valid 2 MiB body.
+      return "raw\n" + v.status + "\n" + v.contentType + "\n" + v.raw;
     }
     if (v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.status === "number" &&
         Object.keys(v).every((k) => k === "status" || k === "body" || k === "headers")) {
@@ -926,7 +927,7 @@
           let s;
           try {
             if (kind === "privacy") s = JSON.stringify(v);
-            else if (kind === "route") s = JSON.stringify(routeOut(v));
+            else if (kind === "route") { const envelope = routeOut(v); s = typeof envelope === "string" ? envelope : JSON.stringify(envelope); }
             else if (kind === "autocomplete") s = JSON.stringify(v === undefined || v === null ? [] : v);
             ok(s);
           } catch (e) {
