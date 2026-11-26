@@ -1319,14 +1319,35 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   function reads(bits: Set<Permission>) {
     return bits.has("ViewChannel") && bits.has("ReadMessageHistory");
   }
-  function audienceOf(channel: TextChannel | undefined, withoutMember?:string): Audience {
+  function audienceOf(channel: TextChannel | undefined, withoutMember?: string): Audience {
     const out = {
       known: !!channel,
-      ...(channel?{fingerprint:createHash("sha256").update(JSON.stringify({
-        channel:channel.id,ownerId,nsfw:channelPolicy.get(channel.id)?.nsfw,
-        permissions:options.server?.everyonePermissions,roles:[...rolePermissions],
-        overwrites:[...(channelOverwrites.get(channel.id)??[])].filter(([id])=>!withoutMember || id!=="member:"+withoutMember).map(([id,o])=>[id,[...o.allow].filter(p=>p==="ViewChannel" || p==="ReadMessageHistory").sort(),[...o.deny].filter(p=>p==="ViewChannel" || p==="ReadMessageHistory").sort()]),
-      })).digest("hex")} : {}),
+      ...(channel
+        ? {
+            fingerprint: createHash("sha256")
+              .update(
+                JSON.stringify({
+                  channel: channel.id,
+                  ownerId,
+                  nsfw: channelPolicy.get(channel.id)?.nsfw,
+                  permissions: options.server?.everyonePermissions,
+                  roles: [...rolePermissions],
+                  overwrites: [...(channelOverwrites.get(channel.id) ?? [])]
+                    .filter(([id]) => !withoutMember || id !== "member:" + withoutMember)
+                    .map(([id, o]) => [
+                      id,
+                      [...o.allow]
+                        .filter((p) => p === "ViewChannel" || p === "ReadMessageHistory")
+                        .sort(),
+                      [...o.deny]
+                        .filter((p) => p === "ViewChannel" || p === "ReadMessageHistory")
+                        .sort(),
+                    ]),
+                }),
+              )
+              .digest("hex"),
+          }
+        : {}),
       public: false,
       allowRoles: [] as string[],
       allowMembers: [] as string[],
@@ -1519,24 +1540,41 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       need("discord.channels.read");
       return audienceOf(policyChannel(ref));
     },
-    async verifyReaders(ref,readers) {
+    async verifyReaders(ref, readers) {
       need("discord.channels.read");
-      const source=policyChannel(ref);
-      const ceilingId=":reader-ceiling";
-      const ceiling=source && {...source,id:ceilingId};
-      const overwrites=new Map<string,TestOverwrite>();
-      overwrites.set("@everyone",{allow:[],deny:["ViewChannel","ReadMessageHistory"]});
-      for(const id of readers.roles)overwrites.set("role:"+id,{allow:["ViewChannel","ReadMessageHistory"],deny:[]});
-      for(const id of readers.members)overwrites.set("member:"+id,{allow:["ViewChannel","ReadMessageHistory"],deny:[]});
-      channelOverwrites.set(ceilingId,overwrites);
-      try{
-        const rel=comparePolicies(ceiling,source);
-        const audience=audienceOf(source);
-        if(readers.viewer)need("discord.members.read");
-        return {known:audience.known,withoutMemberFingerprint:readers.withoutMember?audienceOf(source,readers.withoutMember).fingerprint:undefined,confined:rel==="same" || rel==="narrower",fingerprint:audience.fingerprint??"",
-          viewerCanRead:!!source && !channelPolicy.get(source.id)?.nsfw && !!readers.viewer && !!members.get(readers.viewer)?.canView(source),
-          destination:readers.destination?comparePolicies(source,policyChannel(readers.destination)):"unknown"};
-      }finally {channelOverwrites.delete(ceilingId);}
+      const source = policyChannel(ref);
+      const ceilingId = ":reader-ceiling";
+      const ceiling = source && { ...source, id: ceilingId };
+      const overwrites = new Map<string, TestOverwrite>();
+      overwrites.set("@everyone", { allow: [], deny: ["ViewChannel", "ReadMessageHistory"] });
+      for (const id of readers.roles)
+        overwrites.set("role:" + id, { allow: ["ViewChannel", "ReadMessageHistory"], deny: [] });
+      for (const id of readers.members)
+        overwrites.set("member:" + id, { allow: ["ViewChannel", "ReadMessageHistory"], deny: [] });
+      channelOverwrites.set(ceilingId, overwrites);
+      try {
+        const rel = comparePolicies(ceiling, source);
+        const audience = audienceOf(source);
+        if (readers.viewer) need("discord.members.read");
+        return {
+          known: audience.known,
+          withoutMemberFingerprint: readers.withoutMember
+            ? audienceOf(source, readers.withoutMember).fingerprint
+            : undefined,
+          confined: rel === "same" || rel === "narrower",
+          fingerprint: audience.fingerprint ?? "",
+          viewerCanRead:
+            !!source &&
+            !channelPolicy.get(source.id)?.nsfw &&
+            !!readers.viewer &&
+            !!members.get(readers.viewer)?.canView(source),
+          destination: readers.destination
+            ? comparePolicies(source, policyChannel(readers.destination))
+            : "unknown",
+        };
+      } finally {
+        channelOverwrites.delete(ceilingId);
+      }
     },
     compareAudience(source, destination) {
       need("discord.channels.read");
@@ -1547,13 +1585,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     name: options.server?.name ?? "Test Server",
     ...(options.server?.iconUrl ? { iconUrl: options.server.iconUrl } : {}),
     ...(ownerId !== undefined ? { ownerId } : {}),
-    async editRetractableDM(id,input){
+    async editRetractableDM(id, input) {
       need("discord.dm.send");
-      const message=messages.get(id);
-      if(!dmReceipts.has(id) || !message)throw new Error("Unknown DM receipt");
+      const message = messages.get(id);
+      if (!dmReceipts.has(id) || !message) throw new Error("Unknown DM receipt");
       await message.edit(input);
     },
-    async retractDM(id){
+    async retractDM(id) {
       need("discord.dm.send");
       if (!dmReceipts.delete(id)) return;
       const m = messages.get(id);
@@ -1614,11 +1652,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       need("discord.members.read");
       return members.get(userId);
     },
-    async recoverOwnedChannel(topic){
+    async recoverOwnedChannel(topic) {
       need("discord.channels.manage");
-      const found=createdChannels.filter(c=>c.options.topic===topic && channels.has(c.channel.id));
-      if(found.length===1)return {status:"owned",id:found[0]!.channel.id};
-      return {status:found.length?"conflict":"missing"};
+      const found = createdChannels.filter(
+        (c) => c.options.topic === topic && channels.has(c.channel.id),
+      );
+      if (found.length === 1) return { status: "owned", id: found[0]!.channel.id };
+      return { status: found.length ? "conflict" : "missing" };
     },
     async createChannel(opts) {
       need("discord.channels.manage");
