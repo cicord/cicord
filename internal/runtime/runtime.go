@@ -920,6 +920,13 @@ func (r *Runtime) reconcileServer(ctx context.Context, rev source.Revision, rt *
 	pause, paused := r.Paused(rt.key)
 	if !shouldApply(rt.cfg, t, paused) {
 		plan, err = rt.rec.Plan(ctx) // OnPlan updates the status
+		// Each revision creates a new read cache. Staff still need current roles,
+		// channels and ownership while enforcement is paused or plan-only.
+		if err == nil && t == triggerRevision {
+			if host := r.bot(rt.bot); host != nil {
+				err = rt.cache.Refresh(ctx, host.session, r.opts.Store.Resources())
+			}
+		}
 		if paused && t == triggerRevision {
 			msg := fmt.Sprintf("not applied: enforcement is paused by %s", pause.Who())
 			if n := len(plan.Changes); n > 0 {
