@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 #
 # Cicord runtime image: one static `cicord` binary with the admin UI and the default portal
 # embedded, on distroless/static (no shell, non-root uid 65532).
@@ -13,11 +13,8 @@
 # release workflow (.github/workflows/release.yml) publishes ghcr.io/cicord/cicord this way.
 # See https://cicord.dev/docs/self-hosting/deploy/.
 
-ARG NODE_VERSION=26
-ARG GO_VERSION=1.27
-
 # ───────────────────────────────────────────────────────────── web UIs
-FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-trixie-slim AS ui
+FROM --platform=$BUILDPLATFORM node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5 AS ui
 WORKDIR /src
 # Vite+ (vp) refuses to start without system CA certificates.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
@@ -43,7 +40,7 @@ RUN ./scripts/sync-ui.sh \
  && ls internal/webui/kit/packages/*.tgz internal/webui/kit/template/package.json >/dev/null
 
 # ───────────────────────────────────────────────────────────── cicord binary
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-trixie AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-trixie@sha256:430985542100b871e108ccc00e8dcc5eef08ca14ee5825e98ebf563d8ffec4ee AS build
 WORKDIR /src
 # The official image pins GOTOOLCHAIN=local; allow the exact toolchain of go.mod.
 ENV GOTOOLCHAIN=auto CGO_ENABLED=0
@@ -64,7 +61,7 @@ RUN --mount=type=cache,id=cicord-gomod,target=/go/pkg/mod \
  && mkdir -p /out/data /out/repo && chmod 0700 /out/data /out/repo
 
 # ───────────────────────────────────────────────────────────── runtime
-FROM gcr.io/distroless/static-debian13:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:8ce6dd87e9823c5b48dcfb2c8604714ccb351ce59607327bcc4957448da279b5
 ARG VERSION=0.2.0-rc.1
 ARG COMMIT=dev
 LABEL org.opencontainers.image.title="cicord" \
