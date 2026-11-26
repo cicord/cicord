@@ -324,7 +324,8 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	var viewer *plugin.RouteViewer
 	var grant *auth.ScopedGrant
-	if route.Access == "scoped" {
+	switch {
+	case route.Access == "scoped":
 		if id == nil {
 			s.fail(w, httpErr(http.StatusUnauthorized, "unauthenticated", "case sign-in required"))
 			return
@@ -345,10 +346,10 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		grant = claim.Scope
 		viewer = &plugin.RouteViewer{User: id.user}
-	} else if id != nil && id.data.Case != nil {
+	case id != nil && id.data.Case != nil:
 		s.fail(w, httpErr(http.StatusForbidden, "forbidden", "this session is restricted to its case"))
 		return
-	} else if id != nil && !id.bearer {
+	case id != nil && !id.bearer:
 		ro, m, err := s.roleIn(r.Context(), id, serverKey, true)
 		if err != nil {
 			s.fail(w, err)
@@ -363,7 +364,7 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 			u = m.User
 		}
 		viewer = &plugin.RouteViewer{User: u, Member: m}
-	} else if id == nil && need > roleNone {
+	case id == nil && need > roleNone:
 		s.fail(w, httpErr(http.StatusUnauthorized, "unauthenticated", "authentication required"))
 		return
 	}

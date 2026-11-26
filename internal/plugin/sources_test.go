@@ -29,7 +29,7 @@ func TestSecretFetch(t *testing.T) {
 				t.Error("json substitution")
 			}
 		case "/redirect":
-			http.Redirect(w, r, "/forbidden", 307)
+			http.Redirect(w, r, "/forbidden", http.StatusTemporaryRedirect)
 			return
 		default:
 			t.Error("unexpected destination")

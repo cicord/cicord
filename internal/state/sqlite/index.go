@@ -15,7 +15,7 @@ type fullText struct {
 
 func (s *Store) Index(scope string) state.FullTextIndex { return fullText{s, scope} }
 
-func (f fullText) Upsert(ctx context.Context, name, lang, id string, d state.IndexDocument) error {
+func (f fullText) Upsert(ctx context.Context, name, lang, id string, d state.IndexDocument) (err error) {
 	if err := state.ValidateIndex(name, lang); err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func (f fullText) Upsert(ctx context.Context, name, lang, id string, d state.Ind
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer rollback(tx, &err)
 	if _, err := tx.ExecContext(ctx, "DELETE FROM plugin_index_docs WHERE scope=? AND name=? AND id=?", f.scope, name, id); err != nil {
 		return err
 	}
@@ -58,7 +58,6 @@ func (f fullText) Search(ctx context.Context, name, lang, q string, opts state.I
 	if err != nil || len(terms) == 0 {
 		return out, err
 	}
-	table := "plugin_fts_" + lang // ValidateIndex restricts this identifier to en or fr.
 	for i, t := range terms {
 		terms[i] = "\"" + t + "\""
 	}
@@ -66,11 +65,18 @@ func (f fullText) Search(ctx context.Context, name, lang, q string, opts state.I
 		opts.Tags = []string{}
 	}
 	tags, _ := json.Marshal(opts.Tags)
-	rows, err := f.s.r.QueryContext(ctx, `SELECT d.id, -bm25(`+table+`,3.0,1.0), snippet(`+table+`,1,'','','…',32),d.meta
-	FROM `+table+` JOIN plugin_index_docs d ON d.rowid=`+table+`.rowid
-	WHERE `+table+` MATCH ? AND d.scope=? AND d.name=? AND NOT EXISTS
+	// FTS5 requires a table identifier in MATCH, bm25 and snippet.
+	// The language selects a fixed table name. All search data is bound.
+	const english = `SELECT d.id, -bm25(plugin_fts_en,3.0,1.0), snippet(plugin_fts_en,1,'','','…',32),d.meta
+	FROM plugin_fts_en JOIN plugin_index_docs d ON d.rowid=plugin_fts_en.rowid
+	WHERE plugin_fts_en MATCH ? AND d.scope=? AND d.name=? AND NOT EXISTS
 	(SELECT value FROM json_each(?) EXCEPT SELECT value FROM json_each(d.tags))
-	ORDER BY 2 DESC,d.id LIMIT ?`, strings.Join(terms, " OR "), f.scope, name, string(tags), opts.Limit)
+	ORDER BY 2 DESC,d.id LIMIT ?`
+	statement := english
+	if lang == "fr" {
+		statement = strings.ReplaceAll(english, "plugin_fts_en", "plugin_fts_fr")
+	}
+	rows, err := f.s.r.QueryContext(ctx, statement, strings.Join(terms, " OR "), f.scope, name, string(tags), opts.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +87,7 @@ func (f fullText) Search(ctx context.Context, name, lang, q string, opts state.I
 		if err := rows.Scan(&r.ID, &r.Score, &r.Snippet, &meta); err != nil {
 			return nil, err
 		}
-		r.Score = r.Score / (r.Score + 0.000001)
+		r.Score /= r.Score + 0.000001
 		r.Meta = json.RawMessage(meta)
 		out = append(out, r)
 	}

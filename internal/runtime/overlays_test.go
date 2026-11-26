@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -121,7 +120,7 @@ func TestOverlayValidation(t *testing.T) {
 		{ID: "x", Reason: "x", Until: now.Add(time.Hour), Members: map[string]reconcile.MemberRestriction{"bad": {Suspend: true}}},
 	} {
 		if err := value.Validate(now); err == nil {
-			t.Fatal(fmt.Sprintf("accepted %+v", value))
+			t.Fatalf("accepted %+v", value)
 		}
 	}
 }

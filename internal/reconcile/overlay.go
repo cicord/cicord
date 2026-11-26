@@ -75,7 +75,9 @@ func (o Overlay) Validate(now time.Time) error {
 			return errors.New("empty channel restriction")
 		}
 		for target, patch := range ch.Overwrites {
-			if target != "@everyone" && target != "@bot" && !targetID.MatchString(target) && !(strings.HasPrefix(target, "member:") && memberID.MatchString(strings.TrimPrefix(target, "member:"))) {
+			member, hasPrefix := strings.CutPrefix(target, "member:")
+			validMember := hasPrefix && memberID.MatchString(member)
+			if target != "@everyone" && target != "@bot" && !targetID.MatchString(target) && !validMember {
 				return errors.New("invalid overwrite target")
 			}
 			if len(patch.Deny)+len(patch.Neutral) == 0 {

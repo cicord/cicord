@@ -76,7 +76,7 @@ func (f fullText) Search(ctx context.Context, name, lang, q string, opts state.I
 		if err := rows.Scan(&r.ID, &r.Score, &r.Snippet, &r.Meta); err != nil {
 			return nil, err
 		}
-		r.Score = r.Score / (r.Score + 0.05)
+		r.Score /= r.Score + 0.05
 		out = append(out, r)
 	}
 	return out, rows.Err()

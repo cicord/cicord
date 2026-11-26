@@ -69,7 +69,7 @@ func providerUsage(result *fetchResult, held int) int {
 			Output *int `json:"output_tokens"`
 		} `json:"usage"`
 	}
-	if json.Unmarshal([]byte(result.Body), &body) != nil || body.Usage == nil || body.Usage.Input == nil || body.Usage.Output == nil {
+	if json.Unmarshal(result.Body, &body) != nil || body.Usage == nil || body.Usage.Input == nil || body.Usage.Output == nil {
 		return held
 	}
 	i, o := *body.Usage.Input, *body.Usage.Output
