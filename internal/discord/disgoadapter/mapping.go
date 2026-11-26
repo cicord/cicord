@@ -869,6 +869,7 @@ func allowedMentionsToWire(a *discord.AllowedMentions) *wireAllowedMentions {
 func messageSendToWire(m discord.MessageCreate) wireMessageSend {
 	w := wireMessageSend{
 		Attachments:     uploadDescriptions(m.Files),
+		Poll:            pollToWire(m.Poll),
 		Content:         m.Content,
 		Embeds:          embedsToWire(m.Embeds),
 		Components:      componentsToWire(m.Components),
@@ -921,8 +922,8 @@ func messageFromWire(w wireMessage) discord.Message {
 		CreatedAt: w.Timestamp,
 		EditedAt:  w.EditedTimestamp,
 		WebhookID: w.WebhookID,
-		Poll:      w.Poll != nil,
-		System:    isSystemMessage(w.Type),
+		Poll:      w.Poll != nil, PollResults: pollFromWire(w.Poll),
+		System: isSystemMessage(w.Type),
 	}
 	if r := w.MessageReference; r != nil && r.Type == 0 && w.Type == messageTypeReply {
 		m.ReplyToID = r.MessageID

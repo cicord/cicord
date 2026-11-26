@@ -46,7 +46,7 @@ const (
 
 func kpiModeOf(metric string) kpiMode {
 	switch metric {
-	case MembersTotal, MembersBots:
+	case MembersTotal, MembersBots, MembersBoosting:
 		return kpiLast
 	case MembersActive, MembersActiveBots:
 		return kpiDailyAvg

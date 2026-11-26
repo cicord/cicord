@@ -149,6 +149,8 @@ type reaction struct {
 type messageState struct {
 	pinned       time.Time
 	nonce        string
+	votes        map[int]map[string]bool
+	expires      time.Time
 	msg          discord.Message
 	reactions    []*reaction
 	ephemeral    bool
@@ -635,6 +637,11 @@ func cloneComponents(in []discord.Component) []discord.Component {
 }
 
 func cloneMessage(m discord.Message) discord.Message {
+	if m.PollResults != nil {
+		p := *m.PollResults
+		p.Answers = append([]discord.PollAnswer(nil), p.Answers...)
+		m.PollResults = &p
+	}
 	m.Member = cloneMemberPtr(m.Member)
 	m.Embeds = cloneEmbeds(m.Embeds)
 	m.Components = cloneComponents(m.Components)

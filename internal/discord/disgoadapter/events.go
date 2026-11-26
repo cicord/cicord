@@ -36,6 +36,9 @@ func parseSnowflake(s string) (snowflake.ID, error) {
 // more Cicord events, updating the member cache on the way. Unknown or irrelevant
 // dispatches return nil.
 func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
+	if evs, ok, err := communityDispatch(t, d); ok {
+		return evs, err
+	}
 	if evs, ok, err := s.translateAnalytics(t, d); ok {
 		return evs, err
 	}

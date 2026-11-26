@@ -115,3 +115,37 @@ func (r *Reader) Portal(ctx context.Context, server, period string, public func(
 	}
 	return out, nil
 }
+
+// PluginSummary exposes aggregate metrics and visible channel rankings only. Invite
+// codes, member tokens, labels and individual member observations never cross this boundary.
+func (r *Reader) PluginSummary(ctx context.Context, server string, from, to time.Time, step string, public func(string) (string, bool), st Status) (any, error) {
+	from = hourOf(from)
+	if t := hourOf(to); t.Before(to) {
+		to = t.Add(time.Hour)
+	}
+	metrics := []string{MembersTotal, MembersJoined, MembersLeft, MembersActive, MessagesSent, VoiceSeconds, MembersInvitedBy, ModerationActions, MembersOnline, MembersBoosting}
+	s, err := r.summarize(ctx, server, SummaryRequest{Period: CustomPeriod, From: from, To: to}, st, metrics)
+	if err != nil {
+		return nil, err
+	}
+	dim := ""
+	ss, err := r.Series(ctx, SeriesRequest{Server: server, From: from, To: to, Step: step, Metrics: metrics, Dim: &dim}, st)
+	if err != nil {
+		return nil, err
+	}
+	ds, err := r.Store.Dims(ctx, server, MessagesSent, from, to, state.MaxListLimit)
+	if err != nil {
+		return nil, err
+	}
+	channels := []PortalChannel{}
+	names := map[string]string{}
+	visible := func(id string) bool { name, ok := public(id); names[id] = name; return ok }
+	for _, d := range groupDims(ds, r.ownerMemo(server).of(ctx, ds), visible) {
+		name := names[d.Dim]
+		if d.Members != nil {
+			name = GroupLabel(d.Dim).Name
+		}
+		channels = append(channels, PortalChannel{ID: d.Dim, Name: name, Value: d.Value})
+	}
+	return map[string]any{"from": from, "to": to, "granularity": step, "kpis": s.KPIs, "channels": channels, "heatmap": s.Heatmap, "series": ss.Series}, nil
+}

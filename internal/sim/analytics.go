@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/cicord/cicord/internal/discord"
 )
@@ -28,13 +29,15 @@ var (
 )
 
 type serverActivity struct {
-	voice     map[string]discord.VoiceState     // user ID → voice state
-	presences map[string]discord.MemberPresence // user ID → presence (not offline)
-	invites   map[string]*discord.InviteUses    // code → invite
-	order     []string                          // invite codes, creation order
-	vanity    *discord.InviteUses
-	events    map[string]*discord.ScheduledEventInterest
-	eventIDs  []string
+	scheduled  map[string]discord.ScheduledEvent
+	interested map[string]map[string]bool
+	voice      map[string]discord.VoiceState     // user ID → voice state
+	presences  map[string]discord.MemberPresence // user ID → presence (not offline)
+	invites    map[string]*discord.InviteUses    // code → invite
+	order      []string                          // invite codes, creation order
+	vanity     *discord.InviteUses
+	events     map[string]*discord.ScheduledEventInterest
+	eventIDs   []string
 }
 
 // activity returns the activity state of a server. Caller holds w.mu.
@@ -44,7 +47,7 @@ func (w *World) activity(serverID string) *serverActivity {
 	}
 	a := w.analytics[serverID]
 	if a == nil {
-		a = &serverActivity{voice: map[string]discord.VoiceState{}, presences: map[string]discord.MemberPresence{},
+		a = &serverActivity{scheduled: map[string]discord.ScheduledEvent{}, interested: map[string]map[string]bool{}, voice: map[string]discord.VoiceState{}, presences: map[string]discord.MemberPresence{},
 			invites: map[string]*discord.InviteUses{}, events: map[string]*discord.ScheduledEventInterest{}}
 		w.analytics[serverID] = a
 	}
@@ -95,6 +98,11 @@ func (w *World) filterAnalytics(s *Session, ev discord.Event) (discord.Event, bo
 		return 0
 	}
 	switch e := ev.(type) {
+	case discord.CommunityEvent:
+		if e.Name == "pollVoteAdd" || e.Name == "pollVoteRemove" {
+			return e, has(discord.MustIntents("ServerMessagePolls"))
+		}
+		return e, has(discord.MustIntents("ServerScheduledEvents"))
 	case discord.ServerAvailableEvent:
 		out := discord.ServerAvailableEvent{ServerID: e.ServerID}
 		if has(intentVoiceStates) {
@@ -422,6 +430,9 @@ func (w *World) CreateScheduledEvent(serverID, name string, interested int) (str
 	a := w.activity(serverID)
 	id := w.newID()
 	a.events[id] = &discord.ScheduledEventInterest{ID: id, Name: name, Status: "scheduled", Interested: interested}
+	e := discord.ScheduledEvent{ID: id, Name: name, Start: w.now().Add(time.Hour), Status: "scheduled"}
+	a.scheduled[id] = e
+	w.emit(discord.CommunityEvent{Name: "scheduledEventCreate", ServerID: serverID, EventID: id, Event: e})
 	a.eventIDs = append(a.eventIDs, id)
 	return id, nil
 }
@@ -438,6 +449,11 @@ func (w *World) SetScheduledEvent(serverID, eventID string, interested int, stat
 	e.Interested = interested
 	if status != "" {
 		e.Status = status
+		if event, ok := w.activity(serverID).scheduled[eventID]; ok {
+			event.Status = status
+			w.activity(serverID).scheduled[eventID] = event
+			w.emit(discord.CommunityEvent{Name: "scheduledEventUpdate", ServerID: serverID, Event: event, EventID: eventID})
+		}
 	}
 	return nil
 }

@@ -37,16 +37,17 @@ type Env struct {
 	UploadLimit   func() int // current server maximum bytes per file
 	Pseudonym     func(string) string
 	// BeforeStart reapplies erasure markers to restored state before plugin startup.
-	BeforeStart     func(context.Context, *Instance) error
-	ManagedResource func(string) (bool, bool)
-	AttributeAudit  func(context.Context, discord.AuditLogEntryEvent) discord.AuditLogEntryEvent
-	Operations      *discord.OperationScope
-	BotKey          string
-	InstanceName    string // instance key, unique within the bot (namespaces custom IDs)
-	PluginName      string
-	PluginVersion   string
-	Bot             discord.User
-	ApplicationID   string
+	BeforeStart      func(context.Context, *Instance) error
+	ManagedResource  func(string) (bool, bool)
+	AttributeAudit   func(context.Context, discord.AuditLogEntryEvent) discord.AuditLogEntryEvent
+	Operations       *discord.OperationScope
+	BotKey           string
+	InstanceName     string // instance key, unique within the bot (namespaces custom IDs)
+	PluginName       string
+	PluginVersion    string
+	Bot              discord.User
+	ApplicationID    string
+	AnalyticsSummary func(context.Context, time.Time, time.Time, string) (any, error)
 
 	ServerKey             string
 	ServerID              string
@@ -220,9 +221,11 @@ type RouteViewer struct {
 
 // RouteResponse is what a route handler returned.
 type RouteResponse struct {
-	Status  int
-	Headers map[string]string
-	Body    json.RawMessage // JSON; nil when the handler returned no body
+	Raw         *string
+	ContentType string
+	Status      int
+	Headers     map[string]string
+	Body        json.RawMessage // JSON; nil when the handler returned no body
 }
 
 // Runtime is the language-agnostic surface of a plugin instance consumed by the bot host
@@ -1049,6 +1052,9 @@ func (i *Instance) DispatchEvent(ctx context.Context, ev discord.Event) <-chan e
 		}
 		return errChan(nil)
 	}
+	if e, ok := ev.(discord.CommunityEvent); ok && strings.HasPrefix(e.Name, "scheduledEvent") && !i.grants[capEventsRead] {
+		return errChan(&CapabilityError{Capability: capEventsRead})
+	}
 	return resultErr(i.dispatch(ctx, "event", name, i.eventDTO(ev), nil))
 }
 
@@ -1268,9 +1274,11 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 		return RouteResponse{}, fmt.Errorf("plugin: route %s returned more than %d bytes", route.Key(), maxRouteResponse)
 	}
 	var out struct {
-		Status  int               `json:"status"`
-		Headers map[string]string `json:"headers"`
-		Body    json.RawMessage   `json:"body"`
+		Raw         *string           `json:"raw"`
+		ContentType string            `json:"contentType"`
+		Status      int               `json:"status"`
+		Headers     map[string]string `json:"headers"`
+		Body        json.RawMessage   `json:"body"`
 	}
 	if err := json.Unmarshal([]byte(r.data), &out); err != nil {
 		return RouteResponse{}, fmt.Errorf("plugin: route response: %w", err)
@@ -1278,7 +1286,17 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 	if out.Status < 100 || out.Status > 599 {
 		return RouteResponse{}, fmt.Errorf("plugin: route %s returned invalid status %d", route.Key(), out.Status)
 	}
-	return RouteResponse{Status: out.Status, Headers: out.Headers, Body: out.Body}, nil
+	if out.Raw != nil {
+		switch out.ContentType {
+		case "text/calendar", "text/csv", "text/plain", "text/markdown":
+		default:
+			return RouteResponse{}, errors.New("invalid raw response MIME type")
+		}
+		if len(*out.Raw) > 2<<20 {
+			return RouteResponse{}, errors.New("raw route response exceeds 2 MiB")
+		}
+	}
+	return RouteResponse{Status: out.Status, Headers: out.Headers, Body: out.Body, Raw: out.Raw, ContentType: out.ContentType}, nil
 }
 
 // RunSchedule runs a `schedules` entry (requires scheduler). Computing when is the bot

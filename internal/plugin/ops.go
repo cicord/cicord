@@ -28,6 +28,8 @@ const (
 	capReactions       = "discord.reactions.manage"
 	capMembersRead     = "discord.members.read"
 	capMembersManage   = "discord.members.manage"
+	capEventsRead      = "discord.events.read"
+	capEventsManage    = "discord.events.manage"
 	capInvitesRead     = "discord.invites.read"
 	capAuditRead       = "discord.auditlog.read"
 	capMembersModerate = "discord.members.moderate"
@@ -63,6 +65,7 @@ var capabilityPermissions = map[string]discord.Permissions{
 	capChannelsRead:           discord.MustPermissions("ViewChannel"),
 	capChannelsManage:         discord.MustPermissions("ViewChannel", "ManageChannels", "ManageRoles"),
 	"server.incident":         discord.MustPermissions("ManageServer"),
+	capEventsManage:           discord.MustPermissions("ManageEvents"),
 	capThreadsManage: discord.MustPermissions("ViewChannel", "CreatePublicThreads", "CreatePrivateThreads",
 		"ManageThreads", "SendMessagesInThreads"),
 	// Moving a member needs MoveMembers, and Connect in the destination channel.
@@ -204,6 +207,8 @@ func init() {
 		"server.requestSync":     opRequestSync,
 		"dm.retract":             opRetractDM,
 		"privacy.pseudonym":      opPrivacyPseudonym,
+		"events.list":            communityOp("list"), "events.create": communityOp("create"), "events.edit": communityOp("edit"), "events.delete": communityOp("delete"), "events.users": communityOp("users"),
+		"message.endPoll": pollOp(false), "message.pollVoters": pollOp(true), "analytics.summary": opAnalytics,
 	}
 }
 

@@ -441,6 +441,7 @@ func (w *World) redact(m discord.Message, botID string, contentIntent bool) disc
 	m.Components = nil
 	m.Attachments = nil
 	m.Poll = false
+	m.PollResults = nil
 	return m
 }
 

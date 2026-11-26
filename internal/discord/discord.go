@@ -654,6 +654,7 @@ type MessageCreate struct {
 	Nonce           string
 	EnforceNonce    bool
 	Files           []UploadFile
+	Poll            *Poll
 	Content         string
 	Embeds          []Embed
 	Components      []Component
@@ -717,7 +718,8 @@ type Message struct {
 	StickerIDs []string
 	// Poll is true when the message carries a Discord poll (emptied, like Content,
 	// without the MessageContent intent).
-	Poll bool
+	Poll        bool
+	PollResults *Poll
 	// System is true for system messages (member joined, boost, pin…), which are not
 	// written by their author.
 	System bool

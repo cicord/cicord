@@ -155,6 +155,7 @@ export interface TestContextOptions {
   /** Per-file upload limit. Defaults to an unboosted server's 10 MiB. */
   uploadLimit?: number;
 
+  analytics?: import("@cicord/sdk").AnalyticsSummary;
   /**
    * Plugin config. Defaults are applied only when `schema` is given (like the runtime does
    * with config.schema.json); otherwise pass every field the plugin reads.
@@ -307,6 +308,7 @@ export interface TestHarness {
   member(userId: string): Member | undefined;
   addMember(init: TestMemberInit): Member;
   /** A message sent through the fakes (channel.send, reply, member.send, followUp). */
+  votePoll(messageId: string, answerId: number, userId: string, add?: boolean): void;
   message(id: string): Message | undefined;
   /** A channel by key or id (managed, created or DM). */
   channel(ref: string): TextChannel | undefined;
@@ -678,6 +680,20 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const messages = new Map<string, Message>();
   const dmReceipts=new Set<string>();
   const history = new Map<string, Message[]>(); // channel id → messages, oldest first
+  const ballots = new Map<string, Map<number, Set<string>>>();
+  function votePoll(id: string, answer: number, user: string, add = true) {
+    const poll = messages.get(id)?.poll;
+    if (!poll || poll.finalized || !poll.answers.some((a) => a.id === answer))
+      throw new Error("unknown answer or closed poll");
+    const votes = ballots.get(id) ?? new Map<number, Set<string>>();
+    if (add && !poll.multiselect) for (const set of votes.values()) set.delete(user);
+    const users = votes.get(answer) ?? new Set<string>();
+    if (add) users.add(user);
+    else users.delete(user);
+    votes.set(answer, users);
+    ballots.set(id, votes);
+    for (const a of poll.answers) a.votes = votes.get(a.id)?.size ?? 0;
+  }
   let messageSeq = 0;
   const pinned = new Set<string>();
   const crossposts = new Set<string>();
@@ -704,6 +720,19 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     validateFiles(input);
     validateLayoutInput(input);
     const id = existing?.id ?? String(1_000_000_000_000_000n + BigInt(++messageSeq));
+    const poll = typeof input === "string" ? undefined : input.poll;
+    if (
+      poll &&
+      (!poll.question ||
+        poll.question.length > 300 ||
+        poll.answers.length < 2 ||
+        poll.answers.length > 10 ||
+        poll.answers.some((a) => !a.text || [...a.text].length > 55) ||
+        !Number.isInteger(poll.durationHours) ||
+        poll.durationHours < 1 ||
+        poll.durationHours > 768)
+    )
+      throw new Error("invalid native poll");
     const message: Message = {
       // Snowflake-like ids (numeric strings growing with time), like Discord.
       id,
@@ -779,6 +808,32 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
           channel.id,
           (history.get(channel.id) ?? []).filter((m) => m.id !== message.id),
         );
+      },
+      ...(typeof input !== "string" && input.poll
+        ? {
+            poll: {
+              question: input.poll.question,
+              answers: input.poll.answers.map((a, index) => ({ ...a, id: index + 1, votes: 0 })),
+              multiselect: !!input.poll.multiselect,
+              finalized: false,
+            },
+          }
+        : {}),
+      async endPoll() {
+        need("discord.messages.send");
+        if (!message.poll || author.id !== botUser.id) throw new Error("expected own poll");
+        message.poll.finalized = true;
+        return message;
+      },
+      async pollVoters(answer, after) {
+        need("discord.messages.read");
+        return [...(ballots.get(message.id)?.get(answer) ?? [])]
+          .sort((a, b) => a.length - b.length || a.localeCompare(b))
+          .filter(
+            (id) =>
+              !after || id.length > after.length || (id.length === after.length && id > after),
+          )
+          .slice(0, 100);
       },
       async react(emoji) {
         need("discord.reactions.manage");
@@ -1316,6 +1371,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     return both ? "unknown" : "disjoint";
   }
   const overlayRecords = new Map<string, Overlay & { origin: string }>();
+  const scheduledEvents = new Map<string, import("@cicord/sdk").ScheduledEvent>();
+  let eventSeq = 0;
   const server: Server = {
     ...(options.server?.preferredLocale ? { preferredLocale: options.server.preferredLocale } : {}),
     async members(opts = {}) {
@@ -1363,6 +1420,41 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     async requestSync(reason) {
       need("server.sync");
       if (!reason.trim()) throw new Error("a sync reason is required");
+    },
+    async scheduledEvents() {
+      need("discord.events.read");
+      return [...scheduledEvents.values()];
+    },
+    async createScheduledEvent(input) {
+      need("discord.events.manage");
+      if (
+        !input.name ||
+        !Number.isFinite(Date.parse(input.start)) ||
+        !!input.channel === !!input.location ||
+        (input.location && !input.end)
+      )
+        throw new Error("invalid event");
+      const event: import("@cicord/sdk").ScheduledEvent = {
+        ...input,
+        id: String(++eventSeq),
+        status: "scheduled",
+        async edit(changes) {
+          need("discord.events.manage");
+          if (!scheduledEvents.has(event.id)) throw new Error("unknown event");
+          Object.assign(event, changes);
+          return event;
+        },
+        async delete() {
+          need("discord.events.manage");
+          scheduledEvents.delete(event.id);
+        },
+        async users() {
+          need("discord.events.read");
+          return [];
+        },
+      };
+      scheduledEvents.set(event.id, event);
+      return event;
     },
     async invites() {
       need("discord.invites.read");
@@ -1644,6 +1736,18 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         return d;
       },
     },
+    analytics: {
+      async summary(q) {
+        need("analytics.read");
+        if (
+          !options.analytics ||
+          !["day", "week"].includes(q.granularity) ||
+          !(Date.parse(q.from) < Date.parse(q.to))
+        )
+          throw new Error("analytics unavailable or invalid range");
+        return structuredClone(options.analytics);
+      },
+    },
     plugin: {
       name: options.plugin?.name ?? "test-plugin",
       version: options.plugin?.version ?? "0.0.0",
@@ -1857,6 +1961,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     setReaction,
     crossposts,
     typing,
+    votePoll,
     message: (id) => messages.get(id),
     channel: (ref) => channels.get(ref),
     removeMember: (id) => {
@@ -1910,6 +2015,31 @@ export interface RouteResult {
  * `body` and `headers` is a response envelope; anything else is a 200 JSON body.
  */
 export function normalizeRouteResponse(response: RouteResponse): RouteResult {
+  if (
+    response &&
+    typeof response === "object" &&
+    !Array.isArray(response) &&
+    typeof response.status === "number" &&
+    "raw" in response &&
+    "contentType" in response
+  ) {
+    if (
+      typeof response.raw !== "string" ||
+      !["text/calendar", "text/csv", "text/plain", "text/markdown"].includes(
+        String(response.contentType),
+      ) ||
+      new TextEncoder().encode(response.raw).length > 2 * 1024 * 1024
+    )
+      throw new Error("invalid raw route response");
+    return {
+      status: response.status,
+      body: response.raw,
+      headers: {
+        "content-type": response.contentType + "; charset=utf-8",
+        "x-content-type-options": "nosniff",
+      },
+    };
+  }
   if (
     response !== null &&
     typeof response === "object" &&
@@ -1992,7 +2122,10 @@ export async function callRoute(
       ...(viewer ? { viewer } : {}),
       ...(scope ? { scope } : {}),
     });
-    return normalizeRouteResponse(response);
+    const result = normalizeRouteResponse(response);
+    if (result.headers["x-content-type-options"] && definition.access !== "public")
+      result.headers["cache-control"] = "no-store";
+    return result;
   }
   return {
     status: 404,

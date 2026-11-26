@@ -102,6 +102,8 @@ func (i *Instance) structureEvent(ev discord.Event) map[string]any {
 		return map[string]any{"stickers": items}
 	case discord.WebhooksUpdateEvent:
 		return map[string]any{"channelId": e.ChannelID}
+	case discord.CommunityEvent:
+		return map[string]any{"event": e.Event, "eventId": e.EventID, "userId": e.UserID, "channelId": e.ChannelID, "messageId": e.MessageID, "answerId": e.AnswerID}
 	case discord.InviteCreateEvent:
 		return i.invite(discord.InviteUses{Code: e.Code, Uses: e.Uses, MaxUses: e.MaxUses, ChannelID: e.ChannelID, Inviter: e.Inviter, ExpiresAt: e.ExpiresAt})
 	case discord.InviteDeleteEvent:

@@ -135,6 +135,16 @@ export interface UploadFile {
   description?: string;
 }
 
+export interface NativePoll {
+  question: string;
+  answers: { text:string; emoji?:string }[];
+  durationHours: number;
+  multiselect?: boolean;
+}
+export interface PollResults {
+  question:string; answers:{id:number;text:string;emoji?:string;votes:number}[];
+  multiselect:boolean; finalized:boolean;
+}
 export interface MessagePayload {
   /** Components V2. Exclusive with content, embeds and components. */
   layout?: Component[];
@@ -143,6 +153,7 @@ export interface MessagePayload {
   enforceNonce?: boolean;
   /** Up to ten files. Embeds can use attachment://filename. */
   files?: UploadFile[];
+  poll?: NativePoll;
   content?: string;
   embeds?: Embed[];
   components?: ActionRow[];
@@ -179,6 +190,10 @@ export interface Message {
   reactionUsers(emoji: string, options?: {limit?: number; after?: Snowflake}): Promise<User[]>;
   /** Omitting userId removes the bot's reaction. @capability discord.messages.manage */
   removeReaction(emoji: string, userId?: Snowflake): Promise<void>;
+  readonly poll?: PollResults;
+  endPoll():Promise<Message>;
+  /** Discord returns at most 100 voters for one answer. Pass the last ID as after. */
+  pollVoters(answerId:number,after?:Snowflake):Promise<readonly Snowflake[]>;
   readonly id: Snowflake;
   /**
    * Empty unless the plugin declares the MessageContent intent in plugin.yaml, or the
@@ -438,6 +453,16 @@ export interface Overlay {
   members?: Record<Snowflake, {suspendDeclaredRoles: true}>;
 }
 
+export interface ScheduledEventInput {
+  name:string; description?:string; start:string; end?:string; channel?:Snowflake; location?:string; image?:string; recurrence?:Json;
+}
+export interface ScheduledEvent extends ScheduledEventInput {
+  readonly id:Snowflake; readonly status:string;
+  edit(changes:Partial<ScheduledEventInput>):Promise<ScheduledEvent>;
+  delete():Promise<void>;
+  /** Interested user IDs, 100 per page. */
+  users(after?:Snowflake):Promise<readonly Snowflake[]>;
+}
 export interface Server {
   readonly preferredLocale?: string;
   /** Paginated by ascending user id. Shares the role.members() cache, grant and intent. */
@@ -456,6 +481,8 @@ export interface Server {
   requestSync(reason: string): Promise<void>;
   /** Remove a DM previously sent as retractable by this instance. @capability discord.dm.send */
   retractDM(messageId:Snowflake): Promise<void>;
+  scheduledEvents():Promise<readonly ScheduledEvent[]>;
+  createScheduledEvent(event:ScheduledEventInput):Promise<ScheduledEvent>;
   invites():Promise<ServerInvite[]>;
   /** Up to 100 recent entries. Requires discord.auditlog.read and ServerModeration. */
   auditLog(options?:{action?: string;actorId?:Snowflake;before?:Snowflake;limit?:number}):Promise<AuditLogEntry[]>;
@@ -840,6 +867,13 @@ export interface ImageSpec {
   layers?: ImageLayer[];
 }
 
+export interface AnalyticsSummary {
+  from:string; to:string; granularity:"day"|"week";
+  kpis:{metric:string;value:number}[];
+  series:{metric:string;dim:string;points:[number,number][]}[];
+  channels:{id:string;name:string;value:number}[];
+  heatmap:number[][];
+}
 export interface Context {
   readonly i18n: {t(key: string, vars?: Record<string,string|number|boolean>, options?: {locale?:string}): string};
   readonly assets: {read(path: string): Promise<Uint8Array>};
@@ -850,6 +884,7 @@ export interface Context {
     hash(source: Attachment | string, options: {algo: "sha256" | "phash" | "dhash"}): Promise<string>;
     distance(a: string, b: string): number;
   };
+  readonly analytics:{summary(query:{from:string;to:string;granularity:"day"|"week"}):Promise<AnalyticsSummary>};
   readonly plugin: { readonly name: string; readonly version: string; readonly instance: string };
   readonly bot: { readonly key: string; readonly user: User };
   readonly server: Server;
@@ -882,7 +917,8 @@ export interface RouteRequest {
   readonly viewer?: { readonly user: User; readonly member?: Member };
 }
 
-export type RouteResponse = Json | { status: number; body?: Json; headers?: Record<string, string> };
+export type RawRouteResponse = { status: number; raw: string; contentType: "text/calendar" | "text/csv" | "text/plain" | "text/markdown" };
+export type RouteResponse = RawRouteResponse | Json | { status: number; body?: Json; headers?: Record<string, string> };
 
 export interface RouteDefinition {
   access: Access;
@@ -943,7 +979,7 @@ export interface TypedRouteDefinition<K extends string, T extends RouteTypes> {
   handler(
     ctx: Context,
     request: TypedRouteRequest<K, T>,
-  ): Awaitable<(T extends { response: infer R } ? R : void) | RouteEnvelope>;
+  ): Awaitable<(T extends { response: infer R } ? R : void) | RouteEnvelope | RawRouteResponse>;
 }
 
 /**
@@ -995,6 +1031,14 @@ export interface ServerInvite {
   expiresAt?:Date; vanity?:boolean;
 }
 export interface EventHandlers {
+  scheduledEventCreate?(ctx:Context,event:ScheduledEvent):Awaitable<void>;
+  scheduledEventUpdate?(ctx:Context,event:ScheduledEvent):Awaitable<void>;
+  scheduledEventDelete?(ctx:Context,event:ScheduledEvent):Awaitable<void>;
+  scheduledEventUserAdd?(ctx:Context,event:{eventId:Snowflake;userId:Snowflake}):Awaitable<void>;
+  scheduledEventUserRemove?(ctx:Context,event:{eventId:Snowflake;userId:Snowflake}):Awaitable<void>;
+  pollVoteAdd?(ctx:Context,event:{channelId:Snowflake;messageId:Snowflake;userId:Snowflake;answerId:number}):Awaitable<void>;
+  pollVoteRemove?(ctx:Context,event:{channelId:Snowflake;messageId:Snowflake;userId:Snowflake;answerId:number}):Awaitable<void>;
+
   channelCreate?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;
   channelUpdate?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;
   channelDelete?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;

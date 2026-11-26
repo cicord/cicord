@@ -97,7 +97,7 @@
       "enum": [
         "discord.messages.read", "discord.messages.send", "discord.messages.manage", "discord.webhooks.manage",
         "discord.reactions.manage", "discord.members.read", "discord.members.manage",
-        "discord.members.moderate", "discord.roles.assign", "discord.channels.read", "discord.auditlog.read", "discord.invites.read",
+        "discord.members.moderate", "discord.roles.assign", "discord.channels.read", "discord.auditlog.read", "discord.invites.read", "discord.events.read", "discord.events.manage", "analytics.read",
         "discord.channels.manage", "discord.threads.manage", "discord.voice.move", "discord.dm.send",
         "server.overlays", "server.incident", "server.sync",
         "storage.kv", "render", "media.analyze", "storage.index", "files.read", "scheduler", "http.fetch", "portal.routes", "portal.links",

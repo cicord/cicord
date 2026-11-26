@@ -636,3 +636,23 @@ func TestSummaryCustomRange(t *testing.T) {
 		t.Errorf("3-day range: step %s, spark %v", s.Step, qKPI(t, s, analytics.MessagesSent).Spark)
 	}
 }
+
+func TestPluginAnalyticsProjection(t *testing.T) {
+	st := qStore(t)
+	ctx := t.Context()
+	r := analytics.Reader{Store: st.Analytics(), Now: func() time.Time { return qNow }}
+	qCounter(t, st.Analytics(), analytics.MessagesSent, "public-channel", qDay(-2), 8)
+	qCounter(t, st.Analytics(), analytics.MessagesSent, "private-channel", qDay(-2), 11)
+	qCounter(t, st.Analytics(), analytics.MembersInvitedBy, "private-invite-code", qDay(-2), 3)
+	data, err := r.PluginSummary(ctx, "main", qDay(-7), qDay(0), "week", func(id string) (string, bool) { return "general", id == "public-channel" }, analytics.Status{Enabled: true})
+	qMust(t, err)
+	raw, _ := json.Marshal(data)
+	for _, unsafe := range []string{"inviterId", "userId", "rankings", "labels", "token", "private-channel", "private-invite-code"} {
+		if strings.Contains(string(raw), unsafe) {
+			t.Fatal("unexpected", unsafe)
+		}
+	}
+	if !strings.Contains(string(raw), `"id":"public-channel","name":"general","value":8`) || !strings.Contains(string(raw), `"granularity":"week"`) {
+		t.Fatal(string(raw))
+	}
+}

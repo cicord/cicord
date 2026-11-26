@@ -251,45 +251,5 @@ func publicChannels(rt *runtime.Runtime, server, serverID string) func(string) (
 
 // publicChannelsOf is publicChannels on given roles and channels.
 func publicChannelsOf(roles []discord.Role, channels []discord.Channel, serverID string) func(string) (string, bool) {
-	var everyone discord.Permissions
-	for _, ro := range roles {
-		if ro.ID == serverID {
-			everyone = ro.Permissions
-		}
-	}
-	byID := make(map[string]discord.Channel, len(channels))
-	for _, c := range channels {
-		byID[c.ID] = c
-	}
-	view := discord.MustPermissions("ViewChannel")
-	visible := func(c discord.Channel) bool {
-		p := everyone
-		for _, o := range c.Overwrites {
-			if o.ID == serverID {
-				p = (p &^ o.Deny) | o.Allow
-			}
-		}
-		return p&view != 0
-	}
-	return func(id string) (string, bool) {
-		c, ok := byID[id]
-		if !ok {
-			return "", false
-		}
-		if c.Type == discord.ChannelPrivateThread {
-			return "", false // invited members only, whatever its parent
-		}
-		target := c
-		if channelLabelKind(c.Type) == "thread" {
-			if parent, ok := byID[c.ParentID]; ok {
-				target = parent
-			} else {
-				return "", false
-			}
-		}
-		if !visible(target) {
-			return "", false
-		}
-		return c.Name, true
-	}
+	return discord.PublicChannels(roles, channels, serverID)
 }

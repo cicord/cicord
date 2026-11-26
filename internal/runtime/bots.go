@@ -346,6 +346,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		BeforeStart: func(ctx context.Context, inst *plugin.Instance) error {
 			return r.restoreMemberData(ctx, in.Server, instanceScope(in), inst)
 		},
+		AnalyticsSummary: r.pluginSummary(in.Server, srt),
 		ManagedResource: func(id string) (bool, bool) {
 			managed := srt.cache.Owner(id) == state.OwnerGit
 			return managed, managed && srt.cfg.Spec.SyncPolicy.SelfHeal() && !r.isPaused(in.Server)

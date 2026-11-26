@@ -88,6 +88,7 @@ type messageDTO struct {
 	Attachments []attachmentDTO           `json:"attachments"`
 	Embeds      []embedDTO                `json:"embeds"`
 	CreatedAt   string                    `json:"createdAt,omitempty"`
+	Poll        *discord.Poll             `json:"poll,omitempty"`
 }
 
 // embedDTO is a received embed, in the shape of the SDK's Embed (the one plugins send).
@@ -395,6 +396,7 @@ func (i *Instance) messageDTO(m discord.Message) messageDTO {
 		dto.Content = ""
 		return dto
 	}
+	dto.Poll = m.PollResults
 	for _, a := range m.Attachments {
 		dto.Attachments = append(dto.Attachments, attachmentDTOFrom(a))
 	}
@@ -821,15 +823,16 @@ type payloadDTO struct {
 
 // messageInput mirrors MessagePayload / ReplyInput of cicord-sdk.d.ts.
 type messageInput struct {
-	Layout          []compIn    `json:"layout"`
-	Nonce           string      `json:"nonce"`
-	EnforceNonce    bool        `json:"enforceNonce"`
-	Files           []fileInput `json:"files"`
-	Content         *string     `json:"content"`
-	Embeds          []embedIn   `json:"embeds"`
-	Components      []rowIn     `json:"components"`
-	AllowedMentions *mentionsIn `json:"allowedMentions"`
-	Ephemeral       *bool       `json:"ephemeral"`
+	Layout          []compIn      `json:"layout"`
+	Nonce           string        `json:"nonce"`
+	EnforceNonce    bool          `json:"enforceNonce"`
+	Files           []fileInput   `json:"files"`
+	Content         *string       `json:"content"`
+	Embeds          []embedIn     `json:"embeds"`
+	Components      []rowIn       `json:"components"`
+	AllowedMentions *mentionsIn   `json:"allowedMentions"`
+	Ephemeral       *bool         `json:"ephemeral"`
+	Poll            *discord.Poll `json:"poll"`
 }
 
 type mentionsIn struct {
@@ -964,6 +967,12 @@ func (i *Instance) messageCreate(in messageInput, allowEphemeral bool) (discord.
 	if err != nil {
 		return mc, err
 	}
+	if in.Poll != nil {
+		if err := in.Poll.Validate(); err != nil {
+			return mc, argErr("%s", err)
+		}
+		mc.Poll = in.Poll
+	}
 	if in.Ephemeral != nil && !allowEphemeral {
 		return mc, argErr("ephemeral is only supported in interaction replies")
 	}
@@ -1019,7 +1028,7 @@ func (i *Instance) messageCreate(in messageInput, allowEphemeral bool) (discord.
 			return mc, argErr("%s", strings.TrimPrefix(err.Error(), discord.ErrBadRequest.Error()+": "))
 		}
 	}
-	if mc.Content == "" && len(mc.Embeds) == 0 && len(mc.Components) == 0 && len(mc.Files) == 0 {
+	if mc.Poll == nil && mc.Content == "" && len(mc.Embeds) == 0 && len(mc.Components) == 0 && len(mc.Files) == 0 {
 		return mc, argErr("message is empty (set content, embeds or components)")
 	}
 	return mc, nil

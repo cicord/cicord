@@ -382,7 +382,7 @@ type wireMessage struct {
 	WebhookID        string                 `json:"webhook_id,omitempty"`
 	MessageReference *wireReceivedReference `json:"message_reference,omitempty"`
 	StickerItems     []wireStickerItem      `json:"sticker_items,omitempty"`
-	Poll             *struct{}              `json:"poll,omitempty"`
+	Poll             *wirePoll              `json:"poll,omitempty"`
 	// Interaction is deprecated by Discord in favour of interaction_metadata but still
 	// sent, and it alone has the command's name.
 	Interaction         *wireMessageInteraction  `json:"interaction,omitempty"`
@@ -432,6 +432,7 @@ type wireMessageSend struct {
 	Nonce            string                `json:"nonce,omitempty"`
 	EnforceNonce     bool                  `json:"enforce_nonce,omitempty"`
 	Attachments      []uploadMetadata      `json:"attachments,omitempty"`
+	Poll             *wirePoll             `json:"poll,omitempty"`
 	Content          string                `json:"content,omitempty"`
 	Embeds           []wireEmbed           `json:"embeds,omitempty"`
 	Components       []wireComponent       `json:"components,omitempty"`

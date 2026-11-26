@@ -265,6 +265,8 @@
     async crosspost(){await acall("message.crosspost",{channelId:this.channel.id,messageId:this.id});},
     async reactionUsers(emoji,options={}) {return (await acall("message.reactionUsers",{channelId:this.channel.id,messageId:this.id,emoji,limit:options.limit,after:options.after})).map(mkUser);},
     async removeReaction(emoji,userId){await acall("message.removeReaction",{channelId:this.channel.id,messageId:this.id,emoji,userId});},
+    async endPoll() { return mkMessage(await acall("message.endPoll",{channelId:this.channel.id,messageId:this.id})); },
+    async pollVoters(answerId,after) { return freeze(await acall("message.pollVoters",{channelId:this.channel.id,messageId:this.id,answerId,after})); },
     async reply(message) {
       return mkMessage(await sendCall("message.reply", { channelId: this.channel.id, messageId: this.id, message: msgIn(message) }));
     },
@@ -284,6 +286,7 @@
     const m = Object.create(MessageProto);
     m.id = d.id;
     m.url=d.url; m.reference=d.reference ? freeze(d.reference) : undefined; m.reactions=freeze((d.reactions||[]).map(r=>freeze(r)));
+    m.poll = d.poll ? deepFreeze(d.poll) : undefined;
     m.content = d.content || "";
     m.author = mkUser(d.author);
     m.member = d.member ? mkMember(d.member) : undefined;
@@ -295,6 +298,13 @@
   }
 
   // A ResourceRef, or an object with an id (a Channel, a Role…), as the host reads it.
+  function mkEvent(e) {
+    return freeze(Object.assign({},e,{
+      async edit(changes) { return mkEvent(await acall("events.edit",{event:Object.assign({},e,changes,{id:e.id})})); },
+      async delete() { await acall("events.delete",{id:e.id}); },
+      async users(after) { return freeze(await acall("events.users",{id:e.id,after})); },
+    }));
+  }
   const refIn = (ref) => (ref !== null && typeof ref === "object" ? { id: ref.id } : ref);
 
   const memberRoles = new WeakMap();
@@ -515,6 +525,8 @@
         await acall("member.ban", {userId: String(userId), reason: options.reason, deleteMessagesSeconds: options.deleteMessagesSeconds});
       },
       async unban(userId, reason) { await acall("server.unban", {userId: String(userId), reason}); },
+      async scheduledEvents() { return freeze((await acall("events.list",{})).map(mkEvent)); },
+      async createScheduledEvent(event) { return mkEvent(await acall("events.create",{event})); },
       async invites() { return freeze((await acall("server.invites",{})).map(mkInvite)); },
       async auditLog(options = {}) {
         return freeze((await acall("server.auditLog",options)).map(mkAudit));
@@ -661,6 +673,7 @@
       i18n: freeze({t(key,vars,options) {return hcall("i18n.t",{key,vars:vars||{},locale:options&&options.locale});}}),
       bot: freeze({ key: d.bot.key, user: mkUser(d.bot.user) }),
       server,
+      analytics: freeze({async summary(query){return deepFreeze(await acall("analytics.summary",query));}}),
       config: deepFreeze(d.config || {}),
       log: freeze({ debug: logFn("debug"), info: logFn("info"), warn: logFn("warn"), error: logFn("error") }),
       privacy: freeze({pseudonym: userId => acall("privacy.pseudonym",userId)}),
@@ -827,6 +840,8 @@
         return [freeze(Object.assign({},d.structure,{role:mkRole(d.structure.role),previous:d.structure.previous?mkRole(d.structure.previous):undefined}))];
       case "threadCreate": case "threadDelete":
         return [freeze({thread:mkChannel(d.structure.thread),parent:d.structure.parent?mkChannel(d.structure.parent):undefined})];
+      case "scheduledEventCreate": case "scheduledEventUpdate": case "scheduledEventDelete": return [mkEvent(d.structure.event)];
+      case "scheduledEventUserAdd": case "scheduledEventUserRemove": case "pollVoteAdd": case "pollVoteRemove": return [freeze(d.structure)];
       case "inviteCreate": case "inviteDelete": return [mkInvite(d.structure)];
       case "automodAction": case "serverUpdate": case "expressionsUpdate": case "webhooksUpdate": return [freeze(d.structure)];
       case "auditLogEntry": return [mkAudit(d.audit)];
@@ -884,6 +899,10 @@
 
   function routeOut(v) {
     if (v === undefined) return { status: 204 };
+    if (v && typeof v.status === "number" && "raw" in v && "contentType" in v) {
+      if (typeof v.raw !== "string" || !["text/calendar", "text/csv", "text/plain", "text/markdown"].includes(v.contentType)) throw new Error("invalid raw route response");
+      return {status: v.status, raw: v.raw, contentType: v.contentType};
+    }
     if (v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.status === "number" &&
         Object.keys(v).every((k) => k === "status" || k === "body" || k === "headers")) {
       return { status: v.status, body: v.body, headers: v.headers };

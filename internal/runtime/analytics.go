@@ -2,6 +2,8 @@ package runtime
 
 import (
 	"context"
+	"errors"
+
 	"time"
 
 	"github.com/cicord/cicord/internal/analytics"
@@ -127,3 +129,16 @@ func (r *Runtime) AnalyticsStatus(server string) analytics.Status {
 
 // analyticsShutdownTimeout bounds the wait for the collector's last flush.
 const analyticsShutdownTimeout = 15 * time.Second
+
+// pluginSummary reads only the specified server and builds an allowlisted projection.
+func (r *Runtime) pluginSummary(server string, srt *serverRT) func(context.Context, time.Time, time.Time, string) (any, error) {
+	return func(ctx context.Context, from, to time.Time, step string) (any, error) {
+		enabled, _, _ := srt.cfg.Spec.AnalyticsSettings()
+		if !enabled || r.opts.Analytics == nil {
+			return nil, errors.New("server analytics disabled")
+		}
+		rd := analytics.Reader{Store: r.opts.Analytics, Owners: analytics.ResourceLabeler{Resources: r.opts.Store.Resources()}}
+		roles, channels := srt.cache.Snapshot()
+		return rd.PluginSummary(ctx, server, from, to, step, discord.PublicChannels(roles, channels, srt.cfg.Spec.DiscordID), r.AnalyticsStatus(server))
+	}
+}

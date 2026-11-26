@@ -416,6 +416,16 @@ func (s *server) handlePluginRoute(w http.ResponseWriter, r *http.Request) {
 	if status == 0 {
 		status = http.StatusOK
 	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if route.Access != "public" {
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	if resp.Raw != nil {
+		w.Header().Set("Content-Type", resp.ContentType+"; charset=utf-8")
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, *resp.Raw)
+		return
+	}
 	if resp.Body == nil {
 		if status == http.StatusOK {
 			status = http.StatusNoContent

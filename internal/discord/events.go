@@ -242,6 +242,8 @@ func ServerIDOf(e Event) string {
 		return ev.ServerID
 	case AutoModActionEvent:
 		return ev.ServerID
+	case CommunityEvent:
+		return ev.ServerID
 	case InviteCreateEvent:
 		return ev.ServerID
 	case InviteDeleteEvent:

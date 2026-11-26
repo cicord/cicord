@@ -23,7 +23,12 @@ func (w *World) validateMessage(m discord.MessageCreate, server string) error {
 	if utf8.RuneCountInString(m.Content) > 2000 {
 		return badRequest("content must be at most 2000 characters")
 	}
-	if m.Content == "" && len(m.Embeds) == 0 && len(m.Components) == 0 && len(m.Files) == 0 {
+	if m.Poll != nil {
+		if err := m.Poll.Validate(); err != nil {
+			return err
+		}
+	}
+	if m.Poll == nil && m.Content == "" && len(m.Embeds) == 0 && len(m.Components) == 0 && len(m.Files) == 0 {
 		return badRequest("cannot send an empty message")
 	}
 	if len(m.Embeds) > 10 {
@@ -254,6 +259,18 @@ func (w *World) newMessage(c *channelState, author discord.User, m discord.Messa
 	}
 	msg.Attachments = w.uploads(c.ch.ID, m.Files)
 	ms := &messageState{msg: msg, nonce: m.Nonce}
+	if p := m.Poll; p != nil {
+		poll := *p
+		poll.Answers = slices.Clone(p.Answers)
+		for n := range poll.Answers {
+			poll.Answers[n].ID = n + 1
+			poll.Answers[n].Votes = 0
+		}
+		ms.msg.Poll = true
+		ms.msg.PollResults = &poll
+		ms.votes = map[int]map[string]bool{}
+		ms.expires = w.now().Add(time.Duration(p.DurationHours) * time.Hour)
+	}
 	w.messages[msg.ID] = ms
 	if ephemeralFor != "" {
 		ms.ephemeral, ms.ephemeralFor = true, ephemeralFor
@@ -394,6 +411,11 @@ func (w *World) sendMessage(a actor, channelID string, m discord.MessageCreate) 
 		return fail(err)
 	}
 	serverID = c.ch.ServerID
+	if m.Poll != nil {
+		if err := w.requireChannel(a, c, discord.MustPermissions("SendPolls")); err != nil {
+			return fail(err)
+		}
+	}
 	if err := w.checkSend(a, c); err != nil {
 		return fail(err)
 	}
@@ -602,6 +624,9 @@ func (w *World) getMessage(a actor, channelID, messageID string) (discord.Messag
 	}
 	if err := w.readAccess(a, c); err != nil {
 		return discord.Message{}, err
+	}
+	if ms.msg.PollResults != nil && !w.now().Before(ms.expires) {
+		ms.msg.PollResults.Finalized = true
 	}
 	return w.messageFor(a, ms), nil
 }
