@@ -539,7 +539,8 @@ describe("simulator", () => {
         });
       }
       if (url.pathname.endsWith("/sim/poll-votes") && init.method === "POST") {
-        const vote = JSON.parse(String(init.body)) as (typeof votes)[number];
+        if (typeof init.body !== "string") throw new Error("Expected a JSON poll vote");
+        const vote = JSON.parse(init.body) as (typeof votes)[number];
         votes.push(vote);
         if (vote.voted) voters.add(vote.userId);
         else voters.delete(vote.userId);

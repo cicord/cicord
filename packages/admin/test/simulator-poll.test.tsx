@@ -96,6 +96,6 @@ test("a multiselect poll can show several choices, and a finalized or read-only 
     await user.click(button);
   }
   ui.rerender(<MessageList messages={[sample([])]} resolver={resolver} />);
-  expect((screen.getByRole("button", { name: /Garden/ }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole("button", { name: /Garden/ })).toHaveProperty("disabled", true);
   expect(vote).not.toHaveBeenCalled();
 });
