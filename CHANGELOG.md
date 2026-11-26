@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-26
+
 ### Added
 
 - **The Store can update every plugin in one change.** **Update all**, at the top of the Store
@@ -1156,7 +1158,8 @@ First public release (pre-release, API `cicord.dev/v1alpha1`).
   multi-arch image `ghcr.io/cicord/cicord` with SBOM, provenance and an attestation in the
   registry; `@cicord/*` on npm through trusted publishing with provenance.
 
-[Unreleased]: https://github.com/cicord/cicord/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/cicord/cicord/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/cicord/cicord/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/cicord/cicord/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/cicord/cicord/compare/v0.1.11...v0.2.0
 [0.1.11]: https://github.com/cicord/cicord/compare/v0.1.10...v0.1.11
