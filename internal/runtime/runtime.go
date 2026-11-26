@@ -1090,9 +1090,23 @@ func (r *Runtime) instanceDeadCounts() map[string]int {
 	return counts
 }
 
-func (i *instanceRT) reportedHealth(dead int) (string, string) {
+func (r *Runtime) reportedHealth(i *instanceRT, dead int) (string, string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	if i.health == HealthHealthy && i.cfg.Plugin != nil && i.cfg.Config["enabled"] != false {
+		var optional []string
+		for _, s := range i.cfg.Plugin.Manifest.Spec.Secrets {
+			if _, _, ok := r.instanceSecret(i.cfg, s.Name); !ok {
+				if s.Required {
+					return HealthDegraded, "Missing required plugin secret " + s.Name
+				}
+				optional = append(optional, s.Name)
+			}
+		}
+		if len(optional) > 0 && dead == 0 {
+			return i.health, "Features requiring these optional secrets are disabled: " + strings.Join(optional, ", ")
+		}
+	}
 	if dead > 0 && i.health == HealthHealthy {
 		return HealthDegraded, fmt.Sprintf("%d failed scheduled task(s) need attention in Diagnostics", dead)
 	}
@@ -1115,7 +1129,7 @@ func (r *Runtime) Instances(server string) []InstanceInfo {
 		if i.plugin != nil {
 			def = i.plugin.def
 		}
-		health, message := i.reportedHealth(dead[instanceScope(i.cfg)])
+		health, message := r.reportedHealth(i, dead[instanceScope(i.cfg)])
 		out = append(out, InstanceInfo{Config: i.cfg, Definition: def, Health: health, Message: message})
 	}
 	return out
@@ -1211,7 +1225,7 @@ func (r *Runtime) Status() Status {
 			if i.cfg.Bot != key {
 				continue
 			}
-			health, message := i.reportedHealth(dead[instanceScope(i.cfg)])
+			health, message := r.reportedHealth(i, dead[instanceScope(i.cfg)])
 			bs.Plugins = append(bs.Plugins, PluginStatus{Instance: i.cfg.Name, Plugin: i.cfg.Plugin.Manifest.Metadata.Name,
 				Version: i.cfg.Plugin.Manifest.Metadata.Version, Server: i.cfg.Server, Health: health, Message: message})
 			if health == HealthDegraded && bs.Health == HealthHealthy {

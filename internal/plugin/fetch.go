@@ -252,6 +252,8 @@ type fetchInit struct {
 	Method    string            `json:"method"`
 	Headers   map[string]string `json:"headers"`
 	Body      *string           `json:"body"`
+	Form      map[string]string `json:"form"`
+	JSON      map[string]any    `json:"json"`
 	TimeoutMs float64           `json:"timeoutMs"`
 }
 
@@ -274,9 +276,18 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 	if err != nil {
 		return nil, err
 	}
-	u, err := url.Parse(a.URL)
+	materials, rawURL, err := i.prepareFetch(a.URL, &a.Init)
+	if err != nil {
+		return nil, err
+	}
+	u, err := url.Parse(rawURL)
 	if err != nil || !u.IsAbs() {
-		return nil, argErr("http.fetch: invalid URL %q", a.URL)
+		return nil, argErr("http.fetch: invalid URL")
+	}
+	for _, s := range materials {
+		if u.Scheme != "https" || newEgress(s.hosts, false, nil, 0).checkURL(u) != nil {
+			return nil, fmt.Errorf("%w: destination outside secret host grant", ErrEgressDenied)
+		}
 	}
 	if err := i.egress.checkURL(u); err != nil {
 		return nil, err
@@ -286,7 +297,7 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 		method = "GET"
 	}
 	if !fetchMethods[method] {
-		return nil, argErr("http.fetch: unsupported method %q", a.Init.Method)
+		return nil, argErr("http.fetch: unsupported method")
 	}
 	if a.Init.Body != nil && len(*a.Init.Body) > maxRequestBody {
 		return nil, argErr("http.fetch: request body larger than %d bytes", maxRequestBody)
@@ -301,20 +312,24 @@ func opHTTPFetch(i *Instance, _ *invocation, args json.RawMessage) (func(context
 	return func(ctx context.Context) (any, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		res, err := i.egress.do(ctx, method, u, a.Init.Headers, a.Init.Body)
+		res, err := i.egress.do(ctx, method, u, a.Init.Headers, a.Init.Body, len(materials) > 0)
 		if err != nil {
+			if len(materials) > 0 {
+				return nil, errors.New("http.fetch: credentialed request failed")
+			}
 			if ctx.Err() != nil && errors.Is(err, context.DeadlineExceeded) {
 				return nil, fmt.Errorf("http.fetch %s %s: timed out after %s", method, u.Redacted(), timeout)
 			}
 			return nil, fmt.Errorf("http.fetch %s %s: %w", method, u.Redacted(), err)
 		}
+		redactResponse(res, materials)
 		return res, nil
 	}, nil
 }
 
 var strippedOnCrossHost = []string{"authorization", "cookie", "proxy-authorization"}
 
-func (e *egress) do(ctx context.Context, method string, u *url.URL, headers map[string]string, body *string) (*fetchResult, error) {
+func (e *egress) do(ctx context.Context, method string, u *url.URL, headers map[string]string, body *string, sensitive bool) (*fetchResult, error) {
 	hdr := http.Header{}
 	for k, v := range headers {
 		switch strings.ToLower(k) {
@@ -346,6 +361,9 @@ func (e *egress) do(ctx context.Context, method string, u *url.URL, headers map[
 		if loc := resp.Header.Get("Location"); isRedirect(resp.StatusCode) && loc != "" {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 			resp.Body.Close()
+			if sensitive {
+				return nil, errors.New("credentialed requests cannot follow redirects")
+			}
 			if hop >= maxRedirects {
 				return nil, fmt.Errorf("too many redirects (max %d)", maxRedirects)
 			}

@@ -598,11 +598,12 @@ type commandDTO struct {
 }
 
 type pluginItemDTO struct {
-	Bot      string         `json:"bot"`
-	Instance string         `json:"instance"`
-	Server   string         `json:"server"`
-	Plugin   pluginInfoDTO  `json:"plugin"`
-	Config   map[string]any `json:"config"`
+	Secrets  []pluginSecretView `json:"secrets,omitempty"`
+	Bot      string             `json:"bot"`
+	Instance string             `json:"instance"`
+	Server   string             `json:"server"`
+	Plugin   pluginInfoDTO      `json:"plugin"`
+	Config   map[string]any     `json:"config"`
 	// Schema is the plugin's config.schema.json as written (property order preserved).
 	Schema json.RawMessage `json:"schema"`
 	// BaseConfig is spec.plugins[].config of bot.yaml and Override the server's
@@ -727,6 +728,16 @@ func (s *server) pluginItem(in runtime.InstanceInfo, key string, ro role, ups ma
 		Config: in.Config.Config, Schema: rawSchema(in.Config.Plugin, schema), Editable: editableFields(schema, ro),
 		BaseConfig: base, Override: override,
 		Commands: []commandDTO{}, Routes: []string{}, Health: in.Health, Message: in.Message,
+	}
+	if ro >= roleAdmin {
+		for _, decl := range m.Spec.Secrets {
+			ref, bound := in.Config.SecretRefs[decl.Name]
+			external := false
+			if bound && s.opts.Secret != nil {
+				_, external = s.opts.Secret(ref.SecretRef)
+			}
+			it.Secrets = append(it.Secrets, pluginSecretView{Name: decl.Name, Description: decl.Description, Hosts: decl.Hosts, Required: decl.Required, Bound: bound, External: external})
+		}
 	}
 	it.Source, it.Trust = s.pluginOrigin(in.Config.Plugin)
 	if u, ok := ups[it.Source+"/"+m.Metadata.Name]; ok && it.Source != "local" {

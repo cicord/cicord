@@ -623,6 +623,11 @@
     "instance": {
       "back": "All plugins",
       "viewInStore": "View in Store",
+      "saveSecret": "Save secret",
+      "secretSaved": "Secret saved.",
+      "secretFailed": "Could not save this secret.",
+      "secretExternal": "This value is managed by the operator.",
+      "secretUnbound": "Declare a secretRef for this name in bot.yaml to enable it.",
       "notFound": {
         "title": "This plugin instance does not exist",
         "text": "There is no instance {{bot}}/{{instance}} on this server. It may have been uninstalled or renamed."

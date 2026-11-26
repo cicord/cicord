@@ -107,6 +107,12 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "secrets": {"type":"object","maxProperties":32, "propertyNames":{"$ref":"common.schema.json#/$defs/secretRef"},
+          "additionalProperties":{"type":"object","required":["secretRef"],"additionalProperties":false,"properties":{"secretRef":{"$ref":"common.schema.json#/$defs/secretRef"}}}},
+        "files": {"type":"array","maxItems":64,"uniqueItems":true,"items":{"type":"string","minLength":1,"maxLength":256}},
+        "network":{"type":"object","required":["allow"],"additionalProperties":false,"properties":{
+          "allow":{"type":"array","maxItems":128,"uniqueItems":true,"items":{"$ref":"common.schema.json#/$defs/networkHost"}}
+        }},
         "grants": {
           "description": "Capabilities granted to this plugin. Must cover every capability its manifest requests.",
           "type": "array",

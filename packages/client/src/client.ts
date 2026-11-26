@@ -801,6 +801,26 @@ export class CicordClient {
      * `PUT /servers/{server}/plugins/{bot}/{instance}/config` (moderator, field-restricted).
      * Rejects with `forbidden` (403), `invalid` + `diagnostics` (422) or `conflict` (409).
      */
+    setPluginSecret: (
+      server: string,
+      bot: string,
+      instance: string,
+      name: string,
+      value: string,
+    ): Promise<void> =>
+      this.#api<void>(
+        "PUT",
+        "/servers/" +
+          seg(server) +
+          "/plugins/" +
+          seg(bot) +
+          "/" +
+          seg(instance) +
+          "/secrets/" +
+          seg(name),
+        { body: { value } },
+      ),
+
     updatePluginConfig: (
       server: string,
       bot: string,

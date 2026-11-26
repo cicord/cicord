@@ -1,0 +1,55 @@
+package plugin
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"sort"
+	"unicode/utf8"
+
+	"github.com/cicord/cicord/internal/config"
+)
+
+func opFile(method string) asyncOp {
+	return func(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+		if err := i.require("files.read"); err != nil {
+			return nil, err
+		}
+		a, err := decode[struct{ Path, Glob string }](args)
+		if err != nil {
+			return nil, err
+		}
+		return func(context.Context) (any, error) {
+			if method == "list" {
+				if a.Glob != "" {
+					if _, err := config.MatchFileGlob(a.Glob, ""); err != nil {
+						return nil, err
+					}
+				}
+				names := []string{}
+				for name := range i.env.Files {
+					if a.Glob != "" {
+						ok, _ := config.MatchFileGlob(a.Glob, name)
+						if !ok {
+							continue
+						}
+					}
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				return names, nil
+			}
+			data, ok := i.env.Files[a.Path]
+			if !ok {
+				return nil, errors.New("undeclared instance file")
+			}
+			if method == "bytes" {
+				return data, nil
+			}
+			if !utf8.Valid(data) {
+				return nil, errors.New("file is not UTF-8")
+			}
+			return string(data), nil
+		}, nil
+	}
+}

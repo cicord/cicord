@@ -43,11 +43,14 @@ type LoadedPlugin struct {
 
 // Instance is a plugin running for one (bot, server) pair (ADR-0010).
 type Instance struct {
-	Bot    string
-	Name   string // instance name, unique within the bot
-	Server string // server key
-	Plugin *LoadedPlugin
-	Grants []string
+	Files        map[string][]byte `json:"-"`
+	SecretRefs   map[string]TokenRef
+	NetworkAllow []string
+	Bot          string
+	Name         string // instance name, unique within the bot
+	Server       string // server key
+	Plugin       *LoadedPlugin
+	Grants       []string
 	// Config is the effective config: base config ⊕ server override (merge patch) with
 	// schema defaults applied. JSON-compatible values (numbers are float64).
 	Config map[string]any
@@ -461,6 +464,8 @@ func (l *loader) checkBots(repo *Repo) {
 				continue
 			}
 
+			network, files := l.instanceResources(lp.Manifest.Spec, inst, b.File, base)
+
 			// grants must cover requested capabilities
 			granted := map[string]bool{}
 			for _, g := range inst.Grants {
@@ -537,12 +542,13 @@ func (l *loader) checkBots(repo *Repo) {
 						continue
 					}
 				}
-				for _, problem := range checkRefs(lp.SchemaDoc, cfg, &srv.Spec, "") {
+				for _, problem := range append(checkRefs(lp.SchemaDoc, cfg, &srv.Spec, ""), checkNetworkURLs(lp.SchemaDoc, lp.SchemaDoc, cfg, network, "", 0)...) {
 					p := cfgPath + problem.path
 					l.sink.errorf(b.File, doc.lineOf(p), p, "[server %s] %s", sk, problem.msg)
 				}
 				repo.Instances = append(repo.Instances, Instance{
 					Bot: bk, Name: inst.Name, Server: sk, Plugin: lp, Grants: inst.Grants, Config: cfg,
+					NetworkAllow: network, SecretRefs: inst.Secrets, Files: files,
 				})
 			}
 		}

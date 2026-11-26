@@ -16,6 +16,15 @@
       "type": "string",
       "pattern": "^[0-9]{17,20}$"
     },
+    "networkHost": {
+  "description": "Public DNS hostname, optional port. A wildcard needs at least two labels after it (*.example.com, not *.com). IP literals, localhost and reserved suffixes are rejected; the runtime re-checks resolved addresses (https://cicord.dev/docs/plugins/writing/).",
+  "type": "string",
+  "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})(:[0-9]{1,5})?$",
+  "not": {
+    "type": "string",
+    "pattern": "(^|\\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|arpa|test|invalid|example|onion)(:[0-9]+)?$"
+  }
+},
     "secretRef": {
       "description": "Name of a secret resolved by the runtime (environment variable when self-hosted).",
       "type": "string",
@@ -90,7 +99,7 @@
         "discord.reactions.manage", "discord.members.read", "discord.members.manage",
         "discord.members.moderate", "discord.roles.assign", "discord.channels.read", "discord.auditlog.read", "discord.invites.read",
         "discord.channels.manage", "discord.threads.manage", "discord.voice.move", "discord.dm.send",
-        "storage.kv", "scheduler", "http.fetch", "portal.routes", "portal.links",
+        "storage.kv", "storage.index", "files.read", "scheduler", "http.fetch", "portal.routes", "portal.links",
         "events.publish", "events.subscribe"
       ]
     },

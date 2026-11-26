@@ -113,6 +113,23 @@ export interface TestMemberInit {
   serverAvatarUrl?: string;
 }
 
+function fileMatches(pattern: string[], path: string[]): boolean {
+  if (!pattern.length) return !path.length;
+  if (pattern[0] === "**")
+    return (
+      fileMatches(pattern.slice(1), path) ||
+      (path.length > 0 && fileMatches(pattern, path.slice(1)))
+    );
+  const expr = Array.from(pattern[0]!, (c) =>
+    c === "*" ? ".*" : c === "?" ? "." : "\\\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"),
+  ).join("");
+  return (
+    path.length > 0 &&
+    new RegExp("^" + expr + "$").test(path[0]!) &&
+    fileMatches(pattern.slice(1), path.slice(1))
+  );
+}
+
 export interface TestFetchResponse {
   status?: number;
   headers?: Record<string, string>;
@@ -121,6 +138,9 @@ export interface TestFetchResponse {
 }
 
 export interface TestContextOptions {
+  /** Logical names only. The fake fetch sees opaque handles, never real credentials. */
+  secrets?: string[];
+  files?: Record<string, string | Uint8Array>;
   /**
    * Plugin config. Defaults are applied only when `schema` is given (like the runtime does
    * with config.schema.json); otherwise pass every field the plugin reads.
@@ -1307,6 +1327,31 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         need("scheduler");
         const i = scheduled.findIndex((s) => s.id === id);
         if (i >= 0) scheduled.splice(i, 1);
+      },
+    },
+    secrets: {
+      has(name) {
+        return options.secrets?.includes(name) === true;
+      },
+      ref(name) {
+        if (!this.has(name)) throw new Error("plugin secret is unavailable");
+        return ("cicord-secret:" + name) as ReturnType<Context["secrets"]["ref"]>;
+      },
+    },
+    files: {
+      async list(glob) {
+        need("files.read");
+        const files = Object.keys(options.files ?? {}).sort();
+        return glob ? files.filter((path) => fileMatches(glob.split("/"), path.split("/"))) : files;
+      },
+      async bytes(path) {
+        need("files.read");
+        const value = options.files?.[path];
+        if (value === undefined) throw new Error("undeclared instance file");
+        return typeof value === "string" ? new TextEncoder().encode(value) : value.slice();
+      },
+      async read(path) {
+        return new TextDecoder("utf-8", { fatal: true }).decode(await this.bytes(path));
       },
     },
     http: {

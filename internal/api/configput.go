@@ -272,7 +272,7 @@ func (s *server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			continue
 		}
-		ds = append(ds, config.ValidateInstanceConfig(lp, effective[sk], sk, &srv.Spec, bot.File, cfgPath)...)
+		ds = append(ds, config.ValidateInstanceConfig(lp, effective[sk], sk, &srv.Spec, bot.File, cfgPath, current[sk].Config.NetworkAllow)...)
 	}
 	if ds.HasErrors() {
 		writeDiagnostics(w, "the configuration is invalid", ds.Errors())

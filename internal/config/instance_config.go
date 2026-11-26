@@ -38,7 +38,7 @@ func EffectiveConfig(lp *LoadedPlugin, base, override map[string]any) map[string
 // x-cicord-ref references against the server's resource keys. Diagnostics are reported in
 // file (the bot.yaml, relative to the repo root) under path (e.g. "/spec/plugins/0/config"),
 // with messages prefixed by "[server <key>]" like Load.
-func ValidateInstanceConfig(lp *LoadedPlugin, cfg map[string]any, serverKey string, srv *ServerSpec, file, path string) Diagnostics {
+func ValidateInstanceConfig(lp *LoadedPlugin, cfg map[string]any, serverKey string, srv *ServerSpec, file, path string, instanceNetwork ...[]string) Diagnostics {
 	if lp == nil {
 		return nil
 	}
@@ -58,6 +58,11 @@ func ValidateInstanceConfig(lp *LoadedPlugin, cfg map[string]any, serverKey stri
 		for _, p := range checkRefs(lp.SchemaDoc, cfg, srv, "") {
 			out = append(out, Diagnostic{Severity: SeverityError, File: file, Path: path + p.path,
 				Message: fmt.Sprintf("[server %s] %s", serverKey, p.msg)})
+		}
+	}
+	if len(instanceNetwork) > 0 {
+		for _, p := range checkNetworkURLs(lp.SchemaDoc, lp.SchemaDoc, cfg, instanceNetwork[0], "", 0) {
+			out = append(out, Diagnostic{Severity: SeverityError, File: file, Path: path + p.path, Message: fmt.Sprintf("[server %s] %s", serverKey, p.msg)})
 		}
 	}
 	out.Sort()

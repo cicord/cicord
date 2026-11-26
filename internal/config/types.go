@@ -542,6 +542,9 @@ type Activity struct {
 }
 
 type PluginInstance struct {
+	Secrets   map[string]TokenRef       `yaml:"secrets,omitempty" json:"secrets,omitempty"`
+	Network   *Network                  `yaml:"network,omitempty" json:"network,omitempty"`
+	Files     []string                  `yaml:"files,omitempty" json:"files,omitempty"`
 	Name      string                    `yaml:"name" json:"name"`
 	Source    string                    `yaml:"source" json:"source"`
 	Version   string                    `yaml:"version,omitempty" json:"version,omitempty"`
@@ -578,7 +581,15 @@ type PluginMetadata struct {
 	Keywords    []string `yaml:"keywords,omitempty" json:"keywords,omitempty"`
 }
 
+type PluginSecret struct {
+	Name        string   `yaml:"name,omitempty" json:"name,omitempty"`
+	Description string   `yaml:"description,omitempty" json:"description,omitempty"`
+	Required    bool     `yaml:"required,omitempty" json:"required,omitempty"`
+	Hosts       []string `yaml:"hosts,omitempty" json:"hosts,omitempty"`
+}
+
 type PluginSpec struct {
+	Secrets      []PluginSecret    `yaml:"secrets,omitempty" json:"secrets,omitempty"`
 	Engine       string            `yaml:"engine" json:"engine"`
 	Entry        string            `yaml:"entry" json:"entry"`
 	Capabilities []string          `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`
@@ -597,7 +608,8 @@ type PluginRoutesSpec struct {
 }
 
 type Network struct {
-	Allow []string `yaml:"allow" json:"allow"`
+	Configurable bool     `yaml:"configurable,omitempty" json:"configurable,omitempty"`
+	Allow        []string `yaml:"allow" json:"allow"`
 }
 
 type PluginConfigSpec struct {

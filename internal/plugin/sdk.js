@@ -518,6 +518,28 @@
       async cancel(id) { await acall("schedule.cancel", { id }); },
     });
 
+    const secrets = freeze({
+      has(name) { return hcall("secrets.has", {name}); },
+      ref(name) {
+        if (!this.has(name)) throw new Error("plugin secret is unavailable");
+        return "cicord-secret:" + name;
+      },
+    });
+    const files = freeze({
+      list(glob) { return acall("files.list", {glob}); },
+      read(path) { return acall("files.read", {path}); },
+      async bytes(path) {
+        const encoded = await acall("files.bytes", {path});
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        const out = new Uint8Array(Math.floor(encoded.replace(/=+$/, "").length * 3 / 4));
+        let buffer = 0, bits = 0, pos = 0;
+        for (let n=0; n<encoded.length && encoded[n]!=="="; n++) {
+          buffer = (buffer << 6) | alphabet.indexOf(encoded[n]); bits += 6;
+          if (bits >= 8) {bits -= 8; out[pos++] = buffer >> bits;}
+        }
+        return out;
+      },
+    });
     const http = freeze({
       async fetch(url, init) {
         const r = await acall("http.fetch", { url: String(url), init: init || {} });
@@ -551,6 +573,8 @@
       log: freeze({ debug: logFn("debug"), info: logFn("info"), warn: logFn("warn"), error: logFn("error") }),
       kv,
       schedule,
+      files,
+      secrets,
       http,
       events,
       portal,

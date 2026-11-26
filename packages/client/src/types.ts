@@ -762,6 +762,14 @@ export interface PluginCommandSummary {
 }
 
 export interface PluginInstance {
+  secrets?: {
+    name: string;
+    description: string;
+    hosts: string[];
+    required: boolean;
+    bound: boolean;
+    external: boolean;
+  }[];
   bot: string;
   instance: string;
   server: string;

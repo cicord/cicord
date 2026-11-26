@@ -110,6 +110,7 @@ func init() {
 		"server.compareAudience": opCompareAudience,
 		"member.permissionsIn":   opPermissionsIn,
 		"server.owner":           opServerOwner,
+		"secrets.has":            opSecretHas,
 		"it.state":               opInteractionState,
 	}
 	asyncOps = map[string]asyncOp{
@@ -151,6 +152,9 @@ func init() {
 		"kv.list":              opKVList,
 		"schedule.after":       opScheduleAfter,
 		"schedule.cancel":      opScheduleCancel,
+		"files.read":           opFile("read"),
+		"files.list":           opFile("list"),
+		"files.bytes":          opFile("bytes"),
 		"http.fetch":           opHTTPFetch,
 		"events.publish":       opEventsPublish,
 		"portal.link":          opPortalLink,

@@ -652,11 +652,22 @@ export interface Scheduler {
   cancel(id: string): Promise<void>;
 }
 
+/** Opaque logical reference, resolved only by the host at an approved destination. */
+export type SecretRef = string & { readonly __secretRef: unique symbol };
+
+export interface InstanceFiles {
+  list(glob?: string): Promise<string[]>;
+  read(path: string): Promise<string>;
+  bytes(path: string): Promise<Uint8Array>;
+}
+
 /** Subset of WHATWG fetch, limited to hosts allowed in plugin.yaml. @capability http.fetch */
 export interface Http {
-  fetch(url: string, init?: {
+  fetch(url: string | SecretRef, init?: {
     method?: string;
-    headers?: Record<string, string>;
+    headers?: Record<string, string | SecretRef>;
+    form?: Record<string, string | SecretRef>;
+    json?: Record<string, Json | SecretRef>;
     body?: string;
     timeoutMs?: number;
   }): Promise<{
@@ -700,6 +711,8 @@ export interface Context {
   readonly kv: KV;
   readonly schedule: Scheduler;
   readonly http: Http;
+  readonly files: InstanceFiles;
+  readonly secrets: {has(name: string): boolean; ref(name: string): SecretRef};
   readonly events: Events;
   readonly portal: Portal;
 }

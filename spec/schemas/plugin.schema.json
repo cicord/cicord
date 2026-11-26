@@ -50,22 +50,23 @@
           "items": { "$ref": "common.schema.json#/$defs/capability" },
           "uniqueItems": true
         },
+        "secrets": {
+          "type": "array", "maxItems": 32,
+          "items": {"type": "object", "additionalProperties": false, "required": ["name","hosts"],
+            "properties": {
+              "name": {"$ref":"common.schema.json#/$defs/secretRef"},
+              "description": {"type":"string","maxLength":512}, "required":{"type":"boolean"},
+              "hosts":{"type":"array","minItems":1,"uniqueItems":true,"items":{"$ref":"common.schema.json#/$defs/networkHost"}}
+            }}
+        },
         "network": {
           "description": "Hosts reachable with http.fetch. Required when http.fetch is requested.",
           "type": "object",
           "properties": {
+            "configurable": {"type":"boolean"},
             "allow": {
               "type": "array",
-              "items": {
-                "description": "Public DNS hostname, optional port. A wildcard needs at least two labels after it (*.example.com, not *.com). IP literals, localhost and reserved suffixes are rejected; the runtime re-checks resolved addresses (https://cicord.dev/docs/plugins/writing/).",
-                "type": "string",
-                "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})(:[0-9]{1,5})?$",
-                "not": {
-                  "type": "string",
-                  "pattern": "(^|\\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|arpa|test|invalid|example|onion)(:[0-9]+)?$"
-                }
-              },
-              "minItems": 1,
+              "items": { "$ref": "common.schema.json#/$defs/networkHost" },
               "uniqueItems": true
             }
           },

@@ -48,6 +48,8 @@ type Env struct {
 	Grants []string
 	// NetworkAllow is plugin.yaml spec.network.allow.
 	NetworkAllow []string
+	Secret       func(string) (string, []string, bool)
+	Files        map[string][]byte
 	// AllowPrivateNetworks disables the egress address checks and allows plain http
 	// (tests and `cicord dev` only).
 	AllowPrivateNetworks bool

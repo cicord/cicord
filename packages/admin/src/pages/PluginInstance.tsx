@@ -240,7 +240,13 @@ function InstanceView({
           ) : section === "danger" ? (
             <DangerZone instance={instance} serverKey={serverKey} />
           ) : (
-            <PluginSettings instance={instance} serverKey={serverKey} />
+            <>
+              <PluginSettings instance={instance} serverKey={serverKey} />
+              {ws.isAdmin &&
+                instance.secrets?.map((secret) => (
+                  <SecretField key={secret.name} instance={instance} secret={secret} />
+                ))}
+            </>
           )}
         </div>
       </div>
@@ -370,6 +376,77 @@ export interface UninstallFlash {
   instance: string;
   server: string;
   result: UninstallResult;
+}
+
+function SecretField({
+  instance,
+  secret,
+}: {
+  instance: PluginInstance;
+  secret: NonNullable<PluginInstance["secrets"]>[number];
+}) {
+  const { t } = useTranslation(),
+    { client, cache } = useCicord();
+  const [value, setValue] = useState(""),
+    [busy, setBusy] = useState(false),
+    [state, setState] = useState("");
+  return (
+    <form
+      className="mt-4 space-y-2 rounded-md border p-4"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setState("");
+        try {
+          await client.admin.setPluginSecret(
+            instance.server,
+            instance.bot,
+            instance.instance,
+            secret.name,
+            value,
+          );
+          setValue("");
+          setState(t("plugins.instance.secretSaved"));
+          await cache.invalidate(keys.plugins(instance.server));
+        } catch {
+          setState(t("plugins.instance.secretFailed"));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label className="block font-medium" htmlFor={"secret-" + secret.name}>
+        {secret.name}
+      </label>
+      <p className="text-sm text-muted-foreground">
+        {secret.description} · {secret.hosts.join(", ")}
+      </p>
+      {secret.bound && !secret.external ? (
+        <>
+          <input
+            id={"secret-" + secret.name}
+            className="rounded border bg-background px-2 py-1"
+            type="password"
+            autoComplete="new-password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            maxLength={8192}
+            required
+          />
+          <Button type="submit" disabled={busy || !value}>
+            {t("plugins.instance.saveSecret")}
+          </Button>
+        </>
+      ) : (
+        <p>
+          {t(
+            secret.external ? "plugins.instance.secretExternal" : "plugins.instance.secretUnbound",
+          )}
+        </p>
+      )}
+      <span role="status">{state}</span>
+    </form>
+  );
 }
 
 function DangerZone({ instance, serverKey }: { instance: PluginInstance; serverKey: string }) {

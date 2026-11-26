@@ -239,6 +239,7 @@ func (s *server) routes() {
 	h("POST /api/v1/servers/{server}/dead-letters/{id}/{decision}", s.handleDeadLetterDecision)
 	h("GET /api/v1/servers/{server}/plugins", s.handlePlugins)
 	h("GET /api/v1/servers/{server}/plugins/{bot}/{instance}", s.handlePlugin)
+	h("PUT /api/v1/servers/{server}/plugins/{bot}/{instance}/secrets/{name}", s.handlePluginSecret)
 	h("PUT /api/v1/servers/{server}/plugins/{bot}/{instance}/config", s.handleConfigPut)
 	h("GET /api/v1/servers/{server}/assets/{kind}", s.handleAssetGet)
 	h("PUT /api/v1/servers/{server}/assets/{kind}", s.handleAssetPut)
