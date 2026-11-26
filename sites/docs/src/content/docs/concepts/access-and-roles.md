@@ -12,7 +12,7 @@ For each server, a user is one of:
 
 | Role        | Who                                                                       | Can                                                                                                                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `admin`     | The server owner (always), and the roles or users in `spec.access.admins` | Everything a moderator can, plus: the plan, syncs, every plugin setting, the Store (install, update, uninstall), icon, banner and splash uploads, and Diagnostics.                            |
+| `admin`     | The server owner (always), and the roles or users in `spec.access.admins` | Everything a moderator can, plus: the plan, syncs, every plugin setting, the Store (install, update, uninstall), plugin secrets, icon, banner and splash uploads, lifting incident overlays, member data export and erasure, and Diagnostics (failed tasks, interop). |
 | `moderator` | The roles or users in `spec.access.moderators`                            | The server's overview, analytics, resources, sync history, drift and audit log; [pausing and resuming enforcement](../reconciliation/#emergency-pause-enforcement) (with the pending plan while paused); plugin instances, and the plugin settings marked `x-cicord-access: moderator`; moderator portal routes (tickets, warnings…). |
 | `member`    | Any member of the Discord server                                          | The portal (profile, onboarding, member routes).                                                                                                                                             |
 | none        | Not in the server                                                         | Public portal pages and `public` plugin routes only.                                                                                                                                         |
@@ -56,11 +56,13 @@ to the policies.
 
 The admin console is served at `<public-url>/admin/` (or on its own admin URL when one is
 configured) and embedded in the binary. Per server it has: Overview (sync, health, drift),
-Analytics, Resources, Server settings, Plugins with their generated settings pages, the
-**Store**, Plan, History, Drift, Audit and **Diagnostics** (the setup wizard's checks on
-demand). Pages a moderator cannot use (Store, Plan, Diagnostics) are hidden for them. It has
-light and dark themes and a command palette; with `cicord dev --sim` it also shows the
-**Simulator** panel.
+Analytics, Resources, Server settings (with **Member data**: export, erase, and purge the data
+of uninstalled plugins), Plugins with their generated settings pages and secrets, the
+**Store**, Plan (with the active incident overlays), History, Drift, Audit and
+**Diagnostics** (the setup wizard's checks on demand, failed tasks to retry or discard, and
+the interop links between plugins). Pages a moderator cannot use (Store, Plan, Diagnostics)
+are hidden for them. It has light and dark themes and a command palette; with
+`cicord dev --sim` it also shows the **Simulator** panel.
 
 ![The admin console: server overview with sync and health status, live Discord state, recent activity and plugins](../../../assets/screenshots/admin-overview.webp)
 
@@ -70,6 +72,7 @@ light and dark themes and a command palette; with `cicord dev --sim` it also sho
 | --------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Discord login** (OAuth2, scope `identify`)        | Admin console, portal                                               | The user's roles on every server. Sessions last 7 days.                                                                                                                                                                                         |
 | **Portal link** (`ctx.portal.link()` with a member) | A link sent by a plugin, e.g. in a DM                               | One server only, and at most `member` outside the portal endpoints, so a forwarded link never opens the admin console. The link is valid 15 minutes by default, 24 hours at most; the session it opens lasts until the link expires, at least 1 hour. |
+| **Case link** (`ctx.portal.link()` with a `scope`)  | An appeal or verification result, e.g. for a banned member          | Discord sign-in as the original recipient, then only the issuing plugin's `scoped` routes for that case. At most 7 days; the plugin can revoke it. See [Case links](../../reference/http-api/authentication/#case-links). |
 | **Session token** (token mode)                      | Portals embedded on another origin                                  | Full role on the portal endpoints and plugin routes, at most `member` elsewhere. 24 hours.                                                                                                                                                      |
 | **Runtime token** (`CICORD_RUNTIME_TOKEN`)          | CLI and CI (`cicord plan --remote`, `cicord status`, `cicord sync`) | Admin on every server.                                                                                                                                                                                                                          |
 | **Dev login**                                       | `cicord dev` only                                                   | Any user; requires `--sim` or the runtime token.                                                                                                                                                                                                |

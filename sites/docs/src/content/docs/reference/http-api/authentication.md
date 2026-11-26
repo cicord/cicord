@@ -167,10 +167,22 @@ For each server, a user is `admin` (the server owner, or `spec.access.admins`), 
 clients are `admin` everywhere.
 
 The user's live member roles are fetched from Discord (through the server's reconciling bot,
-cached 30 seconds; no connected bot: `503`) and matched with
+cached 30 seconds; no connected bot: `503`; concurrent reads of one member share a single
+Discord call) and matched with
 `spec.access.<admins|moderators>.roles` (keys resolved through the resource map) and `.users`
-(Discord user IDs). Admin wins over moderator. A user who is not in the server has no role.
+(Discord user IDs). Admin wins over moderator. A user who is not in the server has no role
+("not a member" is cached the same way, so a stranger's requests do not reach Discord).
 Link sessions and session tokens are restricted as described above.
+
+Plugin routes re-read the viewer's member from Discord on every request, because the plugin
+decides what the viewer may read from it ([plugin routes](../portal/#plugin-routes)); the raw
+event view of a [dead letter](../plugin-instances/#failed-scheduled-tasks) does too. Both still
+accept a cached "not a member".
+
+Portal requests of a signed-in user (`/portal/{server}/me`, plugin routes, the members'
+analytics) are limited to 120 a minute per Discord user, in bursts of 60;
+more answer `429 rate_limited` with `Retry-After`. Anonymous requests and the runtime bearer
+token are not counted.
 
 Endpoints that need a role on a server answer:
 
@@ -192,7 +204,7 @@ Declare the plugin route with `access: "scoped"`. Read the authorized case from
 `request.scope.id` and the user from `request.viewer.user.id`. Use the signed case ID
 for every read and write. A route declaring `:id` gets an additional host-side comparison.
 The case session has access only to scoped plugin routes on the issuing installation.
-Expired links require a new link from the issuer. To invalidate all links and current
+A case link lasts at most seven days; expired links require a new link from the issuer. To invalidate all links and current
 sessions for the case, call `ctx.portal.revoke({kind: "case", id: "42"})`. New links
 issued after revocation use the new case generation.
 

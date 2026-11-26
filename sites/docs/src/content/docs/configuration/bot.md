@@ -100,14 +100,19 @@ separate on each server.
 | `version` | semver range | **Required** for registry plugins (and locked in `cicord.lock`), **forbidden** for local ones. |
 | `servers` | list of server keys (≥ 1) | Restrict the instance to some of the bot's servers. Default: all of them. |
 | `grants` | list of capabilities | Must cover **every** capability the plugin's manifest requests. |
-| `config` | object | The plugin's configuration, validated against its `config.schema.json`. |
+| `config` | object | The plugin's configuration, validated against its `config.schema.json`. `enabled: false` disables the instance ([details](../../plugins/writing/#disabling-an-installation)). |
 | `overrides.<server>.config` | object | Per-server config, applied as a JSON merge patch (RFC 7386) over `config`. |
+| `secrets.<NAME>.secretRef` | string | Binds a credential the manifest declares in `spec.secrets` to an operator secret, whose name must start with `CICORD_` ([bound credentials](../../plugins/writing/#sending-a-webhook-with-a-bound-credential)). |
+| `network.allow` | list of hosts | Extra hosts for `http.fetch`, only when the manifest sets `spec.network.configurable: true`. |
+| `files` | list of globs | Repository files the instance reads with `ctx.files` (needs the `files.read` grant), relative to the repository root, for example `["tags/**/*.md"]`; at most 10,000 files and 20 MiB. |
+| `interop.targets` | map | Picks the provider when several installations of the same plugin run on the server: plugin name → `bot/instance` (`{ polls: community/polls }`). |
+| `interop.allowCallers` | list of `bot/instance` | Restricts which installations may query or call this provider. |
 
 ```yaml title="A registry plugin (community server)"
 plugins:
   - name: github-releases
     source: cicord/github-releases # registry "cicord" (official), plugin "github-releases"
-    version: ^0.1.0 # locked in cicord.lock by `cicord plugin add`
+    version: ^0.2.0 # locked in cicord.lock by `cicord plugin add`
     grants: [discord.messages.send, discord.channels.read, storage.kv, scheduler, http.fetch]
     config:
       feeds:

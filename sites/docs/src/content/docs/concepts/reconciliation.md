@@ -88,6 +88,13 @@ After losing the state database, `cicord adopt` rebuilds the local resource map 
   (`managed:`). `@everyone` is only changed through `spec.everyone`.
 - **Permission overwrites** of a managed category or channel are owned as a whole: overwrites
   for targets that are not in the YAML are removed.
+- **Incident overlays** are the only way a plugin changes managed resources. A plugin with
+  `server.overlays` applies a temporary restriction (channel denies, slowmode, verification
+  level, suspended role holders) for at most seven days; the plan applies git plus the active
+  overlays, and expiry or an admin's **Lift overlay** on the Plan page brings back git. See
+  [Incident overlays](../../reference/http-api/servers/#incident-overlays).
+
+![The Plan page: an active overlay applied by the guard plugin during a raid, with Lift overlay](../../../assets/screenshots/admin-overlays.webp)
 
 ## Removed keys: prune and deletion protection
 
@@ -220,8 +227,8 @@ manual change in Discord marks the server `OutOfSync` right away. Per server,
   periodic sync every 5 minutes also applies, for drift that no event reports.
 
 `selfHeal` only covers drift. With either value, a new revision and **Sync now** apply the
-whole configuration, and so revert every manual change. To keep a manual change, for example
-a channel locked during a raid, [pause enforcement](#emergency-pause-enforcement).
+whole configuration, and so revert every manual change (but not an active overlay). To keep a
+manual change, for example a channel locked during a raid, [pause enforcement](#emergency-pause-enforcement).
 
 ![The Drift page: fields changed on Discord, expected value from git and actual value](../../../assets/screenshots/admin-drift.webp)
 
@@ -254,8 +261,12 @@ computed, so the console shows exactly what differs from git. Plugins keep runni
   `409 paused`.
 - **Resume**: **Resume…** shows the pending plan, then asks for confirmation (`cicord resume
   <server>`). Moderators and admins can resume: it only brings back the reviewed git
-  configuration. Resuming applies nothing by itself: the next revision, **Sync now** or, with
-  `selfHeal`, the next event or periodic resync reverts the manual changes. **Resume and sync
+  configuration. Resuming does not revert manual changes by itself: the next revision,
+  **Sync now** or, with `selfHeal`, the next event or periodic resync does. One exception:
+  resuming applies the pending [temporary overlay](../../reference/http-api/servers/#incident-overlays)
+  changes held during the pause. An overlay that expired while paused is removed at once,
+  which reverts its fields (a raid lock on every managed channel, for example) to the git
+  configuration; one applied while paused takes effect. **Resume and sync
   now** (admins, `cicord resume --sync`) does both at once.
 
 The pause is runtime state, not git: it survives restarts and new revisions. Every pause and

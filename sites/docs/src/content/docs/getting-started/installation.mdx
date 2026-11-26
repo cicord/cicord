@@ -47,11 +47,11 @@ terminal for `sudo`. Settings, as environment variables of `sh`:
 
 | Variable             | Default                                                                          |
 | -------------------- | -------------------------------------------------------------------------------- |
-| `CICORD_VERSION`     | the latest release (pre-releases excluded); `0.1.11` or `v0.1.11`                |
+| `CICORD_VERSION`     | the latest release (pre-releases excluded); `0.2.0` or `v0.2.0`                  |
 | `CICORD_INSTALL_DIR` | `/usr/local/bin` when it is writable or `sudo` is available, else `~/.local/bin` |
 
 ```sh
-curl -fsSL https://cicord.dev/install.sh | CICORD_VERSION=0.1.11 CICORD_INSTALL_DIR="$HOME/bin" sh
+curl -fsSL https://cicord.dev/install.sh | CICORD_VERSION=0.2.0 CICORD_INSTALL_DIR="$HOME/bin" sh
 ```
 
 To read the script before running it: `curl -fsSL https://cicord.dev/install.sh -o install.sh`,
@@ -97,14 +97,14 @@ archives' after the workflow checked their checksums and attestations.
 
 The image `ghcr.io/cicord/cicord` is built from the repository's `Dockerfile` for
 linux/amd64 and linux/arm64: `cicord` on `gcr.io/distroless/static-debian13:nonroot` (user
-65532, no shell), with a `HEALTHCHECK` (`cicord healthcheck`). Tags: `<version>` (`0.1.11`),
-`<major>.<minor>` (`0.1`) and `latest` for releases without a pre-release suffix, and
+65532, no shell), with a `HEALTHCHECK` (`cicord healthcheck`). Tags: `<version>` (`0.2.0`),
+`<major>.<minor>` (`0.2`) and `latest` for releases without a pre-release suffix, and
 `sha-<commit>`.
 
 ```sh
-docker pull ghcr.io/cicord/cicord:0.1.11                                      # pin the version in production
-gh attestation verify oci://ghcr.io/cicord/cicord:0.1.11 --repo cicord/cicord    # see Verify a download
-docker run --rm ghcr.io/cicord/cicord:0.1.11 version                          # the entrypoint is cicord
+docker pull ghcr.io/cicord/cicord:0.2.0                                      # pin the version in production
+gh attestation verify oci://ghcr.io/cicord/cicord:0.2.0 --repo cicord/cicord    # see Verify a download
+docker run --rm ghcr.io/cicord/cicord:0.2.0 version                          # the entrypoint is cicord
 ```
 
 The default command is `cicord serve /repo --data-dir /data --listen :7420`, with a volume on
@@ -120,7 +120,7 @@ The default command is `cicord serve /repo --data-dir /data --listen :7420`, wit
    [Releases](https://github.com/cicord/cicord/releases) page):
 
    ```sh
-   VERSION=0.1.11 OS=linux ARCH=amd64     # OS: linux | darwin, ARCH: amd64 | arm64
+   VERSION=0.2.0 OS=linux ARCH=amd64     # OS: linux | darwin, ARCH: amd64 | arm64
    gh release download "v$VERSION" --repo cicord/cicord \
      --pattern "cicord_${VERSION}_${OS}_${ARCH}.tar.gz" --pattern checksums.txt
    ```
@@ -169,7 +169,7 @@ for running the runtime.
 
 <Steps>
 
-1. Clone the repository (or a release tag: `--branch v0.1.11`) and enter it:
+1. Clone the repository (or a release tag: `--branch v0.2.0`) and enter it:
 
    ```sh
    git clone https://github.com/cicord/cicord.git
@@ -184,7 +184,7 @@ for running the runtime.
 
    `make all` runs `make ui` (installs the JS workspace with `pnpm install --frozen-lockfile`,
    builds the packages and copies the admin console, the portal and the portal kit into
-   `internal/webui`), then `make build`, which writes `bin/cicord`. `VERSION` is what
+   `internal/webui`), then `make build`, which writes `bin/cicord`. `VERSION` (the Makefile default is the source version) is what
    `cicord version` prints; the commit comes from git.
 
 3. Put `bin/cicord` on your `PATH`, or call it by its path:
@@ -195,34 +195,11 @@ for running the runtime.
 
 </Steps>
 
-### Test the 0.2 source snapshot
-
-The `feature/0.2.0` branch identifies its engine and workspace packages as
-`0.2.0-rc.1`. The public release installation commands above continue to install
-published distributions. To test the branch directly:
-
-```sh
-git clone --branch feature/0.2.0 https://github.com/cicord/cicord.git
-cd cicord
-make build
-bin/cicord version
-bin/cicord init ../community
-bin/cicord validate ../community
-```
-
-New projects accept `>=0.2.0-0 <0.3.0`. Use `make all` for the admin UI and the
-portal kit. A snapshot vendors its bundled packages during `cicord portal init`.
-The portal workflow rebuilds that kit from its pinned source commit. A binary from
-a release tag uses the matching npm package versions and verifies the release
-archive's checksum and attestation in portal CI.
-
-The repository workflow installs the engine by immutable Git commit or Go
-pseudo-version. A Go build normally embeds the checkout commit. For a build
-without VCS metadata, such as `go run`, the CLI ships a known published feature
-commit as its CI baseline. To build from an archive or container with a specific
-commit, pass `SOURCE_REF=<full SHA>` to Make or `--build-arg SOURCE_REF=<full SHA>`
-to Docker. Commits referenced by generated workflows must be accessible to their
-GitHub runners.
+A binary that is not a published release records its checkout's commit (`SOURCE_REF`), and
+the workflows `cicord init` and `cicord portal init` generate install that same commit.
+Without git metadata (an archive, a container), pass `SOURCE_REF=<full SHA>` to Make or
+`--build-arg SOURCE_REF=<full SHA>` to Docker; the commit must be reachable by the GitHub
+runners.
 
 :::note
 `make build` alone builds only the Go binary. It embeds whatever UI build is already in
@@ -232,7 +209,7 @@ without their unit-test setup. Use `make all` unless you only work on Go code.
 :::
 
 The same image as the release builds locally with
-`docker build -t cicord --build-arg VERSION=0.1.11 --build-arg COMMIT=$(git rev-parse --short HEAD) .`
+`docker build -t cicord --build-arg VERSION=0.2.0 --build-arg COMMIT=$(git rev-parse --short HEAD) .`
 
 ## Verify a download
 
@@ -265,7 +242,7 @@ cicord version
 ```
 
 ```text
-cicord 0.1.11 (<commit>)
+cicord 0.2.0 (<commit>)
 ```
 
 The version, then the git commit the binary was built from. `cicord --help` lists the

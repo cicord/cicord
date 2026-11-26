@@ -10,10 +10,6 @@ simulator (reconciler, bot host, plugin host, scheduler, SQLite store). The last
 the manual check on real Discord: **to verify** unless noted; the
 [checklist](#checklist-on-real-discord) at the end lists the precise steps.
 
-## Members and locale
-
-Use `server.members({ limit, after })` to page through members in ascending user ID order. It shares the cache, `discord.members.read` grant and `ServerMembers` intent with `role.members()`. The default page size is 100 and the maximum is 1000. Members include screening, onboarding, boosts, timeouts and guild avatars as supplied by Discord. The host derives account creation dates from snowflakes and exposes documented public user flags. `interaction.locale` and `server.preferredLocale` carry Discord language tags when available. See `TestServerMembersMetadata` in `internal/plugin`.
-
 ## Where the tests are
 
 The Go tests run with `go test ./...`:
@@ -92,7 +88,7 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`) and in the official reg
 | `schedules` (cron, UTC) | levels daily recap `0 9 * * *` | rt/Levels (`sched.runCron` two days ahead) | to verify (wait for 09:00 UTC or use a `@every 1m` copy) |
 | `ctx.schedule.after` and `tasks` | polls auto-close | rt/Polls (`sched.runTasks` in the future) | to verify |
 | `ctx.schedule.cancel` | polls closed by hand | rt/Polls (task gone from the store) | to verify |
-| Audit log, operation attribution and structural events | Permission changes and uncertain actors | `TestAuditSDKReadsServerEvidence`, `TestAuditAttributionRequiresActorTargetTypeAndTime`, `TestSDKStructureEventTracksManagementAndPrevious` | to verify |
+| Audit log, operation attribution and structural events | Permission changes and uncertain actors | `TestAuditSDKReadsServerEvidence`, `TestAuditAttributionRequiresActorTargetTypeAndTime`, `TestOwnActionsAreConfirmedEndToEnd` (the simulator writes Discord's own entries: overwrite create, update and delete, member role updates, a creation delivered before its journal row, gateway entries without the actor), `TestUnconfirmedOwnActionRaisesTheAlert`, `TestSDKStructureEventTracksManagementAndPrevious` | to verify |
 | Audience comparisons and current portal visibility | Restricted copies and member access | `TestAudienceComparisonAgreesWithEnumeration`, `TestPortalAudienceRevocation` | to verify |
 | Guild ban, list, unban, ban events, remove timeout, role replacement and filtered purge | Moderation SDK | `TestModerationSDK` | to verify |
 | Durable task delivery and operator recovery | Delayed plugin effects | `TestDurableTaskDelivery`, `TestDeadLetterAdministration`, SQLite and PostgreSQL conformance | verified on the simulator |
@@ -117,7 +113,7 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`) and in the official reg
 |---|---|---|---|
 | `server.channel(key or { id })`, `server.role()` | all | rt/* | to verify |
 | `server.member()` | moderation, levels | rt/Moderation, rt/Levels | to verify |
-| `role.members()` (members holding a role; ServerMembers intent; shared 60 s listing patched by member events) | tickets 0.2.0 `GET /staff` (registry and bundled copy) | `internal/plugin` TestRoleMembers*; `internal/runtime` TestMemberList*; `internal/sim` TestListMembers; `disgoadapter` TestListMembersPages; SDK role-members tests | to verify |
+| `role.members()` (members holding a role; ServerMembers intent; shared 60 s listing patched by member events) | tickets `GET /staff` | `internal/plugin` TestRoleMembers*; `internal/runtime` TestMemberList*; `internal/sim` TestListMembers; `disgoadapter` TestListMembersPages; SDK role-members tests | to verify |
 | `role.position`, `role.mentionable`, `server.ownerId`, `member.permissions` (server-level, no channel overwrites), `member.access` | moderation (hierarchy), polls (ping) | `internal/plugin` TestMemberPermissionsAccessAndRolePositions, TestOwnerAndAdminAccess; `disgoadapter` TestRoleAndServerFromJSON; SDK permission tests | to verify |
 | `allowedMentions` id lists (`roles: [id]`, `users: [id]`, `repliedUser`; ≤ 100 snowflakes; a type never both parsed and listed) | polls `ping` (only the pinged member or role) | rt/Polls (`sim` MessageMentions); `internal/plugin` TestAllowedMentionIDLists; `internal/sim` TestAllowedMentionsResolution; `disgoadapter` TestAllowedMentionsToWire; `internal/discord` TestAllowedMentionsValidate | to verify |
 | `server.createChannel` (category, topic, overwrites `@everyone` / role key / `member:<id>`) | tickets | rt/Tickets (visibility per member) | to verify |
@@ -154,6 +150,24 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`) and in the official reg
 | Channel isolation (other servers) | none | `internal/plugin` unit tests | n/a |
 | Config defaults, including array items and `$ref` (and typegen agrees) | moderation `escalation[].durationMinutes`, levels `rewards[].keep`, onboarding `steps[].multiple` | rt/Moderation, rt/Levels; `internal/config` TestApplyDefaultsArraysAndRefs; `internal/typegen` TestDefaultsConformance | n/a |
 
+## SDK additions of 0.2
+
+The calls are described in the [plugin API](../api/); these tests drive them through the
+plugin host or the runtime.
+
+| Feature | Test | Real Discord |
+|---|---|---|
+| `server.members()` paging and member metadata (screening, flags, boosts, timeouts, locale) | `internal/plugin` TestServerMembersMetadata | to verify |
+| Context menus (`contextMenus`, `interaction.target`), 15 per type, bot and server | `internal/runtime` TestContextMenuDispatch, TestMenuLimitsPerBotAndServer | to verify |
+| Components V2 `layout`, modal `label` selects | `internal/plugin` TestLayoutLimitsAndModalSelect | to verify |
+| `interaction.deferTask` and the task's `interaction.reply()` | `internal/plugin` TestPrivateCommandDurableReply | to verify |
+| `ctx.secrets` (`has`, `ref`, host-encoded form and JSON, webhook handles) | `internal/plugin` TestSecretFetch, TestWebhookHandleOnlySendsAndReturnsStatus; `internal/api` TestPluginSecretWriteOnly | to verify with a real webhook |
+| `ctx.files` (instance `files:` globs, 20 MiB) | `internal/config` TestVersionedFiles | n/a |
+| `ctx.index` (SQLite FTS5, PostgreSQL `tsvector`) | TestFullText in `internal/state/sqlite` and `internal/state/postgres` | n/a |
+| Raw route responses, `ctx.analytics.summary` | `internal/plugin` TestRawRouteContent, TestPluginAnalyticsGrantAndRange | n/a |
+| Overlays (overlapping locks, `"*"` neutrals, quotas, bot lockout refused) | `internal/runtime` TestPersistentOverlayDrill, TestOverlayQuotaPerOrigin, TestOverlayRefusesBotLockout; `internal/reconcile` TestOverlayLockNeutralizesRoleAllows | to verify |
+| `server.protection()` | `internal/runtime` TestProtectionInventoryFiltersByCallingBot; `internal/plugin` TestProtectionRequiresReadGrant | to verify |
+
 ## reaction-roles, audit-log and announcements
 
 These three [official plugins](../official/) are configured in the showcase too; their unit
@@ -175,14 +189,14 @@ tests are in `examples/showcase/plugins/<name>/test`.
 | announcements | `GET /scheduled` (moderator) | rt/Announcements, api/RouteAccess |
 | announcements | Cron, interval, one-off, daylight-saving rules, catch-up, dedupe, invalid schedules, `when` parsing | unit tests |
 
-## 0.2 candidate coverage
+## Official registry plugins
 
 The core simulator exercises Discord events and REST calls through the Go runtime. The
-candidate plugins have separate tests in the registry source. A plugin startup smoke test
+plugins of the official registry have their own tests in the registry source. A plugin startup smoke test
 checks loading and configuration. A package’s `test/runtime.mjs` or `test/*.sim.mjs`
 drives its behavior through a running simulator. The registry runs the published-data
 migration fixtures against SQLite and PostgreSQL when both backends are configured.
-[Candidate catalogue and source directories](../official/#02-candidate-catalogue).
+See the [official plugins](../official/) for the catalogue and source directories.
 
 | Workflow | What the tests exercise |
 |---|---|
@@ -191,14 +205,14 @@ migration fixtures against SQLite and PostgreSQL when both backends are configur
 | Images and attachments | `internal/plugin/media_test.go` exercises byte-exact sandbox transfers. The Discord adapter captures each multipart endpoint, and `internal/sim/files_test.go` exercises attachment reads and removal. |
 | Message history | The simulator records the original message ID in `ReplyToID`. `TestMessageContentGating` covers gateway redaction, including attachments. |
 | Scoped portal links, overlays and erasure | `internal/api/scoped_test.go` checks case-bound OAuth. `internal/runtime/overlays_test.go` exercises overlapping locks, pause and expiry. `internal/runtime/privacy_test.go` checks erasure during replay and restoration. |
-| Community and moderation | The registry’s contributor guide describes each package check. The package-specific tests distinguish SDK fakes, compiled simulator runs and database fixtures. [Registry validation](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/scripts). |
+| Community and moderation | The registry’s contributor guide describes each package check. The package-specific tests distinguish SDK fakes, compiled simulator runs and database fixtures. [Registry validation](https://github.com/cicord/cicord-plugins/tree/main/scripts). |
 
 ## Checks requiring an external service
 
 Use a Discord test server to confirm live rate limits, permissions, privileged intents,
 the interaction deadline under network latency, and audit entries that Discord delays,
 merges or omits. Captcha providers and external calendar clients also require their own
-end-to-end checks. The anti-nuke candidate runs in monitoring mode.
+end-to-end checks. anti-nuke ships in monitoring mode.
 
 ## Checklist on real Discord
 
@@ -281,31 +295,3 @@ for the "member" steps.
     the leave happened while the bot was down). Repeat without Administrator but with Move
     Members (the `@bot` overwrite of *Guilds* and the bot's member overwrite must keep it
     working).
-
-## Message operations
-
-`message.pin()`, `unpin()` and `removeReaction(emoji, userId?)` require `discord.messages.manage`. Pinning needs Discord's Pin Messages permission. Read pins with `channel.pins()` and list normal reaction users in pages of 1–100 with `message.reactionUsers(emoji, { limit, after })`. Both require `discord.messages.read`. A received message includes reaction counts, a Discord jump URL and an optional reply reference.
-
-Announcement crossposts and typing use `discord.messages.send`. A webhook send uses `channel.sendAs({ username, avatarUrl }, payload)` and the privileged `discord.webhooks.manage` grant. The runtime creates or reuses its own channel webhook. Plugins receive only the resulting message. For short channel-send retries supply the same `nonce` (up to 25 characters) and `enforceNonce: true`. Discord's deduplication window lasts a few minutes.
-
-## Rich interactions
-
-Declare guild menus in `contextMenus` with a `user` or `message` type and an interaction handler. Use `interaction.target` for the resolved member or message. `cicord validate` checks each bot’s instances on each server. One bot can register up to 15 menus of each type per server. To support an older engine, include the menu section only when `sdkFeatures?.contextMenus` is available.
-
-A message can supply `layout` with text displays, sections with accessories, containers, media galleries, separators, files and action rows. Discord limits the whole layout to 40 components. Action rows support `userSelect`, `roleSelect`, `mentionableSelect` and `channelSelect`. For a modal, wrap a select or text input in a `label` field. A modal submission exposes selected IDs in `interaction.selections[fieldId]`.
-
-`TestContextMenuDispatch` exercises a menu through the simulator and plugin host. `TestMenuLimitsPerBotAndServer` covers independent guild quotas.
-
-## Instance secrets, repository files and search
-
-| SDK | Runtime verification |
-|---|---|
-| `ctx.secrets.has/ref`, host-limited HTTPS and host-encoded form/JSON bodies | `internal/plugin/TestSecretFetch` covers substitution, denied hosts, rejected text-body handles, redirects and reflected credentials. `internal/api/TestPluginSecretWriteOnly` covers the admin boundary and recovery from a missing credential. |
-| `ctx.files.list/read/bytes` | `internal/config/TestVersionedFiles` verifies a scoped Markdown snapshot, nested globs and path restrictions. Each installation can bind up to 20 MiB from the active repository revision. |
-| `ctx.index(name, {language})` | `TestFullText` runs on SQLite FTS5 and PostgreSQL tsvector. It checks replacement, deletion, clearing, scope isolation, tag filters and the query limit. |
-
-The assistant pilot includes deterministic reservation and citation tests. Provider-facing captcha verification and Discord checks require the external test environment before publication.
-
-## Protection inventory
-
-`await ctx.server.protection()` reads the current server policy, pause state and the invoking bot's role hierarchy with `discord.channels.read`. `totalResources` counts eligible roles and visible guild channels, including categories. `unmanaged` lists eligible resources outside the current server YAML. Discord integration roles, the everyone role, plugin-owned resources and threads are omitted. An incomplete Discord or state read returns `known: false` and an empty inventory. Consumer plugins must treat that result as unverified. Host and runtime tests cover grant refusal, hidden channels, plugin ownership and incomplete role information.

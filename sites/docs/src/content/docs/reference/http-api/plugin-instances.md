@@ -27,7 +27,10 @@ without `limit` every instance is returned):
   "routes": ["GET /polls/:id"],                                     // portal routes
   "health": "Healthy", "message": "",
   "source": "cicord",       // "cicord" (official catalog), a registry name, or "local" (written in the repo)
-  "trust": "official"       // official | unofficial | local
+  "trust": "official",      // official | unofficial | local
+  "advisories": [ { "feature": "dm", "reason": "…" } ],            // optional: optional features that are off
+  "secrets": [ { "name": "STAFF_WEBHOOK", "description": "…", "hosts": ["discord.com"],
+                 "required": false, "bound": true, "external": false } ]  // admins only
   // "update": PluginUpdate, when a newer version is available (Store)
 }, … ], "total": 7, "offset": 0, "limit": 2, "sort": "name", "order": "asc" }
 ```
@@ -36,6 +39,9 @@ without `limit` every instance is returned):
   the plugin has none). `baseConfig` and `override` are written values, without defaults.
 - `editable`: admins may edit every top-level property; moderators only those marked
   `x-cicord-access: moderator` (default `admin`). Sorted.
+- `secrets` (admins only) lists the credentials the manifest declares: `bound` when
+  `bot.yaml` binds the name to a `secretRef`, `external` when the operator already set that
+  secret (see [Plugin secrets](#plugin-secrets)). Values are never returned.
 - `update` (a [`PluginUpdate`](../store/#shapes)) comes from the runtime's cache only (no
   fetch on this endpoint): registry versions are known once the background refresh or a Store
   page has looked them up.
@@ -106,6 +112,21 @@ The override written to `bot.yaml`:
             defaultHours: 72
 ```
 
+## Plugin secrets
+
+`PUT /api/v1/servers/{server}/plugins/{bot}/{instance}/secrets/{name}` (admin) with
+`{"value": "…"}` (1 to 8192 bytes) stores a credential that the manifest declares and
+`bot.yaml` binds, in the encrypted secret store, for this installation only. It answers
+`204` and is audited as `plugin.secret.set` (never the value). The admin console's plugin
+page has a field per declared secret.
+
+![Plugin secrets: TURNSTILE_SECRET is bound in bot.yaml and can be set from the console; HCAPTCHA_SECRET is not bound](../../../../assets/screenshots/admin-plugin-secrets.webp)
+
+- A name that is not declared, or not bound in `bot.yaml`: `404`.
+- A binding whose `secretRef` the operator already set (`cicord secret set`, the
+  environment): `409 conflict`, "managed by the operator". The operator's value always wins.
+- No encrypted secret store: `503`.
+
 ## Uninstalling
 
 `DELETE /api/v1/servers/{server}/plugins/{bot}/{instance}` (admin) uninstalls an instance
@@ -116,7 +137,8 @@ from the server:
 - Otherwise it is deleted from `bot.yaml` (`removed: true`). When no other instance uses the
   plugin, its `cicord.lock` entry (registry plugin) or its `plugins/<name>/` directory (copied
   by the Store or the wizard) goes too, listed in `cleaned`. Plugins written in the
-  repository elsewhere are never deleted. Plugin data (KV) is kept.
+  repository elsewhere are never deleted. Plugin data is kept until an admin
+  [purges it](../servers/#data-of-uninstalled-installations).
 - The change is validated on a copy of the active revision first (`422 invalid` when
   something depends on it). Mode, activation wait and errors are those of a
   [config `PUT`](#editing-the-config). Audit `plugin.uninstall`.
@@ -130,10 +152,25 @@ from the server:
 
 ## Failed scheduled tasks
 
-A server administrator can list up to 100 pending decisions with
-`GET /api/v1/servers/{server}/dead-letters`. Each item includes the task ID, plugin scope,
-handler name, due time, attempt and failure counts, and a failure category.
+A server administrator lists the pending decisions, oldest first, with
+`GET /api/v1/servers/{server}/dead-letters?limit=<1–500, default 100>&cursor=<nextCursor>`:
+`{"items": [DeadTask], "total": 120, "truncated": true, "nextCursor": "…"}`. `total` counts
+every dead letter of the server (removed instances included) and `truncated` says that more
+follow this page. To read them, pass `nextCursor` back as `cursor`; it is an opaque string,
+and `null` on the last page. Pages follow the due time, then the task ID, and stay stable
+while tasks are parked, retried or discarded meanwhile: a page never repeats or skips a dead
+letter that stays parked (one parked meanwhile with an earlier due time shows up on the next
+listing from the start). A malformed cursor returns `400`. An item is
+`{"id", "scope", "name", "runAt", "attempts", "failures", "reason", "event"?}`: `scope` is
+`plugin:<bot>/<instance>/<server>`, `name` the task or event handler, `reason` the last failure
+(a short category, never the plugin's error text), `event: true` for an event delivery. The admin console's **Diagnostics** lists them
+with **Load more**.
 `POST /api/v1/servers/{server}/dead-letters/{id}/retry` enables another delivery.
 `POST /api/v1/servers/{server}/dead-letters/{id}/discard` deletes the failed task.
-Both actions return 204 on success and are audited. A missing or already resolved task
-returns 404.
+Both actions return 204 on success and are audited (`task.retry`, `task.discard`). A missing
+or already resolved task returns 404.
+`GET /api/v1/servers/{server}/dead-letters/{id}/event` returns the raw payload of an event
+dead letter (`Cache-Control: no-store`). It may describe a private channel, so it also needs
+the Discord Administrator permission on that server now (or being its owner, or the bearer
+token): another Cicord admin, a link or token session gets `403`. An event of another server,
+or one that contains an erased member, answers `404`.

@@ -113,19 +113,32 @@ response are passed through; an unknown route answers `404`.
   `public` (anyone; the viewer is still filled in when logged in), `member`, `moderator` or
   `admin`, with the [roles](../authentication/#roles) of the
   server (portal endpoints count the full role of link sessions and session tokens on their
-  server). Anonymous: `401`; insufficient role: `403`. The runtime bearer token passes every
-  check (no viewer).
-- **Request**: the handler receives `request.viewer = {user, member}` (the member is fetched
-  from Discord; after a route with an unsafe method the viewer's cached member is dropped, so
+  server), or `scoped`: only the session of a [case link](../authentication/#case-links)
+  issued by this installation (`request.scope` is the case; a route with `:id` must match
+  it), and that session reaches no other route. Anonymous: `401`; insufficient role: `403`.
+  The runtime bearer token passes every check but `scoped` (no viewer).
+- **Request**: the handler receives `request.viewer = {user, member}` (the member is read
+  from Discord for each request, see [Roles](../authentication/#roles); after a route with an unsafe method the viewer's cached member is dropped, so
   the next `/portal/{server}/me` shows roles the plugin just changed), the query parameters
   (first value of each) and the JSON body (at most 1 MiB; non-JSON: `400`; an empty body is no
   body).
-- **Response**: the handler's status (default `200`) and its JSON body as
-  `application/json; charset=utf-8` with `Cache-Control: no-store`, plus its headers except
-  `Set-Cookie`, `Content-Type`, `Content-Length`, `Transfer-Encoding`, `Connection`,
-  `Location`, `Content-Security-Policy`, `Strict-Transport-Security` and `Access-Control-*`.
-  No body: `204` (or the handler's status when it is not 200). A thrown error answers
-  `500 internal` ("the plugin route failed").
+- **Response**: the handler's status (default `200`; outside 200–599, for example a `101`,
+  the route answers `500 internal`) and its JSON body as
+  `application/json; charset=utf-8` with `Cache-Control: no-store`. Of the handler's headers,
+  only `Content-Disposition`, `Content-Language`, `ETag`, `Last-Modified`, `Expires`,
+  `Retry-After`, `x-*` except the reserved prefixes and, on `public` routes, `Cache-Control`
+  are kept: a route cannot set cookies, redirects (`Location`, `Refresh`), CORS, security or
+  hop-by-hop headers. The reserved `x-*` prefixes are the runtime's own (`x-cicord-*`), the
+  browser security headers (`x-content-type-options`, `x-frame-options`, `x-xss-protection`,
+  `x-permitted-cross-domain-policies`, `x-dns-prefetch-control`), the headers reverse proxies
+  act on (`x-accel-*`, `x-sendfile`, `x-lighttpd-*`, `x-litespeed-*`, `x-reproxy-*`) and the
+  forwarding and rewrite headers (`x-forwarded-*`, `x-real-ip`, `x-original-*`, `x-rewrite-*`,
+  `x-http-method*`). No body:
+  `204` (or the handler's status when it is not 200). A thrown error answers `500 internal`
+  ("the plugin route failed").
+- **Caching**: every response has `X-Content-Type-Options: nosniff` and
+  `Vary: Cookie, Authorization`. Responses of non-`public` routes, and of `public` routes
+  called with a signed-in viewer (the plugin may personalize them), are `Cache-Control: no-store`.
 
 ## Static UIs
 

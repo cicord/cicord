@@ -32,7 +32,7 @@ configuration).
 
 ```json
 {
-  "version": "0.1.11",
+  "version": "0.2.0",
   "mode": "dev",                         // "serve" | "dev"
   "simulator": true,                     // the Discord simulator is in use
   "revision": { "id": "local-55cc940", "sha": "55cc9403b806…", "message": "working tree", "author": "local",
@@ -52,12 +52,16 @@ configuration).
     "features": ["COMMUNITY", "NEWS"],   // Discord feature flags, sorted; [] when unknown
     "community": true,                   // COMMUNITY feature enabled
     "paused": { "by": "discord:1575125353398009856", "byName": "owner",   // optional: enforcement paused
-                "at": "2026-11-25T12:30:02Z", "reason": "raid" }
+                "at": "2026-11-25T12:30:02Z", "reason": "raid" },
+    "unconfirmedAudit": { "bot": "cicord", "count": 2,   // optional: audited actions by the bot that Cicord did not emit (last 24 h)
+                          "first": "2026-11-25T12:31:00Z", "last": "2026-11-25T12:31:04Z",
+                          "lastEntry": "1575125353398009999", "lastAction": "webhook.create" }
   } ],
   "bots": [ {
     "key": "cicord", "username": "Cicord", "userId": "1575125353398009857", "health": "Healthy", "message": "",
     "servers": ["showcase"],
-    "plugins": [ { "instance": "tickets", "plugin": "tickets", "version": "0.2.1", "server": "showcase", "health": "Healthy", "message": "" }, … ]
+    "plugins": [ { "instance": "tickets", "plugin": "tickets", "version": "0.4.0", "server": "showcase", "health": "Healthy", "message": "",
+                   "advisories"?: [ { "feature": "STAFF_WEBHOOK", "reason": "optional plugin secret not configured" } ] }, … ]
   } ]
 }
 ```
@@ -77,8 +81,15 @@ configuration).
   `"order"` that a reorder is pending, `"managed"` that a mapping is about to be dropped.
 - A bot whose session is not connected is `Missing`, with the reason in `message`; it is
   `Degraded` when one of its plugin instances is (`message` names it). An instance is
-  `Degraded` when it failed to start, after a crash while it restarts, or after three handler
-  errors in a row.
+  `Degraded` when it failed to start, after a crash while it restarts, after three handler
+  errors in a row, while it has [dead letters](../plugin-instances/#failed-scheduled-tasks),
+  or when a required [plugin secret](../plugin-instances/#plugin-secrets) is missing. It is
+  `Disabled` with `enabled: false`. `advisories` lists optional features that are off (a
+  missing optional grant or secret) without degrading it.
+- `unconfirmedAudit` is set when Discord recorded audited actions by a project bot that match
+  no operation Cicord emitted: someone else may be using the bot token. It raises the "Bot
+  token possibly compromised" alert, expires a day after the last such entry and never
+  changes `health`.
 - `paused` is set while [enforcement is paused](#pause-and-resume) on the server: nothing is
   applied to it. `sync` keeps reporting the drift from git (`Synced` or `OutOfSync`) and
   `health` the last plan or sync.
@@ -124,6 +135,11 @@ first:
 | PUT | `/api/v1/servers/{server}/assets/{kind}` | admin | Upload the server `icon`, `banner` or `splash` ([below](#server-images)). |
 | GET | `/api/v1/servers/{server}/assets/{kind}` | moderator | The image file declared in `spec.profile.<kind>` of the active revision (`404` when none), e.g. as a preview when the Discord CDN URL is unavailable. |
 | GET | `/api/v1/servers/{server}/diagnostics` | admin | The [verification checklist](../setup/#catalog-and-diagnostics). |
+| GET | `/api/v1/servers/{server}/overlays` | admin | `{"items": [Overlay]}`: the active [incident overlays](#incident-overlays). |
+| DELETE | `/api/v1/servers/{server}/overlays/{bot}/{instance}/{id}` | admin | Lift one overlay (`204`). Audited as `overlay.remove`. |
+| GET | `/api/v1/servers/{server}/interop` | admin | `{"edges": [{kind, from, to, contract, status}], "features": {"<bot>/<instance>": {"<feature>": "<reason off>"}}}`: who subscribes to or calls whom, and why a link is inactive (Diagnostics shows it). |
+| POST | `/api/v1/servers/{server}/privacy/{export\|erase}` | admin | [Member data](#member-data). |
+| GET, POST | `/api/v1/servers/{server}/orphaned-data`, `…/orphaned-data/purge` | admin | [Data of uninstalled installations](#data-of-uninstalled-installations). |
 
 `plan` and `sync` failures (no bot, a Discord or reconcile error) answer `503 unavailable`, with
 the explained [error object](../#the-error-object) fields. Every sync is recorded in the audit
@@ -138,7 +154,9 @@ resync, self-heal or a sync. Plans and drift are still computed.
 `PauseInfo = {"by", "byName"?, "at", "reason"?}`, with `by` in the audit `actor` form.
 
 - Pausing a paused server changes nothing (`changed: false`); resuming a server that is not
-  paused answers `resumed: false`. Resume applies nothing by itself.
+  paused answers `resumed: false`. Resume does not apply the plan by itself, except the
+  temporary overlay changes held during the pause: overlays that expired are removed (their
+  fields return to the git configuration) and overlays applied meanwhile take effect.
 - A sync refused because of a pause answers `409`:
   `{"error": {"code": "paused", "message": "enforcement is paused on server showcase by owner since …", "hint": "Resume enforcement first …"}}`.
 - Each pause and resume is recorded in the audit log (`enforcement.pause`,
@@ -206,6 +224,8 @@ Changes are in apply order; blocked operations are not applied (see
   [error object](../#the-error-object).
 - `notes[]` (omitted when empty) = `{kind, key, message}`: information that needs no action,
   e.g. a user listed in a role's `members` who is not in the server yet. Notes are not drift.
+- `overlays[]` (omitted when empty): the active [incident overlays](#incident-overlays) the plan
+  applied on top of git.
 
 ### Audit log
 
@@ -216,9 +236,12 @@ Changes are in apply order; blocked operations are not applied (see
   "action": "sync.apply", "target": "showcase", "details": { "changes": 0 } }
 ```
 
-`actor` is `"discord:<user id>"` or `"runtime-token"`; `details` is always an object. Actions
-include `sync.apply`, `enforcement.pause`, `enforcement.resume`, `server.asset`,
-`config.update`, `plugin.uninstall`, `store.install`, `plugin.update`, `registry.add`,
+`actor` is `"discord:<user id>"`, `"runtime-token"` or, for actions a plugin requested,
+`"plugin:<bot>/<instance>"`; `details` is always an object. Actions include `sync.apply`,
+`enforcement.pause`, `enforcement.resume`, `server.asset`, `config.update`,
+`plugin.uninstall`, `store.install`, `plugin.update`, `plugin.secret.set`,
+`plugin.data.purge`, `privacy.export`, `privacy.erase`, `task.retry`, `task.discard`,
+`overlay.apply`, `overlay.remove`, `server.incident`, `server.sync.request`, `registry.add`,
 `registry.remove` and `registry.token`.
 
 ### Server images
@@ -250,17 +273,50 @@ plan blocks the setting (`boost_required`) until the server reaches it.
 
 ### Incident overlays
 
-The server Plan page lists the installation, reason, expiration, and targets of every
-active overlay. An administrator can lift an individual overlay there or with
-`DELETE /api/v1/servers/{server}/overlays/{bot}/{instance}/{id}`. List them with
-`GET /api/v1/servers/{server}/overlays`. Each installation can manage only its own
-overlays through `ctx.server.overlays`.
+A plugin with `server.overlays` applies temporary restrictions on top of git with
+`ctx.server.overlays`; each installation manages only its own. The admin console's **Plan**
+page lists the active ones (installation, reason, expiry, targets) and lifts one with
+**Lift overlay** (`DELETE …/overlays/{bot}/{instance}/{id}`).
+
+```json
+{ "origin": "cicord/guard", "id": "lock-general", "until": "2026-11-25T13:30:00Z", "reason": "raid",
+  "channels": { "general": { "overwrites": { "@everyone": { "deny": ["SendMessages"] } }, "slowmodeSeconds": 30 } },
+  "server": { "verificationLevel": "high" },
+  "members": { "1575125353398009999": { "suspendDeclaredRoles": true } } }
+```
 
 An overlay adds denies, removes existing allows (`neutral`), raises slowmode or
 verification, or suspends roles assigned to named holders in YAML. Wildcard channels
 use the active revision's managed channel list. Restriction composition preserves
 other installations' locks. Reusing an ID replaces its targets and expiry. The
 maximum lifetime is seven days. Check the runtime plan for targets removed from YAML.
+
+Overwrite targets are `@everyone`, `@bot`, a role key, `member:<id>`, or `*`. The `*`
+target takes `neutral` only: it removes those permissions from the `allow` of every
+overwrite the channel already has in its effective state (after category sync), except
+`@everyone`, `@bot` and the roles and users of `spec.access.admins` and
+`spec.access.moderators`. It never creates an overwrite. A Discord role allow wins over
+an `@everyone` deny, so a lock that must also stop `verified: allow [SendMessages]`
+combines both, and staff keep posting:
+
+```ts
+await ctx.server.overlays.apply({ id: "lock-general", reason: "raid", until,
+  channels: { general: { overwrites: {
+    "@everyone": { deny: ["SendMessages"] },
+    "*": { neutral: ["SendMessages"] },
+  } } } });
+```
+
+Lifting or expiring the overlay recomputes the channel from YAML, so the allows come back.
+
+An overlay is refused when it is applied if its overwrites would take View Channel,
+Manage Channels or Manage Roles away from a bot that is not Administrator in a
+managed channel (a deny on `@bot`, or an `@everyone` View Channel deny the bot has no
+allow against). Such an overlay would otherwise make the preflight refuse every overlay
+sync of the server until it expires. A server holds at most 256 active overlays, and
+one installation at most 128. An installation with fewer than 8 active overlays can
+still apply one when the server is full, so one plugin's quarantines or channel locks
+cannot starve another's raid overlay.
 
 A durable task recomputes affected fields at expiry, including with self-healing
 disabled. While enforcement is paused the runtime persists changes and expirations.
@@ -271,8 +327,34 @@ before reviewing incident-related structural changes.
 
 `server.incident` authorizes the bot to disable invites or DMs for up to 24 hours.
 The Discord bot needs Manage Server. `server.sync` allows an installation to request
-a full reconciliation with an audit reason. [Discord incident actions](https://docs.discord.com/developers/resources/guild#modify-guild-incident-actions)
+a full reconciliation with an audit reason. Requests are throttled per installation:
+`requestSync` fails with a retry delay when the same installation's previous accepted
+request is less than 30 seconds old, or while another sync runs. [Discord incident actions](https://docs.discord.com/developers/resources/guild#modify-guild-incident-actions)
 
 ## Member data
 
-`POST /api/v1/servers/{server}/privacy/export` and `POST /api/v1/servers/{server}/privacy/erase` accept `{"userId":"123456789012345678"}`. Both operations require a server administrator and the normal mutation CSRF header for cookie sessions. Responses use `Cache-Control: private, no-store`. The report lists each plugin instance, inventory and result, along with the number of removed tasks and inter-plugin records. Check the `complete` field and per-instance statuses even after HTTP 200. Failed or unavailable hooks can be retried. The audit trail records a pseudonymous target.
+Admins do the same from **Server settings → Member data** in the admin console, which also lists the data of uninstalled installations with **Purge data**.
+
+![Member data export and erasure, and the purge of an uninstalled plugin's data](../../../../assets/screenshots/admin-member-data.webp)
+
+`POST /api/v1/servers/{server}/privacy/export` and `POST /api/v1/servers/{server}/privacy/erase` accept `{"userId":"123456789012345678"}`. `userId` must be a Discord user snowflake (17 to 20 digits); anything else is `400 invalid`. Both operations require a server administrator and the normal mutation CSRF header for cookie sessions. Responses use `Cache-Control: private, no-store`. The report lists each plugin instance, inventory and result, along with the number of removed tasks and inter-plugin records. Check the `complete` field and per-instance statuses even after HTTP 200:
+
+| Status | Meaning |
+|---|---|
+| `ok` | The hook ran. |
+| `no-member-data` | The plugin declares that it keeps no member data. |
+| `undeclared` | No privacy hooks or inventory: Cicord cannot verify the plugin. |
+| `disabled`, `unavailable`, `failed` | The hook could not run. The installation runs the erasure again when it starts, and its queued work that mentions the member is not delivered until then. Retry the request once it is healthy. |
+| `orphaned` | An uninstalled installation still holds data that mentions the member. Its hooks cannot run: purge its data (below). |
+
+An erasure that fails part-way (a storage error after some hooks ran) answers `503 unavailable` with the partial report: `{"error": {...}, "report": {...}}`. It is audited as `privacy.erase` with `"complete": false` and the per-instance statuses. Retrying is safe. The audit trail records a pseudonymous target, never the member ID.
+
+### Data of uninstalled installations
+
+Removing an installation from git keeps its stored data. `GET /api/v1/servers/{server}/orphaned-data` (server administrator) lists the installations of the server that are no longer in the active revision but still hold data, with their row counts:
+
+```json
+{"items": [{"instance": "moderator/old-tickets", "scope": "plugin:moderator/old-tickets/my-community", "records": 14, "rankings": 3, "index": 0, "tasks": 1}]}
+```
+
+`POST /api/v1/servers/{server}/orphaned-data/purge` with `{"instance": "moderator/old-tickets", "confirm": "moderator/old-tickets"}` deletes that installation's records, rankings, search index documents, queued and dead tasks, event deliveries and DM receipts on this server, and answers the deleted counts. `confirm` must repeat the name (`400 invalid` otherwise). An installation that is still in the active revision, disabled ones included, is refused with `409 conflict`. The purge cannot be undone; it is audited as `plugin.data.purge`. It does not remove the installation's admin-set secret (in the encrypted secret store) or the stored results of interop actions it served, which expire after 30 days and are tombstoned by a member erasure. The CLI equivalent is [`cicord plugin purge-data`](../../cli/#cicord-plugin-purge-data).

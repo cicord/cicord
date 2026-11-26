@@ -32,7 +32,7 @@ root `package.json`). See [Installation → Build from source](../../getting-sta
 | `make build` | The Go binary only (`CGO_ENABLED=0`, version and commit in the ldflags). Embeds whatever UI build is in `internal/webui`. |
 | `make test` | `make test-go` and `make test-js`. |
 | `make test-go` | `go test -race ./...` |
-| `make test-js` | `pnpm -r test` |
+| `make test-js` | `pnpm test` (builds the packages first) |
 | `make vet` | `go vet ./...` |
 | `make check` | `vet` and `test`. |
 | `make lint` | The static analysis CI runs (below): golangci-lint, govulncheck, `pnpm run check`, Knip, jscpd, Semgrep, Gitleaks. |
@@ -85,7 +85,7 @@ Dependabot proposes weekly, grouped updates of Go modules, npm packages and GitH
 
 - The **Discord simulator** (`internal/sim`) is an in-process implementation of Cicord's Discord
   interfaces. Reconciler, runtime and API tests run against it, fast and without tokens.
-- `examples/showcase` is the end-to-end fixture: its seven plugins are driven through the real
+- `examples/showcase` is the end-to-end fixture: its eight plugins are driven through the real
   runtime on the simulator (`internal/runtime/showcase_test.go`), their portal routes through
   the HTTP API, and `cicord plugin build`, `typegen --check` and `cicord plugin test` run on each.
   [Coverage on real Discord](../../plugins/coverage/) maps every SDK feature to the test that exercises it.

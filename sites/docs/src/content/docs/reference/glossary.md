@@ -8,15 +8,21 @@ description: The vocabulary of Cicord, from adoption to write-back.
 - **Blocked**: A plan operation Cicord refuses, with a reason (`boost:`, `community:`, `limit:`, `deletionProtection`, `hierarchy:`…). Blocked operations never fail the plan; they keep the server `OutOfSync`, except those that only wait for a boost level ("Waiting for boosts").
 - **Bot**: One Discord application (one token, one identity), declared in `bots/<key>/bot.yaml`.
 - **Capability**: A permission a plugin requests in its manifest (`discord.messages.send`, `storage.kv`, `http.fetch`…) and that must be granted in `bot.yaml`.
+- **Case link**: A portal link a plugin issues for one case (an appeal, a verification result), opened after a Discord sign-in by the original recipient and limited to that plugin's `scoped` routes. See [Case links](../http-api/authentication/#case-links).
 - **cicord.lock**: The generated file that pins registry plugins (version, commit, content hash, capabilities).
 - **Data directory**: The runtime's state on disk (`--data-dir`, default `.cicord-data`): the SQLite database (unless PostgreSQL is used), keys, caches, and the embedded repository.
+- **Dead letter**: A plugin task or event delivery that failed its retries. Listed in **Diagnostics**, where an admin retries or discards it; its instance is `Degraded` meanwhile.
 - **Deletion protection**: `syncPolicy.deletionProtection` (default `true`): refuse every deletion, even with `prune`.
 - **Drift**: A difference between the YAML and the live server, usually a manual change in Discord. Reported, or reverted with `selfHeal`.
+- **Experimental**: A feature that is opt-in and may still change: `economy`, `giveaways`, `ai-assistant` and image rendering in 0.2. It stays experimental until usage is confirmed with three target communities.
 - **Grant**: A capability listed in a plugin instance's `grants` in `bot.yaml`.
 - **Instance (plugin instance)**: A plugin running for one (bot, server) pair, with its own config, storage and schedules. An entry of `bot.yaml` `spec.plugins` produces one instance per server.
 - **Intent**: A Discord gateway intent, in Cicord naming (`ServerMembers`, `MessageContent`…). Privileged intents must be enabled in the Discord developer portal.
+- **Interop**: Versioned events, queries and actions between plugin instances, declared in their manifests and granted in `bot.yaml`. Diagnostics shows the links and why one is inactive.
 - **Key**: The stable identifier of a resource (`general`), separate from its display name. Keys are used for references; rename one only with `cicord mv`.
+- **Member data**: What the plugins of a server store about a member, exported or erased by an admin in **Server settings** through each plugin's privacy hooks.
 - **Official / unofficial**: The trust level of a plugin source, computed from its URL. Source `cicord` (the bundled plugins and the signed official registry, github.com/cicord/cicord-plugins) is official; other registries are unofficial.
+- **Overlay (incident overlay)**: A temporary restriction (at most seven days) that a plugin with `server.overlays` applies on top of git, the only way a plugin changes managed resources. See [Incident overlays](../http-api/servers/#incident-overlays).
 - **Pause (enforcement)**: The emergency switch of a server (`cicord pause`, the admin console): nothing is applied to it until it is resumed, while drift stays visible. Runtime state, not git. See [Reconciliation](../../concepts/reconciliation/#emergency-pause-enforcement).
 - **Plan**: The ordered list of changes (`create`, `update`, `delete`, `adopt`, `reorder`, `unmanage`) between the YAML and Discord. Shown by `cicord plan`.
 - **Plugin**: A TypeScript module with a static manifest (`plugin.yaml`), run sandboxed by the runtime.

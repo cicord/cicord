@@ -1,9 +1,9 @@
 ---
 title: Status and roadmap
-description: What works in Cicord 0.1.11, what is new in recent releases, what is next, and what is further out.
+description: What works in Cicord 0.2.0, what is new in recent releases, what is next, and what is further out.
 ---
 
-Cicord **0.1.11** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
+Cicord **0.2.0** is a pre-release of the API `cicord.dev/v1alpha1`: `0.x` releases
 (binaries, the container image `ghcr.io/cicord/cicord` and the `@cicord/*` npm packages, see
 [Installation](../../getting-started/installation/)) may still change formats and APIs. The
 [changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md) lists what each release
@@ -25,19 +25,23 @@ changed. This page is updated as work lands; no dates are promised.
   wall-clock budgets with a hard stop, host-side quotas, crashed instances restarted with
   backoff) with capabilities, KV storage, slash commands (subcommands and groups,
   autocomplete), components, modals, schedules, tasks, server join and leave events,
-  messages with their embeds, the members of a role, cross-plugin events, plugin-owned
-  channels and typed portal routes. See [Testing and limits](../../plugins/testing/).
-- **Official plugins**: eleven in the signed official registry
-  [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins), ten of them also bundled
-  in the binary (all but `github-releases`), exercised end to end on the simulator.
+  messages with their embeds, the members of a role, versioned interop (events, queries and
+  actions between plugins), durable tasks with dead letters, temporary incident overlays,
+  member data export and erasure, bound secrets, plugin-owned channels and typed portal
+  routes. See [Testing and limits](../../plugins/testing/).
+- **Official plugins**: 29 in [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins)
+  for 0.2 (engine `>=0.2.0`); [Official plugins](../../plugins/official/) says which the
+  signed registry publishes and which the binary bundles. `economy`, `giveaways`,
+  `ai-assistant` and image rendering are experimental and opt-in.
 - **Git write-back**: commits and GitHub pull requests, with per-path policies.
 - **GitHub access** with a token or a **GitHub App** (short-lived installation tokens scoped to
   the configuration repository), and a `cicord/sync` commit status on every evaluated commit.
 - **State store**: SQLite in the data directory or PostgreSQL, held to one conformance suite,
   with a [backup and restore guide](../../self-hosting/backups-and-secrets/) for both.
-- **Admin console**: status, plans, history, audit log, server analytics (bot usage
-  included), generated plugin settings, the Store, diagnostics, the simulator panel; live
-  refresh through `GET /api/v1/events`; light and dark themes.
+- **Admin console**: status, plans (with incident overlays), history, audit log, server
+  analytics (bot usage included), generated plugin settings and secrets, the Store,
+  diagnostics (failed tasks, interop), member data, the simulator panel; live refresh through
+  `GET /api/v1/events`; light and dark themes.
 - **Server analytics**: hourly counts per server (members, joins, messages, voice, reactions,
   invites, moderation, commands, opt-in presence), no content and no member IDs; optional
   server-wide stats on the community portal. See [Server analytics](../../self-hosting/analytics/).
@@ -60,8 +64,7 @@ changed. This page is updated as work lands; no dates are promised.
   that runs the official community server.
 - **CLI**: `init`, `validate`, `plan` (local and remote, with pull request comments), `apply`,
   `status`, `sync`, `healthcheck`, `import`, `inspect`, `adopt`, `mv`, `pause`, `resume`,
-  `dev`, `serve`, `secret`, `alert`, `registry`, `plugin`, `portal`, `version` (`inspect`,
-  `pause`, `resume` and `alert` are unreleased).
+  `dev`, `serve`, `secret`, `alert`, `registry`, `plugin`, `portal`, `version`.
 - **Releases**: a tag `v<version>` builds reproducible binaries for Linux, macOS and Windows
   (with SBOMs and build provenance attestations), the multi-arch image and the npm packages
   with provenance; release candidates (`x.y.z-rc.N`) go to the npm dist-tag `next`. See
@@ -70,6 +73,27 @@ changed. This page is updated as work lands; no dates are promised.
   drift and sync, OAuth login, the setup wizard end to end, and the parity checklist
   (Community, AutoMod, native onboarding, icon upload, widget, welcome screen, emoji upload,
   boost gating).
+
+## New in 0.2.0
+
+The plugin platform release ([changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md),
+[upgrading from 0.1.11](../../self-hosting/upgrading/#from-0111-to-020)):
+
+- **Plugin SDK**: versioned interop between plugins, durable tasks retried at least once with
+  dead letters to retry or discard in Diagnostics, temporary
+  [incident overlays](../../reference/http-api/servers/#incident-overlays) (the only way a plugin
+  changes managed resources), [member data](../../reference/http-api/servers/#member-data)
+  export and erasure, bound credentials, scoped case links, storage quotas, and the moderation
+  APIs (bans, purges, timeouts).
+- **Official plugins**: 29 for 0.2, from guard, verification and anti-nuke to tickets with
+  modmail. They need engine `>=0.2.0`. Plugin data of 0.1.x is not migrated.
+- **Admin console**: overlays on the Plan page, plugin secrets, member data and purges in
+  Server settings, paged dead letters and the interop graph in Diagnostics, and a warning
+  when Discord's audit log shows bot actions Cicord did not make.
+- **Portal**: the ticket desk, the typed-code verification challenge, appeals through case
+  links and the Tools pages of the community plugins.
+- **Experimental, opt-in**: `economy`, `giveaways`, `ai-assistant` and image rendering. They
+  stay experimental until usage is confirmed with three target communities.
 
 ## New in 0.1.11
 
@@ -136,11 +160,9 @@ change):
   member joins (this needs a second account).
 - Real Discord, still untested: stickers (multipart uploads), soundboard sounds, role gradient
   colors and role icons (they need boosts).
-- Typed route contracts (`spec.routes.types`) for the moderation and announcements plugins.
-- SDK gaps found while writing the official plugins: more events (channel, role, ban, with
-  their actor), message content before edits and deletions, time zones (`Intl`) in the plugin
-  host, removing other users' reactions, user/role/mentionable/channel select menus (Discord
-  types 5 to 8, with default values, channel types and resolved values).
+- A typed route contract (`spec.routes.types`) for the moderation plugin.
+- SDK gaps found while writing the official plugins: message content before edits and
+  deletions, time zones (`Intl`) in the plugin host.
 - Discord parity: invites and webhooks, a holographic role style preset, drift detection for
   widget, onboarding and welcome screen.
 - Setup wizard: a webhook step, creating the GitHub App from a manifest, several servers and

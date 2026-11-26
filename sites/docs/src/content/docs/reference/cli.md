@@ -6,7 +6,7 @@ tableOfContents:
 ---
 
 `cicord` is both the command line tool and the runtime. This page lists every command with
-the flags of `cicord <command> --help` (version 0.1.11); `--help` stays authoritative. Every
+the flags of `cicord <command> --help` (version 0.2.0); `--help` stays authoritative. Every
 command also accepts `-h, --help`, and boolean flags accept `--flag=false`.
 
 | Command | Purpose |
@@ -390,7 +390,7 @@ docker exec cicord cicord healthcheck --service --data-dir /data --timeout 5m
 
 ### `cicord version`
 
-Print the version and the commit the binary was built from: `cicord 0.1.11 (<commit>)` (`dev` instead of the commit for a local build).
+Print the version and the commit the binary was built from: `cicord 0.2.0 (<commit>)` (`dev` instead of the commit for a local build).
 
 ```text
 cicord version [flags]
@@ -547,7 +547,7 @@ cicord plugin typegen plugins/welcome --check
 
 ### `cicord plugin test`
 
-Build the plugin and deploy it in a throw-away repository on the Discord simulator with the real runtime (a test server with the resources its config references, a bot granted every requested capability, one instance). Then, unless `--script=false`, a member joins (when the plugin handles `memberJoin`) and every slash command without required options is invoked once. Fails when the plugin does not build, its config does not validate, the instance does not start or an interaction fails. Required `x-cicord-ref` fields without a value are filled with test resources.
+Build the plugin and deploy it in a throw-away repository on the Discord simulator with the real runtime (a test server with the resources its config references, a bot granted every requested capability, one instance). Then, unless `--script=false`, a member joins (when the plugin handles `memberJoin`) and every slash command without required options is invoked once. Fails when the plugin does not build, its config does not validate, the instance does not start or an interaction fails. Required `x-cicord-ref` fields without a value are filled with test resources. An optional `test/server.yaml` in the plugin directory (at most 4 KiB) adjusts the test server: `syncPolicy` (`selfHeal`, `deletionProtection`), `privateChannels` (channel keys hidden from `@everyone`) and `botPermissions`, the only server-wide permissions the test bot keeps once the plugin has started (Administrator otherwise; `[]` leaves none), to run the scenario in degraded mode. See [Testing](../../plugins/testing/).
 
 ```text
 cicord plugin test <plugin-dir> [flags]
@@ -589,12 +589,15 @@ cicord plugin add cicord/welcome --bot moderator     # from github.com/cicord/ci
 
 Without argument, list the plugins with a newer version: registry plugins (`cicord.lock`) and copies of the official plugins (`plugins/<name>/`). With a plugin, update every instance using it: the lock entry, each instance's version range when the new version is outside it, and the grants (set to what the new version requests). Copies of official plugins (`cicord/<name>` instances using `plugins/<name>/`) are rewritten from the plugins bundled in this binary; a locally modified copy only with `--force`. An official plugin locked in `cicord.lock` (installed from the official registry) updates from the registry like any registry plugin. Review the printed capability changes before committing. When the repository's custom portal has typed routes (`<portal>/src/cicord-routes.d.ts`), it is regenerated like `cicord portal typegen` when its content changes (a `Regenerated …` line is printed), so the portal's CI check stays green; when it cannot be generated, a warning says so and the rest of the change is kept.
 
+When the new version widens what a bound plugin secret (`secrets` of an instance) may reach, with a new host, another use or a larger or different provider budget, the update prints the before and after policy of each binding and stops without changing anything. Review it, then repeat the command with `--approve-secret-changes <digest>`, the digest it printed. The digest covers the plugin version, its package integrity and every widened binding, so it approves only that exact review: a different release or a new binding needs a new one. Narrower changes are shown and need no approval. No credential is read while planning.
+
 ```text
 cicord plugin update [<registry>/<plugin>] [flags]
 ```
 
 | Flag | Description |
 |---|---|
+| `--approve-secret-changes` `string` | approve the exact credential review printed by a previous update attempt |
 | `--dir` `string` | repository root (default ".") |
 | `--force` | overwrite a locally modified copy of an official plugin |
 | `--to` `string` | version range to update to (default: the latest version, any major); written to every instance |
@@ -604,6 +607,24 @@ cicord plugin update
 cicord plugin update acme/xp
 cicord plugin update acme/xp --to ^2.0.0
 cicord plugin update cicord/welcome
+```
+
+### `cicord plugin purge-data`
+
+Delete everything an uninstalled plugin installation left on a server of the runtime: records, rankings, search index documents, queued and dead tasks, event deliveries and DM receipts (`POST /api/v1/servers/{server}/orphaned-data/purge`). Removing an installation from git keeps its data; while that data mentions an erased member, the member data report says `orphaned` and stays incomplete. The command shows what the installation left, then asks for confirmation (`--yes` skips it). It cannot be undone. An installation still in the active revision, disabled ones included, is refused: remove it from git first. The runtime URL and token are those of `cicord status`.
+
+```text
+cicord plugin purge-data <server> <bot>/<instance> [dir] [flags]
+```
+
+| Flag | Description |
+|---|---|
+| `-o, --output` `string` | output format: text \| json (default "text") |
+| `--remote` `string[="auto"]` | runtime URL (default: CICORD_RUNTIME_URL; https, or http on localhost) |
+| `-y, --yes` | delete without asking for confirmation |
+
+```sh
+cicord plugin purge-data my-community moderator/old-tickets
 ```
 
 ### `cicord plugin publish`
@@ -742,7 +763,7 @@ A custom portal is a React app (a fork of the reference portal) committed in the
 
 ### `cicord portal init`
 
-Copy the reference portal into `[dir]` (default `portal`), depending on `@cicord/client`, `@cicord/react` and `@cicord/ui` from npm at the exact version of this cicord (`"@cicord/client": "0.1.11"`, published with each release). Inside a Cicord repository, also write `.github/workflows/cicord-portal.yml` and `src/cicord-routes.d.ts`. `--vendor` (offline or air-gapped builds) vendors the packages embedded in the binary in `<dir>/vendor` instead (`file:` dependencies and pnpm overrides); a development build, whose version is not on npm, always vendors and says so. `--from-npm`, the former opt-in, is accepted and does nothing. Then `pnpm install` (it writes `pnpm-lock.yaml`), build it, set `spec.portal.path: ./<dir>/dist` and commit it, `pnpm-lock.yaml` and `dist/` included.
+Copy the reference portal into `[dir]` (default `portal`), depending on `@cicord/client`, `@cicord/react` and `@cicord/ui` from npm at the exact version of this cicord (`"@cicord/client": "0.2.0"`, published with each release). Inside a Cicord repository, also write `.github/workflows/cicord-portal.yml` and `src/cicord-routes.d.ts`. `--vendor` (offline or air-gapped builds) vendors the packages embedded in the binary in `<dir>/vendor` instead (`file:` dependencies and pnpm overrides); a development build, whose version is not on npm, always vendors and says so. `--from-npm`, the former opt-in, is accepted and does nothing. Then `pnpm install` (it writes `pnpm-lock.yaml`), build it, set `spec.portal.path: ./<dir>/dist` and commit it, `pnpm-lock.yaml` and `dist/` included.
 
 ```text
 cicord portal init [dir] [flags]

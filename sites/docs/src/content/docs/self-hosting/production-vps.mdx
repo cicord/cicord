@@ -281,13 +281,13 @@ workflow built. Each release's notes give the digest; read it and check the imag
 provenance from your workstation:
 
 ```sh
-VERSION=0.1.11
+VERSION=0.2.0
 gh release view "v$VERSION" --repo cicord/cicord --json body --jq .body \
   | grep -oE 'ghcr.io/cicord/cicord@sha256:[0-9a-f]{64}'
 gh attestation verify "oci://ghcr.io/cicord/cicord:$VERSION" --repo cicord/cicord
 ```
 
-Set tag and digest together: `CICORD_IMAGE=ghcr.io/cicord/cicord:0.1.11@sha256:…`. The image is
+Set tag and digest together: `CICORD_IMAGE=ghcr.io/cicord/cicord:0.2.0@sha256:…`. The image is
 multi-arch (linux/amd64, linux/arm64). Other checks (SBOM, `cosign`) are in
 [Installation](../../getting-started/installation/#verify-a-download).
 
@@ -405,6 +405,9 @@ ssh cicord 'sudo cat /var/lib/docker/volumes/cicord_cicord-data/_data/secret.key
 pbcopy < /dev/null
 ```
 
+Do the same for `privacy.key`, the key of the [member erasure](../backups-and-secrets/#member-erasures)
+journal: a new server cannot start on a restored journal without it.
+
 **Daily backups**:
 [`05-backup.sh`](https://github.com/cicord/cicord/blob/main/deploy/vps/scripts/05-backup.sh)
 installs `/usr/local/sbin/cicord-backup` and a systemd timer (03:30 UTC):
@@ -415,9 +418,9 @@ ssh cicord 'sudo sh /opt/cicord/scripts/05-backup.sh'
 
 Each run writes `/var/backups/cicord/cicord-<UTC timestamp>.tar.zst` (mode `0600`): an online,
 integrity-checked copy of `cicord.db` (SQLite's `.backup`, safe while the runtime runs), plus
-`repo.git`, `writeback/` and a `MANIFEST`. It never includes `secret.key` (it lives in the
-password manager) nor `link.key` (regenerated when missing: only portal links already sent
-stop working). Archives older than 14 days (`CICORD_BACKUP_KEEP_DAYS`) are deleted. A run
+`repo.git`, `writeback/`, the `member-erasures/` journal and a `MANIFEST`. It never includes
+`secret.key` or `privacy.key` (they live in the password manager) nor `link.key` (regenerated
+when missing: only portal links already sent stop working). Archives older than 14 days (`CICORD_BACKUP_KEEP_DAYS`) are deleted. A run
 fails, and sends an alert when [alerts](../monitoring/#alerts) are configured, when
 `cicord.db` is missing or damaged, or when the off-host copy fails.
 

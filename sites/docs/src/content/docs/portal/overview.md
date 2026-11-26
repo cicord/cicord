@@ -33,12 +33,14 @@ From the least to the most effort, a community can:
 | Onboarding | Step-by-step role picking | The [onboarding plugin](../../plugins/official/#onboarding) |
 | Profile | The member's roles and data | Sign-in |
 | Leaderboard | XP ranking | The [levels plugin](../../plugins/official/#levels) |
-| Tickets | Open tickets, for moderators | The [tickets plugin](../../plugins/official/#tickets) |
+| Tickets | The ticket desk: the staff queue (assign, priority, replies, private notes, transcripts) and, with tickets 0.4, each member's own tickets | The [tickets plugin](../../plugins/official/#tickets) |
 | Community tools | Available activities, member forms and staff workflows at `/community` | An installed plugin exposing a supported route |
 | Developers | A live map of the SDK: session, every portal endpoint, every plugin route | Linked for moderators, admins and in development |
 
 A page that needs a plugin only appears when the server runs that plugin. `spec.portal.pages`
 turns off Onboarding, Profile, Leaderboard and Tickets. The interface is in English and French.
+
+![The ticket desk: the team queue and the selected ticket](../../../assets/screenshots/portal-ticket-desk.webp)
 
 **Plugin pages.** The Tools link lists the features exposed by the selected server.
 Each link keeps the bot and plugin instance, including when a server runs several
@@ -51,11 +53,12 @@ the current viewer’s session. The server checks access again on each request.
 | Members | Verification, personal moderation history, birthday preferences, invitation standings, tag search, wallet, transactions and reward shop |
 | Authorized staff | Moderation case filters, appeals, verification queue, announcements with previews and scheduling, shift coverage, suggestion decisions, transaction ledger, tag editing, unanswered questions, audit search and export, guard rules and incidents |
 
-A Discord case link can open an appeal or a verification result for a former member.
-The result page calls only its scoped plugin route. The staff shift editor also supports
-members granted a plugin-specific staff role. Calendar subscriptions point directly to
-the public ICS route. Reward orders reuse the same purchase identifier after a network
-interruption, so a retry can retrieve the order without charging twice.
+The wallet, ledger, reward shop, giveaway and unanswered-question pages come from `economy`,
+`giveaways` and `ai-assistant`, which are
+[experimental and opt-in](../../plugins/official/#experimental-plugins) in 0.2.0.
+
+A Discord [case link](../../reference/http-api/authentication/#case-links) can open an appeal
+or a verification result for a former member; that page calls only its scoped plugin route.
 
 The reference portal has no activity page: the server activity that
 [`spec.analytics.portal`](../../self-hosting/analytics/#configuration) shares is shown by a
@@ -81,6 +84,34 @@ by **plugin name**, never by hard-coded bot or instance keys, and calls its rout
 SDK, typed from the plugin's route contract
 ([Typed plugin routes](../custom-portal/#typed-plugin-routes)). The reference portal's
 Leaderboard and Tickets pages work this way.
+
+### Verification
+
+The Verification page shows the challenge that the `verification` plugin's `GET /challenge`
+returns, and posts the answer to `POST /challenge`:
+
+| Challenge | The plugin returns | The portal posts |
+|---|---|---|
+| Button | `{ id, method: "button" }` | `{ id }` |
+| Typed code | `{ id, method, kind: "typed", image, length, charset?, prompt }` | `{ id, answer }`: the code typed, trimmed and upper-cased |
+| Choices | `{ id, method: "visual", image, choices, prompt }` | `{ id, answer }`: the chosen number |
+| Turnstile, hCaptcha | `{ id, method, siteKey }` | `{ id, token }` |
+
+:::caution[Experimental, opt-in]
+Image rendering is experimental and opt-in in 0.2.0. It stays experimental until usage is confirmed with three target communities. The typed-code and choice challenges need it: grant the verification plugin `render`, or use the button or a captcha.
+:::
+
+The plugin renders the image (a `data:image/png;base64,` URL) and keeps the code. The portal
+only displays the image. A typed code has `length` characters (4 to 8), letters A–Z and
+digits by default, or digits only with `charset: "digits"`. The plugin compares it without
+regard to case. The field has a visible label, turns off autocomplete, autocorrect and
+spellcheck, and opens a numeric keypad for digits. A challenge can be tried once: after a
+rejection the field is marked invalid and the page offers a new challenge.
+
+![The Verification page: a member types the code of a rendered image](../../../assets/screenshots/portal-verification.webp)
+
+A fork of the reference portal gets this page from its own copy of the template:
+`cicord portal upgrade` updates the `@cicord/*` packages, not the forked pages.
 
 There is no server-driven UI, and plugin JavaScript is never injected into a portal at run
 time: the portal stays code you review. A plugin may also ship optional React components, as a

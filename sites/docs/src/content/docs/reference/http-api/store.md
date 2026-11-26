@@ -83,12 +83,15 @@ done for `official` sources before installation.
 of them at once:
 
 - `kind: "registry"`: the `cicord.lock` version of `<registry>/<plugin>` (including
-  `cicord/<plugin>` locked from the official registry) is not the highest release tag of the
-  plugin repository, **any major version** (prereleases ignored, like resolving `*`). The
-  lookup lists the repository's tags only (no clone), with the registry's token and the
-  public-only rule like every Store fetch, and is cached with the index TTL: the background
-  refresh and `POST /store/refresh` refetch it, browsing the Store fetches what is missing or
-  stale, instance items never fetch.
+  `cicord/<plugin>` locked from the official registry) is below the version an update
+  resolves: the highest release of the plugin repository, **any major version** (prereleases
+  ignored, like resolving `*`), whose `plugin.yaml` `spec.engine` supports the running Cicord,
+  and never above the version the signed official index publishes. The lookup lists the
+  repository's tags and reads `plugin.yaml` at the newest candidates (shallow, no package
+  files), with the registry's token and the public-only rule like every Store fetch, and is
+  cached with the index TTL: the background refresh and `POST /store/refresh` refetch it,
+  browsing the Store fetches what is missing or stale, instance items never fetch. A badge
+  therefore never offers a release this Cicord would refuse.
 - `kind: "bundled"`: a copy of an official plugin in `plugins/<name>/` whose `plugin.yaml`
   version is older than the version bundled in the binary. `modified: true` when the copy is
   neither the content of a released version of that plugin (the binary records the integrity
@@ -117,7 +120,8 @@ of them at once:
 
 ```json
 { "source": "acme", "plugin": "xp", "bot"?: "moderator", "instance"?: "xp", "config"?: {…},
-  "version"?: "1.2.0", "commit"?: "<sha>", "integrity"?: "sha256-…", "confirmUnofficial"?: false }
+  "version"?: "1.2.0", "commit"?: "<sha>", "integrity"?: "sha256-…", "confirmUnofficial"?: false,
+  "confirmPrivileged"?: false }
 ```
 
 - `bot` defaults to the only bot managing the server (`400` when several do). `instance`
@@ -130,6 +134,8 @@ of them at once:
   origin changed since the review (bundled ↔ registry): `409 changed`. No `confirmUnofficial`
   is needed.
 - An `unofficial` source without `confirmUnofficial: true`: `409 confirmation_required`.
+- A plugin that requests `server.overlays`, `server.incident` or `server.sync` needs
+  `confirmPrivileged: true` (`409 confirmation_required`), for every source.
 - Every capability the plugin requests is granted (`grants`), as reviewed. Privileged intents
   are checked against the application, as in the [setup wizard](../setup/#wizard-endpoints)
   (`409 intents`). The configuration is validated on a copy of the active revision before
@@ -179,7 +185,8 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
 
 ```json
 { "version": "1.1.0", "commit"?: "<sha>", "integrity"?: "sha256-…",
-  "confirmUnofficial"?: false, "confirmSecretChanges"?: "<review digest>", "force"?: false }
+  "confirmUnofficial"?: false, "confirmPrivileged"?: false, "confirmSecretChanges"?: "<review digest>",
+  "force"?: false }
 ```
 
 - Needs the `admin` role on **every** server where an instance of the plugin runs (bearer:
@@ -190,6 +197,8 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
   version now resolves differently: `409 changed`. Bundled copies: `version` (and optionally
   `integrity`) of the reviewed `detail`.
 - The review lists each bound credential whose destination hosts or daily provider budget change under `instances[].secretChanges`. If an update expands that access, GET also returns `secretReview`. Supply the exact digest in `confirmSecretChanges` when approving the update. A missing or stale digest returns `409 confirmation_required`. The CLI prints the corresponding `--approve-secret-changes` argument.
+- An update that adds `server.overlays`, `server.incident` or `server.sync` needs
+  `confirmPrivileged: true` (`409 confirmation_required`).
 - `unofficial` sources need `confirmUnofficial: true` (`409 confirmation_required`). Already
   the latest: `409 up_to_date`. A modified bundled copy without `force: true`:
   `409 modified` (`details` lists the changed and deleted files).

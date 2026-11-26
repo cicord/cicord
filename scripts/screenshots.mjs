@@ -8,7 +8,8 @@
 //
 // Each set (below) says which runtime it expects. Shots of `cicord dev --sim` sign in with
 // POST /auth/dev-login. Set CHROME to another Chromium binary if Google Chrome is not in its
-// default macOS location; DEBUG=1 prints the page text of a shot that times out.
+// default macOS location, CHROME_PORT to move its DevTools port (default 9333); DEBUG=1
+// prints the page text of a shot that times out.
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,12 +33,29 @@ const out = {
 /**
  * The screenshot sets, one per source. Each shot: the page, a text to wait for, an optional
  * preparation run in the page, the viewport (default 1440x900) and where it goes (`dest`,
- * default docs). `clip` crops to an element (CSS selector) instead of the viewport.
+ * default docs). `clip` crops to the elements a CSS selector matches, or that a function run in
+ * the page returns, instead of the viewport (with `pad` CSS pixels around them, default 0).
  *
  * - showcase: `cicord dev examples/showcase --sim --listen 127.0.0.1:7490`
  * - community: `cicord dev <cicord-community checkout> --sim --listen 127.0.0.1:7491`
  * - demo: the admin console's demo data (`vp dev --mode mock --port 5190` in packages/admin),
- *   for the pages that need history: analytics, plan, drift, sync history, audit log.
+ *   for the pages that need history or rare states: analytics, drift, parked tasks, incident
+ *   overlays, the unexplained-actions warning. Each shot starts from fresh demo data, signed
+ *   in as the owner. `mock` passes options to the demo runtime (createMockRuntime), `state`
+ *   edits its saved state (sessionStorage) before the page loads.
+ * - portal: the reference portal's demo data (`vp dev` in packages/create-cicord-portal, port
+ *   5174). `?role=moderator` previews the staff pages.
+ * - official, official-admin: the official tickets and verification plugins on a real runtime,
+ *   for the rendered challenge, the ticket desk and plugin secrets. Copy examples/showcase,
+ *   replace plugins/tickets and add plugins/verification from cicord-plugins, and in bot.yaml
+ *   grant both plugins their required capabilities (verification also `render`, config
+ *   `{panelChannel: verify, verifiedRole: verified, minAccountAgeDays: 0}`, and
+ *   `secrets: {TURNSTILE_SECRET: {secretRef: CICORD_TURNSTILE_SECRET}}`); add a `verify`
+ *   channel and a `verified` role to the server. Run `cicord dev <copy> --sim --listen
+ *   127.0.0.1:7420` (a binary built with version 0.2.0 or later), then the portal's
+ *   `vp dev` (packages/create-cicord-portal, port 5174) for `official` and the admin's `vp dev`
+ *   (packages/admin, port 5175) for `official-admin`. The `official` seed adds the members and
+ *   tickets.
  */
 const SETS = {
   showcase: {
@@ -131,9 +149,104 @@ const SETS = {
       },
     ],
   },
+  portal: {
+    url: "http://localhost:5174",
+    login: "none",
+    // Signed in: the demo portal keeps its state in sessionStorage.
+    session: {
+      "cicord-portal:mock": JSON.stringify({
+        loggedIn: true,
+        memberRoles: ["member"],
+        completedAt: null,
+      }),
+    },
+    shots: [
+      {
+        // The staff view of the tickets: queue, filters, the selected ticket's thread.
+        id: "portal-ticket-desk",
+        path: "/tickets?role=moderator",
+        waitText: "Tickets",
+        settle: 1500,
+      },
+    ],
+  },
+  official: {
+    url: "http://localhost:5174",
+    login: "dev",
+    // Members who join (river is left to verify) and open tickets; the owner takes the first.
+    seed: `(async () => {
+      const H = { "Content-Type": "application/json", "X-Cicord-Request": "1" };
+      const post = (path, body, method = "POST") =>
+        fetch(path, { method, headers: H, body: JSON.stringify(body) }).then((r) => r.ok ? r.json().catch(() => null) : null);
+      const state = await fetch("/api/v1/sim/state").then((r) => r.json());
+      if (state.users.some((u) => u.username === "river")) return;
+      const owner = state.users.find((u) => u.username === "owner").id;
+      const server = state.servers[0].id;
+      const T = "/api/v1/portal/" + state.servers[0].key + "/plugins/cicord/tickets";
+      const ids = {};
+      for (const name of ["maya", "sam", "jordan", "river"]) {
+        ids[name] = (await post("/api/v1/sim/users", { username: name })).id;
+        await post("/api/v1/sim/servers/" + server + "/members", { userId: ids[name] });
+      }
+      const open = async (who, subject, description) => {
+        await post("/auth/dev-login", { userId: ids[who] });
+        return (await post(T + "/tickets", { subject, description })).id;
+      };
+      const first = await open("maya", "Spam in #general", "Two new accounts keep posting invite links in #general.");
+      await open("sam", "Bot does not answer /rank", "The /rank command times out since this morning.");
+      await open("jordan", "Question about plugin permissions", "Which grants does the polls plugin need to post results?");
+      await post("/auth/dev-login", { userId: owner });
+      await post(T + "/tickets/" + first + "/assign", { userId: "me" });
+      await post(T + "/tickets/" + first, { priority: "high" }, "PATCH");
+      await post(T + "/tickets/" + first + "/messages", { content: "Thanks Maya, both accounts are timed out. I am cleaning up the invite links now." });
+    })()`,
+    shots: [
+      {
+        // A member's typed-code challenge, rendered by the runtime.
+        id: "portal-verification",
+        path: "/verification/challenge",
+        waitText: "Verify my account",
+        as: "river",
+        size: [1280, 800],
+        settle: 1500,
+        dest: ["docs", "landing"],
+      },
+      {
+        id: "portal-ticket-desk",
+        path: "/tickets?ticket=1",
+        waitText: "Two new accounts",
+        // The queue and the selected ticket's header (the thread shows raw Discord mentions).
+        clip: () => {
+          const h2 = document.querySelector("h2");
+          return [document.querySelector("h1"), h2, h2?.nextElementSibling];
+        },
+        pad: 16,
+        settle: 2000,
+        dest: ["docs", "landing"],
+      },
+    ],
+  },
+  "official-admin": {
+    url: "http://localhost:5175",
+    login: "dev",
+    shots: [
+      {
+        // The instance's secret fields: one bound in bot.yaml, one not.
+        id: "admin-plugin-secrets",
+        path: "/admin/servers/showcase/plugins/cicord/verification",
+        waitText: "TURNSTILE_SECRET",
+        clip: () =>
+          [...document.querySelectorAll("label")]
+            .filter((l) => l.textContent.endsWith("_SECRET"))
+            .map((l) => l.parentElement),
+        pad: 24,
+        settle: 1500,
+      },
+    ],
+  },
   demo: {
     url: "http://localhost:5190",
-    login: "ui",
+    login: "mock",
     shots: [
       {
         id: "admin-analytics",
@@ -147,6 +260,99 @@ const SETS = {
         path: "/admin/servers/pixel-haven/drift",
         waitText: "Drift",
         settle: 1500,
+      },
+      {
+        // Parked tasks, paged: the first page and its "Load more".
+        id: "admin-dead-letters",
+        path: "/admin/servers/pixel-haven/diagnostics",
+        waitText: "Load more",
+        mock: { demoDeadLetters: 120 },
+        size: [1100, 760],
+        // The end of the first page of failed tasks and the Load more button.
+        clip: () => {
+          const more = [...document.querySelectorAll("button")].find(
+            (b) => b.textContent.trim() === "Load more",
+          );
+          const rows = [...(more?.previousElementSibling?.querySelectorAll(":scope > li") ?? [])];
+          return [more, ...rows.slice(-4)];
+        },
+        pad: 10,
+        settle: 1500,
+      },
+      {
+        id: "admin-overlays",
+        path: "/admin/servers/pixel-haven/plan",
+        waitText: "Active incident overlays",
+        size: [1100, 760],
+        // The page title and the overlay card, readable at the docs' width.
+        clip: () => {
+          const card = [...document.querySelectorAll("[data-slot=card]")].find((c) =>
+            c.textContent.includes("Active incident overlays"),
+          );
+          return [document.querySelector("main h1"), card];
+        },
+        pad: 24,
+        state: (s) => {
+          s.failing = false;
+          const hour = 3600 * 1000;
+          s.overlays = [
+            {
+              // What the official guard plugin applies during a raid (guard/src/raid.ts).
+              origin: "plugin:moderator/guard",
+              id: "raid",
+              until: new Date(Date.now() + 2 * hour).toISOString(),
+              reason: "guard raid",
+              server: { verificationLevel: "high" },
+              channels: {
+                general: {
+                  slowmodeSeconds: 30,
+                  overwrites: { "@everyone": { deny: ["SendMessages", "SendMessagesInThreads"] } },
+                },
+              },
+            },
+          ];
+        },
+        settle: 1500,
+      },
+      {
+        id: "admin-unconfirmed-audit",
+        path: "/admin/servers/pixel-haven",
+        waitText: "Unexplained actions by bot",
+        mock: { demoUnconfirmedAudit: true },
+        state: (s) => {
+          s.failing = false;
+        },
+        // The warning alone: the demo server has other warnings above it.
+        clip: () =>
+          document.querySelector("[data-testid=unconfirmed-audit]")?.closest("[role=status]"),
+        pad: 16,
+        settle: 1000,
+      },
+      {
+        id: "admin-member-data",
+        path: "/admin/servers/pixel-haven/settings",
+        waitText: "Data of uninstalled plugins",
+        mock: { demoInstances: 0 },
+        state: (s) => {
+          s.orphans = [
+            { instance: "moderator/old-tickets", records: 14, rankings: 3, index: 0, tasks: 2 },
+          ];
+        },
+        // A member ID typed in, and the data left by an uninstalled plugin below.
+        prepare: `(() => {
+          const input = document.getElementById("privacy-member");
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "1187436651230184451");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        })()`,
+        clip: () => {
+          const card = (id) => document.getElementById(id)?.closest("[data-slot=card]");
+          const orphans = [...document.querySelectorAll("[data-slot=card]")].find((c) =>
+            c.textContent.includes("Data of uninstalled plugins"),
+          );
+          return [card("member-data-title"), orphans];
+        },
+        pad: 24,
+        settle: 1000,
       },
     ],
   },
@@ -163,7 +369,7 @@ const SCRUB = `(() => {
   const style = document.createElement("style");
   style.textContent = 'a[href$="/simulator"] { display: none !important; }';
   document.head.append(style);
-  const re = /simulat|mock runtime/i;
+  const re = /simulat|\bmock\b|mock runtime|sample data, no connection/i;
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const hits = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) if (re.test(n.data)) hits.push(n);
@@ -177,7 +383,7 @@ const SCRUB = `(() => {
 })()`;
 
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const PORT = 9333;
+const PORT = Number(process.env.CHROME_PORT ?? 9333);
 const profile = mkdtempSync(join(tmpdir(), "cicord-shots-"));
 const chrome = spawn(
   CHROME,
@@ -254,7 +460,8 @@ async function evaluate(cdp, expression) {
 
 /**
  * Calls fn in the page with values passed as arguments (Runtime.callFunctionOn), never
- * spliced into the source: fn is a function of this script, values are data.
+ * spliced into the source: fn is a function of this script (or the source of one built from
+ * them), values are data.
  */
 async function call(cdp, fn, ...values) {
   const { result: global } = await cdp.send("Runtime.evaluate", { expression: "globalThis" });
@@ -305,6 +512,31 @@ async function devLogin(cdp, username) {
   if (status !== 200) throw new Error(`dev login as ${username}: HTTP ${status}`);
 }
 
+/** Options of the demo runtime for the current shot (login "mock"). */
+let mockOptions = null;
+
+/**
+ * Applies edit (a function of this script, so its source is ours) to the demo runtime's
+ * saved state.
+ */
+async function editMockState(cdp, edit) {
+  const ok = await call(
+    cdp,
+    `async (key) => {
+      for (let i = 0; i < 50 && !sessionStorage.getItem(key); i++)
+        await new Promise((r) => setTimeout(r, 100));
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return false;
+      const state = JSON.parse(raw);
+      (${edit})(state);
+      sessionStorage.setItem(key, JSON.stringify(state));
+      return true;
+    }`,
+    "cicord-admin:mock:v3",
+  );
+  if (!ok) throw new Error("the demo runtime saved no state");
+}
+
 async function main() {
   const only = args.only ? new Set(args.only.split(",")) : null;
   const cdp = await connect(await target());
@@ -329,6 +561,46 @@ async function main() {
       await load(cdp, `${base}/`);
       await evaluate(cdp, set.seed);
     }
+  } else if (set.session) {
+    await call(
+      cdp,
+      (items) => {
+        for (const [k, v] of Object.entries(items)) sessionStorage.setItem(k, v);
+      },
+      set.session,
+    );
+  } else if (set.login === "mock") {
+    // Options of the demo runtime are set where src/config.ts creates it: the module is
+    // rewritten on its way to the page, for the shots that ask for them.
+    await cdp.send("Network.enable");
+    await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
+    await cdp.send("Fetch.enable", {
+      patterns: [{ urlPattern: "*/src/config.ts*", requestStage: "Response" }],
+    });
+    cdp.on(async (m) => {
+      if (m.method !== "Fetch.requestPaused") return;
+      const { requestId, responseStatusCode, responseHeaders } = m.params;
+      if (!mockOptions) {
+        await cdp.send("Fetch.continueRequest", { requestId });
+        return;
+      }
+      const { body, base64Encoded } = await cdp.send("Fetch.getResponseBody", { requestId });
+      const source = base64Encoded ? Buffer.from(body, "base64").toString() : body;
+      // The shot's options win over the ones config.ts passes.
+      const anchor = "createMockRuntime({";
+      if (!source.includes(anchor))
+        throw new Error("src/config.ts no longer calls createMockRuntime({");
+      const patched = source.replace(
+        anchor,
+        `((o) => createMockRuntime({ ...o, ...${JSON.stringify(mockOptions)} }))({`,
+      );
+      await cdp.send("Fetch.fulfillRequest", {
+        requestId,
+        responseCode: responseStatusCode,
+        responseHeaders,
+        body: Buffer.from(patched).toString("base64"),
+      });
+    });
   } else if (set.login === "ui") {
     await waitText(cdp, "Dev login");
     await evaluate(
@@ -348,7 +620,18 @@ async function main() {
       mobile: false,
     });
     if (set.login === "dev") await devLogin(cdp, shot.as ?? "owner");
-    await load(cdp, base + shot.path);
+    let url = base + shot.path;
+    if (set.login === "mock") {
+      // Fresh demo data for every shot, signed in as the owner, answers without latency.
+      url += (url.includes("?") ? "&" : "?") + "mock-login=1&mock-latency=0";
+      mockOptions = shot.mock ?? null;
+      await evaluate(cdp, "sessionStorage.clear()");
+      if (shot.state) {
+        await load(cdp, url);
+        await editMockState(cdp, shot.state);
+      }
+    }
+    await load(cdp, url);
     try {
       await waitText(cdp, shot.waitText);
     } catch (e) {
@@ -367,13 +650,30 @@ async function main() {
     }
     let clip;
     if (shot.clip) {
+      // A function of this script runs in the page; a selector is passed as data.
+      const find =
+        typeof shot.clip === "function"
+          ? `${shot.clip}`
+          : "(selector) => document.querySelectorAll(selector)";
       clip = await call(
         cdp,
-        (selector) => {
-          const r = document.querySelector(selector).getBoundingClientRect();
-          return { x: r.x, y: r.y, width: r.width, height: r.height, scale: 1 };
-        },
-        shot.clip,
+        `async (selector, pad) => {
+          const found = (${find})(selector);
+          const els = [...(found?.length !== undefined ? found : [found])].filter(Boolean);
+          if (!els.length) throw new Error("clip: nothing matches " + selector);
+          els[0].scrollIntoView({ block: "center" });
+          await new Promise((r) => setTimeout(r, 300));
+          // Page coordinates: the viewport's, plus the scroll.
+          const rects = els.map((e) => e.getBoundingClientRect());
+          const left = Math.max(0, Math.min(...rects.map((r) => r.left)) - pad);
+          const top = Math.max(0, Math.min(...rects.map((r) => r.top)) - pad);
+          const right = Math.min(innerWidth, Math.max(...rects.map((r) => r.right)) + pad);
+          const bottom = Math.min(innerHeight, Math.max(...rects.map((r) => r.bottom)) + pad);
+          const [x, y] = [left + scrollX, top + scrollY];
+          return { x, y, width: right - left, height: bottom - top, scale: 1 };
+        }`,
+        typeof shot.clip === "function" ? shot.id : shot.clip,
+        shot.pad ?? 0,
       );
     }
     const { data } = await cdp.send("Page.captureScreenshot", {

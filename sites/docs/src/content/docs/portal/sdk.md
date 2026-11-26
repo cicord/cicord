@@ -12,7 +12,7 @@ portal. All of them are **Apache-2.0**.
 Cicord release, at the same version as the binary (ESM and `.d.ts` builds, with
 [npm provenance](../../getting-started/installation/#verify-a-download)):
 `pnpm add @cicord/client`. `cicord portal init` depends on them at the exact version of the
-`cicord` binary (`"@cicord/client": "0.1.11"`), and `cicord portal upgrade` follows cicord
+`cicord` binary (`"@cicord/client": "0.2.0"`), and `cicord portal upgrade` follows cicord
 upgrades. `cicord portal init --vendor` (offline or air-gapped builds) **vendors** the copies
 embedded in the binary as `file:` dependencies instead, which needs no registry access;
 `cicord portal upgrade --to-npm`
@@ -37,7 +37,7 @@ const profile = await client.portal.me(servers[0].key);    // the viewer's membe
 ```
 
 - **Auth**: `auth.login()`, `auth.loginUrl()`, `auth.link(token)` (portal links),
-  `auth.exchangeLinkToken()` (reads `cicord_token` / `cicord_code` from the URL), `auth.redeem()`,
+  `auth.exchangeLinkToken()` (reads `cicord_token` / `cicord_code` from the URL, and starts the Discord sign-in of a [case link](../../reference/http-api/authentication/#case-links)'s `cicord_scope`), `auth.redeem()`,
   `auth.devLogin()` (dev mode), `auth.logout()`. Cookie mode by default; `auth: "token"` for
   [token mode](../embedding/).
 - **Portal**: `portal.servers()`, `portal.server(key)`, `portal.me(key)`,
@@ -47,11 +47,14 @@ const profile = await client.portal.me(servers[0].key);    // the viewer's membe
 - **Plugin routes**: `client.plugin(server, bot, instance).get("/leaderboard")` (untyped), or
   `client.routes(plugin, server, instance).call("GET /leaderboard")` with the
   [generated route types](../custom-portal/#typed-plugin-routes).
-- **Admin console**: `client.admin` (status, history, plans, sync, pause and resume, audit, plugin settings,
+- **Admin console**: `client.admin` (status, history, plans, sync, pause and resume, audit, plugin settings
+  and secrets, overlays, member data and purges, dead letters, interop,
   `subscribe()` to the [event stream](../../reference/http-api/events/)), `client.analytics`
   (summary, series, catalog) and `client.store`, for moderators and admins.
-- Errors are `CicordApiError` with the API's error `code`. Every state-changing call sends the
-  `X-Cicord-Request` header the runtime requires.
+- Errors are `CicordApiError` with the API's error `code`, and `retryAfter` (seconds, from
+  `Retry-After` on `429` and `503`). `partialPrivacyReport(error)` returns the steps of an
+  erasure that failed part-way. Every state-changing call sends the `X-Cicord-Request` header
+  the runtime requires.
 
 ## `@cicord/react`
 

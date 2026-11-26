@@ -18,5 +18,6 @@ export const links = {
   officialPlugins: "https://github.com/cicord/cicord-plugins",
   communityConfig: "https://github.com/cicord/cicord-community",
   github: "https://github.com/cicord/cicord",
+  changelog: "https://github.com/cicord/cicord/blob/main/CHANGELOG.md",
   discord: "https://discord.gg/qTt5S2Fe4m",
 } as const;

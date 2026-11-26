@@ -108,6 +108,23 @@ Plugin keys match `[a-z0-9][a-z0-9-]{0,63}`. Tags other than `v<semver>` (or `<n
 in a monorepo) are ignored, and prereleases are only resolved by version ranges that admit
 them.
 
+Resolution (`cicord plugin add`, `cicord plugin update`, installs and updates from the Store)
+picks the highest release in the version range whose `plugin.yaml` `spec.engine` admits the
+running Cicord, checked like `cicord validate` does: a release that requires another engine is
+skipped, never locked. At most the 8 newest releases of the range are read; when none of them
+fits, the command says which engine the newest one requires, and an older range
+(`acme/xp@^1.2.0`) still resolves. Publish a release that needs a newer Cicord with that
+`spec.engine` (for example `">=0.2.0-0"`): existing installations keep resolving the last
+release their engine supports. For the official registry, resolution also never goes above
+the `version` its signed index publishes, so a tag pushed to the repository is only installed
+once the signed index releases it.
+
+Cicord 0.1.x does not read `spec.engine` when it resolves. It ignores prerelease tags
+(`<name>/v0.4.0-rc.1`) unless a range names one, but a plain release tag that requires 0.2
+is resolved by `cicord plugin add` and a default `cicord plugin update` there, and then fails
+`cicord validate`. Publish releases that need 0.2 as prereleases while 0.1.x installations are
+supported, or tell 0.1.x users to update with `--to ^<current major.minor>`.
+
 An `https` registry may only list `https` plugin repositories. Users add it and install from
 it:
 
@@ -122,7 +139,7 @@ the version in `cicord.lock` (commit, content hash, and `path` for a monorepo) a
 `version: ^1.2.0` to the bot.
 
 To ship an update, publish a new tag: Cicord compares each locked version with the highest
-release tag of the plugin repository and offers the update. Keep the settings of a minor
+release tag of the plugin repository that supports its engine and offers the update. Keep the settings of a minor
 version compatible (a new required field makes every existing instance invalid, and the
 update is refused until admins fix it) and release breaking changes as a new major version.
 New capabilities, intents or network hosts are shown to admins before they update.
@@ -160,8 +177,8 @@ tags `<name>/v<semver>`) and a **signed** `index.yaml` at its root. Its plugins 
 `cicord`, without any `cicord.yaml` entry, and only it can mark publishers as `verified`.
 Community plugins are submitted there by pull request (see its `CONTRIBUTING.md`).
 
-The ten [official plugins](../official/) live there, each released with its own tags
-(`welcome/v0.1.0`). Install one with `cicord plugin add cicord/<name>`, which locks it in
+The [official plugins](../official/) live there, each released with its own tags
+(`welcome/v0.2.0`). Install one with `cicord plugin add cicord/<name>`, which locks it in
 `cicord.lock` like any registry plugin. The binary embeds the registry's public signing key;
 `cicord registry list` shows the source as:
 
@@ -206,13 +223,24 @@ a verified official index; in any other registry it is ignored.
 ### Source `cicord` and the bundled plugins
 
 The official registry needs no `cicord.yaml` entry: its plugins are part of source `cicord`
-(the name is reserved), merged with the ten plugins bundled in the binary (every official
-plugin except github-releases), for offline and first installs. When a plugin is in both, the
+(the name is reserved), merged with the ten plugins bundled in the binary (welcome,
+onboarding, tickets, polls, levels, moderation, reaction-roles, audit-log, announcements and
+voice-rooms), for offline and first installs. When a plugin is in both, the
 registry version is used only if its index `version` is a valid semver **greater** than the
 bundled one; otherwise the bundled copy is used. Installing a bundled plugin (the setup
 wizard always does) copies it to `plugins/<name>/`; installing one from the official
 registry locks it in `cicord.lock` as `cicord/<name>`, like `cicord plugin add
 cicord/<name>`.
+
+The runtime gives an official plugin its `cicord` source and `verified` identity (what
+inter-plugin calls report as `caller.source` and `caller.verified`) only when the signed index
+binds its locked repository, path, version and commit. It keeps the last signed index it read
+in its plugin cache and uses it for at most one hour: after that, or as soon as the lock
+names a release the cached index does not bind (after `cicord plugin update`), it reads the
+signed index again, so a publisher set back to `verified: false` loses the identity within
+the hour. When the registry cannot be reached, the cached index stays the offline fallback,
+as long as its signature is valid. A cached index is never replaced by one with a lower
+serial.
 
 If the official index cannot be read or verified, `cicord` still lists the bundled plugins
 and shows the error. A build that embeds no official public key cannot verify the index: it
@@ -265,6 +293,6 @@ It signs whatever is on `main`: branch protection (required reviews) is the real
 
 ### Verified offline packages
 
-On a cache hit Cicord hashes the sorted file paths, sizes and bytes and compares the result with the integrity in `cicord.lock`. Existing verified caches work offline. Changed, missing or additional files and symbolic links trigger a fresh download of the pinned commit. The replacement becomes available after its content hash matches. If the origin is unavailable, validation reports an error and the changed cache stays ineligible.
+On a cache hit Cicord hashes the sorted file paths, sizes and bytes and compares the result with the integrity in `cicord.lock`. Existing verified caches work offline. Changed, missing or additional files and symbolic links trigger a fresh download of the pinned commit. A plugin whose file paths differ only by case or Unicode normalization (`src/index.ts` and `src/Index.ts`) is refused, because macOS and Windows would cache one file over the other; a downloaded package is published to the cache only after its staged files hash to the lock. The replacement becomes available after its content hash matches. If the origin is unavailable, validation reports an error and the changed cache stays ineligible.
 
 Registry resolution lists release tags and fetches the selected tag shallowly. A locked installation requests its pinned commit. Older Git transports can use a bounded history fetch. The host allows two concurrent network fetches, each with a 45-second deadline. Reference advertisements and index files are limited to 4 MiB. Pack limits are 64 MiB transferred, 32,768 objects, 16 MiB per object and 128 MiB of expanded data including deltas. A plugin subtree can contain up to 4,096 files and 32 MiB.

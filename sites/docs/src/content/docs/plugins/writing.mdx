@@ -22,11 +22,11 @@ call is checked against the capabilities `bot.yaml` grants.
 - [`spec/schemas/plugin.schema.json`](https://github.com/cicord/cicord/blob/main/spec/schemas/plugin.schema.json)
   is the `plugin.yaml` schema.
 - [`cicord/cicord-plugins`](https://github.com/cicord/cicord-plugins) holds the sources of
-  the ten [official plugins](../official/), each with its unit tests.
+  the [official plugins](../official/), each with its unit tests.
 - [`examples/basic/plugins`](https://github.com/cicord/cicord/tree/main/examples/basic/plugins)
   holds `welcome` and `onboarding`, and
   [`examples/showcase`](https://github.com/cicord/cicord/tree/main/examples/showcase) is a
-  complete repository whose seven plugins together use the whole SDK:
+  complete repository whose eight plugins together cover most of the SDK:
 
   | Plugin           | What it shows                                                                                                     |
   | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -37,8 +37,9 @@ call is checked against the capabilities `bot.yaml` grants.
   | `reaction-roles` | Role panels with buttons, a select menu or reactions, edited in place                                             |
   | `audit-log`      | Member and message events, subscriptions, batched posts                                                           |
   | `announcements`  | Time-zone schedules evaluated by a minute tick, `/announce` with a modal and tasks                                |
+  | `voice-rooms`    | Voice states, plugin-owned voice channels edited in place, `voiceMembers()`, `moveTo()`                           |
 
-  They are the copies of the official plugins bundled with the binary;
+  With `welcome` and `onboarding`, they are the ten plugins bundled with the binary;
   [SDK coverage](../coverage/) maps every SDK feature to the plugin and the end-to-end test
   that exercise it.
 
@@ -195,7 +196,7 @@ metadata:
   description: Greets new members… # ≤ 280 characters
   license: Apache-2.0 # SPDX identifier
 spec:
-  engine: ">=0.1.0" # runtime versions this plugin supports
+  engine: ">=0.2.0" # runtime versions this plugin supports
   entry: ./src/index.ts
   capabilities:
     [
@@ -214,19 +215,24 @@ spec:
   #   allow: [api.example.com, "*.example.org"]
 ```
 
-| Field                                                                                      | Description                                                                           |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `metadata.name`, `metadata.version`                                                        | **Required.** The plugin key and its semver version.                                  |
-| `metadata.displayName`, `description`, `authors`, `license`, `homepage`, `keywords` (≤ 10) | Shown in the Store.                                                                   |
-| `spec.engine`                                                                              | **Required.** Semver range of supported Cicord versions.                              |
-| `spec.entry`                                                                               | **Required.** Relative path of the module that default-exports `definePlugin(...)`.   |
-| `spec.capabilities`                                                                        | What the plugin may do (below).                                                       |
-| `spec.assets`                                                                              | Directory of read-only files to include in the plugin bundle, such as `./assets`.     |
-| `spec.intents`                                                                             | Gateway intents its event handlers need (below).                                      |
-| `spec.network.allow`                                                                       | Hosts reachable with `http.fetch`. Required when `http.fetch` is requested.           |
-| `spec.config.schema`                                                                       | Relative path of the config JSON Schema.                                              |
-| `spec.routes.types`                                                                        | Relative path of the [route contract](../api/#typed-routes) for typed portal clients. |
-| `spec.client.package`                                                                      | Optional npm package with React components for portals.                               |
+| Field                                                                                      | Description                                                                                                                                            |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `metadata.name`, `metadata.version`                                                        | **Required.** The plugin key and its semver version.                                                                                                   |
+| `metadata.displayName`, `description`, `authors`, `license`, `homepage`, `keywords` (≤ 10) | Shown in the Store.                                                                                                                                    |
+| `spec.engine`                                                                              | **Required.** Semver range of supported Cicord versions (`>=0.2.0` for the 0.2 SDK).                                                                   |
+| `spec.entry`                                                                               | **Required.** Relative path of the module that default-exports `definePlugin(...)`.                                                                    |
+| `spec.capabilities`                                                                        | What the plugin may do (below).                                                                                                                        |
+| `spec.optional`                                                                            | Features that work without extra grants: `{ feature, capabilities?, intents?, when? }` ([below](#versioned-events-and-plugin-calls)).                  |
+| `spec.intents`                                                                             | Gateway intents its event handlers need (below).                                                                                                       |
+| `spec.delivery`, `spec.interop`                                                            | `at-least-once`, and the events, queries and actions it publishes, subscribes to, provides and consumes ([below](#versioned-events-and-plugin-calls)). |
+| `spec.assets`                                                                              | Directory of read-only files packaged with the code, such as `./assets`.                                                                               |
+| `spec.locales`                                                                             | Directory of translation catalogues, such as `./locales` ([Translation catalogues](../api/#translation-catalogues)).                                   |
+| `spec.network.allow`, `spec.network.configurable`                                          | Hosts reachable with `http.fetch` (required with `http.fetch`); `configurable: true` lets an instance add hosts in `bot.yaml`.                         |
+| `spec.secrets`                                                                             | Up to 32 credentials the instance binds in `bot.yaml`, with the hosts they may reach ([below](#sending-a-webhook-with-a-bound-credential)).            |
+| `spec.privacy.records`                                                                     | The member data it keeps and its `erase`, `anonymize` or `retain` policy ([Member privacy](../api/#member-privacy)).                                   |
+| `spec.config.schema`                                                                       | Relative path of the config JSON Schema.                                                                                                               |
+| `spec.routes.types`                                                                        | Relative path of the [route contract](../api/#typed-routes) for typed portal clients.                                                                  |
+| `spec.client.package`                                                                      | Optional npm package with React components for portals.                                                                                                |
 
 ## Capabilities and grants
 
@@ -235,31 +241,39 @@ Every capability in `spec.capabilities` must also be listed in the instance's `g
 a plugin update that asks for more shows up in review. At run time, a call that is not
 granted throws a `CapabilityError` whose `capability` field names the missing one.
 
-| Capability                            | Allows                                                                                                                            |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `discord.messages.read`               | `channel.messages()` (history), `channel.message(id)`, `attachment.bytes()`                                                       |
-| `discord.messages.send`               | `channel.send()`, `message.reply()`, `message.edit()` of the bot's own messages                                                   |
-| `discord.messages.manage`             | `message.delete()` (any message), `message.edit()` of other authors' messages                                                     |
-| `discord.reactions.manage`            | `message.react()`                                                                                                                 |
-| `discord.members.read`                | `ctx.server.member()`, `role.members()` (with the `ServerMembers` intent), `ctx.server.voiceMembers()` (with `ServerVoiceStates`) |
-| `discord.members.manage`              | `member.setNickname()`                                                                                                            |
-| `discord.members.moderate`            | `member.timeout()`, `kick()`, `ban()`                                                                                             |
-| `discord.roles.assign`                | `member.addRole()`, `removeRole()`                                                                                                |
-| `discord.channels.read`               | `ctx.server.channel()`                                                                                                            |
-| `discord.channels.manage`             | `ctx.server.createChannel()` / `editChannel()` / `deleteChannel()` (plugin-owned channels)                                        |
-| `discord.threads.manage`              | `channel.createThread()`                                                                                                          |
-| `discord.voice.move`                  | `member.moveTo()` (to a voice channel), `member.disconnect()` (from voice)                                                        |
-| `discord.dm.send`                     | `member.send()`                                                                                                                   |
-| `storage.kv`                          | `ctx.kv`                                                                                                                          |
-| `scheduler`                           | `schedules`, `tasks`, `ctx.schedule`                                                                                              |
-| `http.fetch`                          | `ctx.http.fetch()` to the `spec.network.allow` hosts                                                                              |
-| `render`                              | `ctx.render.image()`                                                                                                              |
-| `media.analyze`                       | `ctx.media.hash()`, `ctx.media.distance()`                                                                                        |
-| `portal.routes`                       | `routes`                                                                                                                          |
-| `portal.links`                        | `ctx.portal.link()`                                                                                                               |
-| `plugins.query:<plugin>.<name>`       | Read an installed provider’s declared query on the same server.                                                                   |
-| `plugins.call:<plugin>.<name>`        | Invoke a provider action with an origin-derived idempotency key.                                                                  |
-| `events.publish` / `events.subscribe` | `ctx.events.publish()` / `subscriptions`                                                                                          |
+| Capability                                          | Allows                                                                                                                                                                            |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `discord.messages.read`                             | `channel.messages()`, `channel.message(id)`, `channel.pins()`, `message.reactionUsers()`, `message.pollVoters()`, `attachment.bytes()`                                            |
+| `discord.messages.send`                             | `channel.send()`, `message.reply()`, `message.edit()` of the bot's own messages, `message.crosspost()`, `message.endPoll()`, `channel.typing()`                                   |
+| `discord.messages.manage`                           | `message.delete()` (any message), `message.edit()` of other authors' messages, `pin()`, `unpin()`, `removeReaction()`; with `discord.messages.read`, `bulkDelete()` and `purge()` |
+| `discord.webhooks.manage`                           | `channel.sendAs()`                                                                                                                                                                |
+| `discord.reactions.manage`                          | `message.react()`                                                                                                                                                                 |
+| `discord.members.read`                              | `ctx.server.member()`, `ctx.server.members()`, `role.members()` (with the `ServerMembers` intent), `ctx.server.voiceMembers()` (with `ServerVoiceStates`)                         |
+| `discord.members.manage`                            | `member.setNickname()`                                                                                                                                                            |
+| `discord.members.moderate`                          | `member.timeout()`, `removeTimeout()`, `kick()`, `ban()`, `ctx.server.ban()`, `unban()`, `bans()`                                                                                 |
+| `discord.roles.assign`                              | `member.addRole()`, `removeRole()`, `setRoles()`                                                                                                                                  |
+| `discord.channels.read`                             | `ctx.server.channel()`, `channel.memberOverwrite()`, `ctx.server.protection()`                                                                                                    |
+| `discord.channels.manage`                           | `ctx.server.createChannel()` / `editChannel()` / `deleteChannel()` / `recoverOwnedChannel()` (plugin-owned channels)                                                              |
+| `discord.threads.manage`                            | `channel.createThread()`                                                                                                                                                          |
+| `discord.voice.move`                                | `member.moveTo()` (to a voice channel), `member.disconnect()` (from voice)                                                                                                        |
+| `discord.dm.send`                                   | `member.send()`, `ctx.server.sendDM()`, `retractDM()`                                                                                                                             |
+| `discord.auditlog.read`                             | `ctx.server.auditLog()`, `auditLogEntry` (with `ServerModeration`)                                                                                                                |
+| `discord.invites.read`                              | `ctx.server.invites()`                                                                                                                                                            |
+| `discord.events.read`, `discord.events.manage`      | `ctx.server.scheduledEvents()`, `event.users()`; `createScheduledEvent()`, `event.edit()`, `event.delete()`                                                                       |
+| `server.overlays`, `server.incident`, `server.sync` | `ctx.server.overlays`, `ctx.server.incident()`, `ctx.server.requestSync()` ([overlays](../api/#overlays-incidents-and-the-protection-inventory))                                  |
+| `storage.kv`                                        | `ctx.kv`                                                                                                                                                                          |
+| `storage.index`                                     | `ctx.index()`                                                                                                                                                                     |
+| `files.read`                                        | `ctx.files` (the instance's `files:` in `bot.yaml`)                                                                                                                               |
+| `analytics.read`                                    | `ctx.analytics.summary()`                                                                                                                                                         |
+| `scheduler`                                         | `schedules`, `tasks`, `ctx.schedule`, `interaction.deferTask()`                                                                                                                   |
+| `http.fetch`                                        | `ctx.http.fetch()` to the allowed hosts                                                                                                                                           |
+| `render`                                            | `ctx.render.image()` (experimental)                                                                                                                                               |
+| `media.analyze`                                     | `ctx.media.hash()`                                                                                                                                                                |
+| `portal.routes`                                     | `routes`                                                                                                                                                                          |
+| `portal.links`                                      | `ctx.portal.link()`                                                                                                                                                               |
+| `plugins.query:<plugin>.<name>`                     | `ctx.plugins.query()` of that provider query on the same server                                                                                                                   |
+| `plugins.call:<plugin>.<name>`                      | `ctx.plugins.call()` of that provider action                                                                                                                                      |
+| `events.publish` / `events.subscribe`               | `ctx.events.publish()` / `subscriptions`                                                                                                                                          |
 
 Answering the plugin's own interactions (`reply`, `defer`, `followUp`, `update`,
 `showModal`) needs no capability.
@@ -287,7 +301,7 @@ spec:
 
 `ctx.features.enabled("pollRewards")` checks the installation’s grants, optional intents and provider availability. Use `when: /cacheContent` on a feature to require a boolean switch in its effective configuration before requesting its optional intents. A plugin can report a configured feature with `ctx.features.report("pollRewards", false, reason)`. Another instance on the same server can discover a declared feature through `ctx.plugins.hasFeature(plugin, feature)`. Diagnostics shows feature status, provider choices, caller restrictions and missing grants. Granting a provider wildcard, for example `plugins.query:polls.*`, permits every declared query on that provider.
 
-`ctx.events.publish("levelUp", payload, {version: 1, idempotencyKey})` records one delivery per subscribed installation. Derive the optional publication key from the originating operation to deduplicate repeated publications for 30 days. A subscriber gets `(ctx, payload, meta)`. Use `meta.id` to deduplicate the effect and commit that marker together with local state changes. The host orders deliveries per publisher and subscriber and retries failed deliveries five times before parking them for 14 days. A server admin can replay or discard them in Diagnostics. The server owner and Discord administrators can inspect raw event data. The payload limit is 1 MiB. Publish compact summaries and provide a paginated query for longer lists. During an incompatible transition publish the old and new versions with separate calls. Legacy subscribers receive v1 on their own bot, at most once.
+`ctx.events.publish("levelUp", payload, {version: 1, idempotencyKey})` records one delivery per subscribed installation. Derive the optional publication key from the originating operation to deduplicate repeated publications for 30 days. A subscriber gets `(ctx, payload, meta)`. Use `meta.id` to deduplicate the effect and commit that marker together with local state changes. The host orders deliveries per publisher and subscriber: the next event of a stream is delivered as soon as the previous one is acknowledged, so a stream drains at the speed of its handler. Failed deliveries are tried five times in all (backoff 1 s → 5 min) before parking them for 14 days. An event whose subscription a new revision no longer declares (topic, version or grant) is not a failure: it waits, and is parked after 24 hours. A server admin can replay or discard them in Diagnostics. The server owner and Discord administrators can inspect raw event data. The payload limit is 1 MiB. Publish compact summaries and provide a paginated query for longer lists. During an incompatible transition publish the old and new versions with separate calls. Legacy subscribers receive v1 on their own bot, at most once.
 
 ```ts
 import { action, definePlugin, query } from "@cicord/sdk";
@@ -313,7 +327,11 @@ export default definePlugin({
 
 Declare matching providers and schemas, e.g. `contracts/credit.v1.json`. Query contexts are read-only. Each method receives a host-authenticated caller and, for member-originated calls, a delegated principal. Private providers must check this member’s access to the requested record on every read. An optional installation-level `interop.allowCallers` list uses `bot/instance` identities. Consumers choose between duplicate providers using `interop.targets` on their own installation. Member routes and interactions in consumers, and provider method invocations, use isolated JS realms. Use durable storage for state shared between handlers.
 
-Call `ctx.plugins.query("economy", "balance", {userId})` or `ctx.plugins.call("economy", "credit", {userId, amount}, {idempotencyKey})`. Concurrent actions with the same key and authority share the recorded result for 30 days. Provider KV writes, published events and the action receipt commit together. Verify external effects against Discord or the upstream service before repeating them after a lost response. Use the SDK testing helper `replayActionEffects` to inject interruptions after external effects. Only `PluginUnavailableError` means that no installation exists. After a refusal, report the configuration problem. After a timeout or handler error, retry the action with its original key. The host permits two call hops and rejects cycles.
+:::caution[Provider calls do not see `onStart` state]
+Each provider query or action runs in a fresh JS realm. The same applies to the member routes and interactions of a plugin that declares `interop.consumes`. Cicord evaluates the plugin's module again in that realm, but **`onStart` does not run there**. Module-level state filled by `onStart` or by other handlers, such as a `Map` cache or a catalog loaded from files, is empty. A lock built from a module-level promise chain does not serialise these calls against your events, tasks or cron jobs either. Read what the call needs from KV, files or assets inside the handler, and use KV atomics to serialise. A query context is read-only: KV writes, schedules, `ctx.status.set`, `ctx.features.report`, `ctx.http.fetch` and Discord effects throw `CapabilityError` with capability `read-only`. The realm keeps one request's caller, principal and write permission away from another request's continuations. Test the provider path with `callProvider` from `@cicord/sdk/testing` ([Testing](../testing/#provider-calls)).
+:::
+
+Call `ctx.plugins.query("economy", "balance", {userId})` or `ctx.plugins.call("economy", "credit", {userId, amount}, {idempotencyKey})`. Concurrent actions with the same key, input and principal share the recorded result for 30 days. The receipt belongs to the calling installation, so another caller using the same key runs its own action. A retry must carry the same input and be made on behalf of the same member (`onBehalfOf`: user id and resource scope): a result recorded on behalf of one member is never returned to a request made for another member or without one, and such a reuse fails with `invalid_input`. The member's access level is not part of the receipt: a retry after the member's access changed (for example a lost role) returns the action's original result, because its effect already happened. A call with a new key reaches the provider, which checks the caller's current access on every call. Provider KV writes, published events and the action receipt commit together. Verify external effects against Discord or the upstream service before repeating them after a lost response. Use the SDK testing helper `replayActionEffects` to inject interruptions after external effects. Only `PluginUnavailableError` means that no installation exists. After a refusal, report the configuration problem. After a timeout or handler error, retry the action with its original key. The host permits two call hops and rejects cycles.
 
 ### Attachments, assets and images
 
@@ -323,6 +341,12 @@ update. Each file has a unique name, a `Uint8Array`, and optional `contentType` 
 server's upload limit. For ordinary channel sends the bot needs Discord's
 `AttachFiles` permission. On edit, omit `files` to preserve existing attachments.
 Supply an array to replace them or an empty array to clear them.
+
+:::caution[Experimental, opt-in]
+Image rendering (`ctx.render.image`, the `render` capability) is experimental and opt-in in
+0.2.0. It stays experimental until usage is confirmed with three target communities. Degrade
+to a text message when the capability is not granted or a render fails.
+:::
 
 ```ts
 const card = await ctx.render.image({
@@ -358,7 +382,8 @@ parent traversal. For UTF-8 text use `new TextEncoder().encode(text)` and
 ctx.http.fetch(url)).bytes()` preserves the response bytes. A received Discord
 attachment offers `await attachment.bytes()` for CDN downloads up to 8 MiB.
 
-The Go renderer writes a PNG from dimensions of 1–2048 pixels and up to 64 layers.
+The Go renderer writes a PNG with sides of 1–2048 pixels, an area of at most 524,288
+pixels (for example 1024×512, 724×724 or 2048×256), and up to 64 layers.
 Backgrounds support colors, two-color vertical gradients, packaged assets and Discord
 CDN URLs. Image layers take `source: { asset: "..." }` or `{ url: "..." }`, and
 optional `circle` or `rounded` masks. Text uses Inter, Noto, emoji or a packaged
@@ -366,9 +391,17 @@ TrueType/OpenType font (`font: { asset: "fonts/title.ttf" }`). Its `x` aligns th
 left, center or right edge and `y` sets the top. `maxWidth` truncates with an
 ellipsis by default. Use `rect` for a solid block, `progress` for a fraction from
 0 to 1 and `chart` with `kind: "bar" | "line"` and up to 256 numeric `values`.
-Colors accept `#RRGGBB` and `#RRGGBBAA`. The renderer runs with a hard 16 MiB
-linear-memory ceiling and a 300 ms execution deadline after its inputs arrive.
-Complex inputs can exhaust either budget within the maximum dimensions.
+Colors accept `#RRGGBB` and `#RRGGBBAA`. The distinct image sources of one render
+(background and image layers, each decoded once) may total 524,288 decoded pixels.
+Larger specs and sources are refused with a validation error.
+
+The renderer is a confined WebAssembly worker with a hard 24 MiB memory ceiling and a
+deadline of one second of wall-clock time. The deadline starts after its inputs are
+downloaded and a worker slot is free. The runtime runs one worker per processor, at least
+two and at most four. For reference, on an Apple M-series core a 700×220 welcome card with a
+background and an avatar renders in about 115 ms. The largest envelope (a full canvas
+and source, with 60 text layers in three fonts) takes about 600 ms. Slower hosts take
+proportionally longer. All CDN inputs of one render share one download deadline.
 
 `ctx.media.hash(attachmentOrURL, { algo })` returns a lowercase hexadecimal digest.
 `sha256` identifies exact image bytes. `phash` and `dhash` produce 64-bit digests
@@ -376,11 +409,16 @@ for visual matching. `ctx.media.distance(a, b)` counts differing bits between tw
 equal-length digests. Downloads use the Discord CDN or the plugin's allowed hosts,
 with egress checks at each redirect. Supported formats are PNG, JPEG, GIF (first
 frame) and WebP. Input is limited to 8 MiB and four megapixels after decoding.
+The host only reads the image header. `phash` and `dhash` decode the pixels in the same
+confined worker as the renderer, with a 96 MiB memory ceiling and a 3-second deadline,
+and at most half of the worker slots go to hashing. A crafted image that would take
+minutes to decode fails with an error instead of holding the runtime. `sha256` hashes the
+bytes of any image with a valid header.
 
 For unit tests, `createTestContext` accepts `assets`, a binary response from its
 `fetch` fixture, and optional `renderImage` and `hashImage` functions. Use
 `harness.attachment(file)` for command inputs. Simulator runs use the packaged Go
-renderer, native image hashes and a local Discord CDN.
+renderer and image hasher (the same confined worker) and a local Discord CDN.
 
 ### Network egress
 
@@ -405,7 +443,17 @@ secrets:
     hosts: [discord.com, hooks.slack.com]
 ```
 
-Bind that name in `bot.yaml` and keep the incoming webhook URL in the operator secret store. For Discord, send a message with `ctx.http.fetch(ctx.secrets.ref("STAFF_WEBHOOK"), {method: "POST", json: {content: message}})`. Slack incoming webhooks use `{text: message}`. The host accepts the provider's exact incoming-webhook endpoint and returns the HTTP status. A reply carries empty headers and body. Credential declarations for API keys and captcha fields continue to use their approved header, form or JSON positions.
+Bind that name in `bot.yaml` and keep the incoming webhook URL in the operator secret store:
+
+```yaml
+plugins:
+  - name: guard
+    source: cicord/guard
+    secrets:
+      STAFF_WEBHOOK: { secretRef: CICORD_STAFF_WEBHOOK }
+```
+
+A plugin `secretRef` must start with `CICORD_`. The runtime resolves it from the environment, then the encrypted store, so the namespace keeps other process credentials (`AWS_SECRET_ACCESS_KEY`, `PGPASSWORD`…) out of reach of a `bot.yaml` line. The runtime's own credentials (`CICORD_SECRET_KEY`, `CICORD_DATABASE_URL`, registry tokens, bot tokens…) stay reserved and cannot be bound either. `cicord validate` refuses any other name. For Discord, send a message with `ctx.http.fetch(ctx.secrets.ref("STAFF_WEBHOOK"), {method: "POST", json: {content: message}})`. Slack incoming webhooks use `{text: message}`. The host accepts the provider's exact incoming-webhook endpoint and returns the HTTP status. A reply carries empty headers and body. Credential declarations for API keys and captcha fields continue to use their approved header, form or JSON positions.
 
 ## Intents
 
@@ -508,6 +556,10 @@ The runtime bundles plugins itself, with esbuild used as a Go library (no Node.j
 `cicord plugin build <dir>` does exactly this and prints the definition (commands, events,
 routes); `--out` also writes the bundle, `-o json` prints JSON.
 
+### Package boundary
+
+Cicord compiles each plugin with a read-only view of its package. Relative modules, local TypeScript aliases and dependencies shipped within the package resolve inside that view. `@cicord/sdk` is provided by the host. Ancestor workspaces, external symlinks and host files are unavailable to imports, TypeScript configuration, source maps and glob resolution. Keep plugin config schema references within the schema document, using `$defs` for shared definitions.
+
 ## Type checking
 
 Type-check with the scaffolded `tsconfig.json`, which maps `@cicord/sdk` to
@@ -524,16 +576,12 @@ The normative SDK contract is
 [`spec/sdk/cicord-sdk.d.ts`](https://github.com/cicord/cicord/blob/main/spec/sdk/cicord-sdk.d.ts);
 `cicord plugin sdk-types <dir>` rewrites the local copy.
 
-Next: the [plugin API](../api/).
-
-### Package boundary at build time
-
-Cicord compiles each plugin with a read-only view of its package. Relative modules, local TypeScript aliases and dependencies shipped within the package resolve inside that view. `@cicord/sdk` is provided by the host. Ancestor workspaces, external symlinks and host files are unavailable to imports, TypeScript configuration, source maps and glob resolution. Keep plugin config schema references within the schema document, using `$defs` for shared definitions.
-
-### Disabling an installation
+## Disabling an installation
 
 Set `enabled: false` in the installation's `config` in `bot.yaml`, or change the **Enabled** switch in its admin settings. The switch may also be set in a server override. An inactive installation may use just `config: {enabled: false}`, including when the plugin's active config schema requires fields. This switch belongs to the host. Existing manifests and schemas can use it without a code change.
 
 The instance stays listed as **Disabled**. Its commands, routes, subscriptions and schedules are unavailable. Disabling stops its VM without invoking a shutdown hook. Already completed external effects and stored plugin data persist. Queued deliveries retain their payloads, attempts and deadlines while the installation is disabled. Re-enabling validates the full config, bindings and grants, then starts the installation normally. Overdue work resumes under the plugin's declared retry policy. Privacy erasures requested while the installation was disabled are applied before startup.
 
 To verify inactive behavior, save `enabled: false` in a YAML file and pass it to `cicord plugin test <directory> --config <file>`. The simulator checks that the disabled installation registered no executable handlers.
+
+Next: the [plugin API](../api/).

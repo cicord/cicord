@@ -61,14 +61,55 @@ other install:
    state database**, the backup of step 1 too (stop the runtime, restore the database, start
    the previous version). Writes made in between are lost.
 
+## From 0.1.11 to 0.2.0
+
+0.2.0 is a minor release: the VPS updater does not apply it on its own (unless
+`CICORD_AUTO_UPDATE=minor`). Follow these steps in order; the
+[changelog](https://github.com/cicord/cicord/blob/main/CHANGELOG.md) has the full list of
+changes.
+
+1. **Back up first.** The database upgrade is one-way: on first start, 0.2.0 applies
+   migrations 0004–0006, 0010 and 0011 (SQLite and PostgreSQL), and a 0.1.11 binary then
+   refuses the database (`database schema version 11 is newer than this binary supports (3)`).
+   **There is no rollback other than restoring this backup.** Back up the data directory
+   (`cicord.db`, `secret.key`, `link.key`) or take a `pg_dump`.
+2. **Widen `spec.engine`.** Repositories created by 0.1.x declare `">=0.1.0 <0.2.0"`, which
+   0.2.0 refuses. Commit `">=0.1.0 <0.3.0"` (0.1.11 accepts it too) before the upgrade, and
+   narrow it to `">=0.2.0 <0.3.0"` afterwards. Change the `cicord@v0.1.11` pins of
+   `.github/workflows/cicord.yml` to `@v0.2.0`. A plugin's `secrets.<NAME>.secretRef` in
+   `bot.yaml` must now start with `CICORD_`: rename it (and the secret) in the same change.
+3. **Upgrade the runtime**, as above (validate, restart, `cicord status --wait`). 0.2.0
+   creates `privacy.key` in the data directory for
+   [member erasures](../backups-and-secrets/#member-erasures): add it to your backups. A
+   plugin task that keeps failing is parked and keeps its instance `Degraded`, which fails
+   `status --wait`: retry or discard it in Diagnostics
+   ([failed plugin tasks](../monitoring/#failed-plugin-tasks)).
+4. **Then update the plugins, never before.** Every official plugin release requires engine
+   `>=0.2.0`. On 0.2.0, `cicord plugin update` and the Store only offer releases whose
+   `spec.engine` accepts the running engine. Review each update: new versions request new
+   grants, intents and Discord permissions (audit-log and moderation need
+   `discord.auditlog.read`, the `ServerModeration` intent and View Audit Log). An update that
+   widens what a bound credential can reach stops with a review digest: repeat it with
+   `--approve-secret-changes <digest>`.
+5. **Upgrade a custom portal.** Run `cicord portal upgrade`, `pnpm install` and
+   `cicord portal build`, then commit. `portal upgrade` only moves the `@cicord/*` packages: a
+   portal forked from the reference portal gets none of the new pages (verification, ticket
+   desk, rewards, audit export, appeals). Run `cicord portal init` in a scratch directory and
+   merge them by hand.
+
+**Plugin data written by 0.1.x plugins has no compatibility guarantee.** The core keeps it,
+but a 0.2 plugin may read it differently. Several official plugins migrate their own 0.1.x
+data; their READMEs say what is kept. Plugin storage also gets a quota (1,000,000 keys and
+ranking members, 256 MiB per installation): an installation already above it keeps its data,
+but further writes fail until it shrinks.
+
 ## What to watch for
 
 - **`engine` ranges.** Your `cicord.yaml` declares `spec.engine` (for example
-  `">=0.1.0 <0.2.0"`), and each plugin declares its own. A runtime refuses a revision whose
-  range excludes its version. Widen the range in the same change as the upgrade if the new
-  version is compatible. Pre-releases are checked by semver precedence: `0.2.0-rc.1` satisfies
-  `>=0.1.0 <0.2.0` and not `>=0.2.0` (write `>=0.2.0-0` to admit the `0.2` release
-  candidates); see [Pre-releases](../../project/releasing/#pre-releases).
+  `">=0.2.0 <0.3.0"`), and each plugin declares its own. A runtime refuses a revision whose
+  range excludes its version. Widen the range before the upgrade if the new version is
+  compatible. Pre-releases are checked by semver precedence (see
+  [Pre-releases](../../project/releasing/#pre-releases)).
 - **`apiVersion`.** Every file uses `cicord.dev/v1alpha1`. A breaking change of the format is
   meant to bump it.
 - **Official plugins.** Copies of the official plugins in `plugins/<name>/` are not changed by
@@ -92,7 +133,11 @@ other install:
   `vendor/`); an upgrade is then a version bump in `package.json`.
 - **The state database** is migrated by the runtime itself at startup, and an older binary
   refuses a database migrated by a newer one (`database schema version N is newer than this
-  binary supports`): a rollback by image alone does not work after a migration. Keep the
+  binary supports`): a rollback by image alone does not work after a migration. It also
+  refuses a database whose recorded migration of a given number has another name than its
+  own (`database records migration N as "…", but this binary's migration N is "…"`): the
+  database was migrated by an incompatible build, so restore the backup taken before that
+  upgrade. Keep the
   backup until the new version has run for a while. The VPS updater handles it: it compares
   the schema version (`schema_migrations`) before and after, and restores its pre-update copy
   when it rolls back a version that migrated. With PostgreSQL it does not update

@@ -16,6 +16,7 @@ a PostgreSQL database with `--database-url` / `CICORD_DATABASE_URL` (see
 | `secret.key` | The key of the secret store, unless you set `CICORD_SECRET_KEY`. Without it, stored secrets cannot be decrypted. Needed with PostgreSQL too. |
 | `repo.git` | With the `embedded` provider ("Managed by Cicord"), this **is** your configuration. |
 | `link.key` | Portal link signing key, unless you set `CICORD_LINK_SECRET`. Regenerated when missing: only the portal links already sent stop working. |
+| `privacy.key` and `member-erasures/` | The key and journal of [member erasures](#member-erasures), unless you set `CICORD_PRIVACY_KEY`. Keep the key apart, like `secret.key`. |
 
 The rest of the data directory (`source/`, `writeback/`, `snapshots/`, `cache/`) is rebuilt
 automatically.
@@ -49,8 +50,8 @@ On a server installed with [Production on a VPS](../production-vps/#8-secrets-an
 installs `cicord-backup` and a daily systemd timer (03:30 UTC). Each run:
 
 1. takes the online SQLite copy below and checks it with `PRAGMA integrity_check`;
-2. adds `repo.git`, the write-back clone and a `MANIFEST` (image, schema version, checksum);
-   never `secret.key` or `link.key` (the run refuses an archive that contains one);
+2. adds `repo.git`, the write-back clone, the `member-erasures/` journal and a `MANIFEST`
+   (image, schema version, checksum); never `secret.key`, `link.key` or `privacy.key`;
 3. writes `/var/backups/cicord/cicord-<UTC time>.tar.zst` (mode `0600`, kept
    `CICORD_BACKUP_KEEP_DAYS`, default 14), after checking that it decompresses;
 4. copies it off the server when `CICORD_BACKUP_REMOTE` is set.
@@ -189,6 +190,7 @@ asking you to manage environment variables:
 | Runtime token of the CLI and CI | `CICORD_RUNTIME_TOKEN` (`cicord secret set`) |
 | Alert webhook URL | `CICORD_ALERT_WEBHOOK` (`cicord secret set`, see [Alerts](../monitoring/#alerts)) |
 | Private registry token | `CICORD_REGISTRY_<NAME>_TOKEN` (also from the Store) |
+| Plugin credential bound in `bot.yaml` | any other `CICORD_<NAME>` (`cicord secret set`), or the value an admin enters on the plugin's page (stored under a generated `CICORD_PLUGIN_<hash>` name; the operator's value wins). See [plugin secrets](../../plugins/writing/#sending-a-webhook-with-a-bound-credential) |
 
 - **Encryption**: AES-256-GCM with a random nonce per write; the secret's name is
   authenticated too, so a ciphertext moved to another name fails to decrypt.
@@ -250,8 +252,20 @@ provider: paste it straight into `cicord secret set`.
 | the store's key (`secret.key`) | `cicord secret rotate-key` re-encrypts every secret with a new key | store the new key in the password manager, delete the old copy |
 | `link.key` | delete the file (or change `CICORD_LINK_SECRET`) and restart | portal links already sent stop working |
 
-## Restore member erasures
+## Member erasures
 
-Keep the newest `member-erasures/` directory independently of the database snapshot. Each marker contains a date and an HMAC scoped to the server. Keep the deployment’s separate `privacy.key` in key escrow alongside the encryption key. You can supply the same 32-byte key as base64 or hex using `CICORD_PRIVACY_KEY`. All runtime processes for one deployment must use the same key and journal. Rotating the portal signing or encrypted-secret key preserves these markers.
+An [erasure](../../reference/http-api/servers/#member-data) is recorded twice: in the database
+and in the `member-erasures/` journal of the data directory, signed with `privacy.key` (or
+`CICORD_PRIVACY_KEY`, 32 bytes as base64 or hex). The journal lets a restore from a backup
+taken **before** an erasure erase that member again.
 
-The VPS backup includes the HMAC journal and excludes `privacy.key`. The VPS restore merges the archive’s journal into the current one. On a replacement machine restore the escrowed privacy key and the newest journal before starting Cicord, including when the selected SQL backup predates the erasures. On startup each plugin with privacy hooks checks its restored keys, values, rankings and task payloads for recorded subjects and reapplies erasure before its startup handler. Replayed work containing a recorded subject is suppressed and its erasure hooks run again. Old backups remain subject to their retention policy.
+- Keep `privacy.key` in the password manager with `secret.key`; keep the newest journal with
+  your backups (the VPS backup includes it). Rotating `secret.key` or `link.key` does not
+  affect it. Every runtime of a deployment uses the same key and journal.
+- On a new machine, put the key (or `CICORD_PRIVACY_KEY`) and the newest journal in place
+  before the first start. The runtime refuses to start with a journal and no key, or with a
+  key that does not match the journal. `07-restore.sh` merges the archive's journal into the
+  current one and refuses a journal of another deployment.
+- When the journal is newer than the restored database, each plugin with privacy hooks erases
+  the member again at startup, before its startup handler. Until then, queued work that
+  mentions the member is held back. A member who comes back afterwards is not erased again.

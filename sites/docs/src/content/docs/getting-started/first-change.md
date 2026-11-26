@@ -110,7 +110,7 @@ cicord status --wait --revision $(git rev-parse HEAD) --timeout 10m
 (here on `cicord dev --sim`, where the revision is the working tree):
 
 ```text
-Runtime 0.1.11 (dev, simulator)
+Runtime 0.2.0 (dev, simulator)
 Revision local-7e8d38d  "working tree" by local, 2026-11-25T12:22:40Z
 
 Servers (1)
@@ -176,7 +176,7 @@ request cannot choose where the token is sent.
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
-      - run: go install github.com/cicord/cicord/cmd/cicord@v0.1.11
+      - run: go install github.com/cicord/cicord/cmd/cicord@v0.2.0
       - run: cicord plan --remote --comment
         env:
           CICORD_RUNTIME_URL: ${{ vars.CICORD_RUNTIME_URL }}

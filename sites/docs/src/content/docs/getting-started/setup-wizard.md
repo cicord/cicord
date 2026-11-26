@@ -282,7 +282,7 @@ and server.
 
 ## The plugin catalog
 
-The wizard's catalog is the sources of the ten official plugins, embedded in the binary at
+The wizard's catalog is the sources of the ten bundled official plugins, embedded in the binary at
 build time (`plugin.yaml`, `config.schema.json`, `tsconfig.json`, `src/*.ts`; never
 `node_modules` or build output). `GET /api/v1/catalog` lists them for admins. After the
 setup, the admin console's **Store** adds the plugins of [registries](../../plugins/publishing/).

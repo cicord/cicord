@@ -67,7 +67,7 @@ The workflow and `cicord-routes.d.ts` are only written when the directory is ins
 repository. `--force` writes into a non-empty directory.
 
 The `@cicord/*` packages come from **npm**, at the **exact version** of the `cicord` that
-wrote the portal (`"@cicord/client": "0.1.11"`, no range): every release publishes them at its
+wrote the portal (`"@cicord/client": "0.2.0"`, no range): every release publishes them at its
 own version, with provenance, so the portal's SDK is the runtime's. `pnpm install` resolves
 them from the registry and writes `pnpm-lock.yaml`; commit it (the CI installs with
 `--frozen-lockfile`). `cicord portal upgrade --check` verifies the versions (see below).
@@ -95,7 +95,10 @@ git add portal                # package.json, pnpm-lock.yaml, dist/ (and vendor/
 `cicord portal upgrade` keeps the way the portal gets its packages. On npm, it sets the three
 versions in `package.json` to the version of this `cicord`. Vendored, it replaces the
 tarballs in `vendor/` with the ones embedded in the binary, points `package.json` and
-`pnpm-workspace.yaml` at them and deletes the old ones. Nothing else changes.
+`pnpm-workspace.yaml` at them and deletes the old ones. Nothing else changes: the pages of a
+fork are your code, so new reference pages (in 0.2: the ticket desk, typed-code verification,
+appeals, Tools) are merged by hand from `create-cicord-portal`, for example by comparing with a
+fresh `cicord portal init` in a scratch directory.
 `cicord portal upgrade --check` changes nothing and fails when the packages are not this
 cicord's version, in either mode: `cicord-portal.yml` runs it. Also bump the cicord version
 that `cicord-portal.yml` installs (`CICORD_TAG`); the command reminds you when it lags behind.

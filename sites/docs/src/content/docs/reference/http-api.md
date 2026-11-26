@@ -17,8 +17,8 @@ hand-written calls.
 | Page | Covers |
 |---|---|
 | [Authentication](authentication/) | Discord login, portal links, token mode, the runtime token, CSRF, the admin host, roles. |
-| [Status and servers](servers/) | `/me`, runtime status, sync history, server detail, resources, plans, syncs, audit log, server images. |
-| [Plugin instances](plugin-instances/) | Listing instances, editing their config through write-back, uninstalling. |
+| [Status and servers](servers/) | `/me`, runtime status, sync history, server detail, resources, plans, syncs, audit log, server images, incident overlays, interop, member data. |
+| [Plugin instances](plugin-instances/) | Listing instances, editing their config through write-back, plugin secrets, uninstalling, failed tasks (dead letters). |
 | [Community portal](portal/) | The public portal endpoints, plugin routes, and how the static UIs are served. |
 | [Machine endpoints](machine/) | `POST /api/v1/sync`, `POST /api/v1/plan`, the GitHub webhook, health checks. |
 | [Simulator](simulator/) | `/api/v1/sim/*`, only with `cicord dev --sim`. |
@@ -54,6 +54,7 @@ Clients must accept unknown codes.
 | `not_found` | 404 (unknown routes under `/api/`, `/auth/`, `/hooks/` included) |
 | `invalid` | 400; 405 (non-GET on a static UI); 413 (body too large); 415 (plan upload content type); 422 (validation, with `diagnostics`) |
 | `conflict` | 409 |
+| `rate_limited` | 429: too many [portal requests](authentication/#roles) from one user (with `Retry-After`) |
 | `unavailable` | 503: no active revision yet, no connected bot, write-back failure, timeout |
 | `internal` | 500 (also a panic in a handler) |
 | `setup_required` | 503: [setup mode](setup/#setup-mode), no configured repository yet |
@@ -168,6 +169,11 @@ Roles are per server: see [Roles](authentication/#roles).
 | GET | `/api/v1/servers/{server}/resources` | moderator | [Roles, categories and channels](servers/#resources), for pickers. |
 | GET | `/api/v1/servers/{server}/plan` | admin | [The plan](servers/#plan) of the active revision against live Discord. |
 | POST | `/api/v1/servers/{server}/sync` | admin | Reconcile now: `{plan, applied}`. |
+| GET, POST | `/api/v1/servers/{server}/pause`, `/resume` | moderator | [Pause or resume enforcement](servers/#pause-and-resume). |
+| GET, DELETE | `/api/v1/servers/{server}/overlays`, `…/overlays/{bot}/{instance}/{id}` | admin | [List or lift incident overlays](servers/#incident-overlays). |
+| GET | `/api/v1/servers/{server}/interop` | admin | The interop links between plugin instances. |
+| POST | `/api/v1/servers/{server}/privacy/{export\|erase}` | admin | [Export or erase a member's data](servers/#member-data). |
+| GET, POST | `/api/v1/servers/{server}/orphaned-data`, `…/purge` | admin | [Data of uninstalled installations](servers/#data-of-uninstalled-installations). |
 | GET | `/api/v1/servers/{server}/audit` | moderator | [Audit log](servers/#audit-log), newest first. |
 | PUT, GET | `/api/v1/servers/{server}/assets/{icon\|banner\|splash}` | admin (GET: moderator) | [Upload or read the server icon, banner or splash](servers/#server-images). |
 | GET | `/api/v1/servers/{server}/diagnostics` | admin | [The setup wizard's checklist](setup/#catalog-and-diagnostics), on demand. |
@@ -183,6 +189,10 @@ Roles are per server: see [Roles](authentication/#roles).
 | GET | `/api/v1/servers/{server}/plugins/{bot}/{instance}` | moderator | One instance. |
 | PUT | `/api/v1/servers/{server}/plugins/{bot}/{instance}/config` | moderator (field-restricted) | [Write the config](plugin-instances/#editing-the-config) through write-back. |
 | DELETE | `/api/v1/servers/{server}/plugins/{bot}/{instance}` | admin | [Uninstall from this server](plugin-instances/#uninstalling). |
+| PUT | `/api/v1/servers/{server}/plugins/{bot}/{instance}/secrets/{name}` | admin | [Set a plugin secret](plugin-instances/#plugin-secrets). |
+| GET | `/api/v1/servers/{server}/dead-letters` | admin | [Failed tasks and events](plugin-instances/#failed-scheduled-tasks) (paged by cursor). |
+| POST | `/api/v1/servers/{server}/dead-letters/{id}/{retry\|discard}` | admin | Retry or discard one. |
+| GET | `/api/v1/servers/{server}/dead-letters/{id}/event` | admin with Discord Administrator | The raw event of an event dead letter. |
 
 ### Community portal
 

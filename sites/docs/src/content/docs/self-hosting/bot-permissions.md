@@ -62,18 +62,25 @@ Plugins add what their **granted** capabilities use:
 | --- | --- |
 | `discord.messages.read` | View Channel, Read Message History |
 | `discord.messages.send` | View Channel, Send Messages, Embed Links |
-| `discord.messages.manage` | View Channel, Manage Messages |
+| `discord.messages.manage` | View Channel, Manage Messages, Pin Messages |
+| `discord.webhooks.manage` | View Channel, Manage Webhooks |
 | `discord.reactions.manage` | View Channel, Add Reactions, Read Message History |
 | `discord.members.manage` | Manage Nicknames |
+| `discord.invites.read` | Manage Server |
+| `discord.auditlog.read` | View Audit Log |
 | `discord.members.moderate` | Timeout Members, Kick Members, Ban Members |
 | `discord.roles.assign` | Manage Roles |
 | `discord.channels.read` | View Channel |
 | `discord.channels.manage` | View Channel, Manage Channels, Manage Roles |
 | `discord.threads.manage` | View Channel, Create Public Threads, Create Private Threads, Manage Threads, Send Messages in Threads |
 | `discord.voice.move` | View Channel, Connect, Move Members |
+| `discord.events.manage` | Manage Events |
+| `server.incident` | Manage Server |
 
 The other grants (`discord.members.read`, `discord.dm.send`, storage, scheduler, events,
-portal, `http.fetch`) need no permission on the server.
+interop, portal, `http.fetch`, `render`) need no permission on the server. `server.overlays`
+and `server.sync` need none of their own: the reconciling bot applies the overlay or the sync
+with the permissions above.
 
 ## How Cicord checks
 

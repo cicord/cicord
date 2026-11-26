@@ -53,7 +53,7 @@ ls -l /var/backups/cicord/                               # the archive to hand o
 sudo docker exec cicord cicord secret ls --data-dir /data   # the secrets to rotate (names only)
 ```
 
-Also collect `/opt/cicord/.env` and `compose.yaml` (no secrets), and `secret.key` from the
+Also collect `/opt/cicord/.env` and `compose.yaml` (no secrets), and `secret.key` and `privacy.key` from the
 password manager (see [Keep the key apart](../backups-and-secrets/#what-to-back-up)).
 
 ### 2. Transfer them

@@ -36,7 +36,8 @@ state with the metrics below, `cicord status`, or the admin console.
 `cicord healthcheck --service` checks the **service** rather than the process: it runs
 [`cicord status --wait`](../../reference/cli/#cicord-healthcheck) against the runtime
 and exits `0` once the active revision is loaded, every server is `Synced` (changes waiting for
-a boost level are fine) and not paused, and every bot and plugin instance is `Healthy`; `1`
+a boost level are fine) and not paused, and every bot and plugin instance is `Healthy` (an
+installation disabled with `enabled: false` counts as ready: it is a reviewed state); `1`
 otherwise, or after `--timeout` (default 5 minutes); `2` without a runtime token. It
 authenticates with `CICORD_RUNTIME_TOKEN`, else with the secret store of `--data-dir`, and
 sends the admin host (`CICORD_ADMIN_URL`) since the admin API only answers there. The VPS
@@ -97,12 +98,15 @@ The URL is read at startup. Without it, `cicord serve` logs `alerts: no CICORD_A
 | Alert | Fires when | Resolved when |
 |---|---|---|
 | Plugin handler failing | a handler of an instance (a command, button, form, event, route…) failed 3 times in a row, even if its other handlers work | that handler succeeds again, or a new revision replaced the instance |
-| Plugin instance degraded / missing | the instance crashed (and is restarting), failed to start, or 3 of its handler calls failed in a row | it is `Healthy` again |
+| Plugin instance degraded / missing | the instance crashed (and is restarting), failed to start, 3 of its handler calls failed in a row, it has [failed tasks](#failed-plugin-tasks), or a required plugin secret is missing | it is `Healthy` again |
 | Bot offline / degraded | a bot could not connect to Discord | it is connected again |
 | Server sync failing / unreachable | a server's sync failed (`Degraded`), or no bot can reach it (`Missing`) | it is `Healthy` again |
 | Revision rejected, source fetch failing | a revision failed validation or its plugins failed to build (the previous one keeps running), or the source could not be fetched | a revision is activated |
 | Server paused / resumed | a server's enforcement was paused | it was resumed |
+| Bot token possibly compromised | Discord recorded an audited action by a project bot that matches no operation Cicord emitted (only for a bot that receives audit log events: the `ServerModeration` intent, which a plugin with `auditLogEntry` or ban events requests, and View Audit Log). Shown in `cicord status`, on the server's Overview in the admin console and in the status API (`unconfirmedAudit`) too. It does not change any health, so it never blocks `status --wait` or an update | no such action for a day |
 | Backup failed, update postponed or rolled back | sent by the [VPS scripts](../production-vps/) | (sent once) |
+
+![The Overview warning: Discord's audit log shows three actions by the bot moderator that Cicord did not make](../../../assets/screenshots/admin-unconfirmed-audit.webp)
 
 Every alert names the **runtime** (the host of `--public-url`), the **server** (key and name),
 the **bot**, the **plugin instance** and plugin version, the **workflow** (what was running:
@@ -124,6 +128,19 @@ The notifier watches the runtime's own change bus (the one behind the
 runtime: **it cannot report that the runtime itself is down.** Pair it with an external
 uptime check of `GET /healthz` (an uptime service, or your provider's monitoring), or with the
 `CicordDown` Prometheus rule below.
+
+### Failed plugin tasks
+
+Scheduled tasks and event deliveries are retried with a backoff. One that still fails is
+parked as a **dead letter**, and its instance turns `Degraded` until someone decides. Admins
+see them in the admin console's **Diagnostics**, oldest first, 100 at a time: **Retry task**
+delivers it again, **Discard task** drops it. The reason shown is a failure category
+(`handler_error`…), never the plugin's error text. The same list is in the
+[HTTP API](../../reference/http-api/plugin-instances/#failed-scheduled-tasks). While a task
+is parked, `cicord status --wait` and the service check fail, so the VPS updater postpones
+updates: retry or discard it.
+
+![Diagnostics: failed tasks with Retry and Discard, and Load more for the next page](../../../assets/screenshots/admin-dead-letters.webp)
 
 ### Alert drill
 

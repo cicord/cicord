@@ -7,6 +7,8 @@ import shotSettings from "../assets/screenshots/admin-plugin-settings.webp";
 import shotPortal from "../assets/screenshots/portal-custom.webp";
 import shotQueue from "../assets/screenshots/portal-custom-queue.webp";
 import shotAnalytics from "../assets/screenshots/admin-analytics.webp";
+import shotVerification from "../assets/screenshots/portal-verification.webp";
+import shotTicketDesk from "../assets/screenshots/portal-ticket-desk.webp";
 import { links, url } from "../lib/links";
 import { ts, yaml, yamlLine } from "../lib/highlight";
 
@@ -177,9 +179,18 @@ const levelsCaps = [
   "discord.roles.assign",
   "storage.kv",
   "scheduler",
-  "events.subscribe",
   "portal.routes",
   "portal.links",
+];
+// Off until the bot grants them (levels 0.2.0, spec.optional).
+const levelsOptional = [
+  "privacyCopies",
+  "pollBonus",
+  "pollPages",
+  "levelEvents",
+  "voiceXp",
+  "rankCard",
+  "importCsv",
 ];
 
 // Bundled in the binary (examples.Official); the registry also has officialRegistryOnly.
@@ -193,8 +204,8 @@ const official = [
   "reaction-roles",
   "audit-log",
   "announcements",
+  "voice-rooms",
 ];
-const officialRegistryOnly = ["github-releases"];
 ---
 
 <Base title={title} description={description}>
@@ -233,7 +244,7 @@ const officialRegistryOnly = ["github-releases"];
           </div>
           <p class="hero__status">
             <span class="pill">Pre-release</span>
-            <span>Cicord 0.1.11, API <code>v1alpha1</code>. Formats and APIs may still change.</span>
+            <span>Cicord 0.2.0, API <code>v1alpha1</code>. Formats and APIs may still change.</span>
           </p>
         </div>
       </div>
@@ -326,6 +337,76 @@ const officialRegistryOnly = ["github-releases"];
     </div>
   </section>
 
+  <section class="section" aria-labeledby="new-title">
+    <div class="wrap">
+      <div class="tour__head">
+        <h2 id="new-title" class="section__title">New in 0.2</h2>
+        <p class="tour__lede">
+          A plugin platform that keeps working when things go wrong.{" "}
+          <a href={links.changelog}>Read the changelog</a>
+        </p>
+      </div>
+      <ul class="news">
+        <li>
+          <h3>Durable work</h3>
+          <p>Tasks and events are retried. What keeps failing waits in Diagnostics until an admin retries or discards it.</p>
+        </li>
+        <li>
+          <h3>Incident overlays</h3>
+          <p>During a raid, guard can lock channels for a limited time without touching your YAML. A sync leaves the overlay alone, and an admin can lift it.</p>
+        </li>
+        <li>
+          <h3>Plugins that work together</h3>
+          <p>Versioned events, queries and actions between plugins, declared in each manifest and granted in <code>bot.yaml</code>.</p>
+        </li>
+        <li>
+          <h3>Member data</h3>
+          <p>Every plugin declares what it keeps about members. Admins export or erase a member's data across plugins.</p>
+        </li>
+        <li>
+          <h3>Write-only credentials</h3>
+          <p>A plugin gets a reference to a bound secret, never its value, and only for the hosts it declares.</p>
+        </li>
+        <li>
+          <h3>29 official plugins</h3>
+          <p>Moderation with cases and appeals, verification, tickets with a portal desk, levels, polls and more. Image cards, economy, giveaways and ai-assistant are experimental and opt-in.</p>
+        </li>
+      </ul>
+      <div class="news__shots">
+        <figure class="window">
+          <div class="window__bar">
+            <span class="pane__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="window__path">/verification/challenge</span>
+          </div>
+          <Image
+            src={shotVerification}
+            alt="The reference portal's Verify my account page: a member types the six-character code shown in a rendered image."
+            widths={[720, 1440, 2160]}
+            sizes="(min-width: 64rem) 36rem, 100vw"
+            loading="lazy"
+            class="window__shot"
+          />
+          <figcaption class="window__caption">Typed-code verification from the official verification plugin. Its image rendering is experimental and opt-in.</figcaption>
+        </figure>
+        <figure class="window">
+          <div class="window__bar">
+            <span class="pane__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="window__path">/tickets</span>
+          </div>
+          <Image
+            src={shotTicketDesk}
+            alt="The reference portal's ticket desk: a team queue of three open tickets and the selected ticket."
+            widths={[720, 1440, 1824]}
+            sizes="(min-width: 64rem) 36rem, 100vw"
+            loading="lazy"
+            class="window__shot"
+          />
+          <figcaption class="window__caption">The ticket desk of the reference portal, from the official tickets plugin.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
   <section class="section steps-section" aria-labeledby="how-title">
     <div class="wrap">
       <h2 id="how-title" class="section__title">From a commit to your server</h2>
@@ -403,8 +484,9 @@ const officialRegistryOnly = ["github-releases"];
         <h2 id="f-plugins" class="section__title">Bots that run your TypeScript, in a sandbox</h2>
         <p>
           One runtime hosts any number of bots across any number of servers. Their behavior comes
-          from plugins written in TypeScript with <code>@cicord/sdk</code>: events, slash commands,
-          buttons and modals, schedules, storage and portal routes.
+          from plugins written in TypeScript with <code>@cicord/sdk</code>: events, slash commands
+          and context menus, buttons and modals, durable schedules, storage with rankings and
+          full-text search, translations, portal routes, and versioned contracts between plugins.
         </p>
         <p>
           Each plugin instance runs in its own WebAssembly sandbox with a hard memory cap and a CPU
@@ -434,13 +516,14 @@ const officialRegistryOnly = ["github-releases"];
       <div class="feature__copy">
         <h2 id="f-store" class="section__title">A Store where you see what you grant</h2>
         <p>
-          The official plugins are published in a signed registry,
-          <a href={links.officialPlugins}>cicord-plugins</a>, and most of them ship with the binary
-          for offline installs:
+          29 official plugins are published in a signed registry,
+          <a href={links.officialPlugins}>cicord-plugins</a>, and ten ship with the binary for
+          offline installs:
           <span class="inline-list"
             >{official.map((p, i) => <><code>{p}</code>{i < official.length - 1 ? ", " : ""}</>)}</span
-          >, plus {officialRegistryOnly.map((p, i) => <><code>{p}</code>{i < officialRegistryOnly.length - 1 ? ", " : ""}</>)}{" "}
-          from the registry.
+          >. The registry adds protection (guard, verification, anti-nuke), community plugins
+          (tags, starboard, reminders, feeds…) and, experimental and opt-in, economy, giveaways and
+          ai-assistant.
         </p>
         <p>
           Third-party plugins come from registries: git repositories with an index. Their trust is
@@ -456,7 +539,7 @@ const officialRegistryOnly = ["github-releases"];
         <div class="review__head">
           <div>
             <p class="review__title">Install Levels</p>
-            <p class="review__meta">cicord/levels, version 0.1.0</p>
+            <p class="review__meta">cicord/levels, version 0.2.0</p>
           </div>
           <span class="tag tag--ok">Official</span>
         </div>
@@ -471,6 +554,10 @@ const officialRegistryOnly = ["github-releases"];
             <li class="chip--warn"><code>MessageContent</code> privileged</li>
             <li><code>ServerMessageReactions</code></li>
           </ul>
+          <p class="review__label">Optional features</p>
+          <ul class="chips">
+            {levelsOptional.map((f) => <li><code>{f}</code></li>)}
+          </ul>
           <p class="review__label">Network hosts</p>
           <p class="review__none">None</p>
         </div>
@@ -479,9 +566,9 @@ const officialRegistryOnly = ["github-releases"];
           <span>A plugin from a third-party registry also asks for an explicit confirmation.</span>
         </p>
         <p id="review-cap" class="visually-hidden">
-          Illustration of the Store install review for the official plugin Levels: it lists ten
-          capabilities, three gateway intents with MessageContent marked privileged, and no network
-          hosts.
+          Illustration of the Store install review for the official plugin Levels: it lists nine
+          capabilities, three gateway intents with MessageContent marked privileged, optional
+          features that stay off until granted, and no network hosts.
         </p>
       </div>
     </div>
@@ -660,7 +747,7 @@ const officialRegistryOnly = ["github-releases"];
         <aside class="notice" aria-labeledby="status-title">
           <h3 id="status-title">Status: pre-release</h3>
           <p>
-            Cicord 0.1.11 implements the API <code>v1alpha1</code>. The runtime, the reconciler, the
+            Cicord 0.2.0 implements the API <code>v1alpha1</code>. The runtime, the reconciler, the
             plugin host, the simulator, the admin console and the portal SDK work end to end, and
             run the official community server, but file formats and APIs may still change between
             <code>0.x</code> releases. Expect rough edges, and report them on GitHub.
@@ -1477,6 +1564,61 @@ const officialRegistryOnly = ["github-releases"];
   .outcomes .tag {
     grid-column: 2;
     grid-row: 1 / span 2;
+  }
+
+  /* New in 0.2 ------------------------------------------------------------ */
+  .news {
+    display: grid;
+    gap: 0;
+    margin: clamp(2rem, 5vw, 3rem) 0 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--line);
+  }
+
+  .news li {
+    display: grid;
+    align-content: start;
+    gap: 0.4rem;
+    padding-block: 1.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .news h3 {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .news p {
+    max-width: 52ch;
+    color: var(--muted);
+  }
+
+  @media (min-width: 48rem) {
+    .news {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 2.5rem;
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .news {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .news__shots {
+    display: grid;
+    gap: 1.5rem;
+    margin-top: clamp(1.5rem, 4vw, 2.5rem);
+    align-items: start;
+  }
+
+  @media (min-width: 64rem) {
+    .news__shots {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
   }
 
   /* Also in the binary ---------------------------------------------------- */

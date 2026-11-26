@@ -14,7 +14,7 @@ Plugins are installed from **sources**, like apt sources or Homebrew taps:
 
 | Source | What it is | Trust |
 |---|---|---|
-| **`cicord`** | The eleven [official plugins](../official/), published in the signed official registry [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins); ten of them are also bundled with the binary, for offline and first installs. Always available, no configuration. | `official` |
+| **`cicord`** | The [official plugins](../official/), published in the signed official registry [github.com/cicord/cicord-plugins](https://github.com/cicord/cicord-plugins); ten of them are also bundled with the binary, for offline and first installs. Always available, no configuration. | `official` |
 | **Registries** | Git repositories with an `index.yaml`, declared in `cicord.yaml` `spec.registries`. Community collections, your organization's private plugins, your own development registry. | `unofficial` |
 | **Local plugins** | A directory of your repository (`plugins/<name>/`), referenced by path. | `local` |
 
@@ -79,10 +79,12 @@ request, and every capability the plugin requests is granted, as reviewed.
 
 ## Updating
 
-Cicord compares each locked version with the highest release tag of the plugin's repository
-(any major version) and offers **Update to X** in the Store, the Plugins table, the plugin's
-Store page (its main action) and the instance's page, all leading to the same update review.
-On the Store page of an installed plugin without an update, the main action opens its
+Cicord compares each locked version with the version an update would install: the highest
+release of the plugin's repository (any major version) whose `spec.engine` supports the
+running Cicord, and for the official registry no newer than its signed index publishes, so a
+release that needs a newer Cicord is never locked. It offers **Update to X** in the Store, the
+Plugins table, the plugin's Store page (its main action) and the instance's page, all leading
+to the same update review. On the Store page of an installed plugin without an update, the main action opens its
 instance; **Install another instance** adds the plugin a second time, with its own name,
 settings and data (on the same or another bot), which is rarely needed. The update review
 shows:
@@ -116,7 +118,16 @@ checkbox, or `--force`). An official plugin locked from the official registry
 From a plugin's page in the admin console, **Uninstall** removes the instance from the bot
 (only this server, when the instance runs on several). When no other instance uses the
 plugin, its `cicord.lock` entry or its copied `plugins/<name>/` directory goes too. Its stored
-data is kept.
+data is kept, so reinstalling the same instance on the same server finds it again.
+
+Kept data still counts toward the storage quotas, and it can mention members. A member data
+report (**Server settings → Member data**) marks such an installation `orphaned` and stays
+incomplete: its erase hook cannot run while it is uninstalled. When you no longer need the
+data, purge it in **Server settings → Data of uninstalled plugins** (type the installation
+name to confirm) or with `cicord plugin purge-data <server> <bot>/<instance>`. The purge
+deletes its records, rankings, index documents, tasks and DM receipts and cannot be undone. If you
+reinstall the installation instead, its erase hook runs for the members erased meanwhile
+before it starts.
 
 ## `cicord.lock`
 
@@ -128,19 +139,16 @@ data is kept.
 lockVersion: 1
 plugins:
   cicord/welcome:
-    version: 0.1.0
+    version: 0.2.0
     repo: https://github.com/cicord/cicord-plugins
     path: plugins/welcome
     commit: 5287d31b787c56f4aff6d7c6dd1e782935c29c1a
     integrity: sha256-tLhHLsg0zfcMXDcM25woNCl3Y5TVTeAjE1ftRVFg2DY=
-    capabilities:
-      - discord.messages.send
-      - discord.channels.read
-      - discord.members.read
-      - discord.roles.assign
-      - discord.dm.send
-      - portal.links
+    capabilities: # spec.capabilities; optional features are granted per instance
       - storage.kv
+      - discord.messages.send
+      - discord.members.read
+      - discord.channels.read
 ```
 
 - The runtime refuses a registry plugin that is missing from `cicord.lock`, or whose content

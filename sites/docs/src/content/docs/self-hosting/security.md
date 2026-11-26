@@ -85,22 +85,38 @@ Tailscale tailnet, Caddy for the public portal, backups), follow
   memory). Reaching it, or being killed, discards that instance only: it is reported
   `Degraded` and restarted with backoff, the process and the other plugins keep running.
 - Host-side quotas bound what an instance can push into the runtime: pending SDK calls,
-  queued handler calls, SDK call arguments, log fields, KV pages and route responses.
+  queued handler calls, SDK call arguments, log fields, KV pages and route responses. SDK
+  results waiting for the instance hold at most 96 MiB per installation and 48 MiB per
+  handler, private VMs included. Staged message files hold at most 100 MiB per installation
+  and 512 MiB per process.
+- Untrusted images are decoded only in a confined WebAssembly worker, never in the runtime
+  process. Card renders (the experimental `render` capability) get 24 MiB and one second, image hashes 96 MiB and three seconds.
+  The process runs one such worker per processor, at least two and at most four, and
+  hashing uses at most half of them.
+- Stored plugin data is bounded per installation: 1,000,000 KV entries and ranking members,
+  256 MiB in total, and 250,000 members per ranking. The database enforces these limits.
 - A plugin update that asks for a new capability fails validation until it is granted, and
-  `cicord.lock` pins registry plugins by commit and content hash.
+  `cicord.lock` pins registry plugins by commit and content hash. Installing or updating a
+  plugin that asks for `server.overlays`, `server.incident` or `server.sync` needs an explicit
+  confirmation.
 - Before installation, the Store only reads an unofficial plugin's `plugin.yaml`; its code
   runs only once you install it.
 
 **Secrets**
 
 - Secrets never appear in YAML, only their names (`secretRef`).
+- A plugin never reads a bound credential: it gets a reference that the host only sends to the
+  hosts its manifest declares. A plugin `secretRef` must start with `CICORD_`, and the
+  runtime's own secrets cannot be bound.
 - The secret store is encrypted with AES-256-GCM; the API never returns a value.
 - A private registry's token is only sent to that registry's host.
 
 **Discord**
 
 - Only resources declared in YAML are ever modified; deletions need `prune: true` and are
-  blocked by `deletionProtection` unless it is turned off.
+  blocked by `deletionProtection` unless it is turned off. Plugins change managed resources
+  only through [incident overlays](../../reference/http-api/servers/#incident-overlays): temporary
+  (seven days at most), audited, and lifted by an admin from the Plan page.
 - With a bot that is not Administrator, every plan and sync first checks the permissions the
   changes need and that the bot keeps access to the channels it manages. If a check fails,
   nothing is applied ([bot permissions](../bot-permissions/#how-cicord-checks)).
@@ -221,5 +237,5 @@ fail. Cicord does not manage this setting.
 
 :::note
 A security review of the plugin sandbox (escapes), YAML fuzzing and link token reuse is on the
-roadmap. KV storage has per-value limits but no total quota per instance yet.
+roadmap.
 :::

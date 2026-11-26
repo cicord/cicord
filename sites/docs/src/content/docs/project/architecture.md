@@ -138,6 +138,8 @@ The exact rules: [Reconciliation](../../concepts/reconciliation/)
   wall-clock timeouts, host-side quotas (pending host calls, queue, payload sizes), and no
   filesystem or network access except through capabilities (`http.fetch` with an allow-list).
   The budgets: [Testing and limits](../../plugins/testing/).
+- Images (card renders, image hashes) are decoded and drawn in a separate, confined
+  WebAssembly worker (`internal/media`), never in the runtime process.
 - **Interaction deadline**: Discord requires an answer within 3 seconds. If a handler has not
   replied after about 2 seconds, the host defers automatically; a later `reply()` transparently
   edits the deferred response.
@@ -151,7 +153,10 @@ backends pass the same conformance suite (`internal/state/statetest`). It holds:
 
 - the resource map: `(server key, kind, resource key) → Discord ID`, plus the owner (git or a
   plugin instance);
-- plugin KV storage, scoped per plugin instance;
+- plugin storage, scoped per plugin instance: KV entries, rankings and a search index, within
+  per-installation quotas;
+- durable plugin tasks and event deliveries (leased, retried, then parked as dead letters),
+  interop records, and the active incident overlays of each server;
 - the audit log (moderation and admin console actions), sessions and the sync history;
 - the analytics aggregates (hourly counts, `spec.analytics.retention`, default 400 days).
 

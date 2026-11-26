@@ -34,7 +34,8 @@ interleave at `await` points, like in Node.
 | `channel.messages()` | limit 1–100 (`channel.message(id)` fetches one) |
 | Component and modal ids | handler key ≤ 80 bytes; `c:<instance>:<id>` ≤ 100 bytes |
 | Commands | name 1–32, description 1–100, ≤ 25 options, ≤ 25 choices, ≤ 25 subcommands and groups (a group holds ≤ 25 subcommands), string options ≤ 6000 characters (`minLength`/`maxLength`) |
-| Portal links | 15 minutes by default, 24 hours at most |
+| Portal links | 15 minutes by default, 24 hours at most; case links 7 days at most |
+| `deferTask` reply credential | 14 minutes |
 | `member.setNickname()` | ≤ 32 characters |
 | `member.timeout()` | ≤ 28 days |
 
@@ -133,15 +134,25 @@ test("POST /complete adds the picked roles", async () => {
   For permission checks, roles take `position` (default 1, 2, 3… in declaration order),
   `mentionable` and `permissions`; `server` takes `ownerId` and `everyonePermissions`; and
   `access: { admins, moderators }` (`{ users?, roles? }`, role keys) sets `member.access`.
-  `member.permissions` is computed like the runtime (server-level).
+  `member.permissions` is computed like the runtime (server-level), and `role.permissions` is
+  the role's Discord bitfield as a decimal string. `server.otherCicordBotIds` adds the
+  project's other bots to `ctx.server.cicordBotIds` (the test bot is always in it).
+  The bot's own permissions come from a member entry with its id, `"bot"`
+  (`members: [{ id: "bot", roles: ["mover"] }]`), so a test can drop one to check a
+  degraded mode; without that entry, `ctx.server.member(ctx.bot.user.id)` is `undefined`.
 - **Recorded effects**: `sent` (messages with their `id` and their normalized
   `allowedMentions`, lists holding ids; DMs are `to: "dm:<userId>"`),
   `edits`, `deletedMessages`, `reactions`, `threads`, `roleChanges`, `moderation`
   (timeouts, kicks, bans, nicknames), `createdChannels` / `editedChannels` / `deletedChannels`
   (created channels resolve with `{ id }`; `editChannel()` and `deleteChannel()` refuse
   channels the plugin did not create), `voiceMoves` (`moveTo()` and `disconnect()`), `links`,
-  `published`, `scheduled`, `requests` (`http.fetch`), `logs`, and the raw `kv` (TTLs follow
-  `Date.now()`, so fake timers expire keys).
+  `published`, `scheduled`, `requests` (`http.fetch`), `logs`, the raw `kv` (TTLs follow
+  `Date.now()`, so fake timers expire keys), and `status`, the instance status lines set with
+  `ctx.status.set()` (a `Map` from key to message; `null` or `""` removes a line).
+- **Received messages**: `receive(channel, author, input)` returns the message as
+  `messageCreate` or `directMessage` gets it, with the author's `member` when the author is a
+  member of the test server. Fetched messages (`channel.messages()`, `channel.message(id)`) and
+  the messages that `send()` and `reply()` return have no `member`, as with Discord's REST API.
 - **Helpers**: `member(id)`, `addMember(init)`, `removeMember(id)`, `message(id)`,
   `channel(keyOrId)`.
 - **Voice**: `setVoice(userId, channel | null)` connects, moves or disconnects a member and
@@ -162,11 +173,12 @@ components, ids fall back to the part before `:`):
 
 | Runner | Returns |
 |---|---|
-| `runCommand(plugin, harness, "name", { user, channel, options })` (a subcommand: `"polls close"`, `"polls admin purge"`) | `{ replies, followUps, updates, deferred, modal }` |
+| `runCommand(plugin, harness, "name", { user, channel, options })` (a subcommand: `"polls close"`, `"polls admin purge"`) | `{ replies, followUps, updates, deferred, modal }`; after `deferTask`, `runDeferredTask()` runs the task with its `interaction` |
 | `runAutocomplete(plugin, harness, "polls close", { user, focused: "poll", value, options })` | the choices of the option's `autocomplete`, checked like the runtime (≤ 25, names 1–100, values of the option's type); an invalid result throws |
 | `runComponent(plugin, harness, "vote:42", { user, message, values })` | same |
-| `submitModal(plugin, harness, "open", { user, fields })` | same |
-| `callRoute(plugin, harness, "POST /complete", { viewer, body, query })` | `{ status, body, headers }`, matching the route patterns; `401` for anonymous callers of non-public routes, `403` for non-members of `member` routes |
+| `submitModal(plugin, harness, "open", { user, fields, selections })` | same |
+| `runContextMenu(plugin, harness, "Open ticket on message", { user, targetId })` | same |
+| `callRoute(plugin, harness, "POST /complete", { viewer, body, query })` | `{ status, body, headers }` as the portal API answers, matching the route patterns: `401` for anonymous callers of non-public routes, `403` below the route's level (`member`, `moderator` or `admin`, from `member.access`), `500` for a response the runtime rejects, and the headers the core lets through plus its own |
 
 For runners that take them, `message` is a message sent through the fakes (or its id), and
 `channel` sets `interaction.channel`.
@@ -174,11 +186,100 @@ For runners that take them, `message` is a message sent through the fakes (or it
 Events, tasks, schedules and subscriptions are plain functions: call them with the harness
 context, for example `await plugin.tasks!.close!(t.ctx, { id: "1" })`. `capabilityError(name)`,
 `normalizeRouteResponse(response)` and `normalizeAllowedMentions(message)` are exported
-helpers. Messages, replies, follow-ups and updates check `allowedMentions` like the host
+helpers. `onceFor()` deduplicates an effect by delivery id across redeliveries, and
+`replayActionEffects(action, input, call, setup)` interrupts a provider action after each
+external effect and retries it with the same key, to check that it is idempotent. Messages, replies, follow-ups and updates check `allowedMentions` like the host
 (ids must be snowflakes or ids of the fakes, such as `role-staff`).
 
 Importing the JSON schema in tests needs `"resolveJsonModule": true` in the test
 `tsconfig.json`.
+
+### Runtime limits in the harness
+
+The fakes enforce the runtime's limits, so a test fails where production would:
+
+- **Channels**: `createChannel({ provisionKey })` returns the channel created with that key
+  while it exists, and `recoverOwnedChannel({ provisionKey })` answers `owned` or `missing`.
+  The key is at most 200 bytes, and it is forgotten once its channel is deleted.
+- **Storage**: 1,000,000 KV entries and ranking members per installation, and 256 MiB of key
+  and value bytes (a ranking member weighs its board name and member plus 16 bytes); 250,000
+  members per ranking; `kv.list` pages cut at 4 MiB with a `cursor`; 128 checks and mutations
+  per `kv.atomic()`. Entries a test writes directly into `harness.kv` are counted from the next
+  write.
+- **`i18n.t`**: a translated text and each string variable hold at most 64 KiB; a key is at
+  most 256 bytes, with at most 50 variables. Values that are not strings, numbers or booleans
+  leave their placeholder.
+- **`render.image`**: sides of at most 2048, an area of at most 524,288 pixels, the layer
+  bounds, a 64 KiB spec, Discord CDN URLs only, and at most 524,288 decoded pixels for all the
+  distinct image sources of one render. The harness reads the size of plugin assets and of its
+  own attachment URLs (PNG, JPEG, GIF, WebP). It cannot download other CDN images, so it does
+  not count them.
+- **`status.set`**: a key of 1–96 bytes and a message of at most 320 bytes; at most 32 lines,
+  and a new key beyond them is dropped.
+- **Routes**: a status outside 200–599 (or not an integer), a header value that is not a
+  string, or a response over 4 MiB answers `500`. Plugin headers are filtered like the core:
+  `x-*` except the [reserved prefixes](../../reference/http-api/portal/#plugin-routes), `content-disposition`,
+  `content-language`, `etag`, `last-modified`, `expires`, `retry-after`, and `cache-control`
+  on public routes only. The core adds `x-content-type-options: nosniff`, `vary` and
+  `cache-control: no-store` (always for JSON bodies), and a JSON body is what the portal
+  would parse. An error thrown by a handler still rejects `callRoute`, so the test sees it.
+
+### Privacy hooks
+
+`ctx.privacy.pseudonym(userId)` throws outside a privacy hook, as it does on the host. Run the
+hooks with `harness.eraseMember(plugin, userId)` and `harness.exportMember(plugin, userId)`.
+There the pseudonym exists only for that member. Calling `plugin.privacy.erase(t.ctx, id)`
+directly gets the unscoped context, so a hook that pseudonymizes fails.
+
+### Provider calls
+
+On the host, each provider query or action runs in a fresh JS realm. The module is evaluated
+again there and `onStart` does not run (see [Versioned events and plugin calls](../writing/#versioned-events-and-plugin-calls)). Calling
+`plugin.queries.x.run(t.ctx, …)` on the module whose `onStart` your test ran hides missing
+state. `callProvider` reproduces the host's call:
+
+```ts
+import { vi } from "vite-plus/test";
+import { callProvider } from "@cicord/sdk/testing";
+import contract from "../contracts/search.v1.json" with { type: "json" };
+
+const out = await callProvider({
+  load: async () => {
+    vi.resetModules(); // a fresh module: module-level Maps start empty
+    return import("../src/index.ts");
+  },
+  harness: t,              // the provider's KV, files and server
+  query: "search",         // or action: "…" with idempotencyKey
+  input: { q: "desk" },
+  contract,                // input and output are validated
+  onBehalfOf: { userId: "1", access: "member" },
+});
+```
+
+- A query gets a read-only context, built with `readOnlyContext(ctx)`. Writes, schedules,
+  `status.set`, `features.report`, `http.fetch`, `media.hash`, `render.image` and Discord
+  effects throw `CapabilityError` with capability `read-only`.
+- Errors carry the host's codes. A contract input violation is `invalid_input`, and a bad
+  output is `handler_error`. Any error the provider throws reaches the caller as
+  `handler_error`, except an `InteropError` with code `denied` or `cycle`.
+- A loader that returns a module instance already used, or the `live` module you pass, is
+  refused.
+
+On the consumer side, `createTestContext({ plugins: fakeProviders({...}) })` validates the
+consumer's input against each peer's contract before calling a stub. A peer can also be backed
+by the real provider module (`realm: { load, harness }`), so an undeclared field fails with
+`invalid_input` in the unit test as it does in the runtime:
+
+```ts
+const t = createTestContext({
+  plugins: fakeProviders({
+    polls: { contracts: { voters: votersContract }, queries: { voters: () => ({ userIds: [] }) } },
+  }),
+});
+```
+
+`contractViolation(schema, value)` checks one value against the JSON Schema subset contracts
+use. It throws on keywords it does not support.
 
 ### In the Cicord repository
 
@@ -209,11 +310,18 @@ plugin’s effective test configuration. The simulator denies `ViewChannel` and
 `ReadMessageHistory` to `@everyone` on those channels. The fixture accepts up to 32
 unique channel keys and is limited to 4 KiB.
 
+To test a plugin's degraded mode, `botPermissions` lists the only server-wide permissions
+the test bot keeps (Discord permission names, as in a command's `permissions`; `[]` leaves none). The bot starts with
+Administrator, so the first sync can create the test resources. Once the instance has
+started, its permissions are replaced and the run prints `ok   bot permissions: …`. The
+scenario then runs without, for example, `ManageServer` or `MoveMembers`.
+
 ```yaml
 syncPolicy:
   selfHeal: true
   deletionProtection: true
 privateChannels: [audit]
+botPermissions: [ViewChannel, SendMessages, ReadMessageHistory]
 ```
 
 
@@ -245,9 +353,8 @@ a new revision; KV data and scheduled tasks survive the reload.
 
 Before a real deployment, remember what the simulator cannot show: real rate limits, the
 3-second deadline under real latency, privileged intents not enabled in the developer portal,
-and the role hierarchy of a bot that is not Administrator. It also cannot post user messages
-with attachments (the `attachment` command option works), and it checks the message a
-`message.reply()` refers to but does not keep the reference on the reply. The
+and the role hierarchy of a bot that is not Administrator. Its panel posts text-only user
+messages (the `attachment` command option works). The
 [real-Discord checklist](../coverage/#checklist-on-real-discord) covers these.
 
 The [two-account comparison](../discord-parity/) records live results for permissions, moderation, polls, tickets and voice rooms alongside the corresponding candidate tests.
