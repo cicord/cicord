@@ -76,9 +76,9 @@ test("privileged consent names every server capability and needs an explicit sel
     );
   }
   render(<Consent />);
-  const checkbox = screen.getByRole("checkbox", {
+  const checkbox = screen.getByRole<HTMLInputElement>("checkbox", {
     name: /server.overlays, server.sync/,
-  }) as HTMLInputElement;
+  });
   expect(checkbox.checked).toBe(false);
   await userEvent.click(checkbox);
   expect(checkbox.checked).toBe(true);

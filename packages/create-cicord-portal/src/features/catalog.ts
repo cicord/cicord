@@ -9,7 +9,7 @@ type Feature = {
   title: [string, string];
   hidden?: boolean;
 };
-export const features = {
+const features = {
   cases: {
     path: "/moderation/cases",
     plugin: "moderation",

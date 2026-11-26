@@ -278,7 +278,10 @@ function Playground({
         bot: command.bot,
         name: command.name,
         ...(command.contextMenu
-          ? { contextMenu: command.contextMenu, targetId: String(options.target ?? "") }
+          ? {
+              contextMenu: command.contextMenu,
+              targetId: typeof options.target === "string" ? options.target : "",
+            }
           : {}),
         options,
       });

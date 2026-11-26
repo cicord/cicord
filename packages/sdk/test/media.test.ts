@@ -45,3 +45,16 @@ test("enforces grants and records native-operation fixture results", async () =>
   const digest = await t.ctx.media.hash("https://cdn.discordapp.com/a", { algo: "phash" });
   expect(t.ctx.media.distance(digest, "0000000000000000")).toBe(16);
 });
+
+test("versioned file globs match literal, nested and Unicode names", async () => {
+  const t = createTestContext({
+    files: {
+      "kb/intro.md": "one",
+      "kb/équipe/🎉.md": "two",
+      "kb/logs.txt": "three",
+      "other/intro.md": "four",
+    },
+  });
+  expect(await t.ctx.files.list("kb/**/*.md")).toEqual(["kb/intro.md", "kb/équipe/🎉.md"]);
+  expect(await t.ctx.files.list("kb/équipe/?.md")).toEqual(["kb/équipe/🎉.md"]);
+});

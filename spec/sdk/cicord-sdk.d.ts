@@ -684,7 +684,7 @@ export interface Modal {
     value?: string;
     minLength?: number;
     maxLength?: number;
-  } | {type:"label"; label:string; description?:string; component: ((SelectMenu|EntitySelect) & {required?:boolean}) | {type:"textInput"; id:string; style?:"short"|"paragraph"; required?:boolean;placeholder?:string;value?:string;minLength?:number;maxLength?:number}})[];
+  } | {type:"label"; id?:never; label:string; description?:string; component: ((SelectMenu|EntitySelect) & {required?:boolean}) | {type:"textInput"; id:string; style?:"short"|"paragraph"; required?:boolean;placeholder?:string;value?:string;minLength?:number;maxLength?:number}})[];
 }
 
 export interface ModalInteraction extends Interaction {
@@ -1255,8 +1255,8 @@ export interface PluginDefinition {
 
 /** Entry point of a plugin: `export default definePlugin({ ... })`. */
 export declare function definePlugin<S extends NonNullable<PluginDefinition["subscriptions"]>>(
-  definition: PluginDefinition & {subscriptions: S},
-): PluginDefinition & {subscriptions: S};
+  definition: PluginDefinition & { subscriptions: S },
+): PluginDefinition & { subscriptions?: Partial<S> };
 export declare function definePlugin(definition: PluginDefinition): PluginDefinition;
 
 // ───────────────────────────────────────────────────────────── globals

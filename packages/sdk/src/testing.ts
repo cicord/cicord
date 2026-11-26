@@ -129,12 +129,12 @@ function fileMatches(pattern: string[], path: string[]): boolean {
       fileMatches(pattern.slice(1), path) ||
       (path.length > 0 && fileMatches(pattern, path.slice(1)))
     );
-  const expr = Array.from(pattern[0]!, (c) =>
-    c === "*" ? ".*" : c === "?" ? "." : "\\\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"),
+  const expr = Array.from(pattern[0], (c) =>
+    c === "*" ? ".*" : c === "?" ? "." : `\\u{${c.codePointAt(0)?.toString(16)}}`,
   ).join("");
   return (
     path.length > 0 &&
-    new RegExp("^" + expr + "$").test(path[0]!) &&
+    new RegExp("^" + expr + "$", "u").test(path[0]) &&
     fileMatches(pattern.slice(1), path.slice(1))
   );
 }
@@ -687,7 +687,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const botUser = makeUser({ id: "bot", username: options.bot?.username ?? "TestBot", bot: true });
 
   const messages = new Map<string, Message>();
-  const dmReceipts=new Set<string>();
+  const dmReceipts = new Set<string>();
   const history = new Map<string, Message[]>(); // channel id → messages, oldest first
   const ballots = new Map<string, Map<number, Set<string>>>();
   function votePoll(id: string, answer: number, user: string, add = true) {
@@ -736,7 +736,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         poll.question.length > 300 ||
         poll.answers.length < 2 ||
         poll.answers.length > 10 ||
-        poll.answers.some((a) => !a.text || [...a.text].length > 55) ||
+        poll.answers.some((a) => !a.text || Array.from(a.text).length > 55) ||
         !Number.isInteger(poll.durationHours) ||
         poll.durationHours < 1 ||
         poll.durationHours > 768)
@@ -837,10 +837,12 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       async pollVoters(answer, after) {
         need("discord.messages.read");
         return [...(ballots.get(message.id)?.get(answer) ?? [])]
-          .sort((a, b) => a.length - b.length || a.localeCompare(b))
+          .toSorted((a, b) => a.length - b.length || a.localeCompare(b))
           .filter(
-            (id) =>
-              !after || id.length > after.length || (id.length === after.length && id > after),
+            (voterId) =>
+              !after ||
+              voterId.length > after.length ||
+              (voterId.length === after.length && voterId > after),
           )
           .slice(0, 100);
       },
@@ -943,7 +945,9 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
           throw new Error("memberOverwrite requires a current guild channel");
         if (!userId) throw new Error("expected a member ID");
         const row = channelOverwrites.get(id)?.get("member:" + userId);
-        return row ? { allow: [...row.allow].sort(), deny: [...row.deny].sort() } : undefined;
+        return row
+          ? { allow: [...row.allow].toSorted(), deny: [...row.deny].toSorted() }
+          : undefined;
       },
       async send(input) {
         need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
@@ -1173,13 +1177,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         });
         bans.set(user.id, { user, ...(opts.reason ? { reason: opts.reason } : {}) });
       },
-      async send(input,options) {
+      async send(input, sendOptions) {
         need("discord.dm.send");
         const dm =
           channels.get(`dm-${user.id}`) ??
           register(undefined, { name: "dm", type: "dm", id: `dm-${user.id}` });
-        const m=post(dm,input,`dm:${user.id}`);
-        if(options?.retractable) dmReceipts.add(m.id);
+        const m = post(dm, input, `dm:${user.id}`);
+        if (sendOptions?.retractable) dmReceipts.add(m.id);
         return m;
       },
       async moveTo(ref, reason) {
@@ -1543,14 +1547,17 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     name: options.server?.name ?? "Test Server",
     ...(options.server?.iconUrl ? { iconUrl: options.server.iconUrl } : {}),
     ...(ownerId !== undefined ? { ownerId } : {}),
-    async retractDM(id){
+    async retractDM(id) {
       need("discord.dm.send");
-      if(!dmReceipts.delete(id)) return;
-      const m=messages.get(id);
-      if(m) {
+      if (!dmReceipts.delete(id)) return;
+      const m = messages.get(id);
+      if (m) {
         messages.delete(id);
-        history.set(m.channel.id,(history.get(m.channel.id)??[]).filter(v=>v.id!==id));
-        deletedMessages.push({id});
+        history.set(
+          m.channel.id,
+          (history.get(m.channel.id) ?? []).filter((v) => v.id !== id),
+        );
+        deletedMessages.push({ id });
       }
     },
     ...(options.server?.afkChannelId ? { afkChannelId: options.server.afkChannelId } : {}),
@@ -1858,7 +1865,11 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         if (i >= 0) scheduled.splice(i, 1);
       },
     },
-    status: {set(key,message) { if(message) log("warn")(key+": "+message); }},
+    status: {
+      set(key, message) {
+        if (message) log("warn")(key + ": " + message);
+      },
+    },
     secrets: {
       has(name) {
         return options.secrets?.includes(name) === true;
@@ -1868,8 +1879,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         return ("cicord-secret:" + name) as ReturnType<Context["secrets"]["ref"]>;
       },
     },
-    index(name, options = {}) {
-      const key = name + "|" + (options.language ?? "en");
+    index(name, indexOptions = {}) {
+      const key = name + "|" + (indexOptions.language ?? "en");
       const values = indices.get(key) ?? new Map<string, import("@cicord/sdk").IndexDocument>();
       indices.set(key, values);
       return {
@@ -1903,7 +1914,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
               };
             })
             .filter((r) => r.score > 0)
-            .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+            .toSorted((a, b) => b.score - a.score || a.id.localeCompare(b.id))
             .slice(0, limit);
         },
       };
@@ -1911,7 +1922,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     files: {
       async list(glob) {
         need("files.read");
-        const files = Object.keys(options.files ?? {}).sort();
+        const files = Object.keys(options.files ?? {}).toSorted();
         return glob ? files.filter((path) => fileMatches(glob.split("/"), path.split("/"))) : files;
       },
       async bytes(path) {
@@ -2146,8 +2157,9 @@ export function normalizeRouteResponse(response: RouteResponse): RouteResult {
   ) {
     if (
       typeof response.raw !== "string" ||
+      typeof response.contentType !== "string" ||
       !["text/calendar", "text/csv", "text/plain", "text/markdown"].includes(
-        String(response.contentType),
+        response.contentType,
       ) ||
       new TextEncoder().encode(response.raw).length > 2 * 1024 * 1024
     )

@@ -188,7 +188,8 @@ test("ticket staff can assign, reply privately or publicly, and lose detail acce
         const local = path.split(prefix)[1]!;
         if (init.method === "POST") {
           if (!allowed) return json({ error: { code: "forbidden", message: "Revoked" } }, 403);
-          posts.push({ path: local, body: JSON.parse(String(init.body)) });
+          if (typeof init.body !== "string") throw new Error("expected a JSON ticket request");
+          posts.push({ path: local, body: JSON.parse(init.body) });
           return json(record);
         }
         if (local === "/tickets/mine") return json({ items: [] });

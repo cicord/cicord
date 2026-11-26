@@ -56,7 +56,7 @@ export class CapabilityError extends Error {
 /** Entry point of a plugin: `export default definePlugin({ ... })`. Identity at run time. */
 export function definePlugin<S extends NonNullable<Spec.PluginDefinition["subscriptions"]>>(
   definition: Spec.PluginDefinition & { subscriptions: S },
-): Spec.PluginDefinition & { subscriptions: S };
+): Spec.PluginDefinition & { subscriptions?: Partial<S> };
 export function definePlugin(definition: Spec.PluginDefinition): Spec.PluginDefinition;
 export function definePlugin(definition: Spec.PluginDefinition): Spec.PluginDefinition {
   return definition;

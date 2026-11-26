@@ -44,7 +44,7 @@ export function TicketDesk({ plugin }: { plugin: PortalPlugin }) {
     "/tickets/stats",
   );
   const items = list.data?.items.filter((i) => filter === "all" || i.status === filter) ?? [];
-  const activeStaff = queue && !!staff.data?.items.some((t) => t.id === selected);
+  const activeStaff = queue && !!staff.data?.items.some((item) => item.id === selected);
   return (
     <div className="page tickets">
       <header className="page__header">
@@ -183,14 +183,17 @@ function TicketDetail({ plugin, id, staff }: { plugin: PortalPlugin; id: string;
     const ref = client.plugin(server.key, plugin.bot, plugin.instance);
     setTicket(undefined);
     setError(false);
-    void ref
-      .get<Detail>(staff ? path : "/tickets/mine/" + id, undefined, { signal: controller.signal })
-      .then((v) => {
-        if (!controller.signal.aborted) setTicket(v);
-      })
-      .catch(() => {
+    async function load() {
+      try {
+        const detail = await ref.get<Detail>(staff ? path : "/tickets/mine/" + id, undefined, {
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) setTicket(detail);
+      } catch {
         if (!controller.signal.aborted) setError(true);
-      });
+      }
+    }
+    void load();
     return () => controller.abort();
   }, [client, server.key, plugin.bot, plugin.instance, id, staff, path, revision]);
 
