@@ -150,6 +150,11 @@ back to the base language at each step.
 Keys such as `commands.remind.name`, `commands.remind.description` and
 `commands.remind.options.when.description` translate the Discord command UI. For
 subcommands and groups, insert their canonical path before the field or options segment.
+Use `contextMenus.Open ticket on message.name` to translate a USER or MESSAGE menu
+named `Open ticket on message`. For example, its French value can be
+`Ouvrir un ticket sur ce message`. Menu labels preserve spaces and capitalization and
+must contain 1–32 characters. Each menu of the same type on one bot and server needs
+a distinct display name in each locale, including menus using their default names.
 Handlers continue to receive the canonical command and option names.
 
 ## Events

@@ -28,8 +28,13 @@ func validateCommands(cmds []discord.Command) error {
 		if c.Type == discord.UserMenu || c.Type == discord.MessageMenu {
 			key := c.Type.Key(c.Name)
 			counts[c.Type]++
-			if counts[c.Type] > 15 || names[key] || utf8.RuneCountInString(c.Name) > 32 || c.Name == "" || c.Description != "" || len(c.Options) > 0 {
+			if counts[c.Type] > 15 || names[key] || !discord.ValidMenuName(c.Name) || c.Description != "" || len(c.Options) > 0 {
 				return badRequest("invalid or duplicate context menu %q (limit 15 per type)", c.Name)
+			}
+			for locale, name := range c.Names {
+				if !discord.ValidMenuName(name) {
+					return badRequest("invalid context menu name %q in %s", name, locale)
+				}
 			}
 			names[key] = true
 			continue
@@ -51,6 +56,9 @@ func validateCommands(cmds []discord.Command) error {
 		if err := validateOptions(c.Name, c.Options); err != nil {
 			return err
 		}
+	}
+	if clash := discord.LocalizedMenuCollision(cmds); clash != nil {
+		return badRequest("duplicate context menu %q in %s", clash.Name, clash.Locale)
 	}
 	return nil
 }

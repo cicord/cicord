@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/cicord/cicord/internal/discord"
@@ -34,5 +35,43 @@ func TestTranslationPriorityAndRegistration(t *testing.T) {
 	got, err := opTranslate(h.inst, &invocation{locale: "fr"}, json.RawMessage(`{"key":"hello","vars":{"name":"Ada"}}`))
 	if err != nil || got != "Hello Ada" {
 		t.Fatalf("%v %v", got, err)
+	}
+}
+
+func TestLocalizedContextMenus(t *testing.T) {
+	def, err := Inspect(bundleSource(t, `import {definePlugin} from "@cicord/sdk";
+ export default definePlugin({contextMenus:{
+  "About user":{type:"user",run(){}},
+  "Open ticket on message":{type:"message",run(){}}
+ }});`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr := map[string]string{"contextMenus.About user.name": "Ouvrir un Ticket", "contextMenus.Open ticket on message.name": "Ouvrir un Ticket"}
+	if err = def.ApplyLocales(locales.Catalog{"fr": fr}); err != nil {
+		t.Fatal(err)
+	}
+	cmds := def.DiscordCommands()
+	if len(cmds) != 2 || cmds[0].Name != "About user" || cmds[1].Name != "Open ticket on message" || cmds[0].Type != discord.UserMenu || cmds[1].Type != discord.MessageMenu {
+		t.Fatalf("compiled menus %+v", cmds)
+	}
+	for _, cmd := range cmds {
+		if cmd.Names["fr"] != "Ouvrir un Ticket" || len(cmd.Descriptions) != 0 {
+			t.Fatalf("localized menu %+v", cmd)
+		}
+	}
+	for _, invalid := range []string{"", strings.Repeat("é", 33)} {
+		fr["contextMenus.About user.name"] = invalid
+		if err := def.ApplyLocales(locales.Catalog{"fr": fr}); err == nil {
+			t.Fatalf("accepted invalid localized menu name %q", invalid)
+		}
+	}
+}
+
+func TestContextMenuCollisionWithFallback(t *testing.T) {
+	def := Definition{ContextMenus: []CommandDef{{Name: "About user", Type: discord.UserMenu}, {Name: "Profil", Type: discord.UserMenu}}}
+	err := def.ApplyLocales(locales.Catalog{"fr": {"contextMenus.About user.name": "Profil"}})
+	if err == nil || !strings.Contains(err.Error(), "fr") {
+		t.Fatalf("expected French menu collision, got %v", err)
 	}
 }

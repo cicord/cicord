@@ -701,3 +701,17 @@ func TestRoleAndServerFromJSON(t *testing.T) {
 		t.Errorf("owner = %q", s.OwnerID)
 	}
 }
+
+func TestLocalizedContextMenuWire(t *testing.T) {
+	b, err := json.Marshal(commandToWire(discord.Command{Type: discord.MessageMenu, Name: "Open ticket on message", CommandLabels: discord.CommandLabels{Names: map[string]string{"fr": "Ouvrir un ticket sur ce message"}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err = json.Unmarshal(b, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]any{"type": float64(3), "name": "Open ticket on message", "name_localizations": map[string]any{"fr": "Ouvrir un ticket sur ce message"}}; !reflect.DeepEqual(wire, want) {
+		t.Fatalf("context menu wire = %s", b)
+	}
+}

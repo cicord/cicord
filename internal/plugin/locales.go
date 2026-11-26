@@ -100,6 +100,23 @@ func (d *Definition) ApplyLocales(c locales.Catalog) error {
 		if len(discordLocales(tag)) == 0 {
 			continue
 		}
+		for n := range d.ContextMenus {
+			menu := &d.ContextMenus[n]
+			key := "contextMenus." + menu.Name + ".name"
+			value, ok := messages[key]
+			if !ok {
+				continue
+			}
+			if !discord.ValidMenuName(value) {
+				return fmt.Errorf("%s in %s: context menu name must be 1–32 characters", key, tag)
+			}
+			if menu.Names == nil {
+				menu.Names = map[string]string{}
+			}
+			for _, locale := range discordLocales(tag) {
+				menu.Names[locale] = value
+			}
+		}
 		for n := range d.Commands {
 			command := &d.Commands[n]
 			key := "commands." + command.Name
@@ -110,6 +127,13 @@ func (d *Definition) ApplyLocales(c locales.Catalog) error {
 				return err
 			}
 		}
+	}
+	menus := make([]discord.Command, len(d.ContextMenus))
+	for i, menu := range d.ContextMenus {
+		menus[i] = menu.DiscordCommand()
+	}
+	if clash := discord.LocalizedMenuCollision(menus); clash != nil {
+		return fmt.Errorf("context menus %q and %q both display as %q in %s", menus[clash.First].Name, menus[clash.Second].Name, clash.Name, clash.Locale)
 	}
 	return nil
 }

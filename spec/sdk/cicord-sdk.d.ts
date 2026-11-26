@@ -1217,6 +1217,7 @@ export type ContextMenuDefinition =
  | { type:"message"; permissions?: Permission[]; ephemeral?: boolean; run(ctx:Context,i:Interaction & {readonly target:Message}):Awaitable<void> }
  | { type:"user"; permissions?: Permission[]; ephemeral?: boolean; run(ctx:Context,i:Interaction & {readonly target:Member}):Awaitable<void> };
 export interface PluginDefinition {
+  /** Keys are canonical handler names. Translate a display name with `contextMenus.<canonical name>.name` in the locale files. */
   contextMenus?: Record<string,ContextMenuDefinition>;
   privacy?: {
     export(ctx: Context, userId: string): Promise<Json>;

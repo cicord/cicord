@@ -566,7 +566,7 @@ func buildDefinition(dp describedPlugin) (*Definition, error) {
 	}
 
 	for _, m := range dp.ContextMenus {
-		if n := utf8.RuneCountInString(m.Name); n < 1 || n > 32 {
+		if !discord.ValidMenuName(m.Name) {
 			fail("context menu %q: name must be 1–32 characters", m.Name)
 		}
 		if !checkFn("contextMenus", m.Name, m.Run) {

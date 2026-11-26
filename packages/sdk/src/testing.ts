@@ -2635,11 +2635,11 @@ export async function runContextMenu(
     const target = harness.message(call.targetId);
     if (!target || (base.channel && target.channel.id !== base.channel.id))
       throw new Error("unknown target message");
-    await menu.run(harness.ctx, Object.assign(base, { target }));
+    await menu.run(localizedContext(harness.ctx, base.locale), Object.assign(base, { target }));
   } else {
     const target = harness.member(call.targetId);
     if (!target) throw new Error("unknown target member");
-    await menu.run(harness.ctx, Object.assign(base, { target }));
+    await menu.run(localizedContext(harness.ctx, base.locale), Object.assign(base, { target }));
   }
   return result;
 }

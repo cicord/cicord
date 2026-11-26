@@ -7,12 +7,24 @@ import (
 	"github.com/cicord/cicord/internal/plugin"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
 func TestContextMenuDispatch(t *testing.T) {
 	s := startShowcase(t, showcaseOpts{prepare: func(dir string) {
+		manifest := filepath.Join(dir, "plugins/tickets/plugin.yaml")
+		replaceIn(t, manifest, "  entry: ./src/index.ts", "  entry: ./src/index.ts\n  locales: ./locales")
+		localeDir := filepath.Join(dir, "plugins/tickets/locales")
+		if err := os.MkdirAll(localeDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		for name, contents := range map[string]string{"en.json": "{}", "fr.json": `{"contextMenus.About user.name":"À propos du membre"}`} {
+			if err := os.WriteFile(filepath.Join(localeDir, name), []byte(contents), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
 		path := filepath.Join(dir, "plugins/tickets/src/index.ts")
 		b, err := os.ReadFile(path)
 		if err != nil {
@@ -23,6 +35,12 @@ func TestContextMenuDispatch(t *testing.T) {
 			t.Fatal(err)
 		}
 	}})
+	registered := s.world.Commands(s.appID, s.serverID)
+	if !slices.ContainsFunc(registered, func(c discord.Command) bool {
+		return c.Type == discord.UserMenu && c.Name == "About user" && c.Names["fr"] == "À propos du membre"
+	}) {
+		t.Fatal("French display label missing from registered guild commands")
+	}
 	ch := s.channel("general")
 	h := s.world.InvokeContextMenu(s.owner.ID, s.serverID, ch.ID, s.appID, "About user", discord.UserMenu, s.owner.ID)
 	st := wait(t, h)
@@ -53,5 +71,32 @@ func TestMenuLimitsPerBotAndServer(t *testing.T) {
 	ds := validateRepoCommands(repo, builds)
 	if len(ds) != 2 || !strings.Contains(ds[0].Message, "plugin-00") || !strings.Contains(ds[0].Message, "plugin-15") {
 		t.Fatal(ds)
+	}
+}
+
+func TestLocalizedMenuCollisionBetweenInstallations(t *testing.T) {
+	a := &config.LoadedPlugin{Key: "first"}
+	b := &config.LoadedPlugin{Key: "second"}
+	repo := &config.Repo{Bots: map[string]*config.Bot{"bot": {File: "bot.yaml"}}, Instances: []config.Instance{
+		{Bot: "bot", Server: "one", Name: "staff", Plugin: a}, {Bot: "bot", Server: "one", Name: "safety", Plugin: b},
+	}}
+	menu := func(name, tag, label string) *builtPlugin {
+		return &builtPlugin{def: &plugin.Definition{ContextMenus: []plugin.CommandDef{{
+			Name: name, Type: discord.MessageMenu, CommandLabels: discord.CommandLabels{Names: map[string]string{tag: label}},
+		}}}}
+	}
+	builds := map[string]*builtPlugin{"first": menu("Open ticket", "fr", "Signaler ce message"), "second": menu("Report message", "fr", "Signaler ce message")}
+	ds := validateRepoCommands(repo, builds)
+	if len(ds) != 1 || !strings.Contains(ds[0].Message, "staff") || !strings.Contains(ds[0].Message, "safety") || !strings.Contains(ds[0].Message, "fr") {
+		t.Fatalf("missing localized collision: %+v", ds)
+	}
+	builds["second"] = menu("Report message", "de", "Signaler ce message")
+	if ds = validateRepoCommands(repo, builds); ds.HasErrors() {
+		t.Fatalf("different locales: %+v", ds)
+	}
+	builds["second"] = menu("Report message", "fr", "Signaler ce message")
+	repo.Instances[1].Server = "other"
+	if ds = validateRepoCommands(repo, builds); ds.HasErrors() {
+		t.Fatalf("different servers: %+v", ds)
 	}
 }

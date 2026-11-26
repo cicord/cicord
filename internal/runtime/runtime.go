@@ -402,7 +402,11 @@ func validateRepoCommands(repo *config.Repo, builds map[string]*builtPlugin) con
 	// Per (bot, server): command names must be unique across instances.
 	type pair struct{ bot, server string }
 	seen := map[pair]map[string]string{}
-	menuOwners := map[pair]map[discord.CommandType][]string{}
+	type ownedMenu struct {
+		command discord.Command
+		owner   string
+	}
+	menuOwners := map[pair]map[discord.CommandType][]ownedMenu{}
 	for _, in := range repo.Instances {
 		if in.Disabled() {
 			continue
@@ -417,9 +421,9 @@ func validateRepoCommands(repo *config.Repo, builds map[string]*builtPlugin) con
 		}
 		for _, m := range bp.def.ContextMenus {
 			if menuOwners[p] == nil {
-				menuOwners[p] = map[discord.CommandType][]string{}
+				menuOwners[p] = map[discord.CommandType][]ownedMenu{}
 			}
-			menuOwners[p][m.Type] = append(menuOwners[p][m.Type], in.Name)
+			menuOwners[p][m.Type] = append(menuOwners[p][m.Type], ownedMenu{m.DiscordCommand(), in.Name})
 			key := m.Type.Key(m.Name)
 			if other, exists := seen[p][key]; exists {
 				ds = append(ds, config.Diagnostic{Severity: config.SeverityError, File: repo.Bots[in.Bot].File, Message: fmt.Sprintf("context menu %q duplicated by %q and %q on %s/%s", m.Name, other, in.Name, in.Bot, in.Server)})
@@ -435,9 +439,21 @@ func validateRepoCommands(repo *config.Repo, builds map[string]*builtPlugin) con
 		}
 	}
 	for p, groups := range menuOwners {
-		for typ, instances := range groups {
-			if len(instances) > 15 {
-				count := len(instances)
+		for typ, group := range groups {
+			commands := make([]discord.Command, len(group))
+			for i, m := range group {
+				commands[i] = m.command
+			}
+			if clash := discord.LocalizedMenuCollision(commands); clash != nil {
+				first, second := group[clash.First], group[clash.Second]
+				ds = append(ds, config.Diagnostic{Severity: config.SeverityError, File: repo.Bots[p.bot].File, Message: fmt.Sprintf("context menus %q (%s) and %q (%s) both display as %q in %s on %s/%s", first.command.Name, first.owner, second.command.Name, second.owner, clash.Name, clash.Locale, p.bot, p.server)})
+			}
+			if len(group) > 15 {
+				count := len(group)
+				instances := make([]string, count)
+				for i, m := range group {
+					instances[i] = m.owner
+				}
 				sort.Strings(instances)
 				owners := strings.Join(slices.Compact(instances), ", ")
 				kind := "USER"
