@@ -352,7 +352,12 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 			if !ok {
 				return errors.New("incident actions unavailable")
 			}
-			return cl.SetIncident(c, srt.cfg.Spec.DiscordID, actions)
+			if err := cl.SetIncident(c, srt.cfg.Spec.DiscordID, actions); err != nil {
+				return err
+			}
+			data, _ := json.Marshal(actions)
+			_, err := r.opts.Store.Audit().Append(c, state.AuditEntry{Time: time.Now(), Server: in.Server, Actor: "plugin:" + origin, Action: "server.incident", Target: in.Server, Details: data})
+			return err
 		},
 		UploadLimit: func() int { return discord.UploadLimit(srt.cache.Server().PremiumTier) },
 		Pseudonym:   func(user string) string { return r.Pseudonym(in.Server, user) },

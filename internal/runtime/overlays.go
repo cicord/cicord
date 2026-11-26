@@ -92,19 +92,17 @@ func (r *Runtime) persistOverlay(ctx context.Context, rt *serverRT, origin, id s
 			return errors.New("server overlay limit reached")
 		}
 		if v.Server != nil && d.OriginalVerification == "" {
-			info := rt.cache.Server()
-			base := info.VerificationLevel
-			if base == "" {
-				cl, ok := r.Client(key)
-				if !ok {
-					return errors.New("server unavailable")
-				}
-				srv, err := cl.GetServer(ctx, rt.cfg.Spec.DiscordID)
-				if err != nil {
-					return err
-				}
-				base = srv.VerificationLevel
+			// A cached gateway snapshot can predate a human change. Capture the
+			// current level before managing an otherwise unconstrained field.
+			host := r.bot(rt.bot)
+			if host == nil {
+				return errors.New("managing bot is unavailable")
 			}
+			srv, err := host.session.GetServer(ctx, rt.cfg.Spec.DiscordID)
+			if err != nil {
+				return err
+			}
+			base := srv.VerificationLevel
 			if base == "" {
 				return errors.New("cannot capture current verification level")
 			}

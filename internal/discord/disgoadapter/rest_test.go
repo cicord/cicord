@@ -568,3 +568,18 @@ func TestManagedWebhookUsesOnlyOwnCredential(t *testing.T) {
 		t.Fatalf("invalid webhook execution")
 	}
 }
+
+func TestIncidentActionWritesOnlyRequestedField(t *testing.T) {
+	f := newFakeDiscord(t)
+	f.json("PUT /guilds/123/incident-actions", 200, `{"invites_disabled_until":"2026-11-26T00:00:00Z"}`)
+	s := f.connect(t)
+	end := time.Date(2026, 11, 26, 0, 0, 0, 0, time.UTC)
+	if err := s.(discord.IncidentClient).SetIncident(t.Context(), "123", discord.IncidentActions{InvitesDisabledUntil: &end}); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.all()
+	got := calls[len(calls)-1]
+	if !reflect.DeepEqual(got.Body, map[string]any{"invites_disabled_until": "2026-11-26T00:00:00Z"}) {
+		t.Fatalf("incident payload %#v", got.Body)
+	}
+}

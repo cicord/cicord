@@ -381,6 +381,11 @@ func (w *World) JoinWithInvite(userID, code string) error {
 	defer w.mu.Unlock()
 	for sid, a := range w.analytics {
 		inv := a.invites[code]
+		if inv != nil || a.vanity != nil && a.vanity.Code == code {
+			if until := w.servers[sid].incident.InvitesDisabledUntil; until != nil && w.now().Before(*until) {
+				return forbidden("invites paused by a server incident")
+			}
+		}
 		if inv == nil {
 			if a.vanity != nil && a.vanity.Code == code {
 				if err := w.addMember(sid, userID); err != nil {

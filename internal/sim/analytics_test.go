@@ -253,3 +253,35 @@ func TestModeratorDeletesMergeWithoutMessageID(t *testing.T) {
 		}
 	}
 }
+
+func TestIncidentPausesInviteUseUntilExpiry(t *testing.T) {
+	now := time.Now()
+	w := NewWorld(WithClock(func() time.Time { return now }))
+	owner := w.CreateUser("owner")
+	guest := w.CreateUser("guest")
+	other := w.CreateUser("member")
+	server := w.CreateServer("Community", owner.ID, WithGeneralChannel())
+	ch, _ := w.ChannelByName(server.ID, "general")
+	code, err := w.CreateInvite(ch.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = w.AddMember(server.ID, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	until := now.Add(time.Minute)
+	actions := discord.IncidentActions{InvitesDisabledUntil: &until}
+	if err = w.UserClient(other.ID).SetIncident(t.Context(), server.ID, actions); !errors.Is(err, discord.ErrForbidden) {
+		t.Fatalf("ordinary member set incident: %v", err)
+	}
+	if err = w.UserClient(owner.ID).SetIncident(t.Context(), server.ID, actions); err != nil {
+		t.Fatal(err)
+	}
+	if err = w.JoinWithInvite(guest.ID, code); !errors.Is(err, discord.ErrForbidden) {
+		t.Fatalf("active incident admitted invite: %v", err)
+	}
+	now = until
+	if err = w.JoinWithInvite(guest.ID, code); err != nil {
+		t.Fatalf("expired incident consumed or blocked invite: %v", err)
+	}
+}
