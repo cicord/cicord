@@ -311,3 +311,27 @@ func TestParseColor(t *testing.T) {
 		t.Fatal("colorString")
 	}
 }
+
+func TestLayoutLimitsAndModalSelect(t *testing.T) {
+	i := &Instance{env: Env{InstanceName: "demo"}}
+	text := "legacy"
+	if _, err := i.messageCreate(messageInput{Content: &text, Layout: []compIn{{Type: "text", Content: "hello"}}}, false); err == nil {
+		t.Fatal("accepted mixed payload")
+	}
+	tooMany := make([]compIn, 41)
+	for j := range tooMany {
+		tooMany[j] = compIn{Type: "text", Content: "x"}
+	}
+	if _, err := i.messageCreate(messageInput{Layout: tooMany}, false); err == nil {
+		t.Fatal("accepted >40 components")
+	}
+	msg, err := i.messageCreate(messageInput{Layout: []compIn{{Type: "container", Components: []compIn{{Type: "text", Content: "Choose"}, {Type: "row", Components: []compIn{{Type: "userSelect", ID: "member"}}}}}}}, false)
+	if err != nil || msg.Flags&discord.MessageFlagComponentsV2 == 0 {
+		t.Fatal(msg, err)
+	}
+	label := compIn{Type: "label", Label: "Member", Component: &compIn{Type: "roleSelect", ID: "team"}}
+	modal, err := i.convertModal(modalInput{ID: "join", Title: "Join", Fields: []compIn{label}})
+	if err != nil || modal.Components[0].Components[0].CustomID != "team" {
+		t.Fatal(modal, err)
+	}
+}

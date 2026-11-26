@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -569,6 +570,11 @@ func cloneMember(m discord.Member) discord.Member {
 	if m.RoleIDs != nil {
 		m.RoleIDs = append([]string{}, m.RoleIDs...)
 	}
+	m.PremiumSince = cloneTime(m.PremiumSince)
+	if m.Pending != nil {
+		v := *m.Pending
+		m.Pending = &v
+	}
 	m.TimeoutUntil = cloneTime(m.TimeoutUntil)
 	return m
 }
@@ -611,6 +617,13 @@ func cloneComponents(in []discord.Component) []discord.Component {
 	out := make([]discord.Component, len(in))
 	for i, c := range in {
 		c.Components = cloneComponents(c.Components)
+		if c.Accessory != nil {
+			a := cloneComponents([]discord.Component{*c.Accessory})[0]
+			c.Accessory = &a
+		}
+		c.DefaultValues = slices.Clone(c.DefaultValues)
+		c.ChannelTypes = slices.Clone(c.ChannelTypes)
+		c.Items = slices.Clone(c.Items)
 		if c.Options != nil {
 			c.Options = append([]discord.SelectOption{}, c.Options...)
 		}

@@ -367,7 +367,8 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		Members: func(ctx context.Context) ([]discord.Member, error) {
 			return srt.cache.members.List(ctx, host.session, srt.cfg.Spec.DiscordID)
 		},
-		OwnerID: func() string { return discord.CurrentGuildOwner(host.session, srt.cfg.Spec.DiscordID) }, Access: pluginAccess(srt.cfg.Spec.Access),
+		AFKChannelID: func() string { return srt.cache.Server().AFKChannelID },
+		OwnerID:      func() string { return discord.CurrentGuildOwner(host.session, srt.cfg.Spec.DiscordID) }, Access: pluginAccess(srt.cfg.Spec.Access),
 		DMReceipts: r.opts.Store.KV("dm-receipts:" + in.ID()), KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources: ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
 		Portal:    &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, Store: r.opts.Store, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name, MaxTTL: 24 * time.Hour},

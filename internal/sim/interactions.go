@@ -874,6 +874,9 @@ func findComponent(rows []discord.Component, customID string) *discord.Component
 		if rows[i].CustomID == customID && rows[i].Type != discord.ComponentActionRow {
 			return &rows[i]
 		}
+		if a := rows[i].Accessory; a != nil && a.CustomID == customID {
+			return a
+		}
 		if c := findComponent(rows[i].Components, customID); c != nil {
 			return c
 		}
@@ -912,13 +915,16 @@ func (w *World) componentInteraction(userID string, msg discord.Message, customI
 		return failedHandle(w, err)
 	}
 	comp := findComponent(ms.msg.Components, customID)
+	if typ == discord.ComponentStringSelect && comp != nil && comp.Type.EntitySelect() {
+		typ = comp.Type
+	}
 	if comp == nil || comp.Type != typ {
 		return failedHandle(w, notFound("message %s has no %s %q", msg.ID, componentName(typ), customID))
 	}
 	if comp.Disabled {
 		return failedHandle(w, badRequest("%s %q is disabled", componentName(typ), customID))
 	}
-	if typ == discord.ComponentStringSelect {
+	if typ == discord.ComponentStringSelect || typ.EntitySelect() {
 		minV, maxV := selectBounds(*comp)
 		if len(values) < minV || len(values) > maxV {
 			return failedHandle(w, badRequest("select %q needs %d-%d values, got %d", customID, minV, maxV, len(values)))
@@ -929,6 +935,9 @@ func (w *World) componentInteraction(userID string, msg discord.Message, customI
 		}
 		seen := map[string]bool{}
 		for _, v := range values {
+			if typ.EntitySelect() {
+				allowed[v] = w.validEntityChoice(*comp, ms.msg.ServerID, v)
+			}
 			if !allowed[v] || seen[v] {
 				return failedHandle(w, badRequest("invalid select value %q", v))
 			}
@@ -985,9 +994,40 @@ func (w *World) SubmitModal(userID, serverID, channelID, applicationID, customID
 			return failedHandle(w, badRequest("modal %q has no text input %q", customID, k))
 		}
 	}
+	selections := map[string][]string{}
 	values := map[string]string{}
 	for id, ti := range inputs {
 		v := fields[id]
+		if ti.Type.EntitySelect() || ti.Type == discord.ComponentStringSelect {
+			vals := []string{}
+			if v != "" {
+				vals = strings.Split(v, ",")
+			}
+			lo, hi := selectBounds(ti)
+			if len(vals) > hi || (ti.Required || len(vals) > 0) && len(vals) < lo {
+				return failedHandle(w, badRequest("invalid select count"))
+			}
+			seen := map[string]bool{}
+			for _, val := range vals {
+				valid := false
+				if ti.Type.EntitySelect() {
+					valid = w.validEntityChoice(ti, serverID, val)
+				} else {
+					for _, o := range ti.Options {
+						if o.Value == val {
+							valid = true
+						}
+					}
+				}
+				if !valid || seen[val] {
+					return failedHandle(w, badRequest("invalid select value"))
+				}
+				seen[val] = true
+			}
+			selections[id] = vals
+			values[id] = v
+			continue
+		}
 		n := utf8.RuneCountInString(v)
 		if ti.Required && v == "" {
 			return failedHandle(w, badRequest("text input %q is required", id))
@@ -1000,7 +1040,7 @@ func (w *World) SubmitModal(userID, serverID, channelID, applicationID, customID
 	delete(w.openModals, key)
 	ix := discord.Interaction{
 		Type: discord.InteractionModalSubmit, ServerID: serverID, ChannelID: channelID,
-		User: user, Member: member, CustomID: customID, ModalFields: values,
+		User: user, Member: member, CustomID: customID, ModalFields: values, ModalSelections: selections,
 	}
 	if ms := w.messages[om.messageID]; om.messageID != "" && ms != nil {
 		m := cloneMessage(ms.msg)

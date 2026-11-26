@@ -56,6 +56,13 @@ func validateMessage(m discord.MessageCreate) error {
 			return err
 		}
 	}
+	if m.Flags&discord.MessageFlagComponentsV2 != 0 {
+		if m.Content != "" || len(m.Embeds) > 0 {
+			return badRequest("layout is exclusive with content and embeds")
+		}
+		count := 0
+		return validateLayout(m.Components, &count)
+	}
 	return validateComponents(m.Components)
 }
 
@@ -107,6 +114,17 @@ func validateComponents(rows []discord.Component) error {
 				}
 				if err := checkID(c.CustomID); err != nil {
 					return err
+				}
+			case discord.ComponentUserSelect, discord.ComponentRoleSelect, discord.ComponentMentionableSelect, discord.ComponentChannelSelect:
+				if len(row.Components) != 1 {
+					return badRequest("a select must be alone in the row")
+				}
+				if err := checkID(c.CustomID); err != nil {
+					return err
+				}
+				lo, hi := selectBounds(c)
+				if lo < 0 || hi < 1 || hi > 25 || lo > hi {
+					return badRequest("invalid select bounds")
 				}
 			case discord.ComponentStringSelect:
 				if len(row.Components) != 1 {
@@ -166,6 +184,17 @@ func validateModal(m *discord.Modal) error {
 	}
 	ids := map[string]bool{}
 	for _, row := range m.Components {
+		if row.Type == discord.ComponentLabel && len(row.Components) == 1 && row.Label != "" {
+			child := row.Components[0]
+			if child.CustomID == "" || ids[child.CustomID] {
+				return badRequest("invalid modal field ID")
+			}
+			ids[child.CustomID] = true
+			if child.Type != discord.ComponentTextInput && child.Type != discord.ComponentStringSelect && !child.Type.EntitySelect() {
+				return badRequest("invalid modal field")
+			}
+			continue
+		}
 		if row.Type != discord.ComponentActionRow || len(row.Components) != 1 || row.Components[0].Type != discord.ComponentTextInput {
 			return badRequest("each modal row must hold exactly one text input")
 		}
@@ -245,6 +274,7 @@ func (w *World) editMessage(ms *messageState, m discord.MessageCreate) {
 	ms.msg.Content = m.Content
 	ms.msg.Embeds = cloneEmbeds(m.Embeds)
 	ms.msg.Components = cloneComponents(m.Components)
+	ms.msg.Flags |= m.Flags & discord.MessageFlagComponentsV2
 	ms.msg.Flags &^= msgFlagLoading
 	now := w.now()
 	ms.msg.EditedAt = &now
@@ -766,4 +796,80 @@ func (w *World) RemoveReaction(userID, channelID, messageID, emoji string) error
 func (w *World) humanReact(userID string, add bool, channelID, messageID, emoji string) error {
 	// Human reactions are stimuli, not client calls: they are not logged.
 	return w.react(actor{userID: userID}, add, channelID, messageID, emoji, false)
+}
+
+func validateLayout(cs []discord.Component, count *int) error {
+	if len(cs) == 0 {
+		return badRequest("layout needs a component")
+	}
+	for _, c := range cs {
+		*count++
+		if *count > 40 {
+			return badRequest("layout exceeds 40 components")
+		}
+		switch c.Type {
+		case discord.ComponentActionRow:
+			*count += len(c.Components)
+			if *count > 40 {
+				return badRequest("layout exceeds 40 components")
+			}
+			if err := validateComponents([]discord.Component{c}); err != nil {
+				return err
+			}
+		case discord.ComponentContainer:
+			if err := validateLayout(c.Components, count); err != nil {
+				return err
+			}
+		case discord.ComponentSection:
+			if len(c.Components) > 3 || c.Accessory == nil || (c.Accessory.Type != discord.ComponentThumbnail && c.Accessory.Type != discord.ComponentButton) {
+				return badRequest("invalid section")
+			}
+			for _, t := range c.Components {
+				if t.Type != discord.ComponentText {
+					return badRequest("section must contain text")
+				}
+			}
+			*count++
+			if err := validateLayout(c.Components, count); err != nil {
+				return err
+			}
+		case discord.ComponentText:
+			if c.Content == "" || utf8.RuneCountInString(c.Content) > 4000 {
+				return badRequest("invalid text display")
+			}
+		case discord.ComponentMediaGallery:
+			if len(c.Items) < 1 || len(c.Items) > 10 {
+				return badRequest("invalid media gallery")
+			}
+		case discord.ComponentFile:
+			if c.File == nil || !strings.HasPrefix(c.File.URL, "attachment://") {
+				return badRequest("invalid file component")
+			}
+		case discord.ComponentSeparator:
+			if c.Spacing < 0 || c.Spacing > 2 {
+				return badRequest("invalid spacing")
+			}
+		default:
+			return badRequest("invalid layout component %d", c.Type)
+		}
+	}
+	return nil
+}
+func (w *World) validEntityChoice(c discord.Component, sid, id string) bool {
+	s := w.servers[sid]
+	if s == nil {
+		return false
+	}
+	switch c.Type {
+	case discord.ComponentUserSelect:
+		return s.members[id] != nil
+	case discord.ComponentRoleSelect:
+		return s.roles[id] != nil
+	case discord.ComponentMentionableSelect:
+		return s.members[id] != nil || s.roles[id] != nil
+	case discord.ComponentChannelSelect:
+		ch := w.channels[id]
+		return ch != nil && ch.ch.ServerID == sid && (len(c.ChannelTypes) == 0 || slices.Contains(c.ChannelTypes, ch.ch.Type))
+	}
+	return false
 }

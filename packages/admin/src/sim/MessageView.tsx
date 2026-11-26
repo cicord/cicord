@@ -1,5 +1,13 @@
 /** Discord-like rendering of simulator messages: content, embeds, buttons and selects. */
-import type { Message, MessageButton, MessageEmbed, MessageSelect, User } from "@cicord/client";
+import type {
+  Message,
+  MessageComponent,
+  MessageButton,
+  MessageEntitySelect,
+  MessageEmbed,
+  MessageSelect,
+  User,
+} from "@cicord/client";
 import { useState } from "react";
 import { Markdown, isSafeUrl } from "../schema-form/index.ts";
 import { IconExternal, IconEye } from "./kit.tsx";
@@ -104,30 +112,14 @@ export function MessageItem({
         ))}
         {(m.components ?? []).length ? (
           <div className="msg-components">
-            {m.components.map((row, i) => (
-              <div className="msg-row" key={i}>
-                {(row.components ?? []).map((c, j) =>
-                  c.type === "select" ? (
-                    <SelectMenu
-                      key={j}
-                      select={c}
-                      disabled={!onComponent || busy === m.id}
-                      onPick={(values) => onComponent?.(m, c.customId, values)}
-                    />
-                  ) : (
-                    <ComponentButton
-                      key={j}
-                      button={c}
-                      busy={busy === m.id}
-                      onClick={
-                        onComponent && c.customId
-                          ? () => onComponent(m, c.customId!, [])
-                          : undefined
-                      }
-                    />
-                  ),
-                )}
-              </div>
+            {m.components.map((node, index) => (
+              <ComponentView
+                key={index}
+                node={node}
+                resolver={resolver}
+                disabled={!onComponent || busy === m.id}
+                onPick={(id, values) => onComponent?.(m, id, values)}
+              />
             ))}
           </div>
         ) : null}
@@ -139,6 +131,124 @@ export function MessageItem({
         ) : null}
       </div>
     </li>
+  );
+}
+
+function ComponentView({
+  node,
+  resolver,
+  disabled,
+  onPick,
+}: {
+  node: MessageComponent;
+  resolver: MentionResolver;
+  disabled: boolean;
+  onPick: (id: string, values: string[]) => Promise<void> | undefined;
+}) {
+  const children = (nodes?: MessageComponent[]) =>
+    nodes?.map((n, index) => (
+      <ComponentView key={index} node={n} resolver={resolver} disabled={disabled} onPick={onPick} />
+    ));
+  switch (node.type) {
+    case "button":
+      return (
+        <ComponentButton
+          button={node}
+          busy={disabled}
+          onClick={
+            node.customId
+              ? async () => {
+                  await onPick(node.customId!, []);
+                }
+              : undefined
+          }
+        />
+      );
+    case "select":
+      return (
+        <SelectMenu select={node} disabled={disabled} onPick={(v) => onPick(node.customId, v)} />
+      );
+    case "userSelect":
+    case "roleSelect":
+    case "channelSelect":
+    case "mentionableSelect":
+      return (
+        <EntityInput select={node} disabled={disabled} onPick={(v) => onPick(node.customId, v)} />
+      );
+    case "text":
+      return <Markdown source={node.content ?? ""} resolveMention={(k, id) => resolver[k](id)} />;
+    case "separator":
+      return node.divider === false ? <br /> : <hr />;
+    case "thumbnail":
+      return node.media && isSafeUrl(node.media.url) ? (
+        <img className="embed-thumb" src={node.media.url} alt={node.description ?? ""} />
+      ) : null;
+    case "mediaGallery":
+      return (
+        <div>
+          {node.items?.map((item, index) =>
+            isSafeUrl(item.media.url) ? (
+              <img
+                key={index}
+                className="embed-image"
+                src={item.media.url}
+                alt={item.description ?? ""}
+              />
+            ) : null,
+          )}
+        </div>
+      );
+    case "file":
+      return <span>{node.file?.url}</span>;
+    case "row":
+      return <div className="msg-row">{children(node.components)}</div>;
+    case "section":
+    case "container":
+      return (
+        <div className="msg-embed">
+          {children(node.components)}
+          {node.accessory ? children([node.accessory]) : null}
+        </div>
+      );
+  }
+}
+
+function EntityInput({
+  select,
+  disabled,
+  onPick,
+}: {
+  select: MessageEntitySelect;
+  disabled: boolean;
+  onPick: (v: string[]) => unknown;
+}) {
+  const [raw, setRaw] = useState(() => select.default_values?.map((v) => v.id).join(", ") ?? "");
+  const ids = raw.split(/[ ,]+/).filter(Boolean);
+  return (
+    <form
+      className="msg-row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onPick(ids);
+      }}
+    >
+      <input
+        className="input"
+        placeholder={select.placeholder ?? "Discord IDs"}
+        aria-label={select.placeholder ?? select.type}
+        value={raw}
+        onChange={(e) => setRaw(e.target.value)}
+        disabled={disabled}
+      />
+      <button
+        className="btn"
+        disabled={
+          disabled || ids.length < (select.minValues ?? 1) || ids.length > (select.maxValues ?? 1)
+        }
+      >
+        {i18n.t("sim.submit")}
+      </button>
+    </form>
   );
 }
 

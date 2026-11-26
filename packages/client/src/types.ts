@@ -1061,9 +1061,29 @@ export interface MessageSelect {
   options: MessageSelectOption[];
 }
 
+export interface MessageEntitySelect extends Omit<MessageSelect, "type" | "options"> {
+  type: "userSelect" | "roleSelect" | "channelSelect" | "mentionableSelect";
+  default_values?: { id: string; type: string }[];
+}
+export type MessageComponent =
+  | MessageButton
+  | MessageSelect
+  | MessageEntitySelect
+  | MessageRow
+  | {
+      type: "container" | "section" | "text" | "thumbnail" | "mediaGallery" | "file" | "separator";
+      content?: string;
+      description?: string;
+      media?: { url: string };
+      file?: { url: string };
+      items?: { media: { url: string }; description?: string }[];
+      components?: MessageComponent[];
+      accessory?: MessageComponent;
+      divider?: boolean;
+    };
 export interface MessageRow {
   type: "row";
-  components: (MessageButton | MessageSelect)[];
+  components: (MessageButton | MessageSelect | MessageEntitySelect)[];
 }
 
 export interface MessageEmbed {
@@ -1088,7 +1108,7 @@ export interface Message {
   author: User;
   content: string;
   embeds: MessageEmbed[];
-  components: MessageRow[];
+  components: MessageComponent[];
   ephemeral: boolean;
   createdAt: Timestamp;
   editedAt?: Timestamp;
@@ -1136,6 +1156,8 @@ export interface SimSendMessageRequest {
 }
 
 export interface SimCommandRequest {
+  contextMenu?: "user" | "message";
+  targetId?: string;
   userId: string;
   serverId: string;
   channelId: string;
@@ -1203,6 +1225,7 @@ export interface SimCommandOption {
 }
 
 export interface SimCommand {
+  contextMenu?: "user" | "message";
   /** Bot key (application id when the bot is not in the repository). */
   bot: string;
   name: string;

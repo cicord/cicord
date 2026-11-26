@@ -701,7 +701,7 @@ func embedsToWire(in []discord.Embed) []wireEmbed {
 // ───────────────────────────────────────────────────────────── components
 
 func componentToWire(c discord.Component) wireComponent {
-	w := wireComponent{
+	w := wireComponent{ComponentPresentation: c.ComponentPresentation, Required: c.ModalRequired,
 		Type:        int(c.Type),
 		CustomID:    c.CustomID,
 		Label:       c.Label,
@@ -712,6 +712,14 @@ func componentToWire(c discord.Component) wireComponent {
 	}
 	for _, child := range c.Components {
 		w.Components = append(w.Components, componentToWire(child))
+	}
+	if c.Accessory != nil {
+		a := componentToWire(*c.Accessory)
+		w.Accessory = &a
+	}
+	if c.Type == discord.ComponentLabel && len(w.Components) == 1 {
+		w.Component = &w.Components[0]
+		w.Components = nil
 	}
 	switch c.Type {
 	case discord.ComponentButton:
@@ -759,7 +767,7 @@ func componentsToWire(in []discord.Component) []wireComponent {
 }
 
 func componentFromWire(w wireComponent) discord.Component {
-	c := discord.Component{
+	c := discord.Component{ComponentPresentation: w.ComponentPresentation,
 		Type:        discord.ComponentType(w.Type),
 		CustomID:    w.CustomID,
 		Label:       w.Label,
@@ -772,6 +780,14 @@ func componentFromWire(w wireComponent) discord.Component {
 		Value:       w.Value,
 		MinLength:   w.MinLength,
 		MaxLength:   w.MaxLength,
+	}
+	if w.Accessory != nil {
+		a := componentFromWire(*w.Accessory)
+		c.Accessory = &a
+	}
+	if w.Type != int(discord.ComponentTextInput) && w.Required != nil {
+		c.Required = *w.Required
+		c.ModalRequired = w.Required
 	}
 	if w.Type == int(discord.ComponentTextInput) {
 		c.TextStyle = w.Style
@@ -879,6 +895,9 @@ func messageEditToWire(m discord.MessageCreate) wireMessageEdit {
 	}
 	if w.Components == nil {
 		w.Components = []wireComponent{}
+	}
+	if m.Flags&discord.MessageFlagComponentsV2 != 0 {
+		w.Content = nil
 	}
 	if f := int(m.Flags &^ discord.MessageFlagEphemeral); f != 0 {
 		w.Flags = &f
@@ -1218,7 +1237,26 @@ func interactionFromWire(w wireInteraction) discord.Interaction {
 		case discord.InteractionModalSubmit:
 			in.CustomID = d.CustomID
 			in.ModalFields = modalFields(d.Components)
+			in.ModalSelections = modalSelections(d.Components)
 		}
 	}
 	return in
+}
+
+func modalSelections(comps []wireComponent) map[string][]string {
+	out := map[string][]string{}
+	var walk func([]wireComponent)
+	walk = func(cs []wireComponent) {
+		for _, c := range cs {
+			if c.CustomID != "" && c.Values != nil {
+				out[c.CustomID] = append([]string{}, c.Values...)
+			}
+			walk(c.Components)
+			if c.Component != nil {
+				walk([]wireComponent{*c.Component})
+			}
+		}
+	}
+	walk(comps)
+	return out
 }

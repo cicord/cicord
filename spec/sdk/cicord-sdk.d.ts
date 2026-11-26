@@ -84,9 +84,28 @@ export interface SelectMenu {
   options: { value: string; label: string; description?: string; emoji?: string; default?: boolean }[];
 }
 
+export interface EntitySelect {
+  type: "userSelect" | "roleSelect" | "channelSelect" | "mentionableSelect";
+  id: string;
+  placeholder?: string;
+  minValues?: number;
+  maxValues?: number;
+  disabled?: boolean;
+  defaultValues?: {id: Snowflake; type:"user" | "role" | "channel"}[];
+  channelTypes?: Channel["type"][];
+}
+export type LayoutMedia = { url: string };
+export type TextDisplay = {type:"text"; content:string};
+export type Thumbnail = {type:"thumbnail"; media:LayoutMedia; description?:string; spoiler?:boolean};
+export type Component = ActionRow | TextDisplay
+ | {type:"section"; components:TextDisplay[]; accessory:Button | Thumbnail}
+ | {type:"mediaGallery"; items:{media:LayoutMedia;description?:string;spoiler?:boolean}[]}
+ | {type:"separator"; divider?:boolean; spacing?:1|2}
+ | {type:"file"; file:LayoutMedia; spoiler?:boolean}
+ | {type:"container"; components:Component[];accentColor?:string;spoiler?:boolean};
 export interface ActionRow {
   type: "row";
-  components: (Button | SelectMenu)[];
+  components: (Button | SelectMenu | EntitySelect)[];
 }
 
 /**
@@ -110,6 +129,8 @@ export interface AllowedMentions {
 }
 
 export interface MessagePayload {
+  /** Components V2. Exclusive with content, embeds and components. */
+  layout?: Component[];
   /** Channel sends only. Discord deduplicates enforced nonces for the past few minutes. */
   nonce?: string;
   enforceNonce?: boolean;
@@ -440,6 +461,8 @@ export interface Server {
   readonly iconUrl?: string;
   /** User id of the server owner, read live; `undefined` when not known (or an older engine). */
   readonly ownerId?: Snowflake;
+  /** Discord inactive voice channel, when configured. */
+  readonly afkChannelId?: Snowflake;
   /** Resolve a channel by key or id. Throws if it does not exist. @capability discord.channels.read */
   channel(ref: ChannelRef): TextChannel;
   /** Resolve a role by key or id. Throws if it does not exist. */
@@ -590,7 +613,7 @@ export interface ComponentInteraction extends Interaction {
 export interface Modal {
   id: string;
   title: string;
-  fields: {
+  fields: ({
     id: string;
     label: string;
     style?: "short" | "paragraph";
@@ -599,11 +622,12 @@ export interface Modal {
     value?: string;
     minLength?: number;
     maxLength?: number;
-  }[];
+  } | {type:"label"; label:string; description?:string; component: ((SelectMenu|EntitySelect) & {required?:boolean}) | {type:"textInput"; id:string; style?:"short"|"paragraph"; required?:boolean;placeholder?:string;value?:string;minLength?:number;maxLength?:number}})[];
 }
 
 export interface ModalInteraction extends Interaction {
   readonly modalId: string;
+  readonly selections: Readonly<Record<string, readonly string[]>>;
   readonly fields: Readonly<Record<string, string>>;
 }
 
@@ -951,7 +975,7 @@ export interface EventHandlers {
   banRemove?(ctx: Context, event: {user: User}): Awaitable<void>;
   memberJoin?(ctx: Context, member: Member): Awaitable<void>;
   /** @intent ServerMembers */
-  memberLeave?(ctx: Context, user: User): Awaitable<void>;
+  memberLeave?(ctx: Context, user: User, previous?: Member): Awaitable<void>;
   /** @intent ServerMembers */
   memberUpdate?(ctx: Context, member: Member, previous: Member | undefined): Awaitable<void>;
   /** Delivered only after the bot host selects a server and validates membership. @intent DirectMessages */

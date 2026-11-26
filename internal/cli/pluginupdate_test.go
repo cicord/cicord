@@ -48,7 +48,7 @@ func tagRelease(t *testing.T, dir string, files map[string]string, tag string) {
 
 func TestPluginUpdate(t *testing.T) {
 	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
-	plugin := commitRepo(t, map[string]string{"plugin.yaml": updManifest, "src/index.ts": "export default {};\n"}, "v1.0.0")
+	plugin := commitRepo(t, map[string]string{"plugin.yaml": updManifest, "src/index.ts": `import {definePlugin} from "@cicord/sdk"; export default definePlugin({});`}, "v1.0.0")
 	reg := commitRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: " + plugin + "\n"})
 	dir := t.TempDir()
 	if code, _, errOut := run(t, "init", dir, "--server", "srv", "--bot", "bot"); code != 0 {

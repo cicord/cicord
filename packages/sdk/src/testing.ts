@@ -179,6 +179,7 @@ export interface TestContextOptions {
     preferredLocale?: string;
     /** `ctx.server.ownerId`; the owner has every permission and the admin access level. */
     ownerId?: string;
+    afkChannelId?: string;
     /** Permissions of `@everyone` (part of every `member.permissions`). Default none. */
     everyonePermissions?: Permission[];
   };
@@ -614,13 +615,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const reactionUsers = new Map<string, Map<string, Set<string>>>();
   function setReaction(messageId: string, emoji: string, userId: string, present = true) {
     if (!messages.has(messageId)) throw new Error("unknown message");
-    const reactions = reactionUsers.get(messageId) ?? new Map<string, Set<string>>();
-    const users = reactions.get(emoji) ?? new Set<string>();
+    const byEmoji = reactionUsers.get(messageId) ?? new Map<string, Set<string>>();
+    const users = byEmoji.get(emoji) ?? new Set<string>();
     if (present) users.add(userId);
     else users.delete(userId);
-    if (users.size) reactions.set(emoji, users);
-    else reactions.delete(emoji);
-    reactionUsers.set(messageId, reactions);
+    if (users.size) byEmoji.set(emoji, users);
+    else byEmoji.delete(emoji);
+    reactionUsers.set(messageId, byEmoji);
   }
   const makeMessage = (
     channel: TextChannel,
@@ -730,6 +731,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     reference?: Message["reference"],
     author = botUser,
   ): Message => {
+    validateLayoutInput(input);
     const allowedMentions = normalizeAllowedMentions(input, knownId);
     const key =
       typeof input !== "string" && input.nonce ? channel.id + "/" + input.nonce : undefined;
@@ -772,7 +774,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         need("discord.messages.read");
         return [...pinned]
           .reverse()
-          .map((id) => messages.get(id))
+          .map((messageID) => messages.get(messageID))
           .filter((m): m is Message => m?.channel.id === id);
       },
       async typing() {
@@ -1324,6 +1326,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         deletedMessages.push({id});
       }
     },
+    ...(options.server?.afkChannelId ? { afkChannelId: options.server.afkChannelId } : {}),
     async ban(id, opts = {}) {
       need("discord.members.moderate");
       if (
@@ -1877,6 +1880,7 @@ export interface ComponentCall extends InteractionCall {
 }
 
 export interface ModalCall extends InteractionCall {
+  selections?: Record<string, string[]>;
   fields?: Record<string, string>;
 }
 
@@ -1926,6 +1930,7 @@ function fakeInteraction(
   };
   // Invalid allowedMentions throw, like the host.
   const checkMentions = (message: MessageInput | ReplyInput): void => {
+    validateLayoutInput(message);
     normalizeAllowedMentions(message, known);
   };
   const followUp = async (message: ReplyInput): Promise<Message> => {
@@ -2190,7 +2195,7 @@ export async function submitModal(
   const base = fakeInteraction(harness, "modal", modalId, call, result);
   const { update: _update, ...rest } = base;
   const interaction = Object.defineProperties(
-    { ...rest, modalId, fields: { ...call.fields } },
+    { ...rest, modalId, fields: { ...call.fields }, selections: { ...call.selections } },
     {
       replied: { get: () => base.replied },
       deferred: { get: () => base.deferred },
@@ -2225,4 +2230,55 @@ export async function runContextMenu(
     await menu.run(harness.ctx, Object.assign(base, { target }));
   }
   return result;
+}
+
+function validateLayoutInput(input: MessageInput) {
+  if (typeof input === "string" || input.layout === undefined) return;
+  if (
+    input.content !== undefined ||
+    input.embeds !== undefined ||
+    input.components !== undefined ||
+    !input.layout.length
+  )
+    throw new TypeError("layout requires components and excludes content, embeds and components");
+  let count = 0;
+  function visit(
+    node: NonNullable<Exclude<MessageInput, string>["layout"]>[number],
+    parent: string,
+  ) {
+    count++;
+    switch (node.type) {
+      case "row":
+        if (!node.components.length || node.components.length > 5)
+          throw new TypeError("invalid row");
+        count += node.components.length;
+        break;
+      case "container":
+        if (parent !== "message" || !node.components.length)
+          throw new TypeError("invalid container");
+        for (const c of node.components) visit(c, "container");
+        break;
+      case "section":
+        if (!node.accessory || node.components.length < 1 || node.components.length > 3)
+          throw new TypeError("invalid section");
+        count++;
+        for (const c of node.components) visit(c, "section");
+        break;
+      case "text":
+        if (!node.content || [...node.content].length > 4000) throw new TypeError("invalid text");
+        break;
+      case "file":
+        if (!node.file.url.startsWith("attachment://")) throw new TypeError("invalid file");
+        break;
+      case "mediaGallery":
+        if (!node.items.length || node.items.length > 10) throw new TypeError("invalid gallery");
+        break;
+      case "separator":
+        break;
+      default:
+        throw new TypeError("unknown layout component");
+    }
+    if (count > 40) throw new TypeError("layout exceeds 40 components");
+  }
+  for (const n of input.layout) visit(n, "message");
 }

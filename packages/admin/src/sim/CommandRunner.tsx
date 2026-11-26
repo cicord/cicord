@@ -118,17 +118,31 @@ export function CommandRunner({
   const [selected, setSelected] = useState<string>(() => {
     const found = commands.find((c) => c.name === initial);
     return found
-      ? `${found.bot}/${found.name}`
+      ? `${found.bot}/${found.contextMenu ?? "slash"}/${found.name}`
       : commands[0]
-        ? `${commands[0].bot}/${commands[0].name}`
+        ? `${commands[0].bot}/${commands[0].contextMenu ?? "slash"}/${commands[0].name}`
         : "";
   });
   const [values, setValues] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
-  const command = commands.find((c) => `${c.bot}/${c.name}` === selected);
+  const command = commands.find(
+    (c) => `${c.bot}/${c.contextMenu ?? "slash"}/${c.name}` === selected,
+  );
   const options = useMemo(
     () =>
-      (command?.options ?? []).map(normalizeOption).filter((o): o is CommandOption => o !== null),
+      (command?.contextMenu
+        ? [
+            {
+              name: "target",
+              description: command.contextMenu === "user" ? "Target member" : "Target message ID",
+              type: command.contextMenu === "user" ? "user" : "string",
+              required: true,
+            },
+          ]
+        : (command?.options ?? [])
+      )
+        .map(normalizeOption)
+        .filter((o): o is CommandOption => o !== null),
     [command],
   );
   const bots = new Set(commands.map((c) => c.bot));
@@ -183,7 +197,10 @@ export function CommandRunner({
           }}
         >
           {commands.map((c) => (
-            <option key={`${c.bot}/${c.name}`} value={`${c.bot}/${c.name}`}>
+            <option
+              key={`${c.bot}/${c.contextMenu ?? "slash"}/${c.name}`}
+              value={`${c.bot}/${c.contextMenu ?? "slash"}/${c.name}`}
+            >
               {c.name}
               {bots.size > 1 ? ` (${c.bot})` : ""}
             </option>

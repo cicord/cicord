@@ -66,7 +66,7 @@ func (w *World) dropMember(s *serverState, userID string) {
 	// ServerLeaveEvent (GUILD_DELETE), like Discord.
 	delete(s.members, userID)
 	s.memberOrder = removeString(s.memberOrder, userID)
-	w.emit(discord.MemberLeaveEvent{ServerID: s.info.ID, User: m.User})
+	w.emit(discord.MemberLeaveEvent{ServerID: s.info.ID, User: m.User, Previous: cloneMemberPtr(m)})
 	if m.User.Bot {
 		w.emitToBot(userID, discord.ServerLeaveEvent{ServerID: s.info.ID})
 	}

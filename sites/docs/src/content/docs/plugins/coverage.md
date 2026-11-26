@@ -272,3 +272,11 @@ for the "member" steps.
 `message.pin()`, `unpin()` and `removeReaction(emoji, userId?)` require `discord.messages.manage`. Pinning needs Discord's Pin Messages permission. Read pins with `channel.pins()` and list normal reaction users in pages of 1–100 with `message.reactionUsers(emoji, { limit, after })`. Both require `discord.messages.read`. A received message includes reaction counts, a Discord jump URL and an optional reply reference.
 
 Announcement crossposts and typing use `discord.messages.send`. A webhook send uses `channel.sendAs({ username, avatarUrl }, payload)` and the privileged `discord.webhooks.manage` grant. The runtime creates or reuses its own channel webhook. Plugins receive only the resulting message. For short channel-send retries supply the same `nonce` (up to 25 characters) and `enforceNonce: true`. Discord's deduplication window lasts a few minutes.
+
+## Rich interactions
+
+Declare guild menus in `contextMenus` with a `user` or `message` type and an interaction handler. Use `interaction.target` for the resolved member or message. `cicord validate` checks each bot’s instances on each server. One bot can register up to 15 menus of each type per server. To support an older engine, include the menu section only when `sdkFeatures?.contextMenus` is available.
+
+A message can supply `layout` with text displays, sections with accessories, containers, media galleries, separators, files and action rows. Discord limits the whole layout to 40 components. Action rows support `userSelect`, `roleSelect`, `mentionableSelect` and `channelSelect`. For a modal, wrap a select or text input in a `label` field. A modal submission exposes selected IDs in `interaction.selections[fieldId]`.
+
+`TestContextMenuDispatch` exercises a menu through the simulator and plugin host. `TestMenuLimitsPerBotAndServer` covers independent guild quotas.

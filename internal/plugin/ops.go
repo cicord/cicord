@@ -112,11 +112,17 @@ func init() {
 		"server.audience":        opAudience,
 		"server.compareAudience": opCompareAudience,
 		"member.permissionsIn":   opPermissionsIn,
-		"i18n.t":                 opTranslate,
-		"server.owner":           opServerOwner,
-		"status.set":             opFeatureStatus,
-		"secrets.has":            opSecretHas,
-		"it.state":               opInteractionState,
+		"server.afkChannel": func(i *Instance, _ *invocation, _ json.RawMessage) (any, error) {
+			if i.env.AFKChannelID == nil {
+				return nil, nil
+			}
+			return i.env.AFKChannelID(), nil
+		},
+		"i18n.t":       opTranslate,
+		"server.owner": opServerOwner,
+		"status.set":   opFeatureStatus,
+		"secrets.has":  opSecretHas,
+		"it.state":     opInteractionState,
 	}
 	asyncOps = map[string]asyncOp{
 		"channel.send":           opChannelSend,

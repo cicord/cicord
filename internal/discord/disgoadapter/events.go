@@ -151,8 +151,8 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		if err := json.Unmarshal(d, &r); err != nil {
 			return nil, err
 		}
-		s.members.remove(r.GuildID, r.User.ID)
-		return []discord.Event{discord.MemberLeaveEvent{ServerID: r.GuildID, User: userFromWire(r.User)}}, nil
+		previous := s.members.remove(r.GuildID, r.User.ID)
+		return []discord.Event{discord.MemberLeaveEvent{Previous: previous, ServerID: r.GuildID, User: userFromWire(r.User)}}, nil
 
 	case "MESSAGE_CREATE", "MESSAGE_UPDATE":
 		var m wireMessage
@@ -421,10 +421,15 @@ func (c *memberCache) swap(m discord.Member) *discord.Member {
 	return prev
 }
 
-func (c *memberCache) remove(serverID, userID string) {
+func (c *memberCache) remove(serverID, userID string) *discord.Member {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	prev, ok := c.m[serverID][userID]
 	delete(c.m[serverID], userID)
+	if ok {
+		return &prev
+	}
+	return nil
 }
 
 func (c *memberCache) dropServer(serverID string) {

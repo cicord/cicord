@@ -433,6 +433,7 @@
   function mkModalInteraction(d) {
     const o = baseInteraction(InteractionProto, d);
     o.modalId = d.modalId;
+    o.selections=deepFreeze(Object.assign({},d.selections||{}));
     o.fields = freeze(Object.assign({}, d.fields || {}));
     return freeze(o);
   }
@@ -493,6 +494,7 @@
         const entries=await acall("server.bans", {limit: options.limit, after: options.after});
         return freeze(entries.map(b => freeze({user: mkUser(b.user), reason: b.reason})));
       },
+      get afkChannelId() {return hcall("server.afkChannel",{}) || undefined;},
       get ownerId() { return hcall("server.owner", {}) || undefined; },
       channel(ref) { return mkChannel(hcall("server.channel", { ref })); },
       role(ref) { return mkRole(hcall("server.role", { ref })); },
@@ -791,7 +793,7 @@
       case "banAdd":
       case "banRemove": return [freeze({ user: mkUser(d.user) })];
       case "memberJoin": return [mkMember(d.member)];
-      case "memberLeave": return [mkUser(d.user)];
+      case "memberLeave": return [mkUser(d.user),mkMember(d.previous)];
       case "memberUpdate": return [mkMember(d.member), d.previous ? mkMember(d.previous) : undefined];
       case "directMessage":
       case "messageCreate":

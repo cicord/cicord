@@ -93,7 +93,8 @@ type Env struct {
 	Resolver    Resolver // may be nil (nothing resolves)
 	// OwnerID returns the server owner's user id, "" when unknown (nil: unknown). It is
 	// called on every use, so an ownership transfer is seen at once.
-	OwnerID func() string
+	AFKChannelID func() string
+	OwnerID      func() string
 	// Access is the server's spec.access (Member.access).
 	Access Access
 

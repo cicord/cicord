@@ -568,7 +568,10 @@ type SelectOption struct {
 
 // Component is a message or modal component. Which fields apply depends on Type.
 type Component struct {
-	Type ComponentType
+	ComponentPresentation
+	Accessory     *Component
+	ModalRequired *bool
+	Type          ComponentType
 	// Action row
 	Components []Component
 	// Button / select / text input
@@ -900,7 +903,8 @@ type Interaction struct {
 	Values        []string
 	Message       *Message
 	// Modal submit: text input custom ID → value
-	ModalFields map[string]string
+	ModalSelections map[string][]string
+	ModalFields     map[string]string
 }
 
 type InteractionResponseType int

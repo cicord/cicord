@@ -157,7 +157,7 @@ func jsTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-func flagNames(mask uint64, names []string) []string {
+func flagNames[T ~int | ~uint64](mask T, names []string) []string {
 	out := []string{}
 	for bit, name := range names {
 		if name != "" && mask&(1<<bit) != 0 {
@@ -272,7 +272,7 @@ func (i *Instance) channelDTO(id string) channelDTO {
 
 func (i *Instance) memberDTO(m discord.Member) memberDTO {
 	dto := memberDTO{
-		subject: m, Pending: m.Pending, Flags: flagNames(uint64(m.Flags), memberFlagNames), PremiumSince: optionalTime(m.PremiumSince), TimedOutUntil: optionalTime(m.TimeoutUntil), AvatarURL: m.AvatarURL,
+		subject: m, Pending: m.Pending, Flags: flagNames(m.Flags, memberFlagNames), PremiumSince: optionalTime(m.PremiumSince), TimedOutUntil: optionalTime(m.TimeoutUntil), AvatarURL: m.AvatarURL,
 		DeclaredRoles: i.env.DeclaredRolesByUser[m.User.ID],
 		User:          i.userDTO(m.User),
 		Nick:          m.Nick,
@@ -508,6 +508,10 @@ func (i *Instance) eventDTO(ev discord.Event) eventDTO {
 		m := i.memberDTO(e.Member)
 		d.Member = &m
 	case discord.MemberLeaveEvent:
+		if e.Previous != nil {
+			prev := i.memberDTO(*e.Previous)
+			d.Previous = &prev
+		}
 		u := i.userDTO(e.User)
 		d.User = &u
 	case discord.MemberUpdateEvent:
@@ -587,23 +591,24 @@ type optionDTO struct {
 }
 
 type interactionDTO struct {
-	TargetMessage *messageDTO       `json:"targetMessage,omitempty"`
-	TargetMember  *memberDTO        `json:"targetMember,omitempty"`
-	Locale        string            `json:"locale,omitempty"`
-	Handle        string            `json:"handle"`
-	ID            string            `json:"id"`
-	User          userDTO           `json:"user"`
-	Member        *memberDTO        `json:"member,omitempty"`
-	Channel       *channelDTO       `json:"channel,omitempty"`
-	Command       string            `json:"command,omitempty"`
-	Group         string            `json:"group,omitempty"`
-	Subcommand    string            `json:"subcommand,omitempty"`
-	Options       []optionDTO       `json:"options,omitempty"`
-	ComponentID   string            `json:"componentId,omitempty"`
-	Values        []string          `json:"values,omitempty"`
-	Message       *messageDTO       `json:"message,omitempty"`
-	ModalID       string            `json:"modalId,omitempty"`
-	Fields        map[string]string `json:"fields,omitempty"`
+	Selections    map[string][]string `json:"selections,omitempty"`
+	TargetMessage *messageDTO         `json:"targetMessage,omitempty"`
+	TargetMember  *memberDTO          `json:"targetMember,omitempty"`
+	Locale        string              `json:"locale,omitempty"`
+	Handle        string              `json:"handle"`
+	ID            string              `json:"id"`
+	User          userDTO             `json:"user"`
+	Member        *memberDTO          `json:"member,omitempty"`
+	Channel       *channelDTO         `json:"channel,omitempty"`
+	Command       string              `json:"command,omitempty"`
+	Group         string              `json:"group,omitempty"`
+	Subcommand    string              `json:"subcommand,omitempty"`
+	Options       []optionDTO         `json:"options,omitempty"`
+	ComponentID   string              `json:"componentId,omitempty"`
+	Values        []string            `json:"values,omitempty"`
+	Message       *messageDTO         `json:"message,omitempty"`
+	ModalID       string              `json:"modalId,omitempty"`
+	Fields        map[string]string   `json:"fields,omitempty"`
 }
 
 var optionTypeNames = map[discord.CommandOptionType]string{}
@@ -664,6 +669,7 @@ func (i *Instance) interactionDTO(x *interaction, localID string) interactionDTO
 		}
 	case "modal":
 		d.ModalID = localID
+		d.Selections = it.ModalSelections
 		d.Fields = it.ModalFields
 		if d.Fields == nil {
 			d.Fields = map[string]string{}
@@ -814,6 +820,7 @@ type payloadDTO struct {
 
 // messageInput mirrors MessagePayload / ReplyInput of cicord-sdk.d.ts.
 type messageInput struct {
+	Layout          []compIn    `json:"layout"`
 	Nonce           string      `json:"nonce"`
 	EnforceNonce    bool        `json:"enforceNonce"`
 	Content         *string     `json:"content"`
@@ -885,17 +892,35 @@ type rowIn struct {
 }
 
 type compIn struct {
-	Type        string `json:"type"`
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Emoji       string `json:"emoji"`
-	Style       string `json:"style"`
-	URL         string `json:"url"`
-	Disabled    bool   `json:"disabled"`
-	Placeholder string `json:"placeholder"`
-	MinValues   *int   `json:"minValues"`
-	MaxValues   *int   `json:"maxValues"`
-	Options     []struct {
+	Components    []compIn                `json:"components"`
+	Accessory     *compIn                 `json:"accessory"`
+	Component     *compIn                 `json:"component"`
+	Content       string                  `json:"content"`
+	Description   string                  `json:"description"`
+	Media         *discord.ComponentMedia `json:"media"`
+	File          *discord.ComponentMedia `json:"file"`
+	Items         []discord.GalleryItem   `json:"items"`
+	Divider       *bool                   `json:"divider"`
+	Spacing       int                     `json:"spacing"`
+	AccentColor   string                  `json:"accentColor"`
+	Spoiler       bool                    `json:"spoiler"`
+	DefaultValues []discord.SelectDefault `json:"defaultValues"`
+	ChannelTypes  []string                `json:"channelTypes"`
+	Required      *bool                   `json:"required"`
+	Value         string                  `json:"value"`
+	MinLength     *int                    `json:"minLength"`
+	MaxLength     *int                    `json:"maxLength"`
+	Type          string                  `json:"type"`
+	ID            string                  `json:"id"`
+	Label         string                  `json:"label"`
+	Emoji         string                  `json:"emoji"`
+	Style         string                  `json:"style"`
+	URL           string                  `json:"url"`
+	Disabled      bool                    `json:"disabled"`
+	Placeholder   string                  `json:"placeholder"`
+	MinValues     *int                    `json:"minValues"`
+	MaxValues     *int                    `json:"maxValues"`
+	Options       []struct {
 		Value       string `json:"value"`
 		Label       string `json:"label"`
 		Description string `json:"description"`
@@ -950,6 +975,23 @@ func (i *Instance) messageCreate(in messageInput, allowEphemeral bool) (discord.
 			return mc, argErr("embeds[%d]: %v", k, err)
 		}
 		mc.Embeds = append(mc.Embeds, em)
+	}
+	if in.Layout != nil {
+		if in.Content != nil || in.Embeds != nil || in.Components != nil {
+			return mc, argErr("layout is exclusive with content, embeds and components")
+		}
+		if len(in.Layout) == 0 {
+			return mc, argErr("layout must contain a component")
+		}
+		count := 0
+		for _, c := range in.Layout {
+			out, err := i.layoutComponent(c, "message", &count)
+			if err != nil {
+				return mc, argErr("layout: %v", err)
+			}
+			mc.Components = append(mc.Components, out)
+		}
+		mc.Flags |= discord.MessageFlagComponentsV2
 	}
 	if len(in.Components) > 5 {
 		return mc, argErr("at most 5 component rows per message")
@@ -1056,6 +1098,15 @@ func (i *Instance) convertRow(r rowIn) (discord.Component, error) {
 				return row, fmt.Errorf("components[%d]: a button needs a label or an emoji", k)
 			}
 			comp = discord.Component{Type: discord.ComponentButton, Style: discord.ButtonLink, URL: c.URL, Label: c.Label, Emoji: c.Emoji, Disabled: c.Disabled}
+		case "userSelect", "roleSelect", "channelSelect", "mentionableSelect":
+			if len(r.Components) != 1 {
+				return row, fmt.Errorf("a select menu must be alone in its row")
+			}
+			var err error
+			comp, err = i.entitySelect(c, false)
+			if err != nil {
+				return row, err
+			}
 		case "select":
 			if len(r.Components) != 1 {
 				return row, fmt.Errorf("a select menu must be alone in its row")
@@ -1084,18 +1135,9 @@ func (i *Instance) convertRow(r rowIn) (discord.Component, error) {
 
 // modalInput mirrors Modal of cicord-sdk.d.ts.
 type modalInput struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Fields []struct {
-		ID          string `json:"id"`
-		Label       string `json:"label"`
-		Style       string `json:"style"`
-		Required    *bool  `json:"required"`
-		Placeholder string `json:"placeholder"`
-		Value       string `json:"value"`
-		MinLength   *int   `json:"minLength"`
-		MaxLength   *int   `json:"maxLength"`
-	} `json:"fields"`
+	ID     string   `json:"id"`
+	Title  string   `json:"title"`
+	Fields []compIn `json:"fields"`
 }
 
 func (i *Instance) convertModal(in modalInput) (discord.Modal, error) {
@@ -1110,7 +1152,24 @@ func (i *Instance) convertModal(in modalInput) (discord.Modal, error) {
 		return discord.Modal{}, argErr("showModal(): a modal has 1 to 5 fields")
 	}
 	m := discord.Modal{CustomID: id, Title: in.Title}
+	ids := map[string]bool{}
 	for k, f := range in.Fields {
+		fieldID := f.ID
+		if f.Type == "label" && f.Component != nil {
+			fieldID = f.Component.ID
+		}
+		if ids[fieldID] {
+			return m, argErr("duplicate modal field %q", fieldID)
+		}
+		ids[fieldID] = true
+		if f.Type == "label" {
+			component, err := i.modalLabel(f)
+			if err != nil {
+				return m, argErr("fields[%d]: %v", k, err)
+			}
+			m.Components = append(m.Components, component)
+			continue
+		}
 		if f.ID == "" || len(f.ID) > MaxCustomIDLength {
 			return m, argErr("showModal(): fields[%d].id must be 1-%d characters", k, MaxCustomIDLength)
 		}

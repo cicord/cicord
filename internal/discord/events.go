@@ -24,6 +24,7 @@ func (BanRemoveEvent) isEvent() {}
 type MemberJoinEvent struct{ Member Member }
 
 type MemberLeaveEvent struct {
+	Previous *Member
 	ServerID string
 	User     User
 }

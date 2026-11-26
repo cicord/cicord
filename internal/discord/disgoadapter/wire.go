@@ -326,6 +326,8 @@ type wireSelectOption struct {
 // wireComponent is the union of all component shapes Cicord uses. Fields are
 // omitted when empty so a button does not carry select fields, etc.
 type wireComponent struct {
+	discord.ComponentPresentation
+	Accessory   *wireComponent     `json:"accessory,omitempty"`
 	Type        int                `json:"type"`
 	Components  []wireComponent    `json:"components,omitempty"`
 	CustomID    string             `json:"custom_id,omitempty"`
@@ -437,7 +439,7 @@ type wireMessageSend struct {
 }
 
 type wireMessageEdit struct {
-	Content         string               `json:"content"`
+	Content         any                  `json:"content"`
 	Embeds          []wireEmbed          `json:"embeds"`
 	Components      []wireComponent      `json:"components"`
 	AllowedMentions *wireAllowedMentions `json:"allowed_mentions,omitempty"`

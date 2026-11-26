@@ -227,11 +227,7 @@ function Playground({
         customId,
         values,
       });
-      const component = message.components
-        .flatMap((row) => row.components ?? [])
-        .find((c) => c.customId === customId);
-      const name =
-        component && component.type === "button" ? component.label || customId : customId;
+      const name = customId;
       const label = values.length
         ? i18n.t("sim.result.picked", { values: values.join(", ") })
         : i18n.t("sim.result.clicked", { name });
@@ -263,6 +259,9 @@ function Playground({
         channelId: channelForCommand,
         bot: command.bot,
         name: command.name,
+        ...(command.contextMenu
+          ? { contextMenu: command.contextMenu, targetId: String(options.target ?? "") }
+          : {}),
         options,
       });
       showResult(`/${command.name}`, result, {

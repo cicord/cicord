@@ -42,6 +42,8 @@ type selectOptionDTO struct {
 }
 
 type componentDTO struct {
+	discord.ComponentPresentation
+	Accessory   *componentDTO     `json:"accessory,omitempty"`
 	Type        string            `json:"type"` // row | button | select | textInput
 	Components  []componentDTO    `json:"components,omitempty"`
 	CustomID    string            `json:"customId,omitempty"`
@@ -80,7 +82,21 @@ func toComponents(cs []discord.Component) []componentDTO {
 	out := make([]componentDTO, 0, len(cs))
 	for _, c := range cs {
 		d := componentDTO{CustomID: c.CustomID, Label: c.Label, Disabled: c.Disabled}
+		d.ComponentPresentation = c.ComponentPresentation
+		if c.Accessory != nil {
+			a := toComponents([]discord.Component{*c.Accessory})[0]
+			d.Accessory = &a
+		}
 		switch c.Type {
+		case discord.ComponentUserSelect, discord.ComponentRoleSelect, discord.ComponentChannelSelect, discord.ComponentMentionableSelect:
+			d.Type = map[discord.ComponentType]string{discord.ComponentUserSelect: "userSelect", discord.ComponentRoleSelect: "roleSelect", discord.ComponentChannelSelect: "channelSelect", discord.ComponentMentionableSelect: "mentionableSelect"}[c.Type]
+			d.Placeholder, d.MinValues, d.MaxValues, d.Required = c.Placeholder, c.MinValues, c.MaxValues, c.Required
+		case discord.ComponentSection, discord.ComponentText, discord.ComponentThumbnail, discord.ComponentFile, discord.ComponentMediaGallery, discord.ComponentSeparator, discord.ComponentContainer, discord.ComponentLabel:
+			d.Type = map[discord.ComponentType]string{discord.ComponentSection: "section", discord.ComponentText: "text", discord.ComponentThumbnail: "thumbnail", discord.ComponentFile: "file", discord.ComponentMediaGallery: "mediaGallery", discord.ComponentSeparator: "separator", discord.ComponentContainer: "container", discord.ComponentLabel: "label"}[c.Type]
+			d.Components = toComponents(c.Components)
+			if c.Type == discord.ComponentLabel && len(d.Components) == 1 {
+				d.Components[0].Label = c.Label
+			}
 		case discord.ComponentActionRow:
 			d.Type, d.Components = "row", toComponents(c.Components)
 		case discord.ComponentButton:
@@ -515,7 +531,10 @@ func (s *server) handleSimCommand(w http.ResponseWriter, r *http.Request) {
 
 func findComponentType(cs []discord.Component, customID string) (discord.ComponentType, bool) {
 	for _, c := range cs {
-		if c.Type == discord.ComponentActionRow {
+		if c.Accessory != nil && c.Accessory.CustomID == customID {
+			return c.Accessory.Type, true
+		}
+		if len(c.Components) > 0 {
 			if t, ok := findComponentType(c.Components, customID); ok {
 				return t, true
 			}
@@ -546,7 +565,7 @@ func (s *server) handleSimComponent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var h *sim.InteractionHandle
-	if t, _ := findComponentType(msg.Components, body.CustomID); t == discord.ComponentStringSelect {
+	if t, _ := findComponentType(msg.Components, body.CustomID); t == discord.ComponentStringSelect || t.EntitySelect() {
 		h = s.opts.Sim.Select(body.UserID, msg, body.CustomID, body.Values)
 	} else {
 		h = s.opts.Sim.ClickButton(body.UserID, msg, body.CustomID)
@@ -617,6 +636,7 @@ func simOptions(opts []discord.CommandOption) []simOptionOut {
 
 func (s *server) handleSimCommands(w http.ResponseWriter, r *http.Request) {
 	type cmdOut struct {
+		ContextMenu string         `json:"contextMenu,omitempty"`
 		Bot         string         `json:"bot"`
 		Name        string         `json:"name"`
 		Description string         `json:"description"`
@@ -634,7 +654,13 @@ func (s *server) handleSimCommands(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			for _, c := range s.opts.Sim.Commands(app, sid) {
-				items = append(items, cmdOut{Bot: s.botKeyOf(app), Name: c.Name, Description: c.Description, Options: simOptions(c.Options)})
+				kind := ""
+				if c.Type == discord.UserMenu {
+					kind = "user"
+				} else if c.Type == discord.MessageMenu {
+					kind = "message"
+				}
+				items = append(items, cmdOut{ContextMenu: kind, Bot: s.botKeyOf(app), Name: c.Name, Description: c.Description, Options: simOptions(c.Options)})
 			}
 		}
 	}
