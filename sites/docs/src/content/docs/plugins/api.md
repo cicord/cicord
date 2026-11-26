@@ -135,6 +135,20 @@ deleted and skipped messages. A plugin should show the scope and obtain moderato
 confirmation before a bulk action. Use `channel.previewPurge(filter)` to obtain the exact
 message IDs without deleting them, then apply the approved IDs in bounded batches.
 
+### Translation catalogues
+
+Set `spec.locales: ./locales` in the plugin manifest. Put a flat JSON object of strings in
+each language file, with `en.json` as the fallback. Call `ctx.i18n.t("welcome.hello",
+{name: member.displayName})` to substitute `{name}` once. An explicit locale option can
+select the language for a particular member. Otherwise Cicord tries the configured
+instance locale, the current interaction locale, the server locale and English, falling
+back to the base language at each step.
+
+Keys such as `commands.remind.name`, `commands.remind.description` and
+`commands.remind.options.when.description` translate the Discord command UI. For
+subcommands and groups, insert their canonical path before the field or options segment.
+Handlers continue to receive the canonical command and option names.
+
 ## Events
 
 From the official `welcome` plugin (intent `ServerMembers`):

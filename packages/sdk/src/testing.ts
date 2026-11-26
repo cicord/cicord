@@ -155,6 +155,9 @@ export interface TestContextOptions {
   ) => TestFetchResponse | Promise<TestFetchResponse>;
   /** Granted capabilities. Omit to allow everything. */
   grants?: string[];
+  locales?: Record<string, Record<string, string>>;
+  /** Interaction locale for unit handlers. */
+  locale?: string;
   /** Audit fixtures, newest first. */
   auditEntries?: AuditLogEntry[];
   invites?: ServerInvite[];
@@ -505,6 +508,11 @@ function idLess(a: string, b: string): boolean {
 
 // ───────────────────────────────────────────────────────────── context
 
+const testTranslators = new WeakMap<Context, (locale?: string) => Context["i18n"]>();
+function localizedContext(ctx: Context, locale?: string): Context {
+  const make = testTranslators.get(ctx);
+  return locale && make ? { ...ctx, i18n: make(locale) } : ctx;
+}
 export function createTestContext(options: TestContextOptions = {}): TestHarness {
   const grants = options.grants ? new Set(options.grants) : undefined;
   const need = (capability: string): void => {
@@ -531,7 +539,6 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const threads: TestHarness["threads"] = [];
   const requests: TestHarness["requests"] = [];
   const kvData = new Map<string, Json>();
-
 
   const roles = new Map<string, Role>();
   const rolePermissions = new Map<string, readonly Permission[]>(); // role id → permissions
@@ -1395,8 +1402,34 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       ? applyDefaults(options.schema, options.config ?? {})
       : (options.config ?? {});
 
-  const indices = new Map<string, Map<string,import("@cicord/sdk").IndexDocument>>();
+  const indices = new Map<string, Map<string, import("@cicord/sdk").IndexDocument>>();
+  function translator(interactionLocale?: string): Context["i18n"] {
+    return {
+      t(key, vars = {}, opts = {}) {
+        const configuredLocale = options.config?.["locale"];
+        const names = [
+          opts.locale,
+          typeof configuredLocale === "string" ? configuredLocale : undefined,
+          interactionLocale ?? options.locale,
+          options.server?.preferredLocale,
+          "en",
+        ];
+        let template: string | undefined;
+        for (const name of names) {
+          if (!name) continue;
+          template =
+            options.locales?.[name]?.[key] ?? options.locales?.[name.split("-")[0] ?? name]?.[key];
+          if (template !== undefined) break;
+        }
+        return (template ?? key).replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (original, k: string) =>
+          Object.hasOwn(vars, k) ? String(vars[k]) : original,
+        );
+      },
+    };
+  }
   const ctx: Context = {
+    i18n: translator(),
+
     plugin: {
       name: options.plugin?.name ?? "test-plugin",
       version: options.plugin?.version ?? "0.0.0",
@@ -1429,23 +1462,43 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         return ("cicord-secret:" + name) as ReturnType<Context["secrets"]["ref"]>;
       },
     },
-    index(name, options={}) {
-      const key = name+"|"+(options.language ?? "en");
-      const values=indices.get(key) ?? new Map<string,import("@cicord/sdk").IndexDocument>();
+    index(name, options = {}) {
+      const key = name + "|" + (options.language ?? "en");
+      const values = indices.get(key) ?? new Map<string, import("@cicord/sdk").IndexDocument>();
       indices.set(key, values);
       return {
-        async upsert(id, doc) {need("storage.index");values.set(id,structuredClone(doc));},
-        async remove(id) {need("storage.index");values.delete(id);},
-        async clear() {need("storage.index");values.clear();},
-        async search(query, {limit=10,tags=[]}={}) {
+        async upsert(id, doc) {
           need("storage.index");
-          if(limit<1||limit>50) throw new Error("index limit must be 1 to 50");
+          values.set(id, structuredClone(doc));
+        },
+        async remove(id) {
+          need("storage.index");
+          values.delete(id);
+        },
+        async clear() {
+          need("storage.index");
+          values.clear();
+        },
+        async search(query, { limit = 10, tags = [] } = {}) {
+          need("storage.index");
+          if (limit < 1 || limit > 50) throw new Error("index limit must be 1 to 50");
           const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
-          return [...values].filter(([,doc])=>tags.every(tag=>doc.tags?.includes(tag))).map(([id,doc])=>{
-            const haystack = ((doc.title??"")+" "+doc.text).toLowerCase();
-            const score=terms.filter(t=>haystack.includes(t)).length/Math.max(terms.length,1);
-            return {id,score,snippet:doc.text.slice(0,250),meta:structuredClone(doc.meta??null)};
-          }).filter(r=>r.score>0).sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id)).slice(0,limit);
+          return [...values]
+            .filter(([, doc]) => tags.every((tag) => doc.tags?.includes(tag)))
+            .map(([id, doc]) => {
+              const haystack = ((doc.title ?? "") + " " + doc.text).toLowerCase();
+              const score =
+                terms.filter((t) => haystack.includes(t)).length / Math.max(terms.length, 1);
+              return {
+                id,
+                score,
+                snippet: doc.text.slice(0, 250),
+                meta: structuredClone(doc.meta ?? null),
+              };
+            })
+            .filter((r) => r.score > 0)
+            .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+            .slice(0, limit);
         },
       };
     },
@@ -1535,6 +1588,8 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
     },
   };
+
+  testTranslators.set(ctx, translator);
 
   return {
     ctx,
@@ -1939,7 +1994,7 @@ export async function runCommand(
       deferred: { get: () => base.deferred },
     },
   ) as CommandInteraction;
-  await leaf.definition.run(harness.ctx, interaction);
+  await leaf.definition.run(localizedContext(harness.ctx, interaction.locale), interaction);
   return result;
 }
 
@@ -1989,10 +2044,14 @@ export async function runAutocomplete(
     ...(leaf.subcommand ? { subcommand: leaf.subcommand } : {}),
     options: { ...call.options },
   };
-  const choices = await option.autocomplete(harness.ctx, interaction, {
-    name: call.focused,
-    value: call.value ?? "",
-  });
+  const choices = await option.autocomplete(
+    localizedContext(harness.ctx, interaction.locale),
+    interaction,
+    {
+      name: call.focused,
+      value: call.value ?? "",
+    },
+  );
   const out = [...(choices ?? [])];
   if (out.length > 25) throw new Error(`autocomplete returned ${out.length} choices (at most 25)`);
   for (const c of out) {
@@ -2040,7 +2099,7 @@ export async function runComponent(
       deferred: { get: () => base.deferred },
     },
   ) as ComponentInteraction;
-  await handler(harness.ctx, interaction);
+  await handler(localizedContext(harness.ctx, interaction.locale), interaction);
   return result;
 }
 
@@ -2063,6 +2122,6 @@ export async function submitModal(
       deferred: { get: () => base.deferred },
     },
   ) as ModalInteraction;
-  await handler(harness.ctx, interaction);
+  await handler(localizedContext(harness.ctx, interaction.locale), interaction);
   return result;
 }

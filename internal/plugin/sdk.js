@@ -609,6 +609,7 @@
 
     return freeze({
       plugin: freeze(d.plugin),
+      i18n: freeze({t(key,vars,options) {return hcall("i18n.t",{key,vars:vars||{},locale:options&&options.locale});}}),
       bot: freeze({ key: d.bot.key, user: mkUser(d.bot.user) }),
       server,
       config: deepFreeze(d.config || {}),

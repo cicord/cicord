@@ -33,6 +33,7 @@ type Definition struct {
 
 // CommandDef is a slash command declared under `commands`.
 type CommandDef struct {
+	discord.CommandLabels
 	Name        string
 	Description string
 	// Ephemeral: replies are ephemeral by default and auto-defer is ephemeral (subcommands
@@ -130,7 +131,7 @@ func (d *Definition) HasTask(name string) bool { return slices.Contains(d.Tasks,
 
 // DiscordCommand converts the command for SetServerCommands.
 func (c CommandDef) DiscordCommand() discord.Command {
-	cmd := discord.Command{Name: c.Name, Description: c.Description, Options: c.Options}
+	cmd := discord.Command{CommandLabels: c.CommandLabels, Name: c.Name, Description: c.Description, Options: c.Options}
 	if len(c.Permissions) > 0 {
 		p, err := discord.ParsePermissions(c.Permissions) // validated by Inspect
 		if err == nil {

@@ -41,6 +41,7 @@
       "required": ["engine", "entry"],
       "properties": {
         "engine": { "$ref": "common.schema.json#/$defs/semverRange" },
+        "locales": { "type": "string", "minLength": 1, "description": "Directory of locale JSON catalogues relative to the plugin." },
         "entry": {
           "description": "TypeScript/JavaScript entry module, default-exporting definePlugin(...).",
           "$ref": "common.schema.json#/$defs/relativePath"

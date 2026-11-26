@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/locales"
 	"github.com/cicord/cicord/internal/version"
 )
 
@@ -33,6 +34,7 @@ type Repo struct {
 
 // LoadedPlugin is a plugin manifest plus its compiled config schema.
 type LoadedPlugin struct {
+	Locales      locales.Catalog
 	Key          string
 	Dir          string // absolute
 	Source       string // as written in bot.yaml (first reference)
@@ -601,6 +603,12 @@ func (l *loader) loadPlugin(repo *Repo, b *Bot, base string, inst PluginInstance
 	}
 	l.checkEngineFor(mdoc, m.Spec.Engine)
 	lp := &LoadedPlugin{Key: key, Dir: dir, Source: inst.Source, Manifest: &m}
+	catalog, err := locales.Load(dir, m.Spec.Locales)
+	lp.Locales = catalog
+	if err != nil {
+		l.sink.errorf(b.File, 0, base+"/source", "plugin %q locales: %v", key, err)
+		return nil
+	}
 	entry := filepath.Join(dir, filepath.FromSlash(m.Spec.Entry))
 	if _, err := os.Stat(entry); err != nil {
 		l.sink.errorf(mdoc.file, mdoc.lineOf("/spec/entry"), "/spec/entry", "entry %q not found", m.Spec.Entry)

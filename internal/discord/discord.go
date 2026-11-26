@@ -763,7 +763,13 @@ type CommandChoice struct {
 	Value any // string or float64
 }
 
+// CommandLabels contains translations only. Canonical names remain stable IDs.
+type CommandLabels struct {
+	Names        map[string]string `json:"name_localizations,omitempty"`
+	Descriptions map[string]string `json:"description_localizations,omitempty"`
+}
 type CommandOption struct {
+	CommandLabels
 	Type        CommandOptionType
 	Name        string
 	Description string
@@ -788,6 +794,7 @@ func (o CommandOption) IsSubcommand() bool {
 
 // Command is a chat-input (slash) command.
 type Command struct {
+	CommandLabels
 	Name        string
 	Description string
 	Options     []CommandOption

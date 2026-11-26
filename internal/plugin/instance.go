@@ -19,12 +19,14 @@ import (
 
 	"github.com/cicord/cicord/internal/auth"
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/locales"
 	"github.com/cicord/cicord/internal/plugin/qjs"
 	"github.com/cicord/cicord/internal/state"
 )
 
 // Env is everything an instance may touch. It is provided by the bot host.
 type Env struct {
+	Locales         locales.Catalog
 	ManagedResource func(string) (bool, bool)
 	AttributeAudit  func(context.Context, discord.AuditLogEntryEvent) discord.AuditLogEntryEvent
 	Operations      *discord.OperationScope
@@ -763,6 +765,7 @@ type invResult struct {
 // invocation is one handler run. Its context bounds every host call made by its code
 // (attributed per turn, see currentInv).
 type invocation struct {
+	locale string
 	// Only member identities supplied by the host for this handler may be used to
 	// check channel access. Plugin arguments cannot invent role memberships.
 	audienceMembers sync.Map // user ID -> discord.Member
@@ -914,6 +917,12 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		return out
 	}
 	inv, stopCaller := i.newInvocation(caller, kind, name, timeout)
+	switch v := data.(type) {
+	case interactionDTO:
+		inv.locale = v.Locale
+	case autocompleteDTO:
+		inv.locale = v.Locale
+	}
 	inv.rememberAudience(data)
 	queued = true
 

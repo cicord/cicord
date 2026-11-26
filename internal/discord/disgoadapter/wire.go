@@ -12,6 +12,7 @@ package disgoadapter
 
 import (
 	"encoding/json"
+	"github.com/cicord/cicord/internal/discord"
 	"time"
 )
 
@@ -449,6 +450,7 @@ type wireCommandChoice struct {
 }
 
 type wireCommandOption struct {
+	discord.CommandLabels
 	Type         int                 `json:"type"`
 	Name         string              `json:"name"`
 	Description  string              `json:"description"`
@@ -464,6 +466,7 @@ type wireCommandOption struct {
 }
 
 type wireCommand struct {
+	discord.CommandLabels
 	Type                     int                 `json:"type"`
 	Name                     string              `json:"name"`
 	Description              string              `json:"description"`

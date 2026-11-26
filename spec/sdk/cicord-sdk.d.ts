@@ -759,6 +759,7 @@ export interface Portal {
 }
 
 export interface Context {
+  readonly i18n: {t(key: string, vars?: Record<string,string|number|boolean>, options?: {locale?:string}): string};
   readonly plugin: { readonly name: string; readonly version: string; readonly instance: string };
   readonly bot: { readonly key: string; readonly user: User };
   readonly server: Server;

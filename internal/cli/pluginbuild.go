@@ -22,6 +22,7 @@ import (
 	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/locales"
 	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/portalroutes"
 	"github.com/cicord/cicord/internal/runtime"
@@ -153,6 +154,14 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 	r.BundleBytes = len(res.Code)
 	r.code = res.Code
 	def, err := plugin.Inspect(res.Code)
+	if err == nil {
+		catalog, e := locales.Load(dir, m.Spec.Locales)
+		if e != nil {
+			err = e
+		} else {
+			err = def.ApplyLocales(catalog)
+		}
+	}
 	if err != nil {
 		r.Errors = append(r.Errors, "inspect: "+err.Error())
 		return r, nil //nolint:nilerr // the failure is reported in r.Errors, like the build errors above

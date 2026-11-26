@@ -297,6 +297,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		}
 	}
 	env := plugin.Env{
+		Locales: in.Plugin.Locales,
 		ManagedResource: func(id string) (bool, bool) {
 			managed := srt.cache.Owner(id) == state.OwnerGit
 			return managed, managed && srt.cfg.Spec.SyncPolicy.SelfHeal() && !r.isPaused(in.Server)

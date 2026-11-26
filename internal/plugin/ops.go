@@ -111,6 +111,7 @@ func init() {
 		"server.audience":        opAudience,
 		"server.compareAudience": opCompareAudience,
 		"member.permissionsIn":   opPermissionsIn,
+		"i18n.t":                 opTranslate,
 		"server.owner":           opServerOwner,
 		"secrets.has":            opSecretHas,
 		"it.state":               opInteractionState,

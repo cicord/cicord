@@ -950,7 +950,7 @@ func attachmentFromWire(a wireAttachment) discord.Attachment {
 // ───────────────────────────────────────────────────────────── commands
 
 func commandOptionToWire(o discord.CommandOption) wireCommandOption {
-	wo := wireCommandOption{
+	wo := wireCommandOption{CommandLabels: o.CommandLabels,
 		Type:         int(o.Type),
 		Name:         o.Name,
 		Description:  o.Description,
@@ -971,7 +971,7 @@ func commandOptionToWire(o discord.CommandOption) wireCommandOption {
 }
 
 func commandToWire(c discord.Command) wireCommand {
-	w := wireCommand{Type: 1, Name: c.Name, Description: c.Description}
+	w := wireCommand{CommandLabels: c.CommandLabels, Type: 1, Name: c.Name, Description: c.Description}
 	for _, o := range c.Options {
 		w.Options = append(w.Options, commandOptionToWire(o))
 	}

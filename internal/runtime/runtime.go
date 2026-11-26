@@ -378,6 +378,9 @@ func buildPlugin(lp *config.LoadedPlugin) (*builtPlugin, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inspect: %w", err)
 	}
+	if err := def.ApplyLocales(lp.Locales); err != nil {
+		return nil, err
+	}
 	m := lp.Manifest.Spec
 	var problems []string
 	for _, in := range def.RequiredIntents() {
