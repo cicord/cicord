@@ -416,3 +416,9 @@ cicord dev --sim examples/showcase
 
 [SDK coverage](../coverage/) maps each SDK feature to the plugin and the test that exercise it,
 and ends with a checklist to try the showcase on a real Discord server.
+
+## Knowledge and feed pilots for 0.2.0
+
+These registry sources default to `enabled: false`. Tags combines reviewed Markdown and moderator-managed answers with audience checks. Feeds announces RSS, Atom and JSON Feed entries from hosts approved on the installation. The knowledge assistant selects cited quotations from approved sources and uses a host-injected provider credential. General rollout of the assistant requires demand confirmation from three target communities.
+
+The registry directories `plugins/tags`, `plugins/feeds` and `plugins/ai-assistant` contain the instance examples, grants, retention policies and typed portal routes.

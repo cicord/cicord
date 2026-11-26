@@ -280,3 +280,13 @@ Declare guild menus in `contextMenus` with a `user` or `message` type and an int
 A message can supply `layout` with text displays, sections with accessories, containers, media galleries, separators, files and action rows. Discord limits the whole layout to 40 components. Action rows support `userSelect`, `roleSelect`, `mentionableSelect` and `channelSelect`. For a modal, wrap a select or text input in a `label` field. A modal submission exposes selected IDs in `interaction.selections[fieldId]`.
 
 `TestContextMenuDispatch` exercises a menu through the simulator and plugin host. `TestMenuLimitsPerBotAndServer` covers independent guild quotas.
+
+## Instance secrets, repository files and search
+
+| SDK | Runtime verification |
+|---|---|
+| `ctx.secrets.has/ref`, host-limited HTTPS and host-encoded form/JSON bodies | `internal/plugin/TestSecretFetch` covers substitution, denied hosts, rejected text-body handles, redirects and reflected credentials. `internal/api/TestPluginSecretWriteOnly` covers the admin boundary and recovery from a missing credential. |
+| `ctx.files.list/read/bytes` | `internal/config/TestVersionedFiles` verifies a scoped Markdown snapshot, nested globs and path restrictions. Each installation can bind up to 20 MiB from the active repository revision. |
+| `ctx.index(name, {language})` | `TestFullText` runs on SQLite FTS5 and PostgreSQL tsvector. It checks replacement, deletion, clearing, scope isolation, tag filters and the query limit. |
+
+The assistant pilot includes deterministic reservation and citation tests. Provider-facing captcha verification and Discord checks require the external test environment before publication.
