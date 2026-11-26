@@ -24,12 +24,15 @@ import (
 
 // Env is everything an instance may touch. It is provided by the bot host.
 type Env struct {
-	BotKey        string
-	InstanceName  string // instance key, unique within the bot (namespaces custom IDs)
-	PluginName    string
-	PluginVersion string
-	Bot           discord.User
-	ApplicationID string
+	ManagedResource func(string) (bool, bool)
+	AttributeAudit  func(context.Context, discord.AuditLogEntryEvent) discord.AuditLogEntryEvent
+	Operations      *discord.OperationScope
+	BotKey          string
+	InstanceName    string // instance key, unique within the bot (namespaces custom IDs)
+	PluginName      string
+	PluginVersion   string
+	Bot             discord.User
+	ApplicationID   string
 
 	ServerKey     string
 	ServerID      string
@@ -54,7 +57,8 @@ type Env struct {
 	MessageContent bool
 	// ServerMembers reports that the plugin declares the ServerMembers intent in plugin.yaml,
 	// which role.members() requires (it lists the server's members).
-	ServerMembers bool
+	ServerModeration bool
+	ServerMembers    bool
 	// Membership of these role keys is declared in the active Git revision.
 	DeclaredMemberRoles []string
 	// ServerVoiceStates reports that the plugin declares the ServerVoiceStates intent in
@@ -777,7 +781,7 @@ func (inv *invocation) alive() error {
 }
 
 func (i *Instance) newInvocation(caller context.Context, kind, name string, timeout time.Duration) (*invocation, func() bool) {
-	tctx, release := context.WithTimeoutCause(i.ctx, timeout, ErrHandlerTimeout)
+	tctx, release := context.WithTimeoutCause(discord.WithOperations(i.ctx, i.env.Operations), timeout, ErrHandlerTimeout)
 	ctx, cancel := context.WithCancelCause(tctx)
 	inv := &invocation{
 		id: i.nextInv.Add(1), kind: kind, name: name, ctx: ctx, cancel: cancel, release: release,
@@ -975,6 +979,9 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 // handler's result. Use it from the gateway goroutine to keep arrival order without
 // blocking. Events without a handler complete immediately with nil.
 func (i *Instance) DispatchEvent(ctx context.Context, ev discord.Event) <-chan error {
+	if _, ok := ev.(discord.AuditLogEntryEvent); ok && !i.grants[capAuditRead] {
+		return errChan(&CapabilityError{Capability: capAuditRead})
+	}
 	name := EventName(ev)
 	if name == "" {
 		return errChan(fmt.Errorf("plugin: %T is not a plugin event", ev))

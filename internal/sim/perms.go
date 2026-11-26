@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"context"
 	"math"
 	"strings"
 
@@ -9,8 +10,16 @@ import (
 
 // actor is who performs a call: a bot (appID set) or a human user.
 type actor struct {
-	userID string
-	appID  string
+	operationContext context.Context
+	userID           string
+	appID            string
+}
+
+func (a actor) auditReason(reason string) string {
+	if a.operationContext == nil {
+		return reason
+	}
+	return discord.Operations(a.operationContext).Reason(reason)
 }
 
 func (a actor) isBot() bool { return a.appID != "" }

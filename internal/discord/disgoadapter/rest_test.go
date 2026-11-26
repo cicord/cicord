@@ -536,3 +536,20 @@ func TestModerationRequests(t *testing.T) {
 		t.Fatalf("set roles: %+v %v", f.last(), err)
 	}
 }
+
+func TestAuditListPreservesEvidence(t *testing.T) {
+	f := newFakeDiscord(t)
+	f.json("GET /guilds/1/audit-logs", 200, `{"users":[{"id":"22","username":"mod"}],"audit_log_entries":[{"id":"500","action_type":31,"user_id":"22","target_id":"33","reason":"staff review","options":{"count":"2"},"changes":[{"key":"permissions","old_value":"1","new_value":"2"}]}]}`)
+	s := f.connect(t)
+	items, err := s.ListAuditLog(t.Context(), "1", discord.AuditQuery{Limit: 10, Action: 31, ActorID: "22", Before: "55"})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("entries: %+v %v", items, err)
+	}
+	a := items[0]
+	if a.Actor == nil || a.Actor.Username != "mod" || a.Reason != "staff review" || string(a.Options["count"]) != `"2"` || len(a.Changes) != 1 || a.Changes[0].Key != "permissions" {
+		t.Fatalf("evidence: %+v", a)
+	}
+	if f.last().URI != "/guilds/1/audit-logs?action_type=31&before=55&limit=10&user_id=22" {
+		t.Fatal(f.last().URI)
+	}
+}

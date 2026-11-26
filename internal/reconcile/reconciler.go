@@ -20,6 +20,7 @@ import (
 
 // Options configures a Reconciler for one server.
 type Options struct {
+	Operations *discord.OperationScope
 	// Server is the desired state (required). Its File is used to resolve the icon.
 	Server *config.Server
 	// RepoRoot is the repository root (config.Repo.Root); profile.icon is resolved
@@ -214,7 +215,7 @@ func (r *Reconciler) Apply(ctx context.Context, p Plan) (Result, error) {
 }
 
 func (r *Reconciler) applyAndRefresh(ctx context.Context, p Plan) (Result, error) {
-	res, err := r.apply(ctx, p)
+	res, err := r.apply(discord.WithOperations(ctx, r.opts.Operations), p)
 	if mapped, lerr := r.opts.Resources.List(ctx, r.serverKey()); lerr == nil {
 		r.refreshManaged(mapped)
 	}

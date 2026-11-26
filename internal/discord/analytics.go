@@ -3,11 +3,11 @@ package discord
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
 
 // Events and REST reads used by the server activity analytics (internal/analytics).
-// Plugins receive VoiceStateUpdateEvent (the voiceStateUpdate handler), not the others
-// (plugin.EventName returns "").
+// Selected events are also available through the permission-gated plugin SDK.
 
 // ───────────────────────────────────────────────────────────── voice
 
@@ -95,12 +95,16 @@ const (
 // AuditLogEntryEvent is a new audit log entry. It needs the ServerModeration intent
 // and the ViewAuditLog permission.
 type AuditLogEntryEvent struct {
-	ServerID   string
-	ID         string
-	ActionType int
-	UserID     string // who performed the action ("" when unknown)
-	TargetID   string
-	Changes    []AuditLogChange
+	Attribution Attribution
+	Actor       *User // populated when supplied by REST or the simulator
+	Reason      string
+	Options     map[string]json.RawMessage
+	ServerID    string
+	ID          string
+	ActionType  int
+	UserID      string // who performed the action ("" when unknown)
+	TargetID    string
+	Changes     []AuditLogChange
 }
 
 // Change returns the change of a key, if any.
@@ -117,6 +121,7 @@ func (e AuditLogEntryEvent) Change(key string) (AuditLogChange, bool) {
 // actions produces one event per action). It needs the AutoModerationExecution intent
 // and the ManageServer permission. The matched content is never decoded.
 type AutoModActionEvent struct {
+	Matched   string // only exposed to plugins with MessageContent
 	ServerID  string
 	RuleID    string
 	Trigger   string // AutoModKeyword, AutoModSpam…
@@ -131,6 +136,8 @@ type AutoModActionEvent struct {
 // InviteCreateEvent and InviteDeleteEvent need the ServerInvites intent and the
 // ManageChannels permission on the channel.
 type InviteCreateEvent struct {
+	Inviter   *User
+	ExpiresAt *time.Time
 	ServerID  string
 	ChannelID string
 	Code      string
@@ -174,10 +181,13 @@ type ScheduledEventInterest struct {
 
 // InviteUses is an invite with its use count. The vanity URL has Vanity set.
 type InviteUses struct {
-	Code    string
-	Uses    int
-	MaxUses int // 0 = unlimited
-	Vanity  bool
+	ChannelID string
+	Inviter   *User
+	ExpiresAt *time.Time
+	Code      string
+	Uses      int
+	MaxUses   int // 0 = unlimited
+	Vanity    bool
 }
 
 // AnalyticsReader is implemented by clients able to read the counts sampled by the

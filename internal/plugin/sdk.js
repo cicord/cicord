@@ -156,6 +156,12 @@
     });
   }
 
+  function mkInvite(d) {
+    return freeze(Object.assign({},d,{inviter:d.inviter?mkUser(d.inviter):undefined,expiresAt:d.expiresAt?new Date(d.expiresAt):undefined}));
+  }
+  function mkAudit(a) {
+    return freeze(Object.assign({},a,{at:new Date(a.at),actor:a.actor?mkUser(a.actor):undefined}));
+  }
   const RoleProto = {
     async members(options) {
       const o = options || {};
@@ -449,6 +455,10 @@
         await acall("member.ban", {userId: String(userId), reason: options.reason, deleteMessagesSeconds: options.deleteMessagesSeconds});
       },
       async unban(userId, reason) { await acall("server.unban", {userId: String(userId), reason}); },
+      async invites() { return freeze((await acall("server.invites",{})).map(mkInvite)); },
+      async auditLog(options = {}) {
+        return freeze((await acall("server.auditLog",options)).map(mkAudit));
+      },
       async bans(options = {}) {
         const entries=await acall("server.bans", {limit: options.limit, after: options.after});
         return freeze(entries.map(b => freeze({user: mkUser(b.user), reason: b.reason})));
@@ -668,6 +678,15 @@
 
   function eventArgs(name, d) {
     switch (name) {
+      case "channelCreate": case "channelUpdate": case "channelDelete":
+        return [freeze(Object.assign({},d.structure,{channel:mkChannel(d.structure.channel),previous:d.structure.previous?mkChannel(d.structure.previous):undefined}))];
+      case "roleCreate": case "roleUpdate": case "roleDelete":
+        return [freeze(Object.assign({},d.structure,{role:mkRole(d.structure.role),previous:d.structure.previous?mkRole(d.structure.previous):undefined}))];
+      case "threadCreate": case "threadDelete":
+        return [freeze({thread:mkChannel(d.structure.thread),parent:d.structure.parent?mkChannel(d.structure.parent):undefined})];
+      case "inviteCreate": case "inviteDelete": return [mkInvite(d.structure)];
+      case "automodAction": case "serverUpdate": case "expressionsUpdate": case "webhooksUpdate": return [freeze(d.structure)];
+      case "auditLogEntry": return [mkAudit(d.audit)];
       case "banAdd":
       case "banRemove": return [freeze({ user: mkUser(d.user) })];
       case "memberJoin": return [mkMember(d.member)];

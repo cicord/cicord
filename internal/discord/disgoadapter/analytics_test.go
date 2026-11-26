@@ -106,7 +106,7 @@ func TestTranslateModerationEvents(t *testing.T) {
 		t.Errorf("automod = %#v", am)
 	}
 	ic := one(t, mustTranslate(t, s, "INVITE_CREATE", `{"guild_id":"1","channel_id":"10","code":"abc","max_uses":5,"uses":0,"inviter":{"id":"2"}}`)).(discord.InviteCreateEvent)
-	if ic != (discord.InviteCreateEvent{ServerID: "1", ChannelID: "10", Code: "abc", MaxUses: 5}) || discord.ServerIDOf(ic) != "1" {
+	if ic.Inviter == nil || ic.Inviter.ID != "2" || ic.ChannelID != "10" || ic.Code != "abc" || ic.MaxUses != 5 || discord.ServerIDOf(ic) != "1" {
 		t.Errorf("invite create = %#v", ic)
 	}
 	id := one(t, mustTranslate(t, s, "INVITE_DELETE", `{"guild_id":"1","channel_id":"10","code":"abc"}`)).(discord.InviteDeleteEvent)

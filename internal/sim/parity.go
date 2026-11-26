@@ -1123,154 +1123,154 @@ func (c *Client) GetServerWidget(ctx context.Context, serverID string) (discord.
 	if err := ctx.Err(); err != nil {
 		return discord.ServerWidget{}, err
 	}
-	return c.w.getWidget(c.a, serverID)
+	return c.w.getWidget(c.actorFor(ctx), serverID)
 }
 
 func (c *Client) UpdateServerWidget(ctx context.Context, serverID string, ws discord.ServerWidget, reason string) (discord.ServerWidget, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.ServerWidget{}, err
 	}
-	return c.w.updateWidget(c.a, serverID, ws, reason)
+	return c.w.updateWidget(c.actorFor(ctx), serverID, ws, reason)
 }
 
 func (c *Client) ListAutoModRules(ctx context.Context, serverID string) ([]discord.AutoModRule, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return c.w.listAutoMod(c.a, serverID)
+	return c.w.listAutoMod(c.actorFor(ctx), serverID)
 }
 
 func (c *Client) CreateAutoModRule(ctx context.Context, serverID string, r discord.AutoModRule, reason string) (discord.AutoModRule, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.AutoModRule{}, err
 	}
-	return c.w.createAutoMod(c.a, serverID, r, reason)
+	return c.w.createAutoMod(c.actorFor(ctx), serverID, r, reason)
 }
 
 func (c *Client) UpdateAutoModRule(ctx context.Context, serverID, ruleID string, r discord.AutoModRule, reason string) (discord.AutoModRule, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.AutoModRule{}, err
 	}
-	return c.w.updateAutoMod(c.a, serverID, ruleID, r, reason)
+	return c.w.updateAutoMod(c.actorFor(ctx), serverID, ruleID, r, reason)
 }
 
 func (c *Client) DeleteAutoModRule(ctx context.Context, serverID, ruleID, reason string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return c.w.deleteAutoMod(c.a, serverID, ruleID, reason)
+	return c.w.deleteAutoMod(c.actorFor(ctx), serverID, ruleID, reason)
 }
 
 func (c *Client) GetOnboarding(ctx context.Context, serverID string) (discord.Onboarding, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.Onboarding{}, err
 	}
-	return c.w.getOnboarding(c.a, serverID)
+	return c.w.getOnboarding(c.actorFor(ctx), serverID)
 }
 
 func (c *Client) UpdateOnboarding(ctx context.Context, serverID string, o discord.Onboarding, reason string) (discord.Onboarding, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.Onboarding{}, err
 	}
-	return c.w.updateOnboarding(c.a, serverID, o, reason)
+	return c.w.updateOnboarding(c.actorFor(ctx), serverID, o, reason)
 }
 
 func (c *Client) GetWelcomeScreen(ctx context.Context, serverID string) (discord.WelcomeScreen, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.WelcomeScreen{}, err
 	}
-	return c.w.getWelcome(c.a, serverID)
+	return c.w.getWelcome(c.actorFor(ctx), serverID)
 }
 
 func (c *Client) UpdateWelcomeScreen(ctx context.Context, serverID string, ws discord.WelcomeScreen, reason string) (discord.WelcomeScreen, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.WelcomeScreen{}, err
 	}
-	return c.w.updateWelcome(c.a, serverID, ws, reason)
+	return c.w.updateWelcome(c.actorFor(ctx), serverID, ws, reason)
 }
 
 func (c *Client) ListEmojis(ctx context.Context, serverID string) ([]discord.Emoji, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return c.w.listEmojis(c.a, serverID)
+	return c.w.listEmojis(c.actorFor(ctx), serverID)
 }
 
 func (c *Client) CreateEmoji(ctx context.Context, serverID string, p discord.EmojiParams, reason string) (discord.Emoji, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.Emoji{}, err
 	}
-	return c.w.createEmoji(c.a, serverID, p, reason)
+	return c.w.createEmoji(c.actorFor(ctx), serverID, p, reason)
 }
 
 func (c *Client) UpdateEmoji(ctx context.Context, serverID, emojiID string, p discord.EmojiParams, reason string) (discord.Emoji, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.Emoji{}, err
 	}
-	return c.w.updateEmoji(c.a, serverID, emojiID, p, reason)
+	return c.w.updateEmoji(c.actorFor(ctx), serverID, emojiID, p, reason)
 }
 
 func (c *Client) DeleteEmoji(ctx context.Context, serverID, emojiID, reason string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return c.w.deleteEmoji(c.a, serverID, emojiID, reason)
+	return c.w.deleteEmoji(c.actorFor(ctx), serverID, emojiID, reason)
 }
 
 func (c *Client) ListStickers(ctx context.Context, serverID string) ([]discord.Sticker, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return c.w.listStickers(c.a, serverID)
+	return c.w.listStickers(c.actorFor(ctx), serverID)
 }
 
 func (c *Client) CreateSticker(ctx context.Context, serverID string, p discord.StickerParams, reason string) (discord.Sticker, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.Sticker{}, err
 	}
-	return c.w.createSticker(c.a, serverID, p, reason)
+	return c.w.createSticker(c.actorFor(ctx), serverID, p, reason)
 }
 
 func (c *Client) UpdateSticker(ctx context.Context, serverID, stickerID string, p discord.StickerParams, reason string) (discord.Sticker, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.Sticker{}, err
 	}
-	return c.w.updateSticker(c.a, serverID, stickerID, p, reason)
+	return c.w.updateSticker(c.actorFor(ctx), serverID, stickerID, p, reason)
 }
 
 func (c *Client) DeleteSticker(ctx context.Context, serverID, stickerID, reason string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return c.w.deleteSticker(c.a, serverID, stickerID, reason)
+	return c.w.deleteSticker(c.actorFor(ctx), serverID, stickerID, reason)
 }
 
 func (c *Client) ListSoundboardSounds(ctx context.Context, serverID string) ([]discord.SoundboardSound, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return c.w.listSounds(c.a, serverID)
+	return c.w.listSounds(c.actorFor(ctx), serverID)
 }
 
 func (c *Client) CreateSoundboardSound(ctx context.Context, serverID string, p discord.SoundParams, reason string) (discord.SoundboardSound, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.SoundboardSound{}, err
 	}
-	return c.w.createSound(c.a, serverID, p, reason)
+	return c.w.createSound(c.actorFor(ctx), serverID, p, reason)
 }
 
 func (c *Client) UpdateSoundboardSound(ctx context.Context, serverID, soundID string, p discord.SoundParams, reason string) (discord.SoundboardSound, error) {
 	if err := ctx.Err(); err != nil {
 		return discord.SoundboardSound{}, err
 	}
-	return c.w.updateSound(c.a, serverID, soundID, p, reason)
+	return c.w.updateSound(c.actorFor(ctx), serverID, soundID, p, reason)
 }
 
 func (c *Client) DeleteSoundboardSound(ctx context.Context, serverID, soundID, reason string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return c.w.deleteSound(c.a, serverID, soundID, reason)
+	return c.w.deleteSound(c.actorFor(ctx), serverID, soundID, reason)
 }
 
 // featureList parses a comma-separated feature list ("COMMUNITY, PARTNERED").

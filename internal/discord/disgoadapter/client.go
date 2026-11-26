@@ -32,6 +32,47 @@ func checkToken(op, token string) error {
 
 // ───────────────────────────────────────────────────────────── users
 
+func (s *session) ListAuditLog(ctx context.Context, server string, q discord.AuditQuery) ([]discord.AuditLogEntryEvent, error) {
+	if err := checkIDs("ListAuditLog", server); err != nil {
+		return nil, err
+	}
+	if q.Limit < 1 || q.Limit > 100 {
+		return nil, fmt.Errorf("ListAuditLog: %w: expected 1 to 100 entries", discord.ErrBadRequest)
+	}
+	params := map[string]any{"limit": strconv.Itoa(q.Limit)}
+	for key, id := range map[string]string{"before": q.Before, "user_id": q.ActorID} {
+		if id != "" {
+			if err := checkIDs("ListAuditLog", id); err != nil {
+				return nil, err
+			}
+			params[key] = id
+		}
+	}
+	if q.Action != 0 {
+		params["action_type"] = strconv.Itoa(q.Action)
+	}
+	var body struct {
+		Entries []wireAuditLogEntry `json:"audit_log_entries"`
+		Users   []wireUser          `json:"users"`
+	}
+	if err := s.do(ctx, "ListAuditLog", rest.GetAuditLogs.Compile(params, server), nil, &body); err != nil {
+		return nil, err
+	}
+	users := map[string]discord.User{}
+	for _, u := range body.Users {
+		users[u.ID] = userFromWire(u)
+	}
+	out := make([]discord.AuditLogEntryEvent, 0, len(body.Entries))
+	for _, entry := range body.Entries {
+		ev := entry.toEvent(server)
+		if u, ok := users[ev.UserID]; ok {
+			ev.Actor = &u
+		}
+		out = append(out, ev)
+	}
+	return out, nil
+}
+
 func (s *session) GetUser(ctx context.Context, userID string) (discord.User, error) {
 	if err := checkIDs("GetUser", userID); err != nil {
 		return discord.User{}, err

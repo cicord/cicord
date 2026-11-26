@@ -84,8 +84,9 @@ const (
 
 // Runtime is safe for concurrent use.
 type Runtime struct {
-	opts Options
-	log  *slog.Logger
+	auditSlots chan struct{}
+	opts       Options
+	log        *slog.Logger
 
 	syncMu sync.Mutex // serializes revision activation and server syncs
 
@@ -224,7 +225,7 @@ func New(opts Options) *Runtime {
 	if opts.Metrics == nil {
 		opts.Metrics = metrics.NewRegistry()
 	}
-	r := &Runtime{opts: opts, log: opts.Logger, bots: map[string]*botHost{}, wake: make(chan struct{}, 1),
+	r := &Runtime{opts: opts, auditSlots: make(chan struct{}, 8), log: opts.Logger, bots: map[string]*botHost{}, wake: make(chan struct{}, 1),
 		restart: restartPolicy{min: restartMin, max: restartMax, stable: restartStable}}
 	r.sched = newScheduler(r)
 	r.metrics = newRuntimeMetrics(opts.Metrics, r)
@@ -392,6 +393,7 @@ func buildPlugin(lp *config.LoadedPlugin) (*builtPlugin, error) {
 	need(len(def.Schedules) > 0 || len(def.Tasks) > 0, "scheduler", "schedules/tasks")
 	need(len(def.Routes) > 0, "portal.routes", "routes")
 	need(len(def.Subscriptions) > 0, "events.subscribe", "subscriptions")
+	need(def.HasEvent("auditLogEntry"), "discord.auditlog.read", "auditLogEntry")
 	if len(problems) > 0 {
 		return nil, errors.New(strings.Join(problems, "; "))
 	}
@@ -472,7 +474,8 @@ func (r *Runtime) Activate(ctx context.Context, rev source.Revision, force bool)
 			continue
 		}
 		rt.rec = reconcile.New(reconcile.Options{
-			Server: srv, RepoRoot: rev.Dir, Client: host.session, Resources: r.opts.Store.Resources(),
+			Operations: r.operationScope(discord.Operation{ServerID: srv.Spec.DiscordID, ActorID: host.session.Self().ID, Bot: host.key, Revision: rev.ID}),
+			Server:     srv, RepoRoot: rev.Dir, Client: host.session, Resources: r.opts.Store.Resources(),
 			KV: r.opts.Store.KV("reconcile:" + key), BotUserID: host.session.Self().ID,
 			Logger: log, Reason: "cicord " + rev.ID, Context: context.Background(),
 			OnSync: func(p reconcile.Plan, res reconcile.Result, err error) { r.afterSelfHeal(rt, p, res, err) },

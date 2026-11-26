@@ -407,3 +407,15 @@ func TestTranslateBans(t *testing.T) {
 		t.Fatalf("remove: %+v", removed)
 	}
 }
+
+func TestWebhookAndInviteMetadata(t *testing.T) {
+	s := testSession()
+	ev := one(t, mustTranslate(t, s, "WEBHOOKS_UPDATE", `{"guild_id":"1","channel_id":"22"}`))
+	if w, ok := ev.(discord.WebhooksUpdateEvent); !ok || w.ChannelID != "22" || discord.ServerIDOf(ev) != "1" {
+		t.Fatal(ev)
+	}
+	created := one(t, mustTranslate(t, s, "INVITE_CREATE", `{"guild_id":"1","channel_id":"22","code":"abc","inviter":{"id":"30","username":"m"},"created_at":"2026-01-01T00:00:00Z","max_age":60}`)).(discord.InviteCreateEvent)
+	if created.Inviter == nil || created.Inviter.ID != "30" || created.ExpiresAt == nil || created.ExpiresAt.Minute() != 1 {
+		t.Fatal(created)
+	}
+}

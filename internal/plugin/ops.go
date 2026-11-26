@@ -27,6 +27,8 @@ const (
 	capReactions       = "discord.reactions.manage"
 	capMembersRead     = "discord.members.read"
 	capMembersManage   = "discord.members.manage"
+	capInvitesRead     = "discord.invites.read"
+	capAuditRead       = "discord.auditlog.read"
 	capMembersModerate = "discord.members.moderate"
 	capRolesAssign     = "discord.roles.assign"
 	capChannelsRead    = "discord.channels.read"
@@ -52,6 +54,8 @@ var capabilityPermissions = map[string]discord.Permissions{
 	capMessagesManage:  discord.MustPermissions("ViewChannel", "ManageMessages"),
 	capReactions:       discord.MustPermissions("ViewChannel", "AddReactions", "ReadMessageHistory"),
 	capMembersManage:   discord.MustPermissions("ManageNicknames"),
+	capInvitesRead:     discord.MustPermissions("ManageServer"),
+	capAuditRead:       discord.MustPermissions("ViewAuditLog"),
 	capMembersModerate: discord.MustPermissions("ModerateMembers", "KickMembers", "BanMembers"),
 	capRolesAssign:     discord.MustPermissions("ManageRoles"),
 	capChannelsRead:    discord.MustPermissions("ViewChannel"),
@@ -126,6 +130,8 @@ func init() {
 		"member.timeout":       opMemberTimeout,
 		"member.kick":          opMemberKick,
 		"server.unban":         opServerUnban,
+		"server.invites":       opServerInvites,
+		"server.auditLog":      opAuditLog,
 		"server.bans":          opServerBans,
 		"member.ban":           opMemberBan,
 		"member.send":          opMemberSend,

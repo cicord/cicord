@@ -331,9 +331,10 @@ func (w *World) CreateInvite(channelID string, maxUses int) (string, error) {
 	}
 	a := w.activity(c.ch.ServerID)
 	code := "inv" + w.newID()
-	a.invites[code] = &discord.InviteUses{Code: code, MaxUses: maxUses}
+	actor := w.users[w.servers[c.ch.ServerID].info.OwnerID].user
+	a.invites[code] = &discord.InviteUses{Code: code, MaxUses: maxUses, ChannelID: channelID, Inviter: &actor}
 	a.order = append(a.order, code)
-	w.emit(discord.InviteCreateEvent{ServerID: c.ch.ServerID, ChannelID: channelID, Code: code, MaxUses: maxUses})
+	w.emit(discord.InviteCreateEvent{ServerID: c.ch.ServerID, ChannelID: channelID, Code: code, MaxUses: maxUses, Inviter: &actor})
 	return code, nil
 }
 
@@ -445,7 +446,19 @@ func (w *World) SetScheduledEvent(serverID, eventID string, interested int, stat
 
 // auditLog emits an audit log entry. Caller holds w.mu.
 func (w *World) auditLog(serverID, executorID string, actionType int, targetID string, changes ...discord.AuditLogChange) {
-	w.emit(discord.AuditLogEntryEvent{ServerID: serverID, ID: w.newID(), ActionType: actionType, UserID: executorID, TargetID: targetID, Changes: changes})
+	w.auditWithReason(serverID, executorID, actionType, targetID, "", changes...)
+}
+
+func (w *World) auditWithReason(serverID, executorID string, actionType int, targetID, reason string, changes ...discord.AuditLogChange) {
+	e := discord.AuditLogEntryEvent{ServerID: serverID, ID: w.newID(), ActionType: actionType, UserID: executorID, TargetID: targetID, Changes: changes, Reason: reason}
+	if u := w.users[executorID]; u != nil {
+		actor := u.user
+		e.Actor = &actor
+	}
+	if server := w.servers[serverID]; server != nil {
+		server.audit = append(server.audit, e)
+	}
+	w.emit(e)
 }
 
 // auditMemberUpdate logs a timeout change (MEMBER_UPDATE with communication_disabled_until)
@@ -682,7 +695,7 @@ func (c *Client) ListInviteUses(ctx context.Context, serverID string) ([]discord
 	if err != nil {
 		return nil, err
 	}
-	if err := w.requireServer(c.a, s, permManageServer); err != nil {
+	if err := w.requireServer(c.actorFor(ctx), s, permManageServer); err != nil {
 		return nil, err
 	}
 	a := w.activity(serverID)
@@ -696,4 +709,22 @@ func (c *Client) ListInviteUses(ctx context.Context, serverID string) ([]discord
 		out = append(out, *a.vanity)
 	}
 	return out, nil
+}
+
+func auditValue(value any) json.RawMessage { data, _ := json.Marshal(value); return data }
+
+// WebhooksUpdated delivers Discord's channel-scoped notification without inventing
+// an audit actor or exposing webhook URLs.
+func (w *World) WebhooksUpdated(channelID string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ch, err := w.channel(channelID)
+	if err != nil {
+		return err
+	}
+	if ch.ch.ServerID == "" {
+		return badRequest("webhooks must belong to a guild channel")
+	}
+	w.emit(discord.WebhooksUpdateEvent{ServerID: ch.ch.ServerID, ChannelID: channelID})
+	return nil
 }

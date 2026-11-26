@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/disgoorg/disgo/gateway"
@@ -112,10 +113,11 @@ func (c *connector) Connect(ctx context.Context, token string) (discord.Session,
 
 // session implements discord.Session.
 type session struct {
-	cfg    config
-	token  string
-	logger *slog.Logger
-	rest   rest.Client
+	matchedContent atomic.Bool
+	cfg            config
+	token          string
+	logger         *slog.Logger
+	rest           rest.Client
 
 	self     discord.User
 	appID    string
@@ -188,10 +190,45 @@ func (s *session) ApplicationFlags() int { return s.appFlags }
 // and retries 429s) and maps the error.
 func (s *session) do(ctx context.Context, op string, ep *rest.CompiledEndpoint, body, out any, reason ...string) error {
 	opts := []rest.RequestOpt{rest.WithCtx(ctx)}
-	if len(reason) > 0 && reason[0] != "" {
-		opts = append(opts, rest.WithReason(reason[0]))
+	scope := discord.Operations(ctx)
+	if len(reason) > 0 {
+		label := scope.Reason(reason[0])
+		if label != "" {
+			opts = append(opts, rest.WithReason(label))
+		}
 	}
-	return mapError(op, s.rest.Do(ep, body, out, opts...))
+	err := mapError(op, s.rest.Do(ep, body, out, opts...))
+	if err == nil && scope != nil && ep.Endpoint.Method != http.MethodGet {
+		target := discord.AuditTarget(ep.Endpoint.Route, ep.URL)
+		switch o := out.(type) {
+		case *wireRole:
+			target = o.ID
+		case *wireChannel:
+			target = o.ID
+		case *wireMessage:
+			target = o.ID
+		case *wireEmoji:
+			target = o.ID
+		case *wireSticker:
+			target = o.ID
+		case *wireAutoModRule:
+			target = o.ID
+		}
+		method := op
+		if op == "UpdateMember" {
+			if m, ok := body.(map[string]any); ok {
+				if _, roles := m["roles"]; roles {
+					method = "SetMemberRoles"
+				}
+			}
+		}
+		if op == "AddMemberRole" || op == "RemoveMemberRole" {
+			// Discord's member.roleUpdate audit targets the user, not the role.
+			target = discord.AuditTarget(strings.TrimSuffix(ep.Endpoint.Route, "/{role.id}"), ep.URL[:strings.LastIndex(ep.URL, "/")])
+		}
+		scope.Emitted(ctx, method, target, time.Now())
+	}
+	return err
 }
 
 // ───────────────────────────────────────────────────────────── gateway
@@ -203,6 +240,7 @@ func (s *session) do(ctx context.Context, op string, ep *rest.CompiledEndpoint, 
 // at a time from a single dispatcher goroutine, so a slow handler never stalls the
 // websocket reader and ordering is preserved.
 func (s *session) Open(ctx context.Context, intents discord.Intents, handler func(discord.Event)) error {
+	s.matchedContent.Store(intents.Has(discord.MustIntents("MessageContent")))
 	if handler == nil {
 		return fmt.Errorf("discord open: %w: nil handler", discord.ErrBadRequest)
 	}

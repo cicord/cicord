@@ -223,3 +223,7 @@ func ParseChannelType(name string) (ChannelType, error) {
 	}
 	return 0, fmt.Errorf("unknown channel type %q", name)
 }
+
+func (t ChannelType) IsThread() bool {
+	return t == ChannelPublicThread || t == ChannelPrivateThread || t == ChannelAnnouncementThread
+}

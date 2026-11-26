@@ -299,12 +299,21 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		}
 	}
 	env := plugin.Env{
+		ManagedResource: func(id string) (bool, bool) {
+			managed := srt.cache.Owner(id) == state.OwnerGit
+			return managed, managed && srt.cfg.Spec.SyncPolicy.SelfHeal() && !r.isPaused(in.Server)
+		},
+		Operations: r.operationScope(discord.Operation{ServerID: srt.cfg.Spec.DiscordID, ActorID: host.session.Self().ID, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name}),
+		AttributeAudit: func(ctx context.Context, e discord.AuditLogEntryEvent) discord.AuditLogEntryEvent {
+			return r.enrichAudit(ctx, host.session, e)
+		},
 		DeclaredMemberRoles: declaredMemberRoles,
 		BotKey:              in.Bot, InstanceName: in.Name, PluginName: m.Metadata.Name, PluginVersion: m.Metadata.Version,
 		Bot: host.session.Self(), ApplicationID: host.session.ApplicationID(),
 		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL,
 		Config: in.Config, Grants: in.Grants, NetworkAllow: network, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,
 		MessageContent: slices.Contains(m.Spec.Intents, "MessageContent"), HTTPClient: r.opts.PluginHTTPClient,
+		ServerModeration:  slices.Contains(m.Spec.Intents, "ServerModeration"),
 		ServerMembers:     slices.Contains(m.Spec.Intents, "ServerMembers"),
 		ServerVoiceStates: slices.Contains(m.Spec.Intents, "ServerVoiceStates"),
 		Discord:           host.session, Resolver: srt.cache,
@@ -460,6 +469,7 @@ func (h *botHost) handle(ev discord.Event) {
 	rt := h.routing.Load()
 	sid := discord.ServerIDOf(ev)
 	if c := rt.caches[sid]; c != nil {
+		ev = c.previousEvent(ev)
 		c.Observe(ev)
 	}
 	if s := rt.reconcilers[sid]; s != nil && s.rec != nil && s.rec.HandleEvent(ev) {
@@ -481,6 +491,15 @@ func (h *botHost) handle(ev discord.Event) {
 			return
 		}
 	}
+	if entry, ok := ev.(discord.AuditLogEntryEvent); ok {
+		h.dispatchAudit(entry)
+		return
+	}
+	h.dispatchPlugins(rt, ev)
+}
+
+func (h *botHost) dispatchPlugins(rt *routing, ev discord.Event) {
+	sid := discord.ServerIDOf(ev)
 	name := plugin.EventName(ev)
 	if name == "" {
 		return

@@ -3,6 +3,7 @@ package sim
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -573,11 +574,20 @@ func (w *World) updateRole(a actor, serverID, roleID string, p discord.RoleParam
 			return fail(err)
 		}
 	}
+	before := *r
 	applyRoleParams(r, p)
 	if p.Icon != nil && len(*p.Icon) > 0 {
 		w.cdnPut(r.IconURL, *p.Icon)
 	}
 	w.recordOK(a, "UpdateRole", serverID, roleID, reason)
+	var changes []discord.AuditLogChange
+	if before.Permissions != r.Permissions {
+		changes = append(changes, discord.AuditLogChange{Key: "permissions", Old: auditValue(fmt.Sprint(uint64(before.Permissions))), New: auditValue(fmt.Sprint(uint64(r.Permissions)))})
+	}
+	if before.Name != r.Name {
+		changes = append(changes, discord.AuditLogChange{Key: "name", Old: auditValue(before.Name), New: auditValue(r.Name)})
+	}
+	w.auditWithReason(serverID, a.userID, 31, roleID, a.auditReason(reason), changes...)
 	w.emit(discord.RoleUpdateEvent{ServerID: serverID, Role: *r})
 	return *r, nil
 }
@@ -1254,6 +1264,7 @@ func (w *World) updateChannel(a actor, channelID string, p discord.ChannelParams
 	}
 	snap := w.snapshotChannels(s)
 	moved := ch.ParentID != c.ch.ParentID
+	previousChannel := c.ch
 	c.ch = ch
 	var req map[string]int
 	if p.Position != nil && !isThread(ch.Type) {
@@ -1265,6 +1276,14 @@ func (w *World) updateChannel(a actor, channelID string, p discord.ChannelParams
 		w.layoutChannels(s, req, []string{ch.ID})
 	}
 	w.recordOK(a, "UpdateChannel", serverID, channelID, reason)
+	var changes []discord.AuditLogChange
+	if previousChannel.Name != ch.Name {
+		changes = append(changes, discord.AuditLogChange{Key: "name", Old: auditValue(previousChannel.Name), New: auditValue(ch.Name)})
+	}
+	if p.Overwrites != nil {
+		changes = append(changes, discord.AuditLogChange{Key: "permission_overwrites", Old: auditValue(previousChannel.Overwrites), New: auditValue(ch.Overwrites)})
+	}
+	w.auditWithReason(serverID, a.userID, 11, channelID, a.auditReason(reason), changes...)
 	w.emit(discord.ChannelUpdateEvent{Channel: c.ch})
 	w.emitChannelChanges(s, snap, ch.ID)
 	return cloneChannel(c.ch), nil

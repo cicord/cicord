@@ -362,12 +362,12 @@ func (w *World) banMember(a actor, serverID, userID string, deleteSeconds int, r
 	}
 	deleteSeconds = min(max(deleteSeconds, 0), 604800) // clamped, like the disgo adapter
 	w.recordOK(a, "BanMember", serverID, userID, reason)
-	s.bans[userID] = discord.Ban{User: w.users[userID].user, Reason: reason}
+	s.bans[userID] = discord.Ban{User: w.users[userID].user, Reason: a.auditReason(reason)}
 	if s.members[userID] != nil {
 		w.dropMember(s, userID)
 	}
 	w.emit(discord.BanAddEvent{ServerID: serverID, User: w.users[userID].user})
-	w.auditLog(serverID, a.userID, discord.AuditMemberBanAdd, userID)
+	w.auditWithReason(serverID, a.userID, discord.AuditMemberBanAdd, userID, a.auditReason(reason))
 	if deleteSeconds > 0 {
 		cutoff := w.now().Add(-time.Duration(deleteSeconds) * time.Second)
 		for _, cid := range s.channelIDs {
@@ -480,7 +480,7 @@ func (w *World) unbanMember(a actor, serverID, userID, reason string) error {
 	w.emit(discord.BanRemoveEvent{ServerID: serverID, User: user})
 	w.changed()
 	w.recordOK(a, "UnbanMember", serverID, userID, reason)
-	w.auditLog(serverID, a.userID, discord.AuditMemberBanRemove, userID)
+	w.auditWithReason(serverID, a.userID, discord.AuditMemberBanRemove, userID, a.auditReason(reason))
 	return nil
 }
 

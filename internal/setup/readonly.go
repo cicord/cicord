@@ -43,6 +43,9 @@ func (r *ReadOnlyClient) deny(method string) error {
 
 // ───────────────────────────────────────────────────────────── reads
 
+func (r *ReadOnlyClient) ListAuditLog(ctx context.Context, server string, q discord.AuditQuery) ([]discord.AuditLogEntryEvent, error) {
+	return r.read().ListAuditLog(ctx, server, q)
+}
 func (r *ReadOnlyClient) GetUser(ctx context.Context, userID string) (discord.User, error) {
 	return r.read().GetUser(ctx, userID)
 }

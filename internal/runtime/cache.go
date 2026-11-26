@@ -89,6 +89,37 @@ func (c *serverCache) Refresh(ctx context.Context, cl discord.Client, rm state.R
 	return nil
 }
 
+// previousEvent captures the live state from before the gateway update, when known.
+func (c *serverCache) previousEvent(ev discord.Event) discord.Event {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	switch e := ev.(type) {
+	case discord.ChannelUpdateEvent:
+		if prev, ok := c.channels[e.Channel.ID]; ok {
+			e.Previous = &prev
+		}
+		return e
+	case discord.RoleUpdateEvent:
+		if prev, ok := c.roles[e.Role.ID]; ok {
+			e.Previous = &prev
+		}
+		return e
+	case discord.RoleDeleteEvent:
+		if prev, ok := c.roles[e.RoleID]; ok {
+			e.Previous = &prev
+		}
+		return e
+	case discord.ServerUpdateEvent:
+		if c.server.ID != "" {
+			prev := c.server
+			e.Previous = &prev
+		}
+		return e
+	default:
+		return ev
+	}
+}
+
 // Observe updates live resources from gateway events.
 func (c *serverCache) Observe(ev discord.Event) {
 	c.members.Observe(ev)

@@ -77,7 +77,7 @@ func TestModerationSDK(t *testing.T) {
 		}
 		return out
 	}
-	if r := call("ban"); r["id"] != outsider.ID || r["reason"] != "test case" {
+	if r := call("ban"); r["id"] != outsider.ID || r["reason"] != "cicord: moderator/welcome: test case" {
 		t.Fatalf("ban: %+v", r)
 	}
 	if r := call("unban"); r["total"] != float64(0) {

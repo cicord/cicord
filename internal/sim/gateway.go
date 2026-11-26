@@ -328,6 +328,8 @@ func (w *World) filterFor(s *Session, ev discord.Event) (discord.Event, bool) {
 	switch e := ev.(type) {
 	case discord.BanAddEvent, discord.BanRemoveEvent:
 		return ev, has(intentModeration)
+	case discord.WebhooksUpdateEvent:
+		return ev, has(discord.MustIntents("ServerWebhooks")) && canSee(e.ChannelID)
 	case discord.MemberJoinEvent:
 		return discord.MemberJoinEvent{Member: cloneMember(e.Member)}, has(intentMembers)
 	case discord.MemberLeaveEvent:

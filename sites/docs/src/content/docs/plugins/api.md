@@ -178,6 +178,25 @@ the last `READY` nor seen since (nothing is a join before the first `READY`), an
 `GUILD_DELETE` without `unavailable`. After a re-invite the runtime registers the server's
 slash commands again.
 
+### Structure and audit events
+
+A channel or role event contains its resource, its previous state when available, and
+`managed` and `willHeal` flags. Threads expose their parent. Server, expression, webhook,
+invite and AutoMod updates carry their own payloads. Structure events do not identify
+the actor. `ctx.server.invites()` reads current invite counts with `discord.invites.read`.
+
+To read the audit log, declare `discord.auditlog.read` and `ServerModeration`. The bot
+needs View Audit Log. Subscribe to `auditLogEntry` for new entries or call
+`ctx.server.auditLog({action, actorId, before, limit})`. Entries retain Discord's action,
+actor, target, reason, options and changes. Permission changes include added and removed
+permission names where both bitfields are available.
+
+The runtime retains emitted-operation metadata for seven days. It confirms a project
+bot's action when the actor, action type and target match one recorded operation within
+30 seconds. A repeated, ambiguous or missing match remains uncertain. A human may enter
+any audit reason. Use the attribution fields when reporting who acted, and treat missing
+evidence as unknown.
+
 ## Slash commands
 
 Commands are keyed by name (lowercase letters, digits, `-` and `_`, 1–32 characters) and

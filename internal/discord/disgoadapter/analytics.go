@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/disgoorg/disgo/rest"
 
@@ -69,12 +70,14 @@ type wireAuditLogChange struct {
 }
 
 type wireAuditLogEntry struct {
-	ID         string               `json:"id"`
-	GuildID    string               `json:"guild_id"`
-	ActionType int                  `json:"action_type"`
-	UserID     *string              `json:"user_id"`
-	TargetID   *string              `json:"target_id"`
-	Changes    []wireAuditLogChange `json:"changes"`
+	Reason     string                     `json:"reason"`
+	Options    map[string]json.RawMessage `json:"options"`
+	ID         string                     `json:"id"`
+	GuildID    string                     `json:"guild_id"`
+	ActionType int                        `json:"action_type"`
+	UserID     *string                    `json:"user_id"`
+	TargetID   *string                    `json:"target_id"`
+	Changes    []wireAuditLogChange       `json:"changes"`
 }
 
 // wireAutoModExecution deliberately has no content / matched_keyword / matched_content
@@ -90,11 +93,14 @@ type wireAutoModExecution struct {
 }
 
 type wireInviteEvent struct {
-	GuildID   string `json:"guild_id"`
-	ChannelID string `json:"channel_id"`
-	Code      string `json:"code"`
-	MaxUses   int    `json:"max_uses"`
-	Uses      int    `json:"uses"`
+	Inviter   *wireUser  `json:"inviter"`
+	CreatedAt *time.Time `json:"created_at"`
+	MaxAge    int        `json:"max_age"`
+	GuildID   string     `json:"guild_id"`
+	ChannelID string     `json:"channel_id"`
+	Code      string     `json:"code"`
+	MaxUses   int        `json:"max_uses"`
+	Uses      int        `json:"uses"`
 }
 
 type wireGuildCounts struct {
@@ -112,9 +118,14 @@ type wireScheduledEvent struct {
 }
 
 type wireInvite struct {
-	Code    string `json:"code"`
-	Uses    int    `json:"uses"`
-	MaxUses int    `json:"max_uses"`
+	Channel struct {
+		ID string `json:"id"`
+	} `json:"channel"`
+	Inviter   *wireUser  `json:"inviter"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	Code      string     `json:"code"`
+	Uses      int        `json:"uses"`
+	MaxUses   int        `json:"max_uses"`
 }
 
 type wireVanity struct {
@@ -189,10 +200,7 @@ func (s *session) translateAnalytics(t string, d []byte) ([]discord.Event, bool,
 		if err := json.Unmarshal(d, &e); err != nil {
 			return nil, true, err
 		}
-		ev := discord.AuditLogEntryEvent{ServerID: e.GuildID, ID: e.ID, ActionType: e.ActionType, UserID: deref(e.UserID), TargetID: deref(e.TargetID)}
-		for _, c := range e.Changes {
-			ev.Changes = append(ev.Changes, discord.AuditLogChange{Key: c.Key, Old: c.OldValue, New: c.NewValue})
-		}
+		ev := e.toEvent(e.GuildID)
 		return []discord.Event{ev}, true, nil
 
 	case "AUTO_MODERATION_ACTION_EXECUTION":
@@ -204,7 +212,15 @@ func (s *session) translateAnalytics(t string, d []byte) ([]discord.Event, bool,
 		if action == "" {
 			action = "type" + strconv.Itoa(e.Action.Type)
 		}
-		return []discord.Event{discord.AutoModActionEvent{
+		var hit struct {
+			Matched string `json:"matched_content"`
+		}
+		if s.matchedContent.Load() {
+			if err := json.Unmarshal(d, &hit); err != nil {
+				return nil, true, err
+			}
+		}
+		return []discord.Event{discord.AutoModActionEvent{Matched: hit.Matched,
 			ServerID: e.GuildID, RuleID: e.RuleID, Trigger: autoModTriggers[e.RuleTriggerType], Action: action,
 			UserID: e.UserID, ChannelID: deref(e.ChannelID), MessageID: deref(e.MessageID),
 		}}, true, nil
@@ -218,7 +234,7 @@ func (s *session) translateAnalytics(t string, d []byte) ([]discord.Event, bool,
 			return nil, true, nil
 		}
 		if t == "INVITE_CREATE" {
-			return []discord.Event{discord.InviteCreateEvent{ServerID: e.GuildID, ChannelID: e.ChannelID, Code: e.Code, MaxUses: e.MaxUses, Uses: e.Uses}}, true, nil
+			return []discord.Event{discord.InviteCreateEvent{Inviter: inviteActor(e.Inviter), ExpiresAt: inviteExpiry(e), ServerID: e.GuildID, ChannelID: e.ChannelID, Code: e.Code, MaxUses: e.MaxUses, Uses: e.Uses}}, true, nil
 		}
 		return []discord.Event{discord.InviteDeleteEvent{ServerID: e.GuildID, ChannelID: e.ChannelID, Code: e.Code}}, true, nil
 	}
@@ -365,7 +381,7 @@ func (s *session) ListInviteUses(ctx context.Context, serverID string) ([]discor
 	}
 	out := make([]discord.InviteUses, 0, len(invs)+1)
 	for _, i := range invs {
-		out = append(out, discord.InviteUses{Code: i.Code, Uses: i.Uses, MaxUses: i.MaxUses})
+		out = append(out, discord.InviteUses{ChannelID: i.Channel.ID, Inviter: inviteActor(i.Inviter), ExpiresAt: i.ExpiresAt, Code: i.Code, Uses: i.Uses, MaxUses: i.MaxUses})
 	}
 	// The invites call already needed ManageServer: a failing vanity call means the
 	// server has no vanity URL (Discord answers it with an error for those).
@@ -376,4 +392,27 @@ func (s *session) ListInviteUses(ctx context.Context, serverID string) ([]discor
 		return nil, ctx.Err()
 	}
 	return out, nil
+}
+
+func (e wireAuditLogEntry) toEvent(server string) discord.AuditLogEntryEvent {
+	ev := discord.AuditLogEntryEvent{ServerID: server, ID: e.ID, ActionType: e.ActionType, UserID: deref(e.UserID), TargetID: deref(e.TargetID), Reason: e.Reason, Options: e.Options}
+	for _, c := range e.Changes {
+		ev.Changes = append(ev.Changes, discord.AuditLogChange{Key: c.Key, Old: c.OldValue, New: c.NewValue})
+	}
+	return ev
+}
+
+func inviteActor(w *wireUser) *discord.User {
+	if w == nil {
+		return nil
+	}
+	u := userFromWire(*w)
+	return &u
+}
+func inviteExpiry(w wireInviteEvent) *time.Time {
+	if w.CreatedAt == nil || w.MaxAge <= 0 {
+		return nil
+	}
+	v := w.CreatedAt.Add(time.Duration(w.MaxAge) * time.Second)
+	return &v
 }

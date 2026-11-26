@@ -402,15 +402,17 @@ func (i *Instance) contextDTO() contextDTO {
 }
 
 type eventDTO struct {
-	Member   *memberDTO  `json:"member,omitempty"`
-	Previous *memberDTO  `json:"previous,omitempty"`
-	User     *userDTO    `json:"user,omitempty"`
-	Message  *messageDTO `json:"message,omitempty"`
-	ID       string      `json:"id,omitempty"`
-	Channel  *channelDTO `json:"channel,omitempty"`
-	Emoji    string      `json:"emoji,omitempty"`
-	Server   *serverDTO  `json:"server,omitempty"`
-	Voice    *voiceDTO   `json:"voice,omitempty"`
+	Structure map[string]any `json:"structure,omitempty"`
+	Audit     *auditDTO      `json:"audit,omitempty"`
+	Member    *memberDTO     `json:"member,omitempty"`
+	Previous  *memberDTO     `json:"previous,omitempty"`
+	User      *userDTO       `json:"user,omitempty"`
+	Message   *messageDTO    `json:"message,omitempty"`
+	ID        string         `json:"id,omitempty"`
+	Channel   *channelDTO    `json:"channel,omitempty"`
+	Emoji     string         `json:"emoji,omitempty"`
+	Server    *serverDTO     `json:"server,omitempty"`
+	Voice     *voiceDTO      `json:"voice,omitempty"`
 }
 
 // voiceDTO is the voiceStateUpdate event: where the member is now and was before.
@@ -441,7 +443,11 @@ func (i *Instance) noteMessageChannel(m discord.Message) {
 
 func (i *Instance) eventDTO(ev discord.Event) eventDTO {
 	var d eventDTO
+	d.Structure = i.structureEvent(ev)
 	switch e := ev.(type) {
+	case discord.AuditLogEntryEvent:
+		a := i.auditDTO(e)
+		d.Audit = &a
 	case discord.BanAddEvent:
 		u := i.userDTO(e.User)
 		d.User = &u

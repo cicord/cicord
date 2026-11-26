@@ -872,6 +872,7 @@ type InteractionResponse struct {
 // Client is the REST surface Cicord uses. All methods are safe for concurrent use.
 // Implementations handle rate limits internally (blocking until allowed).
 type Client interface {
+	ListAuditLog(ctx context.Context, serverID string, query AuditQuery) ([]AuditLogEntryEvent, error)
 	GetUser(ctx context.Context, userID string) (User, error)
 	UpdateSelf(ctx context.Context, p SelfParams) (User, error)
 

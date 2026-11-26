@@ -32,6 +32,8 @@ import type {
   ComponentInteraction,
   Audience,
   AudienceRelation,
+  AuditLogEntry,
+  ServerInvite,
   ChannelRef,
   Context,
   CreateChannelOptions,
@@ -126,6 +128,9 @@ export interface TestContextOptions {
   ) => TestFetchResponse | Promise<TestFetchResponse>;
   /** Granted capabilities. Omit to allow everything. */
   grants?: string[];
+  /** Audit fixtures, newest first. */
+  auditEntries?: AuditLogEntry[];
+  invites?: ServerInvite[];
   /**
    * Intents declared in plugin.yaml (`spec.intents`). Omit to allow everything; when given,
    * `role.members()` throws without ServerMembers, like the host.
@@ -1022,6 +1027,26 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     return both ? "unknown" : "disjoint";
   }
   const server: Server = {
+    async invites() {
+      need("discord.invites.read");
+      return [...(options.invites ?? [])];
+    },
+    async auditLog(query = {}) {
+      need("discord.auditlog.read");
+      if (options.intents && !options.intents.includes("ServerModeration"))
+        throw new Error("auditLog requires ServerModeration");
+      const limit = query.limit ?? 50;
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+        throw new Error("expected 1–100 audit entries");
+      return (options.auditEntries ?? [])
+        .filter(
+          (e) =>
+            (!query.action || query.action === e.action) &&
+            (!query.actorId || query.actorId === e.actorId) &&
+            (!query.before || idLess(e.id, query.before)),
+        )
+        .slice(0, limit);
+    },
     audience(ref) {
       need("discord.channels.read");
       return audienceOf(policyChannel(ref));

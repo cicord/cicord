@@ -352,7 +352,18 @@ export interface Audience {
   readonly denyMembers: readonly Snowflake[];
 }
 
+export interface AuditLogEntry {
+  id: Snowflake; at: Date; action: string; actorId?: Snowflake; actor?: User;
+  targetId?: Snowflake; targetType?:string; reason?: string; mergeable: boolean;
+  changes: {key:string;old?:Json;new?:Json;addedPermissions?:Permission[];removedPermissions?:Permission[]}[]; options?: Record<string,Json>;
+  attribution:{kind:"cicord"|"human"|"bot"|"unknown"; certainty:"confirmed"|"probable"|"unknown";
+    plugin?:{plugin:string;bot:string;instance:string};revision?:string};
+}
+
 export interface Server {
+  invites():Promise<ServerInvite[]>;
+  /** Up to 100 recent entries. Requires discord.auditlog.read and ServerModeration. */
+  auditLog(options?:{action?: string;actorId?:Snowflake;before?:Snowflake;limit?:number}):Promise<AuditLogEntry[]>;
   /** Read policy summary. Use compareAudience for copies, which also checks combinations of roles. */
   audience(channel: ChannelRef | Channel): Audience;
   compareAudience(source: ChannelRef | Channel, destination: ChannelRef | Channel): AudienceRelation;
@@ -790,7 +801,29 @@ export interface VoiceStateUpdate {
   readonly video: boolean;
 }
 
+export interface StructureChange<T> {
+  managed: boolean; willHeal: boolean; previous?: T;
+}
+export interface ServerInvite {
+  code: string; channelId?:Snowflake; inviter?:User; maxUses?:number; uses?:number;
+  expiresAt?:Date; vanity?:boolean;
+}
 export interface EventHandlers {
+  channelCreate?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;
+  channelUpdate?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;
+  channelDelete?(ctx:Context,event:StructureChange<Channel> & {channel:Channel}):Awaitable<void>;
+  roleCreate?(ctx:Context,event:StructureChange<Role> & {role:Role}):Awaitable<void>;
+  roleUpdate?(ctx:Context,event:StructureChange<Role> & {role:Role}):Awaitable<void>;
+  roleDelete?(ctx:Context,event:StructureChange<Role> & {role:Role}):Awaitable<void>;
+  threadCreate?(ctx:Context,event:{thread:Channel;parent?:Channel}):Awaitable<void>;
+  threadDelete?(ctx:Context,event:{thread:Channel;parent?:Channel}):Awaitable<void>;
+  serverUpdate?(ctx:Context,event:{changes:Record<string,{old:Json;new:Json}>}):Awaitable<void>;
+  expressionsUpdate?(ctx:Context,event:{emojis?:{id:string;name:string}[];stickers?:{id:string;name:string}[]}):Awaitable<void>;
+  webhooksUpdate?(ctx:Context,event:{channelId:Snowflake}):Awaitable<void>;
+  inviteCreate?(ctx:Context,event:ServerInvite):Awaitable<void>;
+  inviteDelete?(ctx:Context,event:ServerInvite):Awaitable<void>;
+  automodAction?(ctx:Context,event:{rule:string;userId:Snowflake;channelId?:Snowflake;action:string;matched?:string}):Awaitable<void>;
+ auditLogEntry?(ctx:Context,entry:AuditLogEntry):Awaitable<void>;
   /** @intent ServerMembers */
   /** Both ban notifications need the ServerModeration intent. */
   banAdd?(ctx: Context, event: {user: User;reason?: string}): Awaitable<void>;

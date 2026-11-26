@@ -152,17 +152,32 @@ func (d *Definition) DiscordCommands() []discord.Command {
 // ───────────────────────────────────────────────────────────── intents
 
 var eventIntents = map[string][]string{
-	"memberJoin":       {"ServerMembers"},
-	"memberLeave":      {"ServerMembers"},
-	"memberUpdate":     {"ServerMembers"},
-	"messageCreate":    {"ServerMessages"},
-	"messageUpdate":    {"ServerMessages"},
-	"messageDelete":    {"ServerMessages"},
-	"reactionAdd":      {"ServerMessageReactions"},
-	"reactionRemove":   {"ServerMessageReactions"},
-	"banAdd":           {"ServerModeration"},
-	"banRemove":        {"ServerModeration"},
-	"voiceStateUpdate": {"ServerVoiceStates"},
+	"memberJoin":        {"ServerMembers"},
+	"memberLeave":       {"ServerMembers"},
+	"memberUpdate":      {"ServerMembers"},
+	"messageCreate":     {"ServerMessages"},
+	"messageUpdate":     {"ServerMessages"},
+	"messageDelete":     {"ServerMessages"},
+	"reactionAdd":       {"ServerMessageReactions"},
+	"reactionRemove":    {"ServerMessageReactions"},
+	"auditLogEntry":     {"ServerModeration"},
+	"channelCreate":     {},
+	"channelUpdate":     {},
+	"channelDelete":     {},
+	"roleCreate":        {},
+	"roleUpdate":        {},
+	"roleDelete":        {},
+	"threadCreate":      {},
+	"threadDelete":      {},
+	"serverUpdate":      {},
+	"expressionsUpdate": {"ServerExpressions"},
+	"webhooksUpdate":    {"ServerWebhooks"},
+	"inviteCreate":      {"ServerInvites"},
+	"inviteDelete":      {"ServerInvites"},
+	"automodAction":     {"AutoModerationExecution"},
+	"banAdd":            {"ServerModeration"},
+	"banRemove":         {"ServerModeration"},
+	"voiceStateUpdate":  {"ServerVoiceStates"},
 	// Servers is always enabled (config.Repo.GatewayIntents): nothing to declare.
 	"serverJoin":  {},
 	"serverLeave": {},
@@ -200,7 +215,42 @@ func (d *Definition) RequiredIntents() []string {
 // EventName maps a gateway event to the SDK handler name ("" when plugins cannot handle it;
 // interactions go through Instance.HandleInteraction).
 func EventName(ev discord.Event) string {
-	switch ev.(type) {
+	switch e := ev.(type) {
+	case discord.ChannelCreateEvent:
+		if e.Channel.Type.IsThread() {
+			if !e.NewThread {
+				return ""
+			}
+			return "threadCreate"
+		}
+		return "channelCreate"
+	case discord.ChannelUpdateEvent:
+		return "channelUpdate"
+	case discord.ChannelDeleteEvent:
+		if e.Channel.Type.IsThread() {
+			return "threadDelete"
+		}
+		return "channelDelete"
+	case discord.RoleCreateEvent:
+		return "roleCreate"
+	case discord.RoleUpdateEvent:
+		return "roleUpdate"
+	case discord.RoleDeleteEvent:
+		return "roleDelete"
+	case discord.ServerUpdateEvent:
+		return "serverUpdate"
+	case discord.EmojisUpdateEvent, discord.StickersUpdateEvent:
+		return "expressionsUpdate"
+	case discord.WebhooksUpdateEvent:
+		return "webhooksUpdate"
+	case discord.InviteCreateEvent:
+		return "inviteCreate"
+	case discord.InviteDeleteEvent:
+		return "inviteDelete"
+	case discord.AutoModActionEvent:
+		return "automodAction"
+	case discord.AuditLogEntryEvent:
+		return "auditLogEntry"
 	case discord.BanAddEvent:
 		return "banAdd"
 	case discord.BanRemoveEvent:

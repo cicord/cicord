@@ -126,6 +126,15 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		prev := s.members.swap(mem)
 		return []discord.Event{discord.MemberUpdateEvent{Member: mem, Previous: prev}}, nil
 
+	case "WEBHOOKS_UPDATE":
+		var e struct {
+			ServerID  string `json:"guild_id"`
+			ChannelID string `json:"channel_id"`
+		}
+		if err := json.Unmarshal(d, &e); err != nil {
+			return nil, err
+		}
+		return []discord.Event{discord.WebhooksUpdateEvent{ServerID: e.ServerID, ChannelID: e.ChannelID}}, nil
 	case "GUILD_BAN_ADD", "GUILD_BAN_REMOVE":
 		var r wireMemberRemove
 		if err := json.Unmarshal(d, &r); err != nil {

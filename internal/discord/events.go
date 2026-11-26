@@ -63,7 +63,17 @@ type ChannelCreateEvent struct {
 	Channel   Channel
 	NewThread bool
 }
-type ChannelUpdateEvent struct{ Channel Channel }
+type ChannelUpdateEvent struct {
+	Channel  Channel
+	Previous *Channel
+}
+type WebhooksUpdateEvent struct {
+	ServerID  string
+	ChannelID string
+}
+
+func (WebhooksUpdateEvent) isEvent() {}
+
 type ChannelDeleteEvent struct{ Channel Channel }
 
 type RoleCreateEvent struct {
@@ -71,15 +81,20 @@ type RoleCreateEvent struct {
 	Role     Role
 }
 type RoleUpdateEvent struct {
+	Previous *Role
 	ServerID string
 	Role     Role
 }
 type RoleDeleteEvent struct {
+	Previous *Role
 	ServerID string
 	RoleID   string
 }
 
-type ServerUpdateEvent struct{ Server Server }
+type ServerUpdateEvent struct {
+	Server   Server
+	Previous *Server
+}
 
 // ServerJoinEvent is delivered when the bot joins a server (invite accepted) while
 // connected. Servers that become available after READY (lazy loading) or after an
@@ -184,6 +199,8 @@ func ServerIDOf(e Event) string {
 		return ev.Channel.ServerID
 	case ChannelUpdateEvent:
 		return ev.Channel.ServerID
+	case WebhooksUpdateEvent:
+		return ev.ServerID
 	case ChannelDeleteEvent:
 		return ev.Channel.ServerID
 	case RoleCreateEvent:

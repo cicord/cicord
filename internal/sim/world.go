@@ -111,6 +111,7 @@ type botState struct {
 }
 
 type serverState struct {
+	audit       []discord.AuditLogEntryEvent
 	info        discord.Server
 	roles       map[string]*discord.Role
 	managedBy   map[string]string // role ID → bot user ID for managed roles
@@ -250,7 +251,16 @@ func (w *World) record(a actor, method, serverID, targetID, reason string, err e
 
 // recordOK appends a successful call to the log. Caller holds w.mu.
 func (w *World) recordOK(a actor, method, serverID, targetID, reason string) {
+	if a.operationContext != nil {
+		journal := discord.Operations(a.operationContext)
+		journal.Emitted(a.operationContext, method, targetID, w.now())
+		reason = journal.Reason(reason)
+	}
 	w.logCall(a, method, serverID, targetID, reason, nil)
+	switch method {
+	case "UpdateServer", "CreateChannel", "DeleteChannel", "CreateRole", "DeleteRole", "SetRolePositions", "SetChannelPositions", "CreateThread", "CreateAutoModRule", "UpdateAutoModRule", "DeleteAutoModRule", "BulkDeleteMessages":
+		w.auditWithReason(serverID, a.userID, discord.OperationAction(method), targetID, reason)
+	}
 }
 
 func (w *World) logCall(a actor, method, serverID, targetID, reason string, err error) {

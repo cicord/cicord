@@ -171,6 +171,9 @@ func (f *fakeDiscord) KickMember(ctx context.Context, serverID, userID, reason s
 func (f *fakeDiscord) UnbanMember(ctx context.Context, serverID, userID, reason string) error {
 	return f.record(ctx, "UnbanMember", serverID, userID, reason)
 }
+func (f *fakeDiscord) ListAuditLog(ctx context.Context, id string, q discord.AuditQuery) ([]discord.AuditLogEntryEvent, error) {
+	return nil, f.record(ctx, "ListAuditLog", id, q)
+}
 func (f *fakeDiscord) ListBans(ctx context.Context, serverID, after string, limit int) ([]discord.Ban, error) {
 	return nil, f.record(ctx, "ListBans", serverID, after, limit)
 }
