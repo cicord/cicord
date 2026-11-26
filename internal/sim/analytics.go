@@ -3,6 +3,7 @@ package sim
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"sort"
 	"strconv"
 	"time"
@@ -466,7 +467,11 @@ func (w *World) auditLog(serverID, executorID string, actionType int, targetID s
 }
 
 func (w *World) auditWithReason(serverID, executorID string, actionType int, targetID, reason string, changes ...discord.AuditLogChange) {
-	e := discord.AuditLogEntryEvent{ServerID: serverID, ID: w.newID(), ActionType: actionType, UserID: executorID, TargetID: targetID, Changes: changes, Reason: reason}
+	w.appendAudit(serverID, executorID, actionType, targetID, reason, nil, changes...)
+}
+
+func (w *World) appendAudit(serverID, executorID string, actionType int, targetID, reason string, options map[string]json.RawMessage, changes ...discord.AuditLogChange) {
+	e := discord.AuditLogEntryEvent{ServerID: serverID, ID: w.newID(), ActionType: actionType, UserID: executorID, TargetID: targetID, Changes: changes, Reason: reason, Options: options}
 	if u := w.users[executorID]; u != nil {
 		actor := u.user
 		e.Actor = &actor
@@ -475,6 +480,35 @@ func (w *World) auditWithReason(serverID, executorID string, actionType int, tar
 		server.audit = append(server.audit, e)
 	}
 	w.emit(e)
+}
+
+// Discord merges repeated deletions by one actor in one channel against messages
+// by the same author. REST sees the increased count under the original ID; the
+// gateway only receives the initial entry and Discord never identifies a message ID.
+func (w *World) auditMessageDelete(server, actor, author, channel, reason string) {
+	history := w.servers[server].audit
+	cutoff := w.now().Add(-30 * time.Second)
+	for n := len(history) - 1; n >= 0; n-- {
+		e := &history[n]
+		if discord.SnowflakeTime(e.ID).Before(cutoff) {
+			break
+		}
+		if e.ActionType != discord.AuditMessageDelete || e.UserID != actor || e.TargetID != author {
+			continue
+		}
+		var from, count string
+		if json.Unmarshal(e.Options["channel_id"], &from) != nil || from != channel || json.Unmarshal(e.Options["count"], &count) != nil {
+			continue
+		}
+		total, err := strconv.Atoi(count)
+		if err != nil {
+			continue
+		}
+		e.Options = maps.Clone(e.Options)
+		e.Options["count"] = auditValue(strconv.Itoa(total + 1))
+		return
+	}
+	w.appendAudit(server, actor, discord.AuditMessageDelete, author, reason, map[string]json.RawMessage{"channel_id": auditValue(channel), "count": auditValue("1")})
 }
 
 // auditMemberUpdate logs a timeout change (MEMBER_UPDATE with communication_disabled_until)

@@ -229,3 +229,27 @@ func TestSimVoiceMoveDisconnectAndLimits(t *testing.T) {
 	isErr(t, err, nil)
 	isErr(t, f.w.JoinVoice(f.alice.ID, hub.ID), discord.ErrForbidden)
 }
+
+func TestModeratorDeletesMergeWithoutMessageID(t *testing.T) {
+	f := newFixture(t, fixtureOpts{perms: discord.MustPermissions("Administrator"), intents: discord.MustIntents("Servers", "ServerModeration", "ServerMessages")})
+	for n := 0; n < 2; n++ {
+		m, err := f.w.SendMessage(f.owner.ID, f.general.ID, "fixture")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.sess.DeleteMessage(t.Context(), f.general.ID, m.ID, "staff reason"); err != nil {
+			t.Fatal(err)
+		}
+		entries, err := f.sess.ListAuditLog(t.Context(), f.srv.ID, discord.AuditQuery{Action: 72, Limit: 4})
+		if err != nil || len(entries) != 1 || entries[0].TargetID != f.owner.ID || string(entries[0].Options["channel_id"]) != "\""+f.general.ID+"\"" || entries[0].Options["message_id"] != nil {
+			t.Fatalf("evidence %v %v", entries, err)
+		}
+		want := `"1"`
+		if n == 1 {
+			want = `"2"`
+		}
+		if string(entries[0].Options["count"]) != want {
+			t.Fatalf("count %s", entries[0].Options["count"])
+		}
+	}
+}

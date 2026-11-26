@@ -549,7 +549,7 @@ func (w *World) deleteMessage(a actor, channelID, messageID, reason string) erro
 	author := ms.msg.Author.ID
 	w.removeMessage(c, ms)
 	if author != a.userID && serverID != "" {
-		w.auditLog(serverID, a.userID, discord.AuditMessageDelete, author)
+		w.auditMessageDelete(serverID, a.userID, author, channelID, a.auditReason(reason))
 	}
 	return nil
 }
