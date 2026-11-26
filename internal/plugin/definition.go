@@ -160,6 +160,8 @@ var eventIntents = map[string][]string{
 	"messageDelete":    {"ServerMessages"},
 	"reactionAdd":      {"ServerMessageReactions"},
 	"reactionRemove":   {"ServerMessageReactions"},
+	"banAdd":           {"ServerModeration"},
+	"banRemove":        {"ServerModeration"},
 	"voiceStateUpdate": {"ServerVoiceStates"},
 	// Servers is always enabled (config.Repo.GatewayIntents): nothing to declare.
 	"serverJoin":  {},
@@ -199,6 +201,10 @@ func (d *Definition) RequiredIntents() []string {
 // interactions go through Instance.HandleInteraction).
 func EventName(ev discord.Event) string {
 	switch ev.(type) {
+	case discord.BanAddEvent:
+		return "banAdd"
+	case discord.BanRemoveEvent:
+		return "banRemove"
 	case discord.MemberJoinEvent:
 		return "memberJoin"
 	case discord.MemberLeaveEvent:

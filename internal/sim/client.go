@@ -2,6 +2,7 @@ package sim
 
 import (
 	"context"
+	"sort"
 
 	"github.com/cicord/cicord/internal/discord"
 )
@@ -187,6 +188,42 @@ func (c *Client) KickMember(ctx context.Context, serverID, userID, reason string
 	return c.w.kickMember(c.a, serverID, userID, reason)
 }
 
+func (c *Client) UnbanMember(ctx context.Context, serverID, userID, reason string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return c.w.unbanMember(c.a, serverID, userID, reason)
+}
+func (c *Client) ListBans(ctx context.Context, serverID, after string, limit int) ([]discord.Ban, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c.w.mu.Lock()
+	defer c.w.mu.Unlock()
+	s, err := c.w.server(serverID)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.w.requireServer(c.a, s, permBan); err != nil {
+		return nil, err
+	}
+	if limit < 1 || limit > 1000 {
+		return nil, badRequest("invalid ban limit")
+	}
+	ids := sortedKeys(s.bans)
+	sort.Slice(ids, func(i, j int) bool { return discord.SnowflakeLess(ids[i], ids[j]) })
+	result := []discord.Ban{}
+	for _, id := range ids {
+		if after != "" && !discord.SnowflakeLess(after, id) {
+			continue
+		}
+		result = append(result, s.bans[id])
+		if len(result) == limit {
+			break
+		}
+	}
+	return result, nil
+}
 func (c *Client) BanMember(ctx context.Context, serverID, userID string, deleteMessageSeconds int, reason string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -218,6 +255,12 @@ func (c *Client) EditMessage(ctx context.Context, channelID, messageID string, m
 	return c.w.editMessageCall(c.a, channelID, messageID, m)
 }
 
+func (c *Client) BulkDeleteMessages(ctx context.Context, channelID string, ids []string, reason string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return c.w.bulkDeleteMessages(c.a, channelID, ids, reason)
+}
 func (c *Client) DeleteMessage(ctx context.Context, channelID, messageID, reason string) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -70,7 +70,7 @@ func (w *World) createServer(id, name, ownerID string, opts []ServerOption) disc
 		roles:      map[string]*discord.Role{id: {ID: id, Name: "@everyone", Permissions: DefaultEveryonePermissions}},
 		managedBy:  map[string]string{},
 		members:    map[string]*discord.Member{},
-		bans:       map[string]bool{},
+		bans:       map[string]discord.Ban{},
 		automod:    map[string]*discord.AutoModRule{},
 		emojis:     map[string]*discord.Emoji{},
 		stickers:   map[string]*discord.Sticker{},

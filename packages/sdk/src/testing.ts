@@ -65,6 +65,8 @@ export interface TestRoleInit {
   position?: number;
   /** Default false. */
   mentionable?: boolean;
+  /** Git declares role membership; bulk replacement must preserve it. */
+  declaredMembers?: boolean;
   /** Server-level permissions the role grants (`member.permissions`). Default none. */
   permissions?: Permission[];
 }
@@ -173,7 +175,7 @@ export interface SentMessage {
 
 export interface ModerationAction {
   member: string;
-  action: "timeout" | "kick" | "ban" | "nickname";
+  action: "timeout" | "kick" | "unban" | "ban" | "nickname";
   durationMs?: number;
   reason?: string;
   deleteMessagesSeconds?: number;
@@ -464,6 +466,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const deletedMessages: TestHarness["deletedMessages"] = [];
   const reactions: TestHarness["reactions"] = [];
   const moderation: ModerationAction[] = [];
+  const bans = new Map<string, { user: User; reason?: string }>();
   const createdChannels: TestHarness["createdChannels"] = [];
   const deletedChannels: TestHarness["deletedChannels"] = [];
   const editedChannels: TestHarness["editedChannels"] = [];
@@ -551,6 +554,11 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       async delete(reason) {
         need("discord.messages.manage");
         deletedMessages.push({ id: message.id, ...(reason ? { reason } : {}) });
+        messages.delete(message.id);
+        history.set(
+          channel.id,
+          (history.get(channel.id) ?? []).filter((m) => m.id !== message.id),
+        );
       },
       async react(emoji) {
         need("discord.reactions.manage");
@@ -591,6 +599,61 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       async send(input) {
         need(channel.type === "dm" ? "discord.dm.send" : "discord.messages.send");
         return post(channel, input);
+      },
+      async bulkDelete(ids, reason) {
+        need("discord.messages.read");
+        need("discord.messages.manage");
+        if (
+          channel.type === "dm" ||
+          ids.length === 0 ||
+          ids.length > 100 ||
+          new Set(ids).size !== ids.length
+        )
+          throw new Error("invalid bulk delete");
+        const selected = ids
+          .map((messageId) => messages.get(messageId))
+          .filter((m): m is Message => m?.channel.id === id);
+        const cutoff = Date.now() - 14 * 24 * 3600_000;
+        if (selected.some((m) => m.createdAt.getTime() <= cutoff))
+          throw new Error("message older than 14 days");
+        for (const m of selected) await m.delete(reason);
+        return selected.length;
+      },
+      async purge(filter) {
+        need("discord.messages.read");
+        need("discord.messages.manage");
+        if (
+          channel.type === "dm" ||
+          !Number.isInteger(filter.limit) ||
+          filter.limit < 1 ||
+          filter.limit > 1000
+        )
+          throw new Error("invalid purge");
+        if (
+          (filter.contains || filter.attachments !== undefined) &&
+          options.intents &&
+          !options.intents.includes("MessageContent")
+        )
+          throw new Error("purge requires MessageContent");
+        const candidates = (history.get(id) ?? [])
+          .toReversed()
+          .filter(
+            (m) =>
+              (!filter.before || idLess(m.id, filter.before)) &&
+              (!filter.after || idLess(filter.after, m.id)),
+          )
+          .slice(0, filter.limit);
+        const cutoff = Date.now() - 14 * 24 * 3600_000;
+        const selected = candidates.filter(
+          (m) =>
+            m.createdAt.getTime() > cutoff &&
+            (!filter.author || m.author.id === filter.author) &&
+            (filter.bots === undefined || m.author.bot === filter.bots) &&
+            (filter.attachments === undefined || m.attachments.length > 0 === filter.attachments) &&
+            (!filter.contains || m.content.includes(filter.contains)),
+        );
+        for (const m of selected) await m.delete(filter.reason);
+        return { deleted: selected.length, skipped: candidates.length - selected.length };
       },
       async messages(opts = {}) {
         need("discord.messages.read");
@@ -680,6 +743,22 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         const role = resolveRole(ref);
         return role ? owned.has(role.id) : false;
       },
+      async setRoles(refs, reason) {
+        need("discord.roles.assign");
+        const wanted = refs.map((ref) => {
+          const role = resolveRole(ref);
+          if (!role || role.id === server.id) throw new Error("unknown role or @everyone");
+          return role.id;
+        });
+        if (new Set(wanted).size !== wanted.length) throw new Error("duplicate role");
+        for (const [key, def] of Object.entries(options.roles ?? {})) {
+          const role = roles.get(key);
+          if (role && def.declaredMembers && owned.has(role.id) !== wanted.includes(role.id))
+            throw new Error("role membership is declared in git");
+        }
+        for (const id of owned) if (!wanted.includes(id)) change({ id }, "remove", reason);
+        for (const id of wanted) if (!owned.has(id)) change({ id }, "add", reason);
+      },
       async addRole(ref, reason) {
         change(ref, "add", reason);
       },
@@ -688,6 +767,9 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
       async setNickname(nickname, reason) {
         moderate({ member: user.id, action: "nickname", nickname, ...(reason ? { reason } : {}) });
+      },
+      async removeTimeout(reason) {
+        await this.timeout(0, reason);
       },
       async timeout(durationMs, reason) {
         moderate({ member: user.id, action: "timeout", durationMs, ...(reason ? { reason } : {}) });
@@ -704,6 +786,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
             ? { deleteMessagesSeconds: opts.deleteMessagesSeconds }
             : {}),
         });
+        bans.set(user.id, { user, ...(opts.reason ? { reason: opts.reason } : {}) });
       },
       async send(input) {
         need("discord.dm.send");
@@ -798,6 +881,38 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     name: options.server?.name ?? "Test Server",
     ...(options.server?.iconUrl ? { iconUrl: options.server.iconUrl } : {}),
     ...(ownerId !== undefined ? { ownerId } : {}),
+    async ban(id, opts = {}) {
+      need("discord.members.moderate");
+      if (
+        opts.deleteMessagesSeconds !== undefined &&
+        (!Number.isInteger(opts.deleteMessagesSeconds) ||
+          opts.deleteMessagesSeconds < 0 ||
+          opts.deleteMessagesSeconds > 604800)
+      )
+        throw new Error("invalid deleteMessagesSeconds");
+      const member = members.get(id);
+      if (member) {
+        await member.ban(opts);
+        return;
+      }
+      bans.set(id, { user: makeUser({ id }), ...(opts.reason ? { reason: opts.reason } : {}) });
+      moderation.push({ member: id, action: "ban", ...opts });
+    },
+    async unban(id, reason) {
+      need("discord.members.moderate");
+      if (bans.delete(id))
+        moderation.push({ member: id, action: "unban", ...(reason ? { reason } : {}) });
+    },
+    async bans({ limit = 100, after }: { limit?: number; after?: string } = {}) {
+      need("discord.members.moderate");
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+        throw new Error("bans(): limit must be between 1 and 1000");
+      return [...bans.entries()]
+        .filter(([id]) => !after || idLess(after, id))
+        .toSorted(([a], [b]) => (a === b ? 0 : idLess(a, b) ? -1 : 1))
+        .slice(0, limit)
+        .map(([, entry]) => entry);
+    },
     channel(ref) {
       need("discord.channels.read");
       const found = findChannel(ref);
@@ -1270,6 +1385,12 @@ function fakeInteraction(
         mention: "<#interaction-channel>",
         send: async () => {
           throw new Error("not supported in tests: pass `channel` in the call");
+        },
+        bulkDelete: async () => {
+          throw new Error("pass a channel to test bulkDelete");
+        },
+        purge: async () => {
+          throw new Error("pass a channel to test purge");
         },
         messages: async () => [],
         message: async () => undefined,

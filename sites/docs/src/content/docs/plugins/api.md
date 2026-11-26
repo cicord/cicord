@@ -101,6 +101,24 @@ warn about a declared `ServerMembers` without member handlers when the plugin ha
 `discord.members.read`. In tests, `createTestContext({ intents: [...] })` applies the same
 check.
 
+### Moderation
+
+With `discord.members.moderate`, `ctx.server.ban(userId, options)` can ban a user who has
+left the server. `ctx.server.unban(userId, reason)` also succeeds when the ban has already
+been lifted. Page through `ctx.server.bans({ limit, after })` in increasing user ID order
+(up to 1000 per call). The `banAdd` and `banRemove` events require `ServerModeration`.
+`member.removeTimeout(reason)` clears a timeout. `member.setRoles(roles, reason)` uses
+`discord.roles.assign` and a single member update. Changes to roles with Git-declared
+membership are refused. Discord enforces the managing bot's role hierarchy.
+
+A guild channel's `bulkDelete(ids, reason)` accepts 1–100 unique message IDs younger
+than 14 days. `purge({limit, author, contains, bots, attachments, before, after, reason})`
+examines at most `limit` messages (1–1000) newest first. Both methods require
+`discord.messages.read` and `discord.messages.manage`. Text and attachment filters
+also require the plugin's `MessageContent` intent. The result reports the counts of
+deleted and skipped messages. A plugin should show the scope and obtain moderator
+confirmation before a bulk action.
+
 ## Events
 
 From the official `welcome` plugin (intent `ServerMembers`):

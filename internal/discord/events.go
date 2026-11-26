@@ -8,6 +8,19 @@ type ReadyEvent struct {
 	ServerIDs []string
 }
 
+// Ban gateway notifications identify the affected user. Discord supplies no reason here.
+type BanAddEvent struct {
+	ServerID string
+	User     User
+}
+type BanRemoveEvent struct {
+	ServerID string
+	User     User
+}
+
+func (BanAddEvent) isEvent()    {}
+func (BanRemoveEvent) isEvent() {}
+
 type MemberJoinEvent struct{ Member Member }
 
 type MemberLeaveEvent struct {
@@ -147,6 +160,10 @@ func ServerIDOf(e Event) string {
 	switch ev := e.(type) {
 	case MemberJoinEvent:
 		return ev.Member.ServerID
+	case BanAddEvent:
+		return ev.ServerID
+	case BanRemoveEvent:
+		return ev.ServerID
 	case MemberLeaveEvent:
 		return ev.ServerID
 	case MemberUpdateEvent:

@@ -88,6 +88,8 @@ live in `examples/showcase/plugins/*/test` (`pnpm test`) and in the official reg
 | `schedules` (cron, UTC) | levels daily recap `0 9 * * *` | rt/Levels (`sched.runCron` two days ahead) | to verify (wait for 09:00 UTC or use a `@every 1m` copy) |
 | `ctx.schedule.after` and `tasks` | polls auto-close | rt/Polls (`sched.runTasks` in the future) | to verify |
 | `ctx.schedule.cancel` | polls closed by hand | rt/Polls (task gone from the store) | to verify |
+| Guild ban, list, unban, ban events, remove timeout, role replacement and filtered purge | Moderation SDK | `TestModerationSDK` | to verify |
+| Durable task delivery and operator recovery | Delayed plugin effects | `TestDurableTaskDelivery`, `TestDeadLetterAdministration`, SQLite and PostgreSQL conformance | verified on the simulator |
 | A task scheduled before a hot reload fires after it | polls | rt/Polls | to verify |
 | KV `get` / `set` / `delete` / `increment` / `list` | all | rt/* | n/a (runtime only) |
 | KV `ttlSeconds` (expiry) | moderation warnings, levels cooldown | rt/Moderation (warnings expire after about 2 s) | n/a |

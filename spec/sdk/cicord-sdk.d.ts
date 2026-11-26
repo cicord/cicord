@@ -210,7 +210,22 @@ export interface Channel {
   readonly mention: string;
 }
 
+export interface PurgeFilter {
+  limit: number;
+  author?: Snowflake;
+  contains?: string;
+  bots?: boolean;
+  attachments?: boolean;
+  before?: Snowflake;
+  after?: Snowflake;
+  reason?: string;
+}
+
 export interface TextChannel extends Channel {
+  /** Deletes up to 100 recent guild messages. Requires discord.messages.manage and discord.messages.read. */
+  bulkDelete(ids: Snowflake[], reason?: string): Promise<number>;
+  /** Scans up to limit messages, newest first. Old or nonmatching messages are counted as skipped. */
+  purge(filter: PurgeFilter): Promise<{ deleted: number; skipped: number }>;
   /** @capability discord.messages.send */
   send(message: MessageInput): Promise<Message>;
   /** @capability discord.messages.read */
@@ -247,12 +262,15 @@ export interface Member {
   readonly access?: "member" | "moderator" | "admin";
   hasRole(role: RoleRef): boolean;
   /** @capability discord.roles.assign */
+  setRoles(roles: RoleRef[], reason?: string): Promise<void>;
+  /** @capability discord.roles.assign */
   addRole(role: RoleRef, reason?: string): Promise<void>;
   /** @capability discord.roles.assign */
   removeRole(role: RoleRef, reason?: string): Promise<void>;
   /** @capability discord.members.manage */
   setNickname(nickname: string | null, reason?: string): Promise<void>;
   /** @capability discord.members.moderate */
+  removeTimeout(reason?: string): Promise<void>;
   timeout(durationMs: number, reason?: string): Promise<void>;
   /** @capability discord.members.moderate */
   kick(reason?: string): Promise<void>;
@@ -321,6 +339,12 @@ export interface EditChannelOptions {
 }
 
 export interface Server {
+  /** Ban a user, including one outside the server. @capability discord.members.moderate */
+  ban(userId: Snowflake, options?: { reason?: string; deleteMessagesSeconds?: number }): Promise<void>;
+  /** Lift a ban. Already unbanned is success. @capability discord.members.moderate */
+  unban(userId: Snowflake, reason?: string): Promise<void>;
+  /** Sorted by user ID, up to 1000 results. @capability discord.members.moderate */
+  bans(options?: { limit?: number; after?: Snowflake }): Promise<{user: User;reason?: string}[]>;
   readonly id: Snowflake;
   /** metadata.name of the Server resource. */
   readonly key: string;
@@ -751,6 +775,9 @@ export interface VoiceStateUpdate {
 
 export interface EventHandlers {
   /** @intent ServerMembers */
+  /** Both ban notifications need the ServerModeration intent. */
+  banAdd?(ctx: Context, event: {user: User;reason?: string}): Awaitable<void>;
+  banRemove?(ctx: Context, event: {user: User}): Awaitable<void>;
   memberJoin?(ctx: Context, member: Member): Awaitable<void>;
   /** @intent ServerMembers */
   memberLeave?(ctx: Context, user: User): Awaitable<void>;

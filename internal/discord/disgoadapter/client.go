@@ -342,6 +342,9 @@ func (s *session) GetMember(ctx context.Context, serverID, userID string) (disco
 
 func memberParamsBody(p discord.MemberParams) map[string]any {
 	body := map[string]any{}
+	if p.RoleIDs != nil {
+		body["roles"] = p.RoleIDs
+	}
 	if p.Nick != nil {
 		body["nick"] = nullIfEmpty(*p.Nick)
 	}
@@ -400,6 +403,41 @@ func (s *session) BanMember(ctx context.Context, serverID, userID string, delete
 	return s.do(ctx, "BanMember", rest.AddBan.Compile(nil, serverID, userID), body, nil, reason)
 }
 
+func (s *session) UnbanMember(ctx context.Context, serverID, userID, reason string) error {
+	if err := checkIDs("UnbanMember", serverID, userID); err != nil {
+		return err
+	}
+	return s.do(ctx, "UnbanMember", rest.DeleteBan.Compile(nil, serverID, userID), nil, nil, reason)
+}
+
+func (s *session) ListBans(ctx context.Context, serverID, after string, limit int) ([]discord.Ban, error) {
+	if err := checkIDs("ListBans", serverID); err != nil {
+		return nil, err
+	}
+	if limit < 1 || limit > 1000 {
+		return nil, fmt.Errorf("ListBans: %w: limit must be between 1 and 1000", discord.ErrBadRequest)
+	}
+	q := map[string]any{"limit": strconv.Itoa(limit)}
+	if after != "" {
+		if err := checkIDs("ListBans", after); err != nil {
+			return nil, err
+		}
+		q["after"] = after
+	}
+	var bans []struct {
+		User   wireUser `json:"user"`
+		Reason string   `json:"reason"`
+	}
+	if err := s.do(ctx, "ListBans", rest.GetBans.Compile(q, serverID), nil, &bans); err != nil {
+		return nil, err
+	}
+	result := make([]discord.Ban, 0, len(bans))
+	for _, b := range bans {
+		result = append(result, discord.Ban{User: userFromWire(b.User), Reason: b.Reason})
+	}
+	return result, nil
+}
+
 func (s *session) CreateDM(ctx context.Context, userID string) (discord.Channel, error) {
 	if err := checkIDs("CreateDM", userID); err != nil {
 		return discord.Channel{}, err
@@ -438,6 +476,19 @@ func (s *session) EditMessage(ctx context.Context, channelID, messageID string, 
 		return discord.Message{}, err
 	}
 	return messageFromWire(out), nil
+}
+
+func (s *session) BulkDeleteMessages(ctx context.Context, channelID string, ids []string, reason string) error {
+	if len(ids) < 2 || len(ids) > 100 {
+		return fmt.Errorf("BulkDeleteMessages: %w: expected 2 to 100 IDs", discord.ErrBadRequest)
+	}
+	if err := checkIDs("BulkDeleteMessages", channelID); err != nil {
+		return err
+	}
+	if err := checkIDs("BulkDeleteMessages", ids...); err != nil {
+		return err
+	}
+	return s.do(ctx, "BulkDeleteMessages", rest.BulkDeleteMessages.Compile(nil, channelID), map[string]any{"messages": ids}, nil, reason)
 }
 
 func (s *session) DeleteMessage(ctx context.Context, channelID, messageID, reason string) error {

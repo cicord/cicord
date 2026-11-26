@@ -106,6 +106,8 @@ func init() {
 	}
 	asyncOps = map[string]asyncOp{
 		"channel.send":         opChannelSend,
+		"channel.bulkDelete":   opChannelBulkDelete,
+		"channel.purge":        opChannelPurge,
 		"channel.messages":     opChannelMessages,
 		"channel.message":      opChannelMessage,
 		"channel.createThread": opChannelCreateThread,
@@ -113,11 +115,14 @@ func init() {
 		"message.edit":         opMessageEdit,
 		"message.delete":       opMessageDelete,
 		"message.react":        opMessageReact,
+		"member.setRoles":      opMemberSetRoles,
 		"member.addRole":       opMemberRole(true),
 		"member.removeRole":    opMemberRole(false),
 		"member.setNickname":   opMemberSetNickname,
 		"member.timeout":       opMemberTimeout,
 		"member.kick":          opMemberKick,
+		"server.unban":         opServerUnban,
+		"server.bans":          opServerBans,
 		"member.ban":           opMemberBan,
 		"member.send":          opMemberSend,
 		"member.moveTo":        opMemberMoveTo,
@@ -784,6 +789,66 @@ func opMemberRole(add bool) asyncOp {
 	}
 }
 
+// opMemberSetRoles changes the full role set in one Discord PATCH. Before replacing
+// it, compare with current membership to protect both additions and implicit removals.
+func opMemberSetRoles(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capRolesAssign); err != nil {
+		return nil, err
+	}
+	a, err := decode[struct {
+		UserID string `json:"userId"`
+		Roles  []ref  `json:"roles"`
+		Reason string `json:"reason"`
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkSnowflake("user", a.UserID); err != nil {
+		return nil, err
+	}
+	if a.Roles == nil || len(a.Roles) > 250 {
+		return nil, argErr("setRoles(): expected at most 250 roles")
+	}
+	ids := make([]string, 0, len(a.Roles))
+	wanted := map[string]bool{}
+	for _, role := range a.Roles {
+		id, err := i.resolve(state.KindRole, role)
+		if err != nil {
+			return nil, err
+		}
+		if id == i.env.ServerID || wanted[id] {
+			return nil, argErr("setRoles(): duplicate role or @everyone")
+		}
+		ids = append(ids, id)
+		wanted[id] = true
+	}
+	protected := map[string]bool{}
+	for _, key := range i.env.DeclaredMemberRoles {
+		id, err := i.resolve(state.KindRole, ref{Key: key, set: true})
+		if err != nil {
+			return nil, err
+		}
+		protected[id] = true
+	}
+	return func(ctx context.Context) (any, error) {
+		member, err := i.env.Discord.GetMember(ctx, i.env.ServerID, a.UserID)
+		if err != nil {
+			return nil, err
+		}
+		for id := range protected {
+			if wanted[id] != member.HasRole(id) {
+				return nil, argErr("setRoles(): membership of role %s is declared in git", id)
+			}
+		}
+		// Discord enforces the managing bot's role hierarchy and integration roles.
+		result, err := i.env.Discord.UpdateMember(ctx, i.env.ServerID, a.UserID, discord.MemberParams{RoleIDs: ids}, a.Reason)
+		if err != nil {
+			return nil, err
+		}
+		return i.memberDTO(result).Roles, nil
+	}, nil
+}
+
 func opMemberSetNickname(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
 	a, err := memberOp(i, capMembersManage, args)
 	if err != nil {
@@ -837,6 +902,60 @@ func opMemberBan(i *Instance, _ *invocation, args json.RawMessage) (func(context
 	}
 	return func(ctx context.Context) (any, error) {
 		return nil, i.env.Discord.BanMember(ctx, i.env.ServerID, a.UserID, a.DeleteMessagesSeconds, a.Reason)
+	}, nil
+}
+
+func opServerUnban(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	a, err := memberOp(i, capMembersModerate, args)
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context) (any, error) {
+		err := i.env.Discord.UnbanMember(ctx, i.env.ServerID, a.UserID, a.Reason)
+		// An already-lifted ban is success, including when an expiry runs again after restart.
+		if errors.Is(err, discord.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}, nil
+}
+func opServerBans(i *Instance, _ *invocation, args json.RawMessage) (func(context.Context) (any, error), error) {
+	if err := i.require(capMembersModerate); err != nil {
+		return nil, err
+	}
+	a, err := decode[struct {
+		Limit *int   `json:"limit"`
+		After string `json:"after"`
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	limit := 100
+	if a.Limit != nil {
+		limit = *a.Limit
+	}
+	if limit < 1 || limit > 1000 {
+		return nil, argErr("bans(): limit must be between 1 and 1000")
+	}
+	if a.After != "" {
+		if err := checkSnowflake("after", a.After); err != nil {
+			return nil, err
+		}
+	}
+	return func(ctx context.Context) (any, error) {
+		bans, err := i.env.Discord.ListBans(ctx, i.env.ServerID, a.After, limit)
+		if err != nil {
+			return nil, err
+		}
+		type entry struct {
+			User   userDTO `json:"user"`
+			Reason string  `json:"reason,omitempty"`
+		}
+		out := make([]entry, 0, len(bans))
+		for _, b := range bans {
+			out = append(out, entry{User: i.userDTO(b.User), Reason: b.Reason})
+		}
+		return out, nil
 	}, nil
 }
 

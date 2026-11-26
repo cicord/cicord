@@ -116,7 +116,7 @@ type serverState struct {
 	managedBy   map[string]string // role ID → bot user ID for managed roles
 	members     map[string]*discord.Member
 	memberOrder []string
-	bans        map[string]bool
+	bans        map[string]discord.Ban
 	channelIDs  []string // creation order, threads included
 
 	// Discord parity: server-level settings and expressions.

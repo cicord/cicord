@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -422,6 +423,12 @@ func (u User) DisplayName() string {
 	return u.Username
 }
 
+// Ban identifies a user banned from a server, including the recorded reason.
+type Ban struct {
+	User   User
+	Reason string
+}
+
 type Member struct {
 	ServerID string
 	User     User
@@ -461,7 +468,8 @@ func (m Member) HasRole(roleID string) bool {
 }
 
 type MemberParams struct {
-	Nick *string // "" resets the nickname
+	RoleIDs []string // nil leaves roles alone; an empty slice clears them
+	Nick    *string  // "" resets the nickname
 	// TimeoutUntil: non-nil sets a timeout; a pointer to the zero time removes it.
 	TimeoutUntil *time.Time
 	// VoiceChannelID moves a member connected to voice to that voice channel; a pointer
@@ -918,6 +926,8 @@ type Client interface {
 	RemoveMemberRole(ctx context.Context, serverID, userID, roleID, reason string) error
 	KickMember(ctx context.Context, serverID, userID, reason string) error
 	BanMember(ctx context.Context, serverID, userID string, deleteMessageSeconds int, reason string) error
+	UnbanMember(ctx context.Context, serverID, userID, reason string) error
+	ListBans(ctx context.Context, serverID, after string, limit int) ([]Ban, error)
 
 	// CreateDM opens (or returns) the DM channel with a user.
 	CreateDM(ctx context.Context, userID string) (Channel, error)
@@ -925,6 +935,7 @@ type Client interface {
 	SendMessage(ctx context.Context, channelID string, m MessageCreate) (Message, error)
 	EditMessage(ctx context.Context, channelID, messageID string, m MessageCreate) (Message, error)
 	DeleteMessage(ctx context.Context, channelID, messageID, reason string) error
+	BulkDeleteMessages(ctx context.Context, channelID string, ids []string, reason string) error
 	ListMessages(ctx context.Context, channelID string, p ListMessagesParams) ([]Message, error)
 	// GetMessage returns one message of a channel (ErrNotFound when it does not exist).
 	GetMessage(ctx context.Context, channelID, messageID string) (Message, error)
@@ -951,6 +962,15 @@ type MemberLister interface {
 
 // MaxListedMembers bounds ListMembers: a larger server is an error, not a partial list.
 const MaxListedMembers = 100_000
+
+// SnowflakeTime decodes the creation timestamp of a Discord snowflake.
+func SnowflakeTime(id string) time.Time {
+	n, err := strconv.ParseUint(id, 10, 64)
+	if err != nil || n == 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(int64(n>>22) + 1420070400000).UTC()
+}
 
 // SnowflakeLess compares two snowflakes (decimal IDs without leading zeros) numerically.
 func SnowflakeLess(a, b string) bool {

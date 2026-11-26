@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cicord/cicord/internal/discord"
@@ -398,6 +399,36 @@ func (w *World) editMessageCall(a actor, channelID, messageID string, m discord.
 	w.editMessage(ms, m)
 	w.recordOK(a, "EditMessage", serverID, messageID, "")
 	return cloneMessage(ms.msg), nil
+}
+
+func (w *World) bulkDeleteMessages(a actor, channelID string, ids []string, reason string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ch, err := w.channel(channelID)
+	if err != nil {
+		return err
+	}
+	if ch.ch.ServerID == "" || len(ids) < 2 || len(ids) > 100 {
+		return badRequest("bulk delete expects 2 to 100 guild messages")
+	}
+	if err := w.requireChannel(a, ch, permManageMessages); err != nil {
+		return err
+	}
+	cutoff := w.now().Add(-14 * 24 * time.Hour)
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if seen[id] || !discord.SnowflakeTime(id).After(cutoff) {
+			return badRequest("invalid bulk delete message")
+		}
+		seen[id] = true
+	}
+	for _, id := range ids {
+		if m := w.messages[id]; m != nil && m.msg.ChannelID == channelID {
+			w.removeMessage(ch, m)
+		}
+	}
+	w.recordOK(a, "BulkDeleteMessages", ch.ch.ServerID, channelID, reason)
+	return nil
 }
 
 func (w *World) deleteMessage(a actor, channelID, messageID, reason string) error {

@@ -55,6 +55,8 @@ type Env struct {
 	// ServerMembers reports that the plugin declares the ServerMembers intent in plugin.yaml,
 	// which role.members() requires (it lists the server's members).
 	ServerMembers bool
+	// Membership of these role keys is declared in the active Git revision.
+	DeclaredMemberRoles []string
 	// ServerVoiceStates reports that the plugin declares the ServerVoiceStates intent in
 	// plugin.yaml, which server.voiceMembers() requires.
 	ServerVoiceStates bool

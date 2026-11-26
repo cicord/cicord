@@ -440,6 +440,12 @@ func (i *Instance) noteMessageChannel(m discord.Message) {
 func (i *Instance) eventDTO(ev discord.Event) eventDTO {
 	var d eventDTO
 	switch e := ev.(type) {
+	case discord.BanAddEvent:
+		u := i.userDTO(e.User)
+		d.User = &u
+	case discord.BanRemoveEvent:
+		u := i.userDTO(e.User)
+		d.User = &u
 	case discord.MemberJoinEvent:
 		m := i.memberDTO(e.Member)
 		d.Member = &m

@@ -31,7 +31,7 @@ func (w *World) addMember(serverID, userID string) error {
 	if m := s.members[userID]; m != nil {
 		return nil
 	}
-	if s.bans[userID] {
+	if _, ok := s.bans[userID]; ok {
 		return forbidden("user %s is banned from server %s", userID, serverID)
 	}
 	m := &discord.Member{ServerID: serverID, User: u.user, RoleIDs: []string{}, JoinedAt: w.now()}
@@ -95,7 +95,7 @@ func (w *World) AddBotToServer(serverID, botUserID string, perms discord.Permiss
 	if s.members[botUserID] != nil {
 		return discord.Role{}, badRequest("bot %s is already in server %s", botUserID, serverID)
 	}
-	if s.bans[botUserID] {
+	if _, ok := s.bans[botUserID]; ok {
 		return discord.Role{}, forbidden("bot %s is banned from server %s", botUserID, serverID)
 	}
 	var role discord.Role
@@ -184,6 +184,30 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 	}
 	prev := cloneMember(*m)
 	next := cloneMember(*m)
+	if p.RoleIDs != nil {
+		if err := w.requireServer(a, s, permManageRoles); err != nil {
+			return fail(err)
+		}
+		wanted := map[string]bool{}
+		for _, id := range p.RoleIDs {
+			if s.roles[id] == nil || id == serverID || wanted[id] {
+				return fail(badRequest("invalid role %s", id))
+			}
+			wanted[id] = true
+		}
+		for id, r := range s.roles {
+			if m.HasRole(id) == wanted[id] {
+				continue
+			}
+			if r.Managed {
+				return fail(forbidden("cannot change managed role %s", id))
+			}
+			if err := w.requireAbove(a, s, r.Position, "role "+r.Name); err != nil {
+				return fail(err)
+			}
+		}
+		next.RoleIDs = append([]string{}, p.RoleIDs...)
+	}
 	if p.Nick != nil {
 		if utf8.RuneCountInString(*p.Nick) > 32 {
 			return fail(badRequest("nickname must be at most 32 characters"))
@@ -234,7 +258,7 @@ func (w *World) updateMember(a actor, serverID, userID string, p discord.MemberP
 	}
 	*m = next
 	w.recordOK(a, "UpdateMember", serverID, userID, reason)
-	if p.Nick != nil || p.TimeoutUntil != nil {
+	if p.Nick != nil || p.TimeoutUntil != nil || p.RoleIDs != nil {
 		w.emit(discord.MemberUpdateEvent{Member: cloneMember(*m), Previous: &prev})
 		w.auditMemberUpdate(serverID, a.userID, prev, next)
 	}
@@ -338,10 +362,11 @@ func (w *World) banMember(a actor, serverID, userID string, deleteSeconds int, r
 	}
 	deleteSeconds = min(max(deleteSeconds, 0), 604800) // clamped, like the disgo adapter
 	w.recordOK(a, "BanMember", serverID, userID, reason)
-	s.bans[userID] = true
+	s.bans[userID] = discord.Ban{User: w.users[userID].user, Reason: reason}
 	if s.members[userID] != nil {
 		w.dropMember(s, userID)
 	}
+	w.emit(discord.BanAddEvent{ServerID: serverID, User: w.users[userID].user})
 	w.auditLog(serverID, a.userID, discord.AuditMemberBanAdd, userID)
 	if deleteSeconds > 0 {
 		cutoff := w.now().Add(-time.Duration(deleteSeconds) * time.Second)
@@ -435,18 +460,27 @@ func (w *World) setPresence(a actor, p discord.Presence) error {
 
 // UnbanMember lifts a ban (as the server owner).
 func (w *World) UnbanMember(serverID, userID string) error {
+	return w.unbanMember(w.ownerOf(serverID), serverID, userID, "")
+}
+func (w *World) unbanMember(a actor, serverID, userID, reason string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	s, err := w.server(serverID)
 	if err != nil {
 		return err
 	}
-	if !s.bans[userID] {
+	if err := w.requireServer(a, s, permBan); err != nil {
+		return err
+	}
+	if _, ok := s.bans[userID]; !ok {
 		return notFound("unknown ban %s", userID)
 	}
+	user := s.bans[userID].User
 	delete(s.bans, userID)
+	w.emit(discord.BanRemoveEvent{ServerID: serverID, User: user})
 	w.changed()
-	w.auditLog(serverID, s.info.OwnerID, discord.AuditMemberBanRemove, userID)
+	w.recordOK(a, "UnbanMember", serverID, userID, reason)
+	w.auditLog(serverID, a.userID, discord.AuditMemberBanRemove, userID)
 	return nil
 }
 

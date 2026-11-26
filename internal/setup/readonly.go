@@ -181,6 +181,12 @@ func (r *ReadOnlyClient) RemoveMemberRole(context.Context, string, string, strin
 func (r *ReadOnlyClient) KickMember(context.Context, string, string, string) error {
 	return r.deny("KickMember")
 }
+func (r *ReadOnlyClient) ListBans(ctx context.Context, serverID, after string, limit int) ([]discord.Ban, error) {
+	return r.read().ListBans(ctx, serverID, after, limit)
+}
+func (r *ReadOnlyClient) UnbanMember(context.Context, string, string, string) error {
+	return r.deny("UnbanMember")
+}
 func (r *ReadOnlyClient) BanMember(context.Context, string, string, int, string) error {
 	return r.deny("BanMember")
 }
@@ -192,6 +198,9 @@ func (r *ReadOnlyClient) SendMessage(context.Context, string, discord.MessageCre
 }
 func (r *ReadOnlyClient) EditMessage(context.Context, string, string, discord.MessageCreate) (discord.Message, error) {
 	return discord.Message{}, r.deny("EditMessage")
+}
+func (r *ReadOnlyClient) BulkDeleteMessages(context.Context, string, []string, string) error {
+	return r.deny("BulkDeleteMessages")
 }
 func (r *ReadOnlyClient) DeleteMessage(context.Context, string, string, string) error {
 	return r.deny("DeleteMessage")

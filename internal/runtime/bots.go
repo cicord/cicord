@@ -292,8 +292,15 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		network = m.Spec.Network.Allow
 	}
 	srvName := srt.cache.Server().Name
+	var declaredMemberRoles []string
+	for key, role := range srt.cfg.Spec.Roles {
+		if role.Members != nil {
+			declaredMemberRoles = append(declaredMemberRoles, key)
+		}
+	}
 	env := plugin.Env{
-		BotKey: in.Bot, InstanceName: in.Name, PluginName: m.Metadata.Name, PluginVersion: m.Metadata.Version,
+		DeclaredMemberRoles: declaredMemberRoles,
+		BotKey:              in.Bot, InstanceName: in.Name, PluginName: m.Metadata.Name, PluginVersion: m.Metadata.Version,
 		Bot: host.session.Self(), ApplicationID: host.session.ApplicationID(),
 		ServerKey: in.Server, ServerID: srt.cfg.Spec.DiscordID, ServerName: srvName, ServerIconURL: srt.cache.Server().IconURL,
 		Config: in.Config, Grants: in.Grants, NetworkAllow: network, AllowPrivateNetworks: r.opts.AllowPrivateNetworks,

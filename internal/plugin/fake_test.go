@@ -115,6 +115,9 @@ func (f *fakeDiscord) EditMessage(ctx context.Context, channelID, messageID stri
 	return discord.Message{ID: messageID, ChannelID: channelID, Content: m.Content}, nil
 }
 
+func (f *fakeDiscord) BulkDeleteMessages(ctx context.Context, channel string, ids []string, reason string) error {
+	return f.record(ctx, "BulkDeleteMessages", channel, ids, reason)
+}
 func (f *fakeDiscord) DeleteMessage(ctx context.Context, channelID, messageID, reason string) error {
 	return f.record(ctx, "DeleteMessage", channelID, messageID, reason)
 }
@@ -163,6 +166,13 @@ func (f *fakeDiscord) UpdateMember(ctx context.Context, serverID, userID string,
 
 func (f *fakeDiscord) KickMember(ctx context.Context, serverID, userID, reason string) error {
 	return f.record(ctx, "KickMember", serverID, userID, reason)
+}
+
+func (f *fakeDiscord) UnbanMember(ctx context.Context, serverID, userID, reason string) error {
+	return f.record(ctx, "UnbanMember", serverID, userID, reason)
+}
+func (f *fakeDiscord) ListBans(ctx context.Context, serverID, after string, limit int) ([]discord.Ban, error) {
+	return nil, f.record(ctx, "ListBans", serverID, after, limit)
 }
 
 func (f *fakeDiscord) BanMember(ctx context.Context, serverID, userID string, del int, reason string) error {

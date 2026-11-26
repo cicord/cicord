@@ -183,6 +183,12 @@
     async send(message) {
       return mkMessage(await acall("channel.send", { channelId: this.id, message: msgIn(message) }));
     },
+    async bulkDelete(ids, reason) {
+      return acall("channel.bulkDelete", {channelId:this.id,ids,reason});
+    },
+    async purge(filter) {
+      return acall("channel.purge", Object.assign({},filter,{channelId:this.id}));
+    },
     async messages(options) {
       const o = options || {};
       const list = await acall("channel.messages", { channelId: this.id, limit: o.limit, before: o.before, after: o.after });
@@ -251,6 +257,11 @@
       const id = hcall("resolve.role", { ref: role });
       return rolesOf(this).some((r) => r.id === id);
     },
+    async setRoles(roles, reason) {
+      if (!Array.isArray(roles)) throw new TypeError("setRoles(): expected roles");
+      const updated = await acall("member.setRoles", { userId: this.id, roles: roles.map(refIn), reason });
+      memberRoles.set(this, updated.map(mkRole));
+    },
     async addRole(role, reason) {
       const r = mkRole(await acall("member.addRole", { userId: this.id, role, reason }));
       const list = memberRoles.get(this);
@@ -264,6 +275,7 @@
     async setNickname(nickname, reason) {
       await acall("member.setNickname", { userId: this.id, nickname: nickname === null || nickname === undefined ? "" : String(nickname), reason });
     },
+    async removeTimeout(reason) { await acall("member.timeout", { userId: this.id, durationMs: 0, reason }); },
     async timeout(durationMs, reason) {
       await acall("member.timeout", { userId: this.id, durationMs: Number(durationMs), reason });
     },
@@ -421,6 +433,14 @@
       key: d.server.key,
       name: d.server.name,
       iconUrl: d.server.iconUrl || undefined,
+      async ban(userId, options = {}) {
+        await acall("member.ban", {userId: String(userId), reason: options.reason, deleteMessagesSeconds: options.deleteMessagesSeconds});
+      },
+      async unban(userId, reason) { await acall("server.unban", {userId: String(userId), reason}); },
+      async bans(options = {}) {
+        const entries=await acall("server.bans", {limit: options.limit, after: options.after});
+        return freeze(entries.map(b => freeze({user: mkUser(b.user), reason: b.reason})));
+      },
       get ownerId() { return hcall("server.owner", {}) || undefined; },
       channel(ref) { return mkChannel(hcall("server.channel", { ref })); },
       role(ref) { return mkRole(hcall("server.role", { ref })); },
@@ -636,6 +656,8 @@
 
   function eventArgs(name, d) {
     switch (name) {
+      case "banAdd":
+      case "banRemove": return [freeze({ user: mkUser(d.user) })];
       case "memberJoin": return [mkMember(d.member)];
       case "memberLeave": return [mkUser(d.user)];
       case "memberUpdate": return [mkMember(d.member), d.previous ? mkMember(d.previous) : undefined];

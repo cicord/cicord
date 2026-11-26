@@ -2,7 +2,6 @@ package analytics
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -208,11 +207,7 @@ const discordEpochMs = 1420070400000
 
 // SnowflakeTime returns the creation time encoded in a Discord ID (zero when invalid).
 func SnowflakeTime(id string) time.Time {
-	v, err := strconv.ParseUint(id, 10, 64)
-	if err != nil || v == 0 {
-		return time.Time{}
-	}
-	return time.UnixMilli(int64(v>>22) + discordEpochMs).UTC()
+	return discord.SnowflakeTime(id)
 }
 
 // AccountAgeBucket returns the AccountAgeBuckets label of an account created at the

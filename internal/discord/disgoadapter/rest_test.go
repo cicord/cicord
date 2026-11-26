@@ -514,3 +514,25 @@ func TestListMembersPages(t *testing.T) {
 		t.Errorf("403 = %v", err)
 	}
 }
+
+func TestModerationRequests(t *testing.T) {
+	f := newFakeDiscord(t)
+	f.json("GET /guilds/1/bans", 200, `[{"reason":"reviewed","user":{"id":"31","username":"example"}}]`)
+	f.json("DELETE /guilds/1/bans/31", 204, "")
+	f.json("POST /channels/10/messages/bulk-delete", 204, "")
+	f.json("PATCH /guilds/1/members/31", 200, `{"user":{"id":"31","username":"example"},"roles":[]}`)
+	s := f.connect(t)
+	bans, err := s.ListBans(t.Context(), "1", "20", 10)
+	if err != nil || len(bans) != 1 || bans[0].User.ID != "31" || bans[0].Reason != "reviewed" || f.last().URI != "/guilds/1/bans?after=20&limit=10" {
+		t.Fatalf("list bans: %+v, %s, %v", bans, f.last().URI, err)
+	}
+	if err := s.UnbanMember(t.Context(), "1", "31", "expiry"); err != nil || f.last().Reason != "expiry" {
+		t.Fatalf("unban: %+v %v", f.last(), err)
+	}
+	if err := s.BulkDeleteMessages(t.Context(), "10", []string{"31", "32"}, "purge"); err != nil || !reflect.DeepEqual(f.last().Body, map[string]any{"messages": []any{"31", "32"}}) {
+		t.Fatalf("bulk delete: %+v %v", f.last(), err)
+	}
+	if _, err := s.UpdateMember(t.Context(), "1", "31", discord.MemberParams{RoleIDs: []string{}}, "release"); err != nil || !reflect.DeepEqual(f.last().Body, map[string]any{"roles": []any{}}) {
+		t.Fatalf("set roles: %+v %v", f.last(), err)
+	}
+}

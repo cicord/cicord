@@ -126,6 +126,15 @@ func (s *session) translate(t string, d []byte) ([]discord.Event, error) {
 		prev := s.members.swap(mem)
 		return []discord.Event{discord.MemberUpdateEvent{Member: mem, Previous: prev}}, nil
 
+	case "GUILD_BAN_ADD", "GUILD_BAN_REMOVE":
+		var r wireMemberRemove
+		if err := json.Unmarshal(d, &r); err != nil {
+			return nil, err
+		}
+		if t == "GUILD_BAN_ADD" {
+			return []discord.Event{discord.BanAddEvent{ServerID: r.GuildID, User: userFromWire(r.User)}}, nil
+		}
+		return []discord.Event{discord.BanRemoveEvent{ServerID: r.GuildID, User: userFromWire(r.User)}}, nil
 	case "GUILD_MEMBER_REMOVE":
 		var r wireMemberRemove
 		if err := json.Unmarshal(d, &r); err != nil {

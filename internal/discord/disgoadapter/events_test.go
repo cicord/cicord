@@ -394,3 +394,16 @@ func TestTranslateServerJoinLeave(t *testing.T) {
 		t.Errorf("guild of the new READY emitted %v", evs)
 	}
 }
+
+func TestTranslateBans(t *testing.T) {
+	s := testSession()
+	body := `{"guild_id":"100","user":{"id":"200","username":"member"}}`
+	added := one(t, mustTranslate(t, s, "GUILD_BAN_ADD", body))
+	removed := one(t, mustTranslate(t, s, "GUILD_BAN_REMOVE", body))
+	if a, ok := added.(discord.BanAddEvent); !ok || a.User.ID != "200" || a.ServerID != "100" {
+		t.Fatalf("add: %+v", added)
+	}
+	if r, ok := removed.(discord.BanRemoveEvent); !ok || r.User.ID != "200" || r.ServerID != "100" {
+		t.Fatalf("remove: %+v", removed)
+	}
+}

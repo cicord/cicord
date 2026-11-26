@@ -6,6 +6,14 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- Scheduled plugin tasks survive a worker interruption. Failures are retried, and admins
+  can inspect, retry or discard failed tasks in Diagnostics.
+- The moderation SDK supports guild bans and unbans, paginated bans, ban events, clearing a
+  timeout, replacing member roles and bounded message purges.
+
+
 ## [0.1.11] - 2026-11-25
 
 ### Changed
