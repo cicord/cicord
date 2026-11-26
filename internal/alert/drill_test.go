@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cicord/cicord/internal/api"
+	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/runtime"
@@ -116,6 +117,9 @@ func TestAlertDrillTicketCreationFails(t *testing.T) {
 	httpSrv := httptest.NewServer(api.New(api.Options{Runtime: rt, Mode: "dev", Logger: logger}))
 	defer httpSrv.Close()
 
+	if err := build.PrepareCompiler(); err != nil {
+		t.Fatal(err)
+	}
 	waitUntil(t, "first revision", func() bool { _, ok := rt.Revision(); return ok })
 	for _, p := range rt.Status().Bots[0].Plugins {
 		if p.Health != runtime.HealthHealthy {

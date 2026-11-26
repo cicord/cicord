@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/sim"
@@ -126,6 +127,9 @@ func startShowcase(t *testing.T, o showcaseOpts) *showcase {
 		src.Close()
 		store.Close()
 	})
+	if err := build.PrepareCompiler(); err != nil {
+		t.Fatal(err)
+	}
 	e.waitFor("first revision", func() bool { _, ok := rt.Revision(); return ok })
 	s := &showcase{env: e, store: store, owner: owner, logs: logs}
 	for _, p := range rt.Status().Bots[0].Plugins {

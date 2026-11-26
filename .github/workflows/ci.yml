@@ -53,6 +53,11 @@ jobs:
           go generate ./internal/build
           git diff --exit-code -- internal/build/compiler.wasm.gz
       - run: go vet ./...
+      - name: Check package confinement with a cold compiler
+        run: |
+          compiler_cache="$(mktemp -d "$RUNNER_TEMP/cicord-compiler.XXXXXXXX")"
+          echo "CICORD_COMPILER_CACHE_DIR=$compiler_cache" >> "$GITHUB_ENV"
+          CICORD_COMPILER_CACHE_DIR="$compiler_cache" go test -count=1 -run '^TestReviewedPackageBoundary$' ./internal/build
       - run: go test -race ./...
       - run: CGO_ENABLED=0 go build -o bin/cicord ./cmd/cicord
       - run: ./bin/cicord validate examples/basic

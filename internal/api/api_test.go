@@ -23,6 +23,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/metrics"
@@ -162,6 +163,9 @@ func startFull(t *testing.T, prepare func(dir string), rtMod func(*runtime.Optio
 		store.Close()
 	})
 	e := &env{t: t, world: w, rt: rt, repo: repo, seed: seed, dir: dir, ts: ts}
+	if err := build.PrepareCompiler(); err != nil {
+		t.Fatal(err)
+	}
 	e.waitFor("first revision", func() bool { _, ok := rt.Revision(); return ok })
 	return e
 }

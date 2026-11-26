@@ -34,6 +34,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -180,7 +181,7 @@ func sharedFor(ctx context.Context, pages uint32) (*shared, error) {
 		_ = rt.Close(ctx)
 		return nil, fmt.Errorf("qjs: host module: %w", err)
 	}
-	mod, err := rt.CompileModule(ctx, wasmBytes)
+	mod, err := rt.CompileModule(experimental.WithCompilationWorkers(ctx, min(runtime.GOMAXPROCS(0), 4)), wasmBytes)
 	if err != nil {
 		_ = rt.Close(ctx)
 		return nil, fmt.Errorf("qjs: compile quickjs.wasm: %w", err)

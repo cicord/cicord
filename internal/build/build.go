@@ -28,12 +28,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing/fstest"
 	"time"
 
 	"github.com/cicord/cicord/internal/build/protocol"
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
@@ -56,12 +58,7 @@ type compiler struct {
 var buildSlots = make(chan struct{}, 2)
 
 var prepareCompiler = sync.OnceValues(func() (*compiler, error) {
-	ctx := context.Background()
-	rt := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithMemoryLimitPages(4096).WithCloseOnContextDone(true))
-	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
-		_ = rt.Close(ctx)
-		return nil, err
-	}
+	ctx := experimental.WithCompilationWorkers(context.Background(), min(runtime.GOMAXPROCS(0), 16))
 	reader, err := gzip.NewReader(bytes.NewReader(compilerGzip))
 	if err != nil {
 		return nil, err
@@ -71,13 +68,40 @@ var prepareCompiler = sync.OnceValues(func() (*compiler, error) {
 	if err != nil {
 		return nil, err
 	}
+	cache, finish := compilerDiskCache()
+	ready := false
+	defer func() { finish(ready) }()
+	cfg := wazero.NewRuntimeConfig().WithMemoryLimitPages(4096).WithCloseOnContextDone(true)
+	if cache != nil {
+		engine, err := compileEngine(ctx, cfg.WithCompilationCache(cache), wasm)
+		if err == nil {
+			ready = true
+			return engine, nil
+		}
+		// The cache is optional; for example a read-only or full volume must
+		// not prevent compiling the trusted, embedded worker.
+		_ = cache.Close(ctx)
+	}
+	return compileEngine(ctx, cfg, wasm)
+})
+
+func compileEngine(ctx context.Context, cfg wazero.RuntimeConfig, wasm []byte) (*compiler, error) {
+	rt := wazero.NewRuntimeWithConfig(ctx, cfg)
+	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
+		_ = rt.Close(ctx)
+		return nil, err
+	}
 	module, err := rt.CompileModule(ctx, wasm)
 	if err != nil {
 		_ = rt.Close(ctx)
 		return nil, err
 	}
 	return &compiler{rt, module}, nil
-})
+}
+
+// PrepareCompiler loads the fixed WASI toolchain without inspecting a plugin.
+// Fixtures can initialize it separately from deadlines for revision activation.
+func PrepareCompiler() error { _, err := prepareCompiler(); return err }
 
 type boundedOutput struct{ bytes.Buffer }
 
@@ -120,8 +144,42 @@ func BundleAssets(pluginDir, entry, assets string) (Result, error) {
 	case <-ctx.Done():
 		return Result{}, ctx.Err()
 	}
+	out, err := bundlePackage(ctx, engine, packageFS{root}, entry)
+	if err != nil {
+		return Result{}, err
+	}
+	if assets != "" {
+		files, err := readAssets(root, assets)
+		if err != nil {
+			return Result{}, err
+		}
+		data, err := json.Marshal(files)
+		if err != nil {
+			return Result{}, err
+		}
+		out.Code += AssetMarker + string(data) + "\n"
+	}
+	return out, nil
+}
+
+func bundlePackage(ctx context.Context, engine *compiler, sources fs.FS, entry string) (Result, error) {
+	snapshot, key := snapshotForBundle(sources, entry)
+	if snapshot != nil {
+		if hit, ok := bundles.get(key); ok {
+			return hit, nil
+		}
+		sources = snapshot
+	}
+	result, err := runCompiler(ctx, engine, sources, entry)
+	if err == nil && snapshot != nil {
+		bundles.put(key, result)
+	}
+	return result, err
+}
+
+func runCompiler(ctx context.Context, engine *compiler, sources fs.FS, entry string) (Result, error) {
 	var output boundedOutput
-	cfg := wazero.NewModuleConfig().WithName("").WithArgs("cicord-build", entry).WithStdout(&output).WithFSConfig(wazero.NewFSConfig().WithFSMount(fstest.MapFS{"plugin": &fstest.MapFile{Mode: fs.ModeDir | 0555}}, "/").WithFSMount(packageFS{root}, "/plugin"))
+	cfg := wazero.NewModuleConfig().WithName("").WithArgs("cicord-build", entry).WithStdout(&output).WithFSConfig(wazero.NewFSConfig().WithFSMount(fstest.MapFS{"plugin": &fstest.MapFile{Mode: fs.ModeDir | 0555}}, "/").WithFSMount(sources, "/plugin"))
 	module, err := engine.runtime.InstantiateModule(ctx, engine.module, cfg)
 	if module != nil {
 		defer module.Close(context.Background())
@@ -136,17 +194,5 @@ func BundleAssets(pluginDir, entry, assets string) (Result, error) {
 	if len(reply.Errors) > 0 {
 		return Result{}, &Error{Messages: reply.Errors}
 	}
-	out := reply.Result
-	if assets != "" {
-		files, err := readAssets(root, assets)
-		if err != nil {
-			return Result{}, err
-		}
-		data, err := json.Marshal(files)
-		if err != nil {
-			return Result{}, err
-		}
-		out.Code += AssetMarker + string(data) + "\n"
-	}
-	return out, nil
+	return reply.Result, nil
 }

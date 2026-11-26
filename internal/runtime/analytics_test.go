@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cicord/cicord/internal/analytics"
+	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/sim"
 	"github.com/cicord/cicord/internal/source"
@@ -165,6 +166,9 @@ func startAnalytics(t *testing.T, alphaIntents, serverAnalytics string) *analyti
 		st.Close()
 	})
 	e := &env{t: t, rt: rt}
+	if err := build.PrepareCompiler(); err != nil {
+		t.Fatal(err)
+	}
 	e.waitFor("first revision", func() bool { _, ok := rt.Revision(); return ok })
 	return &analyticsEnv{world: w, rt: rt, store: mem, srv: srv, general: general, voice: voice, alpha: alpha, beta: beta}
 }

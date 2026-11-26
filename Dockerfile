@@ -79,6 +79,7 @@ COPY --from=build --chown=65532:65532 /out/data /data
 COPY --from=build --chown=65532:65532 /out/repo /repo
 # Plugin download cache on the volume (default would be $HOME/.cache, lost on restart).
 ENV CICORD_CACHE_DIR=/data/cache
+ENV CICORD_COMPILER_CACHE_DIR=/data/cache/compiler
 USER 65532:65532
 WORKDIR /repo
 VOLUME ["/data"]

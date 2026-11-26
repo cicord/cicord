@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin"
@@ -143,6 +144,9 @@ func startExampleBots(t *testing.T, prepare func(w *sim.World, appID string), ed
 		src.Close()
 		store.Close()
 	})
+	if err := build.PrepareCompiler(); err != nil {
+		t.Fatal(err)
+	}
 	e.waitFor("first revision", func() bool { _, ok := rt.Revision(); return ok })
 	return e
 }

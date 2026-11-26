@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/reconcile"
 	"github.com/cicord/cicord/internal/sim"
@@ -106,6 +107,9 @@ func (d *drill) start() {
 		}
 	}
 	t.Cleanup(d.stop)
+	if err := build.PrepareCompiler(); err != nil {
+		t.Fatal(err)
+	}
 	d.waitFor("first revision", func() bool { _, ok := d.rt.Revision(); return ok })
 }
 

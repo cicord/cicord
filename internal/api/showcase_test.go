@@ -9,6 +9,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/cicord/cicord/internal/build"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/sim"
@@ -74,6 +75,9 @@ func TestShowcaseRouteAccess(t *testing.T) {
 		store.Close()
 	})
 	e := &env{t: t, world: w, rt: rt, repo: repo, seed: seed, dir: dir, ts: ts}
+	if err := build.PrepareCompiler(); err != nil {
+		t.Fatal(err)
+	}
 	e.waitFor("first revision", func() bool { _, ok := rt.Revision(); return ok })
 
 	sid := repo.Servers["showcase"].Spec.DiscordID
