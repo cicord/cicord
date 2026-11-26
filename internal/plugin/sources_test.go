@@ -100,19 +100,24 @@ func TestFilesVMReadsBinaryChunks(t *testing.T) {
 	source := `import {definePlugin,command} from "@cicord/sdk";
  export default definePlugin({commands:{inspect:command({description:"read files",async run(ctx,it){
   const keys=await ctx.files.list("knowledge/**/*.bin"), data=await ctx.files.bytes(keys[0]);
-  const text=await ctx.files.read("knowledge/intro.md");await it.reply([keys.length,data.length,data[32768],data[data.length-1],text].join("/"));
+  const text=await ctx.files.read("knowledge/intro.md");
+  const tail=await ctx.files.bytes("other/tail");
+  const empty=await ctx.files.bytes("other/empty");
+  await it.reply([keys.length,data.length,data[32768],data[data.length-1],text,tail.length,tail.subarray(32767).toHex(),empty.length].join("/"));
  }})}});`
 	data := make([]byte, 128<<10)
 	data[32768] = 19
 	data[len(data)-1] = 255
 	h := start(t, source, func(e *Env) {
 		e.Grants = append([]string{"files.read"}, e.Grants...)
-		e.Files = map[string][]byte{"knowledge/intro.md": []byte("welcome"), "knowledge/attachments/data.bin": data}
+		tail := make([]byte, (32<<10)+2)
+		copy(tail[len(tail)-3:], []byte{0xff, 0x89, 0x01})
+		e.Files = map[string][]byte{"knowledge/intro.md": []byte("welcome"), "knowledge/attachments/data.bin": data, "other/tail": tail, "other/empty": {}}
 	})
 	if err := h.command("inspect", nil, discord.Resolved{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := contentOf(h.responses()[0]); got != "1/131072/19/255/welcome" {
+	if got := contentOf(h.responses()[0]); got != "1/131072/19/255/welcome/32770/ff8901/0" {
 		t.Fatal(got)
 	}
 }

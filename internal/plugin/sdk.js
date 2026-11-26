@@ -147,6 +147,7 @@
 
   const encodeBytes = Function.call.bind(Uint8Array.prototype.toBase64);
   const decodeBytes = Uint8Array.fromBase64.bind(Uint8Array);
+  const decodeInto = Function.call.bind(Uint8Array.prototype.setFromBase64);
   const sliceBytes = Function.call.bind(Uint8Array.prototype.subarray);
   async function sendCall(op, args) {
     const message = args.message;
@@ -642,17 +643,15 @@
       list(glob) { return acall("files.list", {glob}); },
       read(path) { return acall("files.read", {path}); },
       async bytes(path) {
-        let page = await acall("files.bytes", {path,offset:0}), pos = 0;
-        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let page = await acall("files.bytes", {path, offset: 0});
         const out = new Uint8Array(page.size);
-        while (pos < out.length) {
-          const encoded = page.data;
-          let buffer = 0, bits = 0;
-          for (let n=0; n<encoded.length && encoded[n]!=="="; n++) {
-            buffer = (buffer << 6) | alphabet.indexOf(encoded[n]); bits += 6;
-            if (bits >= 8) {bits -= 8; out[pos++] = buffer >> bits;}
-          }
-          if (pos < out.length) page = await acall("files.bytes",{path,offset:pos});
+        for (let pos = 0; pos < out.length;) {
+          // Write directly into the destination in native QuickJS. Each host page
+          // remains a separate turn, bounded by the normal synchronous budget.
+          const { written } = decodeInto(sliceBytes(out, pos), page.data);
+          if (written === 0) throw new Error("empty file chunk");
+          pos += written;
+          if (pos < out.length) page = await acall("files.bytes", {path, offset: pos});
         }
         return out;
       },
