@@ -166,3 +166,85 @@ test("an uninstalled route and a mismatched explicit instance fail closed", asyn
   await waitFor(() => expect(screen.getByRole("heading", { name: "Page not found" })).toBeTruthy());
   expect(r).toHaveLength(0);
 });
+
+test("announcement preview sends no publish request and reflects only the current draft", async () => {
+  const u = userEvent.setup();
+  const calls = fixture("/announcements", {
+    role: "moderator",
+    plugins: [plugin("announcements", ["POST /preview", "POST /compose"])],
+    handler: (_m, p, b) =>
+      p.endsWith("/preview")
+        ? {
+            body: {
+              message: {
+                embeds: [{ title: "Preview", description: (b as { text: string }).text }],
+              },
+            },
+          }
+        : { body: { id: 7 } },
+  });
+  await u.type(await screen.findByLabelText("Channel ID"), "12345");
+  const message = screen.getByLabelText("Message");
+  await u.type(message, "Game night");
+  await u.click(screen.getByRole("button", { name: "Preview" }));
+  await screen.findByRole("region", { name: "Message preview" });
+  expect(calls.some((x) => x.path.endsWith("/compose"))).toBe(false);
+  await u.type(message, " Friday");
+  expect(screen.queryByRole("region", { name: "Message preview" })).toBeNull();
+  await u.click(screen.getByRole("button", { name: "Publish announcement" }));
+  await screen.findByText("Announcement queued #7");
+  expect(calls.at(-1)?.body).toMatchObject({ text: "Game night Friday", channel: "12345" });
+});
+test("birthday accepts leap day, rejects an invalid date and withdraws only on confirmation", async () => {
+  let birthday: { month: number; day: number } | null = null;
+  const u = userEvent.setup();
+  const calls = fixture("/birthday", {
+    role: "member",
+    plugins: [plugin("birthdays", ["GET /birthday", "PUT /birthday", "DELETE /birthday"])],
+    handler: (m, _p, b) => {
+      if (m === "PUT") birthday = b as typeof birthday;
+      if (m === "DELETE") birthday = null;
+      return { body: m === "GET" ? { birthday } : { saved: true } };
+    },
+  });
+  await u.selectOptions(await screen.findByLabelText("Month"), "2");
+  const day = screen.getByLabelText<HTMLInputElement>("Day");
+  await u.type(day, "30");
+  await u.click(screen.getByRole("button", { name: "Save birthday" }));
+  expect(day.validity.valid).toBe(false);
+  await u.clear(day);
+  await u.type(day, "29");
+  await u.click(screen.getByRole("button", { name: "Save birthday" }));
+  await u.click(await screen.findByRole("button", { name: "Remove birthday" }));
+  expect(calls.some((r) => r.method === "DELETE")).toBe(false);
+  await u.click(screen.getByRole("button", { name: "Confirm removal" }));
+  await waitFor(() => expect(birthday).toBeNull());
+  expect(calls.find((r) => r.method === "PUT")?.body).toEqual({ month: 2, day: 29 });
+});
+test("members with a delegated staff role can save a local weekly shift", async () => {
+  const u = userEvent.setup();
+  let stored: unknown;
+  const calls = fixture("/staff-shifts", {
+    role: "member",
+    plugins: [plugin("staff-shifts", ["GET /me", "PUT /me/plan", "GET /coverage"])],
+    handler: (m, p, b) => {
+      if (m === "PUT") stored = b;
+      return {
+        body: p.endsWith("/coverage")
+          ? { from: 0, to: 1000, gaps: [] }
+          : m === "PUT"
+            ? { saved: true }
+            : { zones: ["UTC", "Europe/Paris"], plan: stored ?? { zone: "UTC", shifts: [] } },
+      };
+    },
+  });
+  await u.selectOptions(await screen.findByLabelText("Time zone"), "Europe/Paris");
+  await u.click(screen.getByRole("button", { name: "Add shift" }));
+  await u.selectOptions(screen.getByLabelText("Weekday"), "2");
+  await u.click(screen.getByRole("button", { name: "Save weekly schedule" }));
+  await screen.findByText("Schedule saved.");
+  expect(calls.find((r) => r.method === "PUT")?.body).toEqual({
+    zone: "Europe/Paris",
+    shifts: [{ day: 2, start: 540, minutes: 60 }],
+  });
+});

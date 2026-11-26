@@ -6,6 +6,9 @@ import { PortalLinkStatus, SignIn, useServer } from "../portal.tsx";
 import { Link } from "../router.tsx";
 import { NotFound } from "../pages/NotFound.tsx";
 import { entries, featureUrl, match, published, visible, type FeatureId } from "./catalog.ts";
+import { Announcements } from "./Announcements.tsx";
+import { Birthdays } from "./Birthday.tsx";
+import { Shifts } from "./Shifts.tsx";
 import { Cases, MemberCases } from "./Moderation.tsx";
 import { Recovery, Queue, Verification } from "./Verification.tsx";
 import { Scope, useCopy, useScope } from "./shared.tsx";
@@ -34,6 +37,12 @@ function Screen({ id, param }: { id: FeatureId; param: string }) {
       return <Recovery id={param} />;
     case "queue":
       return <Queue />;
+    case "announcements":
+      return <Announcements />;
+    case "birthday":
+      return <Birthdays />;
+    case "shifts":
+      return <Shifts />;
     default:
       return <NotFound />;
   }

@@ -54,6 +54,27 @@ export const features = {
     access: "staff",
     title: ["Verification queue", "Vérifications à examiner"],
   },
+  announcements: {
+    path: "/announcements",
+    plugin: "announcements",
+    route: "POST /compose",
+    access: "staff",
+    title: ["Announcements", "Annonces"],
+  },
+  birthday: {
+    path: "/birthday",
+    plugin: "birthdays",
+    route: "GET /birthday",
+    access: "member",
+    title: ["My birthday", "Mon anniversaire"],
+  },
+  shifts: {
+    path: "/staff-shifts",
+    plugin: "staff-shifts",
+    route: "GET /me",
+    access: "member",
+    title: ["Staff schedule", "Planning de l’équipe"],
+  },
 } satisfies Record<string, Feature>;
 export type FeatureId = keyof typeof features;
 export const entries = Object.entries(features) as [FeatureId, Feature][];
