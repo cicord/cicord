@@ -57,7 +57,7 @@ func TestRegenerateRoutes(t *testing.T) {
 	dir := portalRepo(t, stale)
 	r := regenerateRoutes(dir, loadRepo(t, dir))
 	if r.Path != "portal/src/cicord-routes.d.ts" || r.Content == nil || len(r.Warnings) != 0 ||
-		!strings.Contains(string(r.Content), "//   onboarding 0.1.0 (../../plugins/onboarding): 2 route(s)") {
+		!strings.Contains(string(r.Content), "//   onboarding 0.2.0 (../../plugins/onboarding): 2 route(s)") {
 		t.Fatalf("regenerate = %+v\n%s", r, r.Content)
 	}
 	if len(r.Removed) != 1 || r.Removed[0] != "onboarding GET /old" {

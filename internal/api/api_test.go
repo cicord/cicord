@@ -397,7 +397,7 @@ func TestPluginsList(t *testing.T) {
 	if byName["onboarding"].Override != nil {
 		t.Errorf("onboarding override = %v", byName["onboarding"].Override)
 	}
-	if strings.Join(w.Editable, ",") != "autoRole,channel,dmOnboarding,enabled,message" {
+	if strings.Join(w.Editable, ",") != "autoRole,card,channel,dmOnboarding,enabled,leaveMessage,locale,message,showInviter,templateFile,trigger,variants" {
 		t.Errorf("admin editable = %v", w.Editable)
 	}
 	if len(byName["onboarding"].Routes) == 0 {

@@ -138,7 +138,15 @@ func TestStoreActionsKeepPortalRouteTypes(t *testing.T) {
 	if want := typegenOf(t, e.dir); got != want {
 		t.Fatalf("route types after install differ from cicord portal typegen:\n%s\nwant:\n%s", got, want)
 	}
-	if strings.Contains(got, version.Version) && version.Version != "1.0.0" {
+	// The header lists the plugin versions ("//   <name> <version> (…)"), which may equal the
+	// runtime version (the 0.2.0 official plugins on cicord 0.2.0): only the rest must not name it.
+	var rest []string
+	for _, l := range strings.Split(got, "\n") {
+		if !strings.HasPrefix(l, "//   ") {
+			rest = append(rest, l)
+		}
+	}
+	if strings.Contains(strings.Join(rest, "\n"), version.Version) && version.Version != "1.0.0" {
 		t.Errorf("the route types embed the runtime version %s", version.Version)
 	}
 

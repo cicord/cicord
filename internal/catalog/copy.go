@@ -33,11 +33,15 @@ var released = map[string]map[string][]string{
 		"sha256-Qu8O4XciIsmOm++fjfDAgTVtduweA/ZZ0+tiv8jPG1c=", // lint fixes (oxlint, knip), lib ES2023
 	}, "0.1.1": {
 		"sha256-5XF4vJJotjSWOCOStlDuA5Dcfj/tFaSGQ9OZLKlsjxo=", // English DM, button and /welcome-stats reply; strict tsconfig like the registry
+	}, "0.2.0": {
+		"sha256-hEMaGbj4cKesbKLOVgf8Ipr/1qRbWgvSpjT46tZKlZw=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"onboarding": {"0.1.0": {
 		"sha256-MKVQjq2L+jA2skWMdzZCUozF1n3y59TwnxOVjEPuqNg=",
 		"sha256-LS5IHZLOt50r8S/bK9NvuqPLHf/xuzGchTXQMDRx/0A=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-KRr1yFLgezY7ukj+ajgG+IpGRNRjM0eWd07vyK1r3A8=", // lint fixes (oxlint, knip), lib ES2023
+	}, "0.2.0": {
+		"sha256-VwCz0lNsyk3O7vZ3vPpbNuFKNqpQf0xAxelTUJY06eA=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"tickets": {"0.1.0": {
 		"sha256-L5+NgFlgHE/P0n5n8GyrW+DumWbmKl+n5jRpVWNrOP8=",
@@ -47,6 +51,8 @@ var released = map[string]map[string][]string{
 		"sha256-M4KXV5edLR6OyUjOJnpOAIWTVZrIPjbfyAOJx9RYqAI=", // the registry's 0.2.0: member and staff portal routes, labels
 	}, "0.2.1": {
 		"sha256-WdDIfvxP78ZUa1AyWc9KNJxPgnq3xJZMBvx1zPtLNus=", // lint fixes (toSorted)
+	}, "0.4.0": {
+		"sha256-8v8iMXaUmzLppsMxgGXhktDekVt7qPwepehGQE9Wlpg=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"polls": {"0.1.0": {
 		"sha256-J2By/eEG8diCTxf6xekJyQyBzyn+qX9wskGmRmVptBs=",
@@ -56,12 +62,16 @@ var released = map[string]map[string][]string{
 		"sha256-aZzFGaEkov/ESA89DumEb0g8mPk7ojxp9ZPtJ5/usVA=", // channel.message(), /polls close|results (subcommands, autocomplete)
 	}, "0.1.1": {
 		"sha256-gJyGVv248zITLY9WHCxWWGM4fIbSXTFL6wqFkCeIH40=", // ping: non-mentionable roles for managers only, allowedMentions limited to the pinged member or role
+	}, "0.2.0": {
+		"sha256-YTCaLaJTaZkLDx/ixJayV3kuKQz4yOPfylMz/imYQ8Q=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"levels": {"0.1.0": {
 		"sha256-FrdXmmfH7j5m0hN6XwwyttgOVU1cBvNlLmXW4vZrBO0=",
 		"sha256-Phlqcqh1igaLpy2gCf7Jd/uSblJxNSU+G8b1JpchAUY=", // route contract (src/routes.ts)
 		"sha256-bkc96UvDhOJ0R1Kq3oZHn7jS4adb3meFfvi2WIaPTvk=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-KKOyIRgrLuUFfztVK/QkgqRC0jzGA6iDMus5eAblp8Y=", // lint fixes (oxlint, knip), lib ES2023
+	}, "0.2.0": {
+		"sha256-xMxBqoysviZak+jk4rMQE7RvvKu0SCur+jhfDDu5R0M=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"moderation": {"0.1.0": {
 		"sha256-JYpd9sY6f38cc9ZI3APfJX6LYab0MGuBUcURYXyjx2A=",
@@ -70,6 +80,8 @@ var released = map[string]map[string][]string{
 		"sha256-FxEiSXHt/uierLV2QinTEQyoAKklCyw+9PZNs8V+V8c=", // lint fixes (oxlint, knip), lib ES2023
 	}, "0.1.1": {
 		"sha256-A6Dxp2+J6UqtZzXahnH63CqMc5Ck9chchv9MCmMBAIA=", // invoker's role hierarchy, owner and staff checks
+	}, "0.3.0": {
+		"sha256-+0ejusp6hOkqGR7M2m5GRDcfOOMAPDhiMZwEIR/p10o=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"reaction-roles": {"0.1.0": {
 		"sha256-QdfT6KQQqvWVZqz8jX1DVgDkm37ZCkG5BVzECErUDCw=",
@@ -78,21 +90,29 @@ var released = map[string]map[string][]string{
 		"sha256-8X7CpCN3vtquk22aCr4v8kMeLS2fRAGguYFsiBSrySo=", // channel.message()
 	}, "0.1.1": {
 		"sha256-nANu7psYPMYoORK1gMGvnZMvMjkdKRyAQvPFjNoAKRA=", // same code as 0.1.0 above (channel.message()), released under 0.1.1 to match the registry
+	}, "0.2.0": {
+		"sha256-SsktZI7CkcS+NaD7/jlRRII3VtqOzdTxS6jstT5iHAw=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"audit-log": {"0.1.0": {
 		"sha256-CqUKC4C6sA9vNJBI0tClq77TpE8X7PgJGsq0Jyz1YjQ=",
 		"sha256-/DS7OjfqTtK3XZ58P7BVQ0CUMV1c2mfCBOp8Jb6Bo8M=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-5jcvRwAWq2fFzlElZFvsy8l0tVCXZkH4lHYYb75BDf4=", // lint fixes (oxlint, knip), lib ES2023
+	}, "0.2.0": {
+		"sha256-JRVjA8SODI+qyWmxNUY9+HygccGgw8iEKehbYqZsuoc=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"announcements": {"0.1.0": {
 		"sha256-2FUTA2TWaOuUgM7FFhDbaYT41VFR1QW5LLJdXNWDuJk=",
 		"sha256-NozhyJgHRpaiIgOR/UK4XR/sbuUX2DBrz5oIF6OnWo0=", // rename to Cicord (@cicord/sdk imports)
 		"sha256-DrtE6XadcqWmQCFnNizgQoMsgjJIlGo6l/yFJjpv8Zo=", // lint fixes (oxlint, knip), lib ES2023
+	}, "0.2.0": {
+		"sha256-dt/m2eXaMv2XOc41Ah+pXhkK/gUAICtl7NiFVcss1Vo=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 	"voice-rooms": {"0.1.0": {
 		"sha256-XfwG2yJFC9y2Bw4tDoh9XO95vKTUVFX6wo+eXgImNc4=", // join-to-create voice rooms (voiceStateUpdate, editChannel, voiceMembers, moveTo)
 	}, "0.1.1": {
 		"sha256-luaZS3J1JcA8pBVTqiUEqV15YDDcWNg9blMWuI9IHS4=", // requires the voice API introduced in v0.1.10
+	}, "0.2.0": {
+		"sha256-EA8Wtt6TIAcEpURZYXI87e1ZCZukWBBqyiWNNWJkMu4=", // the 0.2 official plugin (cicord-plugins feature/0.2.0): locales, contracts, engine >=0.2.0
 	}},
 }
 

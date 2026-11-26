@@ -1,4 +1,6 @@
-import type { Json, Message, MessagePayload, TextChannel } from "@cicord/sdk";
+import en from "../locales/en.json" with { type: "json" };
+import fr from "../locales/fr.json" with { type: "json" };
+import type { Context, Json, Message, TextChannel } from "@cicord/sdk";
 import {
   callRoute,
   createTestContext,
@@ -7,10 +9,11 @@ import {
   submitModal,
   type RouteCall,
 } from "@cicord/sdk/testing";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
 import type { MyTicket, MyTicketDetail, StaffTicket, StaffTicketDetail } from "../src/routes.ts";
+import type { Ticket } from "../src/tickets.ts";
 
 const grants = [
   "discord.messages.send",
@@ -20,12 +23,30 @@ const grants = [
   "discord.members.read",
   "storage.kv",
   "portal.routes",
+  "portal.links",
+  "events.publish",
+  "scheduler",
+  "discord.dm.send",
+  "discord.messages.manage",
+  "discord.roles.assign",
 ];
+
+/** The optional features the full grant list above enables. */
+const granted = ["modmail", "ratingPrompts", "managedMessages", "messageContextMenu"];
 
 // 1 alice, 3 eve: members. 2 sam, 4 max: staff role. 5 mona: Cicord moderator without the
 // staff role. 6 ada: Cicord admin. 9 olga: server owner.
-function setup(config: Record<string, unknown> = {}) {
+function setup(
+  config: Record<string, unknown> = {},
+  options: {
+    features?: string[];
+    plugins?: Context["plugins"];
+    grants?: string[];
+    locale?: string;
+  } = {},
+) {
   return createTestContext({
+    locales: { en, fr },
     schema,
     config: {
       panelChannel: "help-desk",
@@ -35,15 +56,24 @@ function setup(config: Record<string, unknown> = {}) {
       ...config,
     },
     grants,
+    ...options,
+    features: options.features ?? granted,
     // As in plugin.yaml: GET /staff (role.members()) needs ServerMembers.
     intents: ["ServerMessages", "MessageContent", "ServerMembers"],
     plugin: { name: "tickets" },
-    server: { id: "100", ownerId: "9" },
+    server: { id: "100", ownerId: "9", everyonePermissions: ["ViewChannel", "ReadMessageHistory"] },
     access: { admins: { users: ["6"] }, moderators: { roles: ["support", "mods"] } },
     roles: { support: { name: "Support" }, member: { name: "Member" }, mods: { name: "Mods" } },
     channels: {
       "help-desk": { name: "help-desk" },
       "ticket-log": { name: "ticket-log" },
+      "private-log": {
+        name: "private-log",
+        overwrites: {
+          "@everyone": { deny: ["ViewChannel"] },
+          support: { allow: ["ViewChannel", "ReadMessageHistory"] },
+        },
+      },
       support: { name: "Support", type: "category" },
     },
     members: [
@@ -71,6 +101,16 @@ async function openTicket(t: Harness, user = "1") {
 
 const route = (t: Harness, key: string, call: RouteCall = {}) => callRoute(plugin, t, key, call);
 
+/** Runs the schema-2 migration task the way the scheduler does, one page per delivery. */
+async function migrate(t: Harness, ctx: Context = t.ctx) {
+  let runs = 0;
+  while (t.kv.get("meta:schema") !== 2 || t.kv.has("meta:reindex")) {
+    await plugin.tasks!.reindex!(ctx, undefined);
+    if (++runs > 100) throw new Error("migration did not finish");
+  }
+  return runs;
+}
+
 async function portalOpen(t: Harness, user = "1", body: Json = {}) {
   return route(t, "POST /tickets", {
     viewer: user,
@@ -94,8 +134,6 @@ function messageIn(t: Harness, channel: TextChannel, user: string, id = "m1"): M
     createdAt: new Date("2026-01-01T10:00:00Z"),
   } as unknown as Message;
 }
-
-const embedsOf = (m: unknown) => (m as MessagePayload).embeds ?? [];
 
 describe("panel", () => {
   test("/ticket-panel posts the panel in the configured channel by default", async () => {
@@ -144,7 +182,10 @@ describe("opening", () => {
     expect(welcome?.message).toMatchObject({
       content: "Hi <@1>, thanks for reaching out! <@&role-support> will be with you shortly.",
       embeds: [{ title: "#1 — Can't join voice", description: "Since yesterday" }],
-      components: [{ components: [{ id: "close:1", label: "Close" }] }],
+      components: [
+        { components: [{ id: "close:1", label: "Close" }] },
+        { components: [{ id: "claim:1" }] },
+      ],
     });
     expect(t.kv.get("stats:opened")).toBe(1);
     expect(t.kv.get("ticket:00000001")).toMatchObject({
@@ -194,9 +235,10 @@ describe("closing", () => {
     expect(t.deletedChannels).toEqual([{ id: channel.id, reason: "ticket #1 closed" }]);
     const log = t.sent.find((s) => s.to === "ticket-log");
     expect(log?.message).toMatchObject({
-      embeds: [{ title: "Ticket #1 closed — Can't join voice" }],
+      content: expect.stringContaining("Ticket #1 closed."),
     });
-    expect(embedsOf(log?.message)[0]?.fields?.map((f) => f.name)).not.toContain("Reason");
+    expect(log?.message).not.toHaveProperty("files");
+    expect(JSON.stringify(log?.message)).not.toContain("Since yesterday");
     expect(t.kv.get("ticket:00000001")).toMatchObject({
       status: "closed",
       closedBy: { id: "2", displayName: "sam" },
@@ -215,8 +257,8 @@ describe("closing", () => {
     expect(t.deletedChannels).toEqual([]);
   });
 
-  test("the server owner and Cicord admins count as staff", async () => {
-    for (const user of ["9", "6"]) {
+  test("the server owner can read and close legacy tickets", async () => {
+    for (const user of ["9"]) {
       const { t, welcome } = await opened();
       const r = await runComponent(plugin, t, "close:1", { user, message: welcome });
       expect(r.replies[0]).toMatchObject({
@@ -263,6 +305,95 @@ describe("portal route and activity", () => {
     });
     expect((await route(t, "GET /tickets/9", { viewer: "2" })).status).toBe(404);
     expect((await route(t, "GET /tickets")).status).toBe(401);
+  });
+});
+
+describe("GET /tickets paging", () => {
+  /** 1,200 retained tickets, written straight into the store: ticket n is closed, every 300th is high priority. */
+  async function many(t: Harness) {
+    await openTicket(t);
+    const base = t.kv.get("ticket:00000001") as unknown as Ticket;
+    for (let n = 1; n <= 1200; n++)
+      await t.ctx.kv.set("ticket:" + String(n).padStart(8, "0"), {
+        ...base,
+        id: String(n),
+        number: n,
+        status: "closed",
+        closedAt: "2026-01-01T11:00:00.000Z",
+        priority: n % 300 === 0 ? "high" : "normal",
+      } as unknown as Json);
+    await t.ctx.kv.set("seq", 1200);
+  }
+  function spy(t: Harness) {
+    const reads = { listed: [] as (string | undefined)[], got: 0 };
+    const list = t.ctx.kv.list.bind(t.ctx.kv),
+      getMany = t.ctx.kv.getMany.bind(t.ctx.kv);
+    t.ctx.kv.list = ((o?: { prefix?: string }) => {
+      reads.listed.push(o?.prefix);
+      return list(o);
+    }) as typeof t.ctx.kv.list;
+    t.ctx.kv.getMany = ((keys: readonly string[]) => {
+      reads.got += keys.filter((k) => k.startsWith("ticket:")).length;
+      return getMany(keys);
+    }) as typeof t.ctx.kv.getMany;
+    return reads;
+  }
+
+  test("pages newest first with a cursor and never lists every ticket", async () => {
+    const t = setup();
+    await many(t);
+    const reads = spy(t);
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const res = await route(t, "GET /tickets" + (cursor ? "?cursor=" + cursor : ""), {
+        viewer: "2",
+      });
+      expect(res.status).toBe(200);
+      const body = res.body as unknown as { items: StaffTicket[]; cursor?: string };
+      expect(body.items.length).toBeLessThanOrEqual(50);
+      seen.push(...body.items.map((i) => i.id));
+      cursor = body.cursor;
+      pages++;
+    } while (cursor);
+    expect(pages).toBe(24);
+    expect(seen).toEqual(Array.from({ length: 1200 }, (_, i) => String(1200 - i)));
+    expect(reads.listed.filter((p) => p === undefined || p.startsWith("ticket:"))).toEqual([]);
+    // Each ticket record is read once across the pages (no page re-reads the store).
+    expect(reads.got).toBe(1200);
+  });
+
+  test("a selective filter reads at most 500 records per request and resumes from the cursor", async () => {
+    const t = setup();
+    await many(t);
+    const reads = spy(t);
+    const first = (await route(t, "GET /tickets?priority=high", { viewer: "2" })).body as unknown as {
+      items: StaffTicket[];
+      cursor?: string;
+    };
+    expect(reads.got).toBeLessThanOrEqual(500);
+    expect(first.items.map((i) => i.id)).toEqual(["1200", "900"]);
+    expect(first.cursor).toBe("700");
+    const second = (
+      await route(t, "GET /tickets?priority=high&cursor=" + first.cursor, { viewer: "2" })
+    ).body as unknown as { items: StaffTicket[]; cursor?: string };
+    expect(second.items.map((i) => i.id)).toEqual(["600", "300"]);
+    expect(second.cursor).toBe("200");
+    const last = (
+      await route(t, "GET /tickets?priority=high&cursor=" + second.cursor, { viewer: "2" })
+    ).body as unknown as { items: StaffTicket[]; cursor?: string };
+    expect(last).toEqual({ items: [] });
+    expect((await route(t, "GET /tickets?cursor=abc", { viewer: "2" })).status).toBe(400);
+    expect((await route(t, "GET /tickets?cursor=0", { viewer: "2" })).status).toBe(400);
+  });
+
+  test("status=open pages through the open-ticket index", async () => {
+    const t = setup();
+    await openTicket(t);
+    await openTicket(t, "3");
+    const res = await route(t, "GET /tickets?status=open&cursor=1", { viewer: "2" });
+    expect((res.body as unknown as { items: StaffTicket[] }).items.map((i) => i.id)).toEqual(["1"]);
   });
 });
 
@@ -331,6 +462,9 @@ describe("member routes", () => {
       label: { key: "bug", name: "Bug", emoji: "🐛" },
       assignee: null,
       source: "portal",
+      type: "default",
+      labels: ["bug"],
+      rating: null,
       createdAt: expect.any(String),
       closedAt: null,
       lastActivityAt: null,
@@ -346,7 +480,7 @@ describe("member routes", () => {
           fields: [{ name: "Label", value: "🐛 Bug" }],
         },
       ],
-      components: [{ components: [{ id: "close:1" }] }],
+      components: [{ components: [{ id: "close:1" }] }, { components: [{ id: "claim:1" }] }],
     });
     expect(t.kv.get("open:1:1")).toBe(true);
     expect(t.kv.get(`channel:${channel.channel.id}`)).toBe(1);
@@ -544,17 +678,8 @@ describe("staff routes", () => {
     expect(JSON.stringify([...t.kv.values()])).not.toContain("Still offline");
     // a closed ticket has no channel any more
     await route(t, "POST /tickets/1/close", { viewer: "2", body: { reason: "Fixed" } });
-    const closed = (await route(t, "GET /tickets/1", { viewer: "2" }))
-      .body as unknown as StaffTicketDetail;
-    expect(closed).toMatchObject({
-      status: "closed",
-      channelId: channel.id,
-      channelUrl: null,
-      closeReason: "Fixed",
-      closedBy: { id: "2" },
-      messages: null,
-      events: [{ type: "opened" }, { type: "closed", detail: "Fixed" }],
-    });
+    // A deleted source cannot authorize access to its captured participants or messages.
+    expect((await route(t, "GET /tickets/1", { viewer: "2" })).status).toBe(404);
   });
 
   test("GET /staff lists the staff roles' members, the owner and the viewer", async () => {
@@ -583,6 +708,7 @@ describe("staff routes", () => {
 
   test("GET /staff needs the ServerMembers intent", async () => {
     const t = createTestContext({
+      locales: { en, fr },
       schema,
       config: { panelChannel: "help-desk", staffRoles: ["support"] },
       grants,
@@ -692,13 +818,9 @@ describe("staff routes", () => {
     });
     expect(t.deletedChannels).toEqual([{ id: channel.id, reason: "ticket #1 closed" }]);
     const log = t.sent.find((s) => s.to === "ticket-log")!;
-    expect(embedsOf(log.message)[0]).toMatchObject({
-      title: "Ticket #1 closed — Bot is offline",
-      fields: expect.arrayContaining([
-        { name: "Closed by", value: "<@2>", inline: true },
-        { name: "Reason", value: "Fixed in 0.1.5" },
-      ]),
-    });
+    expect(log.message).toMatchObject({ content: expect.stringContaining("Ticket #1 closed.") });
+    expect(log.message).not.toHaveProperty("files");
+    expect(JSON.stringify(log.message)).not.toContain("Fixed in 0.1.5");
     expect(log.allowedMentions).toEqual({ users: false, roles: false, everyone: false });
     expect(t.kv.has("open:1:1")).toBe(false);
     expect(t.kv.has(`channel:${channel.id}`)).toBe(false);
@@ -736,7 +858,7 @@ describe("staff routes", () => {
       message: {
         content: "<@1> Reopened by **max**.",
         embeds: [{ title: "#1 — Bot is offline", fields: [{ name: "Label", value: "🐛 Bug" }] }],
-        components: [{ components: [{ id: "close:1" }] }],
+        components: [{ components: [{ id: "close:1" }] }, { components: [{ id: "claim:1" }] }],
       },
       allowedMentions: { users: ["1"], roles: false, everyone: false },
     });
@@ -773,14 +895,11 @@ describe("staff routes", () => {
     expect(res.status).toBe(201);
     const id = (res.body as { id: string }).id;
     const post = t.sent.at(-1)!;
-    expect(post).toMatchObject({
-      id,
-      to: channel.id,
-      message: {
-        embeds: [
-          { description: "Restart it with @everyone <@1>", footer: { text: "— sam (via portal)" } },
-        ],
-      },
+    expect(post).toMatchObject({ id, to: channel.id, message: { content: en.relayPending } });
+    expect(t.edits.find((e) => e.id === id)?.message).toMatchObject({
+      embeds: [
+        { description: "Restart it with @everyone <@1>", footer: { text: "— sam (via portal)" } },
+      ],
       allowedMentions: { users: false, roles: false, everyone: false },
     });
     expect(t.kv.get("ticket:00000001")).toMatchObject({
@@ -881,7 +1000,8 @@ describe("tickets written by 0.1", () => {
       },
       { type: "closed", at: "2026-01-01T10:00:00.000Z", by: { id: "2", displayName: "sam" } },
     ]);
-    // the author index is built from the old records
+    // the migration task indexes the old records (author index included)
+    await migrate(t);
     const mine = await route(t, "GET /tickets/mine", { viewer: "1" });
     expect((mine.body as unknown as { items: MyTicket[] }).items.map((i) => i.id)).toEqual(["1"]);
     expect((await route(t, "GET /tickets/mine/2", { viewer: "3" })).body).toMatchObject({
@@ -1000,5 +1120,1222 @@ describe("channels that the runtime still resolves but Discord deleted", () => {
     });
     expect(res.status).toBe(409);
     expect(t.sent.filter((s) => s.to === t.createdChannels[0]!.channel.id)).toHaveLength(1);
+  });
+});
+
+describe("ticket types and modmail", () => {
+  const typed = () =>
+    setup({
+      types: [
+        {
+          key: "help",
+          name: "Help",
+          staffRoles: ["support"],
+          logChannel: "private-log",
+          retainSourceForTranscript: true,
+          fields: [{ label: "Order number", required: true }],
+          defaultLabels: ["question"],
+        },
+        { key: "appeals", name: "Appeals", staffRoles: ["mods"], logChannel: "ticket-log" },
+      ],
+    });
+  test("role and source access are enforced on every route and after revocation", async () => {
+    const t = typed();
+    expect((await portalOpen(t, "1", { type: "help" })).status).toBe(201);
+    expect((await portalOpen(t, "3", { type: "appeals" })).status).toBe(201);
+    const [a, b] = t.createdChannels;
+    expect(t.member("2")!.canView(a!.channel)).toBe(true);
+    expect(t.member("2")!.canView(b!.channel)).toBe(false);
+    expect(t.member("5")!.canView(a!.channel)).toBe(false);
+    expect(t.member("5")!.canView(b!.channel)).toBe(true);
+    for (const [staff, own, other] of [
+      ["2", "1", "2"],
+      ["5", "2", "1"],
+    ] as const) {
+      expect((await route(t, "GET /tickets", { viewer: staff })).body).toMatchObject({
+        items: [{ id: own }],
+      });
+      expect((await route(t, "GET /tickets/" + own, { viewer: staff })).status).toBe(200);
+      for (const [path, body] of [
+        ["GET /tickets/" + other, undefined],
+        ["POST /tickets/" + other + "/notes", { content: "private" }],
+        ["POST /tickets/" + other + "/assign", { userId: "me" }],
+        ["GET /tickets/" + other + "/cases", undefined],
+      ] as const)
+        expect((await route(t, path, { viewer: staff, body })).status).toBe(404);
+    }
+    expect(
+      (await route(t, "POST /tickets/1/assign", { viewer: "2", body: { userId: "5" } })).status,
+    ).toBe(400);
+    await route(t, "POST /tickets/1/notes", {
+      viewer: "2",
+      body: { content: "Only help staff can see me" },
+    });
+    expect(
+      JSON.stringify((await route(t, "GET /tickets/mine/1", { viewer: "1" })).body),
+    ).not.toContain("Only help");
+    await route(t, "POST /tickets/1/close", { viewer: "2" });
+    await route(t, "POST /tickets/2/close", { viewer: "5" });
+    for (const [staff, member, own, other] of [
+      ["2", "1", "1", "2"],
+      ["5", "3", "2", "1"],
+    ] as const) {
+      for (const viewer of [staff, member])
+        expect((await route(t, "GET /tickets/" + own + "/transcript", { viewer })).status).toBe(
+          200,
+        );
+      expect(
+        (await route(t, "GET /tickets/" + other + "/transcript", { viewer: staff })).status,
+      ).toBe(404);
+    }
+    await t.member("2")!.setRoles([]);
+    expect((await route(t, "GET /tickets/1/transcript", { viewer: "2" })).status).toBe(404);
+    expect((await route(t, "GET /tickets/1", { viewer: "2" })).status).toBe(403);
+    expect((await route(t, "GET /tickets/1/transcript", { viewer: "4" })).status).toBe(200);
+    const narrow = t.sent.find((s) => s.to === "private-log");
+    expect(t.edits.find((e) => e.id === narrow?.id)?.message).toMatchObject({
+      files: [{ name: "ticket-1.html" }, { name: "ticket-1.md" }],
+    });
+    const wide = t.sent.find((s) => s.to === "ticket-log");
+    expect(wide?.message).not.toHaveProperty("files");
+    expect(JSON.stringify(wide?.message)).not.toContain("Bot is offline");
+  });
+
+  test("a 500-message transcript paginates, escapes HTML, and preserves each author's privacy", async () => {
+    const t = typed();
+    await portalOpen(t, "1", { type: "help", subject: "Private request" });
+    const channel = t.createdChannels[0]!.channel;
+    for (let n = 0; n < 500; n++) {
+      const line = await channel.send(`row-${n} <script>alert(1)</script>`);
+      Object.assign(line, {
+        author: t.member(n % 2 ? "1" : "2")!.user,
+        member: t.member(n % 2 ? "1" : "2"),
+      });
+    }
+    await route(t, "POST /tickets/1/notes", { viewer: "2", body: { content: "Staff annotation" } });
+    await route(t, "POST /tickets/1/close", { viewer: "2" });
+    const res = await route(t, "GET /tickets/1/transcript", { viewer: "1" });
+    const html = (res.body as { content: string }).content;
+    expect(html).toContain("row-499 ");
+    expect(html).toContain("row-0 ");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
+    expect(new TextEncoder().encode(html).length).toBeLessThan(2 * 1024 * 1024);
+    const ctx = {
+      ...t.ctx,
+      privacy: { ...t.ctx.privacy, pseudonym: async () => "deleted-user-abcdef0123456789" },
+    };
+    await plugin.privacy!.erase(ctx, "1");
+    expect(await plugin.privacy!.export(ctx, "1")).toEqual([]);
+    const kept = await route(t, "GET /tickets/1/transcript", { viewer: "2" });
+    expect(JSON.stringify(kept.body)).toContain("row-498 ");
+    expect(JSON.stringify(kept.body)).not.toContain("row-499 ");
+    expect(JSON.stringify(await plugin.privacy!.export(ctx, "2"))).toContain("Staff annotation");
+    expect(t.deletedMessages).toContainEqual(
+      expect.objectContaining({ id: t.sent.find((s) => s.to === "private-log")!.id }),
+    );
+    expect(t.kv.has("author:1:00000001")).toBe(false);
+  });
+
+  test("a typed form, claim and bidirectional DM relay use the selected tenant", async () => {
+    const t = typed();
+    const click = await runComponent(plugin, t, "open:help", { user: "1", channel: "help-desk" });
+    expect(click.modal?.fields).toContainEqual(
+      expect.objectContaining({ label: "Order number", required: true }),
+    );
+    const dm = (user: string, content: string) => ({
+      ...messageIn(t, t.channel("help-desk")!, user, content),
+      content,
+    });
+    const started = Date.now();
+    await plugin.events!.directMessage!(t.ctx, dm("1", "My request"));
+    await plugin.events!.directMessage!(t.ctx, dm("1", "One more detail"));
+    expect(t.createdChannels).toHaveLength(1);
+    const channel = t.createdChannels[0]!.channel;
+    expect(
+      t.sent
+        .filter((s) => s.to === channel.id)
+        .map((s) => t.message(s.id)?.content)
+        .join(" "),
+    ).toContain("One more detail");
+    const welcome = t.sent.find((s) => s.to === channel.id)!;
+    await runComponent(plugin, t, "claim:1", { user: "2", message: t.message(welcome.id)! });
+    expect(t.kv.get("ticket:00000001")).toMatchObject({ assignee: { id: "2" }, type: "help" });
+    await plugin.events!.messageCreate!(t.ctx, { ...dm("5", "wrong staff"), channel });
+    expect(t.sent.some((s) => s.to === "dm:1")).toBe(false);
+    await plugin.events!.messageCreate!(t.ctx, { ...dm("2", "Staff response"), channel });
+    expect(t.message(t.sent.find((s) => s.to === "dm:1")!.id)).toMatchObject({
+      content: "Staff response",
+    });
+    expect(Date.now() - started).toBeLessThan(2000);
+    await route(t, "POST /tickets/1/messages", { viewer: "2", body: { content: "Portal reply" } });
+    expect(t.message(t.sent.filter((s) => s.to === "dm:1").at(-1)!.id)).toMatchObject({
+      content: "Portal reply",
+    });
+  });
+
+  test("stored inactivity warnings survive restart and always precede closure by an hour", async () => {
+    const t = setup({ inactivityHours: 1, firstResponseMinutes: 1 });
+    await portalOpen(t);
+    const { maintenance } = await import("../src/lifecycle.ts");
+    const original = t.kv.get("ticket:00000001") as Record<string, Json>;
+    t.kv.set("ticket:00000001", {
+      ...original,
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+    });
+    await maintenance(t.ctx);
+    const warned = t.kv.get("ticket:00000001") as Record<string, Json>;
+    expect(warned.status).toBe("open");
+    expect(warned.warningAt).toEqual(expect.any(Number));
+    await maintenance(t.ctx);
+    expect(t.sent.filter((m) => JSON.stringify(m.message).includes("one more hour")).length).toBe(
+      1,
+    );
+    const resumed = setup({ inactivityHours: 1 });
+    // Replace the session-local scheduler and plugin context; restore the persisted ticket state.
+    await portalOpen(resumed);
+    for (const [k, v] of t.kv) resumed.kv.set(k, v);
+    resumed.kv.set("ticket:00000001", { ...warned, warningAt: Date.now() - 3601000 });
+    await maintenance(resumed.ctx);
+    await maintenance(resumed.ctx);
+    expect(resumed.kv.get("ticket:00000001")).toMatchObject({ status: "closed" });
+    expect(resumed.published.filter((e) => e.topic === "closed")).toHaveLength(1);
+  });
+});
+
+test("concurrent opens share the limit, and action retries share the original ticket", async () => {
+  const t = setup();
+  const results = await Promise.all([portalOpen(t), portalOpen(t)]);
+  expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+  expect(t.createdChannels).toHaveLength(1);
+  const caller = {
+    plugin: "moderation",
+    bot: "bot",
+    instance: "mod",
+    source: "cicord",
+    verified: true,
+  };
+  const call = {
+    caller,
+    onBehalfOf: {
+      userId: "3",
+      access: "scoped" as const,
+      resourceScope: { kind: "case", id: "72" },
+    },
+    idempotencyKey: "appeal:72",
+  };
+  const data = { userId: "3", subject: "Appeal", caseNumber: 72 };
+  const action = plugin.actions!.open!;
+  const first = await action.run(t.ctx, data, call);
+  expect(await action.run(t.ctx, data, call)).toEqual(first);
+  expect(t.createdChannels).toHaveLength(1);
+  expect(first).toEqual({ id: "2" });
+  await plugin.tasks!.provision!(t.ctx, { number: 2 });
+  await plugin.tasks!.provision!(t.ctx, { number: 2 });
+  expect(t.createdChannels).toHaveLength(2);
+  await expect(action.run(t.ctx, { ...data, caseNumber: 71 }, call)).rejects.toThrow("scope");
+  expect(await plugin.queries!.openFor!.run(t.ctx, { userId: "3" }, call)).toEqual({ tickets: [] });
+});
+
+test("DM retraction removes the erased staff writer's relays and retains other staff messages", async () => {
+  const t = setup();
+  const dm = messageIn(t, t.channel("help-desk")!, "1");
+  await plugin.events!.directMessage!(t.ctx, { ...dm, content: "Question" });
+  const channel = t.createdChannels[0]!.channel;
+  for (const [id, content] of [
+    ["2", "Sam reply"],
+    ["4", "Max reply"],
+  ] as const)
+    await plugin.events!.messageCreate!(t.ctx, {
+      ...messageIn(t, channel, id, id + "message"),
+      content,
+    });
+  const sent = t.sent.filter((m) => m.to === "dm:1");
+  expect(sent).toHaveLength(2);
+  const ctx = {
+    ...t.ctx,
+    privacy: { ...t.ctx.privacy, pseudonym: async () => "deleted-user-1234567812345678" },
+  };
+  await plugin.privacy!.erase(ctx, "2");
+  expect(t.message(sent[0]!.id)).toBeUndefined();
+  expect(t.message(sent[1]!.id)?.content).toBe("Max reply");
+});
+
+test("the first satisfaction vote is retained and statistics are staff-only", async () => {
+  const t = setup();
+  await portalOpen(t);
+  await route(t, "POST /tickets/1/close", { viewer: "2" });
+  expect(
+    (await route(t, "POST /tickets/1/rating", { viewer: "3", body: { rating: 2 } })).status,
+  ).toBe(404);
+  expect(
+    (await route(t, "POST /tickets/1/rating", { viewer: "1", body: { rating: 4 } })).status,
+  ).toBe(200);
+  expect(
+    (await route(t, "POST /tickets/1/rating", { viewer: "1", body: { rating: 5 } })).body,
+  ).toEqual({ rating: 4 });
+  expect((await route(t, "GET /tickets/stats", { viewer: "2" })).body).toEqual({
+    rated: 1,
+    mean: 4,
+  });
+  expect((await route(t, "GET /tickets/stats", { viewer: "3" })).status).toBe(403);
+  expect(t.published.filter((e) => e.topic === "rated")).toHaveLength(1);
+});
+
+test("SDK15 localizes the form and defaults and preserves operator-provided text", async () => {
+  expect(Object.keys(fr).sort()).toEqual(Object.keys(en).sort());
+  expect(fr["commands.ticket-panel.options.channel.name"]).toBe("salon");
+  expect(fr["contextMenus.Open ticket on message.name"]).toBe("Ouvrir un ticket sur ce message");
+  const t = setup({}, { locale: "fr" });
+  const panel = await runCommand(plugin, t, "ticket-panel", { user: "2" });
+  expect(panel.replies[0]).toContain("Panneau de tickets publié");
+  expect(t.sent[0]?.message).toMatchObject({ embeds: [{ title: "Besoin d’aide ?" }] });
+  const click = await runComponent(plugin, t, "open", { user: "1", locale: "fr" });
+  expect(click.modal?.fields.map((f) => f.label)).toEqual(["Objet", "Détails"]);
+  const custom = setup({
+    locale: "fr",
+    panel: { title: "Service Desk", buttonLabel: "Open IT", description: "Request IT help" },
+    welcomeMessage: "Custom hello {member}!",
+  });
+  await runCommand(plugin, custom, "ticket-panel", { user: "2" });
+  expect(custom.sent[0]!.message).toMatchObject({
+    embeds: [{ title: "Service Desk", description: "Request IT help" }],
+    components: [{ components: [{ label: "Open IT" }] }],
+  });
+  await portalOpen(custom);
+  expect(custom.sent.at(-1)?.message).toMatchObject({ content: "Custom hello <@1>!" });
+  const limited = setup({ locale: "fr" }, { locale: "en" });
+  const form = await runComponent(plugin, limited, "open", { user: "1", locale: "en" });
+  expect(form.modal?.title).toBe("Ouvrir un ticket");
+});
+
+test("optional interop uses only on-duty staff of the current type and filters moderation results", async () => {
+  const calls: string[] = [];
+  const providers = {
+    has: () => true,
+    hasFeature: () => true,
+    call: async () => {
+      throw new Error("Unexpected action");
+    },
+    query: async (plugin: string, method: string): Promise<Json> => {
+      calls.push(plugin + "." + method);
+      return method === "onDuty"
+        ? { userIds: ["2", "5"] }
+        : {
+            cases: [
+              {
+                number: 7,
+                action: "warn",
+                status: "active",
+                reason: "Reminder",
+                at: "2026-01-01",
+                privateField: "private",
+              },
+            ],
+          };
+    },
+  } as Context["plugins"];
+  const config = { types: [{ key: "help", name: "Help", staffRoles: ["support"] }] };
+  const disabled = setup(config, { plugins: providers });
+  await portalOpen(disabled);
+  expect(calls).toEqual([]);
+  expect((await route(disabled, "GET /tickets/1/cases", { viewer: "2" })).body).toEqual({
+    cases: [],
+  });
+  const t = setup(config, {
+    plugins: providers,
+    features: [...granted, "onDuty", "caseContext"],
+    grants: [...grants, "plugins.query:staff-shifts.onDuty", "plugins.query:moderation.cases"],
+  });
+  await portalOpen(t);
+  expect(t.sent[0]?.message).toMatchObject({ content: expect.stringContaining("<@2>") });
+  expect(JSON.stringify(t.sent[0]?.message)).not.toContain("<@5>");
+  expect((await route(t, "GET /tickets/1/cases", { viewer: "3" })).status).toBe(404);
+  const cases = await route(t, "GET /tickets/1/cases", { viewer: "2" });
+  expect(cases.body).toEqual({
+    cases: [{ number: 7, action: "warn", status: "active", reason: "Reminder", at: "2026-01-01" }],
+  });
+  expect(calls).toEqual(["staff-shifts.onDuty", "moderation.cases"]);
+});
+
+test("a stale staff update cannot restore erased ticket data from another invocation realm", async () => {
+  const t = setup();
+  await portalOpen(t, "1");
+  const { getTicket, saveTicket } = await import("../src/tickets.ts");
+  const stale = (await getTicket(t.ctx, 1))!;
+  stale.notes.push({
+    by: { id: "2", displayName: "Sam" },
+    at: new Date().toISOString(),
+    content: "Postponed staff edit",
+  });
+  let resume!: () => void;
+  const suspended = new Promise<void>((r) => {
+    resume = r;
+  }).then(() => saveTicket(t.ctx, stale));
+  const ctx = {
+    ...t.ctx,
+    privacy: { ...t.ctx.privacy, pseudonym: async () => "deleted-user-0000000000000001" },
+  };
+  await plugin.privacy!.erase(ctx, "1");
+  resume();
+  await expect(suspended).rejects.toThrow("Ticket changed");
+  const persisted = (await getTicket(t.ctx, 1))!;
+  expect(persisted.author.id).toBe("deleted-user-0000000000000001");
+  expect(persisted.description).toBe("");
+  expect(persisted.notes).toHaveLength(0);
+});
+
+test("lost acknowledgements leave a durable receipt; widened offline log ACLs withdraw files and a safe log recovers", async () => {
+  const t = setup({
+    types: [
+      {
+        key: "help",
+        name: "Help",
+        staffRoles: ["support"],
+        logChannel: "private-log",
+        retainSourceForTranscript: true,
+      },
+    ],
+  });
+  await portalOpen(t, "1", { type: "help" });
+  const { getTicket, closeTicket } = await import("../src/tickets.ts");
+  const { reconcileCopy } = await import("../src/transcript.ts");
+  const original = t.ctx.server;
+  let failShell = true,
+    failEdit = true,
+    wide = false;
+  const log = original.channel("private-log");
+  const server = {
+    ...original,
+    verifyReaders: async (
+      ref: Parameters<typeof original.verifyReaders>[0],
+      options: Parameters<typeof original.verifyReaders>[1],
+    ) => {
+      const report = await original.verifyReaders(ref, options);
+      return wide ? { ...report, destination: "wider" as const } : report;
+    },
+    compareAudience: (
+      src: Parameters<typeof original.compareAudience>[0],
+      dest: Parameters<typeof original.compareAudience>[1],
+    ) => (wide ? ("wider" as const) : original.compareAudience(src, dest)),
+    channel: (ref: Parameters<typeof original.channel>[0]) => {
+      const ch = original.channel(ref);
+      if (ch.id !== log.id) return ch;
+      return {
+        ...ch,
+        send: async (input: Parameters<typeof ch.send>[0]) => {
+          const saved = await ch.send(input);
+          if (failShell) {
+            failShell = false;
+            throw Error("Lost shell acknowledgement");
+          }
+          return saved;
+        },
+        message: async (id: string) => {
+          const saved = await ch.message(id);
+          if (!saved) return saved;
+          return {
+            ...saved,
+            edit: async (input: Parameters<typeof saved.edit>[0]) => {
+              const updated = await saved.edit(input);
+              const receipt = (await getTicket(t.ctx, 1))!.logDelivery;
+              expect(receipt).toMatchObject({ messageId: id, phase: "attaching" });
+              if (failEdit) {
+                failEdit = false;
+                throw Error("Lost attachment acknowledgement");
+              }
+              return updated;
+            },
+          };
+        },
+      };
+    },
+  };
+  const ctx = { ...t.ctx, server };
+  await expect(
+    closeTicket(ctx, (await getTicket(ctx, 1))!, { id: "2", displayName: "Sam" }),
+  ).rejects.toThrow("Lost shell");
+  const shells = () => t.sent.filter((s) => s.to === "private-log");
+  expect(shells()).toHaveLength(1);
+  expect(shells()[0]?.message).not.toHaveProperty("files");
+  const first = shells()[0]!.id;
+  // Recover the message even if Discord accepted the send before its ID reached KV.
+  const pending = (await getTicket(ctx, 1))!;
+  expect(pending.logDelivery).toMatchObject({ phase: "pending" });
+  // Use the gated message lookup after the first shell is recovered.
+  const actualEdit = t.message(first)!.edit;
+  Object.assign(t.message(first)!, {
+    edit: async (input: Parameters<typeof actualEdit>[0]) => {
+      const edited = await actualEdit(input);
+      const receipt = (await getTicket(ctx, 1))!.logDelivery;
+      expect(receipt).toMatchObject({ phase: "attaching", messageId: first });
+      if (failEdit) {
+        failEdit = false;
+        throw Error("Lost attachment acknowledgement");
+      }
+      return edited;
+    },
+  });
+  await expect(reconcileCopy(ctx, pending)).rejects.toThrow("Lost attachment");
+  expect(shells()).toHaveLength(1);
+  expect(t.edits.find((e) => e.id === first)?.message).toHaveProperty("files");
+  wide = true;
+  // Gateway availability (also delivered after a restart) rechecks the tracked copies.
+  await plugin.events!.serverAvailable!(ctx);
+  expect(t.deletedMessages).toContainEqual(expect.objectContaining({ id: first }));
+  const fallback = (await getTicket(ctx, 1))!.logDelivery!;
+  expect(fallback.phase).toBe("summary");
+  expect(shells()).toHaveLength(2);
+  expect(shells()[1]?.message).not.toHaveProperty("files");
+  wide = false;
+  await plugin.events!.serverAvailable!(ctx);
+  expect((await getTicket(ctx, 1))!.logDelivery?.phase).toBe("attached");
+  expect(t.edits.some((e) => e.id === fallback.messageId)).toBe(true);
+  // Change the source ACL while offline. A now-readable destination cannot legitimize it.
+  await ctx.server.editChannel(
+    { id: t.createdChannels[0]!.channel.id },
+    { overwrites: { "@everyone": { allow: ["ViewChannel", "ReadMessageHistory"] } } },
+  );
+  await plugin.schedules!.maintenance!.run(ctx);
+  expect((await getTicket(ctx, 1))!.logDelivery?.phase).toBe("summary");
+});
+
+test("unverifiable or deleted sources never receive a file-bearing log post", async () => {
+  const t = setup({
+    types: [
+      {
+        key: "help",
+        name: "Help",
+        staffRoles: ["support"],
+        logChannel: "private-log",
+        retainSourceForTranscript: false,
+      },
+    ],
+  });
+  await portalOpen(t);
+  await route(t, "POST /tickets/1/close", { viewer: "2" });
+  const log = t.sent.find((s) => s.to === "private-log")!;
+  expect(log.message).not.toHaveProperty("files");
+  expect(t.edits.some((e) => e.id === log.id)).toBe(false);
+});
+
+test("combined role overrides, NSFW and deleted channels cannot be authorized by a stored reader summary", async () => {
+  const t = setup({
+    types: [
+      { key: "help", name: "Help", staffRoles: ["support"], retainSourceForTranscript: true },
+    ],
+  });
+  await portalOpen(t);
+  const ch = t.createdChannels[0]!.channel;
+  await t.ctx.server.editChannel(ch, {
+    overwrites: {
+      support: { clear: ["ReadMessageHistory"] },
+      mods: { deny: ["ReadMessageHistory"] },
+    },
+  });
+  await route(t, "POST /tickets/1/close", { viewer: "2" });
+  const routeKey = "GET /tickets/1/transcript";
+  expect((await route(t, routeKey, { viewer: "2" })).status).toBe(200);
+  await t.member("2")!.addRole("mods");
+  expect((await route(t, routeKey, { viewer: "2" })).status).toBe(404);
+  await t.ctx.server.deleteChannel(ch);
+  expect((await route(t, routeKey, { viewer: "4" })).status).toBe(404);
+
+  const gated = createTestContext({
+    locales: { en, fr },
+    schema,
+    config: { panelChannel: "gated", staffRoles: ["support"] },
+    server: { id: "100", ownerId: "9", everyonePermissions: ["ViewChannel", "ReadMessageHistory"] },
+    roles: { support: { name: "Support" } },
+    members: [{ id: "9", username: "owner" }],
+    channels: {
+      gated: {
+        name: "gated",
+        nsfw: true,
+        overwrites: {
+          "@everyone": { deny: ["ViewChannel"] },
+          "member:9": { allow: ["ViewChannel", "ReadMessageHistory"] },
+        },
+      },
+    },
+  });
+  const { mayReadTranscript, getTicket } = await import("../src/tickets.ts");
+  const ticket = (await getTicket(t.ctx, 1))!;
+  const source = gated.channel("gated")!;
+  const historical = {
+    ...ticket,
+    type: "default",
+    author: { id: "9", displayName: "owner" },
+    channelRemoved: false,
+    channelId: source.id,
+    archivePolicy: gated.ctx.server.audience(source).fingerprint,
+  };
+  expect(await mayReadTranscript(gated.ctx, historical, gated.member("9"))).toBe(false);
+});
+
+test("incoming DM text and attachments are withheld after an extra member gains access", async () => {
+  const t = setup({ types: [{ key: "help", name: "Help", staffRoles: ["support"] }] });
+  const member = t.member("1")!;
+  const original = { ...messageIn(t, t.channel("help-desk")!, "1"), content: "Original" };
+  await plugin.events!.directMessage!(t.ctx, original);
+  const ch = t.createdChannels[0]!.channel;
+  await t.ctx.server.editChannel(ch, {
+    overwrites: { "member:3": { allow: ["ViewChannel", "ReadMessageHistory"] } },
+  });
+  expect(t.member("3")!.canView(ch)).toBe(true);
+  const sensitive = "https://cdn.discordapp.com/attachments/private/file.png";
+  await plugin.events!.directMessage!(t.ctx, {
+    ...original,
+    id: "new-private-dm",
+    content: "Private follow-up",
+    member,
+    attachments: [{ filename: "private.png", url: sensitive }] as unknown as Message["attachments"],
+  });
+  const posts = t.sent.filter((s) => s.to === ch.id);
+  expect(JSON.stringify(posts)).not.toContain("Private follow-up");
+  expect(JSON.stringify(posts)).not.toContain(sensitive);
+  expect(t.sent.at(-1)).toMatchObject({ to: "dm:1", message: en.relayDenied });
+});
+
+test("outbound modmail rechecks each recipient's channel history access, including portal replies", async () => {
+  const t = setup({ types: [{ key: "help", name: "Help", staffRoles: ["support"] }] });
+  for (const id of ["1", "3"])
+    await plugin.events!.directMessage!(t.ctx, {
+      ...messageIn(t, t.channel("help-desk")!, id),
+      content: "Open private conversation",
+    });
+  const first = t.createdChannels[0]!.channel,
+    second = t.createdChannels[1]!.channel;
+  await plugin.events!.messageCreate!(t.ctx, {
+    ...messageIn(t, first, "2"),
+    content: "First staff message",
+  });
+  expect(t.sent.filter((m) => m.to === "dm:1")).toHaveLength(1);
+  await t.ctx.server.editChannel(first, {
+    overwrites: { "member:1": { deny: ["ReadMessageHistory"] } },
+  });
+  expect(t.member("1")!.canView(first)).toBe(false);
+  const attachment = "https://cdn.discordapp.com/attachments/private-document";
+  const docs = [
+    { filename: "private-document", url: attachment },
+  ] as unknown as Message["attachments"];
+  await plugin.events!.messageCreate!(t.ctx, {
+    ...messageIn(t, first, "2", "revoked"),
+    content: "Revoked staff message",
+    attachments: docs,
+  });
+  expect(t.sent.filter((m) => m.to === "dm:1")).toHaveLength(1);
+  expect(
+    (
+      await route(t, "POST /tickets/1/messages", {
+        viewer: "2",
+        body: { content: "Private portal content" },
+      })
+    ).status,
+  ).toBe(404);
+  expect(JSON.stringify(t.sent)).not.toContain("Private portal content");
+  await plugin.events!.messageCreate!(t.ctx, {
+    ...messageIn(t, second, "2"),
+    content: "Unchanged recipient",
+    attachments: docs,
+  });
+  expect(t.message(t.sent.filter((m) => m.to === "dm:3").at(-1)!.id)).toMatchObject({
+    content: "Unchanged recipient\n" + attachment,
+  });
+});
+
+test("a lost private relay edit in either direction keeps its receipt through erasure", async () => {
+  const t = setup();
+  const open = {
+    ...messageIn(t, t.channel("help-desk")!, "1", "initial"),
+    content: "First private DM",
+  };
+  await plugin.events!.directMessage!(t.ctx, open);
+  const channel = t.createdChannels[0]!.channel;
+  const { getTicket } = await import("../src/tickets.ts");
+  const { relay, pendingRelays } = await import("../src/relay.ts");
+  const { privacy } = await import("../src/privacy.ts");
+  const base = t.ctx.server;
+  const injected = {
+    ...t.ctx,
+    server: {
+      ...base,
+      channel: (ref: Parameters<typeof base.channel>[0]) => {
+        const original = base.channel(ref);
+        if (original.id !== channel.id) return original;
+        return {
+          ...original,
+          message: async (id: string) => {
+            const m = await original.message(id);
+            if (!m) return m;
+            return {
+              ...m,
+              edit: async (input: Parameters<typeof m.edit>[0]) => {
+                await m.edit(input);
+                throw Error("Lost channel edit acknowledgement");
+              },
+            };
+          },
+        };
+      },
+      editRetractableDM: async (
+        id: string,
+        input: Parameters<typeof base.editRetractableDM>[1],
+      ) => {
+        await base.editRetractableDM(id, input);
+        throw Error("Lost DM edit acknowledgement");
+      },
+    },
+  };
+  const ticket = (await getTicket(t.ctx, 1))!;
+  expect(ticket.description).toBe("");
+  await expect(
+    relay(
+      injected,
+      ticket,
+      "inbound",
+      { id: "1", displayName: "Alice" },
+      "Inbound confidential text",
+      "in-2",
+      new Date(),
+    ),
+  ).rejects.toThrow("Lost channel");
+  await expect(
+    relay(
+      injected,
+      ticket,
+      "outbound",
+      { id: "2", displayName: "Sam" },
+      "Outbound confidential text",
+      "out-2",
+      new Date(),
+    ),
+  ).rejects.toThrow("Lost DM");
+  const receipts = (await pendingRelays(t.ctx, 1)).map((j) => j.targets[0]!.id!);
+  expect(receipts).toHaveLength(2);
+  expect(receipts.map((id) => t.message(id)!.content).sort()).toEqual([
+    "Inbound confidential text",
+    "Outbound confidential text",
+  ]);
+  expect(t.sent.every((s) => !JSON.stringify(s.message).includes("confidential text"))).toBe(true);
+  const eraseCtx = {
+    ...t.ctx,
+    privacy: { ...t.ctx.privacy, pseudonym: async () => "deleted-user-0123456789abcdef" },
+  };
+  await privacy.erase(eraseCtx, "1");
+  expect(await pendingRelays(t.ctx, 1)).toEqual([]);
+  for (const id of receipts) expect(t.message(id)).toBeUndefined();
+  expect(JSON.stringify([...t.kv.values()])).not.toContain("confidential text");
+});
+
+test("a pending outbound private edit cannot recreate the erased recipient's message", async () => {
+  const t = setup();
+  await plugin.events!.directMessage!(t.ctx, {
+    ...messageIn(t, t.channel("help-desk")!, "1", "open"),
+    content: "Initial",
+  });
+  const { getTicket } = await import("../src/tickets.ts");
+  const { relay, pendingRelays } = await import("../src/relay.ts");
+  const { privacy } = await import("../src/privacy.ts");
+  let confirmed!: () => void, unblock!: () => void;
+  const ready = new Promise<void>((r) => {
+      confirmed = r;
+    }),
+    paused = new Promise<void>((r) => {
+      unblock = r;
+    });
+  const ctx = {
+    ...t.ctx,
+    server: {
+      ...t.ctx.server,
+      async editRetractableDM(
+        id: string,
+        msg: Parameters<typeof t.ctx.server.editRetractableDM>[1],
+      ) {
+        confirmed();
+        await paused;
+        await t.ctx.server.editRetractableDM(id, msg);
+      },
+    },
+  };
+  const underway = relay(
+    ctx,
+    (await getTicket(t.ctx, 1))!,
+    "outbound",
+    { id: "2", displayName: "Sam" },
+    "Delayed private reply",
+    "src-delayed",
+    new Date(),
+  );
+  await ready;
+  const receipt = (await pendingRelays(t.ctx, 1))[0]!.targets[0]!.id!;
+  expect(t.message(receipt)?.content).toBe(en.relayPending);
+  await privacy.erase(
+    {
+      ...t.ctx,
+      privacy: { ...t.ctx.privacy, pseudonym: async () => "deleted-user-0123456789abcdef" },
+    },
+    "1",
+  );
+  unblock();
+  await expect(underway).rejects.toThrow();
+  expect(t.message(receipt)).toBeUndefined();
+  expect(await pendingRelays(t.ctx, 1)).toEqual([]);
+});
+
+test("both modmail detail routes withhold legacy initial text and URLs after source revocation or deletion", async () => {
+  const t = setup({ types: [{ key: "help", name: "Help", staffRoles: ["support"] }] });
+  const initial = "Confidential https://cdn.discordapp.com/attachments/private/original.png";
+  await plugin.events!.directMessage!(t.ctx, {
+    ...messageIn(t, t.channel("help-desk")!, "1", "original"),
+    content: initial,
+  });
+  const raw = t.kv.get("ticket:00000001") as Record<string, Json>;
+  expect(raw.description).toBe("");
+  expect(raw.subject).not.toContain("Confidential");
+  t.kv.set("ticket:00000001", { ...raw, description: initial });
+  const channel = t.createdChannels[0]!.channel;
+  await t.ctx.server.editChannel(channel, {
+    overwrites: { "member:3": { allow: ["ViewChannel", "ReadMessageHistory"] } },
+  });
+  for (const [path, viewer] of [
+    ["GET /tickets/mine/1", "1"],
+    ["GET /tickets/1", "2"],
+  ] as const) {
+    const result = await route(t, path, { viewer });
+    expect(result.status).toBe(404);
+    expect(JSON.stringify(result.body)).not.toContain(initial);
+  }
+  const notes = await route(t, "POST /tickets/1/notes", {
+    viewer: "2",
+    body: { content: "Should not reveal an earlier DM" },
+  });
+  expect(notes.status).toBe(404);
+  expect(JSON.stringify(notes.body)).not.toContain(initial);
+  await t.ctx.server.deleteChannel(channel);
+  for (const [path, viewer] of [
+    ["GET /tickets/mine/1", "1"],
+    ["GET /tickets/1", "2"],
+  ] as const) {
+    const result = await route(t, path, { viewer });
+    expect(result.status).toBe(404);
+    expect(JSON.stringify(result.body)).not.toContain(initial);
+  }
+});
+
+test("a committed interop ticket recovers the already-owned channel after losing its creation acknowledgement", async () => {
+  const t = setup();
+  const call = {
+    caller: { plugin: "moderation", bot: "bot", instance: "mod", source: "local", verified: false },
+    onBehalfOf: { userId: "1", access: "member" as const },
+    idempotencyKey: "recover",
+  };
+  const out = await plugin.actions!.open!.run(
+    t.ctx,
+    { userId: "1", subject: "Provision once" },
+    call,
+  );
+  expect(out).toEqual({ id: "1" });
+  expect(t.createdChannels).toHaveLength(0);
+  const grant = t.ctx.server.createChannel;
+  const lost = {
+    ...t.ctx,
+    server: {
+      ...t.ctx.server,
+      async createChannel(opts: Parameters<typeof grant>[0]) {
+        await grant(opts);
+        throw Error("Lost creation acknowledgement");
+      },
+    },
+  };
+  await expect(plugin.tasks!.provision!(lost, { number: 1 })).rejects.toThrow(
+    "Lost creation acknowledgement",
+  );
+  expect(t.createdChannels).toHaveLength(1);
+  const { getTicket, saveTicket } = await import("../src/tickets.ts");
+  const record = (await getTicket(t.ctx, 1))!;
+  expect(record.channelId).toBe("");
+  expect(record.provision?.phase).toBe("creating");
+  record.provision!.since = Date.now() - 180000;
+  await saveTicket(t.ctx, record);
+  await plugin.tasks!.provision!(t.ctx, { number: 1 });
+  await plugin.tasks!.provision!(t.ctx, { number: 1 });
+  expect(t.createdChannels).toHaveLength(1);
+  expect((await getTicket(t.ctx, 1))!.channelId).toBe(t.createdChannels[0]!.channel.id);
+  expect(t.published.filter((e) => e.topic === "opened")).toHaveLength(1);
+});
+
+// ───────────────────────────────────────────────────────────── schema 2 indexes (C-05)
+
+/** A context whose KV records the keys it reads and the prefixes it lists. */
+function watched(t: Harness) {
+  const lists: string[] = [];
+  const reads: string[] = [];
+  const kv = t.ctx.kv;
+  const spy: Context["kv"] = {
+    ...kv,
+    list: (o) => (lists.push(o?.prefix ?? ""), kv.list(o)),
+    get: (k) => (reads.push(k), kv.get(k)),
+    getEntry: (k) => (reads.push(k), kv.getEntry(k)),
+    getMany: (keys) => (reads.push(...keys), kv.getMany(keys)),
+  } as Context["kv"];
+  return { ctx: { ...t.ctx, kv: spy } as Context, lists, reads };
+}
+
+const ticketKeys = (t: Harness) => [...t.kv.keys()].filter((k) => k.startsWith("ticket:"));
+const padded = (n: number) => "ticket:" + String(n).padStart(8, "0");
+
+function legacyClosed(n: number, closedAt: string, extra: Partial<Ticket> = {}) {
+  return {
+    id: String(n),
+    number: n,
+    revision: 3,
+    subject: "Old " + n,
+    description: "",
+    status: "closed",
+    author: { id: n % 2 ? "1" : "3", displayName: n % 2 ? "alice" : "eve" },
+    channelId: "",
+    channelRemoved: true,
+    createdAt: closedAt,
+    closedAt,
+    ...extra,
+  } as unknown as Json;
+}
+
+describe("schema 2 indexes", () => {
+  test("a fresh install records meta:schema through the migration task", async () => {
+    const t = setup();
+    await plugin.schedules!.maintenance!.run(t.ctx);
+    expect(t.scheduled.map((s) => s.task)).toEqual(["reindex"]);
+    await plugin.tasks!.reindex!(t.ctx, undefined);
+    expect(t.kv.get("meta:schema")).toBe(2);
+    t.scheduled.splice(0);
+    await plugin.schedules!.maintenance!.run(t.ctx);
+    expect(t.scheduled).toEqual([]);
+  });
+
+  test("maintenance takes a bounded page of due tickets per run and never lists the records", async () => {
+    const t = setup({ recordRetentionDays: 1, transcriptRetentionDays: 1 });
+    const old = new Date(Date.now() - 3 * 86400000).toISOString();
+    for (let n = 1; n <= 60; n++) t.kv.set(padded(n), legacyClosed(n, old));
+    t.kv.set(padded(61), legacyClosed(61, new Date().toISOString()));
+    await migrate(t);
+    expect(await t.ctx.kv.ranking("due").count()).toBe(61);
+    const w = watched(t);
+    await plugin.schedules!.maintenance!.run(w.ctx);
+    expect(ticketKeys(t)).toHaveLength(61 - 25);
+    expect(w.lists.filter((p) => p.startsWith("ticket:"))).toEqual([]);
+    expect(new Set(w.reads.filter((k) => k.startsWith("ticket:"))).size).toBe(25);
+    await plugin.schedules!.maintenance!.run(t.ctx);
+    await plugin.schedules!.maintenance!.run(t.ctx);
+    // Only the ticket inside its retention remains, with its indexes.
+    expect(ticketKeys(t)).toEqual([padded(61)]);
+    expect(await t.ctx.kv.ranking("due").count()).toBe(1);
+    expect([...t.kv.keys()].filter((k) => k.startsWith("who:"))).toEqual(["who:1:00000061"]);
+  });
+
+  test("the migration indexes 0.4.0 records in resumable pages, replays exactly once, and keeps the open receipt", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const t = setup({}, { features: [...granted, "appealUpdates"] });
+      const closedAt = new Date(Date.now() - 86400000).toISOString();
+      const request = { caller: "bot/mod", key: "appeal:7" };
+      for (let n = 1; n <= 45; n++)
+        t.kv.set(
+          padded(n),
+          legacyClosed(n, closedAt, {
+            rating: (n % 5) + 1,
+            ...(n === 7 ? { request, appeal: { number: 7, bot: "bot", instance: "mod" } } : {}),
+          }),
+        );
+      t.kv.set("seq", 45);
+      await plugin.schedules!.maintenance!.run(t.ctx);
+      await plugin.tasks!.reindex!(t.ctx, undefined);
+      expect(t.kv.get("meta:reindex")).toMatchObject({ cursor: padded(20) });
+      expect((t.kv.get(padded(20)) as { ix?: number }).ix).toBe(2);
+      expect((t.kv.get(padded(21)) as { ix?: number }).ix).toBeUndefined();
+      const firstPage = (t.kv.get(padded(1)) as { revision: number }).revision;
+      // The continuation task is lost (restart). An appeal update arrives meanwhile.
+      t.scheduled.splice(0);
+      await plugin.subscriptions!["moderation.appeal"]!(
+        t.ctx,
+        { case: 7, userId: "1", status: "accepted" } as never,
+        { publisher: { plugin: "moderation", bot: "bot", instance: "mod" } } as never,
+      );
+      await plugin.schedules!.maintenance!.run(t.ctx);
+      expect(t.scheduled).toEqual([]);
+      vi.setSystemTime(Date.now() + 11 * 60000);
+      await plugin.schedules!.maintenance!.run(t.ctx);
+      expect(t.scheduled.map((s) => s.task)).toEqual(["reindex"]);
+      // Two deliveries of the same page race; only one advances the cursor.
+      await Promise.all([
+        plugin.tasks!.reindex!(t.ctx, undefined),
+        plugin.tasks!.reindex!({ ...t.ctx }, undefined),
+      ]);
+      await migrate(t);
+      expect((t.kv.get(padded(1)) as { revision: number }).revision).toBe(firstPage);
+      expect(ticketKeys(t).every((k) => (t.kv.get(k) as { ix?: number }).ix === 2)).toBe(true);
+      expect(t.kv.get("meta:schema")).toBe(2);
+      let sum = 0;
+      for (let n = 1; n <= 45; n++) sum += (n % 5) + 1;
+      expect((await route(t, "GET /tickets/stats", { viewer: "2" })).body).toEqual({
+        rated: 45,
+        mean: sum / 45,
+      });
+      expect(t.kv.get(padded(7))).toMatchObject({ appeal: { status: "accepted" } });
+      expect([...t.kv.keys()].some((k) => k.startsWith("appealPending:"))).toBe(false);
+      const w = watched(t);
+      const retry = await plugin.actions!.open!.run(
+        w.ctx,
+        { userId: "1", subject: "Appeal", caseNumber: 7 },
+        {
+          caller: { plugin: "moderation", bot: "bot", instance: "mod", source: "cicord", verified: true },
+          onBehalfOf: { userId: "1", access: "member" },
+          idempotencyKey: "appeal:7",
+        },
+      );
+      expect(retry).toEqual({ id: "7" });
+      expect(w.lists).toEqual([]);
+      expect(ticketKeys(t)).toHaveLength(45);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("concurrent open requests in separate realms commit one ticket for one receipt", async () => {
+    const t = setup();
+    await migrate(t);
+    const w = watched(t);
+    const call = {
+      caller: { plugin: "economy", bot: "bot", instance: "shop", source: "cicord", verified: true },
+      onBehalfOf: { userId: "1", access: "member" as const },
+      idempotencyKey: "order-1",
+    };
+    const data = { userId: "1", subject: "Perk" };
+    const run = plugin.actions!.open!.run;
+    const [a, b] = await Promise.all([run(w.ctx, data, call), run({ ...w.ctx }, data, call)]);
+    expect(a).toEqual({ id: expect.any(String) });
+    expect(b).toEqual(a);
+    expect(ticketKeys(t)).toHaveLength(1);
+    expect([...t.kv.keys()].filter((k) => k.startsWith("open:1:"))).toHaveLength(1);
+    expect(w.lists.filter((p) => p.startsWith("ticket:"))).toEqual([]);
+    expect(await run(t.ctx, data, call)).toEqual(a);
+    const other = { ...call, caller: { ...call.caller, instance: "other" } };
+    await expect(run(t.ctx, data, other)).rejects.toMatchObject({ code: "denied" });
+    await expect(run(t.ctx, { ...data, userId: "3" }, call)).rejects.toMatchObject({
+      code: "denied",
+      message: "Ticket staff required",
+    });
+  });
+
+  test("index writes commit with the record: a stale concurrent save cannot skew the counters", async () => {
+    const t = setup();
+    await portalOpen(t);
+    await route(t, "POST /tickets/1/close", { viewer: "2" });
+    const { getTicket, saveTicket } = await import("../src/tickets.ts");
+    const [a, b] = [(await getTicket(t.ctx, 1))!, (await getTicket(t.ctx, 1))!];
+    a.rating = 5;
+    b.rating = 1;
+    const results = await Promise.allSettled([saveTicket(t.ctx, a), saveTicket({ ...t.ctx }, b)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const winner = (await getTicket(t.ctx, 1))!.rating!;
+    expect([t.kv.get("rating:count:default"), t.kv.get("rating:sum:default")]).toEqual([1, winner]);
+    const ctx = { ...t.ctx, privacy: { pseudonym: async () => "deleted-user-1234567812345678" } };
+    await plugin.privacy!.erase(ctx, "1");
+    expect([t.kv.get("rating:count:default"), t.kv.get("rating:sum:default")]).toEqual([0, 0]);
+  });
+
+  test("auto-close candidates are taken by due time and survive a restart between warning and close", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const H = 3600000;
+    const start = Date.parse("2026-03-01T10:00:00Z");
+    vi.setSystemTime(start);
+    try {
+      const t = setup({ inactivityHours: 3 });
+      await migrate(t);
+      await portalOpen(t);
+      const due = async () => -(await t.ctx.kv.ranking("due").score("1"))!;
+      expect(await due()).toBe(start + 2 * H);
+      vi.setSystemTime(start + H);
+      const channel = t.createdChannels[0]!.channel;
+      await plugin.events!.messageCreate!(t.ctx, {
+        ...messageIn(t, channel, "1", "a1"),
+        createdAt: new Date(),
+      });
+      // The entry is now early; the pass re-reads the activity and reschedules.
+      vi.setSystemTime(start + 2 * H + 1000);
+      await plugin.schedules!.maintenance!.run(t.ctx);
+      expect(t.kv.get(padded(1))).not.toHaveProperty("warningAt");
+      expect(await due()).toBe(start + 3 * H);
+      vi.setSystemTime(start + 3 * H + 1000);
+      await plugin.schedules!.maintenance!.run(t.ctx);
+      const warnedAt = (t.kv.get(padded(1)) as { warningAt: number }).warningAt;
+      expect(warnedAt).toBe(start + 3 * H + 1000);
+      expect(await due()).toBe(warnedAt + H);
+      // A new context over the same storage (restart) closes it once.
+      vi.setSystemTime(warnedAt + H);
+      const resumed = { ...t.ctx };
+      await plugin.schedules!.maintenance!.run(resumed);
+      await plugin.schedules!.maintenance!.run(resumed);
+      expect(t.kv.get(padded(1))).toMatchObject({ status: "closed" });
+      expect(t.published.filter((e) => e.topic === "closed")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("privacy hooks read only the tickets that name the member, mentions included", async () => {
+    const t = setup();
+    await migrate(t);
+    await portalOpen(t, "1");
+    await portalOpen(t, "4");
+    await route(t, "POST /tickets/2/close", { viewer: "2" });
+    await route(t, "POST /tickets/1/notes", { viewer: "2", body: { content: "Ask <@3> too" } });
+    const w = watched(t);
+    const ctx = { ...w.ctx, privacy: { pseudonym: async () => "deleted-user-1234567812345678" } };
+    const before = (t.kv.get(padded(2)) as { revision: number }).revision;
+    await plugin.privacy!.erase(ctx, "3");
+    expect((t.kv.get(padded(1)) as { notes: { content: string }[] }).notes[0]!.content).toBe(
+      "Ask Deleted member too",
+    );
+    expect((t.kv.get(padded(2)) as { revision: number }).revision).toBe(before);
+    expect(w.lists.filter((p) => p.startsWith("ticket:"))).toEqual([]);
+    expect([...t.kv.keys()].some((k) => k.startsWith("who:3:"))).toBe(false);
+  });
+
+  test("transcripts name fetched-message authors by server display name (fetched messages carry no member)", async () => {
+    const t = setup();
+    t.addMember({ id: "8", username: "zed", nickname: "Zed on this server" });
+    await portalOpen(t, "1");
+    const channel = t.createdChannels[0]!.channel;
+    const line = await channel.send("A guest line");
+    // As from Discord REST: an author, no member.
+    Object.assign(line, { author: t.member("8")!.user, member: undefined });
+    await route(t, "POST /tickets/1/close", { viewer: "2" });
+    const pages = [...t.kv.entries()].filter(([k]) => k.startsWith("transcript:1:"));
+    const lines = pages.flatMap(([, v]) => v as { author: { id: string; displayName: string } }[]);
+    expect(lines.find((l) => l.author.id === "8")?.author.displayName).toBe("Zed on this server");
+  });
+
+  test("erasing a staff member who only wrote in an open channel keeps their lines out of the later transcript", async () => {
+    const t = setup();
+    await migrate(t);
+    await portalOpen(t, "1");
+    const channel = t.createdChannels[0]!.channel;
+    const reply = t.receive(channel.id, t.member("4")!.user, "Max private answer");
+    await plugin.events!.messageCreate!(t.ctx, reply);
+    expect([...t.kv.keys()].some((k) => k.startsWith("who:4:"))).toBe(false);
+    const ctx = { ...t.ctx, privacy: { pseudonym: async () => "deleted-user-1234567812345678" } };
+    await plugin.privacy!.erase(ctx, "4");
+    expect(t.kv.get(padded(1))).toMatchObject({ redactedMessageIds: [reply.id] });
+    await route(t, "POST /tickets/1/close", { viewer: "2" });
+    const pages = [...t.kv.entries()].filter(([k]) => k.startsWith("transcript:1:"));
+    expect(JSON.stringify(pages)).not.toContain("Max private answer");
+  });
+
+  test("a schema-1 record saved before the migration reaches it still gets its author and transcript indexes", async () => {
+    const t = setup();
+    t.kv.set("seq", 1);
+    const expiresAt = Date.now() + 86400000;
+    t.kv.set(
+      padded(1),
+      legacyClosed(1, new Date().toISOString(), { expiresAt, transcriptPages: 1 } as Partial<Ticket>),
+    );
+    t.kv.set("transcript:1:0", [{ author: { id: "3", displayName: "eve" }, at: "x", text: "Eve line" }]);
+    // A normal write marks the record before the migration task reaches it.
+    expect((await route(t, "POST /tickets/1/rating", { viewer: "1", body: { rating: 3 } })).status).toBe(200);
+    expect((t.kv.get(padded(1)) as { ix?: number }).ix).toBe(2);
+    await migrate(t);
+    const mine = (await route(t, "GET /tickets/mine", { viewer: "1" })).body as unknown as {
+      items: MyTicket[];
+    };
+    expect(mine.items.map((i) => i.id)).toEqual(["1"]);
+    const ctx = { ...t.ctx, privacy: { pseudonym: async () => "deleted-user-1234567812345678" } };
+    await plugin.privacy!.erase(ctx, "3");
+    expect(JSON.stringify(t.kv.get("transcript:1:0"))).not.toContain("Eve line");
+  });
+});
+
+// ───────────────────────────────────────────────────────────── optional features (C-10, SPB-19)
+
+describe("optional features and degraded configuration", () => {
+  const typed = {
+    modmailType: "help",
+    types: [
+      {
+        key: "help",
+        name: "Help",
+        staffRoles: ["support"],
+        logChannel: "private-log",
+        retainSourceForTranscript: true,
+      },
+    ],
+  };
+  const limited = grants.filter((g) => g !== "discord.dm.send" && g !== "discord.messages.manage");
+
+  test("without the DM and message-management grants, modmail, rating DMs and log files stay off with status lines", async () => {
+    const t = setup(typed, { grants: limited, features: ["messageContextMenu"] });
+    await plugin.onStart!(t.ctx);
+    const status = t.logs.filter((l) => l.level === "warn").map((l) => l.message);
+    expect(status).toContain("modmail: Modmail needs discord.dm.send: direct messages do not open tickets");
+    expect(status).toContain(
+      "transcriptFiles: Transcript files need discord.messages.manage: log channels receive summaries only",
+    );
+    await plugin.events!.directMessage!(t.ctx, {
+      ...messageIn(t, t.channel("help-desk")!, "1"),
+      content: "Hello",
+    });
+    expect(t.createdChannels).toHaveLength(0);
+    await portalOpen(t, "1", { type: "help" });
+    const welcome = (t.kv.get(padded(1)) as { welcomeId: string }).welcomeId;
+    await route(t, "POST /tickets/1/close", { viewer: "2" });
+    const log = t.sent.filter((m) => m.to === "private-log");
+    expect(log).toHaveLength(1);
+    expect(log[0]!.message).not.toHaveProperty("files");
+    expect(t.edits.filter((e) => e.id === log[0]!.id && "files" in (e.message as object))).toEqual([]);
+    expect(t.sent.some((m) => m.to.startsWith("dm:"))).toBe(false);
+    // The portal rating works without the DM prompt.
+    expect((await route(t, "POST /tickets/1/rating", { viewer: "1", body: { rating: 4 } })).status).toBe(200);
+    // Erasure blanks the bot's welcome copy instead of deleting it.
+    const ctx = { ...t.ctx, privacy: { pseudonym: async () => "deleted-user-1234567812345678" } };
+    await plugin.privacy!.erase(ctx, "1");
+    expect(t.deletedMessages).toEqual([]);
+    expect(t.edits.find((e) => e.id === welcome)?.message).toMatchObject({
+      content: "This message was removed.",
+      embeds: [],
+    });
+  });
+
+  test("granted, the same configuration has no status lines and opens modmail", async () => {
+    const t = setup(typed);
+    await plugin.onStart!(t.ctx);
+    expect(t.logs.filter((l) => l.level === "warn")).toEqual([]);
+    await plugin.events!.directMessage!(t.ctx, {
+      ...messageIn(t, t.channel("help-desk")!, "1"),
+      content: "Hello",
+    });
+    expect(t.createdChannels).toHaveLength(1);
+  });
+
+  test("duplicate type keys and an unknown modmailType degrade with status lines instead of failing startup", async () => {
+    const t = setup({
+      modmailType: "nope",
+      types: [
+        { key: "help", name: "Help", staffRoles: ["support"] },
+        { key: "help", name: "Again", staffRoles: ["mods"] },
+      ],
+    });
+    await expect(plugin.onStart!(t.ctx)).resolves.toBeUndefined();
+    const status = t.logs.filter((l) => l.level === "warn").map((l) => l.message);
+    expect(status).toContain("types: Duplicate ticket type help: only the first definition is used");
+    expect(status).toContain("modmail: Unknown modmailType nope: direct messages do not open tickets");
+    expect((await route(t, "GET /types", { viewer: "1" })).body).toEqual({
+      items: [{ key: "help", name: "Help" }],
+    });
+    await plugin.events!.directMessage!(t.ctx, {
+      ...messageIn(t, t.channel("help-desk")!, "1"),
+      content: "Hello",
+    });
+    expect(t.createdChannels).toHaveLength(0);
   });
 });

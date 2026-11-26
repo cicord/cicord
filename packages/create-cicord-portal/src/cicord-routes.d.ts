@@ -3,13 +3,78 @@
 // @cicord/client (`client.routes(plugin, …)`) and @cicord/react (`useRouteQuery`,
 // `useRouteMutation`). `cicord portal build` regenerates it; see https://cicord.dev/docs/portal/custom-portal/.
 //
-//   announcements 0.1.0 (../../plugins/announcements): 1 route(s), untyped (no spec.routes.types)
-//   levels 0.1.0 (../../plugins/levels): 2 route(s), typed
-//   moderation 0.1.1 (../../plugins/moderation): 2 route(s), untyped (no spec.routes.types)
-//   polls 0.1.1 (../../plugins/polls): 1 route(s), typed
-//   tickets 0.2.1 (../../plugins/tickets): 11 route(s), typed
+//   announcements 0.2.0 (../../plugins/announcements): 3 route(s), typed
+//   audit-log 0.2.0 (../../plugins/audit-log): 2 route(s), typed
+//   levels 0.2.0 (../../plugins/levels): 3 route(s), typed
+//   moderation 0.3.0 (../../plugins/moderation): 11 route(s), untyped (no spec.routes.types)
+//   polls 0.2.0 (../../plugins/polls): 1 route(s), typed
+//   tickets 0.4.0 (../../plugins/tickets): 17 route(s), typed
 
 import type { RouteEntry } from "@cicord/client";
+
+// Contract of announcements (spec.routes.types), copied verbatim.
+declare namespace cicord_announcements {
+  export interface Composition {
+    channel: string;
+    title?: string;
+    text: string;
+    at?: string;
+    layout?: boolean;
+  }
+  export interface Preview {
+    content?: string;
+    embeds?: { title?: string; description?: string; color?: string }[];
+    layout?: { type: string; content?: string }[];
+  }
+  export interface Routes {
+    "POST /preview": { body: Composition; response: { message: Preview } };
+    "POST /compose": { body: Composition; response: { id: number } };
+    "GET /scheduled": {
+      response: {
+        timeZone: string;
+        recurring: {
+          name: string;
+          channel: string;
+          enabled: boolean;
+          timeZone: string;
+          schedule: string | null;
+          error: string | null;
+          next: string | null;
+        }[];
+        scheduled: {
+          id: number;
+          channelId: string;
+          at: string;
+          title: string | null;
+          preview: string;
+          by: { id: string; name: string };
+        }[];
+      };
+    };
+  }
+}
+
+// Contract of audit-log (spec.routes.types), copied verbatim.
+declare namespace cicord_audit_log {
+  export type AuditObservation = {
+    id: string;
+    at: number;
+    category: string;
+    text: string;
+    excerpt?: string;
+  };
+  export type SearchResult = { items: AuditObservation[]; cursor?: string };
+  export interface Routes {
+    "GET /search": {
+      query: { q?: string; member?: string; channel?: string; category?: string; cursor?: string };
+      response: SearchResult;
+    };
+    "GET /export": {
+      query: { q?: string; member?: string; channel?: string; category?: string; cursor?: string };
+      response: SearchResult;
+    };
+  }
+}
 
 // Contract of levels (spec.routes.types), copied verbatim.
 declare namespace cicord_levels {
@@ -43,6 +108,7 @@ declare namespace cicord_levels {
   }
 
   export interface Routes {
+    "GET /seasons/:id": { response: { entries: { userId: string; xp: number; rank: number }[] } };
     /** Public leaderboard. `limit`: 1-100 (default 25). */
     "GET /leaderboard": {
       query: { limit?: number };
@@ -65,7 +131,7 @@ declare namespace cicord_polls {
   export interface PollResults {
     id: string;
     question: string;
-    status: "open" | "closed";
+    status: "scheduled" | "open" | "closed";
     /** Several choices per voter. */
     multiple: boolean;
     createdAt: string;
@@ -97,7 +163,7 @@ declare namespace cicord_tickets {
   export type TicketStatus = "open" | "closed";
   export type Priority = "low" | "normal" | "high" | "urgent";
   /** Where the ticket was opened: the Discord panel or a portal. */
-  export type TicketSource = "discord" | "portal";
+  export type TicketSource = "discord" | "portal" | "modmail" | "interop";
 
   /** A Discord user as the server shows them. */
   export interface Person {
@@ -153,6 +219,9 @@ declare namespace cicord_tickets {
     /** Name only. */
     assignee: { displayName: string } | null;
     source: TicketSource;
+    type: string;
+    labels: string[];
+    rating: number | null;
     createdAt: string;
     closedAt: string | null;
     lastActivityAt: string | null;
@@ -183,6 +252,9 @@ declare namespace cicord_tickets {
     label: Label | null;
     assignee: Person | null;
     source: TicketSource;
+    type: string;
+    labels: string[];
+    rating: number | null;
   }
 
   /** The text of an embed of a ticket message (bot messages: replies, notices). */
@@ -215,6 +287,9 @@ declare namespace cicord_tickets {
     summary: { messages: number; participants: Person[] } | null;
     /** What `StaffTicket.messages` counts. */
     messageCount: number;
+    firstResponseAt: string | null;
+    appeal: { number: number; status: string | null } | null;
+    notes: { by: Person; at: string; content: string }[];
     events: TicketEvent[];
     /**
      * The last 50 messages of the ticket channel, oldest first; null when the channel is gone
@@ -228,6 +303,20 @@ declare namespace cicord_tickets {
   }
 
   export interface Routes {
+    "GET /types": { response: { items: { key: string; name: string }[] } };
+    "GET /tickets/stats": { response: { rated: number; mean: number | null } };
+    "GET /tickets/:id/transcript": {
+      query: { format?: "html" | "markdown" };
+      response: { format: "html" | "markdown"; content: string };
+    };
+    "GET /tickets/:id/cases": {
+      response: {
+        cases: { number: number; action: string; status: string; reason: string; at: string }[];
+      };
+    };
+    "POST /tickets/:id/notes": { body: { content: string }; response: StaffTicketDetail };
+    "POST /tickets/:id/rating": { body: { rating: number }; response: { rating: number } };
+
     // ── members (their own tickets only)
 
     /** The viewer's tickets: open ones first, newest first. */
@@ -239,23 +328,34 @@ declare namespace cicord_tickets {
      * 201. 409 `limit` when the member already has `maxOpenPerMember` open tickets.
      */
     "POST /tickets": {
-      body: { subject: string; description: string; label?: string | null };
+      body: { subject: string; description: string; label?: string | null; type?: string };
       response: MyTicket;
     };
 
     // ── staff (a staff role, the server owner or a Cicord admin)
 
-    /** Tickets, newest first. `assignee`: a user id, `me` or `none`; `label`: a key or `none`. */
+    /**
+     * Tickets, newest first. `assignee`: a user id, `me` or `none`; `label`: a key or `none`.
+     * One page holds at most 50 tickets and reads at most 500 records, so a selective filter
+     * can return a short or empty page: follow `cursor` (pass it as `?cursor=`) until it is
+     * absent, which marks the last page.
+     */
     "GET /tickets": {
-      query: { status?: TicketStatus; assignee?: string; priority?: Priority; label?: string };
-      response: { items: StaffTicket[] };
+      query: {
+        status?: TicketStatus;
+        assignee?: string;
+        priority?: Priority;
+        label?: string;
+        cursor?: string;
+      };
+      response: { items: StaffTicket[]; cursor?: string };
     };
     "GET /tickets/:id": { response: StaffTicketDetail };
     /**
      * Who can be assigned, by display name: the holders of the staff roles (bots excluded),
      * the server owner and the viewer.
      */
-    "GET /staff": { response: { items: Person[] } };
+    "GET /staff": { query: { type?: string }; response: { items: Person[] } };
     /** `userId`: a staff member's id, `me`, or null to unassign. */
     "POST /tickets/:id/assign": { body: { userId: string | null }; response: StaffTicket };
     "PATCH /tickets/:id": {
@@ -274,31 +374,53 @@ declare namespace cicord_tickets {
 declare module "@cicord/client" {
   interface PluginRouteRegistry {
     "announcements": {
-      "GET /scheduled": RouteEntry<"moderator">;
+      "GET /scheduled": RouteEntry<"moderator", cicord_announcements.Routes, "GET /scheduled">;
+      "POST /compose": RouteEntry<"moderator", cicord_announcements.Routes, "POST /compose">;
+      "POST /preview": RouteEntry<"moderator", cicord_announcements.Routes, "POST /preview">;
+    };
+    "audit-log": {
+      "GET /export": RouteEntry<"moderator", cicord_audit_log.Routes, "GET /export">;
+      "GET /search": RouteEntry<"moderator", cicord_audit_log.Routes, "GET /search">;
     };
     "levels": {
       "GET /leaderboard": RouteEntry<"public", cicord_levels.Routes, "GET /leaderboard">;
       "GET /me": RouteEntry<"member", cicord_levels.Routes, "GET /me">;
+      "GET /seasons/:id": RouteEntry<"public", cicord_levels.Routes, "GET /seasons/:id">;
     };
     "moderation": {
+      "DELETE /quarantines/:id/roles/:role": RouteEntry<"moderator">;
       "DELETE /warnings/:userId": RouteEntry<"admin">;
+      "GET /appeal": RouteEntry<"scoped">;
+      "GET /appeals": RouteEntry<"moderator">;
+      "GET /cases": RouteEntry<"moderator">;
+      "GET /members/:id": RouteEntry<"member">;
+      "GET /stats/moderators": RouteEntry<"moderator">;
       "GET /warnings/:userId": RouteEntry<"moderator">;
+      "POST /appeals": RouteEntry<"scoped">;
+      "POST /appeals/:id/decision": RouteEntry<"moderator">;
+      "POST /scope/renew": RouteEntry<"scoped">;
     };
     "polls": {
       "GET /polls/:id": RouteEntry<"public", cicord_polls.Routes, "GET /polls/:id">;
     };
     "tickets": {
-      "GET /staff": RouteEntry<"moderator", cicord_tickets.Routes, "GET /staff">;
-      "GET /tickets": RouteEntry<"moderator", cicord_tickets.Routes, "GET /tickets">;
-      "GET /tickets/:id": RouteEntry<"moderator", cicord_tickets.Routes, "GET /tickets/:id">;
+      "GET /staff": RouteEntry<"member", cicord_tickets.Routes, "GET /staff">;
+      "GET /tickets": RouteEntry<"member", cicord_tickets.Routes, "GET /tickets">;
+      "GET /tickets/:id": RouteEntry<"member", cicord_tickets.Routes, "GET /tickets/:id">;
+      "GET /tickets/:id/cases": RouteEntry<"member", cicord_tickets.Routes, "GET /tickets/:id/cases">;
+      "GET /tickets/:id/transcript": RouteEntry<"member", cicord_tickets.Routes, "GET /tickets/:id/transcript">;
       "GET /tickets/mine": RouteEntry<"member", cicord_tickets.Routes, "GET /tickets/mine">;
       "GET /tickets/mine/:id": RouteEntry<"member", cicord_tickets.Routes, "GET /tickets/mine/:id">;
-      "PATCH /tickets/:id": RouteEntry<"moderator", cicord_tickets.Routes, "PATCH /tickets/:id">;
+      "GET /tickets/stats": RouteEntry<"member", cicord_tickets.Routes, "GET /tickets/stats">;
+      "GET /types": RouteEntry<"member", cicord_tickets.Routes, "GET /types">;
+      "PATCH /tickets/:id": RouteEntry<"member", cicord_tickets.Routes, "PATCH /tickets/:id">;
       "POST /tickets": RouteEntry<"member", cicord_tickets.Routes, "POST /tickets">;
-      "POST /tickets/:id/assign": RouteEntry<"moderator", cicord_tickets.Routes, "POST /tickets/:id/assign">;
-      "POST /tickets/:id/close": RouteEntry<"moderator", cicord_tickets.Routes, "POST /tickets/:id/close">;
-      "POST /tickets/:id/messages": RouteEntry<"moderator", cicord_tickets.Routes, "POST /tickets/:id/messages">;
-      "POST /tickets/:id/reopen": RouteEntry<"moderator", cicord_tickets.Routes, "POST /tickets/:id/reopen">;
+      "POST /tickets/:id/assign": RouteEntry<"member", cicord_tickets.Routes, "POST /tickets/:id/assign">;
+      "POST /tickets/:id/close": RouteEntry<"member", cicord_tickets.Routes, "POST /tickets/:id/close">;
+      "POST /tickets/:id/messages": RouteEntry<"member", cicord_tickets.Routes, "POST /tickets/:id/messages">;
+      "POST /tickets/:id/notes": RouteEntry<"member", cicord_tickets.Routes, "POST /tickets/:id/notes">;
+      "POST /tickets/:id/rating": RouteEntry<"member", cicord_tickets.Routes, "POST /tickets/:id/rating">;
+      "POST /tickets/:id/reopen": RouteEntry<"member", cicord_tickets.Routes, "POST /tickets/:id/reopen">;
     };
   }
 }

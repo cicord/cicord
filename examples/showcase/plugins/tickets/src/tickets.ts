@@ -1,9 +1,9 @@
+import { relay } from "./relay.ts";
 /**
  * Ticket records and the operations shared by the Discord handlers and the portal routes
  * (open, close, reopen, reply…). The portal shapes are declared in routes.ts.
  *
- * Nothing here stores what people write in a ticket channel: only the subject and details
- * of the opening form, the close reason, who did what and when.
+ * Closed transcripts have a configured retention period.
  */
 import type {
   Context,
@@ -30,6 +30,23 @@ import type {
   TicketStatus,
 } from "./routes.ts";
 
+import { archive, postArchive, purgeArchive } from "./transcript.ts";
+import {
+  DUE,
+  SCHEMA,
+  SCHEMA_KEY,
+  appealKey,
+  copyKey,
+  dueAt,
+  involved,
+  pad,
+  ratingCount,
+  ratingSum,
+  reqKey,
+  sameRequest,
+  whoKey,
+  type Request,
+} from "./indexes.ts";
 export type { Person } from "./routes.ts";
 
 export const PRIORITIES: readonly Priority[] = ["low", "normal", "high", "urgent"];
@@ -39,6 +56,11 @@ const MAX_EVENTS = 100;
 export interface Ticket {
   id: string;
   number: number;
+  revision?: number;
+  /** KV schema of this record's indexes (src/indexes.ts). Absent on 0.2.1/0.4.0 records. */
+  ix?: number;
+  erasing?: boolean;
+  provision?: { topic: string; phase: "queued" | "creating" | "welcome"; since: number };
   subject: string;
   description: string;
   status: TicketStatus;
@@ -58,22 +80,55 @@ export interface Ticket {
   /** The last 100 events. */
   events: TicketEvent[];
   source: TicketSource;
+  type: string;
+  request?: { caller: string; key: string };
+  appeal?: { number: number; bot: string; instance: string; status?: string };
+  closedAudience?: { known: boolean; roles: string[]; members: string[]; denied: string[] };
+  labels: string[];
+  notes: { by: Person; at: string; content: string }[];
+  copies?: { messageId: string; userId: string; origin?: string }[];
+  directCopies?: {
+    messageId: string;
+    authorId: string;
+    sourceMessageId?: string;
+    origin?: string;
+  }[];
+  redactedMessageIds?: string[];
+  notices?: { messageId: string; users: string[] }[];
+  firstResponseAt?: string;
+  reminded?: boolean;
+  warningAt?: number;
+  rating?: number;
+  transcriptPages?: number;
+  expiresAt?: number;
+  logCopy?: { channelId: string; messageId: string };
+  withdrawLog?: boolean;
+  sourcePolicy?: string;
+  archivePolicy?: string;
+  archiveRoles?: string[];
+  logDelivery?: {
+    channelId: string;
+    marker: string;
+    content: string;
+    phase: "pending" | "summary" | "attaching" | "attached";
+    messageId?: string;
+  };
+  pendingClose?: boolean;
+  summaryPosted?: boolean;
+  welcomeId?: string;
   closeReason?: string;
   /** The channel was deleted when the ticket was closed. */
   channelRemoved?: boolean;
 }
 
 // Zero-padded numbers keep `kv.list()` (lexicographic) in ticket order.
-const pad = (n: number): string => String(n).padStart(8, "0");
-const ticketKey = (n: number): string => `ticket:${pad(n)}`;
+export const ticketKey = (n: number): string => `ticket:${pad(n)}`;
 export const openKey = (userId: string, n: number): string => `open:${userId}:${n}`;
 export const channelKey = (channelId: string): string => `channel:${channelId}`;
 export const activityKey = (n: number): string => `activity:${n}`;
 export const lastActivityKey = (n: number): string => `last:${n}`;
 /** Index of a member's tickets (`GET /tickets/mine`). */
-const authorKey = (userId: string, n: number): string => `author:${userId}:${pad(n)}`;
-/** Set once the author index covers the tickets written before 0.2. */
-const AUTHOR_INDEX = "index:authors";
+export const authorKey = (userId: string, n: number): string => `author:${userId}:${pad(n)}`;
 
 const TICKET_PERMS: Permission[] = [
   "ViewChannel",
@@ -85,8 +140,29 @@ const TICKET_PERMS: Permission[] = [
 
 const NO_MENTIONS = { users: false, roles: false, everyone: false } as const;
 
-export function person(user: User, member?: Member): Person {
+export function person(user: Pick<User, "id" | "displayName">, member?: Member): Person {
   return { id: user.id, displayName: member?.displayName ?? user.displayName };
+}
+
+/**
+ * Server display names for the authors of fetched messages, which carry no member (Discord
+ * REST has none). The people the ticket already names come from the record; others are
+ * looked up at most `cap` times per call, then fall back to the user's global name.
+ */
+export function authorNames(ctx: Context, t: Ticket, cap = 25) {
+  const known = new Map<string, Person>();
+  for (const p of [t.author, t.assignee, ...(t.events ?? []).map((e) => e.by), ...t.notes.map((n) => n.by)])
+    if (p) known.set(p.id, p);
+  let lookups = 0;
+  return async (user: Pick<User, "id" | "displayName">): Promise<Person> => {
+    const hit = known.get(user.id);
+    if (hit) return hit;
+    let member: Member | undefined;
+    if (lookups++ < cap) member = await ctx.server.member(user.id).catch(() => undefined);
+    const p = person(user, member);
+    known.set(user.id, p);
+    return p;
+  };
 }
 
 /** Replaces `{name}` placeholders; unknown ones are kept as is. */
@@ -110,7 +186,7 @@ export function channelName(template: string, n: number, member: string): string
 }
 
 export function channelUrl(ctx: Context, t: Ticket): string | null {
-  return t.status === "open"
+  return t.status === "open" && t.channelId
     ? `https://discord.com/channels/${ctx.server.id}/${t.channelId}`
     : null;
 }
@@ -127,11 +203,18 @@ export function normalize(raw: Ticket): Ticket {
       ];
   return {
     ...raw,
+    // Initial modmail content in early 0.4 records was copied into the opening form.
+    // It must never enter a metadata projection, mutation response or renewed channel.
+    ...(raw.source === "modmail" ? { description: "" } : {}),
+    revision: raw.revision ?? 0,
     priority: PRIORITIES.includes(raw.priority) ? raw.priority : "normal",
     label: typeof raw.label === "string" ? raw.label : null,
     assignee: raw.assignee ?? null,
     events,
-    source: raw.source === "portal" ? "portal" : "discord",
+    source: raw.source ?? "discord",
+    type: raw.type ?? "default",
+    labels: raw.labels ?? (raw.label ? [raw.label] : []),
+    notes: raw.notes ?? [],
   };
 }
 
@@ -151,11 +234,112 @@ export async function getTicket(ctx: Context, n: number): Promise<Ticket | undef
   return raw ? normalize(raw) : undefined;
 }
 
-export async function saveTicket(ctx: Context, t: Ticket): Promise<void> {
-  await ctx.kv.set(ticketKey(t.number), t as unknown as Json);
+export async function saveTicket(
+  ctx: Context,
+  t: Ticket,
+  privacyWrite = false,
+  /** Extra checks and writes committed with the record. */
+  extra?: (tx: Tx) => void,
+): Promise<void> {
+  const key = ticketKey(t.number);
+  const entry = await ctx.kv.getEntry(key);
+  const saved = entry?.value as unknown as Ticket | undefined;
+  if (saved?.erasing && !privacyWrite)
+    throw new TicketConflict("Ticket privacy update in progress");
+  const prior = saved ? (saved.revision ?? 0) : -1;
+  if (prior !== (t.revision ?? -1))
+    throw new TicketConflict("Ticket changed; reload before saving");
+  const revision = prior + 1;
+  const next: Ticket = { ...t, revision, ix: SCHEMA };
+  const previous = saved ? normalize(saved) : undefined;
+  // Schema-1 records contributed nothing to the counters yet.
+  const counted = saved?.ix === SCHEMA ? previous : undefined;
+  const known = counted ? involved(counted) : new Set<string>();
+  for (const id of involved(next)) if (!known.has(id)) await ctx.kv.set(whoKey(id, t.number), true);
+  const tx = ctx.kv.atomic().check(key, entry?.version);
+  extra?.(tx);
+  tx.set(key, next as unknown as Json);
+  deriveIndexes(ctx, tx, previous, counted, next, await ctx.kv.get<string>(lastActivityKey(t.number)));
+  if (!(await tx.commit()).ok) throw new TicketConflict("Ticket changed; reload before saving");
+  t.revision = revision;
+  t.ix = SCHEMA;
 }
 
-async function allTickets(ctx: Context): Promise<Ticket[]> {
+type Tx = ReturnType<Context["kv"]["atomic"]>;
+
+/** Index writes for one record transition, committed with the record. */
+export function deriveIndexes(
+  ctx: Context,
+  tx: Tx,
+  previous: Ticket | undefined,
+  counted: Ticket | undefined,
+  next: Ticket,
+  last: string | undefined,
+) {
+  const n = next.number;
+  const due = dueAt(ctx.config, next, last);
+  if (due === undefined) tx.rankRemove(DUE, String(n));
+  else tx.rankSet(DUE, String(n), -due);
+  if (next.logDelivery || next.logCopy) tx.set(copyKey(n), n);
+  else if (previous?.logDelivery || previous?.logCopy) tx.delete(copyKey(n));
+  if (previous?.request && !sameRequest(previous.request, next.request))
+    tx.delete(reqKey(previous.request));
+  if (next.request && !sameRequest(counted?.request, next.request)) tx.set(reqKey(next.request), n);
+  const appeal = (t?: Ticket) => (t?.appeal ? appealKey(t.appeal, t.author.id, t.number) : undefined);
+  const [before, after, indexed] = [appeal(previous), appeal(next), appeal(counted)];
+  if (before && before !== after) tx.delete(before);
+  if (after && after !== indexed) tx.set(after, true);
+  const was = counted?.rating !== undefined ? ([counted.type, counted.rating] as const) : undefined;
+  const now = next.rating !== undefined ? ([next.type, next.rating] as const) : undefined;
+  if (was?.[0] !== now?.[0] || was?.[1] !== now?.[1]) {
+    if (was) tx.increment(ratingCount(was[0]), -1).increment(ratingSum(was[0]), -was[1]);
+    if (now) tx.increment(ratingCount(now[0]), 1).increment(ratingSum(now[0]), now[1]);
+  }
+}
+
+/** Recompute the `due` entry of a committed record. When work is still due, `floor` defers
+ * it, so a ticket that cannot progress now never monopolises the head of the ranking.
+ * A concurrent save wins: it committed its own entry. */
+export async function refreshDue(ctx: Context, n: number, floor?: number) {
+  const entry = await ctx.kv.getEntry(ticketKey(n));
+  if (!entry) {
+    await ctx.kv.ranking(DUE).remove(String(n));
+    return;
+  }
+  const t = normalize(entry.value as unknown as Ticket);
+  let due = dueAt(ctx.config, t, await ctx.kv.get<string>(lastActivityKey(n)));
+  if (due !== undefined && floor !== undefined && due <= Date.now()) due = floor;
+  const tx = ctx.kv.atomic().check(ticketKey(n), entry.version);
+  if (due === undefined) tx.rankRemove(DUE, String(n));
+  else tx.rankSet(DUE, String(n), -due);
+  await tx.commit();
+}
+
+/** Deletes an expired record with every index that points at it. */
+export async function deleteRecord(ctx: Context, n: number) {
+  const entry = await ctx.kv.getEntry(ticketKey(n));
+  if (!entry) return;
+  const raw = entry.value as unknown as Ticket;
+  const t = normalize(raw);
+  const tx = ctx.kv
+    .atomic()
+    .check(ticketKey(n), entry.version)
+    .delete(ticketKey(n))
+    .delete(authorKey(t.author.id, n))
+    .delete(lastActivityKey(n))
+    .delete(activityKey(n))
+    .delete(copyKey(n))
+    .rankRemove(DUE, String(n));
+  if (t.request) tx.delete(reqKey(t.request));
+  if (t.appeal) tx.delete(appealKey(t.appeal, t.author.id, n));
+  if (raw.ix === SCHEMA && t.rating !== undefined)
+    tx.increment(ratingCount(t.type), -1).increment(ratingSum(t.type), -t.rating);
+  if (!(await tx.commit()).ok) throw new TicketConflict("Ticket changed during retention");
+  for (const id of involved(t)) await ctx.kv.delete(whoKey(id, n));
+}
+
+/** Every record. Only for schema-1 data that has no index yet (privacy during migration). */
+export async function allTickets(ctx: Context): Promise<Ticket[]> {
   const tickets: Ticket[] = [];
   let cursor: string | undefined;
   do {
@@ -170,18 +354,59 @@ async function allTickets(ctx: Context): Promise<Ticket[]> {
   return tickets;
 }
 
+export const indexed = async (ctx: Context) => (await ctx.kv.get(SCHEMA_KEY)) === SCHEMA;
+
+/** The ticket committed for an `open` request, without scanning. Until the schema-2
+ * migration finishes, a retry of a pre-upgrade request is found among the newest tickets
+ * (retries follow their first attempt closely; the lookup stays bounded). */
+export async function findRequest(ctx: Context, r: Request): Promise<Ticket | undefined> {
+  const n = await ctx.kv.get<number>(reqKey(r));
+  if (n !== undefined) {
+    const t = await getTicket(ctx, n);
+    if (t && sameRequest(t.request, r)) return t;
+  }
+  if (await indexed(ctx)) return undefined;
+  const seq = (await ctx.kv.get<number>("seq")) ?? 0;
+  const numbers = Array.from({ length: Math.min(seq, 100) }, (_, i) => seq - i);
+  const rows = await ctx.kv.getMany(numbers.map(ticketKey));
+  for (const row of rows) {
+    const t = row ? normalize(row as unknown as Ticket) : undefined;
+    if (t && sameRequest(t.request, r)) return t;
+  }
+  return undefined;
+}
+
+/** Numbers of every open ticket, from the `open:<user>:<n>` index (bounded by open
+ * tickets, not by retained records). Admission reservations may name a ticket not saved yet. */
+export async function openNumbers(ctx: Context): Promise<number[]> {
+  const out = new Set<number>();
+  let cursor: string | undefined;
+  do {
+    const page = await ctx.kv.list({ prefix: "open:", limit: 1000, ...(cursor ? { cursor } : {}) });
+    for (const i of page.items) out.add(Number(i.key.slice(i.key.lastIndexOf(":") + 1)));
+    cursor = page.cursor;
+  } while (cursor);
+  return [...out].sort((a, b) => a - b);
+}
+
+export async function ticketsByNumber(ctx: Context, numbers: readonly number[]) {
+  const out: Ticket[] = [];
+  for (let i = 0; i < numbers.length; i += 100) {
+    const rows = await ctx.kv.getMany(numbers.slice(i, i + 100).map(ticketKey));
+    for (const row of rows) if (row) out.push(normalize(row as unknown as Ticket));
+  }
+  return out;
+}
+
 /** Numbers of the member's open tickets. */
 export async function openTickets(ctx: Context, userId: string): Promise<number[]> {
   const { items } = await ctx.kv.list({ prefix: `open:${userId}:`, limit: 100 });
   return items.map((i) => Number(i.key.slice(i.key.lastIndexOf(":") + 1)));
 }
 
-/** Every ticket of a member, from the author index (built once from older records). */
+/** Every ticket of a member, from the author index. */
 async function authorTickets(ctx: Context, userId: string): Promise<Ticket[]> {
-  if (!(await ctx.kv.get(AUTHOR_INDEX))) {
-    for (const t of await allTickets(ctx)) await ctx.kv.set(authorKey(t.author.id, t.number), true);
-    await ctx.kv.set(AUTHOR_INDEX, true);
-  }
+  // Records older than the author index are indexed by the schema-2 migration task.
   const out: Ticket[] = [];
   let cursor: string | undefined;
   do {
@@ -205,12 +430,110 @@ export function numberOf(componentId: string): number | undefined {
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-/** A staff role, the server owner or a Cicord admin. An unknown access level never counts. */
-export function isStaff(ctx: Context, member: Member | undefined): boolean {
+/** Configured types; a repeated key keeps its first definition (reported at startup). */
+export function types(ctx: Context) {
+  return ctx.config.types?.length
+    ? ctx.config.types.filter((t, i, all) => all.findIndex((o) => o.key === t.key) === i)
+    : [
+        {
+          key: "default",
+          name: ctx.i18n.t("general"),
+          staffRoles: ctx.config.staffRoles,
+          category: ctx.config.category,
+          logChannel: ctx.config.logChannel,
+          defaultLabels: [] as string[],
+          fields: undefined,
+          retainSourceForTranscript: false,
+        },
+      ];
+}
+
+export function ticketType(ctx: Context, key?: string) {
+  const configured = types(ctx);
+  return key ? configured.find((t) => t.key === key) : configured[0];
+}
+
+export function isStaff(ctx: Context, member: Member | undefined, key?: string): boolean {
   if (!member) return false;
-  if (member.access === "admin") return true;
-  if (ctx.server.ownerId !== undefined && member.id === ctx.server.ownerId) return true;
-  return ctx.config.staffRoles.some((r) => member.hasRole(r));
+  if (!ctx.config.types?.length && (member.access === "admin" || member.id === ctx.server.ownerId))
+    return true;
+  return types(ctx).some(
+    (t) => (!key || t.key === key) && t.staffRoles.some((role) => member.hasRole(role)),
+  );
+}
+
+/** Type membership is checked for every read, including closed tickets with a deleted channel. */
+export function mayRead(ctx: Context, t: Ticket, member?: Member, allowOwner = false): boolean {
+  if (!member || !((allowOwner && member.id === t.author.id) || isStaff(ctx, member, t.type)))
+    return false;
+  // Application records belong to their author and the configured staff. Archived
+  // channel content has a separate, stronger gate (mayReadTranscript).
+  if (t.provision && !t.channelId) return true;
+  if (t.channelRemoved ?? t.status === "closed") return true;
+  return member.canView({ id: t.channelId });
+}
+
+export async function verifyReaders(
+  ctx: Context,
+  t: Pick<Ticket, "channelId" | "author" | "type">,
+  options: { viewer?: string; destination?: string; withoutMember?: string } = {},
+) {
+  const type = ticketType(ctx, t.type);
+  if (!type || !ctx.server.verifyReaders) return undefined;
+  try {
+    return await ctx.server.verifyReaders(
+      { id: t.channelId },
+      {
+        roles: type.staffRoles.map((key) => ctx.server.role(key).id),
+        members: [
+          ctx.bot.user.id,
+          ...(t.author.id.startsWith("deleted-user-") ? [] : [t.author.id]),
+        ],
+        ...(options.viewer ? { viewer: options.viewer } : {}),
+        ...(options.destination ? { destination: { id: options.destination } } : {}),
+        ...(options.withoutMember ? { withoutMember: options.withoutMember } : {}),
+      },
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+export async function mayReadTranscript(ctx: Context, t: Ticket, viewer: Member | undefined) {
+  if (!viewer || !t.archivePolicy || t.channelRemoved || !mayRead(ctx, t, viewer, true))
+    return false;
+  const checked = await verifyReaders(ctx, t, { viewer: viewer.id });
+  return (
+    !!checked?.known &&
+    checked.confined &&
+    checked.viewerCanRead &&
+    checked.fingerprint === t.archivePolicy
+  );
+}
+
+export async function relayAllowed(ctx: Context, t: Ticket, actor: Member) {
+  const check = await verifyReaders(ctx, t, { viewer: actor.id });
+  return (
+    !!check?.known &&
+    check.confined &&
+    check.viewerCanRead &&
+    !!t.sourcePolicy &&
+    check.fingerprint === t.sourcePolicy
+  );
+}
+/** Check both principals immediately before forwarding rendered text or attachment URLs.
+ * Guild membership alone cannot authorize reading a ticket channel's history. */
+export async function relayRecipient(ctx: Context, t: Ticket, staffId: string) {
+  const [staff, member] = await Promise.all([
+    ctx.server.member(staffId),
+    ctx.server.member(t.author.id),
+  ]);
+  if (!staff || !member || !isStaff(ctx, staff, t.type)) return undefined;
+  const [sender, recipient] = await Promise.all([
+    relayAllowed(ctx, t, staff),
+    relayAllowed(ctx, t, member),
+  ]);
+  return sender && recipient ? member : undefined;
 }
 
 /** At most this many holders of each staff role are listed by `GET /staff`. */
@@ -221,14 +544,22 @@ const MAX_STAFF_PER_ROLE = 1000;
  * excluded), the server owner, and `viewer` (a Cicord admin without a staff role can assign
  * themselves). Other Cicord admins cannot be listed (spec.access is not visible to plugins).
  */
-export async function listStaff(ctx: Context, viewer?: Person | null): Promise<Person[]> {
+export async function listStaff(
+  ctx: Context,
+  viewer?: Person | null,
+  type?: string,
+): Promise<Person[]> {
   const byId = new Map<string, Person>();
-  for (const key of ctx.config.staffRoles) {
+  for (const key of new Set(
+    types(ctx)
+      .filter((t) => (!type || t.key === type) && (!ctx.config.types?.length || !!viewer))
+      .flatMap((t) => t.staffRoles),
+  )) {
     for (const m of await ctx.server.role(key).members({ limit: MAX_STAFF_PER_ROLE }))
       if (!m.user.bot) byId.set(m.id, person(m.user, m));
   }
   const ownerId = ctx.server.ownerId;
-  if (ownerId !== undefined && !byId.has(ownerId)) {
+  if (!ctx.config.types?.length && ownerId !== undefined && !byId.has(ownerId)) {
     const owner = await ctx.server.member(ownerId);
     if (owner) byId.set(owner.id, person(owner.user, owner));
   }
@@ -238,11 +569,19 @@ export async function listStaff(ctx: Context, viewer?: Person | null): Promise<P
 
 // ───────────────────────────────────────────────────────────── labels
 
+function translatedLabel(ctx: Context, key: string) {
+  const k = "labels." + key;
+  const label = ctx.i18n.t(k);
+  return label === k ? key : label;
+}
+
 export function labelOf(ctx: Context, key: string | null): Label | null {
   if (key === null) return null;
   const l = ctx.config.labels.find((x) => x.key === key);
   // A label removed from the config stays readable on the tickets that have it.
-  return l ? { key: l.key, name: l.name, emoji: l.emoji ?? null } : { key, name: key, emoji: null };
+  return l
+    ? { key: l.key, name: l.name ?? translatedLabel(ctx, key), emoji: l.emoji ?? null }
+    : { key, name: key, emoji: null };
 }
 
 export function isLabel(ctx: Context, key: string): boolean {
@@ -254,24 +593,55 @@ export function isLabel(ctx: Context, key: string): boolean {
 export function panelMessage(ctx: Context): MessagePayload {
   const { title, description, buttonLabel, color } = ctx.config.panel;
   return {
-    embeds: [{ title, description, color }],
+    embeds: [
+      {
+        title: title ?? ctx.i18n.t("panelTitle"),
+        description: description ?? ctx.i18n.t("panelDescription"),
+        color,
+      },
+    ],
     components: [
       {
         type: "row",
-        components: [
-          { type: "button", id: "open", label: buttonLabel, emoji: "🎫", style: "primary" },
-        ],
+        components: ctx.config.types?.length
+          ? types(ctx).map((t) => ({
+              type: "button",
+              id: "open:" + t.key,
+              label: t.name,
+              style: "primary",
+            }))
+          : [
+              {
+                type: "button",
+                id: "open",
+                label: buttonLabel ?? ctx.i18n.t("panelButton"),
+                emoji: "🎫",
+                style: "primary",
+              },
+            ],
       },
     ],
   };
 }
 
-export function closeButton(n: number): MessagePayload["components"] {
+export function closeButton(ctx: Context, n: number): MessagePayload["components"] {
   return [
     {
       type: "row",
       components: [
-        { type: "button", id: `close:${n}`, label: "Close", emoji: "🔒", style: "danger" },
+        {
+          type: "button",
+          id: `close:${n}`,
+          label: ctx.i18n.t("close"),
+          emoji: "🔒",
+          style: "danger",
+        },
+      ],
+    },
+    {
+      type: "row",
+      components: [
+        { type: "button", id: `claim:${n}`, label: ctx.i18n.t("claim"), style: "secondary" },
       ],
     },
   ];
@@ -281,49 +651,19 @@ function ticketEmbed(ctx: Context, t: Ticket): Embed {
   const label = labelOf(ctx, t.label);
   return {
     title: `#${t.number} — ${t.subject}`,
-    description: t.description || "_No details._",
+    description: t.description || ctx.i18n.t("noDetails"),
     color: ctx.config.panel.color,
     ...(label
       ? {
           fields: [
-            { name: "Label", value: `${label.emoji ? `${label.emoji} ` : ""}${label.name}` },
+            {
+              name: ctx.i18n.t("label"),
+              value: `${label.emoji ? `${label.emoji} ` : ""}${label.name}`,
+            },
           ],
         }
       : {}),
   };
-}
-
-export function summaryEmbed(t: Ticket): Embed {
-  const minutes = Math.max(
-    1,
-    Math.round((Date.parse(t.closedAt ?? t.createdAt) - Date.parse(t.createdAt)) / 60_000),
-  );
-  const participants = t.summary?.participants ?? [];
-  return {
-    title: `Ticket #${t.number} closed — ${t.subject}`,
-    description: t.description || undefined,
-    color: "#95a5a6",
-    fields: [
-      { name: "Opened by", value: `<@${t.author.id}>`, inline: true },
-      { name: "Closed by", value: t.closedBy ? `<@${t.closedBy.id}>` : "—", inline: true },
-      { name: "Duration", value: formatMinutes(minutes), inline: true },
-      { name: "Messages", value: String(t.summary?.messages ?? 0), inline: true },
-      {
-        name: "Participants",
-        value: participants.length > 0 ? participants.map((p) => `<@${p.id}>`).join(" ") : "—",
-        inline: true,
-      },
-      ...(t.closeReason ? [{ name: "Reason", value: t.closeReason }] : []),
-    ],
-    timestamp: t.closedAt,
-  };
-}
-
-function formatMinutes(m: number): string {
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h} h ${m % 60} min`;
-  return `${Math.floor(h / 24)} days`;
 }
 
 /**
@@ -332,7 +672,7 @@ function formatMinutes(m: number): string {
  * out a handle for a deleted channel it saw earlier: use `liveChannel` before relying on it.
  */
 export function ticketChannel(ctx: Context, t: Ticket): TextChannel | undefined {
-  if (t.channelRemoved ?? t.status === "closed") return undefined;
+  if (!t.channelId || (t.channelRemoved ?? t.status === "closed")) return undefined;
   try {
     return ctx.server.channel({ id: t.channelId });
   } catch {
@@ -353,11 +693,20 @@ export async function liveChannel(ctx: Context, t: Ticket): Promise<TextChannel 
 }
 
 /** Posts a short notice in an open ticket's channel; a failure is logged, not thrown. */
-export async function notice(ctx: Context, t: Ticket, content: string): Promise<void> {
+export async function notice(
+  ctx: Context,
+  t: Ticket,
+  content: string,
+  users: string[] = [],
+): Promise<void> {
   if (t.status !== "open") return;
   try {
     const channel = ticketChannel(ctx, t);
-    if (channel) await channel.send({ content, allowedMentions: NO_MENTIONS });
+    if (channel) {
+      const sent = await channel.send({ content, allowedMentions: NO_MENTIONS });
+      t.notices = [...(t.notices ?? []), { messageId: sent.id, users }];
+      await saveTicket(ctx, t);
+    }
   } catch (error) {
     ctx.log.warn("tickets: could not post in the ticket channel", {
       ticket: t.number,
@@ -371,7 +720,7 @@ export async function notice(ctx: Context, t: Ticket, content: string): Promise<
 /** Private channel of a ticket: the member, the staff roles and the bot. */
 async function createTicketChannel(
   ctx: Context,
-  t: Pick<Ticket, "number" | "subject" | "author">,
+  t: Pick<Ticket, "number" | "subject" | "author" | "type" | "provision">,
 ): Promise<TextChannel> {
   // Keys: "@everyone", a role key, "role:<id>" or "member:<id>".
   const overwrites: Record<string, { allow?: Permission[]; deny?: Permission[] }> = {
@@ -380,30 +729,61 @@ async function createTicketChannel(
     // The bot keeps access even without Administrator.
     [`member:${ctx.bot.user.id}`]: { allow: [...TICKET_PERMS, "ManageChannels"] },
   };
-  for (const role of ctx.config.staffRoles) overwrites[role] = { allow: [...TICKET_PERMS] };
+  const type = ticketType(ctx, t.type);
+  if (!type) throw new Error("Ticket type is unavailable");
+  for (const role of type.staffRoles) overwrites[role] = { allow: [...TICKET_PERMS] };
   return ctx.server.createChannel({
     name: channelName(ctx.config.channelName, t.number, t.author.displayName),
-    ...(ctx.config.category ? { category: ctx.config.category } : {}),
-    topic: `#${t.number} · ${t.subject} · opened by ${t.author.displayName}`,
+    ...(type.category ? { category: type.category } : {}),
+    topic:
+      t.provision?.topic ??
+      ctx.i18n.t("channelTopic", {
+        number: t.number,
+        subject: t.subject,
+        member: t.author.displayName,
+      }),
     overwrites,
   });
 }
 
-/** Opens a ticket: channel, records, welcome message. The caller checks the limit. */
-export async function openTicket(
-  ctx: Context,
-  input: {
-    user: User;
-    member: Member | undefined;
-    subject: string;
-    description: string;
-    label: string | null;
-    source: TicketSource;
-  },
-): Promise<{ ticket: Ticket; channel: TextChannel }> {
+export class OpenLimit extends Error {}
+export class TicketConflict extends Error {}
+/** Reserve against the shared durable member index across all invocation VMs. */
+const admissionKey = (userId: string) => "admission:" + userId;
+async function reserve(ctx: Context, userId: string, number: number) {
+  const key = admissionKey(userId);
+  for (;;) {
+    const entry = await ctx.kv.getEntry(key);
+    if ((await openTickets(ctx, userId)).length >= ctx.config.maxOpenPerMember)
+      throw new OpenLimit(ctx.i18n.t("openLimit"));
+    const claim = await ctx.kv
+      .atomic()
+      .check(key, entry?.version)
+      .set(key, number, { ttlSeconds: 120 })
+      .set(openKey(userId, number), true, { ttlSeconds: 120 })
+      .commit();
+    if (claim.ok) return;
+  }
+}
+
+type OpenInput = {
+  user: Pick<User, "id" | "displayName" | "mention">;
+  member: Member | undefined;
+  subject: string;
+  description: string;
+  label: string | null;
+  source: TicketSource;
+  type?: string;
+  appeal?: Ticket["appeal"];
+  request?: Ticket["request"];
+};
+
+async function allocate(ctx: Context, input: OpenInput, admit = true): Promise<Ticket> {
+  const type = ticketType(ctx, input.type);
+  if (!type) throw new Error("Unknown ticket type");
   const author = person(input.user, input.member);
   const number = await ctx.kv.increment("seq");
-  const channel = await createTicketChannel(ctx, { number, subject: input.subject, author });
+  if (admit) await reserve(ctx, author.id, number);
   const now = new Date().toISOString();
   const ticket: Ticket = {
     id: String(number),
@@ -412,41 +792,201 @@ export async function openTicket(
     description: input.description,
     status: "open",
     author,
-    channelId: channel.id,
+    channelId: "",
     createdAt: now,
     priority: "normal",
-    label: input.label,
+    label: input.label ?? type.defaultLabels?.[0] ?? null,
+    ...(input.request ? { request: input.request } : {}),
+    ...(input.appeal ? { appeal: input.appeal } : {}),
+    type: type.key,
+    labels: [...new Set([...(type.defaultLabels ?? []), ...(input.label ? [input.label] : [])])],
+    notes: [],
     assignee: null,
     events: [],
     source: input.source,
   };
   addEvent(ticket, "opened", author, input.source, now);
-  await saveTicket(ctx, ticket);
-  await ctx.kv.set(openKey(author.id, number), true);
-  await ctx.kv.set(channelKey(channel.id), number);
-  await ctx.kv.set(authorKey(author.id, number), true);
-  await ctx.kv.increment("stats:opened");
+  return ticket;
+}
 
-  const staff =
-    ctx.config.staffRoles.map((r) => ctx.server.role(r).mention).join(" ") || "The team";
-  await channel.send({
-    content: render(ctx.config.welcomeMessage, {
-      member: input.user.mention,
+async function storeOpen(ctx: Context, t: Ticket) {
+  await saveTicket(ctx, t);
+  await ctx.kv.set(openKey(t.author.id, t.number), true);
+  await indexOpen(ctx, t);
+}
+
+async function indexOpen(ctx: Context, t: Ticket) {
+  await ctx.kv.set(authorKey(t.author.id, t.number), true);
+  await ctx.kv.increment("stats:opened");
+  if (t.channelId) await ctx.kv.set(channelKey(t.channelId), t.number);
+}
+
+/**
+ * Interop actions commit this request with their idempotency result. Discord effects start
+ * in a separate invocation that can read the authoritative committed record.
+ *
+ * Each call runs in its own realm, so the request receipt, the member's open-ticket slot and
+ * the record are one atomic commit: a concurrent duplicate either sees the committed receipt
+ * or fails its commit and finds it on the next attempt. Returns the ticket holding the request.
+ */
+export async function requestTicket(ctx: Context, input: OpenInput): Promise<Ticket> {
+  const t = await allocate(ctx, input, false);
+  t.provision = {
+    topic:
+      "Cicord · " + ctx.bot.key + "/" + ctx.plugin.instance + "/" + t.number + "/" + t.createdAt,
+    phase: "queued",
+    since: 0,
+  };
+  const userId = t.author.id;
+  for (let attempt = 0; ; attempt++) {
+    const prior = input.request && (await findRequest(ctx, input.request));
+    if (prior) return prior;
+    const admission = await ctx.kv.getEntry(admissionKey(userId));
+    if ((await openTickets(ctx, userId)).length >= ctx.config.maxOpenPerMember)
+      throw new OpenLimit(ctx.i18n.t("openLimit"));
+    try {
+      await saveTicket(ctx, t, false, (tx) => {
+        if (input.request) tx.check(reqKey(input.request), null);
+        tx.check(admissionKey(userId), admission?.version)
+          .set(admissionKey(userId), t.number, { ttlSeconds: 120 })
+          .set(openKey(userId, t.number), true);
+      });
+      break;
+    } catch (error) {
+      if (!(error instanceof TicketConflict) || attempt >= 20) throw error;
+    }
+  }
+  await indexOpen(ctx, t);
+  await ctx.schedule.after(1000, "provision", { number: t.number });
+  return t;
+}
+
+export async function provisionTicket(ctx: Context, t: Ticket) {
+  const job = t.provision;
+  if (!job || t.status !== "open") return;
+  if (!t.channelId) {
+    if (job.phase === "creating" && Date.now() - job.since < 120000) return;
+    job.phase = "creating";
+    job.since = Date.now();
+    await saveTicket(ctx, t);
+    const receipt = await ctx.server.recoverOwnedChannel(job.topic);
+    if (receipt.status === "conflict")
+      throw new Error("Conflicting channel ownership; provisioning paused");
+    const channel =
+      receipt.status === "owned" && receipt.id
+        ? ctx.server.channel({ id: receipt.id })
+        : await createTicketChannel(ctx, t);
+    t.channelId = channel.id;
+    job.phase = "welcome";
+    await saveTicket(ctx, t);
+  }
+  const channel = ctx.server.channel({ id: t.channelId });
+  const check = await verifyReaders(ctx, t);
+  if (!check?.known || !check.confined)
+    throw new Error("Cannot verify the provisioned ticket audience");
+  await ctx.kv.set(channelKey(channel.id), t.number);
+  if (!t.welcomeId) {
+    let before: string | undefined;
+    for (;;) {
+      const rows = await channel.messages({ limit: 100, ...(before ? { before } : {}) });
+      const previous = rows.find(
+        (m) =>
+          m.author.id === ctx.bot.user.id && m.embeds.some((e) => e.footer?.text === job.topic),
+      );
+      if (previous) {
+        t.welcomeId = previous.id;
+        await saveTicket(ctx, t);
+        break;
+      }
+      if (rows.length < 100) break;
+      const next = rows[rows.length - 1]!.id;
+      if (next === before) throw new Error("Welcome history cursor did not advance");
+      before = next;
+    }
+  }
+  if (!t.welcomeId) await welcomeTicket(ctx, t, channel);
+  await publish(ctx, t, "opened");
+  delete t.provision;
+  await saveTicket(ctx, t);
+}
+
+export async function openTicket(
+  ctx: Context,
+  input: OpenInput,
+): Promise<{ ticket: Ticket; channel: TextChannel }> {
+  const ticket = await allocate(ctx, input);
+  const { number, author } = ticket;
+  let channel: TextChannel;
+  try {
+    channel = await createTicketChannel(ctx, ticket);
+  } catch (error) {
+    await ctx.kv.delete(openKey(author.id, number));
+    throw error;
+  }
+  ticket.channelId = channel.id;
+  if (ticket.source === "modmail") {
+    const check = await verifyReaders(ctx, ticket, { viewer: author.id });
+    if (!check?.known || !check.confined || !check.viewerCanRead) {
+      await ctx.kv.delete(openKey(author.id, number));
+      try {
+        await ctx.server.deleteChannel(channel, "Private ticket audience could not be verified");
+      } catch {}
+      await input.member?.send(ctx.i18n.t("relayDenied"));
+      throw new Error("Private ticket audience unavailable");
+    }
+    ticket.sourcePolicy = check.fingerprint;
+  }
+  await storeOpen(ctx, ticket);
+  await welcomeTicket(ctx, ticket, channel, input.member);
+  await publish(ctx, ticket, "opened");
+  return { ticket, channel };
+}
+
+async function welcomeTicket(ctx: Context, ticket: Ticket, channel: TextChannel, member?: Member) {
+  const number = ticket.number;
+  const type = ticketType(ctx, ticket.type);
+  if (!type) throw new Error("Unknown ticket type");
+  let staff =
+    type.staffRoles.map((r) => ctx.server.role(r).mention).join(" ") || ctx.i18n.t("team");
+  let mentions: string[] = [];
+  if (ctx.features?.enabled("onDuty")) {
+    try {
+      const result = (await ctx.plugins.query("staff-shifts", "onDuty", {})) as {
+        userIds: string[];
+      };
+      for (const id of result.userIds)
+        if (isStaff(ctx, await ctx.server.member(id), ticket.type)) mentions.push(id);
+      if (mentions.length) staff = mentions.map((id) => `<@${id}>`).join(" ");
+    } catch {
+      ctx.log.warn("On-duty staff unavailable");
+    }
+  }
+  if (ticket.source === "modmail" && (!member || !(await relayAllowed(ctx, ticket, member)))) {
+    await member?.send(ctx.i18n.t("relayDenied"));
+    return;
+  }
+  const welcome = await channel.send({
+    content: render(ctx.config.welcomeMessage ?? ctx.i18n.t("welcome"), {
+      member: "<@" + ticket.author.id + ">",
       staff,
-      subject: input.subject,
+      subject: ticket.subject,
       number: String(number),
     }),
-    embeds: [ticketEmbed(ctx, ticket)],
-    components: closeButton(number),
-    allowedMentions: { users: true, roles: true },
+    embeds: [
+      {
+        ...ticketEmbed(ctx, ticket),
+        ...(ticket.provision ? { footer: { text: ticket.provision.topic } } : {}),
+      },
+    ],
+    components: closeButton(ctx, number),
+    allowedMentions: {
+      users: [ticket.author.id, ...mentions],
+      roles: type.staffRoles.map((r) => ctx.server.role(r).id),
+      everyone: false,
+    },
   });
-  ctx.log.info("ticket opened", {
-    ticket: number,
-    member: author.id,
-    channel: channel.id,
-    source: input.source,
-  });
-  return { ticket, channel };
+  ticket.welcomeId = welcome.id;
+  await saveTicket(ctx, ticket);
 }
 
 /**
@@ -459,24 +999,37 @@ export async function closeTicket(
   by: Person,
   reason?: string,
 ): Promise<Ticket> {
-  const participants = new Map<string, Person>();
-  let messages = 0;
-  try {
-    const channel = ticketChannel(ctx, ticket);
-    for (const m of channel ? await channel.messages({ limit: 100 }) : []) {
-      if (m.author.bot) continue;
-      messages++;
-      participants.set(m.author.id, person(m.author, m.member));
-    }
-  } catch (error) {
-    ctx.log.warn("tickets: could not read the ticket history", {
-      ticket: ticket.number,
-      error: String(error),
-    });
+  if (ticket.status === "closed") return ticket;
+  await purgeArchive(ctx, ticket);
+  const { participants, messages } = await archive(ctx, ticket);
+  const config = ticketType(ctx, ticket.type);
+  const check = await verifyReaders(ctx, ticket);
+  if (config?.retainSourceForTranscript && check?.known && check.confined) {
+    await ctx.server.editChannel(
+      { id: ticket.channelId },
+      {
+        overwrites: Object.fromEntries(
+          ["@everyone", "member:" + ticket.author.id, ...config.staffRoles].map((k) => [
+            k,
+            {
+              deny: [
+                "SendMessages",
+                "SendMessagesInThreads",
+                "CreatePublicThreads",
+                "CreatePrivateThreads",
+              ],
+            },
+          ]),
+        ),
+      },
+    );
+    ticket.archivePolicy = check.fingerprint;
+    ticket.archiveRoles = [...config.staffRoles].sort();
   }
-
   const closed: Ticket = {
     ...ticket,
+    pendingClose: true,
+    channelRemoved: false,
     status: "closed",
     closedAt: new Date().toISOString(),
     closedBy: by,
@@ -486,30 +1039,66 @@ export async function closeTicket(
   if (reason) closed.closeReason = reason;
   addEvent(closed, "closed", by, reason, closed.closedAt);
   await saveTicket(ctx, closed);
-  await ctx.kv.delete(openKey(ticket.author.id, ticket.number));
-  await ctx.kv.delete(channelKey(ticket.channelId));
-  await ctx.kv.delete(activityKey(ticket.number));
   await ctx.kv.increment("stats:closed");
-
-  if (ctx.config.logChannel) {
-    await ctx.server.channel(ctx.config.logChannel).send({
-      embeds: [summaryEmbed(closed)],
-      allowedMentions: NO_MENTIONS,
-    });
-  }
-  closed.channelRemoved = false;
-  try {
-    await ctx.server.deleteChannel({ id: ticket.channelId }, `ticket #${ticket.number} closed`);
-    closed.channelRemoved = true;
-  } catch (error) {
-    ctx.log.warn("tickets: could not delete the ticket channel", {
-      ticket: ticket.number,
-      error: String(error),
-    });
-  }
-  await saveTicket(ctx, closed);
-  ctx.log.info("ticket closed", { ticket: ticket.number, by: by.id, messages });
+  await finishClose(ctx, closed);
   return closed;
+}
+
+/** Resume external effects after the completed archive and close intent were saved. */
+export async function finishClose(ctx: Context, closed: Ticket) {
+  if (!closed.pendingClose) return;
+  await ctx.kv.delete(openKey(closed.author.id, closed.number));
+  await ctx.kv.delete(channelKey(closed.channelId));
+  await ctx.kv.delete(activityKey(closed.number));
+  if (!closed.summaryPosted) {
+    await postArchive(ctx, closed);
+    closed.summaryPosted = true;
+    await saveTicket(ctx, closed);
+  }
+  if (!closed.channelRemoved && !closed.archivePolicy) {
+    try {
+      await ctx.server.deleteChannel(
+        { id: closed.channelId },
+        ctx.i18n.t("closeReason", { number: closed.number }),
+      );
+      closed.channelRemoved = true;
+    } catch (error) {
+      ctx.log.warn("tickets: could not delete the ticket channel", {
+        ticket: closed.number,
+        error: String(error),
+      });
+    }
+  }
+  await publish(ctx, closed, "closed");
+  delete closed.pendingClose;
+  await saveTicket(ctx, closed);
+  try {
+    const member = ctx.features.enabled("ratingPrompts")
+      ? await ctx.server.member(closed.author.id)
+      : undefined;
+    if (member)
+      await member.send({
+        content: ctx.i18n.t("rate", { number: closed.number }),
+        components: [
+          {
+            type: "row",
+            components: [1, 2, 3, 4, 5].map((score) => ({
+              type: "button",
+              id: `rate:${closed.number}:${score}`,
+              label: String(score),
+              style: "secondary",
+            })),
+          },
+        ],
+      });
+  } catch {
+    ctx.log.info("Rating DM unavailable", { ticket: closed.number });
+  }
+  ctx.log.info("ticket closed", {
+    ticket: closed.number,
+    by: closed.closedBy?.id ?? "",
+    messages: closed.summary?.messages ?? 0,
+  });
 }
 
 /**
@@ -517,24 +1106,46 @@ export async function closeTicket(
  * channel and its message come first: a failure leaves the ticket closed.
  */
 export async function reopenTicket(ctx: Context, ticket: Ticket, by: Person): Promise<Ticket> {
-  const channel = (await liveChannel(ctx, ticket)) ?? (await createTicketChannel(ctx, ticket));
+  if (ticket.pendingClose) await finishClose(ctx, ticket);
+  const channel =
+    (!ticket.archivePolicy && (await liveChannel(ctx, ticket))) ||
+    (await createTicketChannel(ctx, ticket));
   const reopened: Ticket = { ...ticket, status: "open", channelId: channel.id };
+  await purgeArchive(ctx, ticket);
+  delete reopened.logDelivery;
+  delete reopened.archivePolicy;
+  delete reopened.archiveRoles;
+  delete reopened.transcriptPages;
+  delete reopened.expiresAt;
+  delete reopened.logCopy;
+  reopened.reminded = false;
+  delete reopened.firstResponseAt;
+  delete reopened.warningAt;
+  delete reopened.rating;
+  delete reopened.summaryPosted;
+  delete reopened.closedAudience;
   delete reopened.closedAt;
   delete reopened.closedBy;
   delete reopened.closeReason;
   delete reopened.summary;
   delete reopened.channelRemoved;
-  await channel.send({
-    content: `<@${ticket.author.id}> Reopened by **${escapeMarkdown(by.displayName)}**.`,
+  const welcome = await channel.send({
+    content: ctx.i18n.t("reopened", {
+      member: "<@" + ticket.author.id + ">",
+      staff: escapeMarkdown(by.displayName),
+    }),
     embeds: [ticketEmbed(ctx, reopened)],
-    components: closeButton(ticket.number),
+    components: closeButton(ctx, ticket.number),
     allowedMentions: { users: [ticket.author.id], roles: false, everyone: false },
   });
 
+  reopened.welcomeId = welcome.id;
+  reopened.notices = [{ messageId: welcome.id, users: [ticket.author.id, by.id] }];
   addEvent(reopened, "reopened", by);
   await saveTicket(ctx, reopened);
   await ctx.kv.set(openKey(ticket.author.id, ticket.number), true);
   await ctx.kv.set(channelKey(channel.id), ticket.number);
+  await ctx.kv.set(lastActivityKey(ticket.number), new Date().toISOString());
   // Keep counting from the messages of the first round.
   await ctx.kv.set(activityKey(ticket.number), ticket.summary?.messages ?? 0);
   ctx.log.info("ticket reopened", { ticket: ticket.number, by: by.id, channel: channel.id });
@@ -545,25 +1156,12 @@ export async function reopenTicket(ctx: Context, ticket: Ticket, by: Person): Pr
 export async function postReply(
   ctx: Context,
   ticket: Ticket,
-  channel: TextChannel,
+  _channel: TextChannel,
   by: Person,
   content: string,
-): Promise<string> {
-  const message = await channel.send({
-    embeds: [
-      {
-        description: content,
-        color: ctx.config.panel.color,
-        footer: { text: `— ${by.displayName} (via portal)` },
-      },
-    ],
-    allowedMentions: NO_MENTIONS,
-  });
-  addEvent(ticket, "replied", by, message.id);
-  await saveTicket(ctx, ticket);
-  await ctx.kv.increment(activityKey(ticket.number));
-  await ctx.kv.set(lastActivityKey(ticket.number), message.createdAt.toISOString());
-  return message.id;
+): Promise<string | undefined> {
+  const seq = await ctx.kv.increment("portal:relaySeq");
+  return relay(ctx, ticket, "portal", by, content, "portal-" + seq, new Date());
 }
 
 // ───────────────────────────────────────────────────────────── portal views
@@ -590,7 +1188,7 @@ export async function staffView(ctx: Context, t: Ticket): Promise<StaffTicket> {
     author: t.author,
     createdAt: t.createdAt,
     closedAt: t.closedAt ?? null,
-    channelId: t.status === "open" ? t.channelId : null,
+    channelId: t.status === "open" ? t.channelId || null : null,
     messages: a.messages,
     lastActivityAt: a.last,
     number: t.number,
@@ -598,6 +1196,9 @@ export async function staffView(ctx: Context, t: Ticket): Promise<StaffTicket> {
     label: labelOf(ctx, t.label),
     assignee: t.assignee,
     source: t.source,
+    type: t.type,
+    labels: t.labels,
+    rating: t.rating ?? null,
   };
 }
 
@@ -607,15 +1208,20 @@ export async function staffDetail(ctx: Context, t: Ticket): Promise<StaffTicketD
   let history: TicketMessage[] | null = null;
   try {
     const channel = ticketChannel(ctx, t);
-    if (channel) {
+    if (channel && t.status === "open") {
       // Portal replies are posted by the bot: the timeline says who wrote each one.
       const repliedBy = new Map<string, Person>();
       for (const e of t.events ?? []) {
         if (e.type === "replied" && e.detail) repliedBy.set(e.detail, e.by);
       }
-      history = (await channel.messages({ limit: 50 })).toReversed().map((m) => ({
+      const raw = await channel.messages({ limit: 50 });
+      const safe = redactLive(t, raw);
+      const nameOf = authorNames(ctx, t);
+      const authors = new Map<string, Person>();
+      for (const m of safe) if (!authors.has(m.author.id)) authors.set(m.author.id, await nameOf(m.author));
+      history = safe.toReversed().map((m) => ({
         id: m.id,
-        author: { ...person(m.author, m.member), bot: m.author.bot },
+        author: { ...authors.get(m.author.id)!, bot: m.author.bot },
         content: m.content,
         embeds: (m.embeds ?? []).map((e) => ({
           title: e.title ?? null,
@@ -639,6 +1245,9 @@ export async function staffDetail(ctx: Context, t: Ticket): Promise<StaffTicketD
     closedBy: t.closedBy ?? null,
     closeReason: t.closeReason ?? null,
     summary: t.summary ?? null,
+    appeal: t.appeal ? { number: t.appeal.number, status: t.appeal.status ?? null } : null,
+    notes: t.notes,
+    firstResponseAt: t.firstResponseAt ?? null,
     messageCount: messages,
     events: t.events,
     messages: history,
@@ -655,6 +1264,9 @@ export async function myView(ctx: Context, t: Ticket): Promise<MyTicket> {
     label: labelOf(ctx, t.label),
     assignee: t.assignee ? { displayName: t.assignee.displayName } : null,
     source: t.source,
+    type: t.type,
+    labels: t.labels,
+    rating: t.rating ?? null,
     createdAt: t.createdAt,
     closedAt: t.closedAt ?? null,
     lastActivityAt: (await activity(ctx, t)).last,
@@ -679,10 +1291,12 @@ export async function myDetail(ctx: Context, t: Ticket): Promise<MyTicketDetail>
 }
 
 /** The member's tickets: open ones first, then newest first. */
-export async function myTickets(ctx: Context, userId: string): Promise<MyTicket[]> {
-  const tickets = (await authorTickets(ctx, userId)).toSorted(
-    (a, b) => Number(b.status === "open") - Number(a.status === "open") || b.number - a.number,
-  );
+export async function myTickets(ctx: Context, member: Member): Promise<MyTicket[]> {
+  const tickets = (await authorTickets(ctx, member.id))
+    .filter((t) => mayRead(ctx, t, member, true))
+    .toSorted(
+      (a, b) => Number(b.status === "open") - Number(a.status === "open") || b.number - a.number,
+    );
   const out: MyTicket[] = [];
   for (const t of tickets) out.push(await myView(ctx, t));
   return out;
@@ -697,15 +1311,85 @@ export interface TicketFilters {
   label?: string | null;
 }
 
-/** Tickets for the staff, newest first. */
-export async function listTickets(ctx: Context, f: TicketFilters): Promise<StaffTicket[]> {
-  const out: StaffTicket[] = [];
-  for (const t of (await allTickets(ctx)).toReversed()) {
-    if (f.status && t.status !== f.status) continue;
-    if (f.assignee !== undefined && (t.assignee?.id ?? null) !== f.assignee) continue;
-    if (f.priority && t.priority !== f.priority) continue;
-    if (f.label !== undefined && t.label !== f.label) continue;
-    out.push(await staffView(ctx, t));
+/** Tickets returned by one `GET /tickets` page. */
+export const LIST_PAGE = 50;
+/** Ticket records one `GET /tickets` request reads at most, whatever the filters match. */
+export const LIST_SCAN = 500;
+
+/**
+ * One page of tickets for the staff, newest first. Ticket numbers are sequential (`seq`), so
+ * the page walks them downwards from `before` (the cursor, inclusive) with batched direct
+ * reads: no listing of the whole store. A request reads at most `LIST_SCAN` records, so a
+ * selective filter returns a short or empty page with a cursor rather than scanning every
+ * retained ticket. `status=open` walks the open-ticket index instead (bounded by open tickets).
+ */
+export async function listTickets(
+  ctx: Context,
+  f: TicketFilters,
+  member?: Member,
+  before?: number,
+): Promise<{ items: StaffTicket[]; cursor?: string }> {
+  let numbers: number[];
+  if (f.status === "open") {
+    numbers = (await openNumbers(ctx)).filter((n) => before === undefined || n <= before).toReversed();
+  } else {
+    const top = Math.min(before ?? Infinity, (await ctx.kv.get<number>("seq")) ?? 0);
+    numbers = Array.from({ length: Math.max(0, Math.min(top, LIST_SCAN + 1)) }, (_, i) => top - i);
   }
-  return out;
+  const out: StaffTicket[] = [];
+  let scanned = 0;
+  while (scanned < numbers.length && scanned < LIST_SCAN && out.length < LIST_PAGE) {
+    // Read no further ahead than the page can still use, so pages never re-read records.
+    const batch = numbers.slice(scanned, Math.min(scanned + LIST_PAGE - out.length, LIST_SCAN));
+    const rows = await ctx.kv.getMany(batch.map(ticketKey));
+    let i = 0;
+    for (; i < rows.length && out.length < LIST_PAGE; i++) {
+      const row = rows[i];
+      if (!row) continue;
+      const t = normalize(row as unknown as Ticket);
+      if (!mayRead(ctx, t, member)) continue;
+      if (f.status && t.status !== f.status) continue;
+      if (f.assignee !== undefined && (t.assignee?.id ?? null) !== f.assignee) continue;
+      if (f.priority && t.priority !== f.priority) continue;
+      if (
+        f.label !== undefined &&
+        (f.label === null ? t.labels.length > 0 : !t.labels.includes(f.label))
+      )
+        continue;
+      out.push(await staffView(ctx, t));
+    }
+    scanned += i;
+  }
+  const next = numbers[scanned];
+  return { items: out, ...(next !== undefined && next > 0 ? { cursor: String(next) } : {}) };
+}
+
+export async function publish(ctx: Context, t: Ticket, topic: "opened" | "closed" | "rated") {
+  await ctx.events.publish(
+    topic,
+    {
+      id: t.id,
+      memberId: t.author.id,
+      type: t.type,
+      labels: t.labels,
+      ...(t.assignee ? { assignee: t.assignee.id } : {}),
+      ...(t.closedAt
+        ? {
+            durationMinutes: Math.max(
+              0,
+              Math.round((Date.parse(t.closedAt) - Date.parse(t.createdAt)) / 60000),
+            ),
+          }
+        : {}),
+      ...(t.rating ? { rating: t.rating } : {}),
+    },
+    { idempotencyKey: `ticket:${t.id}:${topic}:${t.closedAt ?? t.createdAt}` },
+  );
+}
+
+/** A source message written by a member can survive erasure on Discord. Do not import
+ * it again into the portal or an archive when the channel eventually closes. */
+export function redactLive<T extends { id: string }>(t: Ticket, rows: T[]): T[] {
+  const hidden = new Set(t.redactedMessageIds ?? []);
+  return rows.filter((row) => !hidden.has(row.id));
 }

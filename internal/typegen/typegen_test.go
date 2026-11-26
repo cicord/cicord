@@ -16,6 +16,17 @@ var examplePlugins = []string{
 	"basic/plugins/welcome", "basic/plugins/onboarding",
 	"showcase/plugins/tickets", "showcase/plugins/polls", "showcase/plugins/levels", "showcase/plugins/moderation",
 	"showcase/plugins/reaction-roles", "showcase/plugins/audit-log", "showcase/plugins/announcements",
+	"showcase/plugins/voice-rooms",
+}
+
+// splitEnv splits a committed cicord-env.d.ts into the PluginConfig part (Generate) and the
+// interop part that `cicord plugin typegen` appends from the plugin's contracts.
+func splitEnv(s string) (config, interop string) {
+	const end = "export {};\n"
+	if i := strings.Index(s, end); i >= 0 {
+		return s[:i+len(end)], s[i+len(end):]
+	}
+	return s, ""
 }
 
 // codeLines drops comment lines, so hand-written headers do not matter.
@@ -46,7 +57,8 @@ func TestExamplesMatchHandWritten(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if codeLines(got) != codeLines(string(want)) {
+			config, _ := splitEnv(string(want))
+			if codeLines(got) != codeLines(config) {
 				t.Errorf("generated:\n%s\nhand-written:\n%s", got, want)
 			}
 			if !strings.HasPrefix(got, Header+"\n") {
@@ -150,12 +162,27 @@ func TestTypeCheck(t *testing.T) {
 				data, _ := os.ReadFile(filepath.Join(src, "src", e.Name()))
 				os.WriteFile(filepath.Join(dir, "src", e.Name()), data, 0o644)
 			}
+			// The files the sources import (locale catalogs, contract schemas).
+			for _, sub := range []string{"locales", "contracts"} {
+				files, _ := os.ReadDir(filepath.Join(src, sub))
+				for _, f := range files {
+					if f.IsDir() {
+						continue
+					}
+					os.MkdirAll(filepath.Join(dir, sub), 0o755)
+					data, _ := os.ReadFile(filepath.Join(src, sub, f.Name()))
+					os.WriteFile(filepath.Join(dir, sub, f.Name()), data, 0o644)
+				}
+			}
 			schema, _ := os.ReadFile(filepath.Join(src, "config.schema.json"))
 			got, err := Generate(schema)
 			if err != nil {
 				t.Fatal(err)
 			}
-			os.WriteFile(filepath.Join(dir, "src", "cicord-env.d.ts"), []byte(got), 0o644)
+			// The generated PluginConfig, with the committed interop declarations.
+			committed, _ := os.ReadFile(filepath.Join(src, "src", "cicord-env.d.ts"))
+			_, interop := splitEnv(string(committed))
+			os.WriteFile(filepath.Join(dir, "src", "cicord-env.d.ts"), []byte(got+interop), 0o644)
 			// the plugin's own tsconfig, with the SDK path made absolute
 			raw, err := os.ReadFile(filepath.Join(src, "tsconfig.json"))
 			if err != nil {

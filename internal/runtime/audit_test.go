@@ -67,8 +67,7 @@ func TestAuditAttributionRequiresActorTargetTypeAndTime(t *testing.T) {
 
 func TestAuditSDKReadsServerEvidence(t *testing.T) {
 	e := startExampleResync(t, nil, func(dir string) {
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - discord.auditlog.read\n    - portal.routes\n    - portal.links")
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "[ServerMembers]", "[ServerMembers, ServerModeration]")
+		requireInWelcome(t, dir, []string{"discord.auditlog.read", "portal.routes"}, []string{"ServerModeration"})
 		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - discord.dm.send", "        - discord.auditlog.read\n        - portal.routes\n        - discord.dm.send")
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  routes: {"GET /audit":{access:"admin",async handler(ctx){
     const entries=await ctx.server.auditLog({action:"role.update",limit:5});return {entries};

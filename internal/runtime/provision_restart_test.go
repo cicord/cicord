@@ -17,10 +17,8 @@ func TestProvisionKeySurvivesRestart(t *testing.T) {
 	for _, db := range restartDatabases(t) {
 		t.Run(db.name, func(t *testing.T) {
 			p := newRestartProject(t, func(dir string) {
-				for _, item := range []struct{ file, indent string }{{"plugins/welcome/plugin.yaml", "    "}, {"bots/moderator/bot.yaml", "        "}} {
-					base := item.indent + "- discord.dm.send"
-					replaceIn(t, filepath.Join(dir, item.file), base, base+"\n"+item.indent+"- discord.channels.manage\n"+item.indent+"- portal.routes")
-				}
+				requireInWelcome(t, dir, []string{"discord.channels.manage", "portal.routes"}, nil)
+				grantWelcome(t, dir, "discord.channels.manage", "portal.routes")
 				replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  routes: {
       "POST /room": {access:"admin",async handler(ctx,req) {
         const ch=await ctx.server.createChannel({name:"room",type:"voice",provisionKey:"room:"+req.body.user});

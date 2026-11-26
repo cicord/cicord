@@ -1,5 +1,16 @@
+import { relay } from "./relay.ts";
+import english from "../locales/en.json";
+import { ordered } from "./ordered.ts";
+import * as sdk from "@cicord/sdk";
+import { renderTranscript, requestSweep, sweepCopies } from "./transcript.ts";
+import { ensureIndexed, maintenance, receivedReply, reindex } from "./lifecycle.ts";
+import { privacy } from "./privacy.ts";
+import { appealPendingKey, appealPrefix, ratingCount, ratingSum } from "./indexes.ts";
 import {
+  InteropError,
   command,
+  query,
+  action,
   definePlugin,
   defineRoutes,
   type ComponentInteraction,
@@ -12,14 +23,21 @@ import type { Person, Priority, Routes } from "./routes.ts";
 import {
   PRIORITIES,
   activityKey,
+  types,
+  ticketType,
+  mayRead,
+  mayReadTranscript,
+  relayAllowed,
+  publish,
   addEvent,
   channelKey,
   closeTicket,
   escapeMarkdown,
+  findRequest,
   getTicket,
+  indexed,
   isLabel,
   isStaff,
-  lastActivityKey,
   listStaff,
   listTickets,
   liveChannel,
@@ -29,6 +47,9 @@ import {
   notice,
   numberOf,
   openTicket,
+  requestTicket,
+  provisionTicket,
+  OpenLimit,
   openTickets,
   panelMessage,
   person,
@@ -49,12 +70,12 @@ async function closable(
   const n = numberOf(interaction.componentId);
   const ticket = n === undefined ? undefined : await getTicket(ctx, n);
   if (!ticket || ticket.status !== "open") {
-    await interaction.reply({ content: "This ticket is already closed.", ephemeral: true });
+    await interaction.reply({ content: ctx.i18n.t("alreadyClosed"), ephemeral: true });
     return undefined;
   }
-  if (ticket.author.id !== interaction.user.id && !isStaff(ctx, interaction.member)) {
+  if (!mayRead(ctx, ticket, interaction.member, true)) {
     await interaction.reply({
-      content: "Only the member who opened this ticket or the staff can close it.",
+      content: ctx.i18n.t("closeDenied"),
       ephemeral: true,
     });
     return undefined;
@@ -79,14 +100,6 @@ function staffViewer(ctx: Context, viewer: Viewer): Person | RouteEnvelope {
   if (!viewer?.member || !isStaff(ctx, viewer.member))
     return fail(403, "forbidden", "only the ticket staff can do this");
   return person(viewer.user, viewer.member);
-}
-
-/**
- * Read-only staff routes: a viewer must be staff; a call without a viewer is the runtime's
- * own token (admin, checked by the runtime), accepted as in 0.1.
- */
-function staffReader(ctx: Context, viewer: Viewer): Person | null | RouteEnvelope {
-  return viewer ? staffViewer(ctx, viewer) : null;
 }
 
 function memberViewer(viewer: Viewer): { user: User; member: Member } | RouteEnvelope {
@@ -130,23 +143,299 @@ function labelValue(ctx: Context, value: unknown): string | null | RouteEnvelope
 }
 
 const isPriority = (v: unknown): v is Priority => PRIORITIES.includes(v as Priority);
+
+/** The modmail queue, when the optional feature is granted and its type is configured. */
+function modmailType(ctx: Context) {
+  if (!ctx.features.enabled("modmail")) return undefined;
+  return ticketType(ctx, ctx.config.modmailType);
+}
+
+/** Operator status lines for configuration that degrades a feature (P10). */
+function reportConfig(ctx: Context) {
+  const keys = (ctx.config.types ?? []).map((t) => t.key);
+  const duplicates = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
+  ctx.status.set(
+    "types",
+    duplicates.length
+      ? "Duplicate ticket type " + duplicates.join(", ") + ": only the first definition is used"
+      : null,
+  );
+  const mail = ctx.config.modmailType;
+  ctx.status.set(
+    "modmail",
+    mail && !ticketType(ctx, mail)
+      ? "Unknown modmailType " + mail + ": direct messages do not open tickets"
+      : mail && !ctx.features.enabled("modmail")
+        ? "Modmail needs discord.dm.send: direct messages do not open tickets"
+        : null,
+  );
+  ctx.status.set(
+    "transcriptFiles",
+    types(ctx).some((t) => t.retainSourceForTranscript && t.logChannel) &&
+      !ctx.features.enabled("managedMessages")
+      ? "Transcript files need discord.messages.manage: log channels receive summaries only"
+      : null,
+  );
+}
+
+function ticketReply(t: Ticket, userId: string) {
+  if (t.author.id !== userId) throw new InteropError("denied", "Idempotency key already used");
+  return { id: t.id, ...(t.channelId ? { channelId: t.channelId } : {}) };
+}
 const USER_ID = /^\d{1,20}$/;
 const PRIORITY_LIST = PRIORITIES.join(", ");
 
+async function mayReadModmail(ctx: Context, t: Ticket, viewer?: Member) {
+  if (!viewer || !mayRead(ctx, t, viewer, true)) return false;
+  return t.status === "closed" ? mayReadTranscript(ctx, t, viewer) : relayAllowed(ctx, t, viewer);
+}
+
+async function staffTicket(ctx: Context, id: string, viewer: Viewer) {
+  const t = await ticketById(ctx, id);
+  if (
+    failed(t) ||
+    !mayRead(ctx, t, viewer?.member) ||
+    (t.source === "modmail" && !(await mayReadModmail(ctx, t, viewer?.member)))
+  )
+    return fail(404, "not_found", "no such ticket");
+  return t;
+}
+
+async function rate(ctx: Context, t: Ticket, userId: string, rating: number) {
+  if (
+    t.status !== "closed" ||
+    t.author.id !== userId ||
+    !Number.isInteger(rating) ||
+    rating < 1 ||
+    rating > 5
+  )
+    return false;
+  if (t.rating === undefined) {
+    t.rating = rating;
+    await saveTicket(ctx, t);
+    await publish(ctx, t, "rated");
+  }
+  return true;
+}
+
 export default definePlugin({
-  onStart(ctx) {
+  privacy: { export: privacy.export, erase: ordered(privacy.erase) },
+  schedules: { maintenance: { cron: "* * * * *", run: ordered(maintenance) } },
+  tasks: {
+    provision: ordered(async (ctx, payload) => {
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        Array.isArray(payload) ||
+        typeof payload.number !== "number"
+      )
+        return;
+      const t = await getTicket(ctx, payload.number);
+      if (t) await provisionTicket(ctx, t);
+    }),
+    reindex,
+    sweepCopies,
+  },
+  queries: {
+    openFor: query({
+      async run(ctx, input, call) {
+        const { userId } = input as { userId: string };
+        if (call.onBehalfOf?.access === "scoped") return { tickets: [] };
+        const viewer = call.onBehalfOf && (await ctx.server.member(call.onBehalfOf.userId));
+        if (!viewer) return { tickets: [] };
+        const tickets = [];
+        for (const n of await openTickets(ctx, userId)) {
+          const t = await getTicket(ctx, n);
+          if (t && mayRead(ctx, t, viewer, true))
+            tickets.push({ id: t.id, type: t.type, subject: t.subject, status: t.status });
+        }
+        return { tickets };
+      },
+    }),
+  },
+  subscriptions: {
+    "moderation.appeal": ordered(async (ctx, payload, meta) => {
+      if (
+        !ctx.features.enabled("appealUpdates") ||
+        !meta ||
+        !payload ||
+        typeof payload !== "object" ||
+        Array.isArray(payload)
+      )
+        return;
+      const { case: caseNumber, userId, status } = payload;
+      if (
+        typeof caseNumber !== "number" ||
+        typeof userId !== "string" ||
+        typeof status !== "string"
+      )
+        return;
+      const appeal = {
+        number: caseNumber,
+        bot: meta.publisher.bot,
+        instance: meta.publisher.instance,
+      };
+      const prefix = appealPrefix(appeal, userId);
+      let cursor: string | undefined;
+      do {
+        const page = await ctx.kv.list({ prefix, limit: 100, ...(cursor ? { cursor } : {}) });
+        for (const item of page.items) {
+          const t = await getTicket(ctx, Number(item.key.slice(prefix.length)));
+          if (
+            t?.author.id === userId &&
+            t.appeal?.number === caseNumber &&
+            t.appeal.bot === appeal.bot &&
+            t.appeal.instance === appeal.instance &&
+            t.appeal.status !== status
+          ) {
+            t.appeal.status = status;
+            await saveTicket(ctx, t);
+          }
+        }
+        cursor = page.cursor;
+      } while (cursor);
+      // Records not indexed yet receive the newest status from the migration task.
+      if (!(await indexed(ctx))) await ctx.kv.set(appealPendingKey(appeal, userId), status);
+    }),
+  },
+  actions: {
+    // Actions run in a fresh realm per call (module state such as `ordered` is not shared):
+    // the request receipt `req:<caller>:<key>` is committed atomically with the ticket.
+    open: action({
+      async run(ctx, input, call) {
+        const data = input as {
+          userId: string;
+          subject: string;
+          type?: string;
+          description?: string;
+          caseNumber?: number;
+        };
+        const isAppeal = call.caller.plugin === "moderation" && data.caseNumber !== undefined;
+        const key = data.type ?? (isAppeal ? ctx.config.appealType : undefined);
+        if (isAppeal && !key && types(ctx).length > 1)
+          throw new InteropError("denied", "Configure appealType for moderation appeals");
+        if (
+          call.onBehalfOf?.access === "scoped" &&
+          (!isAppeal ||
+            call.onBehalfOf.resourceScope?.kind !== "case" ||
+            call.onBehalfOf.resourceScope.id !== String(data.caseNumber) ||
+            data.userId !== call.onBehalfOf.userId)
+        )
+          throw new InteropError("denied", "Case scope does not authorize this ticket");
+        const type = ticketType(ctx, key);
+        if (!type) throw new InteropError("denied", "Unknown ticket type");
+        if (!call.onBehalfOf) throw new InteropError("denied", "Ticket author required");
+        const viewer = await ctx.server.member(call.onBehalfOf.userId);
+        if (call.onBehalfOf.userId !== data.userId && !isStaff(ctx, viewer, type.key))
+          throw new InteropError("denied", "Ticket staff required");
+        // Keyed by the calling installation and its key only: a retry from a later
+        // interaction or route returns the same ticket.
+        const request = {
+          caller: call.caller.bot + "/" + call.caller.instance,
+          key: call.idempotencyKey,
+        };
+        const previous = await findRequest(ctx, request);
+        if (previous) return ticketReply(previous, data.userId);
+        // The open-ticket limit is checked with the receipt in requestTicket: a concurrent
+        // duplicate must find the committed receipt, not a full quota.
+        const member = await ctx.server.member(data.userId);
+        const user = member?.user ?? {
+          id: data.userId,
+          displayName: data.userId,
+          username: data.userId,
+          bot: false,
+          mention: "<@" + data.userId + ">",
+        };
+        const appeal =
+          data.caseNumber && call.caller.plugin === "moderation"
+            ? { number: data.caseNumber, bot: call.caller.bot, instance: call.caller.instance }
+            : undefined;
+        try {
+          const t = await requestTicket(ctx, {
+            user,
+            member,
+            appeal,
+            request,
+            subject: data.subject,
+            description: data.description ?? "",
+            source: "interop",
+            label: null,
+            type: type.key,
+          });
+          return ticketReply(t, data.userId);
+        } catch (error) {
+          if (error instanceof OpenLimit)
+            throw new InteropError("denied", "Open ticket limit reached");
+          throw error;
+        }
+      },
+    }),
+  },
+  ...(sdk.sdkFeatures?.contextMenus
+    ? {
+        contextMenus: {
+          "Open ticket on message": {
+            type: "message",
+            run: ordered(async (ctx, i) => {
+              if (
+                !i.member ||
+                (await openTickets(ctx, i.user.id)).length >= ctx.config.maxOpenPerMember
+              ) {
+                await i.reply({ content: ctx.i18n.t("openLimit"), ephemeral: true });
+                return;
+              }
+              const { ticket, channel } = await openTicket(ctx, {
+                user: i.user,
+                member: i.member,
+                subject: ctx.i18n.t("messageReport"),
+                description: "",
+                source: "discord",
+                label: null,
+              });
+              const relation = ctx.server.compareAudience(i.target.channel, channel);
+              if (relation === "same" || relation === "narrower") {
+                ticket.description = i.target.url;
+                await saveTicket(ctx, ticket);
+                await channel.send({
+                  content: i.target.url,
+                  allowedMentions: { users: false, roles: false, everyone: false },
+                });
+              }
+              await i.reply({
+                content: ctx.i18n.t("openedChannel", { channel: channel.mention }),
+                ephemeral: true,
+              });
+            }),
+          },
+        },
+      }
+    : {}),
+  // Startup only reports. Log copies are rechecked by serverAvailable and the maintenance
+  // cron; the schema-2 migration runs in bounded `reindex` tasks.
+  async onStart(ctx) {
+    ctx.features.report?.(
+      "messageContextMenu",
+      Boolean(sdk.sdkFeatures?.contextMenus),
+      sdk.sdkFeatures?.contextMenus ? undefined : "SDK-13 message context menus unavailable",
+    );
+    try {
+      reportConfig(ctx);
+      await ensureIndexed(ctx);
+    } catch (error) {
+      ctx.log.warn("Startup checks deferred", { error: String(error) });
+    }
     ctx.log.info("tickets ready", { staffRoles: ctx.config.staffRoles.length });
   },
 
   commands: {
     "ticket-panel": command({
-      description: "Post the ticket panel (button to open a ticket)",
+      description: english["commands.ticket-panel.description"],
       ephemeral: true,
       permissions: ["ManageChannels"],
       options: {
         channel: {
           type: "channel",
-          description: "Where to post it (defaults to the configured channel)",
+          description: english["commands.ticket-panel.options.channel.description"],
         },
       },
       async run(ctx, interaction) {
@@ -154,12 +443,37 @@ export default definePlugin({
           ? ctx.server.channel({ id: interaction.options.channel.id })
           : ctx.server.channel(ctx.config.panelChannel);
         await target.send(panelMessage(ctx));
-        await interaction.reply(`Ticket panel posted in ${target.mention}.`);
+        await interaction.reply(ctx.i18n.t("panelPosted", { channel: target.mention }));
       },
     }),
   },
 
   components: {
+    claim: ordered(async (ctx, i) => {
+      const t = await getTicket(ctx, numberOf(i.componentId) ?? 0);
+      if (!t || t.status !== "open" || !mayRead(ctx, t, i.member)) {
+        await i.reply({ content: ctx.i18n.t("unavailable"), ephemeral: true });
+        return;
+      }
+      if (!t.assignee) {
+        t.assignee = person(i.user, i.member);
+        addEvent(t, "assigned", t.assignee, t.assignee.displayName);
+        await saveTicket(ctx, t);
+      }
+      await i.reply({
+        content: ctx.i18n.t("claimed", { staff: t.assignee.displayName }),
+        ephemeral: true,
+      });
+    }),
+    rate: ordered(async (ctx, i) => {
+      const [, id, value] = i.componentId.split(":");
+      const t = await getTicket(ctx, Number(id));
+      const ok = t && (await rate(ctx, t, i.user.id, Number(value)));
+      await i.reply({
+        content: ok ? ctx.i18n.t("rated") : ctx.i18n.t("ratingUnavailable"),
+        ephemeral: true,
+      });
+    }),
     /** Panel button: asks for a subject first. */
     async open(ctx, interaction) {
       const open = await openTickets(ctx, interaction.user.id);
@@ -167,31 +481,47 @@ export default definePlugin({
         const ticket = await getTicket(ctx, open[0] ?? 0);
         await interaction.reply({
           content: ticket
-            ? `You already have an open ticket: <#${ticket.channelId}>.`
-            : "You already have an open ticket.",
+            ? ctx.i18n.t("existingChannel", { channel: "<#" + ticket.channelId + ">" })
+            : ctx.i18n.t("alreadyOpen"),
           ephemeral: true,
         });
         return;
       }
+      const key = interaction.componentId.split(":")[1];
+      const type = ticketType(ctx, key);
+      if (!type) {
+        await interaction.reply({ content: ctx.i18n.t("typeUnavailable"), ephemeral: true });
+        return;
+      }
       await interaction.showModal({
-        id: "open",
-        title: "Open a ticket",
+        id: key ? "open:" + key : "open",
+        title: key ? type.name : ctx.i18n.t("open"),
         fields: [
           {
             id: "subject",
-            label: "Subject",
+            label: ctx.i18n.t("subject"),
             style: "short",
             required: true,
             maxLength: 100,
-            placeholder: "What is it about?",
+            placeholder: ctx.i18n.t("subjectHint"),
           },
-          {
-            id: "description",
-            label: "Details",
-            style: "paragraph",
-            required: false,
-            maxLength: 1000,
-          },
+          ...(type.fields?.length
+            ? type.fields.map((f, i) => ({
+                id: "field" + i,
+                label: f.label,
+                style: "paragraph" as const,
+                required: f.required,
+                maxLength: 500,
+              }))
+            : [
+                {
+                  id: "description",
+                  label: ctx.i18n.t("details"),
+                  style: "paragraph" as const,
+                  required: false,
+                  maxLength: 1000,
+                },
+              ]),
         ],
       });
     },
@@ -202,7 +532,12 @@ export default definePlugin({
       if (!ticket) return;
       await interaction.reply({
         ephemeral: true,
-        content: `Close ticket #${ticket.number}? The channel will be deleted.`,
+        content: ctx.i18n.t(
+          ticketType(ctx, ticket.type)?.retainSourceForTranscript
+            ? "confirmRetain"
+            : "confirmClose",
+          { number: ticket.number },
+        ),
         components: [
           {
             type: "row",
@@ -210,13 +545,13 @@ export default definePlugin({
               {
                 type: "button",
                 id: `close-confirm:${ticket.number}`,
-                label: "Close ticket",
+                label: ctx.i18n.t("closeTicket"),
                 style: "danger",
               },
               {
                 type: "button",
                 id: `close-cancel:${ticket.number}`,
-                label: "Cancel",
+                label: ctx.i18n.t("cancel"),
                 style: "secondary",
               },
             ],
@@ -225,50 +560,148 @@ export default definePlugin({
       });
     },
 
-    async "close-cancel"(_ctx, interaction) {
-      await interaction.update({ content: "The ticket stays open.", components: [] });
+    async "close-cancel"(ctx, interaction) {
+      await interaction.update({ content: ctx.i18n.t("staysOpen"), components: [] });
     },
 
-    async "close-confirm"(ctx, interaction) {
+    "close-confirm": ordered(async (ctx, interaction) => {
       const ticket = await closable(ctx, interaction);
       if (!ticket) return;
       // Answer first: the channel (and this message) is about to disappear.
-      await interaction.update({ content: `Closing ticket #${ticket.number}…`, components: [] });
+      await interaction.update({
+        content: ctx.i18n.t("closing", { number: ticket.number }),
+        components: [],
+      });
       const by = person(interaction.user, interaction.member);
       await closeTicket(ctx, ticket, by);
-    },
+    }),
   },
 
   modals: {
     /** Modal submit: creates the private channel. */
-    async open(ctx, interaction) {
+    open: ordered(async (ctx, interaction) => {
       await interaction.defer({ ephemeral: true });
       const user = interaction.user;
       if ((await openTickets(ctx, user.id)).length >= ctx.config.maxOpenPerMember) {
-        await interaction.reply("You already have an open ticket.");
+        await interaction.reply(ctx.i18n.t("alreadyOpen"));
         return;
       }
+      const type = ticketType(ctx, interaction.modalId.split(":")[1]);
+      if (!type) {
+        await interaction.reply(ctx.i18n.t("typeUnavailablePeriod"));
+        return;
+      }
+      const answers = type.fields
+        ?.map((f, i) => f.label + ": " + (interaction.fields["field" + i] ?? ""))
+        .join("\n");
       const { channel } = await openTicket(ctx, {
+        type: type.key,
         user,
         member: interaction.member,
-        subject: (interaction.fields["subject"] ?? "").trim() || "Ticket",
-        description: (interaction.fields["description"] ?? "").trim(),
+        subject: (interaction.fields["subject"] ?? "").trim() || ctx.i18n.t("ticket"),
+        description: answers ?? (interaction.fields["description"] ?? "").trim(),
         label: null,
         source: "discord",
       });
-      await interaction.reply(`Your ticket is open: ${channel.mention}`);
-    },
+      await interaction.reply(ctx.i18n.t("yourChannel", { channel: channel.mention }));
+    }),
   },
 
   events: {
+    serverAvailable: ordered(async (ctx) => {
+      await requestSweep(ctx);
+    }),
+    serverJoin: ordered(async (ctx) => {
+      await requestSweep(ctx);
+    }),
+    channelUpdate: ordered(async (ctx) => {
+      await requestSweep(ctx);
+    }),
+    roleUpdate: ordered(async (ctx) => {
+      await requestSweep(ctx);
+    }),
+    roleDelete: ordered(async (ctx) => {
+      await requestSweep(ctx);
+    }),
+    directMessage: ordered(async (ctx, m) => {
+      const member = await ctx.server.member(m.author.id);
+      if (!member || m.author.bot) return;
+      const text = [m.content, ...m.attachments.map((a) => a.url)].filter(Boolean).join("\n");
+      const type = modmailType(ctx);
+      if (!type) return;
+      const open = await openTickets(ctx, member.id);
+      for (const id of open) {
+        const t = await getTicket(ctx, id);
+        if (t?.source !== "modmail" || t.status !== "open" || t.author.id !== member.id) continue;
+        const delivered = await relay(
+          ctx,
+          t,
+          "inbound",
+          person(m.author, member),
+          (text || ctx.i18n.t("attachment")).slice(0, 2000),
+          m.id,
+          m.createdAt,
+        );
+        if (!delivered) {
+          ctx.log.warn("Modmail withheld after permission change", { ticket: t.id });
+          await member.send(ctx.i18n.t("relayDenied"));
+        }
+        return;
+      }
+      if (open.length >= ctx.config.maxOpenPerMember) {
+        await member.send(ctx.i18n.t("openLimit"));
+        return;
+      }
+      const { ticket } = await openTicket(ctx, {
+        user: m.author,
+        member,
+        type: type.key,
+        source: "modmail",
+        subject: ctx.i18n.t("modmail"),
+        description: "",
+        label: null,
+      });
+      const delivered = await relay(
+        ctx,
+        ticket,
+        "inbound",
+        person(m.author, member),
+        (text || ctx.i18n.t("attachment")).slice(0, 2000),
+        m.id,
+        m.createdAt,
+      );
+      if (!delivered) await member.send(ctx.i18n.t("relayDenied"));
+    }),
     /** Activity of ticket channels: who and when, never what (the content is not stored). */
-    async messageCreate(ctx, message) {
+    messageCreate: ordered(async (ctx, message) => {
       if (message.author.bot) return;
       const n = await ctx.kv.get<number>(channelKey(message.channel.id));
       if (n === undefined) return;
+      const t = await getTicket(ctx, n);
+      if (!t || t.status !== "open") return;
+      const staff = isStaff(ctx, message.member, t.type) && message.author.id !== t.author.id;
+      if (t.source === "modmail" && staff && ctx.features.enabled("modmail")) {
+        const body =
+          [message.content, ...message.attachments.map((a) => a.url)]
+            .filter(Boolean)
+            .join("\n")
+            .slice(0, 2000) || ctx.i18n.t("attachment");
+        const delivered = await relay(
+          ctx,
+          t,
+          "outbound",
+          person(message.author, message.member),
+          body,
+          message.id,
+          message.createdAt,
+        );
+        if (!delivered)
+          ctx.log.warn("Outbound modmail withheld after permission change", { ticket: t.id });
+        return;
+      }
       await ctx.kv.increment(activityKey(n));
-      await ctx.kv.set(lastActivityKey(n), message.createdAt.toISOString());
-    },
+      await receivedReply(ctx, t, message.createdAt, staff);
+    }),
   },
 
   // Literal paths before parameters: the runtime prefers them anyway, the test harness takes
@@ -276,12 +709,113 @@ export default definePlugin({
   routes: defineRoutes<Routes>({
     // ── members: their own tickets
 
+    "GET /types": {
+      access: "member",
+      handler(ctx) {
+        return { items: types(ctx).map(({ key, name }) => ({ key, name })) };
+      },
+    },
+    "GET /tickets/stats": {
+      access: "member",
+      async handler(ctx, req) {
+        if (!isStaff(ctx, req.viewer?.member))
+          return fail(403, "forbidden", "Ticket staff required");
+        // Per-type counters maintained with each record (src/indexes.ts).
+        let rated = 0;
+        let sum = 0;
+        for (const type of types(ctx)) {
+          if (!isStaff(ctx, req.viewer?.member, type.key)) continue;
+          const [count, total] = await ctx.kv.getMany<number>([
+            ratingCount(type.key),
+            ratingSum(type.key),
+          ]);
+          rated += count ?? 0;
+          sum += total ?? 0;
+        }
+        return { rated, mean: rated ? sum / rated : null };
+      },
+    },
+    "GET /tickets/:id/transcript": {
+      access: "member",
+      async handler(ctx, req) {
+        const t = await ticketById(ctx, req.params.id);
+        if (failed(t) || !(await mayReadTranscript(ctx, t, req.viewer?.member)))
+          return fail(404, "not_found", "No transcript");
+        const format = req.query.format ?? "html";
+        if (format !== "html" && format !== "markdown")
+          return fail(400, "invalid", "Unknown format");
+        const content = await renderTranscript(ctx, t, format);
+        return content === undefined
+          ? fail(404, "not_found", "No transcript")
+          : { format, content };
+      },
+    },
+    "GET /tickets/:id/cases": {
+      access: "member",
+      async handler(ctx, req) {
+        const t = await staffTicket(ctx, req.params.id, req.viewer);
+        if (failed(t)) return t;
+        if (!ctx.features.enabled("caseContext")) return { cases: [] };
+        const result = (await ctx.plugins.query("moderation", "cases", {
+          userId: t.author.id,
+          limit: 10,
+        })) as {
+          cases: { number: number; action: string; status: string; reason: string; at: string }[];
+        };
+        return {
+          cases: result.cases.map(({ number, action, status, reason, at }) => ({
+            number,
+            action,
+            status,
+            reason,
+            at,
+          })),
+        };
+      },
+    },
+    "POST /tickets/:id/notes": {
+      access: "member",
+      handler: ordered(async (ctx, req) => {
+        const t = await staffTicket(ctx, req.params.id, req.viewer);
+        if (failed(t)) return t;
+        const body = objectBody(req.body, ["content"]);
+        if (failed(body)) return body;
+        const content = text(body["content"], "content", 1, 2000);
+        if (failed(content)) return content;
+        t.notes = [
+          ...t.notes,
+          {
+            by: person(req.viewer!.user, req.viewer!.member),
+            at: new Date().toISOString(),
+            content,
+          },
+        ].slice(-100);
+        await saveTicket(ctx, t);
+        return staffDetail(ctx, t);
+      }),
+    },
+    "POST /tickets/:id/rating": {
+      access: "member",
+      handler: ordered(async (ctx, req) => {
+        const t = await ticketById(ctx, req.params.id);
+        if (failed(t) || t.author.id !== req.viewer?.user.id)
+          return fail(404, "not_found", "No such ticket");
+        const body = objectBody(req.body, ["rating"]);
+        if (failed(body)) return body;
+        if (
+          typeof body["rating"] !== "number" ||
+          !(await rate(ctx, t, t.author.id, body["rating"]))
+        )
+          return fail(400, "invalid", "Rate a closed ticket from 1 to 5");
+        return { rating: t.rating! };
+      }),
+    },
     "GET /tickets/mine": {
       access: "member",
       async handler(ctx, request) {
         const viewer = memberViewer(request.viewer);
         if (failed(viewer)) return viewer;
-        return { items: await myTickets(ctx, viewer.user.id) };
+        return { items: await myTickets(ctx, viewer.member) };
       },
     },
 
@@ -292,19 +826,28 @@ export default definePlugin({
         if (failed(viewer)) return viewer;
         const ticket = await ticketById(ctx, request.params.id);
         // Someone else's ticket does not exist for the viewer.
-        if (failed(ticket) || ticket.author.id !== viewer.user.id)
+        if (
+          failed(ticket) ||
+          ticket.author.id !== viewer.user.id ||
+          !mayRead(ctx, ticket, viewer.member, true)
+        )
           return fail(404, "not_found", "no such ticket");
+        if (ticket.source === "modmail" && !(await mayReadModmail(ctx, ticket, viewer.member)))
+          return fail(404, "not_found", "No verified modmail source");
         return myDetail(ctx, ticket);
       },
     },
 
     "POST /tickets": {
       access: "member",
-      async handler(ctx, request) {
+      handler: ordered(async (ctx, request) => {
         const viewer = memberViewer(request.viewer);
         if (failed(viewer)) return viewer;
-        const body = objectBody(request.body, ["subject", "description", "label"]);
+        const body = objectBody(request.body, ["subject", "description", "label", "type"]);
         if (failed(body)) return body;
+        const type = body["type"];
+        if (type !== undefined && (typeof type !== "string" || !ticketType(ctx, type)))
+          return fail(400, "invalid", "Unknown ticket type");
         const subject = text(body["subject"], "subject", 3, 100);
         if (failed(subject)) return subject;
         const description = text(body["description"], "description", 10, 1000);
@@ -314,27 +857,35 @@ export default definePlugin({
         const open = await openTickets(ctx, viewer.user.id);
         if (open.length >= ctx.config.maxOpenPerMember)
           return fail(409, "limit", `you already have ${open.length} open ticket(s)`);
-        const { ticket } = await openTicket(ctx, {
-          user: viewer.user,
-          member: viewer.member,
-          subject,
-          description,
-          label,
-          source: "portal",
-        });
-        return { status: 201, body: await myView(ctx, ticket) };
-      },
+        try {
+          const { ticket } = await openTicket(ctx, {
+            user: viewer.user,
+            member: viewer.member,
+            subject,
+            description,
+            label,
+            source: "portal",
+            type,
+          });
+          return { status: 201, body: await myView(ctx, ticket) };
+        } catch (error) {
+          if (error instanceof OpenLimit) return fail(409, "limit", error.message);
+          throw error;
+        }
+      }),
     },
 
     // ── staff: a staff role, the server owner or a Cicord admin
 
     "GET /tickets": {
-      access: "moderator",
+      access: "member",
       async handler(ctx, request) {
-        const reader = staffReader(ctx, request.viewer);
+        const reader = staffViewer(ctx, request.viewer);
         if (failed(reader)) return reader;
-        const { status, assignee, priority, label } = request.query;
+        const { status, assignee, priority, label, cursor } = request.query;
         const f: TicketFilters = {};
+        if (cursor !== undefined && !/^[1-9]\d{0,7}$/.test(cursor))
+          return fail(400, "invalid", "cursor must come from a previous page");
         if (status !== undefined) {
           if (status !== "open" && status !== "closed")
             return fail(400, "invalid", "status must be open or closed");
@@ -358,36 +909,62 @@ export default definePlugin({
           else if (isLabel(ctx, label)) f.label = label;
           else return fail(400, "invalid", "label must be a configured label key or none");
         }
-        return { items: await listTickets(ctx, f) };
+        return listTickets(
+          ctx,
+          f,
+          request.viewer?.member,
+          cursor === undefined ? undefined : Number(cursor),
+        );
       },
     },
 
     "GET /tickets/:id": {
-      access: "moderator",
+      access: "member",
       async handler(ctx, request) {
-        const reader = staffReader(ctx, request.viewer);
+        const reader = staffViewer(ctx, request.viewer);
         if (failed(reader)) return reader;
-        const ticket = await ticketById(ctx, request.params.id);
+        const ticket = await staffTicket(ctx, request.params.id, request.viewer);
         if (failed(ticket)) return ticket;
+        if (
+          ticket.status === "closed" &&
+          ticket.expiresAt &&
+          !(await mayReadTranscript(ctx, ticket, request.viewer?.member))
+        )
+          return fail(404, "not_found", "No verified transcript source");
+        if (
+          ticket.source === "modmail" &&
+          !(await mayReadModmail(ctx, ticket, request.viewer?.member))
+        )
+          return fail(404, "not_found", "No verified modmail source");
         return staffDetail(ctx, ticket);
       },
     },
 
     "GET /staff": {
-      access: "moderator",
+      access: "member",
       async handler(ctx, request) {
-        const reader = staffReader(ctx, request.viewer);
+        const reader = staffViewer(ctx, request.viewer);
         if (failed(reader)) return reader;
-        return { items: await listStaff(ctx, reader) };
+        const type = request.query.type;
+        if (type && !isStaff(ctx, request.viewer?.member, type))
+          return fail(403, "forbidden", "Type access required");
+        const staff = new Map<string, Person>();
+        for (const cfg of types(ctx))
+          if ((!type || type === cfg.key) && isStaff(ctx, request.viewer?.member, cfg.key))
+            for (const member of await listStaff(ctx, reader, cfg.key))
+              staff.set(member.id, member);
+        return {
+          items: [...staff.values()].sort((a, b) => a.displayName.localeCompare(b.displayName)),
+        };
       },
     },
 
     "POST /tickets/:id/assign": {
-      access: "moderator",
-      async handler(ctx, request) {
+      access: "member",
+      handler: ordered(async (ctx, request) => {
         const me = staffViewer(ctx, request.viewer);
         if (failed(me)) return me;
-        const ticket = await ticketById(ctx, request.params.id);
+        const ticket = await staffTicket(ctx, request.params.id, request.viewer);
         if (failed(ticket)) return ticket;
         const body = objectBody(request.body, ["userId"]);
         if (failed(body)) return body;
@@ -398,7 +975,8 @@ export default definePlugin({
         else if (typeof userId === "string" && USER_ID.test(userId)) {
           const member = await ctx.server.member(userId);
           if (!member) return fail(400, "invalid", "no such member");
-          if (!isStaff(ctx, member)) return fail(400, "invalid", "the assignee must be staff");
+          if (!isStaff(ctx, member, ticket.type))
+            return fail(400, "invalid", "the assignee must be staff");
           assignee = person(member.user, member);
         } else return fail(400, "invalid", "userId must be a user id, me or null");
 
@@ -411,20 +989,21 @@ export default definePlugin({
             ctx,
             ticket,
             assignee
-              ? `Assigned to **${escapeMarkdown(assignee.displayName)}**.`
-              : `Unassigned by **${escapeMarkdown(me.displayName)}**.`,
+              ? ctx.i18n.t("assigned", { staff: escapeMarkdown(assignee.displayName) })
+              : ctx.i18n.t("unassigned", { staff: escapeMarkdown(me.displayName) }),
+            [me.id, ...(assignee ? [assignee.id] : [])],
           );
         }
         return staffView(ctx, ticket);
-      },
+      }),
     },
 
     "PATCH /tickets/:id": {
-      access: "moderator",
-      async handler(ctx, request) {
+      access: "member",
+      handler: ordered(async (ctx, request) => {
         const me = staffViewer(ctx, request.viewer);
         if (failed(me)) return me;
-        const ticket = await ticketById(ctx, request.params.id);
+        const ticket = await staffTicket(ctx, request.params.id, request.viewer);
         if (failed(ticket)) return ticket;
         const body = objectBody(request.body, ["priority", "label"]);
         if (failed(body)) return body;
@@ -444,20 +1023,21 @@ export default definePlugin({
         }
         if (label !== undefined && label !== ticket.label) {
           ticket.label = label;
+          ticket.labels = label ? [label] : [];
           addEvent(ticket, "label", me, label ?? "none");
           changed = true;
         }
         if (changed) await saveTicket(ctx, ticket);
         return staffView(ctx, ticket);
-      },
+      }),
     },
 
     "POST /tickets/:id/close": {
-      access: "moderator",
-      async handler(ctx, request) {
+      access: "member",
+      handler: ordered(async (ctx, request) => {
         const me = staffViewer(ctx, request.viewer);
         if (failed(me)) return me;
-        const ticket = await ticketById(ctx, request.params.id);
+        const ticket = await staffTicket(ctx, request.params.id, request.viewer);
         if (failed(ticket)) return ticket;
         const body = objectBody(request.body, ["reason"], true);
         if (failed(body)) return body;
@@ -465,27 +1045,27 @@ export default definePlugin({
         if (failed(reason)) return reason;
         if (ticket.status !== "open") return fail(409, "closed", "the ticket is already closed");
         return staffView(ctx, await closeTicket(ctx, ticket, me, reason || undefined));
-      },
+      }),
     },
 
     "POST /tickets/:id/reopen": {
-      access: "moderator",
-      async handler(ctx, request) {
+      access: "member",
+      handler: ordered(async (ctx, request) => {
         const me = staffViewer(ctx, request.viewer);
         if (failed(me)) return me;
-        const ticket = await ticketById(ctx, request.params.id);
+        const ticket = await staffTicket(ctx, request.params.id, request.viewer);
         if (failed(ticket)) return ticket;
         if (ticket.status === "open") return fail(409, "open", "the ticket is already open");
         return staffView(ctx, await reopenTicket(ctx, ticket, me));
-      },
+      }),
     },
 
     "POST /tickets/:id/messages": {
-      access: "moderator",
-      async handler(ctx, request) {
+      access: "member",
+      handler: ordered(async (ctx, request) => {
         const me = staffViewer(ctx, request.viewer);
         if (failed(me)) return me;
-        const ticket = await ticketById(ctx, request.params.id);
+        const ticket = await staffTicket(ctx, request.params.id, request.viewer);
         if (failed(ticket)) return ticket;
         const body = objectBody(request.body, ["content"]);
         if (failed(body)) return body;
@@ -494,8 +1074,11 @@ export default definePlugin({
         if (ticket.status !== "open") return fail(409, "closed", "the ticket is closed");
         const channel = await liveChannel(ctx, ticket);
         if (!channel) return fail(409, "closed", "the ticket channel no longer exists");
-        return { status: 201, body: { id: await postReply(ctx, ticket, channel, me, content) } };
-      },
+        const id = await postReply(ctx, ticket, channel, me, content);
+        return id
+          ? { status: 201, body: { id } }
+          : fail(403, "forbidden", "Cannot verify private message recipients");
+      }),
     },
   }),
 });

@@ -1,0 +1,56 @@
+{
+  "input": {
+    "type": "object",
+    "properties": {
+      "pollId": {
+        "type": "string"
+      },
+      "cursor": {
+        "type": "string"
+      },
+      "publisher": {
+        "type": "object",
+        "description": "Publisher of the polls.closed event (its meta.publisher). The provider refuses a poll id published by another polls installation.",
+        "properties": {
+          "bot": {
+            "type": "string",
+            "minLength": 1
+          },
+          "instance": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "bot",
+          "instance"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "pollId"
+    ],
+    "additionalProperties": false
+  },
+  "output": {
+    "type": "object",
+    "properties": {
+      "userIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 1000
+      },
+      "cursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "userIds"
+    ],
+    "additionalProperties": false,
+    "description": "Distinct participants in a closed non-anonymous poll. A background installation with the explicit polls.voters grant may page these IDs for participation rewards. Delegated member requests additionally require current access to the source channel."
+  }
+}

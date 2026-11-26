@@ -7,6 +7,87 @@ declare module "@cicord/sdk" {
     managerRoles: string[];
     confirmVotes: boolean;
     color: string;
+    eligibleRoles: string[];
+    roleWeights: {
+      role: string;
+      weight: number;
+    }[];
   }
 }
 export {};
+
+declare module "@cicord/sdk" {
+  interface PublishedEvents {
+    "closed.v1": {
+      channelId: string;
+      choices: {
+        label: string;
+        votes: number;
+      }[];
+      closedBy: string | null;
+      messageId: string;
+      pollId: string;
+      question: string;
+      voters: string[];
+      winners: string[];
+    };
+    "closed.v2": {
+      channelId: string;
+      choices: {
+        label: string;
+        votes: number;
+      }[];
+      closedBy: string | null;
+      messageId: string;
+      pollId: string;
+      question: string;
+      voterCount: number;
+      voters?: string[];
+      votersTruncated?: boolean;
+      winners: string[];
+    };
+  }
+  interface EventContracts {
+    "polls.closed.v1": {
+      channelId: string;
+      choices: {
+        label: string;
+        votes: number;
+      }[];
+      closedBy: string | null;
+      messageId: string;
+      pollId: string;
+      question: string;
+      voters: string[];
+      winners: string[];
+    };
+    "polls.closed.v2": {
+      channelId: string;
+      choices: {
+        label: string;
+        votes: number;
+      }[];
+      closedBy: string | null;
+      messageId: string;
+      pollId: string;
+      question: string;
+      voterCount: number;
+      voters?: string[];
+      votersTruncated?: boolean;
+      winners: string[];
+    };
+  }
+  interface QueryContracts {
+    "polls.voters": {input: {
+      cursor?: string;
+      pollId: string;
+      publisher?: {
+        bot: string;
+        instance: string;
+      };
+    }; output: {
+      cursor?: string;
+      userIds: string[];
+    }};
+  }
+}

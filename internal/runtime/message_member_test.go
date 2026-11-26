@@ -12,11 +12,8 @@ import (
 // ctx.server.cicordBotIds names the project's bot (session user and applicationId).
 func TestMessageMemberAndProjectBots(t *testing.T) {
 	e := startExampleResync(t, nil, func(dir string) {
-		for _, item := range []struct{ file, indent string }{{"plugins/welcome/plugin.yaml", "    "}, {"bots/moderator/bot.yaml", "        "}} {
-			base := item.indent + "- discord.dm.send"
-			replaceIn(t, filepath.Join(dir, item.file), base, base+"\n"+item.indent+"- discord.messages.read")
-		}
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "[ServerMembers]", "[ServerMembers, ServerMessages, MessageContent]")
+		requireInWelcome(t, dir, []string{"discord.messages.read"}, []string{"ServerMessages", "MessageContent"})
+		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - discord.dm.send", "        - discord.dm.send\n        - discord.messages.read")
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  events: {
       async messageCreate(ctx,m){
         if(m.content!=="probe")return;

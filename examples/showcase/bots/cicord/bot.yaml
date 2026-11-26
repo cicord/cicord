@@ -26,6 +26,9 @@ spec:
         - discord.members.read
         - storage.kv
         - portal.routes
+        - events.publish
+        - scheduler
+        - portal.links
       config:
         panelChannel: help-desk
         category: support
@@ -47,6 +50,7 @@ spec:
         - scheduler
         - events.publish
         - portal.routes
+        - discord.members.read
       config:
         defaultHours: 24
         managerRoles: [mod]
@@ -89,6 +93,9 @@ spec:
         - http.fetch
         - portal.routes
         - events.publish
+        - discord.auditlog.read
+        - scheduler
+        - discord.messages.read
       config:
         logChannel: mod-log
         warningDays: 30
@@ -144,6 +151,9 @@ spec:
         - storage.kv
         - scheduler
         - events.subscribe
+        - discord.messages.read
+        - discord.auditlog.read
+        - portal.routes
       config:
         channel: audit-log
         ignoredChannels: [staff-chat]

@@ -3,19 +3,51 @@ apiVersion: cicord.dev/v1alpha1
 kind: Plugin
 metadata:
   name: moderation
-  version: 0.1.1
+  version: 0.3.0
   displayName: Moderation
-  description: /warn, /timeout, /kick and /ban with an audit log, expiring warnings, automatic escalation, flood protection, member DMs and an optional Slack or Discord webhook.
+  description: Staff moderation with warnings, expiring bans, reviewed message purges, case history and private notes.
   license: Apache-2.0
   keywords: [moderation, warnings, audit, automod]
 spec:
-  engine: ">=0.1.0"
+  engine: ">=0.2.0"
   entry: ./src/index.ts
+  locales: ./locales
+  delivery: at-least-once
+  privacy:
+    records:
+      - {name: discord-staff-log-copies, policy: erase, description: Withdraw indexed case and member event notices from Discord.}
+      - {name: cases, policy: retain, description: Redact identities and free text in closed cases., retention: "365 days", justification: "Staff need a bounded record of prior enforcement."}
+      - {name: active-sanctions, policy: retain, description: Minimum subject and expiry generation for live sanctions., retention: Until lifted or expired, justification: "A data request must not bypass a current ban or quarantine."}
+      - {name: private-notes, policy: erase, description: Erase private notes on a member request.}
+      - {name: appeals, policy: erase, description: Erase appeal statements and case access.}
+      - {name: warnings-indexes-and-statistics, policy: erase, description: Erase the subject's warning and history indexes and staff totals.}
+  optional:
+    - {feature: legacyFlood, capabilities: [discord.messages.manage]}
+    - {feature: legacyMemberLog, capabilities: [discord.messages.send]}
+    - {feature: lock, capabilities: [server.overlays]}
+    - {feature: quarantine, capabilities: [discord.roles.assign]}
+    - {feature: appeals, capabilities: [portal.links]}
+    - {feature: appealsViaTicket, capabilities: ["plugins.call:tickets.open"]}
+    - {feature: tempRoles, capabilities: [events.subscribe]}
+  interop:
+    types: ./src/contracts.ts
+    publishes:
+      - {topic: case, scope: server, version: 1}
+      - {topic: case, scope: server, version: 2}
+      - {topic: caseUpdated, scope: server, version: 1}
+      - {topic: appeal, scope: server, version: 1}
+    subscribes:
+      - {topic: member-roles.tempRoleExpired, version: 1}
+    provides: {queries: [standing, cases], actions: [sanction]}
+    consumes: {actions: [tickets.open]}
   capabilities:
+    - discord.auditlog.read      # bind ban release to the issuing audit entry
     - discord.messages.send      # audit log
     - discord.messages.manage    # delete flood messages
-    - discord.channels.read
-    - discord.members.read
+    - scheduler                  # persistent temporary-ban expiry
+    - discord.messages.read      # preview and filter the messages to purge
+    - discord.channels.read # Resolve configured channels and their current permissions.
+    - discord.members.read # Resolve current members, roles and eligibility.
     - discord.members.moderate   # timeout, kick, ban
     - discord.dm.send            # tell the member why
     - storage.kv                 # warnings (expiring), case numbers
@@ -24,7 +56,16 @@ spec:
     - events.publish             # moderation.case, for the audit log
   # ServerMembers: join/leave/update log. ServerMessages: flood protection, which only needs
   # who posts and when, never the content (no MessageContent).
-  intents: [ServerMembers, ServerMessages]
+  intents:
+    - ServerMembers # Observe member joins, departures and role changes.
+    - ServerMessages # Receive message events in guild channels.
+    - ServerModeration # Receive guild moderation events for audit correlation.
+  secrets:
+    - name: WEBHOOK_URL
+      use: webhook.send
+      description: Discord or Slack webhook URL for moderation notices
+      required: false
+      hosts: [discord.com, hooks.slack.com]
   network:
     allow: [hooks.slack.com, discord.com]
   config:

@@ -1,4 +1,4 @@
-import type { Message, MessagePayload } from "@cicord/sdk";
+import type { Json, Message, MessagePayload } from "@cicord/sdk";
 import {
   callRoute,
   createTestContext,
@@ -6,7 +6,9 @@ import {
   runCommand,
   runComponent,
 } from "@cicord/sdk/testing";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
+import en from "../locales/en.json" with { type: "json" };
+import fr from "../locales/fr.json" with { type: "json" };
 import schema from "../config.schema.json" with { type: "json" };
 import plugin from "../src/index.ts";
 import { parseChoices, suggestPolls, type Poll } from "../src/polls.ts";
@@ -14,21 +16,25 @@ import { parseChoices, suggestPolls, type Poll } from "../src/polls.ts";
 const grants = [
   "discord.messages.send",
   "discord.messages.read",
+  "discord.members.read",
   "discord.channels.read",
   "discord.threads.manage",
+  "discord.members.read",
   "storage.kv",
   "scheduler",
   "events.publish",
   "portal.routes",
 ];
 
-function setup(config: Record<string, unknown> = {}) {
+function setup(config: Record<string, unknown> = {}, features = ["discussionThread"]) {
   return createTestContext({
+    features,
+    locales: { en, fr },
     schema,
     config: { managerRoles: ["mod"], ...config },
     grants,
     plugin: { name: "polls" },
-    server: { id: "server-1" },
+    server: { id: "server-1", everyonePermissions: ["ViewChannel", "ReadMessageHistory"] },
     roles: {
       mod: { name: "Moderator" },
       events: { name: "Events", mentionable: true },
@@ -36,7 +42,17 @@ function setup(config: Record<string, unknown> = {}) {
       admins: { name: "Admins", permissions: ["Administrator"] },
       managers: { name: "Server managers", permissions: ["ManageServer"] },
     },
-    channels: { polls: { name: "polls" }, general: { name: "general" } },
+    channels: {
+      polls: { name: "polls" },
+      general: { name: "general" },
+      private: {
+        name: "private",
+        overwrites: {
+          "@everyone": { deny: ["ViewChannel"] },
+          staff: { allow: ["ViewChannel", "ReadMessageHistory"] },
+        },
+      },
+    },
     members: [
       { id: "1", username: "alice" },
       { id: "2", username: "bob" },
@@ -98,6 +114,22 @@ describe("/poll", () => {
         fromMessage: t.sent[0]!.id,
       },
     ]);
+  });
+
+  test("without the discussionThread grant a thread request is refused before posting", async () => {
+    const t = setup({}, []);
+    const r = await runCommand(plugin, t, "poll", {
+      user: "1",
+      channel: "polls",
+      options: { question: "Pizza night?", choices: "Yes | No", thread: true },
+    });
+    expect(r.replies).toEqual([en.threadUnavailable]);
+    expect(t.sent).toEqual([]);
+    expect(t.threads).toEqual([]);
+    expect(t.kv.get("poll:1")).toBeUndefined();
+    // The rest of the plugin works without the optional grant.
+    await start(t, {});
+    expect(t.sent).toHaveLength(1);
   });
 
   test("ping: anyone may ping a member or a mentionable role, only managers other roles", async () => {
@@ -209,7 +241,7 @@ describe("closing", () => {
     expect(t.scheduled).toEqual([]);
     expect(r.updates[0]).toMatchObject({ components: [] });
     expect(description(r.updates[0])).toContain("**3. Sunday** 🏆");
-    expect(t.published).toEqual([
+    expect(t.published.slice(0, 1)).toMatchObject([
       {
         topic: "closed",
         payload: expect.objectContaining({
@@ -249,7 +281,7 @@ describe("closing", () => {
     expect(t.published[0]?.payload).toMatchObject({ closedBy: null, winners: ["Saturday"] });
     // running it twice is harmless
     await plugin.tasks!.close!(t.ctx, { id: "1" });
-    expect(t.published).toHaveLength(1);
+    expect(t.published).toHaveLength(2);
   });
 });
 
@@ -351,4 +383,297 @@ test("helpers", () => {
   expect(suggestPolls([{ id: "1", question: "x".repeat(200) } as Poll], "")[0]?.name).toHaveLength(
     100,
   );
+});
+
+test("weights, eligibility and anonymous erasure cover events, portal and delegated queries", async () => {
+  const t = setup({ eligibleRoles: ["mod"], roleWeights: [{ role: "mod", weight: 3 }] });
+  const { message } = await start(t, { anonymous: true });
+  const refused = await runComponent(plugin, t, "vote:1:0", { user: "2", message });
+  expect(refused.replies[0]).toMatchObject({ content: "Voting requires an eligible role." });
+  await runComponent(plugin, t, "vote:1:1", { user: "3", message });
+  await plugin.tasks!.close!(t.ctx, { id: "1" });
+  expect(t.published[1]?.payload).toMatchObject({
+    choices: [{ votes: 0 }, { votes: 3 }, { votes: 0 }],
+    voters: [],
+    voterCount: 1,
+  });
+  expect(t.kv.has("vote:1:3")).toBe(false);
+  expect(await plugin.queries!.voters!.run(t.ctx, { pollId: "1" }, caller)).toEqual({
+    userIds: [],
+  });
+  expect((await callRoute(plugin, t, "GET /polls/1")).body).toMatchObject({
+    voters: 1,
+    choices: [{ votes: 0 }, { votes: 3 }, { votes: 0 }],
+  });
+});
+const caller = {
+  caller: { bot: "main", instance: "levels", plugin: "levels", source: "cicord", verified: true },
+};
+test.each([4000, 10001])("complete voter pages and bounded v2 for %d participants", async (n) => {
+  const t = setup();
+  await start(t);
+  for (let i = 0; i < n; i++) t.kv.set("vote:1:" + String(100000 + i), [0]);
+  await plugin.tasks!.close!(t.ctx, { id: "1" });
+  const payload = t.published[1]!.payload as {
+    voterCount: number;
+    voters?: string[];
+    votersTruncated?: boolean;
+  };
+  expect(payload.voterCount).toBe(n);
+  if (n > 10000) {
+    expect(payload.voters).toBeUndefined();
+    expect(payload.votersTruncated).toBe(true);
+  } else expect(payload.voters).toHaveLength(n);
+  const all = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = (await plugin.queries!.voters!.run(t.ctx, { pollId: "1", cursor }, caller)) as {
+      userIds: string[];
+      cursor?: string;
+    };
+    expect(page.userIds.length).toBeLessThanOrEqual(1000);
+    for (const id of page.userIds) all.add(id);
+    cursor = page.cursor;
+  } while (cursor);
+  expect(all.size).toBe(n);
+  await plugin.tasks!.close!(t.ctx, { id: "1" });
+  expect(t.published).toHaveLength(2);
+});
+test("native mode refuses incompatible options and publishes the Discord tally", async () => {
+  for (const opt of [{ hours: 0.5 }, { anonymous: true }, { maximum: 1 }]) {
+    const t = setup();
+    const result = await runCommand(plugin, t, "poll", {
+      user: "1",
+      channel: "polls",
+      options: { question: "Q", choices: "A|B", style: "native", ...opt },
+    });
+    expect(result.replies[0]).toContain("Native polls");
+    expect(t.sent).toHaveLength(0);
+  }
+  const t = setup();
+  const { message, payload } = await start(t, { style: "native", multiple: true });
+  expect(payload.poll?.multiselect).toBe(true);
+  t.votePoll(message.id, 2, "2");
+  t.votePoll(message.id, 2, "3");
+  t.votePoll(message.id, 3, "3");
+  await plugin.tasks!.close!(t.ctx, { id: "1" });
+  expect(t.published[1]?.payload).toMatchObject({
+    voterCount: 2,
+    voters: ["2", "3"],
+    choices: [{ votes: 0 }, { votes: 2 }, { votes: 1 }],
+  });
+});
+
+test("delegated voter queries and the public results route recheck source visibility", async () => {
+  const h = setup();
+  await expect(
+    plugin.queries!.voters!.run(
+      h.ctx,
+      { pollId: "1", publisher: { bot: "other", instance: h.ctx.plugin.instance } },
+      caller,
+    ),
+  ).rejects.toMatchObject({ code: "not_found" });
+  await start(h);
+  await plugin.tasks!.close!(h.ctx, { id: "1" });
+  const denied = { ...caller, onBehalfOf: { userId: "unavailable", access: "admin" as const } };
+  await expect(plugin.queries!.voters!.run(h.ctx, { pollId: "1" }, denied)).rejects.toMatchObject({
+    name: "InteropError",
+    code: "denied",
+  });
+  const scoped = {
+    ...caller,
+    onBehalfOf: {
+      userId: "1",
+      access: "scoped" as const,
+      resourceScope: { kind: "case", id: "1" },
+    },
+  };
+  await expect(plugin.queries!.voters!.run(h.ctx, { pollId: "1" }, scoped)).rejects.toMatchObject({
+    code: "denied",
+  });
+  h.ctx.server.audience = () => ({
+    known: true,
+    public: false,
+    allowRoles: [],
+    allowMembers: [],
+    denyMembers: [],
+  });
+  expect((await callRoute(plugin, h, "GET /polls/1")).status).toBe(404);
+});
+test("a scheduled poll opens once on task replay", async () => {
+  const h = setup();
+  const at = new Date(Date.now() + 3600000).toISOString();
+  await runCommand(plugin, h, "poll", {
+    user: "1",
+    channel: "polls",
+    options: { start: at, choices: "a|b", question: "When?" },
+  });
+  expect(h.sent).toHaveLength(0);
+  await plugin.tasks!.open!(h.ctx, { id: "1" });
+  await plugin.tasks!.open!(h.ctx, { id: "1" });
+  expect(h.sent).toHaveLength(1);
+});
+
+test("anonymous manual closure hides the operator and voter identities in both versions", async () => {
+  const h = setup();
+  const { message } = await start(h, { anonymous: true });
+  await runComponent(plugin, h, "vote:1:0", { user: "1", message });
+  await runComponent(plugin, h, "end:1", { user: "1", message });
+  for (const event of h.published)
+    expect(event.payload).toMatchObject({ closedBy: null, voters: [] });
+});
+
+test("native single-choice totals need no voter enumeration; multi-choice deduplicates across answer pages", async () => {
+  const single = setup(),
+    one = await start(single, { style: "native" }),
+    readOnce = vi.spyOn(one.message, "pollVoters");
+  single.votePoll(one.message.id, 1, "42");
+  expect((await callRoute(plugin, single, "GET /polls/1")).body).toMatchObject({ voters: 1 });
+  expect(readOnce).not.toHaveBeenCalled();
+  const h = setup(),
+    { message } = await start(h, { style: "native", multiple: true });
+  for (let i = 1000; i < 1125; i++) {
+    h.votePoll(message.id, 1, String(i));
+    if (i % 2 === 0) h.votePoll(message.id, 2, String(i));
+  }
+  const reads = vi.spyOn(message, "pollVoters");
+  const response = await callRoute(plugin, h, "GET /polls/1");
+  expect(response.body).toMatchObject({
+    voters: 125,
+    choices: [{ votes: 125 }, { votes: 63 }, { votes: 0 }],
+  });
+  expect(JSON.stringify(response.body)).not.toContain("1124");
+  expect(reads).toHaveBeenCalledTimes(3);
+  reads.mockClear();
+  await plugin.tasks!.close!(h.ctx, { id: "1" });
+  expect(reads).toHaveBeenCalledTimes(3);
+  expect(h.published[1]?.payload).toMatchObject({
+    voterCount: 125,
+    choices: [{ votes: 125 }, { votes: 63 }, { votes: 0 }],
+  });
+});
+test("results, autocomplete, portal and close check the current member against the source after revocation", async () => {
+  const h = setup();
+  h.addMember({ id: "author", roles: ["staff"] });
+  h.addMember({ id: "manager", roles: ["staff", "mod"] });
+  await runCommand(plugin, h, "poll", {
+    user: "author",
+    channel: "private",
+    options: { question: "Restricted topic", choices: "A|B" },
+  });
+  const results = (user: string) =>
+    runCommand(plugin, h, "polls results", { user, channel: "general", options: { poll: "1" } });
+  const close = (user: string) =>
+    runCommand(plugin, h, "polls close", { user, channel: "general", options: { poll: "1" } });
+  const completions = (user: string, subcommand: string) =>
+    runAutocomplete(plugin, h, "polls " + subcommand, {
+      user,
+      channel: "general",
+      focused: "poll",
+    });
+  expect(description((await results("manager")).replies[0])).toContain("**1. A**");
+  expect((await completions("manager", "close")).map((p) => p.name)).toEqual([
+    "#1 Restricted topic",
+  ]);
+  expect((await callRoute(plugin, h, "GET /polls/1", { viewer: "manager" })).status).toBe(200);
+  h.removeMember("manager");
+  h.addMember({ id: "manager", roles: ["mod"] });
+  for (const id of ["2", "manager"]) {
+    expect((await results(id)).replies).toEqual(["No such poll."]);
+    expect(await completions(id, "results")).toEqual([]);
+    expect(await completions(id, "close")).toEqual([]);
+    expect((await close(id)).replies).toEqual(["No such poll."]);
+    expect((await callRoute(plugin, h, "GET /polls/1", { viewer: id })).status).toBe(404);
+  }
+  expect(h.published).toHaveLength(0);
+  expect((await close("author")).replies).toEqual(["Poll #1 is closed."]);
+});
+
+describe("privacy", () => {
+  // Two members with every kind of record: a public ballot, an open anonymous ballot,
+  // native voter pages, authorship and closing.
+  async function world() {
+    const t = setup();
+    await start(t, { question: "Public?" }); // #1 by alice
+    const anon = await runCommand(plugin, t, "poll", {
+      user: "2",
+      channel: "polls",
+      options: { question: "Secret?", choices: "x | y", anonymous: true },
+    }); // #2 by bob
+    expect(anon.replies[0]).toContain("#2");
+    const vote = (poll: string, choice: number, user: string) =>
+      runComponent(plugin, t, `vote:${poll}:${choice}`, {
+        user,
+        channel: "polls",
+        message: t.sent.find((s) =>
+          (s.message as MessagePayload).embeds?.[0]?.title?.includes(
+            poll === "1" ? "Public?" : "Secret?",
+          ),
+        )!.id,
+      });
+    for (const user of ["1", "2"]) {
+      await vote("1", user === "1" ? 0 : 1, user);
+      await vote("2", 0, user);
+    }
+    const native: Poll = {
+      id: "3",
+      question: "Native?",
+      choices: ["a", "b"],
+      multiple: false,
+      style: "native",
+      authorId: "2",
+      channelId: t.channel("polls")!.id,
+      messageId: "m-native",
+      createdAt: "2026-11-01T00:00:00Z",
+      closesAt: "2026-11-02T00:00:00Z",
+      status: "closed",
+      closedBy: "1",
+      final: { counts: [1, 1], voterCount: 2 },
+      published: true,
+    };
+    await t.ctx.kv.set("poll:3", native as unknown as Json);
+    await t.ctx.kv.set("native:3:0", ["1", "2"]);
+    return t;
+  }
+
+  test("export lists a member's own ballots, voter pages and authorship, never anonymous ballots", async () => {
+    const t = await world();
+    const rows = (await plugin.privacy!.export(t.ctx, "1")) as Json[];
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { pollId: "1", vote: [0] },
+        { pollId: "1", author: true, closer: false },
+        { pollId: "3", author: false, closer: true },
+        { pollId: "3", voter: true },
+      ]),
+    );
+    expect(JSON.stringify(rows)).not.toContain('"pollId":"2"');
+  });
+
+  test("erasing one member removes its records and keeps the other's", async () => {
+    const t = await world();
+    const before = await plugin.privacy!.export(t.ctx, "2");
+    const { erased } = await plugin.privacy!.erase(t.ctx, "1");
+    expect(erased).toBe(5); // two ballots (one anonymous), authorship, closing, voter page
+    expect(await plugin.privacy!.export(t.ctx, "1")).toEqual([]);
+    expect(t.kv.get("vote:1:1")).toBeUndefined();
+    expect(t.kv.get("vote:2:1")).toBeUndefined();
+    expect((t.kv.get("poll:1") as unknown as Poll).authorId).toBe("");
+    expect((t.kv.get("poll:3") as unknown as Poll).closedBy).toBeNull();
+    expect(t.kv.get("native:3:0")).toEqual(["2"]);
+    // Bob: ballots (including the open anonymous one), authorship and voter page intact.
+    expect(t.kv.get("vote:1:2")).toEqual([1]);
+    expect(t.kv.get("vote:2:2")).toEqual([0]);
+    expect((t.kv.get("poll:2") as unknown as Poll).authorId).toBe("2");
+    expect(await plugin.privacy!.export(t.ctx, "2")).toEqual(before);
+    // Tallies still count the remaining ballot.
+    const r = await callRoute(plugin, t, "GET /polls/1");
+    expect((r.body as { voters: number }).voters).toBe(1);
+  });
+
+  test("onStart records the KV schema version", async () => {
+    const t = setup();
+    await plugin.onStart!(t.ctx);
+    expect(t.kv.get("meta:schema")).toBe(1);
+  });
 });

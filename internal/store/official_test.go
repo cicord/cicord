@@ -124,7 +124,7 @@ func TestImplicitOfficialSource(t *testing.T) {
 	if p := got["welcome"]; p.Version != "9.0.0" || p.Repo == "" || !p.Verified || p.Trust != registry.TrustOfficial {
 		t.Errorf("a newer remote version wins: %+v", p)
 	}
-	if p := got["onboarding"]; p.Version != "0.1.0" || p.Repo != "" {
+	if p := got["onboarding"]; p.Version != "0.2.0" || p.Repo != "" {
 		t.Errorf("an older remote version loses to the bundled one: %+v", p)
 	}
 	if p := got["xp"]; !p.Verified || p.Source != "cicord" || p.Publisher != "acme" {
@@ -153,7 +153,7 @@ func TestImplicitOfficialSource(t *testing.T) {
 	if cicord.Error == nil || cicord.Signature != SignatureInvalid || len(cicord.Plugins) != 2 || !strings.Contains(cicord.Error.Message, "signature") {
 		t.Errorf("unsigned cicord = %+v", cicord)
 	}
-	bundled := map[string]string{"welcome": "0.1.1", "onboarding": "0.1.0"}
+	bundled := map[string]string{"welcome": "0.2.0", "onboarding": "0.2.0"}
 	for _, p := range cicord.Plugins {
 		if p.Repo != "" || p.Version != bundled[p.Name] {
 			t.Errorf("a remote plugin leaked from an unsigned index: %+v", p)
@@ -201,7 +201,7 @@ func TestOfficialRemoteDetail(t *testing.T) {
 	}
 	// The bundled one still wins when older remotely: no resolution, no commit.
 	d, err = s.Detail(context.Background(), nil, "cicord", "onboarding")
-	if err != nil || d.Resolution != nil || d.Commit != "" || d.Version != "0.1.0" {
+	if err != nil || d.Resolution != nil || d.Commit != "" || d.Version != "0.2.0" {
 		t.Errorf("bundled detail = %+v, %v", d, err)
 	}
 }

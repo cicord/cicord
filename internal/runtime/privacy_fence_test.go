@@ -18,8 +18,9 @@ import (
 func TestPrivacyWriteFenceAndRecoverableDeadline(t *testing.T) {
 	e := startExampleResync(t, nil, func(dir string) {
 		manifest := filepath.Join(dir, "plugins/welcome/plugin.yaml")
-		replaceIn(t, manifest, "  capabilities:", "  capabilities:\n    - scheduler\n    - portal.routes")
-		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - discord.dm.send\n        - portal.links", "        - discord.dm.send\n        - scheduler\n        - portal.routes\n        - portal.links")
+		requireInWelcome(t, dir, []string{"scheduler", "portal.routes"}, nil)
+		grantWelcome(t, dir, "scheduler", "portal.routes")
+		replaceWelcomeCode(t, dir)
 		raw, err := os.ReadFile(manifest)
 		if err != nil {
 			t.Fatal(err)
@@ -131,7 +132,7 @@ func TestPrivacyWriteFenceAndRecoverableDeadline(t *testing.T) {
 		t.Fatal(rep, err)
 	}
 	for n := range 7 {
-		leases, err := q.ClaimDue(ctx, t0.Add(time.Duration(n)*time.Minute), t0.Add(time.Duration(n+1)*time.Minute), "test", 1)
+		leases, err := q.ClaimDue(ctx, t0.Add(time.Duration(n)*time.Minute), t0.Add(time.Duration(n+1)*time.Minute), "test", 1, onboardingScope)
 		if err != nil || len(leases) != 1 || leases[0].Failures != 0 {
 			t.Fatalf("deadline lost or counted as handler failure: %v %v", leases, err)
 		}
@@ -153,7 +154,13 @@ func TestPrivacyWriteFenceAndRecoverableDeadline(t *testing.T) {
 		t.Fatal("a detached timer resurrected a pre-erasure snapshot", err)
 	}
 
-	tasks, err := q.Due(ctx, t0.Add(24*time.Hour), 100)
+	due, err := q.Due(ctx, t0.Add(24*time.Hour), 100)
+	var tasks []state.Task
+	for _, task := range due {
+		if task.Scope == scope { // not onboarding's own migration task
+			tasks = append(tasks, task)
+		}
+	}
 	if err != nil || len(tasks) != 1 || string(tasks[0].Payload) != `{"case":4}` {
 		t.Fatal(tasks, err)
 	}

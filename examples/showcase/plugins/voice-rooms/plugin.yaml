@@ -3,13 +3,13 @@ apiVersion: cicord.dev/v1alpha1
 kind: Plugin
 metadata:
   name: voice-rooms
-  version: 0.1.1
+  version: 0.2.0
   displayName: Voice rooms
   description: 'Voice channels on demand. Joining a hub such as "➕ Create a channel" gives the member a voice channel of their own, deleted once empty. Several hubs (name, category, limit, allowed roles). Owners manage their room with /voice (rename, limit, lock, permit, kick, transfer, claim).'
   license: Apache-2.0
   keywords: [voice, channels, rooms, join-to-create]
 spec:
-  engine: ">=0.1.10"
+  engine: ">=0.2.0"
   entry: ./src/index.ts
   capabilities:
     - discord.channels.read     # resolve the hubs
@@ -19,6 +19,29 @@ spec:
     - storage.kv                # rooms and their owners
     - scheduler                 # empty-room grace delay, periodic check of the rooms
   # ServerVoiceStates: who joins, leaves or moves between voice channels, and who is in a room.
-  intents: [ServerVoiceStates]
+  intents:
+    - ServerVoiceStates # Observe members joining, moving and leaving voice rooms.
   config:
     schema: ./config.schema.json
+  locales: ./locales
+  delivery: at-least-once
+  optional:
+    - feature: roomEvents
+      capabilities: # server-wide room lifecycle events
+        - events.publish # Deliver declared events to authorized subscribers.
+  interop:
+    types: ./src/contracts.ts
+    publishes:
+      - {topic: roomCreated, version: 1, scope: server}
+      - {topic: roomClosed, version: 1, scope: server}
+  privacy:
+    records:
+      - name: roomOwnership
+        description: Owner, guest permissions and cooldowns for live rooms, and the marker of a room being created.
+        policy: erase
+        retention: Room lifetime; at most one hour for a creation cooldown and a day at most for a creation marker (cleared when the room is recorded or by the sweep).
+      - name: legacyDiscordOverwrite
+        description: Unattributed member-specific Discord overwrite on an adopted 0.1 room.
+        policy: retain
+        retention: Until removal by a moderator or deletion of the temporary room.
+        justification: The old version did not record guest changes. Removing a possible staff restriction can widen access.

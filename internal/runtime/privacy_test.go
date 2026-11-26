@@ -69,7 +69,7 @@ func TestMemberErasureReplayAndRestore(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	claims, err := q.ClaimDue(ctx, now, now.Add(time.Minute), "test", 2)
+	claims, err := q.ClaimDue(ctx, now, now.Add(time.Minute), "test", 2, onboardingScope)
 	if err != nil || len(claims) != 2 {
 		t.Fatal(claims, err)
 	}
@@ -167,6 +167,7 @@ func TestMemberErasureReplayAndRestore(t *testing.T) {
 // hooks over a shared "ticket:1" record and an "xp" ranking.
 func withPrivacyWelcome(t *testing.T) func(string) {
 	return func(dir string) {
+		replaceWelcomeCode(t, dir)
 		manifest := filepath.Join(dir, "plugins/welcome/plugin.yaml")
 		raw, err := os.ReadFile(manifest)
 		if err != nil {

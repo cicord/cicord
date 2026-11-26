@@ -177,11 +177,7 @@ func (p *restartProject) boot(t *testing.T, store state.Store) (e *env, stop fun
 }
 
 func enableScheduler(t *testing.T, dir string, delivery bool) {
-	if delivery {
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "spec:", "spec:\n  delivery: at-least-once")
-	}
-	replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - scheduler\n    - portal.links")
-	replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - portal.links", "        - scheduler\n        - portal.links")
+	welcomeWith(t, dir, delivery, "scheduler")
 }
 
 const restartScope = "plugin:moderator/welcome/my-community"
@@ -291,7 +287,7 @@ func TestLegacyTaskRestart(t *testing.T) {
 			must(q.Schedule(ctx, state.Task{ID: "leased", Scope: restartScope, Name: "legacy", RunAt: when.Add(-time.Second)}))
 			must(q.Schedule(ctx, state.Task{ID: "started", Scope: restartScope, Name: "legacy", Payload: []byte(`{"hang":true}`), RunAt: when}))
 			// A previous worker leased the first task and died before starting it.
-			if old, err := q.ClaimDue(ctx, when, when.Add(time.Minute), "previous", 1); err != nil || len(old) != 1 || old[0].ID != "leased" {
+			if old, err := q.ClaimDue(ctx, when, when.Add(time.Minute), "previous", 1, onboardingScope); err != nil || len(old) != 1 || old[0].ID != "leased" {
 				t.Fatalf("lease by the lost worker: %+v %v", old, err)
 			}
 			e.rt.sched.runTasks(ctx, when)

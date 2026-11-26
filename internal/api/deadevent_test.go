@@ -26,7 +26,7 @@ func parkEvent(t *testing.T, e *env, id, payload string, servers ...string) map[
 	if err := e.rt.Store().Interop().PublishEvent(t.Context(), ev); err != nil {
 		t.Fatal(err)
 	}
-	leases, err := q.ClaimDue(t.Context(), at, at.Add(time.Hour), "test", 100)
+	leases, err := q.ClaimDue(t.Context(), at, at.Add(time.Hour), "test", 100, exampleTaskScopes...)
 	if err != nil || len(leases) != len(servers) {
 		t.Fatalf("leases %v %v", leases, err)
 	}

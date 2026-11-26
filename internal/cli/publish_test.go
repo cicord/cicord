@@ -71,7 +71,7 @@ func TestPluginPublish(t *testing.T) {
 
 	// --dry-run changes nothing.
 	code, out, errOut := run(t, "plugin", "publish", plugin, "--dry-run", "--push", "--registry", reg)
-	if code != 0 || !strings.Contains(out, "would tag v0.1.1") || !strings.Contains(out, "would add welcome") {
+	if code != 0 || !strings.Contains(out, "would tag v0.2.0") || !strings.Contains(out, "would add welcome") {
 		t.Fatalf("dry-run = %d\n%s\n%s", code, out, errOut)
 	}
 	if tags := gitTest(t, plugin, "tag", "--list"); tags != "" {
@@ -85,7 +85,7 @@ func TestPluginPublish(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("publish = %d\n%s\n%s", code, out, errOut)
 	}
-	for _, want := range []string{"tagged v0.1.1", "pushed v0.1.1 to origin", "added welcome", "index.yaml.sig is now stale", "cicord registry sign"} {
+	for _, want := range []string{"tagged v0.2.0", "pushed v0.2.0 to origin", "added welcome", "index.yaml.sig is now stale", "cicord registry sign"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -93,7 +93,7 @@ func TestPluginPublish(t *testing.T) {
 	if !strings.Contains(errOut, "not an https:// URL") {
 		t.Errorf("a local repo URL is flagged: %s", errOut)
 	}
-	if got := gitTest(t, remote, "tag", "--list"); got != "v0.1.1" {
+	if got := gitTest(t, remote, "tag", "--list"); got != "v0.2.0" {
 		t.Errorf("remote tags = %q", got)
 	}
 	head := gitTest(t, plugin, "rev-parse", "HEAD")
@@ -103,7 +103,7 @@ func TestPluginPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := idx.Plugins["welcome"]
-	if e.Repo != remote || e.Version != "0.1.1" || e.Commit != head || e.Publisher != "acme" || e.Verified || e.DisplayName == "" {
+	if e.Repo != remote || e.Version != "0.2.0" || e.Commit != head || e.Publisher != "acme" || e.Verified || e.DisplayName == "" {
 		t.Errorf("entry = %+v", e)
 	}
 	if !strings.Contains(idxText, "# Community plugins") || !strings.Contains(idxText, "# keep me") {
@@ -113,18 +113,18 @@ func TestPluginPublish(t *testing.T) {
 	// The registry entry resolves to the tagged commit.
 	gitTest(t, reg, "commit", "-q", "-am", "add welcome")
 	res, err := registry.ResolveLatest(ctx, []config.Registry{{Name: "acme", URL: reg}}, t.TempDir(), "acme/welcome", "*")
-	if err != nil || res.Entry.Version != "0.1.1" || res.Entry.Commit != head {
+	if err != nil || res.Entry.Version != "0.2.0" || res.Entry.Commit != head {
 		t.Fatalf("resolve = %+v, %v", res, err)
 	}
 
 	// Same version again → refused; a lower version than an existing tag → refused.
-	if code, _, errOut := run(t, "plugin", "publish", plugin); code == 0 || !strings.Contains(errOut, "tag v0.1.1 already exists") {
+	if code, _, errOut := run(t, "plugin", "publish", plugin); code == 0 || !strings.Contains(errOut, "tag v0.2.0 already exists") {
 		t.Errorf("republish = %d %s", code, errOut)
 	}
 	gitTest(t, plugin, "tag", "v1.0.0")
 	m := filepath.Join(plugin, "plugin.yaml")
-	writeFile(t, m, strings.Replace(readFile(t, m), "version: 0.1.1", "version: 0.2.0", 1))
-	gitTest(t, plugin, "commit", "-q", "-am", "0.2.0")
+	writeFile(t, m, strings.Replace(readFile(t, m), "version: 0.2.0", "version: 0.3.0", 1))
+	gitTest(t, plugin, "commit", "-q", "-am", "0.3.0")
 	if code, _, errOut := run(t, "plugin", "publish", plugin); code == 0 || !strings.Contains(errOut, "not greater than the existing tag v1.0.0") {
 		t.Errorf("lower version = %d %s", code, errOut)
 	}
@@ -136,22 +136,22 @@ func TestPluginPublish(t *testing.T) {
 	if code, _, errOut := run(t, "plugin", "publish", plugin, "--registry", reg, "--repo", "https://example.org/fork.git"); code == 0 || !strings.Contains(errOut, "--replace-repo") {
 		t.Errorf("repo change = %d %s", code, errOut)
 	}
-	if tags := gitTest(t, plugin, "tag", "--list"); tags != "v0.1.1" {
+	if tags := gitTest(t, plugin, "tag", "--list"); tags != "v0.2.0" {
 		t.Errorf("a refused publish must not tag: %q", tags)
 	}
 	if code, out, errOut := run(t, "plugin", "publish", plugin, "--registry", reg); code != 0 || !strings.Contains(out, "updated welcome") {
 		t.Fatalf("update = %d\n%s\n%s", code, out, errOut)
 	}
 	idx, _ = registry.ParseIndex([]byte(readFile(t, filepath.Join(reg, "index.yaml"))))
-	if e := idx.Plugins["welcome"]; e.Version != "0.2.0" || !e.Verified || e.Publisher != "acme" {
+	if e := idx.Plugins["welcome"]; e.Version != "0.3.0" || !e.Verified || e.Publisher != "acme" {
 		t.Errorf("updated entry = %+v", e)
 	}
 
 	// Without --registry, the entry is printed.
-	writeFile(t, m, strings.Replace(readFile(t, m), "version: 0.2.0", "version: 0.3.0", 1))
-	gitTest(t, plugin, "commit", "-q", "-am", "0.3.0")
+	writeFile(t, m, strings.Replace(readFile(t, m), "version: 0.3.0", "version: 0.4.0", 1))
+	gitTest(t, plugin, "commit", "-q", "-am", "0.4.0")
 	code, out, _ = run(t, "plugin", "publish", plugin, "--repo", "https://example.org/welcome.git")
-	if code != 0 || !strings.Contains(out, "repo: https://example.org/welcome.git") || !strings.Contains(out, "version: 0.3.0") {
+	if code != 0 || !strings.Contains(out, "repo: https://example.org/welcome.git") || !strings.Contains(out, "version: 0.4.0") {
 		t.Errorf("print = %d\n%s", code, out)
 	}
 }
@@ -229,7 +229,7 @@ func TestPluginPublishMonorepo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("publish welcome = %d\n%s\n%s", code, out, errOut)
 	}
-	if !strings.Contains(out, "tagged welcome/v0.1.1") || !strings.Contains(out, "added welcome") {
+	if !strings.Contains(out, "tagged welcome/v0.2.0") || !strings.Contains(out, "added welcome") {
 		t.Errorf("output:\n%s", out)
 	}
 	if code, _, errOut := run(t, "plugin", "publish", mono, "--path", "plugins/onboarding", "--registry", mono); code == 0 || !strings.Contains(errOut, "uncommitted changes") {
@@ -238,16 +238,16 @@ func TestPluginPublishMonorepo(t *testing.T) {
 	os.Remove(filepath.Join(mono, "plugins", "onboarding", "notes.txt"))
 	// --path from the repository root; the uncommitted index.yaml (previous publish) is
 	// outside the plugin directory.
-	if code, out, errOut := run(t, "plugin", "publish", mono, "--path", "plugins/onboarding", "--push", "--registry", mono); code != 0 || !strings.Contains(out, "tagged onboarding/v0.1.0") {
+	if code, out, errOut := run(t, "plugin", "publish", mono, "--path", "plugins/onboarding", "--push", "--registry", mono); code != 0 || !strings.Contains(out, "tagged onboarding/v0.2.0") {
 		t.Fatalf("publish onboarding = %d\n%s\n%s", code, out, errOut)
 	}
-	if code, _, errOut := run(t, "plugin", "publish", filepath.Join(mono, "plugins", "welcome")); code == 0 || !strings.Contains(errOut, "tag welcome/v0.1.1 already exists") {
+	if code, _, errOut := run(t, "plugin", "publish", filepath.Join(mono, "plugins", "welcome")); code == 0 || !strings.Contains(errOut, "tag welcome/v0.2.0 already exists") {
 		t.Errorf("republish = %d %s", code, errOut)
 	}
 	if code, _, errOut := run(t, "plugin", "publish", mono, "--path", "../welcome"); code == 0 || !strings.Contains(errOut, "invalid plugin path") {
 		t.Errorf("--path ../ = %d %s", code, errOut)
 	}
-	if got := gitTest(t, remote, "tag", "--list"); got != "onboarding/v0.1.0\nwelcome/v0.1.1" {
+	if got := gitTest(t, remote, "tag", "--list"); got != "onboarding/v0.2.0\nwelcome/v0.2.0" {
 		t.Errorf("remote tags = %q", got)
 	}
 	idx, err := registry.ParseIndex([]byte(readFile(t, filepath.Join(mono, "index.yaml"))))
@@ -255,7 +255,7 @@ func TestPluginPublishMonorepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := gitTest(t, mono, "rev-parse", "HEAD")
-	versions := map[string]string{"welcome": "0.1.1", "onboarding": "0.1.0"}
+	versions := map[string]string{"welcome": "0.2.0", "onboarding": "0.2.0"}
 	for name, e := range idx.Plugins {
 		if e.Repo != remote || e.Path != "plugins/"+name || e.Version != versions[name] || e.Commit != head {
 			t.Errorf("%s = %+v", name, e)

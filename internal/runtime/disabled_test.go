@@ -12,11 +12,7 @@ import (
 
 func TestDisabledInstallationResumesExistingWork(t *testing.T) {
 	e := startExampleResync(t, nil, func(dir string) {
-		manifest := filepath.Join(dir, "plugins/welcome/plugin.yaml")
-		bot := filepath.Join(dir, "bots/moderator/bot.yaml")
-		replaceIn(t, manifest, "  capabilities:", "  delivery: at-least-once\n  capabilities:")
-		replaceIn(t, manifest, "    - portal.links", "    - scheduler\n    - portal.routes\n    - portal.links")
-		replaceIn(t, bot, "        - discord.dm.send", "        - scheduler\n        - portal.routes\n        - discord.dm.send")
+		welcomeWith(t, dir, true, "scheduler", "portal.routes")
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  async onStart(ctx){await ctx.kv.increment("starts")},
   async onStop(ctx){await ctx.kv.increment("stops")},
   tasks:{async queued(ctx,input,task){await ctx.kv.set("attempt",task.attempt)}},

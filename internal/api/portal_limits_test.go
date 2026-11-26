@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -45,7 +44,7 @@ func (s countingSession) GetMember(ctx context.Context, server, user string) (di
 func TestPortalMemberReadsAreBounded(t *testing.T) {
 	var n, delay atomic.Int64
 	e := startFull(t, func(dir string) {
-		writeTestFile(t, filepath.Join(dir, "plugins", "onboarding", "src", "index.ts"), `import { definePlugin } from "@cicord/sdk";
+		writeOnboardingSource(t, dir, `import { definePlugin } from "@cicord/sdk";
 export default definePlugin({ routes: {
   "GET /who": { access:"public", handler(ctx,req){return {member: !!req.viewer?.member};} }
 }});`)

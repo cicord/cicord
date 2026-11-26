@@ -4,7 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import onboardingSchema from "../../../examples/basic/plugins/onboarding/config.schema.json";
-import welcomeSchema from "../../../examples/basic/plugins/welcome/config.schema.json";
+// The form mechanics are pinned to the welcome 0.1 schema (a small schema with every widget,
+// a required field and x-cicord-access), independent of the bundled welcome's evolution.
+import welcomeSchema from "./fixtures/welcome-0.1.config.schema.json";
 import {
   changedTopLevel,
   cleanMessage,
@@ -24,7 +26,7 @@ import {
   type JsonSchema,
 } from "../src/schema-form/index.ts";
 
-// The real example schemas (examples/basic/plugins/*/config.schema.json).
+// A real plugin schema (examples/basic/plugins/onboarding) and the welcome 0.1 fixture.
 const welcome = welcomeSchema as unknown as JsonSchema;
 const onboarding = onboardingSchema as unknown as JsonSchema;
 

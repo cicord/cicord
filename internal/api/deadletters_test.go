@@ -9,6 +9,11 @@ import (
 	"github.com/cicord/cicord/internal/state"
 )
 
+// exampleTaskScopes are the task scopes of the examples/basic plugins that schedule work on
+// their own (onboarding's stored-choices migration): the dead-letter tests claim only the
+// tasks they schedule.
+var exampleTaskScopes = []string{"plugin:moderator/onboarding/" + serverKey}
+
 func TestDeadLetterAdministration(t *testing.T) {
 	e := start(t)
 	q := e.rt.Store().Tasks()
@@ -21,7 +26,7 @@ func TestDeadLetterAdministration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	leases, err := q.ClaimDue(t.Context(), now.Add(time.Hour), now.Add(2*time.Hour), "test", 100)
+	leases, err := q.ClaimDue(t.Context(), now.Add(time.Hour), now.Add(2*time.Hour), "test", 100, exampleTaskScopes...)
 	if err != nil || len(leases) != 2 {
 		t.Fatalf("leases: %v, %v", leases, err)
 	}

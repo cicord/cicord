@@ -26,7 +26,7 @@ func TestPluginBuild(t *testing.T) {
 		t.Errorf("report = %+v", r)
 	}
 	code, out, _ = run(t, "plugin", "build", "../../examples/basic/plugins/welcome")
-	if code != 0 || !strings.Contains(out, "Plugin welcome 0.1.1") || !strings.Contains(out, "Events:\n  memberJoin") ||
+	if code != 0 || !strings.Contains(out, "Plugin welcome 0.2.0") || !strings.Contains(out, "Events:\n  memberJoin") ||
 		!strings.Contains(out, "Required intents: ServerMembers") {
 		t.Errorf("build text = %d\n%s", code, out)
 	}
@@ -35,7 +35,7 @@ func TestPluginBuild(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, "../../examples/basic/plugins/welcome", dir)
 	m := filepath.Join(dir, "plugin.yaml")
-	writeFile(t, m, strings.Replace(readFile(t, m), "  intents: [ServerMembers]\n", "", 1))
+	writeFile(t, m, regexp.MustCompile(`\n  intents:(?: \[ServerMembers\])?\n(?:    - .*\n)*`).ReplaceAllString(readFile(t, m), "\n"))
 	code, out, _ = run(t, "plugin", "build", dir)
 	if code != 1 || !strings.Contains(out, "error: a handler needs the ServerMembers intent") {
 		t.Errorf("missing intent = %d\n%s", code, out)
@@ -49,7 +49,7 @@ func TestPluginBuild(t *testing.T) {
 	if code, out, _ := run(t, "plugin", "build", ob); code != 0 || !strings.Contains(out, "warning: plugin.yaml declares the ServerMembers intent, which no handler needs") {
 		t.Errorf("unused intent = %d\n%s", code, out)
 	}
-	writeFile(t, om, strings.Replace(readFile(t, om), "    - storage.kv\n", "    - storage.kv\n    - discord.members.read\n", 1))
+	writeFile(t, om, strings.Replace(readFile(t, om), "\n  capabilities:\n", "\n  capabilities:\n    - discord.members.read\n", 1))
 	if code, out, _ := run(t, "plugin", "build", ob); code != 0 || strings.Contains(strings.ReplaceAll(out, "warning: legacy event topics are deprecated;", ""), "warning:") {
 		t.Errorf("ServerMembers with discord.members.read = %d\n%s", code, out)
 	}
@@ -83,9 +83,9 @@ func TestPluginTypegen(t *testing.T) {
 }
 
 func TestPluginTest(t *testing.T) {
-	code, out, errOut := run(t, "plugin", "test", "../../examples/basic/plugins/welcome")
+	code, out, errOut := run(t, "plugin", "test", "../../examples/basic/plugins/welcome", "--config", "../../examples/basic/plugins/welcome/test/config.yaml")
 	if code != 0 || !strings.Contains(out, "ok   instance welcome started") || !strings.Contains(out, "memberJoin: tester joined") ||
-		!strings.Contains(out, "#test-channel") || !strings.Contains(out, "PASS") {
+		!strings.Contains(out, "#welcome") || !strings.Contains(out, "PASS") {
 		t.Fatalf("plugin test welcome = %d\n%s\n%s", code, out, errOut)
 	}
 	// onboarding needs its steps
@@ -155,25 +155,51 @@ func TestInitWorkflow(t *testing.T) {
 }
 
 // TestShowcasePlugins: every plugin of examples/showcase builds without warnings, has an
-// up-to-date cicord-env.d.ts and passes `cicord plugin test` without a --config.
+// up-to-date cicord-env.d.ts and passes `cicord plugin test` (with its test/config.yaml,
+// like the registry's CI).
+//
+// The showcase plugins are the official plugins bundled in the binary, byte for byte the
+// registry's (github.com/cicord/cicord-plugins). Their committed cicord-env.d.ts is the one
+// `cicord plugin typegen` writes for the plugin on its own, as the registry checks it: inside
+// examples/showcase, typegen also types the contracts of the other installed plugins, so
+// there it must succeed but may differ from the committed file.
 func TestShowcasePlugins(t *testing.T) {
-	for _, name := range []string{"tickets", "polls", "levels", "moderation", "reaction-roles", "audit-log", "announcements"} {
+	repo := t.TempDir()
+	copyDir(t, "../../examples/showcase", repo)
+	for _, name := range []string{"tickets", "polls", "levels", "moderation", "reaction-roles", "audit-log", "announcements", "voice-rooms"} {
 		t.Run(name, func(t *testing.T) {
 			dir := "../../examples/showcase/plugins/" + name
 			code, out, errOut := run(t, "plugin", "build", dir)
 			if code != 0 || strings.Contains(strings.ReplaceAll(out, "warning: legacy event topics are deprecated;", ""), "warning:") {
 				t.Errorf("build = %d\n%s\n%s", code, out, errOut)
 			}
-			if code, _, errOut := run(t, "plugin", "typegen", dir, "--check"); code != 0 {
-				t.Errorf("typegen --check: %s", errOut)
+			// Standalone: the committed env file matches the plugin's own schema and contracts.
+			alone := filepath.Join(t.TempDir(), name)
+			copyDir(t, dir, alone)
+			if code, _, errOut := run(t, "plugin", "typegen", alone, "--check"); code != 0 {
+				t.Errorf("typegen --check (standalone): %s", errOut)
 			}
-			code, out, errOut = run(t, "plugin", "test", dir)
+			writeFile(t, filepath.Join(alone, "src", "cicord-env.d.ts"), "stale")
+			if code, _, _ := run(t, "plugin", "typegen", alone, "--check"); code != 1 {
+				t.Error("a stale cicord-env.d.ts passes typegen --check")
+			}
+			// In the repository (a copy): typegen resolves the installed plugins' contracts.
+			if code, _, errOut := run(t, "plugin", "typegen", filepath.Join(repo, "plugins", name)); code != 0 {
+				t.Errorf("typegen in examples/showcase: %s", errOut)
+			}
+			args := []string{"plugin", "test", dir}
+			if cfg := filepath.Join(dir, "test", "config.yaml"); exists(cfg) {
+				args = append(args, "--config", cfg)
+			}
+			code, out, errOut = run(t, args...)
 			if code != 0 || !strings.Contains(out, "PASS") {
 				t.Errorf("plugin test = %d\n%s\n%s", code, out, errOut)
 			}
 		})
 	}
 }
+
+func exists(path string) bool { _, err := os.Stat(path); return err == nil }
 
 func TestPluginNewInRepo(t *testing.T) {
 	dir := t.TempDir()

@@ -25,7 +25,7 @@ func TestPortalAudienceRevocation(t *testing.T) {
 			}
 			writeTestFile(t, path, strings.Replace(string(content), old, new, 1))
 		}
-		patch("plugins/welcome/plugin.yaml", "    - portal.links", "    - portal.routes\n    - portal.links")
+		patch("plugins/welcome/plugin.yaml", "\n  capabilities:\n", "\n  capabilities:\n    - portal.routes\n")
 		patch("bots/moderator/bot.yaml", "        - portal.links", "        - portal.routes\n        - portal.links")
 		patch("plugins/welcome/src/index.ts", "  events: {", `  routes: {"GET /audience": {access:"member",handler(ctx,req){
     return {visible:req.viewer.member.canView("staff-chat"),comparison:ctx.server.compareAudience("staff-chat","general")};

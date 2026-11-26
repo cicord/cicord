@@ -152,34 +152,58 @@ func TestShowcaseAuditLog(t *testing.T) {
 	wait(t, w.InvokeCommand(mia.ID, s.serverID, general.ID, s.appID, "warn", map[string]any{"member": alice.ID, "reason": "spam"}))
 	w.WaitIdle()
 
-	// Nothing is posted before the batch flush; then one compact message.
-	if n := len(w.Messages(auditCh.ID)); n != 0 {
-		t.Fatalf("posted before the flush: %d messages", n)
+	// Before the batch flush, only the urgent entry: audit-log 0.2 posts a confirmed audit
+	// fact (the owner's deletion, from the server audit log) at once. The rest follows in
+	// one compact batch message.
+	if ms := w.Messages(auditCh.ID); len(ms) != 1 || !strings.Contains(textOf(ms[0]), "Confirmed audit entry: owner (<@"+s.owner.ID+">) deleted one message by <@"+alice.ID+">") {
+		for _, m := range ms {
+			t.Logf("posted: %q", textOf(m))
+		}
+		t.Fatalf("posted before the flush: %d messages", len(ms))
 	}
-	if tasks := s.tasksOf(ctx, "audit-log", time.Now().Add(time.Minute)); len(tasks) != 1 || tasks[0].Name != "flush" {
-		t.Fatalf("audit-log tasks = %+v", tasks)
+	// One batch flush is pending (beside 0.2's migration, audit-fact and deletion-probe
+	// tasks).
+	flushes := 0
+	for _, task := range s.tasksOf(ctx, "audit-log", time.Now().Add(time.Minute)) {
+		if task.Name == "flush" {
+			flushes++
+		}
 	}
-	s.waitFor("all events queued", func() bool {
-		v, err := s.kv("audit-log").Get(ctx, "seq")
-		return err == nil && string(v) == "7" // 2 joins, 2 role changes (mia: Moderator), deletion, poll, warning
+	if flushes != 1 {
+		t.Fatalf("audit-log flush tasks = %d", flushes)
+	}
+	// Flush once every observation is recorded: audit-log 0.2 writes a row:<id> per
+	// observation (2 joins, 2 role changes, the poll, the case and the urgent deletion fact).
+	// Its lines are content-free: no poll question, no case reason.
+	t.Cleanup(func() {
+		if t.Failed() {
+			for _, m := range w.Messages(auditCh.ID) {
+				t.Logf("audit-log posted: %q", textOf(m))
+			}
+		}
+	})
+	s.waitFor("all observations recorded", func() bool {
+		rows, _, err := s.kv("audit-log").List(ctx, "row:", 100, "")
+		return err == nil && len(rows) >= 7
 	})
 	s.rt.sched.runTasks(ctx, time.Now().Add(11*time.Second))
-	batch := s.waitMessage("batch", auditCh.ID, func(m discord.Message) bool { return len(m.Embeds) > 0 })
+	batch := s.waitMessage("batch", auditCh.ID, func(m discord.Message) bool {
+		return len(m.Embeds) > 0 && !strings.Contains(textOf(m), "Confirmed audit entry")
+	})
 	text := textOf(batch)
 	for _, want := range []string{
-		"📥 <@" + mia.ID + "> **mia** joined",
-		"📥 <@" + alice.ID + "> **alice** joined",
-		"🗑️ A message by <@" + alice.ID + "> **alice** was deleted in <#" + general.ID + ">",
-		"🎭 <@" + alice.ID + "> **alice** roles: + <@&" + s.role("Member").ID + ">",
-		"📊 Poll #1 “Pizza?” closed: Yes (1 voter)",
-		"case #1 · **warn** <@" + alice.ID + "> **alice** by <@" + mia.ID + "> — spam",
+		"<@" + mia.ID + "> **mia** joined",
+		"<@" + alice.ID + "> **alice** joined",
+		"<@" + alice.ID + "> roles + <@&" + s.role("Member").ID + ">",
+		"Poll #1 closed with 1 voters.",
+		"Case #1 · warn · <@" + alice.ID + "> · <@" + mia.ID + ">",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("audit batch misses %q:\n%s", want, text)
 		}
 	}
-	if len(w.Messages(auditCh.ID)) != 1 {
-		t.Errorf("one batch, %d messages", len(w.Messages(auditCh.ID)))
+	if n := len(w.Messages(auditCh.ID)); n != 2 {
+		t.Errorf("the urgent entry and one batch, %d messages", n)
 	}
 	// The moderation plugin's own log is untouched by the audit log.
 	for _, m := range w.Messages(s.channel("mod-log").ID) {

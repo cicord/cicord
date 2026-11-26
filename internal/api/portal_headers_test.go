@@ -1,7 +1,6 @@
 package api
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -11,7 +10,7 @@ import (
 // shared caches.
 func TestPluginRouteResponsePolicy(t *testing.T) {
 	e := startFull(t, func(dir string) {
-		writeTestFile(t, filepath.Join(dir, "plugins", "onboarding", "src", "index.ts"), `import { definePlugin } from "@cicord/sdk";
+		writeOnboardingSource(t, dir, `import { definePlugin } from "@cicord/sdk";
 const headers = {
   "Refresh": "0;url=https://phish.example", "Clear-Site-Data": "\"cookies\"", "Upgrade": "websocket",
   "Link": "<https://phish.example/x.js>; rel=preload", "Cross-Origin-Opener-Policy": "unsafe-none",

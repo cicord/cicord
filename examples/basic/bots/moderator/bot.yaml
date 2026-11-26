@@ -42,6 +42,7 @@ spec:
         - storage.kv
         - portal.routes
         - portal.links
+        - scheduler
       config:
         title: Welcome to My Community!
         intro: Three quick questions to tailor the server to you. You can change your answers any time with /onboarding.

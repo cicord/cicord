@@ -20,7 +20,7 @@ func TestReferencePortalRouteTypesUpToDate(t *testing.T) {
 	for _, want := range []string{
 		`"GET /leaderboard": RouteEntry<"public", cicord_levels.Routes, "GET /leaderboard">;`,
 		`"GET /polls/:id": RouteEntry<"public", cicord_polls.Routes, "GET /polls/:id">;`,
-		`"GET /tickets": RouteEntry<"moderator", cicord_tickets.Routes, "GET /tickets">;`,
+		`"GET /tickets": RouteEntry<"member", cicord_tickets.Routes, "GET /tickets">;`,
 		"export interface LeaderboardEntry {",
 	} {
 		if !strings.Contains(got, want) {

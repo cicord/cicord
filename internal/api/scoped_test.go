@@ -38,7 +38,7 @@ func TestCaseOAuthAfterBan(t *testing.T) {
 			}
 			writeTestFile(t, p, strings.Replace(string(b), from, to, 1))
 		}
-		patch("plugins/welcome/plugin.yaml", "    - portal.links", "    - portal.routes\n    - portal.links")
+		patch("plugins/welcome/plugin.yaml", "\n  capabilities:\n", "\n  capabilities:\n    - portal.routes\n")
 		patch("bots/moderator/bot.yaml", "        - portal.links", "        - portal.routes\n        - portal.links")
 		patch("plugins/welcome/src/index.ts", "  events: {", `  routes:{
     "GET /issue/:id":{access:"admin",async handler(ctx,r){return {url:await ctx.portal.link("/case",{scope:{kind:"case",id:r.params.id},user:r.query.user,expiresInSeconds:604800})}}},

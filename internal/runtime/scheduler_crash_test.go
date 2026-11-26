@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,11 +36,7 @@ func TestCrashLoopDeadLettersOnlyThePoisonTask(t *testing.T) {
 			restartMin = 20 * time.Millisecond // copied by New
 			t.Cleanup(func() { restartMin = old })
 			e := startExampleResync(t, nil, func(dir string) {
-				if mode != "legacy" {
-					replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "spec:", "spec:\n  delivery: at-least-once")
-				}
-				replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - scheduler\n    - portal.links")
-				replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - portal.links", "        - scheduler\n        - portal.links")
+				welcomeWith(t, dir, mode != "legacy", "scheduler")
 				replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  tasks: {
        async boom(ctx) { const a = []; for (;;) a.push("x".repeat(1 << 20) + Math.random()); },
        async unban(ctx, p, task) { if (!(await ctx.kv.get(task.id))) { await ctx.kv.set(task.id, true); await ctx.kv.increment("unbans"); } }
@@ -148,19 +146,28 @@ func publishTo(t *testing.T, e *env, publisher, id, topic string, version int, a
 	}
 }
 
-func subscribingWelcome(t *testing.T, code string) *env {
+// subscribingWelcome adds subscription handlers (object entries) to the welcome plugin.
+func subscribingWelcome(t *testing.T, handlers string) *env {
 	return startExampleResync(t, nil, func(dir string) {
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "spec:", "spec:\n  delivery: at-least-once")
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - events.subscribe\n    - portal.links")
-		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - portal.links", "        - events.subscribe\n        - portal.links")
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", code+"\n  events: {")
+		welcomeWith(t, dir, true, "events.subscribe")
+		// The test topics are legacy subscriptions: without spec.interop, welcome receives
+		// them as before 0.2 (its manifest declares versioned topics only).
+		dropWelcomeSpec(t, dir, "interop")
+		// Into welcome's own subscriptions object when it has one (a second key would
+		// replace it).
+		src := filepath.Join(dir, "plugins/welcome/src/index.ts")
+		if data, _ := os.ReadFile(src); strings.Contains(string(data), "\n  subscriptions: {\n") {
+			replaceFirst(t, src, "\n  subscriptions: {\n", "\n  subscriptions: {\n    "+handlers+"\n")
+		} else {
+			replaceIn(t, src, "  events: {", "  subscriptions: { "+handlers+" },\n  events: {")
+		}
 	}, -1)
 }
 
 // CORE-R3: the next event of a stream is claimed as soon as its predecessor is
 // acknowledged, not at the next 1 s tick (which capped a stream at 1 event/s).
 func TestEventStreamDrainsWithoutWaitingForTicks(t *testing.T) {
-	e := subscribingWelcome(t, `  subscriptions: { "polls.closed": async (ctx) => { await ctx.kv.increment("seen"); } },`)
+	e := subscribingWelcome(t, `"polls.closed": async (ctx) => { await ctx.kv.increment("seen"); },`)
 	const n = 60
 	at := time.Now().Add(-time.Second)
 	for k := range n {
@@ -180,7 +187,7 @@ func TestEventStreamDrainsWithoutWaitingForTicks(t *testing.T) {
 // CORE-R6: a queued event whose subscription the revision no longer declares is not a
 // handler failure. It waits like an undeclared task and is parked after 24 hours.
 func TestUndeclaredSubscriptionIsNotAFailure(t *testing.T) {
-	e := subscribingWelcome(t, `  subscriptions: { "polls.closed": async (ctx) => { await ctx.kv.increment("seen"); } },`)
+	e := subscribingWelcome(t, `"polls.closed": async (ctx) => { await ctx.kv.increment("seen"); },`)
 	ctx := t.Context()
 	q := e.rt.Store().Tasks()
 	// Version 2 is not declared: legacy subscribers only receive version 1.
@@ -194,7 +201,7 @@ func TestUndeclaredSubscriptionIsNotAFailure(t *testing.T) {
 	if dead, _ := q.DeadLetters(ctx, "my-community", 10); len(dead) != 0 {
 		t.Fatalf("an undeclared subscription dead-lettered its events: %+v", dead)
 	}
-	leases, err := q.ClaimDue(ctx, now.Add(time.Hour), now.Add(2*time.Hour), "probe", 10)
+	leases, err := q.ClaimDue(ctx, now.Add(time.Hour), now.Add(2*time.Hour), "probe", 10, onboardingScope)
 	if err != nil || len(leases) != 1 || leases[0].Failures != 0 {
 		t.Fatalf("leases = %+v, %v; want the event with no failure", leases, err)
 	}

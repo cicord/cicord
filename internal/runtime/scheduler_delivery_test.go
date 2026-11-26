@@ -12,9 +12,7 @@ import (
 // disappears with its lease. The replacement's effect succeeds but the handler fails.
 func TestDurableTaskDelivery(t *testing.T) {
 	e := startExampleResync(t, nil, func(dir string) {
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "spec:", "spec:\n  delivery: at-least-once")
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - scheduler\n    - portal.links")
-		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - portal.links", "        - scheduler\n        - portal.links")
+		welcomeWith(t, dir, true, "scheduler")
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  tasks: {
        async expire(ctx, payload, task) {
          if (!(await ctx.kv.get(task.id))) {
@@ -34,7 +32,7 @@ func TestDurableTaskDelivery(t *testing.T) {
 	if err := q.Schedule(ctx, state.Task{ID: "expiry", Scope: scope, Name: "expire", RunAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	abandoned, err := q.ClaimDue(ctx, now, now.Add(time.Minute), "abandoned", 1)
+	abandoned, err := q.ClaimDue(ctx, now, now.Add(time.Minute), "abandoned", 1, onboardingScope)
 	if err != nil || len(abandoned) != 1 {
 		t.Fatalf("initial claim: %v, %v", abandoned, err)
 	}
@@ -64,8 +62,7 @@ func TestDurableTaskDelivery(t *testing.T) {
 // its JS handler, even a post-effect error or an expired old lease cannot replay it.
 func TestLegacyTaskBeginsOnce(t *testing.T) {
 	e := startExampleResync(t, nil, func(dir string) {
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - scheduler\n    - portal.links")
-		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - portal.links", "        - scheduler\n        - portal.links")
+		welcomeWith(t, dir, false, "scheduler")
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  tasks:{async legacy(ctx){await ctx.kv.increment("runs");throw Error("lost result")}},events: {`)
 	}, -1)
 	ctx := t.Context()
@@ -75,7 +72,7 @@ func TestLegacyTaskBeginsOnce(t *testing.T) {
 	if err := q.Schedule(ctx, state.Task{ID: "legacy-1", Name: "legacy", Scope: scope, RunAt: when}); err != nil {
 		t.Fatal(err)
 	}
-	old, err := q.ClaimDue(ctx, when, when.Add(time.Minute), "previous", 1)
+	old, err := q.ClaimDue(ctx, when, when.Add(time.Minute), "previous", 1, onboardingScope)
 	if err != nil || len(old) != 1 {
 		t.Fatal(old, err)
 	}

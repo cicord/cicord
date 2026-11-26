@@ -13,15 +13,12 @@ import (
 func TestModerationSDK(t *testing.T) {
 	e := startExampleResync(t, nil, func(dir string) {
 		extra := []string{"discord.members.moderate", "discord.messages.manage", "discord.messages.read", "portal.routes"}
-		for _, item := range []struct{ file, indent string }{{"plugins/welcome/plugin.yaml", "    "}, {"bots/moderator/bot.yaml", "        "}} {
-			base := item.indent + "- discord.dm.send"
-			grants := base
-			for _, cap := range extra {
-				grants += "\n" + item.indent + "- " + cap
-			}
-			replaceIn(t, filepath.Join(dir, item.file), base, grants)
+		requireInWelcome(t, dir, extra, []string{"ServerModeration", "MessageContent"})
+		grants := "        - discord.dm.send"
+		for _, cap := range extra {
+			grants += "\n        - " + cap
 		}
-		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "[ServerMembers]", "[ServerMembers, ServerModeration, MessageContent]")
+		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - discord.dm.send", grants)
 		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  routes: {
       "POST /probe": {access:"admin",async handler(ctx,req) {
          const {user,member,verb}=req.body;

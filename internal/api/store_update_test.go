@@ -254,7 +254,7 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 		_ = os.RemoveAll(pd)
 		for rel, data := range files {
 			if rel == "plugin.yaml" {
-				data = []byte(strings.Replace(string(data), "version: 0.1.1", "version: 0.0.9", 1))
+				data = []byte(strings.Replace(string(data), "version: 0.2.0", "version: 0.0.9", 1))
 			}
 			full := filepath.Join(pd, filepath.FromSlash(rel))
 			_ = os.MkdirAll(filepath.Dir(full), 0o755)
@@ -268,7 +268,7 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 
 	var inst struct{ Update *updateInfoDTO }
 	c.expect(200, "GET", "/api/v1/servers/"+serverKey+"/plugins/moderator/welcome", nil).json(t, &inst)
-	if inst.Update == nil || inst.Update.Kind != "bundled" || inst.Update.Current != "0.0.9" || inst.Update.Latest != "0.1.1" || inst.Update.Level != "minor" {
+	if inst.Update == nil || inst.Update.Kind != "bundled" || inst.Update.Current != "0.0.9" || inst.Update.Latest != "0.2.0" || inst.Update.Level != "minor" {
 		t.Fatalf("instance update = %+v", inst.Update)
 	}
 	// The extra file makes the copy differ from any released version: modified.
@@ -282,11 +282,11 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 	if r := c.do("POST", update, map[string]any{"version": "0.0.1"}); r.status != 409 || !strings.Contains(string(r.body), `"changed"`) {
 		t.Fatalf("update of another version: %d %s", r.status, r.body)
 	}
-	if r := c.do("POST", update, map[string]any{"version": "0.1.1"}); r.status != 409 || !strings.Contains(string(r.body), `"modified"`) {
+	if r := c.do("POST", update, map[string]any{"version": "0.2.0"}); r.status != 409 || !strings.Contains(string(r.body), `"modified"`) {
 		t.Fatalf("update of a modified copy: %d %s", r.status, r.body)
 	}
 	var res updateResultDTO
-	c.expect(200, "POST", update, map[string]any{"version": "0.1.1", "integrity": rv.Detail.Integrity, "force": true}).json(t, &res)
+	c.expect(200, "POST", update, map[string]any{"version": "0.2.0", "integrity": rv.Detail.Integrity, "force": true}).json(t, &res)
 	if res.Mode != "commit" || len(res.Instances) == 0 || res.Instances[0].Health != "Healthy" {
 		t.Fatalf("update = %+v", res)
 	}
@@ -294,7 +294,7 @@ func TestStoreUpdateBundledCopy(t *testing.T) {
 		t.Errorf("a file the new version does not ship was kept: %v", err)
 	}
 	data, _ := os.ReadFile(filepath.Join(e.dir, "plugins", "welcome", "plugin.yaml"))
-	if !strings.Contains(string(data), "version: 0.1.1") {
+	if !strings.Contains(string(data), "version: 0.2.0") {
 		t.Errorf("plugin.yaml:\n%s", data)
 	}
 	inst.Update = nil

@@ -222,7 +222,7 @@ func TestAlertDrillTicketCreationFails(t *testing.T) {
 // breakTicketForm inserts drillThrow at the top of modals.open of the tickets plugin.
 func breakTicketForm(t *testing.T, src string) string {
 	t.Helper()
-	const anchor = "async open(ctx, interaction) {"
+	const anchor = "open: ordered(async (ctx, interaction) => {"
 	i := strings.Index(src, "modals: {")
 	if i < 0 {
 		t.Fatal("tickets plugin: no modals section (update the drill)")

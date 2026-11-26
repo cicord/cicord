@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
@@ -14,21 +15,35 @@ import (
 
 func TestContextMenuDispatch(t *testing.T) {
 	s := startShowcase(t, showcaseOpts{prepare: func(dir string) {
-		manifest := filepath.Join(dir, "plugins/tickets/plugin.yaml")
-		replaceIn(t, manifest, "  entry: ./src/index.ts", "  entry: ./src/index.ts\n  locales: ./locales")
-		localeDir := filepath.Join(dir, "plugins/tickets/locales")
-		if err := os.MkdirAll(localeDir, 0755); err != nil {
+		// polls declares no context menu of its own (tickets adds its own contextMenus key,
+		// which would replace this one): it carries the test menu and its French label.
+		plugin := filepath.Join(dir, "plugins/polls")
+		if b, err := os.ReadFile(filepath.Join(plugin, "plugin.yaml")); err != nil || !strings.Contains(string(b), "\n  locales: ./locales") {
+			t.Fatalf("polls declares no locales: %v", err)
+		}
+		fr := filepath.Join(plugin, "locales/fr.json")
+		raw, err := os.ReadFile(fr)
+		if err != nil {
 			t.Fatal(err)
 		}
-		for name, contents := range map[string]string{"en.json": "{}", "fr.json": `{"contextMenus.About user.name":"À propos du membre"}`} {
-			if err := os.WriteFile(filepath.Join(localeDir, name), []byte(contents), 0644); err != nil {
-				t.Fatal(err)
-			}
+		catalog := map[string]any{}
+		if err := json.Unmarshal(raw, &catalog); err != nil {
+			t.Fatal(err)
 		}
-		path := filepath.Join(dir, "plugins/tickets/src/index.ts")
+		catalog["contextMenus.About user.name"] = "À propos du membre"
+		if raw, err = json.Marshal(catalog); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fr, raw, 0644); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(plugin, "src/index.ts")
 		b, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if strings.Count(string(b), "definePlugin({") != 1 || strings.Contains(string(b), "contextMenus") {
+			t.Fatal("polls: update the context menu fixture")
 		}
 		source := strings.Replace(string(b), "definePlugin({", `definePlugin({contextMenus:{"About user":{type:"user",permissions:["ManageMessages"],async run(ctx,i){await i.reply(i.target.displayName)}}},`, 1)
 		if err = os.WriteFile(path, []byte(source), 0644); err != nil {

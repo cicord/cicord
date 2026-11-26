@@ -24,6 +24,35 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// writeOnboardingSource replaces the code of the example's onboarding plugin with a test
+// plugin, and drops the manifest's spec.privacy records (they require privacy hooks that a
+// test plugin does not implement). It can be called again on the same directory.
+func writeOnboardingSource(t *testing.T, dir, source string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(dir, "plugins", "onboarding", "src", "index.ts"), source)
+	manifest := filepath.Join(dir, "plugins", "onboarding", "plugin.yaml")
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	inPrivacy := false
+	for _, line := range strings.Split(string(data), "\n") {
+		top := strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   ")
+		switch {
+		case line == "  privacy:":
+			inPrivacy = true
+			continue
+		case inPrivacy && (top || !strings.HasPrefix(line, " ")):
+			inPrivacy = false
+		case inPrivacy:
+			continue
+		}
+		out = append(out, line)
+	}
+	writeTestFile(t, manifest, strings.Join(out, "\n"))
+}
+
 // setPortalPath rewrites cicord.yaml spec.portal of the working copy.
 func (e *env) setProjectPortal(t *testing.T, yaml string) {
 	t.Helper()

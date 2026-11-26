@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -20,7 +19,7 @@ export default definePlugin({ routes: {
   "GET /calendar.ics": { access:"public", handler(){return {status:200,contentType:"text/calendar",raw:%q};} },
   "GET /staff.csv": { access:"member",handler(){return {status:200,contentType:"text/csv",raw:"members,4"};} }
 }});`, calendar(rule))
-		writeTestFile(t, filepath.Join(dir, "plugins", "onboarding", "src", "index.ts"), source)
+		writeOnboardingSource(t, dir, source)
 	}
 	const first = "FREQ=WEEKLY;BYDAY=FR"
 	const next = "FREQ=WEEKLY;BYDAY=SA"

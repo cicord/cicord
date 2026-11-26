@@ -402,7 +402,8 @@ func TestShowcaseTickets(t *testing.T) {
 	}
 	w.WaitIdle()
 
-	// GET /tickets (moderator route).
+	// GET /tickets: a staff route. Tickets 0.4 declares its routes at member access and
+	// checks the staff roles itself (per ticket type).
 	var listed struct {
 		Items []struct {
 			ID, Subject, Status string
@@ -412,7 +413,7 @@ func TestShowcaseTickets(t *testing.T) {
 	}
 	s.waitFor("ticket activity", func() bool {
 		resp, def := s.route("tickets", "GET", "/tickets", &sam, nil)
-		if def.Access != "moderator" {
+		if def.Access != "member" {
 			t.Fatalf("access = %q", def.Access)
 		}
 		listed = decodeBody[struct {
@@ -441,7 +442,9 @@ func TestShowcaseTickets(t *testing.T) {
 		t.Fatalf("confirm response = %+v", confirm)
 	}
 	summary := s.waitMessage("summary", ticketLog.ID, func(m discord.Message) bool { return strings.Contains(textOf(m), "Ticket #1 closed") })
-	if !strings.Contains(textOf(summary), "Messages: 2") || !strings.Contains(textOf(summary), "<@"+sam.ID+">") {
+	// Tickets 0.4 posts a content-free summary with the portal link (no transcript without
+	// the managedMessages feature, no participants).
+	if !strings.Contains(textOf(summary), "/tickets?server=showcase&ticket=1") || strings.Contains(textOf(summary), "Cannot join voice") {
 		t.Errorf("summary = %s", textOf(summary))
 	}
 	s.waitFor("ticket channel deleted", func() bool { _, ok := w.Channel(ticket.ID); return !ok })
@@ -874,7 +877,13 @@ func TestShowcaseModeration(t *testing.T) {
 	logged := func(what string) discord.Message {
 		return s.waitMessage(what, modLog.ID, func(m discord.Message) bool { return strings.Contains(textOf(m), what) })
 	}
-	logged("<@" + troll.ID + "> (troll) joined.") // memberJoin
+	// Member events: moderation 0.3 leaves them to audit-log when it is installed (its
+	// legacyMemberLog feature), as in the showcase.
+	auditLog := s.channel("audit-log")
+	audited := func(what string) {
+		s.waitMessage(what, auditLog.ID, func(m discord.Message) bool { return strings.Contains(textOf(m), what) })
+	}
+	audited("**troll** joined") // memberJoin
 
 	// /warn requires ModerateMembers.
 	if h := w.InvokeCommand(troll.ID, s.serverID, general.ID, s.appID, "warn", map[string]any{"member": mia.ID, "reason": "x"}); h.Err() == nil {
@@ -912,7 +921,8 @@ func TestShowcaseModeration(t *testing.T) {
 	s.waitFor("webhook", func() bool {
 		hookMu.Lock()
 		defer hookMu.Unlock()
-		return len(hooks) > 0 && strings.Contains(hooks[0], "hooks.slack.com/services/T0/B0/x") && strings.Contains(hooks[0], `"text":"Case #1 · Warning: troll — spam (by mia)"`)
+		// Moderation 0.3 sends only the case number and action to external webhooks.
+		return len(hooks) > 0 && strings.Contains(hooks[0], "hooks.slack.com/services/T0/B0/x") && strings.Contains(hooks[0], `{"text":"Case #1 · Warning"}`)
 	})
 
 	// Second warning: automatic timeout (escalation rule with the durationMinutes default).
@@ -951,7 +961,7 @@ func TestShowcaseModeration(t *testing.T) {
 	if _, err := w.AdminUpdateMember(s.serverID, troll.ID, discord.MemberParams{Nick: &nick}); err != nil {
 		t.Fatal(err)
 	}
-	logged("nickname: — → Nice Guy")
+	audited("→ Nice Guy")
 
 	// Flood protection (messageCreate without MessageContent): timeout + message deleted.
 	var last discord.Message
@@ -972,7 +982,7 @@ func TestShowcaseModeration(t *testing.T) {
 		t.Fatalf("/kick = %s", replyText(st))
 	}
 	s.waitFor("kicked", func() bool { _, ok := w.Member(s.serverID, troll.ID); return !ok })
-	logged("<@" + troll.ID + "> (troll) left.")
+	audited("**troll** left the server.")
 	found := false
 	for _, m := range w.DMs(troll.ID, s.bot.ID) {
 		found = found || strings.Contains(m.Content, "You were kicked from **Cicord Showcase**: bye")

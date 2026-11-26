@@ -23,7 +23,7 @@ func TestDeadLetterListReportsTruncation(t *testing.T) {
 			}
 		}
 	}
-	leases, err := q.ClaimDue(t.Context(), at.Add(time.Minute), at.Add(time.Hour), "test", 100)
+	leases, err := q.ClaimDue(t.Context(), at.Add(time.Minute), at.Add(time.Hour), "test", 100, exampleTaskScopes...)
 	if err != nil || len(leases) != 10 {
 		t.Fatalf("leases: %d %v", len(leases), err)
 	}
@@ -71,7 +71,7 @@ func TestDeadLetterCursorPaging(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	leases, err := q.ClaimDue(t.Context(), at.Add(time.Minute), at.Add(time.Hour), "test", 100)
+	leases, err := q.ClaimDue(t.Context(), at.Add(time.Minute), at.Add(time.Hour), "test", 100, exampleTaskScopes...)
 	if err != nil || len(leases) != 5 {
 		t.Fatalf("leases: %d %v", len(leases), err)
 	}

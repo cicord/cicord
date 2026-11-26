@@ -10,9 +10,12 @@
       "entry": [
         "examples/**/plugins/*/src/index.ts",
         "examples/**/plugins/*/src/routes.ts",
-        // The bundled tickets is the registry's released 0.2.0, byte for byte (its content hash
-        // is pinned in internal/catalog/copy.go): its module exports helpers only it uses.
-        "examples/showcase/plugins/tickets/src/tickets.ts",
+        // The official plugins bundled in the binary are synced byte for byte from
+        // github.com/cicord/cicord-plugins (content hashes pinned in internal/catalog/copy.go),
+        // whose CI checks them: their modules (src/contracts.ts is plugin.yaml
+        // spec.interop.types) export helpers that only their own code and tests use.
+        "examples/basic/plugins/{welcome,onboarding}/src/*.ts",
+        "examples/showcase/plugins/{tickets,polls,levels,moderation,reaction-roles,audit-log,announcements,voice-rooms}/src/*.ts",
         "examples/**/plugins/*/test/**/*.test.ts",
         "examples/embed/serve.mjs"
       ],

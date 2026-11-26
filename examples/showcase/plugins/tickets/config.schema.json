@@ -4,6 +4,100 @@
   "type": "object",
   "required": ["panelChannel"],
   "properties": {
+    "types": {
+      "description": "Ticket types with independent forms and staff roles. Without types the original general queue is used.",
+      "type": "array",
+      "maxItems": 5,
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "name", "staffRoles"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,23}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 45
+          },
+          "staffRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true,
+            "maxItems": 10,
+            "x-cicord-ref": "role"
+          },
+          "category": {
+            "type": "string",
+            "x-cicord-ref": "category"
+          },
+          "logChannel": {
+            "type": "string",
+            "x-cicord-ref": "channel"
+          },
+          "defaultLabels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true,
+            "maxItems": 10
+          },
+          "fields": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label"],
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 45
+                },
+                "required": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            }
+          },
+          "retainSourceForTranscript": {
+            "type": "boolean",
+            "default": true,
+            "description": "Keep the original private channel read-only until transcript expiry. Enables Discord file copies while both channel policies can be verified."
+          }
+        }
+      }
+    },
+    "transcriptRetentionDays": {
+      "type": "integer",
+      "default": 30,
+      "minimum": 1,
+      "maximum": 365
+    },
+    "firstResponseMinutes": {
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 10080
+    },
+    "inactivityHours": {
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 8760
+    },
+    "modmailType": {
+      "type": "string",
+      "description": "Ticket type for incoming DMs. Defaults to the first type."
+    },
     "panelChannel": {
       "description": "Default channel of the ticket panel (/ticket-panel can post it elsewhere).",
       "type": "string",
@@ -15,9 +109,11 @@
       "x-cicord-ref": "category"
     },
     "staffRoles": {
-      "description": "Roles that see every ticket and can close them (the server owner and Cicord admins count as staff too). To use the staff portal routes they also need the moderator access level (spec.access.moderators of the server).",
+      "description": "Staff roles for the legacy general queue when no types are configured.",
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "uniqueItems": true,
       "maxItems": 10,
       "default": [],
@@ -33,16 +129,28 @@
       "type": "object",
       "x-cicord-access": "moderator",
       "properties": {
-        "title": { "type": "string", "minLength": 1, "maxLength": 256, "default": "Need help?" },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
         "description": {
           "type": "string",
           "minLength": 1,
           "maxLength": 2000,
-          "default": "Click the button below to open a private ticket with the team.",
           "x-cicord-widget": "markdown"
         },
-        "buttonLabel": { "type": "string", "minLength": 1, "maxLength": 80, "default": "Open a ticket" },
-        "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#5865f2", "x-cicord-widget": "color" }
+        "buttonLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "default": "#5865f2",
+          "x-cicord-widget": "color"
+        }
       },
       "additionalProperties": false
     },
@@ -51,7 +159,6 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 2000,
-      "default": "Hi {member}, thanks for reaching out! {staff} will be with you shortly.",
       "x-cicord-widget": "markdown",
       "x-cicord-access": "moderator"
     },
@@ -76,7 +183,7 @@
       "maxItems": 25,
       "items": {
         "type": "object",
-        "required": ["key", "name"],
+        "required": ["key"],
         "properties": {
           "key": {
             "description": "Stable identifier: lowercase letters, digits and dashes.",
@@ -99,13 +206,43 @@
         "additionalProperties": false
       },
       "default": [
-        { "key": "question", "name": "Question", "emoji": "❓" },
-        { "key": "bug", "name": "Bug", "emoji": "🐛" },
-        { "key": "self-hosting", "name": "Self-hosting", "emoji": "🖥️" },
-        { "key": "plugin", "name": "Plugin", "emoji": "🧩" },
-        { "key": "other", "name": "Other" }
+        {
+          "key": "question",
+          "emoji": "❓"
+        },
+        {
+          "key": "bug",
+          "emoji": "🐛"
+        },
+        {
+          "key": "self-hosting",
+          "emoji": "🖥️"
+        },
+        {
+          "key": "plugin",
+          "emoji": "🧩"
+        },
+        {
+          "key": "other"
+        }
       ],
       "x-cicord-access": "moderator"
+    },
+    "recordRetentionDays": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 730,
+      "default": 365,
+      "description": "Days to keep closed tickets, notes and indexes. The longer of this and transcript retention applies."
+    },
+    "appealType": {
+      "type": "string",
+      "description": "Ticket type for moderation appeals. Required for appeals when multiple types are configured and the caller omits a type."
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["en", "fr"],
+      "description": "Override the interaction and server language."
     }
   },
   "additionalProperties": false

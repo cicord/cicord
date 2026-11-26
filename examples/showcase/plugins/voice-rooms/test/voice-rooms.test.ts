@@ -1,7 +1,9 @@
 import type { ReplyInput, VoiceStateUpdate } from "@cicord/sdk";
 import { createTestContext, runCommand, type TestHarness } from "@cicord/sdk/testing";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import schema from "../config.schema.json" with { type: "json" };
+import en from "../locales/en.json" with { type: "json" };
+import fr from "../locales/fr.json" with { type: "json" };
 import plugin from "../src/index.ts";
 
 const grants = [
@@ -15,9 +17,13 @@ const grants = [
 
 // 1 alice, 2 bob, 3 carl (guild member): members. 4 sam: staff role. 9 olga: server owner.
 // 50 a music bot.
-function setup(config: Record<string, unknown> = {}) {
-  return createTestContext({
+function setup(
+  config: Record<string, unknown> = {},
+  extra: { roles?: Record<string, { name: string; permissions?: string[] }> } = {},
+) {
+  const t = createTestContext({
     schema,
+    locales: { en, fr },
     config: {
       hubs: [
         { channel: "create" },
@@ -38,7 +44,7 @@ function setup(config: Record<string, unknown> = {}) {
     intents: ["ServerVoiceStates"],
     plugin: { name: "voice-rooms" },
     server: { id: "100", ownerId: "9" },
-    roles: { guild: { name: "Guild" }, staff: { name: "Staff" } },
+    roles: { guild: { name: "Guild" }, staff: { name: "Staff" }, ...extra.roles } as never,
     channels: {
       voice: { name: "VOCAUX", type: "category", id: "300" },
       guilds: { name: "GUILDES", type: "category", id: "301" },
@@ -61,6 +67,8 @@ function setup(config: Record<string, unknown> = {}) {
       { id: "50", username: "music", bot: true },
     ],
   });
+  Object.assign(t.ctx, { features: { enabled: () => false } });
+  return t;
 }
 
 const voice = (t: TestHarness, u: VoiceStateUpdate) => plugin.events!.voiceStateUpdate!(t.ctx, u);
@@ -83,6 +91,8 @@ describe("join to create", () => {
       name: "🔊 Sadiwii's channel",
       type: "voice",
       category: { id: "300" },
+      // Per attempt: a replay resumes the same key (SPA-16).
+      provisionKey: expect.stringMatching(/^room:500:1:[0-9a-f-]{36}$/),
     });
     // Created without overwrites (it gets the category's), then the owner's and the bot's.
     expect(t.overwrites(room.id)).toEqual({
@@ -114,6 +124,7 @@ describe("join to create", () => {
       type: "voice",
       category: "guilds",
       userLimit: 5,
+      provisionKey: expect.stringMatching(/^room:501:3:/),
     });
     expect(room.categoryId).toBe("301");
     // Numbers are per hub, and reused once free.
@@ -178,6 +189,137 @@ describe("join to create", () => {
   });
 });
 
+describe("degraded Discord permissions and replays", () => {
+  function statuses(t: TestHarness) {
+    const lines = new Map<string, string | null>();
+    const set = t.ctx.status.set.bind(t.ctx.status);
+    t.ctx.status.set = (key: string, message: string | null) => {
+      lines.set(key, message);
+      set(key, message);
+    };
+    return lines;
+  }
+
+  test("a bot without Move Members gets a status line and joins create no channel", async () => {
+    const t = setup(
+      {},
+      { roles: { botrole: { name: "Bot", permissions: ["ViewChannel", "Connect", "ManageChannels"] } } },
+    );
+    const lines = statuses(t);
+    t.addMember({ id: "bot", username: "TestBot", bot: true, roles: ["botrole"] });
+    for (let i = 0; i < 3; i++) {
+      await voice(t, t.setVoice("2", "create"));
+      await voice(t, t.setVoice("2", null));
+    }
+    expect(t.createdChannels).toHaveLength(0);
+    expect(t.deletedChannels).toHaveLength(0);
+    expect(lines.get("permissions:500")).toContain("MoveMembers");
+  });
+
+  test("a Discord refusal sets the status line and later joins wait instead of churning", async () => {
+    const t = setup();
+    const lines = statuses(t);
+    let calls = 0;
+    t.ctx.server.createChannel = async () => {
+      calls++;
+      throw new Error("discord: missing permissions (HTTP 403, code 50013)");
+    };
+    await voice(t, t.setVoice("1", "create"));
+    await voice(t, t.setVoice("2", "create"));
+    expect(calls).toBe(1);
+    expect(lines.get("permissions:500")).toContain("create the room");
+    expect(t.kv.has("pending:500:1")).toBe(false);
+  });
+
+  test("a refused move deletes the room once, then the hub waits; a success clears the line", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      const lines = statuses(t);
+      const update = t.setVoice("1", "create");
+      const moveTo = update.member!.moveTo.bind(update.member);
+      Object.assign(update.member!, {
+        moveTo: async () => {
+          throw new Error("discord: missing permissions (HTTP 403)");
+        },
+      });
+      await voice(t, update);
+      expect(t.createdChannels).toHaveLength(1);
+      expect(t.deletedChannels).toHaveLength(1);
+      expect(lines.get("permissions:500")).toContain("move the member");
+      await voice(t, t.setVoice("2", "create"));
+      expect(t.createdChannels).toHaveLength(1);
+      // Fixed on Discord: after the wait, the next join creates a room and clears the line.
+      vi.setSystemTime(Date.now() + 301000);
+      Object.assign(update.member!, { moveTo });
+      await voice(t, t.setVoice("2", null));
+      await joinHub(t, "2");
+      expect(t.createdChannels).toHaveLength(2);
+      expect(lines.get("permissions:500")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /** The host's provisioning-key contract (internal/plugin): one channel per key while it exists. */
+  function provisioning(t: TestHarness, crashes: { n: number }) {
+    const create = t.ctx.server.createChannel.bind(t.ctx.server);
+    const byKey = new Map<string, string>();
+    const alive = (id: string) => !t.deletedChannels.some((d) => d.id === id);
+    t.ctx.server.createChannel = async (options) => {
+      const known = options.provisionKey && byKey.get(options.provisionKey);
+      if (known && alive(known)) return t.ctx.server.channel({ id: known });
+      const channel = await create(options);
+      if (options.provisionKey) byKey.set(options.provisionKey, channel.id);
+      if (crashes.n-- > 0) throw new Error("runtime stopped"); // created, nothing saved it
+      return channel;
+    };
+    t.ctx.server.recoverOwnedChannel = async (request) => {
+      const key = typeof request === "string" ? request : request.provisionKey;
+      const id = byKey.get(key);
+      return id && alive(id) ? { status: "owned", id } : { status: "missing" };
+    };
+  }
+
+  test("a crash after createChannel: the redelivered join resumes the same channel", async () => {
+    const t = setup();
+    provisioning(t, { n: 1 });
+    const update = t.setVoice("1", "create");
+    await expect(voice(t, update)).rejects.toThrow("runtime stopped");
+    expect(t.kv.has("pending:500:1")).toBe(true);
+    await voice(t, update); // at-least-once redelivery
+    expect(t.createdChannels).toHaveLength(1);
+    const room = t.createdChannels[0]!.channel;
+    expect(t.voiceChannel("1")).toBe(room.id);
+    expect(t.kv.get("room:" + room.id)).toMatchObject({ owner: "1", hub: "500" });
+    expect(t.kv.has("pending:500:1")).toBe(false);
+  });
+
+  test("the sweep deletes the empty channel of an interrupted creation and forgets the marker", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      provisioning(t, { n: 1 });
+      const update = t.setVoice("1", "create");
+      await expect(voice(t, update)).rejects.toThrow("runtime stopped");
+      await voice(t, t.setVoice("1", null)); // the member left; no redelivery
+      const orphan = t.createdChannels[0]!.channel;
+      // A fresh marker is left alone: its attempt may still be running.
+      await plugin.schedules!.sweep!.run(t.ctx);
+      expect(t.deletedChannels).toEqual([]);
+      vi.setSystemTime(Date.now() + 3 * 60_000);
+      await plugin.schedules!.sweep!.run(t.ctx);
+      expect(t.deletedChannels.map((d) => d.id)).toEqual([orphan.id]);
+      expect(t.kv.has("pending:500:1")).toBe(false);
+      // The next join creates a new room.
+      await joinHub(t, "1");
+      expect(t.createdChannels).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("empty rooms", () => {
   test("a room is deleted when the last member leaves; bots do not keep it", async () => {
     const t = setup();
@@ -197,17 +339,24 @@ describe("empty rooms", () => {
     const room = await joinHub(t, "1");
     await voice(t, t.setVoice("1", null));
     expect(t.deletedChannels).toEqual([]);
-    expect(t.scheduled).toEqual([
-      { id: "task-1", delayMs: 30_000, task: "cleanup", payload: { room: room.id } },
-    ]);
-    // Back in time: kept.
+    const first = t.scheduled[0]!;
+    expect(first).toMatchObject({ delayMs: 30000, task: "cleanup", payload: { room: room.id } });
     await voice(t, t.setVoice("1", room.id));
-    await plugin.tasks!.cleanup!(t.ctx, { room: room.id });
+    await plugin.tasks!.cleanup!(t.ctx, first.payload);
     expect(t.deletedChannels).toEqual([]);
-    // Left again: a new task, which deletes it.
     await voice(t, t.setVoice("1", null));
-    expect(t.scheduled.map((s) => s.task)).toEqual(["cleanup", "cleanup"]);
-    await plugin.tasks!.cleanup!(t.ctx, { room: room.id });
+    const second = t.scheduled[0]!;
+    expect(second.id).not.toBe(first.id);
+    const due = (second.payload as { due: number }).due;
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(due);
+      await plugin.tasks!.cleanup!(t.ctx, first.payload);
+      expect(t.deletedChannels).toEqual([]);
+      await plugin.tasks!.cleanup!(t.ctx, second.payload);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(t.deletedChannels.map((d) => d.id)).toEqual([room.id]);
   });
 
@@ -262,6 +411,37 @@ describe("/voice", () => {
     r = await runCommand(plugin, t, "voice rename", { user: "1", options: { name: "Three" } });
     expect(text(r.replies[0])).toContain("two renames per 10 minutes");
     expect(room.name).toBe("Two");
+  });
+
+  test("the rename window is durable across a restart and counts privacy renames", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { t, room } = await withRoom();
+      const rename = async (p: typeof plugin, user: string, name: string) =>
+        text(
+          (await runCommand(p, t, "voice rename", { user, channel: room.id, options: { name } }))
+            .replies[0],
+        );
+      expect(await rename(plugin, "1", "One")).toBe("Renamed to **One**.");
+      expect(await rename(plugin, "1", "Two")).toBe("Renamed to **Two**.");
+      // A restarted runtime (or another realm) loads a fresh module: the window is in KV.
+      vi.resetModules();
+      const restarted = (await import("../src/index.ts")).default;
+      expect(await rename(restarted, "1", "Three")).toContain("two renames per 10 minutes");
+      expect(room.name).toBe("Two");
+      // Erasure still anonymizes a member-derived name when the window is full.
+      await restarted.privacy!.erase(t.ctx, "1");
+      expect(room.name).toBe("Voice room 1");
+      vi.setSystemTime(Date.now() + 10 * 60 * 1000 + 1000);
+      expect(await rename(restarted, "4", "Staff pick")).toBe("Renamed to **Staff pick**.");
+      // The erasure rename takes the second slot of the new window.
+      await restarted.privacy!.erase(t.ctx, "4");
+      expect(room.name).toBe("Voice room 1");
+      expect(await rename(restarted, "4", "Again")).toContain("two renames per 10 minutes");
+      expect(t.kv.get("rename:" + room.id)).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("only the owner and the staff manage a room", async () => {
@@ -383,4 +563,118 @@ describe("/voice", () => {
     r = await runCommand(plugin, t, "voice claim", { user: "3" });
     expect(text(r.replies[0])).toBe("Join the voice room you want to claim first.");
   });
+});
+
+describe("0.2 room lifecycle", () => {
+  test("owner and guest erasure preserves the shared room and subsequent staff decisions", async () => {
+    const t = setup(),
+      room = await joinHub(t, "1");
+    const opt = (id: string) => ({ member: t.member(id)!.user });
+    await voice(t, t.setVoice("2", room.id));
+    await voice(t, t.setVoice("3", room.id));
+    await runCommand(plugin, t, "voice permit", { user: "1", options: opt("2") });
+    await runCommand(plugin, t, "voice permit", { user: "1", options: opt("3") });
+    await t.ctx.server.editChannel(room, { overwrites: { "member:2": { deny: ["Connect"] } } });
+    const record = await plugin.privacy!.export(t.ctx, "2");
+    expect(JSON.stringify(record)).toContain('"access":"permit"');
+    expect(JSON.stringify(record)).not.toContain('"owner":"1"');
+    await plugin.privacy!.erase(t.ctx, "2");
+    expect(t.overwrites(room.id)["member:2"]).toEqual({ allow: [], deny: ["Connect"] });
+    expect(t.overwrites(room.id)["member:3"]?.allow).toContain("Connect");
+    await plugin.privacy!.erase(t.ctx, "1");
+    expect(t.deletedChannels).toEqual([]);
+    expect(t.overwrites(room.id)["member:1"]).toBeUndefined();
+    expect(t.voiceChannel("3")).toBe(room.id);
+    expect(await plugin.privacy!.export(t.ctx, "1")).toEqual([]);
+    await runCommand(plugin, t, "voice claim", { user: "3", channel: room.id });
+    expect(t.kv.get("room:" + room.id)).toMatchObject({ owner: "3" });
+    expect(t.overwrites(room.id)["member:bot"]?.allow).toContain("MoveMembers");
+  });
+  test("server events have stable keys, the observed human peak and elapsed minutes", async () => {
+    const t = setup({ locale: "fr" });
+    Object.assign(t.ctx, { features: { enabled: () => true } });
+    const published = vi.fn().mockResolvedValue(undefined);
+    Object.assign(t.ctx, { events: { publish: published } });
+    vi.useFakeTimers();
+    try {
+      const room = await joinHub(t, "1");
+      expect(room.name).toBe("🔊 Salon de Sadiwii");
+      await voice(t, t.setVoice("2", room.id));
+      await voice(t, t.setVoice("50", room.id));
+      vi.setSystemTime(Date.now() + 185000);
+      await voice(t, t.setVoice("1", null));
+      await voice(t, t.setVoice("2", null));
+      await plugin.tasks!.cleanup!(t.ctx, { room: room.id });
+      expect(published.mock.calls).toEqual([
+        [
+          "roomCreated",
+          { channelId: room.id, ownerId: "1" },
+          { version: 1, idempotencyKey: "create:" + room.id },
+        ],
+        [
+          "roomClosed",
+          { channelId: room.id, ownerId: "1", peak: 2, durationMinutes: 3 },
+          { version: 1, idempotencyKey: "close:" + room.id },
+        ],
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  test("legacy ownership is exported and revoked without lifting unattributed guest restrictions", async () => {
+    const t = setup(),
+      room = await joinHub(t, "1");
+    await t.ctx.kv.set("room:" + room.id, {
+      hub: "500",
+      owner: "1",
+      createdAt: new Date().toISOString(),
+      n: 1,
+    });
+    await t.ctx.server.editChannel(room, { overwrites: { "member:2": { deny: ["Connect"] } } });
+    await plugin.tasks!.sweep!(t.ctx, {});
+    expect(await plugin.privacy!.export(t.ctx, "2")).toMatchObject([
+      { legacyDiscordOverride: true, policy: "retain" },
+    ]);
+    await plugin.privacy!.erase(t.ctx, "2");
+    expect(t.overwrites(room.id)["member:2"]?.deny).toContain("Connect");
+    await plugin.privacy!.erase(t.ctx, "1");
+    expect(t.overwrites(room.id)["member:1"]).toBeUndefined();
+  });
+});
+
+test("erasing a former owner removes the member-derived name after a transfer", async () => {
+  const t = setup(),
+    room = await joinHub(t, "1");
+  await voice(t, t.setVoice("2", room.id));
+  await runCommand(plugin, t, "voice transfer", {
+    user: "1",
+    options: { member: t.member("2")!.user },
+  });
+  expect(await plugin.privacy!.export(t.ctx, "1")).toMatchObject([
+    { owns: false, name: "🔊 Sadiwii's channel" },
+  ]);
+  await plugin.privacy!.erase(t.ctx, "1");
+  expect(t.channel(room.id)!.name).toBe("Voice room 1");
+  expect(t.kv.get("room:" + room.id)).toMatchObject({ owner: "2" });
+});
+
+test("privacy revocation fails closed when Discord refuses the live overwrite read", async () => {
+  const t = setup(),
+    room = await joinHub(t, "1");
+  await runCommand(plugin, t, "voice permit", {
+    user: "1",
+    options: { member: t.member("2")!.user },
+  });
+  const grantsBefore = t.overwrites(room.id),
+    stored = await t.ctx.kv.get("room:" + room.id);
+  const reader = vi
+    .spyOn(t.channel(room.id)!, "memberOverwrite")
+    .mockRejectedValueOnce(Error("Discord 403"));
+  await expect(plugin.privacy!.erase(t.ctx, "2")).rejects.toThrow("Discord 403");
+  expect(t.overwrites(room.id)).toEqual(grantsBefore);
+  expect(await t.ctx.kv.get("room:" + room.id)).toEqual(stored);
+  reader.mockRestore();
+  expect(await plugin.privacy!.erase(t.ctx, "2")).toEqual({ erased: 1 });
+  expect(t.overwrites(room.id)["member:2"]).toBeUndefined();
+  expect(t.overwrites(room.id)["member:1"]?.allow).toContain("Connect");
 });

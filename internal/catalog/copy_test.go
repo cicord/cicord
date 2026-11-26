@@ -54,7 +54,7 @@ func TestCheckCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Modified || st.Version != "0.1.1" || len(st.Changed)+len(st.Added)+len(st.Removed) != 0 {
+	if st.Modified || st.Version != "0.2.0" || len(st.Changed)+len(st.Added)+len(st.Removed) != 0 {
 		t.Fatalf("current copy = %+v", st)
 	}
 	// An older version number only: not modified.
@@ -62,7 +62,7 @@ func TestCheckCopy(t *testing.T) {
 	for p, d := range cur {
 		old[p] = d
 	}
-	old["plugin.yaml"] = []byte(strings.Replace(string(cur["plugin.yaml"]), "version: 0.1.1", "version: 0.0.9", 1))
+	old["plugin.yaml"] = []byte(strings.Replace(string(cur["plugin.yaml"]), "version: 0.2.0", "version: 0.0.9", 1))
 	if st, _ = c.CheckCopy("welcome", writeCopy(t, old)); st.Modified || st.Version != "0.0.9" || len(st.Changed) != 1 || st.Changed[0] != "plugin.yaml" {
 		t.Fatalf("older copy = %+v", st)
 	}
