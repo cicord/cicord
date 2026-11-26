@@ -255,6 +255,7 @@ export interface InteropGraph {
   features: Record<string, Record<string, string> | null>;
 }
 export interface DeadTask {
+  event?: boolean;
   id: string;
   scope: string;
   name: string;
@@ -1368,7 +1369,7 @@ export interface StoreDetail extends StorePlugin {
     publishes?: { topic: string; version?: number; scope?: string }[];
     subscribes?: { topic: string; version?: number }[];
   };
-  optional?: { feature: string; capabilities?: string[]; intents?: string[] }[];
+  optional?: { feature: string; when?: string; capabilities?: string[]; intents?: string[] }[];
   version: string;
   /** Resolved commit (registry plugins); send it back with the install. */
   commit?: string;

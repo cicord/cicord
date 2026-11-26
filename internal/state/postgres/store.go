@@ -27,13 +27,13 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5/stdlib"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/cicord/cicord/internal/state"
 	"github.com/cicord/cicord/internal/state/internal/advanced"

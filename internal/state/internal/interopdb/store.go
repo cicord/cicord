@@ -9,10 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cicord/cicord/internal/state"
 	"regexp"
-	"strings"
 	"time"
+
+	"github.com/cicord/cicord/internal/state"
 )
 
 type Store struct {
@@ -41,13 +41,20 @@ func (s Store) PublishEvent(ctx context.Context, event state.EventFanout) error 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := s.PublishEventTx(ctx, tx, event); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 func (s Store) PublishEventTx(ctx context.Context, tx *sql.Tx, event state.EventFanout) error {
+	if s.Postgres {
+		// Sequence allocation alone cannot order two transactions that commit in the
+		// opposite order. Serialize publishing for this installation before allocation.
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 23911))`, event.Publisher); err != nil {
+			return err
+		}
+	}
 	var seq int64
 	err := tx.QueryRowContext(ctx, s.q(`INSERT INTO interop_events(id,expires_at) VALUES($1,$2) ON CONFLICT(id) DO NOTHING RETURNING seq`), event.ID, event.At.Add(retention).UnixNano()).Scan(&seq)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -73,7 +80,7 @@ func (s Store) ReserveAction(ctx context.Context, id, server, digest, owner stri
 	row := s.DB.QueryRowContext(ctx, s.q(`INSERT INTO interop_actions(id,server,digest,status,owner,lease_until,expires_at)
  VALUES($1,$2,$3,'running',$4,$5,$6) ON CONFLICT(id) DO UPDATE SET
  status='running',owner=excluded.owner,lease_until=excluded.lease_until,expires_at=excluded.expires_at,digest=excluded.digest,result=NULL
- WHERE interop_actions.expires_at <= $7 OR (interop_actions.digest=excluded.digest AND interop_actions.status<>'done' AND interop_actions.lease_until <= $7)
+ WHERE interop_actions.expires_at <= $7 OR (interop_actions.digest=excluded.digest AND interop_actions.status IN ('running','failed') AND interop_actions.lease_until <= $7)
  RETURNING status,digest,owner,result`), id, server, digest, owner, now.Add(35*time.Second).UnixNano(), now.Add(retention).UnixNano(), now.UnixNano())
 	err := row.Scan(&status, &hash, &current, &result)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -82,8 +89,11 @@ func (s Store) ReserveAction(ctx context.Context, id, server, digest, owner stri
 	if err != nil {
 		return nil, false, err
 	}
+	if status == "erased" {
+		return nil, false, state.ErrErasedResult
+	}
 	if hash != digest {
-		return nil, false, errors.New("idempotency key belongs to a different request")
+		return nil, false, state.ErrActionMismatch
 	}
 	return result, current == owner && status == "running", nil
 }
@@ -96,7 +106,7 @@ func (s Store) CommitAction(ctx context.Context, id, owner, scope string, writes
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now()
 	for _, w := range writes {
 		var old []byte
@@ -144,35 +154,4 @@ func (s Store) CommitAction(ctx context.Context, id, owner, scope string, writes
 		return errors.New("action lease lost")
 	}
 	return tx.Commit()
-}
-func (s Store) PurgeInteropMember(ctx context.Context, server, userID string) (int, error) {
-	if userID == "" || server == "" {
-		return 0, errors.New("missing server or member")
-	}
-	// JSON string matching includes the surrounding quotes. IDs cannot match a substring
-	// of another snowflake. Receipts store only the digest and public result.
-	needle := fmt.Sprintf("%%%q%%", userID)
-	var removed int64
-	for _, table := range []string{"tasks", "interop_actions"} {
-		var q string
-		if table == "tasks" {
-			q = `DELETE FROM tasks WHERE event_seq IS NOT NULL AND scope LIKE $1 AND CAST(payload AS TEXT) LIKE $2`
-		} else {
-			q = `DELETE FROM interop_actions WHERE server=$1 AND CAST(result AS TEXT) LIKE $2`
-		}
-		arg := server
-		if table == "tasks" {
-			arg = "%/" + server
-		}
-		if s.Postgres {
-			q = strings.ReplaceAll(strings.ReplaceAll(q, "CAST(payload AS TEXT)", "convert_from(payload,'UTF8')"), "CAST(result AS TEXT)", "convert_from(result,'UTF8')")
-		}
-		r, err := s.DB.ExecContext(ctx, s.q(q), arg, needle)
-		if err != nil {
-			return int(removed), err
-		}
-		n, _ := r.RowsAffected()
-		removed += n
-	}
-	return int(removed), nil
 }

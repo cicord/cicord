@@ -3,16 +3,19 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cicord/cicord/internal/discord"
-	"github.com/santhosh-tekuri/jsonschema/v6"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
+	"gopkg.in/yaml.v3"
+
+	"github.com/cicord/cicord/internal/discord"
 )
 
 type OptionalFeature struct {
+	When         string   `yaml:"when,omitempty" json:"when,omitempty"`
 	Feature      string   `yaml:"feature" json:"feature"`
 	Capabilities []string `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`
 	Intents      []string `yaml:"intents,omitempty" json:"intents,omitempty"`
@@ -57,6 +60,13 @@ type Contract struct {
 func ContractKey(name string, version int) string { return fmt.Sprintf("%s.v%d", name, version) }
 
 func (p *LoadedPlugin) LoadContracts() error {
+	seenFeatures := map[string]bool{}
+	for _, f := range p.Manifest.Spec.Optional {
+		if seenFeatures[f.Feature] {
+			return fmt.Errorf("duplicate optional feature %q", f.Feature)
+		}
+		seenFeatures[f.Feature] = true
+	}
 	interop := p.Manifest.Spec.Interop
 	if interop == nil {
 		return nil
@@ -189,10 +199,20 @@ func effectiveGrants(s PluginSpec, grants []string) []string {
 	}
 	return out
 }
-func (l *loader) features(s PluginSpec, grants []string, bot string) map[string]string {
+func (l *loader) features(s PluginSpec, grants []string, bot string, config map[string]any) map[string]string {
 	out := map[string]string{}
 	for _, f := range s.Optional {
 		var missing []string
+		if f.When != "" {
+			var value any = config
+			for _, part := range strings.Split(strings.TrimPrefix(f.When, "/"), "/") {
+				m, _ := value.(map[string]any)
+				value = m[strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")]
+			}
+			if flag, ok := value.(bool); !ok || !flag {
+				missing = append(missing, "disabled by "+f.When)
+			}
+		}
 		for _, cap := range f.Capabilities {
 			if !HasGrant(grants, cap) {
 				missing = append(missing, cap+" not granted")

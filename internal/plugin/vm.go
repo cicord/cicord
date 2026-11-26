@@ -217,15 +217,16 @@ func errorJSON(err error) string {
 		Message    string `json:"message"`
 		Capability string `json:"capability,omitempty"`
 	}{Name: "Error", Message: err.Error()}
-	if errors.As(err, &ie) {
+	switch {
+	case errors.As(err, &ie):
 		info.Name = "InteropError"
 		if ie.Unavailable {
 			info.Name = "PluginUnavailableError"
 		}
 		info.Code = ie.Code
-	} else if errors.As(err, &ce) {
+	case errors.As(err, &ce):
 		info.Capability, info.Message = ce.Capability, ce.Error()
-	} else if errors.Is(err, errInvalidArgument) {
+	case errors.Is(err, errInvalidArgument):
 		info.Name = "TypeError"
 	}
 	b, _ := json.Marshal(info)

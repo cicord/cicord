@@ -9,15 +9,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
-
 	"time"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/state"
-	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func callerOf(in config.Instance) plugin.Caller {
@@ -131,7 +132,37 @@ func resolvePeer(from *instanceRT, name string) (*instanceRT, error) {
 	}
 	return nil, &plugin.InteropError{Code: "not_found", Message: "no installation of " + name + " on this server", Unavailable: true}
 }
+
+type privacyGate interface {
+	WithReplayPrivacy(context.Context, string, json.RawMessage, func() error) (bool, error)
+	ErasedPayload(context.Context, string, json.RawMessage) (bool, error)
+}
+
 func (r *Runtime) invokePeer(ctx context.Context, from *instanceRT, kind string, req plugin.Request, frame plugin.CallFrame) (out json.RawMessage, err error) {
+	gate, ok := any(r).(privacyGate)
+	if !ok {
+		return r.runPeer(ctx, from, kind, req, frame)
+	}
+	payload, _ := json.Marshal([]any{frame.Principal, req.Input})
+	server := from.cfg.Server
+	if frame.PrivacyGuard {
+		erased, err := gate.ErasedPayload(ctx, server, payload)
+		if err != nil {
+			return nil, interopFailure("handler_error", "privacy state unavailable")
+		}
+		if erased {
+			return nil, interopFailure("denied", "member data has been erased")
+		}
+		return r.runPeer(ctx, from, kind, req, frame)
+	}
+	frame.PrivacyGuard = true
+	erased, err := gate.WithReplayPrivacy(ctx, server, payload, func() error { var e error; out, e = r.runPeer(ctx, from, kind, req, frame); return e })
+	if erased {
+		return nil, interopFailure("denied", "member data has been erased")
+	}
+	return out, err
+}
+func (r *Runtime) runPeer(ctx context.Context, from *instanceRT, kind string, req plugin.Request, frame plugin.CallFrame) (out json.RawMessage, err error) {
 	full := req.Plugin + "." + req.Name
 	spec := from.cfg.Plugin.Manifest.Spec.Interop
 	cap := "plugins.query:" + full
@@ -198,7 +229,7 @@ func (r *Runtime) invokePeer(ctx context.Context, from *instanceRT, kind string,
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
 	defer cancel()
 	call := plugin.Call{Caller: callerOf(from.cfg), OnBehalfOf: frame.Principal, IdempotencyKey: req.IdempotencyKey}
-	next := plugin.CallFrame{Path: append(slices.Clone(path), provider.id()), Principal: frame.Principal, ReadOnly: kind == "query" || frame.ReadOnly}
+	next := plugin.CallFrame{PrivacyGuard: frame.PrivacyGuard, Path: append(slices.Clone(path), provider.id()), Principal: frame.Principal, ReadOnly: kind == "query" || frame.ReadOnly}
 	run := func(kv state.KV) (json.RawMessage, error) {
 		next.KV = kv
 		result, err := provider.inst().Invoke(ctx, kind, req.Name, req.Input, call, next)
@@ -250,12 +281,27 @@ func (r *Runtime) invokePeer(ctx context.Context, from *instanceRT, kind string,
 	for {
 		cached, acquired, e := journal.ReserveAction(ctx, actionID, in.Server, stableID(string(raw)), owner, time.Now())
 		if e != nil {
+			if errors.Is(e, state.ErrErasedResult) {
+				return nil, interopFailure("denied", "action result erased")
+			}
 			if ctx.Err() != nil {
 				return nil, interopFailure("timeout", "waiting for action")
 			}
-			return nil, interopFailure("invalid_input", e.Error())
+			if errors.Is(e, state.ErrActionMismatch) {
+				return nil, interopFailure("invalid_input", e.Error())
+			}
+			return nil, interopFailure("handler_error", "action journal unavailable")
 		}
 		if cached != nil {
+			if gate, ok := any(r).(privacyGate); ok {
+				erased, e := gate.ErasedPayload(ctx, in.Server, cached)
+				if e != nil {
+					return nil, interopFailure("handler_error", "privacy state unavailable")
+				}
+				if erased {
+					return nil, interopFailure("denied", "cached result contains erased data")
+				}
+			}
 			return cached, nil
 		}
 		if acquired {
@@ -344,10 +390,22 @@ func (r *Runtime) invokePeer(ctx context.Context, from *instanceRT, kind string,
 	}
 	return out, nil
 }
+func (i *instanceRT) featureState() map[string]string {
+	out := maps.Clone(i.cfg.Features)
+	i.featureReports.Range(func(k, v any) bool {
+		name := k.(string)
+		if original, ok := out[name]; ok && original == "" {
+			out[name] = v.(string)
+		}
+		return true
+	})
+	return out
+}
 func (i *instanceRT) featureMessages() []string {
+	features := i.featureState()
 	var out []string
-	for _, feature := range sortedKeys(i.cfg.Features) {
-		if reason := i.cfg.Features[feature]; reason != "" {
+	for _, feature := range sortedKeys(features) {
+		if reason := features[feature]; reason != "" {
 			out = append(out, feature+" disabled: "+reason)
 		}
 	}
@@ -360,6 +418,10 @@ func (i *instanceRT) featureMessages() []string {
 	return out
 }
 func checkedTask(ctx context.Context, inst *instanceRT, t state.TaskLease, r *Runtime) error {
+	data := t.Payload
+	deliver := func(ctx context.Context) error {
+		return inst.inst().RunTask(ctx, t.Name, t.Payload, plugin.TaskDelivery{ID: t.ID, Attempt: t.Attempt})
+	}
 	if t.Event {
 		var ev plugin.Event
 		if err := json.Unmarshal(t.Payload, &ev); err != nil {
@@ -368,14 +430,14 @@ func checkedTask(ctx context.Context, inst *instanceRT, t state.TaskLease, r *Ru
 		if !eventEnabled(inst, ev.Meta.Topic, ev.Meta.Version) {
 			return errors.New("event subscription unavailable")
 		}
-		deliver := func() error { return inst.inst().DeliverEvent(ctx, ev) }
-		if gate, ok := any(r).(interface {
-			WithReplayPrivacy(context.Context, string, json.RawMessage, func() error) (bool, error)
-		}); ok {
-			_, err := gate.WithReplayPrivacy(ctx, inst.cfg.Server, ev.Payload, deliver)
-			return err
-		}
-		return deliver()
+		data = ev.Payload
+		deliver = func(ctx context.Context) error { return inst.inst().DeliverEvent(ctx, ev) }
 	}
-	return inst.inst().RunTask(ctx, t.Name, t.Payload, plugin.TaskDelivery{ID: t.ID, Attempt: t.Attempt})
+	if gate, ok := any(r).(interface {
+		WithReplayPrivacy(context.Context, string, json.RawMessage, func() error) (bool, error)
+	}); ok {
+		_, err := gate.WithReplayPrivacy(ctx, inst.cfg.Server, data, func() error { return deliver(plugin.WithPrivacyGuard(ctx)) })
+		return err
+	}
+	return deliver(ctx)
 }

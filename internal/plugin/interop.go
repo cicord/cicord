@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/cicord/cicord/internal/state"
 	"time"
+
+	"github.com/cicord/cicord/internal/state"
 )
 
 type Caller struct {
@@ -35,14 +36,20 @@ type Request struct {
 	TimeoutMs                    int
 }
 type CallFrame struct {
-	Path      []string
-	Principal *Principal
-	ReadOnly  bool
-	Publish   func(context.Context, string, int, string, json.RawMessage) error
-	KV        state.KV
+	PrivacyGuard bool
+	Path         []string
+	Principal    *Principal
+	ReadOnly     bool
+	Publish      func(context.Context, string, int, string, json.RawMessage) error
+	KV           state.KV
 }
 type callKey struct{}
 type startKey struct{}
+type privacyKey struct{}
+
+func WithPrivacyGuard(ctx context.Context) context.Context {
+	return context.WithValue(ctx, privacyKey{}, true)
+}
 
 func BeforeDelivery(ctx context.Context, start func(context.Context) error) context.Context {
 	return context.WithValue(ctx, startKey{}, start)
@@ -82,19 +89,11 @@ func (i *Instance) Invoke(ctx context.Context, kind, name string, input json.Raw
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	// Each request has its own module and microtask queue. Plugin-created promises
-	// and timers can never carry a member principal or a writable context across requests.
-	def := *i.Definition()
-	def.HasOnStart, def.HasOnStop = false, false
-	vm, err := NewInstance(i.code, &def, i.env)
+	vm, err := i.privateVM(ctx, frame)
 	if err != nil {
 		return nil, err
 	}
 	defer vm.shutdown()
-	vm.bg.frame = frame
-	if err := vm.Start(ctx); err != nil {
-		return nil, err
-	}
 	ctx = context.WithValue(ctx, callKey{}, frame)
 	r := <-vm.dispatch(ctx, kind, name, struct {
 		Input json.RawMessage `json:"input"`
@@ -155,7 +154,7 @@ func readonlyOp(op, args string) bool {
 		return false
 	}
 	switch op {
-	case "channel.messages", "channel.message", "channel.previewPurge", "server.invites", "server.auditLog", "server.bans", "server.member", "server.voiceMembers", "role.members", "kv.get", "kv.list", "plugins.query", "ranking.get", "ranking.top", "ranking.around", "kv.entries", "events.list", "events.users", "message.pollVoters", "analytics.summary":
+	case "channel.memberOverwrite", "channel.messages", "channel.message", "channel.previewPurge", "server.invites", "server.auditLog", "server.bans", "server.member", "server.voiceMembers", "role.members", "kv.get", "kv.list", "plugins.query", "files.read", "files.list", "files.bytes", "index.search", "kv.entries", "events.list", "events.users", "message.pollVoters", "analytics.summary":
 		return true
 	}
 	return false
@@ -177,3 +176,76 @@ func trustedPrincipal(data any) *Principal {
 }
 
 var ErrDeliverySuperseded = errors.New("delivery no longer owned by worker")
+
+func opHasFeature(i *Instance, _ *invocation, args json.RawMessage) (any, error) {
+	a, err := decode[struct{ Plugin, Feature string }](args)
+	if err != nil {
+		return nil, err
+	}
+	return i.env.HasFeature != nil && i.env.HasFeature(a.Plugin, a.Feature), nil
+}
+func opReportFeature(i *Instance, inv *invocation, args json.RawMessage) (any, error) {
+	if inv.frame.ReadOnly {
+		return nil, &CapabilityError{Capability: "read-only"}
+	}
+	a, err := decode[struct {
+		Feature, Reason string
+		Active          bool
+	}](args)
+	if err != nil {
+		return nil, err
+	}
+	if len(a.Reason) > 256 {
+		return nil, argErr("feature reason exceeds 256 bytes")
+	}
+	if i.env.ReportFeature == nil {
+		return nil, argErr("feature reporting unavailable")
+	}
+	return nil, i.env.ReportFeature(a.Feature, a.Active, a.Reason)
+}
+
+// Keep the principal and write permissions of each request in their own JS realm.
+// A promise retained in module scope cannot move another request's continuation
+// into a privileged host turn. Durable cross-request state is stored in KV.
+func (i *Instance) privateVM(ctx context.Context, frame CallFrame) (*Instance, error) {
+	if err := i.checkState("interop"); err != nil {
+		return nil, err
+	}
+	def := *i.Definition()
+	def.HasOnStart, def.HasOnStop = false, false
+	env := i.env
+	env.IsolateMemberCalls = false
+	// The live installation completed restore before serving. Re-entering it here while a call holds the privacy guard would deadlock.
+	env.BeforeStart = nil
+	vm, err := NewInstance(i.code, &def, env)
+	if err != nil {
+		return nil, err
+	}
+	vm.bg.frame = frame
+	if err := vm.Start(ctx); err != nil {
+		vm.shutdown()
+		return nil, err
+	}
+	return vm, nil
+}
+
+// Member requests and nested peer requests have separate admission pools: one
+// pool of callers waiting on their peers cannot consume all provider slots.
+var memberSlots = make(chan struct{}, 64)
+
+func (i *Instance) privateMember(ctx context.Context, run func(*Instance) error) error {
+	select {
+	case memberSlots <- struct{}{}:
+		defer func() { <-memberSlots }()
+	default:
+		return ErrBusy
+	}
+	vm, err := i.privateVM(ctx, CallFrame{})
+	if err != nil {
+		return err
+	}
+	defer vm.shutdown()
+	stop := context.AfterFunc(i.ctx, func() { vm.cancel(ErrStopped) })
+	defer stop()
+	return run(vm)
+}

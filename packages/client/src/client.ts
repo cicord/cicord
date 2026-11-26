@@ -781,6 +781,8 @@ export class CicordClient {
     deadLetters: async (server: string, options?: CallOptions): Promise<DeadTask[]> =>
       (await this.#api<Items<DeadTask>>("GET", `/servers/${seg(server)}/dead-letters`, options))
         .items,
+    deadEvent: (server: string, id: string, options?: CallOptions): Promise<Json> =>
+      this.#api<Json>("GET", `/servers/${seg(server)}/dead-letters/${seg(id)}/event`, options),
     resolveDeadLetter: (server: string, id: string, decision: "retry" | "discard"): Promise<void> =>
       this.#api<void>("POST", `/servers/${seg(server)}/dead-letters/${seg(id)}/${decision}`),
     /** `GET /servers/{server}/plugins` (moderator): every instance. */

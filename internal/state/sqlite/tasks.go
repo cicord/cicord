@@ -177,7 +177,7 @@ func (q taskQueue) DeadCounts(ctx context.Context) (map[string]int, error) {
 const deadTaskServer = `dead AND substr(scope,1,7)='plugin:' AND substr(scope,length(scope)-length(?1))='/' || ?1`
 
 func (q taskQueue) DeadLetters(ctx context.Context, server string, limit int) ([]state.DeadTask, error) {
-	rows, err := q.s.r.QueryContext(ctx, `SELECT scope,id,name,run_at,attempts,failures,last_failure FROM tasks WHERE `+deadTaskServer+` ORDER BY run_at,id LIMIT ?2`, server, clampLimit(limit, state.DefaultDueLimit))
+	rows, err := q.s.r.QueryContext(ctx, `SELECT scope,id,name,run_at,attempts,failures,last_failure,event_seq IS NOT NULL FROM tasks WHERE `+deadTaskServer+` ORDER BY run_at,id LIMIT ?2`, server, clampLimit(limit, state.DefaultDueLimit))
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +186,7 @@ func (q taskQueue) DeadLetters(ctx context.Context, server string, limit int) ([
 	for rows.Next() {
 		var t state.DeadTask
 		var runAt int64
-		if err := rows.Scan(&t.Scope, &t.ID, &t.Name, &runAt, &t.Attempts, &t.Failures, &t.Reason); err != nil {
+		if err := rows.Scan(&t.Scope, &t.ID, &t.Name, &runAt, &t.Attempts, &t.Failures, &t.Reason, &t.Event); err != nil {
 			return nil, err
 		}
 		t.RunAt = fromNanos(runAt)

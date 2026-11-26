@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/cicord/cicord/internal/state"
 	"math"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cicord/cicord/internal/state"
 )
 
 // Collect the provider's read/write set. Commit verifies the live inputs, applies

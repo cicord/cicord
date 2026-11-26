@@ -59,3 +59,36 @@ func TestDurableTaskDelivery(t *testing.T) {
 		}
 	}
 }
+
+// A legacy job that was only leased can still start. Once the runtime enters
+// its JS handler, even a post-effect error or an expired old lease cannot replay it.
+func TestLegacyTaskBeginsOnce(t *testing.T) {
+	e := startExampleResync(t, nil, func(dir string) {
+		replaceIn(t, filepath.Join(dir, "plugins/welcome/plugin.yaml"), "    - portal.links", "    - scheduler\n    - portal.links")
+		replaceIn(t, filepath.Join(dir, "bots/moderator/bot.yaml"), "        - portal.links", "        - scheduler\n        - portal.links")
+		replaceIn(t, filepath.Join(dir, "plugins/welcome/src/index.ts"), "  events: {", `  tasks:{async legacy(ctx){await ctx.kv.increment("runs");throw Error("lost result")}},events: {`)
+	}, -1)
+	ctx := t.Context()
+	q := e.rt.Store().Tasks()
+	when := time.Now().Add(time.Hour)
+	scope := "plugin:moderator/welcome/my-community"
+	if err := q.Schedule(ctx, state.Task{ID: "legacy-1", Name: "legacy", Scope: scope, RunAt: when}); err != nil {
+		t.Fatal(err)
+	}
+	old, err := q.ClaimDue(ctx, when, when.Add(time.Minute), "previous", 1)
+	if err != nil || len(old) != 1 {
+		t.Fatal(old, err)
+	}
+	e.rt.sched.runTasks(ctx, when.Add(2*time.Minute))
+	e.waitFor("legacy handler", func() bool { return len(e.rt.sched.slots) == 0 })
+	e.rt.sched.runTasks(ctx, when.Add(3*time.Minute))
+	if fired, err := q.Consume(ctx, old[0]); err != nil || fired {
+		t.Fatal(fired, err)
+	}
+	if v, err := e.rt.Store().KV(scope).Get(ctx, "runs"); err != nil || string(v) != "1" {
+		t.Fatal(v, err)
+	}
+	if dead, err := q.DeadLetters(ctx, "my-community", 10); err != nil || len(dead) != 0 {
+		t.Fatal(dead, err)
+	}
+}

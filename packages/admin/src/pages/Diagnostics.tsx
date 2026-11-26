@@ -45,6 +45,7 @@ function FailedTasks({ serverKey }: { serverKey: string }) {
   const { client } = useCicord();
   const list = usePoll((signal) => client.admin.deadLetters(serverKey, { signal }), 15_000);
   const action = useAction();
+  const [payload, setPayload] = useState<{ id: string; value: string } | null>(null);
   const [discard, setDiscard] = useState<string | null>(null);
   function decide(id: string, decision: "retry" | "discard") {
     void action.run(async () => {
@@ -64,6 +65,34 @@ function FailedTasks({ serverKey }: { serverKey: string }) {
           <li key={task.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div>
               <p className="font-medium">{task.name}</p>
+              {task.event && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-expanded={payload?.id === task.id}
+                  onClick={() => {
+                    if (payload?.id === task.id) {
+                      setPayload(null);
+                      return;
+                    }
+                    void action.run(async () =>
+                      setPayload({
+                        id: task.id,
+                        value: JSON.stringify(
+                          await client.admin.deadEvent(serverKey, task.id),
+                          null,
+                          2,
+                        ),
+                      }),
+                    );
+                  }}
+                >
+                  {t("diagnostics.eventPayload")}
+                </Button>
+              )}
+              {payload?.id === task.id && (
+                <pre className="max-h-64 max-w-full overflow-auto text-xs">{payload.value}</pre>
+              )}
               <p className="text-xs text-muted-foreground">
                 {task.scope} · {t("diagnostics.attempts", { count: task.attempts })} · {task.reason}
               </p>

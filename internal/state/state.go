@@ -169,6 +169,7 @@ type TaskQueue interface {
 
 // DeadTask omits the payload: it may contain private member or message data.
 type DeadTask struct {
+	Event    bool      `json:"event,omitempty"`
 	Scope    string    `json:"scope"`
 	ID       string    `json:"id"`
 	Name     string    `json:"name"`

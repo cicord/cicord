@@ -164,6 +164,7 @@ type instanceRT struct {
 	revision           *active
 	eventRejects       atomic.Uint64
 	interopProblem     atomic.Value
+	featureReports     sync.Map
 	// current is the running instance; the supervisor replaces it after a crash.
 	current atomic.Pointer[plugin.Instance]
 

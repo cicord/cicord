@@ -556,7 +556,7 @@ func (l *loader) checkBots(repo *Repo) {
 					l.sink.errorf(b.File, doc.lineOf(p), p, "[server %s] %s", sk, problem.msg)
 				}
 				repo.Instances = append(repo.Instances, Instance{
-					Bot: bk, Name: inst.Name, Server: sk, Plugin: lp, Grants: effectiveGrants(lp.Manifest.Spec, inst.Grants), Config: cfg, Features: l.features(lp.Manifest.Spec, inst.Grants, bk), Interop: inst.Interop,
+					Bot: bk, Name: inst.Name, Server: sk, Plugin: lp, Grants: effectiveGrants(lp.Manifest.Spec, inst.Grants), Config: cfg, Features: l.features(lp.Manifest.Spec, inst.Grants, bk, cfg), Interop: inst.Interop,
 					NetworkAllow: network, SecretRefs: inst.Secrets, Files: files,
 				})
 			}

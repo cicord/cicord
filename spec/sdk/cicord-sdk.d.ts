@@ -833,13 +833,17 @@ export interface Http {
   }>;
 }
 
-/** Cross-plugin events within the same (bot, server). */
+/** Cross-plugin events scoped to the bot or the server, as declared by the publisher. */
 export interface Events {
   /**
    * Topic is namespaced by the publisher plugin name: `publish("levelUp", …)` from plugin
    * `xp` is delivered to `subscriptions["xp.levelUp"]`. @capability events.publish
    */
-  publish(topic: string, payload: Json, options?: { version?: number; idempotencyKey?: string }): Promise<void>;
+  publish<N extends string, V extends number = 1>(
+    topic: N,
+    payload: `${N}.v${V}` extends keyof PublishedEvents ? PublishedEvents[`${N}.v${V}`] : Json,
+    options?: { version?: V; idempotencyKey?: string },
+  ): Promise<void>;
 }
 
 export interface CaseScope { readonly kind: "case"; readonly id: string }
@@ -853,7 +857,10 @@ export interface Portal {
    * Signed, short-lived URL to a page of the community portal. When `member` is given, the
    * portal session is pre-authenticated for that member. @capability portal.links
    */
-  link(path: string, options?: { member?: Member | User; expiresInSeconds?: number }): Promise<string>;
+  link(
+    path: string,
+    options?: { member?: Member | User; expiresInSeconds?: number },
+  ): Promise<string>;
 }
 
 export type ImageSource = {asset: string} | {url: string};
@@ -887,27 +894,70 @@ export interface EventMeta {
   readonly publisher: { readonly plugin: string; readonly bot: string; readonly instance: string };
 }
 export interface InteropCall {
-  readonly caller: { readonly plugin: string; readonly bot: string; readonly instance: string; readonly source: string; readonly verified: boolean };
-  readonly onBehalfOf?: { readonly userId: string; readonly access: "member" | "moderator" | "admin" | "scoped"; readonly resourceScope?: {readonly kind:string; readonly id:string} };
+  readonly caller: {
+    readonly plugin: string;
+    readonly bot: string;
+    readonly instance: string;
+    readonly source: string;
+    readonly verified: boolean;
+  };
+  readonly onBehalfOf?: {
+    readonly userId: string;
+    readonly access: "member" | "moderator" | "admin" | "scoped";
+    readonly resourceScope?: { readonly kind: string; readonly id: string };
+  };
 }
-export type InteropCode = "not_found" | "ambiguous" | "denied" | "timeout" | "invalid_input" | "handler_error" | "cycle";
-export declare class InteropError extends Error { readonly code: InteropCode; constructor(code: InteropCode, message: string); }
-export declare class PluginUnavailableError extends InteropError { constructor(message?: string); }
+export type InteropCode =
+  | "not_found"
+  | "ambiguous"
+  | "denied"
+  | "timeout"
+  | "invalid_input"
+  | "handler_error"
+  | "cycle";
+export declare class InteropError extends Error {
+  readonly code: InteropCode;
+  constructor(code: InteropCode, message: string);
+}
+export declare class PluginUnavailableError extends InteropError {
+  constructor(message?: string);
+}
 /** Augmented by cicord plugin typegen from the installed providers' JSON Schemas. */
 export interface QueryContracts {}
 export interface ActionContracts {}
 export interface EventContracts {}
-type InputOf<C, K> = K extends keyof C ? C[K] extends {input: infer I} ? I : Json : Json;
-type OutputOf<C, K> = K extends keyof C ? C[K] extends {output: infer O} ? O : Json : Json;
+export interface PublishedEvents {}
+export interface SubscribedEvents {}
+type InputOf<C, K> = K extends keyof C ? (C[K] extends { input: infer I } ? I : Json) : Json;
+type OutputOf<C, K> = K extends keyof C ? (C[K] extends { output: infer O } ? O : Json) : Json;
 export interface Plugins {
   has(plugin: string): boolean;
-  query<K extends string, P extends string = string, M extends string = string>(plugin: P, method: M, input: InputOf<QueryContracts, string extends K ? `${P}.${M}` : K>, opts?: {timeoutMs?: number}): Promise<OutputOf<QueryContracts, string extends K ? `${P}.${M}` : K>>;
-  call<K extends string, P extends string = string, M extends string = string>(plugin: P, method: M, input: InputOf<ActionContracts, string extends K ? `${P}.${M}` : K>, opts: {idempotencyKey: string; timeoutMs?: number}): Promise<OutputOf<ActionContracts, string extends K ? `${P}.${M}` : K>>;
+  hasFeature(plugin: string, feature: string): boolean;
+  query<K extends string, P extends string = string, M extends string = string>(
+    plugin: P,
+    method: M,
+    input: InputOf<QueryContracts, string extends K ? `${P}.${M}` : K>,
+    opts?: { timeoutMs?: number },
+  ): Promise<OutputOf<QueryContracts, string extends K ? `${P}.${M}` : K>>;
+  call<K extends string, P extends string = string, M extends string = string>(
+    plugin: P,
+    method: M,
+    input: InputOf<ActionContracts, string extends K ? `${P}.${M}` : K>,
+    opts: { idempotencyKey: string; timeoutMs?: number },
+  ): Promise<OutputOf<ActionContracts, string extends K ? `${P}.${M}` : K>>;
 }
-export interface Query<I = Json, O = Json> { run(ctx: Context, input: I, call: InteropCall): Awaitable<O>; }
-export interface Action<I = Json, O = Json> { run(ctx: Context, input: I, call: InteropCall & {readonly idempotencyKey:string}): Awaitable<O>; }
-export declare function query<I = Json,O = Json>(handler: Query<I,O>): Query<I,O>;
-export declare function action<I = Json,O = Json>(handler: Action<I,O>): Action<I,O>;
+export interface Query<I = Json, O = Json> {
+  run(ctx: Context, input: I, call: InteropCall): Awaitable<O>;
+}
+export interface Action<I = Json, O = Json> {
+  run(
+    ctx: Context,
+    input: I,
+    call: InteropCall & { readonly idempotencyKey: string },
+  ): Awaitable<O>;
+}
+export declare function query<I = Json, O = Json>(handler: Query<I, O>): Query<I, O>;
+export declare function action<I = Json, O = Json>(handler: Action<I, O>): Action<I, O>;
 
 export interface Context {
   readonly i18n: {t(key: string, vars?: Record<string,string|number|boolean>, options?: {locale?:string}): string};
@@ -920,7 +970,10 @@ export interface Context {
     distance(a: string, b: string): number;
   };
   readonly analytics:{summary(query:{from:string;to:string;granularity:"day"|"week"}):Promise<AnalyticsSummary>};
-  readonly features: {enabled(feature: string): boolean};
+  readonly features: {
+    enabled(feature: string): boolean;
+    report(feature: string, active: boolean, reason?: string): void;
+  };
   readonly plugins: Plugins;
   readonly plugin: { readonly name: string; readonly version: string; readonly instance: string };
   readonly bot: { readonly key: string; readonly user: User };
@@ -1163,7 +1216,9 @@ export interface PluginDefinition {
   /** A task may be delivered more than once. Its ID is stable across attempts. */
   tasks?: Record<string, (ctx: Context, payload: Json | undefined, task?: { readonly id: string; readonly attempt: number }) => Awaitable<void>>;
   /** Cross-plugin event subscriptions, keyed by "<plugin>.<topic>". @capability events.subscribe */
-  subscriptions?: Record<string, (ctx: Context, payload: Json, meta: EventMeta) => Awaitable<void>>;
+  subscriptions?: {
+    [K in keyof SubscribedEvents]?: (ctx: Context, payload: SubscribedEvents[K], meta: EventMeta) => Awaitable<void>;
+  } & Record<string, {run(ctx: Context, payload: Json, meta: EventMeta): Awaitable<void>}["run"]>;
   queries?: Record<string, Query<any, any>>;
   actions?: Record<string, Action<any, any>>;
   /** HTTP routes exposed to the community portal. @capability portal.routes */

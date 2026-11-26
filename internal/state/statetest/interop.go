@@ -3,9 +3,11 @@ package statetest
 import (
 	"encoding/json"
 	"errors"
-	"github.com/cicord/cicord/internal/state"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/cicord/cicord/internal/state"
 )
 
 func testInterop(t *testing.T, b Backend) {
@@ -98,5 +100,57 @@ func testInterop(t *testing.T, b Backend) {
 	}
 	if _, _, err := db.ReserveAction(ctx, "action", "server", "other", "four", now); err == nil {
 		t.Fatal("cache leaked to another request")
+	}
+}
+
+func testInteropPrivacy(t *testing.T, b Backend) {
+	s, c := open(t, b)
+	ctx := t.Context()
+	j := s.Interop()
+	q := s.Tasks()
+	now := c.Now()
+	const user = "111111111111111111"
+	const other = "222222222222222222"
+	e := state.EventFanout{ID: "shared", Publisher: "a", Topic: "polls.closed", At: now, Subscribers: []string{"plugin:bot/levels/one"}, Payload: json.RawMessage(`{"meta":{"id":"stable"},"payload":{"voters":["111111111111111111","222222222222222222"]}}`)}
+	must(t, j.PublishEvent(ctx, e))
+	e.ID = "distinct"
+	e.Subscribers = []string{"plugin:bot/levels/two"}
+	must(t, j.PublishEvent(ctx, e))
+	_, _, err := j.ReserveAction(ctx, "receipt", "one", "request", "worker", now)
+	must(t, err)
+	must(t, j.CommitAction(ctx, "receipt", "worker", "plugin:bot/levels/one", nil, json.RawMessage(`{"userId":"111111111111111111"}`)))
+	n, err := j.PurgeInteropMember(ctx, "one", user)
+	must(t, err)
+	if n != 2 {
+		t.Fatal(n)
+	}
+	if _, ok, err := j.ReserveAction(ctx, "receipt", "one", "request", "retry", now.Add(time.Hour)); !errors.Is(err, state.ErrErasedResult) || ok {
+		t.Fatal("erased action reran", ok, err)
+	}
+	items, err := q.ClaimDue(ctx, now, now.Add(time.Minute), "worker", 10)
+	must(t, err)
+	if len(items) != 2 {
+		t.Fatal(items)
+	}
+	for _, item := range items {
+		if !strings.Contains(string(item.Payload), other) || (strings.HasSuffix(item.Scope, "/one") == strings.Contains(string(item.Payload), user)) {
+			t.Fatal(item)
+		}
+		must(t, q.Release(ctx, item, time.Time{}, "handler failed"))
+		otherServer := "one"
+		if strings.HasSuffix(item.Scope, "/one") {
+			otherServer = "two"
+		}
+		if data, err := j.DeadEvent(ctx, otherServer, item.ID); err != nil || data != nil {
+			t.Fatal("cross-server payload", data, err)
+		}
+	}
+	c.Advance(15 * 24 * time.Hour)
+	_, err = s.Sweep(ctx)
+	must(t, err)
+	dead, err := q.DeadLetters(ctx, "one", 20)
+	must(t, err)
+	if len(dead) != 0 {
+		t.Fatal(dead)
 	}
 }

@@ -2,9 +2,10 @@ package typegen
 
 import (
 	"fmt"
-	"github.com/cicord/cicord/internal/config"
 	"sort"
 	"strings"
+
+	"github.com/cicord/cicord/internal/config"
 )
 
 // Interop generates one augmentation from the versioned contract schemas. A collision
@@ -22,7 +23,7 @@ func Interop(plugins []*config.LoadedPlugin) (string, error) {
 		return nil
 	}
 	ts := func(doc map[string]any) string { g := gen{root: doc}; return g.typeOf(doc, "    ", false, 0) }
-	for _, p := range plugins {
+	for i, p := range plugins {
 		s := p.Manifest.Spec.Interop
 		if s == nil {
 			continue
@@ -30,6 +31,11 @@ func Interop(plugins []*config.LoadedPlugin) (string, error) {
 		prefix := p.Manifest.Metadata.Name + "."
 		for _, t := range s.Publishes {
 			key := config.ContractKey(t.Topic, t.V())
+			if i == 0 {
+				if err := add("PublishedEvents", key, ts(p.Contracts[key].InputDoc)); err != nil {
+					return "", err
+				}
+			}
 			if err := add("EventContracts", prefix+key, ts(p.Contracts[key].InputDoc)); err != nil {
 				return "", err
 			}
@@ -46,12 +52,26 @@ func Interop(plugins []*config.LoadedPlugin) (string, error) {
 			}
 		}
 	}
+	if len(plugins) > 0 && plugins[0].Manifest.Spec.Interop != nil {
+		byTopic := map[string][]string{}
+		for _, t := range plugins[0].Manifest.Spec.Interop.Subscribes {
+			if typ := tables["EventContracts"][config.ContractKey(t.Topic, t.V())]; typ != "" {
+				byTopic[t.Topic] = append(byTopic[t.Topic], typ)
+			}
+		}
+		for name, types := range byTopic {
+			sort.Strings(types)
+			if err := add("SubscribedEvents", name, strings.Join(types, " | ")); err != nil {
+				return "", err
+			}
+		}
+	}
 	if len(tables) == 0 {
 		return "", nil
 	}
 	var b strings.Builder
 	b.WriteString("\ndeclare module \"@cicord/sdk\" {\n")
-	for _, name := range []string{"EventContracts", "QueryContracts", "ActionContracts"} {
+	for _, name := range []string{"PublishedEvents", "SubscribedEvents", "EventContracts", "QueryContracts", "ActionContracts"} {
 		rows := tables[name]
 		if len(rows) == 0 {
 			continue

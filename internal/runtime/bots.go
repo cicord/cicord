@@ -378,13 +378,37 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		AFKChannelID: func() string { return srt.cache.Server().AFKChannelID },
 		OwnerID:      func() string { return discord.CurrentGuildOwner(host.session, srt.cfg.Spec.DiscordID) }, Access: pluginAccess(srt.cfg.Spec.Access),
 		DMReceipts: r.opts.Store.KV("dm-receipts:" + in.ID()), KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
-		Resources: ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
-		Portal:    &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, Store: r.opts.Store, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name, MaxTTL: 24 * time.Hour},
-		Features:  in.Features,
+		Resources:          ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
+		Portal:             &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, Store: r.opts.Store, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name, MaxTTL: 24 * time.Hour},
+		IsolateMemberCalls: m.Spec.Interop != nil && len(m.Spec.Interop.Consumes.Actions)+len(m.Spec.Interop.Consumes.Queries) > 0,
+		Features:           in.Features,
+		ReportFeature: func(name string, active bool, reason string) error {
+			if _, ok := in.Features[name]; !ok {
+				return fmt.Errorf("undeclared optional feature %q", name)
+			}
+			if active {
+				reason = ""
+			} else if reason == "" {
+				reason = "disabled by instance configuration"
+			}
+			irt.featureReports.Store(name, reason)
+			return nil
+		},
+		HasFeature: func(name, feature string) bool {
+			for _, peer := range irt.revision.instances {
+				if peer.cfg.Server != in.Server || peer.cfg.Plugin.Manifest.Metadata.Name != name || peer.inst() == nil {
+					continue
+				}
+				if v, ok := peer.featureState()[feature]; ok && v == "" {
+					return true
+				}
+			}
+			return false
+		},
 		HasPlugin: func(name string) bool {
 			_, err := resolvePeer(irt, name)
 			var e *plugin.InteropError
-			return !(errors.As(err, &e) && e.Unavailable)
+			return !errors.As(err, &e) || !e.Unavailable
 		},
 		InvokePlugin: func(ctx context.Context, kind string, a plugin.Request, f plugin.CallFrame) (json.RawMessage, error) {
 			return r.invokePeer(ctx, irt, kind, a, f)

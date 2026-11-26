@@ -2,9 +2,10 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/cicord/cicord/internal/config"
 	"slices"
 	"strings"
+
+	"github.com/cicord/cicord/internal/config"
 )
 
 type InteropEdge struct {
@@ -30,7 +31,7 @@ func (r *Runtime) InteropGraph(server string) InteropGraph {
 			continue
 		}
 		id := i.cfg.Bot + "/" + i.cfg.Name
-		graph.Features[id] = i.cfg.Features
+		graph.Features[id] = i.featureState()
 		s := i.cfg.Plugin.Manifest.Spec.Interop
 		if s == nil {
 			continue

@@ -1477,6 +1477,7 @@
     "description": "The same live checks as the setup wizard: token, intents, permissions, role position, commands, events and saving.",
     "run": "Run the checks",
     "interop": "Plugin integrations",
+    "eventPayload": "Event payload",
     "disabledFeatures": "Disabled features",
     "deadLetters": "Failed tasks and event deliveries",
     "attempts": "{{count}} attempts",

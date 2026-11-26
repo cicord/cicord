@@ -108,8 +108,9 @@ var (
 
 func init() {
 	syncOps = map[string]syncOp{
-		"crypto.random": randomValues,
-		"plugins.has":   opPluginsHas, "features.enabled": opFeature,
+		"crypto.random":      randomValues,
+		"plugins.hasFeature": opHasFeature, "features.report": opReportFeature,
+		"plugins.has": opPluginsHas, "features.enabled": opFeature,
 		"resolve.role":           opResolveRole,
 		"server.channel":         opServerChannel,
 		"server.role":            opServerRole,

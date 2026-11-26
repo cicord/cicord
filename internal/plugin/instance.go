@@ -111,11 +111,14 @@ type Env struct {
 	Resources  state.ResourceMap // records plugin-owned channels; nil: not recorded
 	Portal     PortalLinker      // nil: ctx.portal.link fails
 	// Publish sends a cross-plugin event. topic is namespaced: "<plugin>.<topic>".
-	Features       map[string]string
-	HasPlugin      func(string) bool
-	InvokePlugin   func(context.Context, string, Request, CallFrame) (json.RawMessage, error)
-	PublishVersion func(context.Context, string, int, string, json.RawMessage) error
-	Publish        func(topic string, payload json.RawMessage) error
+	Features           map[string]string
+	HasPlugin          func(string) bool
+	IsolateMemberCalls bool
+	HasFeature         func(string, string) bool
+	ReportFeature      func(string, bool, string) error
+	InvokePlugin       func(context.Context, string, Request, CallFrame) (json.RawMessage, error)
+	PublishVersion     func(context.Context, string, int, string, json.RawMessage) error
+	Publish            func(topic string, payload json.RawMessage) error
 
 	Logger     *slog.Logger // nil: discarded
 	Limits     Limits
@@ -949,6 +952,10 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 	}
 	timeout := i.limits.HandlerTimeout
 	switch kind {
+	case "action", "query":
+		if deadline, ok := caller.Deadline(); ok {
+			timeout = time.Until(deadline)
+		}
 	case "stop":
 		timeout = i.limits.StopTimeout
 	case "autocomplete":
@@ -972,6 +979,9 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		inv.frame = frame
 	} else {
 		inv.frame.Principal = trustedPrincipal(data)
+	}
+	if guarded, _ := caller.Value(privacyKey{}).(bool); guarded {
+		inv.frame.PrivacyGuard = true
 	}
 	inv.rememberAudience(data)
 	queued = true
@@ -1082,6 +1092,13 @@ func (i *Instance) HandleEvent(ctx context.Context, ev discord.Event) error {
 
 // DispatchInteraction queues an interaction (see HandleInteraction) and returns immediately.
 func (i *Instance) DispatchInteraction(ctx context.Context, it discord.Interaction, kind, localID string) <-chan error {
+	if i.env.IsolateMemberCalls {
+		done := make(chan error, 1)
+		go func() {
+			done <- i.privateMember(ctx, func(vm *Instance) error { return vm.HandleInteraction(ctx, it, kind, localID) })
+		}()
+		return done
+	}
 	if it.ServerID != "" && it.ServerID != i.env.ServerID {
 		return errChan(fmt.Errorf("plugin: interaction for server %s routed to the instance of server %s", it.ServerID, i.env.ServerID))
 	}
@@ -1242,6 +1259,11 @@ func (i *Instance) HandleInteraction(ctx context.Context, it discord.Interaction
 // HandleRoute runs the portal route matching method and path (requires portal.routes).
 // Access control (RouteDef.Access, see Definition.MatchRoute) is the caller's job.
 func (i *Instance) HandleRoute(ctx context.Context, method, path string, req RouteRequest) (RouteResponse, error) {
+	if i.env.IsolateMemberCalls {
+		var out RouteResponse
+		err := i.privateMember(ctx, func(vm *Instance) error { var err error; out, err = vm.HandleRoute(ctx, method, path, req); return err })
+		return out, err
+	}
 	if err := i.require(capPortalRoutes); err != nil {
 		return RouteResponse{}, err
 	}

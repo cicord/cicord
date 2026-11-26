@@ -707,9 +707,10 @@
       http,
       events,
       portal,
-      features: freeze({enabled: (feature) => hcall("features.enabled", {feature})}),
+      features: freeze({enabled: (feature) => hcall("features.enabled", {feature}), report: (feature,active,reason) => hcall("features.report", {feature,active,reason})}),
       plugins: freeze({
         has: (plugin) => hcall("plugins.has", {plugin}),
+        hasFeature: (plugin,feature) => hcall("plugins.hasFeature", {plugin,feature}),
         query: (plugin, name, input, opts = {}) => acall("plugins.query", {plugin, name, input, timeoutMs: opts.timeoutMs}),
         call: (plugin, name, input, opts = {}) => acall("plugins.call", {plugin, name, input, timeoutMs: opts.timeoutMs, idempotencyKey: opts.idempotencyKey}),
       }),

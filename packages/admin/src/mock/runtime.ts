@@ -2127,6 +2127,8 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
             interopErased: 0,
           });
         }, true);
+      if (method === "GET" && rest === "/interop")
+        return staff(() => json({ edges: [], features: {} }), true);
       if (method === "GET" && rest === "/dead-letters")
         return staff(() => json({ items: [] }), true);
       if (method === "GET" && rest === "/diagnostics")

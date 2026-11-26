@@ -26,6 +26,8 @@
 import type {
   Attachment,
   UploadFile,
+  Action,
+  InteropCall,
   AutocompleteChoice,
   AutocompleteInteraction,
   Channel,
@@ -275,6 +277,7 @@ export interface TestHarness {
   setReaction(messageId: string, emoji: string, userId: string, present?: boolean): void;
   readonly crossposts: Set<string>;
   readonly typing: string[];
+  readonly onceFor: ReturnType<typeof onceFor>;
   readonly logs: LogEntry[];
   readonly sent: SentMessage[];
   readonly roleChanges: RoleChange[];
@@ -1693,6 +1696,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
       },
     };
   }
+  const featureReports = new Map<string, boolean>();
   const ctx: Context = {
     i18n: translator(),
 
@@ -1765,9 +1769,16 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         return structuredClone(options.analytics);
       },
     },
-    features: { enabled: (name) => options.features?.includes(name) ?? false },
+    features: {
+      enabled: (name) => options.features?.includes(name) ?? false,
+      report: (name, active) => {
+        featureReports.set(name, active);
+      },
+    },
     plugins: options.plugins ?? {
       has: () => false,
+      hasFeature: (name, feature) =>
+        name === ctx.plugin.name && featureReports.get(feature) === true,
       async query(plugin) {
         throw new PluginUnavailableError(plugin);
       },
@@ -1958,6 +1969,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     ctx,
     attachment,
     validateFiles,
+    onceFor: onceFor(),
     logs,
     sent,
     roleChanges,
@@ -2617,4 +2629,119 @@ export function onceFor() {
     seen.set(id, promise);
     return promise;
   };
+}
+
+const externalMethods = new Set([
+  "send",
+  "reply",
+  "edit",
+  "delete",
+  "react",
+  "bulkDelete",
+  "purge",
+  "createThread",
+  "createChannel",
+  "editChannel",
+  "deleteChannel",
+  "addRole",
+  "removeRole",
+  "setRoles",
+  "setNickname",
+  "timeout",
+  "removeTimeout",
+  "kick",
+  "ban",
+  "unban",
+  "moveTo",
+  "disconnect",
+  "fetch",
+  "open",
+  "close",
+  "pin",
+  "unpin",
+  "publish",
+  "add",
+  "remove",
+  "respond",
+  "setSlowmode",
+]);
+
+/** Exercise an action once, then interrupt a fresh copy of its world after each
+ * successful Discord/HTTP effect and retry with the same key. The returned trials
+ * expose the recording fakes for assertions about external effects. */
+export async function replayActionEffects<I, O>(
+  handler: Action<I, O>,
+  input: I,
+  call: InteropCall & { idempotencyKey: string },
+  setup: () => TestHarness,
+  isExternal: (method: string) => boolean = (method) => externalMethods.has(method),
+) {
+  const runTrial = async (failAt: number) => {
+    const h = setup();
+    let effects = 0;
+    const lost = Error("simulated response loss after external effect");
+    let crashed = false;
+    const wrap = (value: unknown): unknown => {
+      if (value === null || typeof value !== "object" || value instanceof Date) return value;
+      if (Array.isArray(value)) return value.map(wrap);
+      const obj = value as Record<PropertyKey, unknown>;
+      return new Proxy(
+        {},
+        {
+          get(_target, key) {
+            const fn = Reflect.get(obj, key);
+            if (typeof fn !== "function") return wrap(fn);
+            return (...args: unknown[]) => {
+              if (crashed) throw lost;
+              const result = Reflect.apply(fn, obj, args);
+              const after = (r: unknown) => {
+                if (isExternal(String(key)) && ++effects === failAt) {
+                  crashed = true;
+                  throw lost;
+                }
+                return wrap(r);
+              };
+              return result instanceof Promise ? result.then(after) : after(result);
+            };
+          },
+        },
+      );
+    };
+    // The provider's KV writes from an interrupted run disappear. Discord/HTTP
+    // recording fakes remain live, so a second external effect is observable.
+    const initial = [...h.kv];
+    const freshStorage = () => {
+      const store = createTestContext();
+      for (const [k, v] of initial) store.kv.set(k, JSON.parse(JSON.stringify(v)) as Json);
+      return store;
+    };
+    const commit = (store: TestHarness) => {
+      h.kv.clear();
+      for (const [key, value] of store.kv) h.kv.set(key, value);
+    };
+    const staged = freshStorage();
+    const request = {
+      ...h.ctx,
+      kv: staged.ctx.kv,
+      server: wrap(h.ctx.server) as Server,
+      http: wrap(h.ctx.http) as Context["http"],
+    };
+    try {
+      const result = await handler.run(request, input, call);
+      if (!crashed) {
+        commit(staged);
+        return { harness: h, result, effects };
+      }
+    } catch (error) {
+      if (!crashed) throw error;
+    }
+    const retry = freshStorage();
+    const result = await handler.run({ ...h.ctx, kv: retry.ctx.kv }, input, call);
+    commit(retry);
+    return { harness: h, result, effects };
+  };
+  const first = await runTrial(-1);
+  const trials = [first];
+  for (let n = 1; n <= first.effects; n++) trials.push(await runTrial(n));
+  return trials;
 }
