@@ -179,3 +179,31 @@ func TestRoleMembersRequirements(t *testing.T) {
 		})
 	}
 }
+
+func TestProtectionRequiresReadGrant(t *testing.T) {
+	const src = `
+import {command,definePlugin} from "@cicord/sdk";
+export default definePlugin({commands:{
+  staff:command({description:"inventory",async run(ctx,it){
+   try {await it.reply(JSON.stringify(await ctx.server.protection()))}
+   catch(e){await it.reply(e.name)}
+  }})
+}})`
+	h := start(t, src, func(e *Env) {
+		e.Grants = []string{capMessagesSend}
+		e.Protection = func(context.Context) ServerProtection {
+			t.Fatal("read refused before inspecting inventory")
+			return ServerProtection{}
+		}
+	})
+	if err := h.command("staff", nil, discord.Resolved{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := contentOf(h.responses()[0]); got != "CapabilityError" {
+		t.Fatal(got)
+	}
+	h = start(t, src, nil)
+	if got := staffReply(t, h); got["known"] != false || len(got["unmanaged"].([]any)) != 0 {
+		t.Fatal(got)
+	}
+}

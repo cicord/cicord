@@ -48,6 +48,7 @@ type Env struct {
 	Bot              discord.User
 	ApplicationID    string
 	AnalyticsSummary func(context.Context, time.Time, time.Time, string) (any, error)
+	Protection       func(context.Context) ServerProtection
 
 	ServerKey             string
 	ServerID              string

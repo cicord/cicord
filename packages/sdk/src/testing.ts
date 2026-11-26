@@ -196,6 +196,7 @@ export interface TestContextOptions {
     /** `ctx.server.ownerId`; the owner has every permission and the admin access level. */
     ownerId?: string;
     afkChannelId?: string;
+    protection?: Awaited<ReturnType<Server["protection"]>>;
     /** Permissions of `@everyone` (part of every `member.permissions`). Default none. */
     everyonePermissions?: Permission[];
   };
@@ -1387,6 +1388,19 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
   const scheduledEvents = new Map<string, import("@cicord/sdk").ScheduledEvent>();
   let eventSeq = 0;
   const server: Server = {
+    async protection() {
+      need("discord.channels.read");
+      return structuredClone(
+        options.server?.protection ?? {
+          known: false,
+          selfHeal: false,
+          deletionProtection: false,
+          paused: false,
+          totalResources: 0,
+          unmanaged: [],
+        },
+      );
+    },
     ...(options.server?.preferredLocale ? { preferredLocale: options.server.preferredLocale } : {}),
     async members(opts = {}) {
       return memberList(opts);

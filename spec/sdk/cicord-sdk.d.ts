@@ -468,7 +468,18 @@ export interface ScheduledEvent extends ScheduledEventInput {
   /** Interested user IDs, 100 per page. */
   users(after?:Snowflake):Promise<readonly Snowflake[]>;
 }
+export interface ServerProtection {
+ readonly known:boolean;
+ readonly selfHeal:boolean;
+ readonly deletionProtection:boolean;
+ readonly paused:boolean;
+ readonly totalResources:number;
+ readonly unmanaged:readonly {readonly id:Snowflake;readonly name:string;readonly kind:"role"|"channel"}[];
+ readonly botTopPosition?:number;
+}
 export interface Server {
+ /** Current guild policy and eligible resources visible to this bot. A failed or incomplete read returns known:false. @capability discord.channels.read */
+ protection():Promise<ServerProtection>;
   readonly preferredLocale?: string;
   /** Paginated by ascending user id. Shares the role.members() cache, grant and intent. */
   members(options?: { limit?: number; after?: Snowflake }): Promise<Member[]>;

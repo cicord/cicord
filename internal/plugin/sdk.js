@@ -540,6 +540,7 @@
       async unban(userId, reason) { await acall("server.unban", {userId: String(userId), reason}); },
       async scheduledEvents() { return freeze((await acall("events.list",{})).map(mkEvent)); },
       async createScheduledEvent(event) { return mkEvent(await acall("events.create",{event})); },
+      async protection() {return deepFreeze(await acall("server.protection",{}));},
       async invites() { return freeze((await acall("server.invites",{})).map(mkInvite)); },
       async auditLog(options = {}) {
         return freeze((await acall("server.auditLog",options)).map(mkAudit));

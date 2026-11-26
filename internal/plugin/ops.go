@@ -155,6 +155,7 @@ func init() {
 		"member.timeout":         opMemberTimeout,
 		"member.kick":            opMemberKick,
 		"server.unban":           opServerUnban,
+		"server.protection":      opServerProtection,
 		"server.invites":         opServerInvites,
 		"server.auditLog":        opAuditLog,
 		"server.bans":            opServerBans,

@@ -290,3 +290,7 @@ A message can supply `layout` with text displays, sections with accessories, con
 | `ctx.index(name, {language})` | `TestFullText` runs on SQLite FTS5 and PostgreSQL tsvector. It checks replacement, deletion, clearing, scope isolation, tag filters and the query limit. |
 
 The assistant pilot includes deterministic reservation and citation tests. Provider-facing captcha verification and Discord checks require the external test environment before publication.
+
+## Protection inventory
+
+`await ctx.server.protection()` reads the current server policy, pause state and the invoking bot's role hierarchy with `discord.channels.read`. `totalResources` counts eligible roles and visible guild channels, including categories. `unmanaged` lists eligible resources outside the current server YAML. Discord integration roles, the everyone role, plugin-owned resources and threads are omitted. An incomplete Discord or state read returns `known: false` and an empty inventory. Consumer plugins must treat that result as unverified. Host and runtime tests cover grant refusal, hidden channels, plugin ownership and incomplete role information.

@@ -359,6 +359,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		ReserveBudget: func(ctx context.Context, name string, units int) (func(context.Context, int) error, error) {
 			return r.reserveProvider(ctx, in, name, units)
 		},
+		Protection: func(ctx context.Context) plugin.ServerProtection { return r.protection(ctx, host.session, srt.cfg) },
 		ManagedResource: func(id string) (bool, bool) {
 			managed := srt.cache.Owner(id) == state.OwnerGit
 			return managed, managed && srt.cfg.Spec.SyncPolicy.SelfHeal() && !r.isPaused(in.Server)
