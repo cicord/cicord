@@ -579,15 +579,10 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	if err != nil {
 		return err
 	}
-	rep, err := buildPluginReport(absPlugin)
+	m, err := readManifest(absPlugin)
 	if err != nil {
 		return err
 	}
-	printPluginReport(stdout, rep)
-	if len(rep.Errors) > 0 {
-		return exitError{1}
-	}
-	m, _ := readManifest(absPlugin)
 
 	// config: --config file, required refs filled with test resources
 	cfg := map[string]any{}
@@ -614,29 +609,45 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 			return fmt.Errorf("config schema: %w", err)
 		}
 	}
-	if props, ok := schema["properties"].(map[string]any); ok && !config.Disabled(cfg) {
-		req, _ := schema["required"].([]any)
-		for _, r := range req {
-			k, _ := r.(string)
-			sub, _ := props[k].(map[string]any)
-			if _, set := cfg[k]; set || sub == nil {
-				continue
-			}
-			if kind, ok := sub["x-cicord-ref"].(string); ok && sub["type"] != "array" {
-				cfg[k] = "test-" + kind
-			}
-		}
-	}
 	effective := config.CloneConfig(cfg)
 	if schema != nil {
 		config.ApplyDefaults(schema, effective)
 	}
+	var def *plugin.Definition
+	var fixture *testServerFixture
 	refs := map[string]map[string]bool{}
-	refsOf(schema, effective, refs)
-
-	fixture, err := readTestServerFixture(absPlugin)
-	if err != nil {
-		return fmt.Errorf("test/server.yaml: %w", err)
+	if !config.Disabled(effective) {
+		rep, err := buildPluginReport(absPlugin)
+		if err != nil {
+			return err
+		}
+		def = rep.def
+		printPluginReport(stdout, rep)
+		if len(rep.Errors) > 0 {
+			return exitError{1}
+		}
+		if props, ok := schema["properties"].(map[string]any); ok {
+			req, _ := schema["required"].([]any)
+			for _, r := range req {
+				k, _ := r.(string)
+				sub, _ := props[k].(map[string]any)
+				if _, set := cfg[k]; set || sub == nil {
+					continue
+				}
+				if kind, ok := sub["x-cicord-ref"].(string); ok && sub["type"] != "array" {
+					cfg[k] = "test-" + kind
+				}
+			}
+		}
+		effective = config.CloneConfig(cfg)
+		if schema != nil {
+			config.ApplyDefaults(schema, effective)
+		}
+		refsOf(schema, effective, refs)
+		fixture, err = readTestServerFixture(absPlugin)
+		if err != nil {
+			return fmt.Errorf("test/server.yaml: %w", err)
+		}
 	}
 
 	// throw-away repository
@@ -767,7 +778,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 		time.Sleep(300 * time.Millisecond)
 		world.WaitIdle()
 	}
-	if rep.def != nil && rep.def.HasEvent("memberJoin") {
+	if def != nil && def.HasEvent("memberJoin") {
 		if err := world.AddMember(testServerID, tester.ID); err != nil {
 			return err
 		}
@@ -777,13 +788,13 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	} else if err := world.AddMember(testServerID, tester.ID); err != nil {
 		return err
 	}
-	if rep.def != nil {
+	if def != nil {
 		var leaves []string
-		for _, c := range rep.def.Commands {
+		for _, c := range def.Commands {
 			leaves = append(leaves, c.Leaves()...)
 		}
 		for _, name := range leaves {
-			c, _ := rep.def.Command(strings.Fields(name)[0])
+			c, _ := def.Command(strings.Fields(name)[0])
 			opts, _ := c.Leaf(strings.Fields(name))
 			required := false
 			for _, o := range opts {
@@ -954,6 +965,9 @@ func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs 
 	}
 	server := map[string]any{"apiVersion": config.APIVersion, "kind": "Server", "metadata": map[string]any{"name": "test"}, "spec": srvSpec}
 	inst := map[string]any{"name": name, "source": "../../plugins/" + name, "grants": m.Spec.Capabilities}
+	if config.Disabled(cfg) {
+		delete(inst, "grants")
+	}
 	if len(cfg) > 0 {
 		inst["config"] = cfg
 	}

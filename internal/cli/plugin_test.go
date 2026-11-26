@@ -220,3 +220,20 @@ func TestPluginBuildLiteralEventVersions(t *testing.T) {
 		t.Fatal(out)
 	}
 }
+
+func TestPluginTestDisabledDoesNotLoadCodeOrActiveFixtures(t *testing.T) {
+	dir := t.TempDir()
+	copyDir(t, "../../examples/basic/plugins/welcome", dir)
+	writeFile(t, filepath.Join(dir, "src", "index.ts"), `throw new Error("active-module-canary"); export default {};`)
+	writeFile(t, filepath.Join(dir, "test", "server.yaml"), "unusedActiveFixture: true\n")
+	path := filepath.Join(dir, "disabled.yaml")
+	writeFile(t, path, "enabled: false\n")
+	code, out, errOut := run(t, "plugin", "test", dir, "--config", path)
+	if code != 0 || !strings.Contains(out, "ok   instance welcome disabled\nPASS") {
+		t.Fatalf("%d %s %s", code, out, errOut)
+	}
+	code, out, errOut = run(t, "plugin", "test", dir)
+	if code == 0 || !strings.Contains(out+errOut, "active-module-canary") {
+		t.Fatalf("active smoke lost its build check: %d %s %s", code, out, errOut)
+	}
+}
