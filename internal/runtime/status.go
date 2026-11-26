@@ -64,10 +64,11 @@ type BotStatus struct {
 }
 
 type PluginStatus struct {
-	Instance string `json:"instance"`
-	Plugin   string `json:"plugin"`
-	Version  string `json:"version"`
-	Server   string `json:"server"`
-	Health   string `json:"health"`
-	Message  string `json:"message"`
+	Advisories []FeatureAdvisory `json:"advisories,omitempty"`
+	Instance   string            `json:"instance"`
+	Plugin     string            `json:"plugin"`
+	Version    string            `json:"version"`
+	Server     string            `json:"server"`
+	Health     string            `json:"health"`
+	Message    string            `json:"message"`
 }

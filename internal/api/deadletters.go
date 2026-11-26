@@ -62,16 +62,21 @@ func (s *server) handleDeadEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	info, ok := s.rt.ServerInfo(key)
-	allowed := viewer.bearer || (ok && viewer.user.ID != "" && info.OwnerID == viewer.user.ID)
+	client, connected := s.rt.Client(key)
+	allowed := viewer.bearer || (ok && connected && viewer.user.ID != "" && discord.CurrentGuildOwner(client, info.ID) == viewer.user.ID)
 	if !allowed && viewer.user.ID != "" {
 		m, e := s.lookupMember(r.Context(), key, viewer.user.ID, true)
 		if e != nil {
 			s.fail(w, e)
 			return
 		}
-		if m != nil {
-			roles, _, _, ok := s.rt.ServerResources(key)
-			allowed = ok && slices.ContainsFunc(roles, func(role discord.Role) bool {
+		if m != nil && connected && ok {
+			roles, err := client.ListRoles(r.Context(), info.ID)
+			if err != nil {
+				s.fail(w, err)
+				return
+			}
+			allowed = slices.ContainsFunc(roles, func(role discord.Role) bool {
 				return (role.ID == info.ID || m.HasRole(role.ID)) && role.Permissions.Has(discord.MustPermissions("Administrator"))
 			})
 		}

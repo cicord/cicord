@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cicord/cicord/internal/config"
 	"github.com/cicord/cicord/internal/discord"
 	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/sim"
@@ -193,5 +194,34 @@ spec:
 	}
 	if len(e.rt.InteropGraph("my-community").Edges) == 0 {
 		t.Fatal("missing interop edges")
+	}
+}
+
+func TestOptionalFeaturesKeepHealthyAndNeverHideOperationalProblems(t *testing.T) {
+	in := &instanceRT{health: HealthHealthy, cfg: config.Instance{Features: map[string]string{"pollBonus": "events.subscribe not granted"}}}
+	r := &Runtime{}
+	health, msg, advice := r.reportedHealth(in, 0)
+	if health != HealthHealthy || len(advice) != 1 || advice[0].Feature != "pollBonus" || !strings.Contains(msg, "events.subscribe") {
+		t.Fatal(health, msg, advice)
+	}
+	for _, reason := range []string{"queue", "boot", "refused", "required"} {
+		in.health = HealthHealthy
+		in.interopProblem.Store("")
+		in.cfg.Plugin = &config.LoadedPlugin{Manifest: &config.Plugin{}}
+		dead := 0
+		switch reason {
+		case "queue":
+			dead = 1
+		case "boot":
+			in.health = HealthMissing
+		case "required":
+			in.cfg.Plugin.Manifest.Spec.Secrets = []config.PluginSecret{{Name: "AUTH", Required: true}}
+		case "refused":
+			in.interopProblem.Store("caller not admitted")
+		}
+		health, _, advice = r.reportedHealth(in, dead)
+		if health == HealthHealthy || len(advice) != 1 {
+			t.Fatalf("%s: %s %v", reason, health, advice)
+		}
 	}
 }

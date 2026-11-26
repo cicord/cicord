@@ -199,7 +199,7 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 		if err != nil {
 			return err
 		}
-		spec = setup.UpdateSpec{Source: source, Name: name, DisplayName: e.DisplayName, Version: e.Version,
+		spec = setup.UpdateSpec{SecretDeclarations: e.SecretDeclarations, Source: source, Name: name, DisplayName: e.DisplayName, Version: e.Version,
 			Capabilities: e.Capabilities, Intents: e.Intents, PrivilegedIntents: e.PrivilegedIntents, Network: e.Network,
 			Schema: e.Schema, Files: files}
 	} else {
@@ -227,7 +227,7 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 			return fmt.Errorf("the repository of %q contains plugin %q", source, e.Name)
 		}
 		lock := res.Entry
-		spec = setup.UpdateSpec{Source: source, Name: name, DisplayName: e.DisplayName, Version: lock.Version,
+		spec = setup.UpdateSpec{SecretDeclarations: e.SecretDeclarations, Source: source, Name: name, DisplayName: e.DisplayName, Version: lock.Version,
 			Capabilities: e.Capabilities, Intents: e.Intents, PrivilegedIntents: e.PrivilegedIntents, Network: e.Network,
 			Schema: e.Schema, Lock: &lock, Range: to}
 	}

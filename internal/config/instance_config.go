@@ -65,8 +65,10 @@ func ValidateInstanceConfig(lp *LoadedPlugin, cfg map[string]any, serverKey stri
 			out = append(out, Diagnostic{Severity: SeverityError, File: file, Path: path + p.path, Message: fmt.Sprintf("[server %s] %s", serverKey, p.msg)})
 		}
 	}
-	for _, p := range checkProviderLimits(lp.Manifest.Spec, cfg) {
-		out = append(out, Diagnostic{Severity: SeverityError, File: file, Path: path + p.path, Message: fmt.Sprintf("[server %s] %s", serverKey, p.msg)})
+	if lp.Manifest != nil {
+		for _, p := range checkProviderLimits(lp.Manifest.Spec, cfg) {
+			out = append(out, Diagnostic{Severity: SeverityError, File: file, Path: path + p.path, Message: fmt.Sprintf("[server %s] %s", serverKey, p.msg)})
+		}
 	}
 	out.Sort()
 	return out

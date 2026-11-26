@@ -265,7 +265,13 @@ export interface DeadTask {
   reason: string;
 }
 
+export interface FeatureAdvisory {
+  feature: string;
+  reason: string;
+}
+
 export interface PluginInstanceStatus {
+  advisories?: FeatureAdvisory[];
   instance: string;
   plugin: string;
   version: string;
@@ -783,6 +789,7 @@ export interface PluginCommandSummary {
 }
 
 export interface PluginInstance {
+  advisories?: FeatureAdvisory[];
   secrets?: {
     name: string;
     description: string;

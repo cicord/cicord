@@ -599,12 +599,13 @@ type commandDTO struct {
 }
 
 type pluginItemDTO struct {
-	Secrets  []pluginSecretView `json:"secrets,omitempty"`
-	Bot      string             `json:"bot"`
-	Instance string             `json:"instance"`
-	Server   string             `json:"server"`
-	Plugin   pluginInfoDTO      `json:"plugin"`
-	Config   map[string]any     `json:"config"`
+	Advisories []runtime.FeatureAdvisory `json:"advisories,omitempty"`
+	Secrets    []pluginSecretView        `json:"secrets,omitempty"`
+	Bot        string                    `json:"bot"`
+	Instance   string                    `json:"instance"`
+	Server     string                    `json:"server"`
+	Plugin     pluginInfoDTO             `json:"plugin"`
+	Config     map[string]any            `json:"config"`
 	// Schema is the plugin's config.schema.json as written (property order preserved).
 	Schema json.RawMessage `json:"schema"`
 	// BaseConfig is spec.plugins[].config of bot.yaml and Override the server's
@@ -728,7 +729,7 @@ func (s *server) pluginItem(in runtime.InstanceInfo, key string, ro role, ups ma
 			Description: m.Metadata.Description, Capabilities: strs(m.Spec.Capabilities), Intents: strs(m.Spec.Intents)},
 		Config: in.Config.Config, Schema: rawSchema(in.Config.Plugin, schema), Editable: editableFields(schema, ro),
 		BaseConfig: base, Override: override,
-		Commands: []commandDTO{}, Routes: []string{}, Health: in.Health, Message: in.Message,
+		Commands: []commandDTO{}, Routes: []string{}, Health: in.Health, Message: in.Message, Advisories: in.Advisories,
 	}
 	if ro >= roleAdmin {
 		for _, decl := range m.Spec.Secrets {

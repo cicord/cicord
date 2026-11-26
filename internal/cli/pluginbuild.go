@@ -715,6 +715,9 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 		return exitError{1}
 	}
 	fmt.Fprintf(stdout, "ok   instance %s started\n", name)
+	for _, f := range inst().Advisories {
+		fmt.Fprintf(stdout, "info %s disabled: %s\n", f.Feature, f.Reason)
+	}
 	bot := seed.Bots["test"]
 	if cmds := world.Commands(testAppID, testServerID); len(cmds) > 0 {
 		var names []string

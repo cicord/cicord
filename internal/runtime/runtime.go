@@ -1157,7 +1157,13 @@ func (r *Runtime) Drift(ctx context.Context, serverKey string) ([]DriftEntry, er
 }
 
 // InstanceInfo describes a running plugin instance for the API.
+type FeatureAdvisory struct {
+	Feature string `json:"feature"`
+	Reason  string `json:"reason"`
+}
+
 type InstanceInfo struct {
+	Advisories []FeatureAdvisory
 	Config     config.Instance
 	Definition *plugin.Definition
 	Health     string
@@ -1175,38 +1181,55 @@ func (r *Runtime) instanceDeadCounts() map[string]int {
 	return counts
 }
 
-func (r *Runtime) reportedHealth(i *instanceRT, dead int) (string, string) {
+func (r *Runtime) reportedHealth(i *instanceRT, dead int) (string, string, []FeatureAdvisory) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.health == HealthHealthy && len(i.featureDiagnostics) > 0 {
-		var messages []string
-		for k, m := range i.featureDiagnostics {
-			messages = append(messages, k+": "+m)
+	var problems []string
+	var advice []FeatureAdvisory
+	features := i.featureState()
+	for _, key := range sortedKeys(features) {
+		if reason := features[key]; reason != "" {
+			advice = append(advice, FeatureAdvisory{key, reason})
 		}
-		slices.Sort(messages)
-		return HealthDegraded, strings.Join(messages, " · ")
 	}
-	if i.health == HealthHealthy && i.cfg.Plugin != nil && i.cfg.Config["enabled"] != false {
-		var optional []string
+	for _, key := range sortedKeys(i.featureDiagnostics) {
+		problems = append(problems, key+": "+i.featureDiagnostics[key])
+	}
+	if i.cfg.Plugin != nil && i.cfg.Config["enabled"] != false {
 		for _, s := range i.cfg.Plugin.Manifest.Spec.Secrets {
-			if _, _, ok := r.instanceSecret(i.cfg, s.Name); !ok {
-				if s.Required {
-					return HealthDegraded, "Missing required plugin secret " + s.Name
-				}
-				optional = append(optional, s.Name)
+			if _, _, ok := r.instanceSecret(i.cfg, s.Name); ok {
+				continue
+			}
+			if s.Required {
+				problems = append(problems, "Missing required plugin secret "+s.Name)
+			} else {
+				advice = append(advice, FeatureAdvisory{s.Name, "optional plugin secret not configured"})
 			}
 		}
-		if len(optional) > 0 && dead == 0 {
-			return i.health, "Features requiring these optional secrets are disabled: " + strings.Join(optional, ", ")
-		}
 	}
-	if m := i.featureMessages(); len(m) > 0 && i.health == HealthHealthy {
-		return HealthDegraded, strings.Join(m, "; ")
+	if msg, ok := i.interopProblem.Load().(string); ok && msg != "" {
+		problems = append(problems, msg)
 	}
-	if dead > 0 && i.health == HealthHealthy {
-		return HealthDegraded, fmt.Sprintf("%d failed scheduled task(s) need attention in Diagnostics", dead)
+	if n := i.eventRejects.Load(); n > 0 {
+		problems = append(problems, fmt.Sprintf("%d invalid event(s) rejected", n))
 	}
-	return i.health, i.message
+	if dead > 0 {
+		problems = append(problems, fmt.Sprintf("%d failed task or event deliveries need attention in Diagnostics", dead))
+	}
+	if i.health != HealthHealthy {
+		return i.health, i.message, advice
+	}
+	if len(problems) > 0 {
+		return HealthDegraded, strings.Join(problems, " · "), advice
+	}
+	if len(advice) == 0 {
+		return i.health, i.message, nil
+	}
+	var lines []string
+	for _, f := range advice {
+		lines = append(lines, f.Feature+" disabled: "+f.Reason)
+	}
+	return i.health, strings.Join(lines, " · "), advice
 }
 
 // Instances lists instances of the active revision (all servers when server == "").
@@ -1225,8 +1248,8 @@ func (r *Runtime) Instances(server string) []InstanceInfo {
 		if i.plugin != nil {
 			def = i.plugin.def
 		}
-		health, message := r.reportedHealth(i, dead[instanceScope(i.cfg)])
-		out = append(out, InstanceInfo{Config: i.cfg, Definition: def, Health: health, Message: message})
+		health, message, advice := r.reportedHealth(i, dead[instanceScope(i.cfg)])
+		out = append(out, InstanceInfo{Config: i.cfg, Definition: def, Health: health, Message: message, Advisories: advice})
 	}
 	return out
 }
@@ -1321,9 +1344,9 @@ func (r *Runtime) Status() Status {
 			if i.cfg.Bot != key {
 				continue
 			}
-			health, message := r.reportedHealth(i, dead[instanceScope(i.cfg)])
+			health, message, advice := r.reportedHealth(i, dead[instanceScope(i.cfg)])
 			bs.Plugins = append(bs.Plugins, PluginStatus{Instance: i.cfg.Name, Plugin: i.cfg.Plugin.Manifest.Metadata.Name,
-				Version: i.cfg.Plugin.Manifest.Metadata.Version, Server: i.cfg.Server, Health: health, Message: message})
+				Version: i.cfg.Plugin.Manifest.Metadata.Version, Server: i.cfg.Server, Health: health, Message: message, Advisories: advice})
 			if health == HealthDegraded && bs.Health == HealthHealthy {
 				bs.Health, bs.Message = HealthDegraded, fmt.Sprintf("plugin instance %s on %s is degraded", i.cfg.Name, i.cfg.Server)
 			}

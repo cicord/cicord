@@ -401,22 +401,6 @@ func (i *instanceRT) featureState() map[string]string {
 	})
 	return out
 }
-func (i *instanceRT) featureMessages() []string {
-	features := i.featureState()
-	var out []string
-	for _, feature := range sortedKeys(features) {
-		if reason := features[feature]; reason != "" {
-			out = append(out, feature+" disabled: "+reason)
-		}
-	}
-	if msg, ok := i.interopProblem.Load().(string); ok && msg != "" {
-		out = append(out, msg)
-	}
-	if n := i.eventRejects.Load(); n > 0 {
-		out = append(out, fmt.Sprintf("%d invalid event(s) rejected", n))
-	}
-	return out
-}
 func checkedTask(ctx context.Context, inst *instanceRT, t state.TaskLease, r *Runtime) error {
 	data := t.Payload
 	deliver := func(ctx context.Context) error {

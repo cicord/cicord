@@ -2,7 +2,10 @@ package plugin
 
 import "encoding/json"
 
-func opFeatureStatus(i *Instance, _ *invocation, args json.RawMessage) (any, error) {
+func opFeatureStatus(i *Instance, inv *invocation, args json.RawMessage) (any, error) {
+	if inv != nil && inv.frame.ReadOnly {
+		return nil, &CapabilityError{Capability: "read-only"}
+	}
 	a, err := decode[struct{ Key, Message string }](args)
 	if err != nil {
 		return nil, err

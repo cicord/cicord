@@ -154,7 +154,7 @@ func readonlyOp(op, args string) bool {
 		return false
 	}
 	switch op {
-	case "channel.memberOverwrite", "channel.messages", "channel.message", "channel.previewPurge", "server.invites", "server.auditLog", "server.bans", "server.member", "server.voiceMembers", "role.members", "kv.get", "kv.list", "plugins.query", "files.read", "files.list", "files.bytes", "index.search", "kv.entries", "events.list", "events.users", "message.pollVoters", "analytics.summary":
+	case "server.protection", "server.members", "channel.pins", "message.reactionUsers", "server.overlays", "assets.read", "attachment.bytes", "channel.memberOverwrite", "channel.messages", "channel.message", "channel.previewPurge", "server.invites", "server.auditLog", "server.bans", "server.member", "server.voiceMembers", "role.members", "kv.get", "kv.list", "plugins.query", "files.read", "files.list", "files.bytes", "index.search", "kv.entries", "events.list", "events.users", "message.pollVoters", "analytics.summary":
 		return true
 	}
 	return false

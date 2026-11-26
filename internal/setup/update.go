@@ -31,6 +31,7 @@ import (
 
 // UpdateSpec is the version an update installs.
 type UpdateSpec struct {
+	SecretDeclarations []config.PluginSecret
 	// Source is "<registry>/<plugin>", or "cicord/<plugin>" for a copy of an official plugin.
 	Source                     string
 	Name, DisplayName, Version string
@@ -182,6 +183,7 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 		return nil, fmt.Errorf("config schema of %s %s: %w", spec.Name, spec.Version, err)
 	}
 
+	newLP.Manifest = &config.Plugin{Spec: config.PluginSpec{Secrets: spec.SecretDeclarations}}
 	type use struct {
 		bot  *config.Bot
 		key  string
