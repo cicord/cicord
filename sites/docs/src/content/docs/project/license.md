@@ -1,10 +1,9 @@
 ---
 title: License
-description: Every part of Cicord is licensed under the Apache License 2.0.
+description: Licenses for Cicord software, plugins and embedded renderer fonts.
 ---
 
-Cicord is licensed under the **[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)**,
-for every part of the project:
+Cicord software is licensed under the **Apache License 2.0**. The runtime distributes its card-renderer fonts under their upstream font license.
 
 | Part | License |
 |---|---|
@@ -12,6 +11,7 @@ for every part of the project:
 | `@cicord/sdk`, `@cicord/client`, `@cicord/react`, `@cicord/ui`, `create-cicord-portal` | **Apache-2.0** (a `LICENSE` file in each package) |
 | The JSON Schemas, the specification, the examples and these sites | **Apache-2.0** |
 | The official plugins | **Apache-2.0** |
+| Embedded Inter, Noto Sans and Noto Emoji fonts | SIL Open Font License 1.1. The distribution’s `NOTICE` contains the copyright credits and font license. |
 | Third-party plugins | Each plugin declares its own license in `plugin.yaml` (`metadata.license`, an SPDX identifier). |
 
 You may use, modify and redistribute Cicord, including commercially and to host it for others,

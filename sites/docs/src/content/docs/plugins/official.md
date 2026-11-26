@@ -1,13 +1,63 @@
 ---
 title: Official plugins
-description: The eleven plugins of the signed official registry, with their versions, commands, capabilities and settings.
+description: Compare the 29 plugin candidates for Cicord 0.2 with published versions and offline bundles, and find commands and settings.
 ---
 
-The official registry [cicord/cicord-plugins](https://github.com/cicord/cicord-plugins)
-(source `cicord`, tags `<name>/vX.Y.Z`) publishes eleven plugins. Install one with
-`cicord plugin add cicord/<name> --bot <bot>`, or from the admin console's Store. Their
-sources are in that repository, under `plugins/<name>/`, and are complete examples of the
-SDK.
+The Cicord 0.2 development branch contains **29 plugin candidates**. The signed registry
+index lists **11 published plugins**, and this core source tree bundles **10 offline
+copies**. Plugin versions are independent of the engine version. Installations using
+`source: cicord/<name>` resolve the signed registry entry and its lockfile. A binary's
+bundled versions come from the core revision used to build it.
+
+## 0.2 candidate catalogue
+
+Each candidate link opens its source directory, including its manifest, configuration schema
+and tests. A dash means the plugin has no entry in that distribution at this snapshot.
+
+| Plugin | Candidate | Signed registry | Bundled source | Candidate features |
+|---|---|---|---|---|
+| [ai-assistant](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/ai-assistant) | 0.1.0 | — | — | Answers questions from reviewed documents and visible sources with a daily provider budget. Opt-in pilot. |
+| [announcements](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/announcements) | 0.2.0 | 0.1.0 | 0.1.0 | Previews and schedules announcements, countdowns and sticky posts with controlled mentions. |
+| [anti-nuke](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/anti-nuke) | 0.2.0 | — | — | Correlates administrative actions with audit evidence and alerts staff. The candidate supports monitoring. |
+| [audit-log](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/audit-log) | 0.2.0 | 0.1.0 | 0.1.0 | Records evidence-backed server changes and message deletions, with staff search, retention and erasure. |
+| [birthdays](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/birthdays) | 0.1.0 | — | — | Celebrates opt-in birthdays in local time and expires birthday roles. |
+| [channel-automations](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/channel-automations) | 0.1.0 | — | — | Applies posting intervals, threads, reactions, media rules, crossposting and cleanup per channel. |
+| [community-events](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/community-events) | 0.1.0 | — | — | Manages scheduled events, tracks attendance and offers a public calendar feed. |
+| [economy](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/economy) | 0.1.0 | — | — | Manages wallets, an append-only ledger and a reward shop. Opt-in pilot. |
+| [feeds](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/feeds) | 0.1.0 | — | — | Posts RSS, Atom and JSON Feed updates from operator-approved hosts. |
+| [github-releases](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/github-releases) | 0.2.0 | 0.1.0 | — | Follows releases in selected GitHub repositories and serves changelog commands. |
+| [giveaways](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/giveaways) | 0.1.0 | — | — | Runs weighted draws with seed commitments, independently verifiable results and prize claims. Opt-in pilot. |
+| [guard](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/guard) | 0.2.0 | — | — | Checks messages and detects join surges, with moderation and raid-response controls. |
+| [invite-tracker](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/invite-tracker) | 0.1.0 | — | — | Tracks changes in invite use counts and ranks inviters. Ambiguous joins keep an unknown inviter. |
+| [levels](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/levels) | 0.2.0 | 0.1.0 | 0.1.0 | Awards chat and voice XP, assigns role rewards and maintains indexed standings and seasons. |
+| [member-roles](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/member-roles) | 0.1.0 | — | — | Grants temporary, sticky, tenure-based and booster roles. |
+| [moderation](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/moderation) | 0.3.0 | 0.1.1 | 0.1.1 | Tracks cases, timed sanctions and quarantine, with a scoped appeal workflow. |
+| [onboarding](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/onboarding) | 0.2.0 | 0.1.0 | 0.1.0 | Lets members choose roles through a portal questionnaire. |
+| [polls](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/polls) | 0.2.0 | 0.1.1 | 0.1.1 | Runs Discord-native or component polls and publishes versioned closing results. |
+| [reaction-roles](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/reaction-roles) | 0.2.0 | 0.1.1 | 0.1.1 | Manages self-service role panels with buttons, menus or reactions. |
+| [reminders](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/reminders) | 0.1.0 | — | — | Delivers private or channel reminders with time zones, recurrence and snooze. |
+| [staff-shifts](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/staff-shifts) | 0.1.0 | — | — | Manages weekly staff schedules, on-duty roles and coverage gaps. |
+| [starboard](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/starboard) | 0.1.0 | — | — | Highlights starred messages after checking the source and destination audiences. |
+| [stats-reports](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/stats-reports) | 0.1.0 | — | — | Posts activity reports, short-stay counts and voice-channel counters. |
+| [suggestions](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/suggestions) | 0.1.0 | — | — | Tracks proposals, votes, decisions and optional discussion threads. |
+| [tags](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/tags) | 0.1.0 | — | — | Serves reviewed Markdown replies and optionally accepts staff edits through the portal. |
+| [tickets](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/tickets) | 0.4.0 | 0.2.1 | 0.2.1 | Supports typed private queues, transcripts, satisfaction ratings and server-scoped modmail. |
+| [verification](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/verification) | 0.2.0 | — | — | Checks membership challenges and routes held accounts to staff for review. |
+| [voice-rooms](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/voice-rooms) | 0.2.0 | 0.1.0 | 0.1.1 | Creates member-managed voice rooms on demand and tracks their lifecycle. |
+| [welcome](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/plugins/welcome) | 0.2.0 | 0.1.1 | 0.1.1 | Greets members on join, verification or onboarding, with optional cards and inviter information. |
+
+To try a candidate with a 0.2 engine on a test server, copy its directory into your
+configuration repository. For example, from `bots/community/bot.yaml`, set the instance's
+`source` to `../../plugins/reminders`. Review the plugin’s manifest and config schema,
+grant the capabilities needed for your settings and run `cicord validate`. The opt-in
+pilots also need their feature settings enabled. A release becomes available through the
+Store when maintainers publish it and sign the index.
+
+## Published versions
+
+The following commands and settings describe the versions in the signed registry index.
+Install one with `cicord plugin add cicord/<name> --bot <bot>` or from the admin
+console’s Store.
 
 | Plugin | Version | In one line | Commands | Privileged intents |
 |---|---|---|---|---|
@@ -23,10 +73,9 @@ SDK.
 | [github-releases](#github-releases) | 0.1.0 | Announces GitHub releases in your channels. | `/changelog latest`, `/changelog check` | none |
 | [voice-rooms](#voice-rooms) | 0.1.0 | Voice channels on demand ("join to create"), managed by their owner. | `/voice rename`, `limit`, `lock`, `unlock`, `permit`, `kick`, `transfer`, `claim` | none |
 
-The `cicord` binary also bundles copies of all of them but github-releases, for offline and
-first installs (how the two are merged:
-[source `cicord`](../publishing/#source-cicord-and-the-bundled-plugins)). The bundled copies
-are the same versions as the registry; github-releases is only in the registry.
+Bundled plugins work offline. In this source tree the bundled voice-rooms copy is 0.1.1,
+the signed index lists 0.1.0, and github-releases is distributed through the registry.
+[How the Store combines these sources](../publishing/#source-cicord-and-the-bundled-plugins).
 
 Privileged intents must be enabled in the Discord developer portal; installing a plugin that
 needs one is refused, with the toggle to turn on, until it is.

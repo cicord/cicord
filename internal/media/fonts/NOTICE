@@ -1,0 +1,9 @@
+Cicord card renderer fonts
+
+Inter, Noto Sans and Noto Emoji are unmodified TrueType files from google/fonts,
+revision 6ebe737e44fd64ee736bbc6feed6136a6dbfd222, under ofl/inter,
+ofl/notosans and ofl/notoemoji.
+https://github.com/google/fonts/tree/6ebe737e44fd64ee736bbc6feed6136a6dbfd222/ofl
+
+Their corresponding copyright notices and full SIL Open Font License 1.1
+texts are included in inter-OFL.txt, notosans-OFL.txt and notoemoji-OFL.txt.

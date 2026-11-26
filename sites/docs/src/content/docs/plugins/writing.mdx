@@ -221,7 +221,7 @@ spec:
 | `spec.engine`                                                                              | **Required.** Semver range of supported Cicord versions.                              |
 | `spec.entry`                                                                               | **Required.** Relative path of the module that default-exports `definePlugin(...)`.   |
 | `spec.capabilities`                                                                        | What the plugin may do (below).                                                       |
-| `spec.assets` | Directory of read-only files to include in the plugin bundle, such as `./assets`. |
+| `spec.assets`                                                                              | Directory of read-only files to include in the plugin bundle, such as `./assets`.     |
 | `spec.intents`                                                                             | Gateway intents its event handlers need (below).                                      |
 | `spec.network.allow`                                                                       | Hosts reachable with `http.fetch`. Required when `http.fetch` is requested.           |
 | `spec.config.schema`                                                                       | Relative path of the config JSON Schema.                                              |
@@ -237,7 +237,7 @@ granted throws a `CapabilityError` whose `capability` field names the missing on
 
 | Capability                            | Allows                                                                                                                            |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `discord.messages.read`               | `channel.messages()` (history), `channel.message(id)`, `attachment.bytes()` |
+| `discord.messages.read`               | `channel.messages()` (history), `channel.message(id)`, `attachment.bytes()`                                                       |
 | `discord.messages.send`               | `channel.send()`, `message.reply()`, `message.edit()` of the bot's own messages                                                   |
 | `discord.messages.manage`             | `message.delete()` (any message), `message.edit()` of other authors' messages                                                     |
 | `discord.reactions.manage`            | `message.react()`                                                                                                                 |
@@ -253,12 +253,12 @@ granted throws a `CapabilityError` whose `capability` field names the missing on
 | `storage.kv`                          | `ctx.kv`                                                                                                                          |
 | `scheduler`                           | `schedules`, `tasks`, `ctx.schedule`                                                                                              |
 | `http.fetch`                          | `ctx.http.fetch()` to the `spec.network.allow` hosts                                                                              |
-| `render` | `ctx.render.image()` |
-| `media.analyze` | `ctx.media.hash()`, `ctx.media.distance()` |
+| `render`                              | `ctx.render.image()`                                                                                                              |
+| `media.analyze`                       | `ctx.media.hash()`, `ctx.media.distance()`                                                                                        |
 | `portal.routes`                       | `routes`                                                                                                                          |
 | `portal.links`                        | `ctx.portal.link()`                                                                                                               |
-| `plugins.query:<plugin>.<name>` | Read an installed provider’s declared query on the same server. |
-| `plugins.call:<plugin>.<name>` | Invoke a provider action with an origin-derived idempotency key. |
+| `plugins.query:<plugin>.<name>`       | Read an installed provider’s declared query on the same server.                                                                   |
+| `plugins.call:<plugin>.<name>`        | Invoke a provider action with an origin-derived idempotency key.                                                                  |
 | `events.publish` / `events.subscribe` | `ctx.events.publish()` / `subscriptions`                                                                                          |
 
 Answering the plugin's own interactions (`reply`, `defer`, `followUp`, `update`,
@@ -294,15 +294,19 @@ import { action, definePlugin, query } from "@cicord/sdk";
 
 export default definePlugin({
   queries: {
-    balance: query({ async run(ctx, input: { userId: string }, call) {
-      if (call.onBehalfOf?.userId !== input.userId) return null;
-      return await ctx.kv.get("balance:" + input.userId) ?? 0;
-    } }),
+    balance: query({
+      async run(ctx, input: { userId: string }, call) {
+        if (call.onBehalfOf?.userId !== input.userId) return null;
+        return (await ctx.kv.get("balance:" + input.userId)) ?? 0;
+      },
+    }),
   },
   actions: {
-    credit: action({ async run(ctx, input: { userId: string; amount: number }) {
-      return await ctx.kv.increment("balance:" + input.userId, input.amount);
-    } }),
+    credit: action({
+      async run(ctx, input: { userId: string; amount: number }) {
+        return await ctx.kv.increment("balance:" + input.userId, input.amount);
+      },
+    }),
   },
 });
 ```
@@ -327,8 +331,16 @@ const card = await ctx.render.image({
   background: { gradient: ["#0d2540", "#386f87"] },
   layers: [
     { type: "text", x: 28, y: 42, text: "Welcome!", font: "Inter", size: 48, color: "#ffffff" },
-    { type: "progress", x: 28, y: 150, width: 320, height: 12, value: 0.65,
-      color: "#8df2c7", trackColor: "#21415f" },
+    {
+      type: "progress",
+      x: 28,
+      y: 150,
+      width: 320,
+      height: 12,
+      value: 0.65,
+      color: "#8df2c7",
+      trackColor: "#21415f",
+    },
   ],
 });
 await it.reply({

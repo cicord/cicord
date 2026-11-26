@@ -83,6 +83,10 @@ describe("build-platform-packages", () => {
       expect(readFileSync(bin, "utf8")).toBe(fakeBinary);
       if (unix) expect(statSync(bin).mode & 0o777).toBe(0o755);
       expect(existsSync(join(dir, "LICENSE"))).toBe(true);
+      expect(m.files).toContain("NOTICE");
+      expect(readFileSync(join(dir, "NOTICE"), "utf8")).toContain(
+        "SIL OPEN FONT LICENSE Version 1.1",
+      );
       expect(existsSync(join(dir, "README.md"))).toBe(true);
     }
 

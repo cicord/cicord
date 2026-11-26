@@ -73,6 +73,7 @@ LABEL org.opencontainers.image.title="cicord" \
       org.opencontainers.image.documentation="https://cicord.dev/docs/" \
       org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=build /out/cicord /usr/local/bin/cicord
+COPY --from=build /src/NOTICE /usr/share/doc/cicord/NOTICE
 # Empty, nonroot-owned directories: a named volume mounted on /data inherits the ownership.
 COPY --from=build --chown=65532:65532 /out/data /data
 COPY --from=build --chown=65532:65532 /out/repo /repo

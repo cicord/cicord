@@ -175,15 +175,30 @@ tests are in `examples/showcase/plugins/<name>/test`.
 | announcements | `GET /scheduled` (moderator) | rt/Announcements, api/RouteAccess |
 | announcements | Cron, interval, one-off, daylight-saving rules, catch-up, dedupe, invalid schedules, `when` parsing | unit tests |
 
-## Not testable on the simulator
+## 0.2 candidate coverage
 
-- User messages with **attachments**: the simulator cannot post them (the `attachment` command
-  option works). Blanking attachments without MessageContent is covered by `internal/plugin`
-  TestMessageContentGating.
-- Reply references (`message.reply`): the simulator checks the referenced message but does not
-  keep the reference on the reply.
-- Real Discord rate limits, the 3-second deadline under real latency, privileged intents not
-  enabled in the developer portal, and the role hierarchy of a bot that is not Administrator.
+The core simulator exercises Discord events and REST calls through the Go runtime. The
+candidate plugins have separate tests in the registry source. A plugin startup smoke test
+checks loading and configuration. A package’s `test/runtime.mjs` or `test/*.sim.mjs`
+drives its behavior through a running simulator. The registry runs the published-data
+migration fixtures against SQLite and PostgreSQL when both backends are configured.
+[Candidate catalogue and source directories](../official/#02-candidate-catalogue).
+
+| Workflow | What the tests exercise |
+|---|---|
+| Private tickets | Two servers, separate staff roles, access after a role change, 500-message Markdown/HTML exports and DM routing in `tickets/test/runtime.mjs`. |
+| Plugin contracts and delivery | `internal/runtime/interop_test.go` checks mixed event versions, access policy and replay. The levels suite checks paged credit of 4,000 voters and ranking migration. |
+| Images and attachments | `internal/plugin/media_test.go` exercises byte-exact sandbox transfers. The Discord adapter captures each multipart endpoint, and `internal/sim/files_test.go` exercises attachment reads and removal. |
+| Message history | The simulator records the original message ID in `ReplyToID`. `TestMessageContentGating` covers gateway redaction, including attachments. |
+| Scoped portal links, overlays and erasure | `internal/api/scoped_test.go` checks case-bound OAuth. `internal/runtime/overlays_test.go` exercises overlapping locks, pause and expiry. `internal/runtime/privacy_test.go` checks erasure during replay and restoration. |
+| Community and moderation | The registry’s contributor guide describes each package check. The package-specific tests distinguish SDK fakes, compiled simulator runs and database fixtures. [Registry validation](https://github.com/cicord/cicord-plugins/tree/feature/0.2.0/scripts). |
+
+## Checks requiring an external service
+
+Use a Discord test server to confirm live rate limits, permissions, privileged intents,
+the interaction deadline under network latency, and audit entries that Discord delays,
+merges or omits. Captcha providers and external calendar clients also require their own
+end-to-end checks. The anti-nuke candidate runs in monitoring mode.
 
 ## Checklist on real Discord
 

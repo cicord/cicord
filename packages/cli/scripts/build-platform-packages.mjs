@@ -85,6 +85,7 @@ for (const { key, p, src } of found) {
   copyFileSync(src, dst);
   chmodSync(dst, 0o755);
   copyFileSync(license, join(dir, "LICENSE"));
+  copyFileSync(join(pkgDir, "../../NOTICE"), join(dir, "NOTICE"));
   writeFileSync(
     join(dir, "README.md"),
     `# ${name}\n\nThe \`cicord\` ${version} binary for ${key} (${p.goos}/${p.goarch}), from the GitHub release\n` +
@@ -102,7 +103,7 @@ for (const { key, p, src } of found) {
     os: [os],
     cpu: [cpu],
     // No "bin" (the binary is run by @cicord/cli) and no "exports" (bin/<binary> resolves).
-    files: ["bin", "README.md", "LICENSE"],
+    files: ["bin", "README.md", "LICENSE", "NOTICE"],
     preferUnplugged: true,
     publishConfig: main.publishConfig,
   };
