@@ -35,6 +35,7 @@ func (v ResourceScope) Valid() bool { return v.Kind == "case" && scopeID.MatchSt
 
 // ScopedGrant binds a case to the installation that issued it and the case's revocation generation.
 type ScopedGrant struct {
+	RenewalOnly bool `json:"renewalOnly,omitempty"`
 	ResourceScope
 	Bot        string `json:"bot"`
 	Instance   string `json:"instance"`
@@ -94,6 +95,25 @@ func (s *Signer) mac(p string) []byte {
 }
 
 func (s *Signer) Verify(token string) (LinkClaims, error) {
+	return s.verify(token, 0)
+}
+
+// Renewal accepts an authentic, recently expired case credential for a new OAuth
+// challenge. Its resulting session may only request a replacement from the issuer.
+func (s *Signer) VerifyRenewal(token string) (LinkClaims, error) {
+	c, err := s.verify(token, 30*24*time.Hour)
+	if err != nil {
+		return c, err
+	}
+	if c.Scope == nil || c.Expires > s.now().Unix() {
+		return LinkClaims{}, ErrInvalidToken
+	}
+	c.Scope.RenewalOnly = true
+	c.Expires = s.now().Add(10 * time.Minute).Unix()
+	return c, nil
+}
+
+func (s *Signer) verify(token string, grace time.Duration) (LinkClaims, error) {
 	p, sig, ok := strings.Cut(token, ".")
 	if !ok {
 		return LinkClaims{}, ErrInvalidToken
@@ -110,7 +130,7 @@ func (s *Signer) Verify(token string) (LinkClaims, error) {
 	if err := json.Unmarshal(payload, &c); err != nil {
 		return LinkClaims{}, ErrInvalidToken
 	}
-	if s.now().Unix() >= c.Expires {
+	if s.now().Add(-grace).Unix() >= c.Expires {
 		return LinkClaims{}, ErrExpiredToken
 	}
 	return c, nil

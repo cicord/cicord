@@ -1,6 +1,7 @@
 import { CicordProvider } from "@cicord/react";
 import { useState } from "react";
 import type { PortalConfig } from "./config.ts";
+import { Appeals } from "./pages/Appeals.tsx";
 import { Developers } from "./pages/Developers.tsx";
 import { Home } from "./pages/Home.tsx";
 import { Leaderboard } from "./pages/Leaderboard.tsx";
@@ -29,6 +30,10 @@ function Page() {
       return pages.leaderboard ? <Leaderboard /> : <NotFound />;
     case "/tickets":
       return pages.tickets ? <Tickets /> : <NotFound />;
+    case "/appeals":
+      return <Appeals />;
+    case "/appeals/staff":
+      return <Appeals staff />;
     case "/developers":
       return <Developers />;
     default:

@@ -1321,6 +1321,13 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     async members(opts = {}) {
       return memberList(opts);
     },
+    async sendDM(userId, input) {
+      need("discord.dm.send");
+      const dm =
+        channels.get(`dm-${userId}`) ??
+        register(undefined, { name: "dm", type: "dm", id: `dm-${userId}` });
+      return post(dm, input, `dm:${userId}`);
+    },
     overlays: {
       async apply(o) {
         need("server.overlays");

@@ -1236,6 +1236,9 @@ func (i *Instance) HandleRoute(ctx context.Context, method, path string, req Rou
 	}
 	if route.Access == "scoped" {
 		g := req.Grant
+		if g != nil && g.RenewalOnly && (method != "POST" || path != "/scope/renew") {
+			return RouteResponse{Status: 403}, nil
+		}
 		if g == nil || g.Bot != i.env.BotKey || g.Instance != i.env.InstanceName || g.Plugin != i.env.PluginName || !g.Valid() || req.Viewer == nil || (params["id"] != "" && params["id"] != g.ID) {
 			return RouteResponse{Status: 403}, nil
 		}

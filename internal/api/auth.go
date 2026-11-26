@@ -541,6 +541,7 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 type oauthState struct {
 	CaseToken string `json:"caseToken,omitempty"`
+	Renewal   bool   `json:"renewal,omitempty"`
 	Redirect  string `json:"redirect"`
 	// Mode "token": the callback redirects with a one-time code instead of a cookie.
 	Mode string `json:"mode,omitempty"`
@@ -651,7 +652,8 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		stv = oauthState{Redirect: target, Mode: "token"}
 	}
 	if tok := r.URL.Query().Get("case_token"); tok != "" {
-		if _, err := s.caseClaims(r.Context(), tok); err != nil {
+		stv.Renewal = r.URL.Query().Get("case_renew") == "1"
+		if _, err := s.caseClaims(r.Context(), tok, stv.Renewal); err != nil {
 			s.fail(w, err)
 			return
 		}
@@ -716,7 +718,7 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	d := sessionData{Method: "oauth"}
 	var ttl time.Duration
 	if os.CaseToken != "" {
-		claims, err := s.caseClaims(r.Context(), os.CaseToken)
+		claims, err := s.caseClaims(r.Context(), os.CaseToken, os.Renewal)
 		if err != nil {
 			s.fail(w, err)
 			return
@@ -809,11 +811,15 @@ func (s *server) doJSON(req *http.Request, out any) error {
 	return json.Unmarshal(data, out)
 }
 
-func (s *server) caseClaims(ctx context.Context, token string) (auth.LinkClaims, error) {
+func (s *server) caseClaims(ctx context.Context, token string, renewal bool) (auth.LinkClaims, error) {
 	if err := s.requireRuntime(); err != nil {
 		return auth.LinkClaims{}, err
 	}
-	c, err := s.rt.Signer().Verify(token)
+	verify := s.rt.Signer().Verify
+	if renewal {
+		verify = s.rt.Signer().VerifyRenewal
+	}
+	c, err := verify(token)
 	if err != nil || c.Scope == nil {
 		return c, httpErr(http.StatusUnauthorized, "unauthenticated", "invalid or expired case link; request a new link")
 	}

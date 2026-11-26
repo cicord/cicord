@@ -282,6 +282,12 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
         <nav className="portal-nav" aria-label={t.nav.label}>
           {pages.leaderboard ? <NavLink to="/leaderboard">{t.nav.leaderboard}</NavLink> : null}
+          {atLeast(role, "moderator") &&
+          server.plugins.some(
+            (p) => p.plugin === "moderation" && p.routes.includes("GET /appeals"),
+          ) ? (
+            <NavLink to="/appeals/staff">{t.appeals.review}</NavLink>
+          ) : null}
           {pages.ticketsInNav ? <NavLink to="/tickets">{t.nav.tickets}</NavLink> : null}
           {showDevelopers ? <NavLink to="/developers">{t.nav.developers}</NavLink> : null}
         </nav>

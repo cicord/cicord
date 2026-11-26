@@ -14,6 +14,19 @@ export const en: Messages = {
   skip: "Skip to content",
   poweredBy: (server: string) => `${server} portal, powered by`,
 
+  appeals: {
+    title: "Appeal a moderation case",
+    review: "Review appeals",
+    statement: "Why should staff reconsider this case?",
+    submit: "Submit appeal",
+    accept: "Accept appeal",
+    reject: "Reject appeal",
+    renew: "Request a new link by DM",
+    sent: "Check your Discord DMs for a new link.",
+    saved: "Decision saved.",
+    failed: "The request could not be completed. Check your case link and try again.",
+    unavailable: "Appeals are unavailable for this installation.",
+  },
   nav: {
     label: "Portal navigation",
     home: "Home",

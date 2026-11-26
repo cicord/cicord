@@ -16,6 +16,19 @@ export const fr = {
   skip: "Aller au contenu",
   poweredBy: (server: string) => `Portail de ${server}, propulsé par`,
 
+  appeals: {
+    title: "Faire appel",
+    review: "Examiner les appels",
+    statement: "Pourquoi le staff devrait-il réexaminer ce dossier ?",
+    submit: "Envoyer mon appel",
+    accept: "Accepter",
+    reject: "Refuser",
+    renew: "Demander un nouveau lien par message privé",
+    sent: "Consultez vos messages privés sur Discord.",
+    saved: "Décision enregistrée.",
+    failed: "La demande a échoué. Vérifiez votre lien et réessayez.",
+    unavailable: "Les appels sont indisponibles pour cette installation.",
+  },
   nav: {
     label: "Navigation du portail",
     home: "Accueil",

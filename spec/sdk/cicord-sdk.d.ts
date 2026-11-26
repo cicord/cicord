@@ -442,6 +442,8 @@ export interface Server {
   readonly preferredLocale?: string;
   /** Paginated by ascending user id. Shares the role.members() cache, grant and intent. */
   members(options?: { limit?: number; after?: Snowflake }): Promise<Member[]>;
+  /** Send a DM even after the recipient left or was banned. @capability discord.dm.send */
+  sendDM(userId: Snowflake, message: MessageInput):Promise<Message>;
   /** Temporary restrictions owned by this installation. @capability server.overlays */
   readonly overlays: {
     apply(overlay: Overlay): Promise<void>;

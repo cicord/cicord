@@ -195,3 +195,9 @@ The case session has access only to scoped plugin routes on the issuing installa
 Expired links require a new link from the issuer. To invalidate all links and current
 sessions for the case, call `ctx.portal.revoke({kind: "case", id: "42"})`. New links
 issued after revocation use the new case generation.
+
+A recently expired case link can start an OAuth renewal challenge for up to 30 days.
+The resulting ten-minute session can call only `POST /scope/renew` on the same
+installation. The issuer checks its case state and renewal cooldown, then sends a
+fresh link directly to the original user's Discord account. Revocation also
+disables renewal of previously issued links.

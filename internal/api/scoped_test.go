@@ -42,6 +42,7 @@ func TestCaseOAuthAfterBan(t *testing.T) {
 		patch("bots/moderator/bot.yaml", "        - portal.links", "        - portal.routes\n        - portal.links")
 		patch("plugins/welcome/src/index.ts", "  events: {", `  routes:{
     "GET /issue/:id":{access:"admin",async handler(ctx,r){return {url:await ctx.portal.link("/case",{scope:{kind:"case",id:r.params.id},user:r.query.user,expiresInSeconds:604800})}}},
+    "POST /scope/renew":{access:"scoped",handler(ctx,r){return {id:r.scope.id}}},
     "GET /case/:id":{access:"scoped",handler(ctx,r){return {id:r.scope.id,user:r.viewer.user.id}}},
     "POST /appeals":{access:"scoped",handler(ctx,r){return {id:r.scope.id}}},
     "POST /invalidate/:id":{access:"admin",async handler(ctx,r){await ctx.portal.revoke({kind:"case",id:r.params.id})}},
@@ -94,6 +95,23 @@ func TestCaseOAuthAfterBan(t *testing.T) {
 	c.expect(403, "GET", "/api/v1/portal/"+serverKey+"/me", nil)
 	admin.expect(403, "GET", path+"/case/42", nil)
 	c.expect(403, "GET", path+"/issue/43", nil)
+	// Expired proof can start an OAuth renewal challenge, never a normal case session.
+	claim, err := e.rt.Signer().Verify(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim.Expires = time.Now().Add(-time.Hour).Unix()
+	stale := e.rt.Signer().Sign(claim)
+	renew := e.client()
+	dest := renew.expect(302, "GET", "/auth/login?case_token="+url.QueryEscape(stale)+"&case_renew=1", nil).header.Get("Location")
+	target, err := url.Parse(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renew.expect(302, "GET", "/auth/callback?state="+target.Query().Get("state")+"&code="+user, nil)
+	renew.expect(403, "GET", path+"/case/42", nil)
+	renew.expect(403, "POST", path+"/appeals", map[string]string{"text": "test"})
+	renew.expect(200, "POST", path+"/scope/renew", nil)
 	admin.expect(204, "POST", path+"/invalidate/42", nil)
 	c.expect(403, "GET", path+"/case/42", nil)
 	c.expect(403, "GET", "/auth/login?case_token="+url.QueryEscape(token), nil)

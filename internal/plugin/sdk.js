@@ -494,6 +494,7 @@
 
   function mkContext(d) {
     const server = freeze({
+      async sendDM(userId,message){return mkMessage(await acall("member.send",{userId,message:msgIn(message)}));},
       overlays: freeze({
         async apply(overlay) { await acall("server.overlayApply",overlay); },
         async remove(id) { await acall("server.overlayRemove",{id}); },

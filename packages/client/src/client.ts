@@ -492,6 +492,18 @@ export class CicordClient {
       url.searchParams.delete(codeParam);
       url.searchParams.delete("cicord_scope");
       const history = options.history ?? globalHistory();
+      // The timestamp is a navigation hint. Only the runtime verifies the signature
+      // and grants a renewal-only session after Discord OAuth.
+      let renew = false;
+      if (scope)
+        try {
+          const payload = scope.split(".")[0] ?? "";
+          const expiry = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))).e;
+          renew = typeof expiry === "number" && expiry <= Date.now() / 1000;
+          if (renew) url.searchParams.set("renew", "1");
+        } catch {
+          /* The runtime rejects malformed credentials. */
+        }
       const clean = `${url.pathname}${url.search}${url.hash}`;
       if (history) history.replaceState(history.state ?? null, "", clean);
       else location.href = url.toString();
@@ -502,6 +514,7 @@ export class CicordClient {
           url,
         );
         target.searchParams.set("case_token", scope);
+        if (renew) target.searchParams.set("case_renew", "1");
         if (location.assign) location.assign(target.toString());
         else location.href = target.toString();
         return Promise.resolve(null);
