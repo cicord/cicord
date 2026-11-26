@@ -341,6 +341,35 @@ function Instances({ review, serverKey }: { review: StoreUpdateReview; serverKey
                   </span>
                 ) : null}
               </div>
+              {i.secretChanges?.map((change) => (
+                <div key={change.name} className="mt-1 rounded border p-2">
+                  <p className="font-mono font-medium">{change.name}</p>
+                  <p>
+                    {t("store.update.secretHosts", {
+                      before: change.before.hosts.join(", ") || "—",
+                      after: change.after.hosts.join(", ") || "—",
+                    })}
+                  </p>
+                  <p>
+                    {t("store.update.secretBudget", {
+                      before: change.before.budget
+                        ? t("store.update.secretBudgetValue", {
+                            provider: change.before.budget.provider,
+                            count: change.before.budget.limit,
+                            field: change.before.budget.config,
+                          })
+                        : t("store.update.noSecretBudget"),
+                      after: change.after.budget
+                        ? t("store.update.secretBudgetValue", {
+                            provider: change.after.budget.provider,
+                            count: change.after.budget.limit,
+                            field: change.after.budget.config,
+                          })
+                        : t("store.update.noSecretBudget"),
+                    })}
+                  </p>
+                </div>
+              ))}
               {invalid ? (
                 <>
                   <ul className="list-disc pl-5 text-danger">
@@ -416,6 +445,7 @@ function UpdateForm({
   const blocked = review.missingAdmin.length > 0 || !review.configValid;
   const [confirmed, setConfirmed] = useState(false);
   const [serverConfirmed, setServerConfirmed] = useState(false);
+  const [approvedSecrets, setApprovedSecrets] = useState("");
   const privilegedGrants = serverGrants(review.diff.capabilities.added);
   const [force, setForce] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -426,6 +456,7 @@ function UpdateForm({
     if (problem) problemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [problem]);
   const ready =
+    (!review.secretReview || approvedSecrets === review.secretReview) &&
     (!privilegedGrants.length || serverConfirmed) &&
     !blocked &&
     (!unofficial || confirmed) &&
@@ -437,6 +468,7 @@ function UpdateForm({
     setAttempted(true);
     if (!ready) return;
     const request: StoreUpdateRequest = {
+      ...(review.secretReview ? { confirmSecretChanges: approvedSecrets } : {}),
       version: d.version,
       ...(d.commit ? { commit: d.commit } : {}),
       ...(d.integrity ? { integrity: d.integrity } : {}),
@@ -510,6 +542,17 @@ function UpdateForm({
         <Instances review={review} serverKey={serverKey} />
         <Files review={review} />
       </Card>
+      {review.secretReview && (
+        <Checkbox
+          tone="warning"
+          checked={approvedSecrets === review.secretReview}
+          onChange={(checked) => setApprovedSecrets(checked ? (review.secretReview ?? "") : "")}
+          invalid={attempted && approvedSecrets !== review.secretReview}
+          label={t("store.update.confirmSecretChanges")}
+        >
+          <p>{t("store.update.secretChangesHint")}</p>
+        </Checkbox>
+      )}
       {privilegedGrants.length > 0 && (
         <ServerGrantConsent
           grants={privilegedGrants}

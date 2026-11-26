@@ -179,7 +179,7 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
 
 ```json
 { "version": "1.1.0", "commit"?: "<sha>", "integrity"?: "sha256-…",
-  "confirmUnofficial"?: false, "force"?: false }
+  "confirmUnofficial"?: false, "confirmSecretChanges"?: "<review digest>", "force"?: false }
 ```
 
 - Needs the `admin` role on **every** server where an instance of the plugin runs (bearer:
@@ -189,6 +189,7 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
   `commit` and `integrity` of the reviewed `detail` are required (`400`); when the latest
   version now resolves differently: `409 changed`. Bundled copies: `version` (and optionally
   `integrity`) of the reviewed `detail`.
+- The review lists each bound credential whose destination hosts or daily provider budget change under `instances[].secretChanges`. If an update expands that access, GET also returns `secretReview`. Supply the exact digest in `confirmSecretChanges` when approving the update. A missing or stale digest returns `409 confirmation_required`. The CLI prints the corresponding `--approve-secret-changes` argument.
 - `unofficial` sources need `confirmUnofficial: true` (`409 confirmation_required`). Already
   the latest: `409 up_to_date`. A modified bundled copy without `force: true`:
   `409 modified` (`details` lists the changed and deleted files).

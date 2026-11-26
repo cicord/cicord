@@ -25,7 +25,7 @@ func init() {
 // §11). It edits cicord.lock and bot.yaml (or plugins/<name>/ for copies of official
 // plugins) locally; commit the result like any other change.
 func newPluginUpdateCmd() *cobra.Command {
-	var dir, to string
+	var dir, to, approveSecrets string
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "update [<registry>/<plugin>]",
@@ -62,9 +62,10 @@ check stays green; when they cannot be generated, a warning says so.`,
 			if len(args) == 0 {
 				return listPluginUpdates(cmd, repo)
 			}
-			return updatePlugin(cmd, repo, args[0], to, force)
+			return updatePlugin(cmd, repo, args[0], to, force, approveSecrets)
 		},
 	}
+	cmd.Flags().StringVar(&approveSecrets, "approve-secret-changes", "", "approve the exact credential review printed by a previous update attempt")
 	cmd.Flags().StringVar(&dir, "dir", ".", "repository root")
 	cmd.Flags().StringVar(&to, "to", "", "version range to update to (default: the latest version, any major); written to every instance")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite a locally modified copy of an official plugin")
@@ -156,7 +157,7 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 	return nil
 }
 
-func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, force bool) error {
+func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, force bool, approveSecrets string) error {
 	regName, name, err := registry.CheckSource(source)
 	if err != nil {
 		return err
@@ -247,6 +248,9 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 		}
 		return fmt.Errorf("the config of an instance is not valid for %s %s: fix it first", source, spec.Version)
 	}
+	if !plan.AcceptsSecretReview(approveSecrets) {
+		return fmt.Errorf("review the credential changes above, then repeat with --approve-secret-changes %s", plan.SecretReview)
+	}
 	if err := setup.ApplyEdits(repo.Root, plan.Edits); err != nil {
 		return err
 	}
@@ -259,6 +263,17 @@ func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, forc
 func printUpdatePlan(w io.Writer, plan *setup.UpdatePlan, trust string) {
 	spec := plan.Spec
 	fmt.Fprintf(w, "%s: %s → %s (%s)\n", spec.Source, plan.Current.Version, spec.Version, trust)
+	for _, instance := range plan.Instances {
+		for _, change := range instance.SecretChanges {
+			budget := func(p setup.BoundPolicy) string {
+				if p.Budget == nil {
+					return "no provider cap"
+				}
+				return fmt.Sprintf("%s %d tokens/day (%s)", p.Budget.Provider, p.Budget.Limit, p.Budget.Config)
+			}
+			fmt.Fprintf(w, "  credential %s on %s/%s/%s: hosts %v -> %v; budget %s -> %s\n", change.Name, instance.Bot, instance.Instance, instance.Server, change.Before.Hosts, change.After.Hosts, budget(change.Before), budget(change.After))
+		}
+	}
 	if plan.RepoChanged {
 		where := registry.Redact(spec.Lock.Repo)
 		if spec.Lock.Path != "" {

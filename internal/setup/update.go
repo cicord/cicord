@@ -82,9 +82,10 @@ type InstalledVersion struct {
 
 // UpdateInstance is what the update changes for one instance on one server.
 type UpdateInstance struct {
-	Server   string `json:"server"`
-	Bot      string `json:"bot"`
-	Instance string `json:"instance"`
+	SecretChanges []SecretChange `json:"secretChanges,omitempty"`
+	Server        string         `json:"server"`
+	Bot           string         `json:"bot"`
+	Instance      string         `json:"instance"`
 	// Range is the instance's version range (registry plugins) and NewRange the one the
 	// update writes ("" when it stays).
 	Range    string `json:"range,omitempty"`
@@ -107,10 +108,12 @@ type FileChanges struct {
 // UpdatePlan is an update computed against a repository: the review shown to the admin
 // and the edits that apply it.
 type UpdatePlan struct {
-	Spec      UpdateSpec       `json:"-"`
-	Current   InstalledVersion `json:"current"`
-	Diff      PermissionDiff   `json:"diff"`
-	Instances []UpdateInstance `json:"instances"`
+	SecretReview string `json:"secretReview,omitempty"`
+	baseRepo     *config.Repo
+	Spec         UpdateSpec       `json:"-"`
+	Current      InstalledVersion `json:"current"`
+	Diff         PermissionDiff   `json:"diff"`
+	Instances    []UpdateInstance `json:"instances"`
 	// Files: bundled updates only.
 	Files *FileChanges `json:"files,omitempty"`
 	// Modified: the bundled copy was changed locally (see catalog.CopyStatus).
@@ -177,7 +180,7 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 	if repo == nil {
 		return nil, errors.New("no configuration")
 	}
-	plan := &UpdatePlan{Spec: spec, Instances: []UpdateInstance{}, Servers: []string{}, Edits: map[string]writeback.EditFunc{}}
+	plan := &UpdatePlan{baseRepo: repo, Spec: spec, Instances: []UpdateInstance{}, Servers: []string{}, Edits: map[string]writeback.EditFunc{}}
 	newLP, err := config.ConfigSchemaPlugin(spec.Schema)
 	if err != nil {
 		return nil, fmt.Errorf("config schema of %s %s: %w", spec.Name, spec.Version, err)
@@ -240,6 +243,12 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 		Network:           diff(plan.Current.Network, spec.Network),
 	}
 
+	current := map[string]*config.Instance{}
+	for n := range repo.Instances {
+		instance := &repo.Instances[n]
+		current[instance.ID()] = instance
+	}
+	var review []secretReviewEntry
 	// Per instance: version range, grants, config validity on each server.
 	servers := map[string]bool{}
 	botEdits := map[string][]func([]byte) ([]byte, error){}
@@ -298,9 +307,21 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 			if ds := config.ValidateInstanceConfig(newLP, cfg, sk, srv, u.bot.File, fmt.Sprintf("/spec/plugins/%d/config", u.idx)); len(ds) > 0 {
 				ui.Diagnostics = ds
 			}
+			for name := range u.inst.Secrets {
+				if !slices.ContainsFunc(spec.SecretDeclarations, func(s config.PluginSecret) bool { return s.Name == name }) {
+					ui.Diagnostics = append(ui.Diagnostics, config.Diagnostic{Severity: config.SeverityError, File: u.bot.File, Path: fmt.Sprintf("/spec/plugins/%d/secrets/%s", u.idx, name), Message: fmt.Sprintf("the new plugin no longer declares bound secret %s", name)})
+				}
+			}
+			ui.SecretChanges = boundChanges(current[u.key+"/"+u.inst.Name+"/"+sk], u.inst, spec, cfg)
+			for _, change := range ui.SecretChanges {
+				if change.Widened {
+					review = append(review, secretReviewEntry{sk, u.key, u.inst.Name, u.inst.Secrets[change.Name].SecretRef, change})
+				}
+			}
 			plan.Instances = append(plan.Instances, ui)
 		}
 	}
+	plan.SecretReview = secretReviewToken(spec, review)
 	for sk := range servers {
 		plan.Servers = append(plan.Servers, sk)
 	}
@@ -394,6 +415,9 @@ func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor
 	rev, ok := rt.Revision()
 	if repo == nil || !ok {
 		return UpdateResult{}, errorf(http.StatusServiceUnavailable, "unavailable", "", "No active configuration yet.")
+	}
+	if plan.baseRepo != nil && plan.baseRepo != repo {
+		return UpdateResult{}, errorf(http.StatusConflict, "changed", "", "The active configuration changed. Review the update again.")
 	}
 	if in.Writer == nil {
 		return UpdateResult{}, errorf(http.StatusServiceUnavailable, "unavailable", "", "Write-back is not configured: plugins cannot be updated from the admin.")

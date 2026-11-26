@@ -169,6 +169,7 @@ func (s *server) handleStoreUpdateReview(w http.ResponseWriter, r *http.Request)
 				restricted = append(restricted, restrictedServer{Server: ui.Server, Instances: 1})
 			}
 		}
+		plan.SecretReview = ""
 		plan.Instances = visible
 		d.Installed = slices.DeleteFunc(d.Installed, func(i store.Installation) bool { return slices.Contains(missing, i.Server) })
 	}
@@ -192,6 +193,7 @@ func (s *server) failPlan(w http.ResponseWriter, source, name string, err error)
 }
 
 type storeUpdateRequest struct {
+	ConfirmSecretChanges string `json:"confirmSecretChanges"`
 	// Version, Commit and Integrity of the reviewed version (commit: registry plugins).
 	Version           string `json:"version"`
 	Commit            string `json:"commit"`
@@ -304,6 +306,10 @@ func (s *server) handleStoreUpdate(w http.ResponseWriter, r *http.Request) {
 		plan.Modified = st.Modified
 	}
 
+	if !plan.AcceptsSecretReview(req.ConfirmSecretChanges) {
+		s.failSetup(w, &setup.Error{Status: http.StatusConflict, Code: "confirmation_required", Message: "The update expands access to an existing plugin credential.", Hint: "Review the changed credential hosts and provider limits for every installation, then confirm that review."})
+		return
+	}
 	if !s.confirmServerGrants(w, plan.Diff.Capabilities.Added, req.ConfirmPrivileged) {
 		return
 	}
@@ -321,7 +327,8 @@ func (s *server) handleStoreUpdate(w http.ResponseWriter, r *http.Request) {
 	details := mustJSON(map[string]any{
 		"source": source, "plugin": name, "from": plan.Current.Version, "to": res.Version, "commit": d.Commit, "trust": trust,
 		"capabilitiesAdded": plan.Diff.Capabilities.Added, "capabilitiesRemoved": plan.Diff.Capabilities.Removed,
-		"forced": req.Force && plan.Modified, "mode": res.Mode, "revision": res.Revision, "pullRequestUrl": res.PullRequestURL,
+		"approvedSecretReview": plan.SecretReview,
+		"forced":               req.Force && plan.Modified, "mode": res.Mode, "revision": res.Revision, "pullRequestUrl": res.PullRequestURL,
 	})
 	for _, k := range plan.Servers {
 		s.audit(r.Context(), state.AuditEntry{Server: k, Actor: id.auditActor(), Action: "plugin.update", Target: ref, Details: details})

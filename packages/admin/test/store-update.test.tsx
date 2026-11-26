@@ -110,6 +110,41 @@ describe("plugin updates", () => {
     });
   });
 
+  test("a bound credential requires approval for its specific destinations and budget", async () => {
+    const reviewId = "approved-review-fixture";
+    const { user, sent } = setup(
+      SERVER + "/store/cicord/welcome?update=1",
+      async (url, init, runtime) => {
+        if (init.method !== "GET" || !url.pathname.endsWith("/welcome/update")) return;
+        const review = await (await runtime.fetch(url.toString(), init)).json();
+        review.secretReview = reviewId;
+        review.instances[0].secretChanges = [
+          {
+            name: "API_KEY",
+            before: {
+              hosts: ["api.example.org"],
+              budget: { provider: "anthropic-messages", config: "daily", limit: 500 },
+            },
+            after: { hosts: ["api.example.org", "help.example.org"] },
+            widened: true,
+          },
+        ];
+        return json(review);
+      },
+    );
+    await login(user);
+    const main = screen.getByRole("main"),
+      submit = await within(main).findByRole("button", { name: "Update to 0.1.0" });
+    expect(submit).toHaveProperty("disabled", true);
+    expect(within(main).getByText(/Destination hosts.*help.example.org/)).toBeTruthy();
+    expect(within(main).getByText(/Daily provider budget.*500.*Unmetered/)).toBeTruthy();
+    await user.click(
+      within(main).getByRole("checkbox", { name: /Approve the expanded credential access/ }),
+    );
+    await user.click(submit);
+    expect(updates(sent)[0]?.body).toMatchObject({ confirmSecretChanges: reviewId });
+  });
+
   test("an unofficial registry plugin: the confirmation restates what is newly granted", async () => {
     const { user, sent } = setup(`${SERVER}/store/acme/giveaways?update=1`);
     await login(user);

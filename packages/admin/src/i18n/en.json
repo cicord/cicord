@@ -1840,6 +1840,12 @@
         "force": "Overwrite the local changes in plugins/{{name}}/"
       },
       "confirm": "I trust {{publisher}}, the publisher of {{name}} from the unofficial source {{source}}, and grant version {{version}}:",
+      "confirmSecretChanges": "Approve the expanded credential access shown for these installations",
+      "secretChangesHint": "This approval applies to the displayed update, destination hosts and provider limits.",
+      "secretHosts": "Destination hosts · {{before}} → {{after}}",
+      "secretBudget": "Daily provider budget · {{before}} → {{after}}",
+      "secretBudgetValue": "{{provider}}, {{count}} tokens per day ({{field}})",
+      "noSecretBudget": "Unmetered",
       "confirmNothingNew": "nothing new (same capabilities, intents and network access)",
       "confirmCapability": "new capability: {{capability}}",
       "confirmIntent": "new gateway intent: {{intent}}",

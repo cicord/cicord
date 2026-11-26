@@ -1448,7 +1448,18 @@ export interface InstalledPluginVersion {
 }
 
 /** What an update changes for one instance on one server. */
+export interface PluginSecretPolicy {
+  hosts: string[];
+  budget?: { provider: string; config: string; limit: number };
+}
+
 export interface PluginUpdateInstance {
+  secretChanges?: {
+    name: string;
+    before: PluginSecretPolicy;
+    after: PluginSecretPolicy;
+    widened: boolean;
+  }[];
   server: string;
   bot: string;
   instance: string;
@@ -1475,6 +1486,7 @@ export interface PluginUpdateFiles {
  * is installed. Computed without evaluating the new version's code.
  */
 export interface StoreUpdateReview {
+  secretReview?: string;
   /** `false` when the installed version is the latest. */
   available: boolean;
   update: PluginUpdate | null;
@@ -1505,6 +1517,7 @@ export interface StoreUpdateReview {
 
 /** `POST /store/{source}/{plugin}/update`. */
 export interface StoreUpdateRequest {
+  confirmSecretChanges?: string;
   /** `detail.version` of the review (required). */
   version: string;
   /** `detail.commit` and `detail.integrity` (required for registry plugins). */
