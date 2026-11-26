@@ -154,9 +154,10 @@ type serverRT struct {
 }
 
 type instanceRT struct {
-	cfg      config.Instance
-	serverID string
-	plugin   *builtPlugin
+	featureMessages map[string]string
+	cfg             config.Instance
+	serverID        string
+	plugin          *builtPlugin
 	// current is the running instance; the supervisor replaces it after a crash.
 	current atomic.Pointer[plugin.Instance]
 
@@ -168,6 +169,21 @@ type instanceRT struct {
 	health   string
 	message  string
 	failures int
+}
+
+func (i *instanceRT) featureStatus(key, message string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if message == "" {
+		delete(i.featureMessages, key)
+		return
+	}
+	if i.featureMessages == nil {
+		i.featureMessages = map[string]string{}
+	}
+	if _, ok := i.featureMessages[key]; ok || len(i.featureMessages) < 32 {
+		i.featureMessages[key] = message
+	}
 }
 
 func (i *instanceRT) id() string { return i.cfg.ID() }
@@ -1098,6 +1114,14 @@ func (r *Runtime) instanceDeadCounts() map[string]int {
 func (r *Runtime) reportedHealth(i *instanceRT, dead int) (string, string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	if i.health == HealthHealthy && len(i.featureMessages) > 0 {
+		var messages []string
+		for k, m := range i.featureMessages {
+			messages = append(messages, k+": "+m)
+		}
+		slices.Sort(messages)
+		return HealthDegraded, strings.Join(messages, " · ")
+	}
 	if i.health == HealthHealthy && i.cfg.Plugin != nil && i.cfg.Config["enabled"] != false {
 		var optional []string
 		for _, s := range i.cfg.Plugin.Manifest.Spec.Secrets {

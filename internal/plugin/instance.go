@@ -56,6 +56,7 @@ type Env struct {
 	Grants []string
 	// NetworkAllow is plugin.yaml spec.network.allow.
 	Index        state.FullTextIndex
+	ReportStatus func(key, message string)
 	NetworkAllow []string
 	Secret       func(string) (string, []string, bool)
 	Files        map[string][]byte

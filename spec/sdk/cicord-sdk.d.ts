@@ -794,6 +794,7 @@ export interface Context {
   readonly kv: KV;
   readonly schedule: Scheduler;
   readonly http: Http;
+  readonly status: {set(key:string, message:string|null):void};
   readonly files: InstanceFiles;
   index(name: string, options?: {language?: "en" | "fr"}): FullTextIndex;
   readonly secrets: {has(name: string): boolean; ref(name: string): SecretRef};

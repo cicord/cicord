@@ -114,6 +114,7 @@ func init() {
 		"member.permissionsIn":   opPermissionsIn,
 		"i18n.t":                 opTranslate,
 		"server.owner":           opServerOwner,
+		"status.set":             opFeatureStatus,
 		"secrets.has":            opSecretHas,
 		"it.state":               opInteractionState,
 	}

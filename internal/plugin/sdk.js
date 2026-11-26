@@ -625,6 +625,7 @@
       log: freeze({ debug: logFn("debug"), info: logFn("info"), warn: logFn("warn"), error: logFn("error") }),
       kv,
       schedule,
+      status: freeze({set(key,message) { hcall("status.set",{key,message}); }}),
       files,
       index(name, options = {}) {
         const language = options.language || "en";

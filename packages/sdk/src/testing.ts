@@ -1513,6 +1513,7 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
         if (i >= 0) scheduled.splice(i, 1);
       },
     },
+    status: {set(key,message) { if(message) log("warn")(key+": "+message); }},
     secrets: {
       has(name) {
         return options.secrets?.includes(name) === true;
