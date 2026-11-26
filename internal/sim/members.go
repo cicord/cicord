@@ -342,7 +342,7 @@ func (w *World) kickMember(a actor, serverID, userID, reason string) error {
 	}
 	w.recordOK(a, "KickMember", serverID, userID, reason)
 	w.dropMember(s, userID)
-	w.auditLog(serverID, a.userID, discord.AuditMemberKick, userID)
+	w.auditWithReason(serverID, a.userID, discord.AuditMemberKick, userID, a.auditReason(reason))
 	return nil
 }
 

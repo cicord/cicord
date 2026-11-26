@@ -188,3 +188,48 @@ func TestVoiceRoomLockPermitAndOwnerMovement(t *testing.T) {
 		t.Fatal(states)
 	}
 }
+
+// These are ordinary member actions on one account. Kicks and bans reset
+// membership, while a zero-second history window preserves earlier messages.
+func TestRejoinAfterKickAndBan(t *testing.T) {
+	start := time.Date(2026, 11, 26, 7, 51, 0, 0, time.UTC)
+	var elapsed atomic.Int64
+	f := newFixture(t, fixtureOpts{world: []Option{WithClock(func() time.Time {
+		return start.Add(time.Duration(elapsed.Load()))
+	})}})
+	sid, uid := f.srv.ID, f.alice.ID
+	msg, err := f.w.SendMessage(uid, f.general.ID, "history witness")
+	isErr(t, err, nil)
+	role, err := f.w.AdminCreateRole(sid, discord.RoleParams{Name: ptr("opt-in")})
+	isErr(t, err, nil)
+	isErr(t, f.w.AdminAddMemberRole(sid, uid, role.ID), nil)
+	code, err := f.w.CreateInvite(f.general.ID, 2)
+	isErr(t, err, nil)
+	rejoin := func() {
+		t.Helper()
+		if _, ok := f.w.Member(sid, uid); ok {
+			t.Fatal("departed member is still listed")
+		}
+		elapsed.Add(int64(time.Minute))
+		isErr(t, f.w.JoinWithInvite(uid, code), nil)
+		m, ok := f.w.Member(sid, uid)
+		if !ok || m.User.ID != uid || !m.JoinedAt.Equal(start.Add(time.Duration(elapsed.Load()))) || m.HasRole(role.ID) {
+			t.Fatalf("unexpected rejoined member: %+v", m)
+		}
+		isErr(t, f.w.AdminAddMemberRole(sid, uid, role.ID), nil)
+		m, _ = f.w.Member(sid, uid)
+		if !m.HasRole(role.ID) {
+			t.Fatal("opt-in role was not restored")
+		}
+		previous, err := f.w.UserClient(uid).GetMessage(t.Context(), f.general.ID, msg.ID)
+		if err != nil || previous.Content != msg.Content {
+			t.Fatalf("old message missing after rejoin: %v", err)
+		}
+	}
+	isErr(t, f.sess.KickMember(t.Context(), sid, uid, "test kick"), nil)
+	rejoin()
+	isErr(t, f.sess.BanMember(t.Context(), sid, uid, 0, "test ban"), nil)
+	isErr(t, f.w.JoinWithInvite(uid, code), discord.ErrForbidden)
+	isErr(t, f.sess.UnbanMember(t.Context(), sid, uid, "test unban"), nil)
+	rejoin()
+}
