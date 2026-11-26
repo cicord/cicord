@@ -426,7 +426,7 @@ func (c *Checker) Run(ctx context.Context, serverKey string, since time.Time) Re
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if slices.Contains(repo.Bots[k].Spec.Servers, serverKey) {
+			if slices.Contains(repo.Bots[k].Spec.ServerKeys(), serverKey) {
 				botKey = k
 				break
 			}

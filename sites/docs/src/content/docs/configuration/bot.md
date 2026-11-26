@@ -146,3 +146,20 @@ When it builds a revision, the runtime also refuses a handler that needs an inte
 manifest does not declare, schedules, routes or subscriptions without their capability (both
 also checked by `cicord plugin build`), and a command name defined by two instances on the
 same bot and server.
+
+## Per-server appearance
+
+Keep a plain server key for a server using the bot's default appearance. To customize one server, replace its entry with an object containing the same key and a profile.
+
+```yaml
+servers:
+  - public-community
+  - key: staff
+    profile:
+      nickname: Staff concierge
+      bio: Helps the moderation team.
+      avatar: ./staff-avatar.png
+      banner: ./staff-banner.png
+```
+
+Images resolve relative to `bot.yaml`. Each supplied field applies to the bot member on that server. An empty string clears a field. The runtime skips repeated updates after a successful application and retries failed updates on the next activation.

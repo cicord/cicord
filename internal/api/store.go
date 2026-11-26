@@ -295,7 +295,7 @@ func (s *server) handleStoreInstall(w http.ResponseWriter, r *http.Request) {
 	if req.Bot == "" {
 		var bots []string
 		for k, b := range repo.Bots {
-			if slices.Contains(b.Spec.Servers, serverKey) {
+			if slices.Contains(b.Spec.ServerKeys(), serverKey) {
 				bots = append(bots, k)
 			}
 		}

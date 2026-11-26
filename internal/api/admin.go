@@ -316,7 +316,7 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		} else if bk, ok := cutPrefix(rec.Target, "bot:"); ok {
 			visible := false
 			if repo != nil && repo.Bots[bk] != nil {
-				for _, sk := range repo.Bots[bk].Spec.Servers {
+				for _, sk := range repo.Bots[bk].Spec.ServerKeys() {
 					if _, v := vis[sk]; v {
 						visible = true
 					}

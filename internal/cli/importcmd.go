@@ -174,7 +174,7 @@ func runImport(cmd *cobra.Command, serverID, dir, key, tokenEnv string, force bo
 	listed := false
 	if repo != nil {
 		for _, b := range repo.Bots {
-			for _, s := range b.Spec.Servers {
+			for _, s := range b.Spec.ServerKeys() {
 				if s == res.Key {
 					listed = true
 				}

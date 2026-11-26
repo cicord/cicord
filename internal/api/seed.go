@@ -62,7 +62,7 @@ func SeedSimWorld(w *sim.World, repo *config.Repo, extraUsers ...string) (*SimSe
 		}
 		seed.Secrets[b.Spec.Token.SecretRef] = token
 		seed.Bots[k] = u
-		for _, sk := range b.Spec.Servers {
+		for _, sk := range b.Spec.ServerKeys() {
 			srv := repo.Servers[sk]
 			if srv == nil {
 				continue

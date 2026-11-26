@@ -1200,7 +1200,7 @@ func (r *Runtime) Status() Status {
 	}
 	for _, key := range sortedKeys(a.repo.Bots) {
 		b := a.repo.Bots[key]
-		bs := BotStatus{Key: key, Servers: b.Spec.Servers, Plugins: []PluginStatus{}}
+		bs := BotStatus{Key: key, Servers: b.Spec.ServerKeys(), Plugins: []PluginStatus{}}
 		if h := hosts[key]; h != nil {
 			bs.Username, bs.UserID = h.session.Self().Username, h.session.Self().ID
 			bs.Health = HealthHealthy

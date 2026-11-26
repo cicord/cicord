@@ -515,7 +515,7 @@ type BotSpec struct {
 	Token         TokenRef         `yaml:"token" json:"token"`
 	Profile       *BotProfile      `yaml:"profile,omitempty" json:"profile,omitempty"`
 	Presence      *Presence        `yaml:"presence,omitempty" json:"presence,omitempty"`
-	Servers       []string         `yaml:"servers" json:"servers"`
+	Servers       []BotServer      `yaml:"servers" json:"servers"`
 	Intents       []string         `yaml:"intents,omitempty" json:"intents,omitempty"`
 	Plugins       []PluginInstance `yaml:"plugins,omitempty" json:"plugins,omitempty"`
 }

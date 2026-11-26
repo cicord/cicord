@@ -274,7 +274,7 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 		}
 		on := u.inst.Servers
 		if len(on) == 0 {
-			on = u.bot.Spec.Servers
+			on = u.bot.Spec.ServerKeys()
 		}
 		for _, sk := range on {
 			servers[sk] = true
@@ -541,7 +541,7 @@ func PluginServers(repo *config.Repo, source string) []string {
 				}
 				on := p.Servers
 				if len(on) == 0 {
-					on = b.Spec.Servers
+					on = b.Spec.ServerKeys()
 				}
 				for _, s := range on {
 					seen[s] = true

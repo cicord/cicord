@@ -104,7 +104,7 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 		instance = pkg.Name
 	}
 	bot := repo.Bots[t.Bot]
-	if bot == nil || !slices.Contains(bot.Spec.Servers, t.Server) {
+	if bot == nil || !slices.Contains(bot.Spec.ServerKeys(), t.Server) {
 		return InstallResult{}, errorf(http.StatusNotFound, "not_found", "", "Bot %q does not manage server %q.", t.Bot, t.Server)
 	}
 	if slices.ContainsFunc(bot.Spec.Plugins, func(p config.PluginInstance) bool { return p.Name == instance }) {
@@ -143,7 +143,7 @@ func (in *Installer) InstallPackage(ctx context.Context, t Target, pkg Package, 
 			}
 		}
 	}
-	if len(bot.Spec.Servers) > 1 {
+	if len(bot.Spec.ServerKeys()) > 1 {
 		pi.Servers = []string{t.Server}
 	}
 	if cfg := pruneEmpty(t.Config); len(cfg) > 0 {
@@ -282,7 +282,7 @@ func (in *Installer) Uninstall(ctx context.Context, serverKey, botKey, instance,
 		return UninstallResult{}, errorf(http.StatusServiceUnavailable, "unavailable", "", "Write-back is not configured: plugins cannot be uninstalled from the admin.")
 	}
 	bot := repo.Bots[botKey]
-	if bot == nil || !slices.Contains(bot.Spec.Servers, serverKey) {
+	if bot == nil || !slices.Contains(bot.Spec.ServerKeys(), serverKey) {
 		return UninstallResult{}, errorf(http.StatusNotFound, "not_found", "", "Bot %q does not manage server %q.", botKey, serverKey)
 	}
 	idx := slices.IndexFunc(bot.Spec.Plugins, func(p config.PluginInstance) bool { return p.Name == instance })
@@ -292,7 +292,7 @@ func (in *Installer) Uninstall(ctx context.Context, serverKey, botKey, instance,
 	pi := bot.Spec.Plugins[idx]
 	servers := pi.Servers
 	if len(servers) == 0 {
-		servers = bot.Spec.Servers
+		servers = bot.Spec.ServerKeys()
 	}
 	if !slices.Contains(servers, serverKey) {
 		return UninstallResult{}, errorf(http.StatusNotFound, "not_found", "", "%q does not run on %q.", instance, serverKey)

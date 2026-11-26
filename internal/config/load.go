@@ -421,11 +421,29 @@ func (l *loader) checkBots(repo *Repo) {
 		b := repo.Bots[bk]
 		doc := l.docs[b.File]
 		botServers := map[string]bool{}
-		for i, sk := range b.Spec.Servers {
+		for i, sk := range b.Spec.ServerKeys() {
 			if _, ok := repo.Servers[sk]; !ok {
 				p := fmt.Sprintf("/spec/servers/%d", i)
 				l.sink.errorf(b.File, doc.lineOf(p), p, "unknown server %q", sk)
 				continue
+			}
+			if botServers[sk] {
+				p := fmt.Sprintf("/spec/servers/%d", i)
+				l.sink.errorf(b.File, doc.lineOf(p), p, "duplicate server %q", sk)
+			}
+			if profile := b.Spec.Servers[i].Profile; profile != nil {
+				for field, image := range map[string]*string{"avatar": profile.Avatar, "banner": profile.Banner} {
+					if image == nil || *image == "" {
+						continue
+					}
+					p := fmt.Sprintf("/spec/servers/%d/profile/%s", i, field)
+					rel, ok := ResolveRepoPath(b.File, *image)
+					if !ok {
+						l.sink.errorf(b.File, doc.lineOf(p), p, "image escapes repository")
+					} else if err := LocalPathError(repo.Root, rel); err != nil {
+						l.sink.errorf(b.File, doc.lineOf(p), p, "profile image %s: %v", rel, err)
+					}
+				}
 			}
 			botServers[sk] = true
 		}
@@ -461,7 +479,7 @@ func (l *loader) checkBots(repo *Repo) {
 			l.checkPrivilegedIntents(b, bk, base, doc.lineOf(base), lp)
 
 			// servers of this instance
-			servers := b.Spec.Servers
+			servers := b.Spec.ServerKeys()
 			if len(inst.Servers) > 0 {
 				servers = inst.Servers
 				for i, sk := range inst.Servers {

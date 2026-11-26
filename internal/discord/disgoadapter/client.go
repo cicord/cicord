@@ -663,3 +663,20 @@ func (s *session) CreateFollowup(ctx context.Context, applicationID, token strin
 	}
 	return messageFromWire(out), nil
 }
+
+func (s *session) UpdateGuildProfile(ctx context.Context, serverID string, p discord.GuildProfile) error {
+	body := map[string]any{}
+	if p.Nickname != nil {
+		body["nick"] = nullIfEmpty(*p.Nickname)
+	}
+	if p.Bio != nil {
+		body["bio"] = *p.Bio
+	}
+	if p.Avatar != nil {
+		body["avatar"] = nullIfEmpty(imageDataURI(*p.Avatar))
+	}
+	if p.Banner != nil {
+		body["banner"] = nullIfEmpty(imageDataURI(*p.Banner))
+	}
+	return s.do(ctx, "UpdateGuildProfile", rest.UpdateCurrentMember.Compile(nil, serverID), body, nil)
+}

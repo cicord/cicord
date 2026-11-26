@@ -364,3 +364,39 @@ func (c *Client) actorFor(ctx context.Context) actor {
 	}
 	return a
 }
+
+func (c *Client) UpdateGuildProfile(ctx context.Context, serverID string, p discord.GuildProfile) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	w := c.w
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	a := c.actorFor(ctx)
+	s := w.servers[serverID]
+	if s == nil || s.members[a.userID] == nil {
+		return notFound("unknown guild member")
+	}
+	mem := s.members[a.userID]
+	previous := cloneMember(*mem)
+	if p.Nickname != nil {
+		mem.Nick = *p.Nickname
+	}
+	if p.Bio != nil {
+		mem.Bio = *p.Bio
+	}
+	for _, img := range []struct {
+		data *[]byte
+		dst  *string
+		kind string
+	}{{p.Avatar, &mem.AvatarURL, "avatars"}, {p.Banner, &mem.BannerURL, "banners"}} {
+		if img.data != nil {
+			*img.dst = ""
+			if len(*img.data) > 0 {
+				*img.dst = discord.CDNBase + "/guilds/" + serverID + "/users/" + a.userID + "/" + img.kind + "/" + imageHash(*img.data) + ".png"
+			}
+		}
+	}
+	w.emit(discord.MemberUpdateEvent{Member: cloneMember(*mem), Previous: &previous})
+	return w.record(a, "UpdateGuildProfile", serverID, a.userID, "", nil)
+}

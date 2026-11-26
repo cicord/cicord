@@ -13,8 +13,8 @@ func TestGatewayIntents(t *testing.T) {
 			"expr":    {Spec: ServerSpec{Stickers: map[string]StickerSpec{"wave": {}}}},
 		},
 		Bots: map[string]*Bot{
-			"a": {Spec: BotSpec{Servers: []string{"plain"}, Intents: []string{"ServerMessages"}}},
-			"b": {Spec: BotSpec{Servers: []string{"automod", "expr"}}},
+			"a": {Spec: BotSpec{Servers: []BotServer{{Key: "plain"}}, Intents: []string{"ServerMessages"}}},
+			"b": {Spec: BotSpec{Servers: []BotServer{{Key: "automod"}, {Key: "expr"}}}},
 		},
 	}
 	if got := r.GatewayIntents("a"); !slices.Equal(got, []string{"Servers", "ServerMessages"}) {

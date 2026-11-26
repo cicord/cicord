@@ -333,7 +333,7 @@ func botEdits(repo *config.Repo, server string, kind state.ResourceKind, oldKey,
 		for i, inst := range b.Spec.Plugins {
 			servers := inst.Servers
 			if len(servers) == 0 {
-				servers = b.Spec.Servers
+				servers = b.Spec.ServerKeys()
 			}
 			if !contains(servers, server) {
 				continue

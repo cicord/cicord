@@ -147,7 +147,7 @@ func (b *bots) forServer(ctx context.Context, server string) (string, discord.Se
 	sort.Strings(keys)
 	var errs []error
 	for _, k := range keys {
-		for _, s := range b.repo.Bots[k].Spec.Servers {
+		for _, s := range b.repo.Bots[k].Spec.ServerKeys() {
 			if s != server {
 				continue
 			}

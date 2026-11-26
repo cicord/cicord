@@ -51,7 +51,22 @@
         "servers": {
           "description": "Keys of the servers this bot joins.",
           "type": "array",
-          "items": { "$ref": "common.schema.json#/$defs/key" },
+          "items": { "oneOf": [
+            { "$ref": "common.schema.json#/$defs/key" },
+            { "type": "object", "required": ["key"], "additionalProperties": false,
+              "properties": {
+                "key": { "$ref": "common.schema.json#/$defs/key" },
+                "profile": { "type": "object", "additionalProperties": false,
+                  "properties": {
+                    "nickname": { "type": "string", "maxLength": 32 },
+                    "bio": { "type": "string", "maxLength": 190 },
+                    "avatar": { "anyOf": [{"const":""},{"$ref":"common.schema.json#/$defs/relativePath"}] },
+                    "banner": { "anyOf": [{"const":""},{"$ref":"common.schema.json#/$defs/relativePath"}] }
+                  }
+                }
+              }
+            }
+          ] },
           "minItems": 1,
           "uniqueItems": true
         },

@@ -431,14 +431,15 @@ type Ban struct {
 }
 
 type Member struct {
-	Pending      *bool
-	PremiumSince *time.Time
-	AvatarURL    string
-	ServerID     string
-	User         User
-	Nick         string
-	RoleIDs      []string
-	JoinedAt     time.Time
+	BannerURL, Bio string
+	Pending        *bool
+	PremiumSince   *time.Time
+	AvatarURL      string
+	ServerID       string
+	User           User
+	Nick           string
+	RoleIDs        []string
+	JoinedAt       time.Time
 	// TimeoutUntil is set while the member is timed out.
 	TimeoutUntil *time.Time
 	// Flags are Discord's guild member flags (MemberFlagCompletedOnboarding…).
@@ -480,6 +481,11 @@ type MemberParams struct {
 	// to "" disconnects them (Discord's channel_id: null). It needs MoveMembers, and
 	// Connect in the destination channel.
 	VoiceChannelID *string
+}
+
+type GuildProfile struct {
+	Nickname, Bio  *string
+	Avatar, Banner *[]byte
 }
 
 type SelfParams struct {
@@ -989,6 +995,7 @@ func SnowflakeLess(a, b string) bool {
 // Session is one bot identity: REST client + gateway connection.
 type Session interface {
 	Client
+	UpdateGuildProfile(ctx context.Context, serverID string, p GuildProfile) error
 	// Self is the bot user. Valid after Connect.
 	Self() User
 	// ApplicationID is the bot's application ID. Valid after Connect.

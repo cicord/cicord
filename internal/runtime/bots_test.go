@@ -53,3 +53,16 @@ func TestBotProfileImages(t *testing.T) {
 		t.Fatalf("banner = %q, was %q", got, banner)
 	}
 }
+
+func TestGuildBotProfile(t *testing.T) {
+	s := startShowcase(t, showcaseOpts{prepare: func(dir string) {
+		replaceIn(t, filepath.Join(dir, "bots/cicord/bot.yaml"), "servers: [showcase]", "servers:\n    - key: showcase\n      profile:\n        nickname: Concierge\n        bio: Community events")
+	}})
+	s.waitFor("guild member profile", func() bool {
+		m, ok := s.world.Member(s.serverID, s.bot.ID)
+		return ok && m.Nick == "Concierge" && m.Bio == "Community events"
+	})
+	if u, _ := s.world.User(s.bot.ID); u.Username == "Concierge" {
+		t.Fatal("guild profile changed global identity")
+	}
+}

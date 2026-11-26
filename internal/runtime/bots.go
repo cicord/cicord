@@ -37,11 +37,12 @@ type botHost struct {
 
 	routing atomic.Pointer[routing]
 
-	cmdMu       sync.Mutex
-	cmdHashes   map[string]string // serverID → hash of the last command set
-	cmdSync     sync.Mutex        // serializes SetServerCommands calls
-	profileHash string
-	presence    string
+	cmdMu              sync.Mutex
+	cmdHashes          map[string]string // serverID → hash of the last command set
+	cmdSync            sync.Mutex        // serializes SetServerCommands calls
+	profileHash        string
+	guildProfileHashes map[string][32]byte
+	presence           string
 }
 
 type routing struct {
@@ -151,7 +152,7 @@ func (r *Runtime) hosts() []*botHost {
 // reconcilingBot returns the first connected bot (by key) that lists the server.
 func (r *Runtime) reconcilingBot(repo *config.Repo, server string) *botHost {
 	for _, key := range sortedKeys(repo.Bots) {
-		for _, s := range repo.Bots[key].Spec.Servers {
+		for _, s := range repo.Bots[key].Spec.ServerKeys() {
 			if s == server {
 				if h := r.bot(key); h != nil {
 					return h
@@ -373,7 +374,7 @@ func (h *botHost) install(ctx context.Context, a *active) {
 		h.routing.Store(rt)
 		return
 	}
-	for _, sk := range b.Spec.Servers {
+	for _, sk := range b.Spec.ServerKeys() {
 		if s := a.servers[sk]; s != nil {
 			rt.caches[s.cfg.Spec.DiscordID] = s.cache
 			if s.bot == h.key {
@@ -398,7 +399,7 @@ func (h *botHost) install(ctx context.Context, a *active) {
 			rt.commands[sid][c.Name] = i
 		}
 	}
-	for _, sk := range b.Spec.Servers {
+	for _, sk := range b.Spec.ServerKeys() {
 		if s := a.servers[sk]; s != nil {
 			rt.serverKeys[s.cfg.Spec.DiscordID] = sk
 		}
@@ -408,6 +409,21 @@ func (h *botHost) install(ctx context.Context, a *active) {
 	// slash commands per server
 	for sid := range rt.serverKeys {
 		h.syncCommands(ctx, rt, sid)
+	}
+
+	// Per-server appearance is applied to this bot's member identity only.
+	for _, binding := range b.Spec.Servers {
+		srv := a.repo.Servers[binding.Key]
+		if srv == nil {
+			continue
+		}
+		if binding.Profile == nil {
+			delete(h.guildProfileHashes, srv.Spec.DiscordID)
+			continue
+		}
+		if err := h.syncGuildProfile(ctx, a.repo.Root, b.File, binding, srv.Spec.DiscordID); err != nil {
+			h.rt.log.Warn("update guild bot profile", "bot", h.key, "server", binding.Key, "err", err)
+		}
 	}
 
 	// profile
@@ -594,4 +610,49 @@ func (r *Runtime) publish(bot, serverID, topic string, payload json.RawMessage) 
 			}
 		}
 	}
+}
+
+func (h *botHost) syncGuildProfile(ctx context.Context, root, file string, b config.BotServer, serverID string) error {
+	p := discord.GuildProfile{Nickname: b.Profile.Nickname, Bio: b.Profile.Bio}
+	for _, image := range []struct {
+		path *string
+		dst  **[]byte
+	}{{b.Profile.Avatar, &p.Avatar}, {b.Profile.Banner, &p.Banner}} {
+		if image.path == nil {
+			continue
+		}
+		data := []byte{}
+		if *image.path != "" {
+			rel, ok := config.ResolveRepoPath(file, *image.path)
+			if !ok {
+				return fmt.Errorf("profile image outside repository")
+			}
+			r, err := os.OpenRoot(root)
+			if err != nil {
+				return err
+			}
+			data, err = r.ReadFile(filepath.FromSlash(rel))
+			_ = r.Close()
+			if err != nil {
+				return err
+			}
+		}
+		*image.dst = &data
+	}
+	encoded, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	sig := sha256.Sum256(encoded)
+	if h.guildProfileHashes == nil {
+		h.guildProfileHashes = map[string][32]byte{}
+	}
+	if h.guildProfileHashes[serverID] == sig {
+		return nil
+	}
+	if err = h.session.UpdateGuildProfile(ctx, serverID, p); err != nil {
+		return err
+	}
+	h.guildProfileHashes[serverID] = sig
+	return nil
 }

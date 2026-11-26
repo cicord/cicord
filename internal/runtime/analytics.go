@@ -23,7 +23,7 @@ const analyticsKVScope = "analytics"
 // before the bots connect.
 func analyticsBot(repo *config.Repo, server string) string {
 	for _, key := range sortedKeys(repo.Bots) {
-		for _, s := range repo.Bots[key].Spec.Servers {
+		for _, s := range repo.Bots[key].Spec.ServerKeys() {
 			if s == server {
 				return key
 			}
