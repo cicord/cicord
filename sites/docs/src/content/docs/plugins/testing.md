@@ -250,6 +250,8 @@ with attachments (the `attachment` command option works), and it checks the mess
 `message.reply()` refers to but does not keep the reference on the reply. The
 [real-Discord checklist](../coverage/#checklist-on-real-discord) covers these.
 
+The [two-account comparison](../discord-parity/) records live results for permissions, moderation, polls, tickets and voice rooms alongside the corresponding candidate tests.
+
 ## In CI
 
 ```sh
