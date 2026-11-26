@@ -156,7 +156,9 @@ func (s *scheduler) deliverTask(ctx context.Context, inst *instanceRT, task stat
 	defer func() { <-s.slots }()
 	c, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
-	err := inst.inst().RunTask(c, task.Name, task.Payload, plugin.TaskDelivery{ID: task.ID, Attempt: task.Attempt})
+	_, err := s.r.WithReplayPrivacy(c, inst.cfg.Server, task.Payload, func() error {
+		return inst.inst().RunTask(c, task.Name, task.Payload, plugin.TaskDelivery{ID: task.ID, Attempt: task.Attempt})
+	})
 	s.r.handlerDone(inst, err)
 	if ctx.Err() != nil {
 		return // shutdown leaves the lease recoverable

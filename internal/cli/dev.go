@@ -163,8 +163,14 @@ func runDev(ctx context.Context, stdout, stderr io.Writer, dir string, f serverF
 	if err != nil {
 		return err
 	}
+	privacy, err := privacySigner(ctx, f.dataDir, store)
+	if err != nil {
+		return err
+	}
 	rt := runtime.New(runtime.Options{
-		Source: src, Connector: connector, Store: store, Secrets: lookup, Resolver: resolver,
+		PrivacySigner: privacy,
+		PrivacyDir:    filepath.Join(f.dataDir, "member-erasures"),
+		Source:        src, Connector: connector, Store: store, Secrets: lookup, Resolver: resolver,
 		Signer: auth.NewSigner(key), PortalURL: public, Mode: "dev", Simulator: useSim,
 		// Plugins may reach local test services only against the simulator: with real
 		// Discord tokens the normal egress rules apply.

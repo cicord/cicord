@@ -28,13 +28,16 @@ import (
 
 // Env is everything an instance may touch. It is provided by the bot host.
 type Env struct {
-	Locales         locales.Catalog
-	OverlayApply    func(context.Context, reconcile.Overlay) error
-	OverlayRemove   func(context.Context, string) error
-	OverlayList     func(context.Context) ([]reconcile.Overlay, error)
-	RequestSync     func(context.Context, string) error
-	Incident        func(context.Context, discord.IncidentActions) error
-	UploadLimit     func() int // current server maximum bytes per file
+	Locales       locales.Catalog
+	OverlayApply  func(context.Context, reconcile.Overlay) error
+	OverlayRemove func(context.Context, string) error
+	OverlayList   func(context.Context) ([]reconcile.Overlay, error)
+	RequestSync   func(context.Context, string) error
+	Incident      func(context.Context, discord.IncidentActions) error
+	UploadLimit   func() int // current server maximum bytes per file
+	Pseudonym     func(string) string
+	// BeforeStart reapplies erasure markers to restored state before plugin startup.
+	BeforeStart     func(context.Context, *Instance) error
 	ManagedResource func(string) (bool, bool)
 	AttributeAudit  func(context.Context, discord.AuditLogEntryEvent) discord.AuditLogEntryEvent
 	Operations      *discord.OperationScope
@@ -424,6 +427,11 @@ func (i *Instance) Start(ctx context.Context) error {
 	i.state = stateStarted
 	hasStart := i.def.HasOnStart
 	i.stateMu.Unlock()
+	if i.env.BeforeStart != nil {
+		if err := i.env.BeforeStart(ctx, i); err != nil {
+			return fmt.Errorf("privacy restore: %w", err)
+		}
+	}
 	if hasStart {
 		if r := <-i.dispatch(ctx, "start", "", nil, nil); r.err != nil {
 			return fmt.Errorf("plugin: onStart: %w", r.err)
@@ -790,7 +798,8 @@ type invResult struct {
 // invocation is one handler run. Its context bounds every host call made by its code
 // (attributed per turn, see currentInv).
 type invocation struct {
-	locale string
+	locale         string
+	privacySubject string // only this subject can be pseudonymized by the current privacy hook
 	// Only member identities supplied by the host for this handler may be used to
 	// check channel access. Plugin arguments cannot invent role memberships.
 	audienceMembers sync.Map // user ID -> discord.Member
@@ -947,6 +956,9 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		inv.locale = v.Locale
 	case autocompleteDTO:
 		inv.locale = v.Locale
+	}
+	if kind == "privacy" {
+		inv.privacySubject, _ = data.(string)
 	}
 	inv.rememberAudience(data)
 	queued = true

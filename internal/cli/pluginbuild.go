@@ -94,24 +94,25 @@ type routeJSON struct {
 
 // pluginReport is the output of `cicord plugin build`.
 type pluginReport struct {
-	Name            string         `json:"name"`
-	Version         string         `json:"version"`
-	Entry           string         `json:"entry"`
-	BundleBytes     int            `json:"bundleBytes"`
-	Commands        []commandJSON  `json:"commands"`
-	Events          []string       `json:"events"`
-	Components      []string       `json:"components"`
-	Modals          []string       `json:"modals"`
-	Routes          []routeJSON    `json:"routes"`
-	Schedules       []scheduleJSON `json:"schedules"`
-	Tasks           []string       `json:"tasks"`
-	Subscriptions   []string       `json:"subscriptions"`
-	OnStart         bool           `json:"onStart"`
-	OnStop          bool           `json:"onStop"`
-	RequiredIntents []string       `json:"requiredIntents"`
-	Capabilities    []string       `json:"capabilities"`
-	Warnings        []string       `json:"warnings"`
-	Errors          []string       `json:"errors"`
+	Privacy         *config.PrivacyInventory `json:"privacy,omitempty"`
+	Name            string                   `json:"name"`
+	Version         string                   `json:"version"`
+	Entry           string                   `json:"entry"`
+	BundleBytes     int                      `json:"bundleBytes"`
+	Commands        []commandJSON            `json:"commands"`
+	Events          []string                 `json:"events"`
+	Components      []string                 `json:"components"`
+	Modals          []string                 `json:"modals"`
+	Routes          []routeJSON              `json:"routes"`
+	Schedules       []scheduleJSON           `json:"schedules"`
+	Tasks           []string                 `json:"tasks"`
+	Subscriptions   []string                 `json:"subscriptions"`
+	OnStart         bool                     `json:"onStart"`
+	OnStop          bool                     `json:"onStop"`
+	RequiredIntents []string                 `json:"requiredIntents"`
+	Capabilities    []string                 `json:"capabilities"`
+	Warnings        []string                 `json:"warnings"`
+	Errors          []string                 `json:"errors"`
 
 	code string
 	def  *plugin.Definition
@@ -166,6 +167,7 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 		r.Errors = append(r.Errors, "inspect: "+err.Error())
 		return r, nil //nolint:nilerr // the failure is reported in r.Errors, like the build errors above
 	}
+	r.Privacy = m.Spec.Privacy
 	r.def = def
 	for _, c := range def.Commands {
 		cj := commandJSON{Name: c.Name, Description: c.Description, Ephemeral: c.Ephemeral, Permissions: c.Permissions, Options: optionsJSON(c.Options)}
@@ -195,6 +197,9 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 		if cond && !slices.Contains(m.Spec.Capabilities, capability) {
 			r.Errors = append(r.Errors, fmt.Sprintf("%s requires the %s capability in plugin.yaml", what, capability))
 		}
+	}
+	if err := def.CheckInventory(m.Spec.Privacy); err != nil {
+		r.Errors = append(r.Errors, err.Error())
 	}
 	need(len(def.Schedules) > 0 || len(def.Tasks) > 0, "scheduler", "schedules/tasks")
 	need(len(def.Routes) > 0, "portal.routes", "routes")

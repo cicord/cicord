@@ -8,6 +8,7 @@ import {
 } from "./sse.ts";
 import type {
   AdminEvent,
+  PrivacyReport,
   PortalAnalytics,
   PortalAnalyticsPeriod,
   AddRegistryRequest,
@@ -723,6 +724,16 @@ export class CicordClient {
         ...(resume ? { body: { resume: true } } : {}),
       });
     },
+    memberData: (
+      server: string,
+      action: "export" | "erase",
+      userId: string,
+      options?: CallOptions,
+    ): Promise<PrivacyReport> =>
+      this.#api<PrivacyReport>("POST", `/servers/${seg(server)}/privacy/${action}`, {
+        ...options,
+        body: { userId },
+      }),
     /** `GET /servers/{server}/pause` (moderator) — the pause and the pending plan. */
     pauseState: (server: string, options?: CallOptions): Promise<PauseState> =>
       this.#api<PauseState>("GET", `/servers/${seg(server)}/pause`, options),

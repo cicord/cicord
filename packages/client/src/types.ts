@@ -1608,3 +1608,22 @@ export interface PortalAnalytics {
   /** Messages per weekday (0 = Monday) and UTC hour. */
   heatmap: number[][];
 }
+
+/** Server-wide result of a member export or erasure. */
+export interface PrivacyReport {
+  complete: boolean;
+  plugins: {
+    instance: string;
+    status: "ok" | "failed" | "unavailable" | "undeclared" | "no-member-data";
+    records?: {
+      name: string;
+      policy: "erase" | "anonymize" | "retain";
+      description: string;
+      retention?: string;
+      justification?: string;
+    }[];
+    data?: Json;
+  }[];
+  tasksErased: number;
+  interopErased: number;
+}

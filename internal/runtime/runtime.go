@@ -35,9 +35,11 @@ import (
 )
 
 type Options struct {
-	Source    source.Source
-	Connector discord.Connector
-	Store     state.Store
+	PrivacySigner *auth.Signer
+	PrivacyDir    string // durable HMAC erasure markers, retained independently of SQL backups
+	Source        source.Source
+	Connector     discord.Connector
+	Store         state.Store
 	// Secrets resolves secretRef names (environment variables when self-hosted).
 	Secrets func(name string) (string, bool)
 	// Resolver builds the registry plugin resolver for a revision directory (may be nil).
@@ -84,6 +86,7 @@ const (
 
 // Runtime is safe for concurrent use.
 type Runtime struct {
+	privacyMu  sync.RWMutex
 	auditSlots chan struct{}
 	opts       Options
 	log        *slog.Logger
@@ -238,6 +241,9 @@ func New(opts Options) *Runtime {
 	}
 	if opts.Signer == nil {
 		opts.Signer = auth.NewSigner(auth.RandomKey())
+	}
+	if opts.PrivacySigner == nil {
+		opts.PrivacySigner = opts.Signer
 	}
 	if opts.Metrics == nil {
 		opts.Metrics = metrics.NewRegistry()
@@ -455,6 +461,9 @@ func buildPlugin(lp *config.LoadedPlugin) (*builtPlugin, error) {
 		if cond && !slices.Contains(m.Capabilities, capability) {
 			problems = append(problems, fmt.Sprintf("%s requires the %s capability in plugin.yaml", what, capability))
 		}
+	}
+	if err := def.CheckInventory(m.Privacy); err != nil {
+		problems = append(problems, err.Error())
 	}
 	need(len(def.Schedules) > 0 || len(def.Tasks) > 0, "scheduler", "schedules/tasks")
 	need(len(def.Routes) > 0, "portal.routes", "routes")

@@ -272,3 +272,7 @@ before reviewing incident-related structural changes.
 `server.incident` authorizes the bot to disable invites or DMs for up to 24 hours.
 The Discord bot needs Manage Server. `server.sync` allows an installation to request
 a full reconciliation with an audit reason. [Discord incident actions](https://docs.discord.com/developers/resources/guild#modify-guild-incident-actions)
+
+## Member data
+
+`POST /api/v1/servers/{server}/privacy/export` and `POST /api/v1/servers/{server}/privacy/erase` accept `{"userId":"123456789012345678"}`. Both operations require a server administrator and the normal mutation CSRF header for cookie sessions. Responses use `Cache-Control: private, no-store`. The report lists each plugin instance, inventory and result, along with the number of removed tasks and inter-plugin records. Check the `complete` field and per-instance statuses even after HTTP 200. Failed or unavailable hooks can be retried. The audit trail records a pseudonymous target.

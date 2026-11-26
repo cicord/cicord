@@ -20,6 +20,7 @@ import { Badge } from "../components/ui/badge.tsx";
 import { Card, CardDescription, CardHeader, CardTitle } from "../components/ui/card.tsx";
 import { useWorkspace } from "../context.tsx";
 import { useTranslation } from "../i18n/index.ts";
+import { MemberData } from "../components/member-data.tsx";
 import { ValueView } from "./Sync.tsx";
 
 type Obj = { [key: string]: Json };
@@ -76,6 +77,7 @@ export function ServerSettingsPage({ serverKey }: { serverKey: string }) {
           </span>
         }
       />
+      {ws.isAdmin && <MemberData serverKey={serverKey} />}
       <Callout tone="info" title={t("serverSettings.readOnly.title")}>
         {t("serverSettings.readOnly.text", { file })}
       </Callout>

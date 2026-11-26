@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -133,4 +134,81 @@ func testAdvanced(t *testing.T, b Backend) {
 		t.Fatal("expected read conflict")
 	}
 
+	type private interface {
+		VisitPrivacy(context.Context, func(string, json.RawMessage) error) error
+		PurgeTasks(context.Context, string, bool, func(json.RawMessage) bool) (int, error)
+	}
+	scope := st.KV("plugin:bot/privacy/server").(private)
+	for _, task := range []state.Task{{ID: "a", Scope: "plugin:bot/privacy/server", Name: "remind", Payload: json.RawMessage(`"A"`), RunAt: clock.Now()}, {ID: "b", Scope: "plugin:bot/removed/server", Name: "remind", Payload: json.RawMessage(`"B"`), RunAt: clock.Now()}, {ID: "other", Scope: "plugin:bot/privacy/other", Name: "remind", Payload: json.RawMessage(`"A"`), RunAt: clock.Now()}} {
+		must(t, st.Tasks().Schedule(ctx, task))
+	}
+	seen := false
+	must(t, scope.VisitPrivacy(ctx, func(k string, v json.RawMessage) error {
+		if k == "remind" && string(v) == `"A"` {
+			seen = true
+		}
+		return nil
+	}))
+	if !seen {
+		t.Fatal("missing task on restore scan")
+	}
+	count, err := scope.PurgeTasks(ctx, "server", false, func(v json.RawMessage) bool { return string(v) == `"A"` })
+	must(t, err)
+	if count != 1 {
+		t.Fatal(count)
+	}
+	remaining, err := st.Tasks().Due(ctx, clock.Now(), 10)
+	must(t, err)
+	if len(remaining) != 2 {
+		t.Fatal(remaining)
+	}
+
+}
+
+// StorageQuota checks the boundary without allocating 1,000,000 records in CI.
+// Backends seed the usage counter at one remaining slot before calling it.
+func StorageQuota(t *testing.T, kv state.AdvancedKV) {
+	t.Helper()
+	ctx := t.Context()
+	must(t, kv.Set(ctx, "last-slot", json.RawMessage("1"), 0))
+	must(t, kv.Set(ctx, "last-slot", json.RawMessage("2"), 0))
+	_, err := kv.Atomic(ctx, nil, []state.KVMutation{{Op: "set", Key: "last-slot", Value: json.RawMessage("3")}, {Op: "rankSet", Name: "xp", Key: "overflow", Score: 1}})
+	if err == nil {
+		t.Fatal("expected quota error")
+	}
+	raw, err := kv.Get(ctx, "last-slot")
+	must(t, err)
+	if string(raw) != "2" {
+		t.Fatal("quota failure leaked a write")
+	}
+	must(t, kv.Delete(ctx, "last-slot"))
+	_, err = kv.Rank(ctx, state.RankOp{Name: "xp", Member: "new", Method: "set", Score: 1})
+	must(t, err)
+}
+
+// RankAt100k exercises random-access ranks and deep pages through the real store.
+func RankAt100k(t *testing.T, kv state.AdvancedKV) {
+	t.Helper()
+	times := make([]time.Duration, 100)
+	for i := range times {
+		position := 1 + (i*38971)%100000
+		member := strconv.Itoa(position)
+		start := time.Now()
+		r, err := kv.Rank(t.Context(), state.RankOp{Name: "xp", Member: member, Method: "rank"})
+		must(t, err)
+		if r != position {
+			t.Fatal(member, r)
+		}
+		rows, err := kv.Rank(t.Context(), state.RankOp{Name: "xp", Method: "top", Limit: 10, Offset: position - 1})
+		must(t, err)
+		if rows.([]state.RankedMember)[0].Member != member {
+			t.Fatal("deep page missed member")
+		}
+		times[i] = time.Since(start)
+	}
+	slices.Sort(times)
+	t.Logf("100,000 members, exact rank + 10-entry arbitrary-offset page, 100 samples: p95 %s", times[94])
+	if times[94] >= time.Second {
+		t.Fatalf("rank and page p95 %s exceeds 1s", times[94])
+	}
 }

@@ -137,7 +137,7 @@ backup_run() {
     db_ok "$BACKUP_WORK/cicord/cicord.db" || backup_fail "the copy of cicord.db fails SQLite's integrity check: $(sqlite3 "$BACKUP_WORK/cicord/cicord.db" 'PRAGMA integrity_check;' 2>&1 | head -1)"
     schema="$(schema_version "$BACKUP_WORK/cicord/cicord.db")"
   fi
-  for d in repo.git writeback; do
+  for d in repo.git writeback member-erasures; do
     if [ -d "$data/$d" ]; then cp -a "$data/$d" "$BACKUP_WORK/cicord/"; fi
   done
   {
@@ -146,14 +146,14 @@ backup_run() {
     echo "database=$db"
     echo "schema=$schema"
     if [ "$db" = sqlite ]; then echo "cicord.db.sha256=$(sha256 "$BACKUP_WORK/cicord/cicord.db")"; fi
-    echo "excluded=secret.key link.key"
+    echo "excluded=secret.key link.key privacy.key"
   } > "$BACKUP_WORK/cicord/MANIFEST"
   archive="$CICORD_BACKUP_DIR/cicord-$stamp.tar.zst"
   tar -C "$BACKUP_WORK/cicord" -cf "$BACKUP_WORK/backup.tar" . || backup_fail "tar failed"
   zstd -q -19 -f -o "$archive.part" "$BACKUP_WORK/backup.tar" || backup_fail "zstd failed (disk full?)"
   zstd -q -t "$archive.part" || backup_fail "the archive does not decompress"
   list="$(zstd -dc "$archive.part" | tar -tf -)" || backup_fail "the archive cannot be listed"
-  if printf '%s\n' "$list" | grep -Eq '(^|/)(secret|link)\.key$'; then rm -f "$archive.part"; backup_fail "a key file got into the archive: refused"; fi
+  if printf '%s\n' "$list" | grep -Eq '(^|/)(secret|link|privacy)\.key$'; then rm -f "$archive.part"; backup_fail "a key file got into the archive: refused"; fi
   if [ "$db" = sqlite ] && ! printf '%s\n' "$list" | grep -Eq '^(\./)?cicord\.db$'; then backup_fail "cicord.db is not in the archive"; fi
   mv "$archive.part" "$archive"
   chmod 600 "$archive"

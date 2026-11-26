@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -196,4 +197,11 @@ func (l *Linker) Revoke(ctx context.Context, scope ResourceScope) error {
 	}
 	_, err := scopeKV(l.Store, l.Server, ScopedGrant{Bot: l.Bot, Instance: l.Instance, Plugin: l.Plugin}).Increment(ctx, scope.Kind+"/"+scope.ID, 1)
 	return err
+}
+
+// PrivacyDigest uses a distinct HMAC domain for erasures and pseudonyms.
+func (s *Signer) PrivacyDigest(purpose, server, user string) string {
+	m := hmac.New(sha256.New, s.key)
+	m.Write([]byte("cicord-privacy-v1\x00" + purpose + "\x00" + server + "\x00" + user))
+	return hex.EncodeToString(m.Sum(nil))
 }

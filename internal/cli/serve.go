@@ -491,8 +491,14 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 	cacheDir := registry.DefaultCacheDir()
 	reg := newMetricsRegistry()
 	alerts := newAlertNotifier(log, f.alertWebhook, resolve, public, console)
+	privacy, err := privacySigner(ctx, dataDir, store)
+	if err != nil {
+		return err
+	}
 	rt := runtime.New(runtime.Options{
-		Source: src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
+		PrivacySigner: privacy,
+		PrivacyDir:    filepath.Join(dataDir, "member-erasures"),
+		Source:        src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
 		CommitStatus: commitStatusHook(log, ghRepo, tokens, console), Metrics: reg,

@@ -253,15 +253,6 @@ var (
 	notFound  = storeutil.NotFound
 )
 
-// bytea converts s to a BYTEA argument. It is never nil: pgx encodes a nil
-// slice as NULL, and "" must stay an empty byte string.
-func bytea(s string) []byte {
-	if s == "" {
-		return []byte{}
-	}
-	return []byte(s)
-}
-
 // jsonArg validates an optional JSON payload and converts it to a BYTEA
 // argument (NULL when empty).
 func jsonArg(field string, v []byte) (any, error) {

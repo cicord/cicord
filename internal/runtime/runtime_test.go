@@ -119,7 +119,8 @@ func startExampleResync(t *testing.T, prepare func(w *sim.World, appID string), 
 	}
 	logger := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	rt := New(Options{
-		Source: src, Connector: w, Store: store, Mode: "dev", Simulator: true,
+		PrivacyDir: t.TempDir(),
+		Source:     src, Connector: w, Store: store, Mode: "dev", Simulator: true,
 		Secrets:   func(n string) (string, bool) { return token, n == "DISCORD_TOKEN_MODERATOR" },
 		PortalURL: "http://localhost:7420", Logger: logger, ResyncInterval: resync,
 	})

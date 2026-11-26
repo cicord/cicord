@@ -4,6 +4,27 @@
     "lift": "Lift overlay",
     "failed": "Could not lift overlay"
   },
+  "memberData": {
+    "title": "Member data",
+    "description": "Export or erase a member’s records across the plugins on this server.",
+    "label": "Discord member ID",
+    "export": "Export data",
+    "erase": "Erase data",
+    "question": "Erase data for member {{id}}?",
+    "effect": "Each plugin applies its declared erasure and retention policies. Matching queued work is removed.",
+    "cancel": "Cancel",
+    "working": "Processing member data…",
+    "complete": "All plugins reported",
+    "partial": "Some plugins could not verify this request",
+    "download": "Download JSON report",
+    "status": {
+      "ok": "Completed",
+      "failed": "Hook failed",
+      "unavailable": "Plugin unavailable",
+      "undeclared": "No policy declared",
+      "no-member-data": "No member data"
+    }
+  },
   "app": {
     "admin": "admin",
     "mock": "Mock runtime"

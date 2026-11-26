@@ -593,10 +593,22 @@ type PluginSecret struct {
 	Hosts       []string `yaml:"hosts,omitempty" json:"hosts,omitempty"`
 }
 
+type PrivacyRecord struct {
+	Name          string `yaml:"name" json:"name"`
+	Policy        string `yaml:"policy" json:"policy"`
+	Description   string `yaml:"description" json:"description"`
+	Retention     string `yaml:"retention,omitempty" json:"retention,omitempty"`
+	Justification string `yaml:"justification,omitempty" json:"justification,omitempty"`
+}
+type PrivacyInventory struct {
+	Records []PrivacyRecord `yaml:"records" json:"records"`
+}
+
 type PluginSpec struct {
 	Locales      string            `yaml:"locales,omitempty" json:"locales,omitempty"`
 	Secrets      []PluginSecret    `yaml:"secrets,omitempty" json:"secrets,omitempty"`
 	Assets       string            `yaml:"assets,omitempty" json:"assets,omitempty"`
+	Privacy      *PrivacyInventory `yaml:"privacy,omitempty" json:"privacy,omitempty"`
 	Engine       string            `yaml:"engine" json:"engine"`
 	Entry        string            `yaml:"entry" json:"entry"`
 	Capabilities []string          `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`

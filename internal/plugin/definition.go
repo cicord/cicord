@@ -20,6 +20,7 @@ import (
 // All lists are sorted by name, except command options (Discord order).
 type Definition struct {
 	ContextMenus  []CommandDef
+	HasPrivacy    bool
 	Commands      []CommandDef
 	Events        []string // SDK event names: memberJoin, messageCreate, …
 	Components    []string // local component ids (handler keys)
@@ -398,6 +399,7 @@ type describedPlugin struct {
 		Permissions     []string
 		Ephemeral       bool
 	} `json:"contextMenus"`
+	Privacy    []describedFn     `json:"privacy"`
 	Keys       []string          `json:"keys"`
 	OnStart    string            `json:"onStart"` // typeof
 	OnStop     string            `json:"onStop"`
@@ -465,7 +467,7 @@ type describedOpt struct {
 
 var knownSections = map[string]bool{
 	"contextMenus": true, "onStart": true, "onStop": true, "events": true, "commands": true, "components": true,
-	"modals": true, "schedules": true, "tasks": true, "subscriptions": true, "routes": true,
+	"privacy": true, "modals": true, "schedules": true, "tasks": true, "subscriptions": true, "routes": true,
 }
 
 var (
@@ -494,7 +496,7 @@ func buildDefinition(dp describedPlugin) (*Definition, error) {
 
 	for _, k := range dp.Keys {
 		if !knownSections[k] {
-			fail("unknown key %q in definePlugin() (expected one of onStart, onStop, events, commands, components, modals, schedules, tasks, subscriptions, routes)", k)
+			fail("unknown key %q in definePlugin() (expected one of onStart, onStop, events, commands, components, modals, schedules, tasks, subscriptions, routes, privacy)", k)
 		}
 	}
 	for name, typ := range dp.Sections {
@@ -508,6 +510,20 @@ func buildDefinition(dp describedPlugin) (*Definition, error) {
 			return false
 		}
 		return true
+	}
+	if dp.Sections["privacy"] == "object" {
+		valid := map[string]bool{}
+		for _, h := range dp.Privacy {
+			if h.Name != "export" && h.Name != "erase" {
+				fail("unknown privacy hook %q", h.Name)
+				continue
+			}
+			valid[h.Name] = checkFn("privacy", h.Name, h.Type)
+		}
+		d.HasPrivacy = valid["export"] && valid["erase"]
+		if !d.HasPrivacy {
+			fail("privacy requires both export and erase hooks")
+		}
 	}
 	switch dp.OnStart {
 	case "undefined":

@@ -67,7 +67,7 @@ if ! { zstd -dc "$archive" > "$WORK/backup.tar" && tar -C "$WORK" -xf "$WORK/bac
   die "$archive cannot be extracted"
 fi
 rm -f "$WORK/backup.tar"
-for k in secret.key link.key; do [ ! -e "$WORK/$k" ] || rm -f "$WORK/$k"; done
+for k in secret.key link.key privacy.key; do [ ! -e "$WORK/$k" ] || rm -f "$WORK/$k"; done
 db="$(sed -n 's/^database=//p' "$WORK/MANIFEST" 2>/dev/null)"; db="${db:-sqlite}"
 if [ "$db" = sqlite ]; then
   [ -f "$WORK/cicord.db" ] || die "$archive has no cicord.db"
@@ -87,6 +87,10 @@ if [ -z "${CICORD_DATA_DIR:-}" ]; then compose up --no-start cicord >/dev/null 2
 data="$(data_dir)" || true
 [ -n "$data" ] && [ -d "$data" ] || die "the data volume ${CICORD_PROJECT}_cicord-data was not found: run 'docker compose up --no-start cicord' in $CICORD_DIR"
 
+if [ -f "$data/member-erasures/identity" ] && [ -f "$WORK/member-erasures/identity" ]; then
+    cmp -s "$data/member-erasures/identity" "$WORK/member-erasures/identity" || die "erasure journal belongs to another deployment"
+  fi
+
 # 4. The current state goes aside (never deleted).
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 aside="$CICORD_BACKUP_DIR/pre-restore-$stamp"
@@ -105,6 +109,18 @@ if [ "$db" = sqlite ]; then cp "$WORK/cicord.db" "$data/cicord.db"; chmod 600 "$
 for d in repo.git writeback; do
   if [ -d "$WORK/$d" ]; then cp -a "$WORK/$d" "$data/"; fi
 done
+# Merge historical erasure markers into the current journal. Restoring an older
+# database must never replace or roll back a more recent member erasure.
+if [ -d "$WORK/member-erasures" ]; then
+  mkdir -p "$data/member-erasures"
+  (cd "$WORK/member-erasures" && find . -type f -print) | while IFS= read -r marker; do
+    destination="$data/member-erasures/$marker"
+    if [ ! -e "$destination" ]; then
+      mkdir -p "$(dirname "$destination")"
+      cp "$WORK/member-erasures/$marker" "$destination"
+    fi
+  done
+fi
 if [ "$keepkey" = no ]; then
   printf '%s\n' "$key" > "$data/secret.key"
 elif [ ! -f "$data/secret.key" ]; then

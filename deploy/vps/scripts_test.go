@@ -165,6 +165,11 @@ func seed(t *testing.T, dir, ticket string) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(dir, "repo.git", "HEAD"), "ref: refs/heads/main\n", 0o600)
+	write(t, filepath.Join(dir, "privacy.key"), "privacy-canary", 0600)
+	if err := os.MkdirAll(filepath.Join(dir, "member-erasures", "scope"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dir, "member-erasures", "scope", "old-marker"), "timestamp", 0600)
 	write(t, filepath.Join(dir, "link.key"), "link", 0o600)
 }
 
@@ -243,7 +248,7 @@ func TestBackupAndRestoreRoundTrip(t *testing.T) {
 	if !regexp.MustCompile(`(?m)^\./cicord\.db$`).Match(list) || !strings.Contains(string(list), "repo.git/HEAD") || !strings.Contains(string(list), "MANIFEST") {
 		t.Errorf("archive content:\n%s", list)
 	}
-	if strings.Contains(string(list), "secret.key") || strings.Contains(string(list), "link.key") {
+	if strings.Contains(string(list), "privacy.key") || strings.Contains(string(list), "secret.key") || strings.Contains(string(list), "link.key") {
 		t.Fatalf("a key is in the archive:\n%s", list)
 	}
 
@@ -257,9 +262,18 @@ func TestBackupAndRestoreRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, keyFile, string(key), 0o600)
+	if err := os.MkdirAll(filepath.Join(fresh.data, "member-erasures", "scope"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(fresh.data, "member-erasures", "scope", "recent-marker"), "newer timestamp", 0600)
 	out, err = fresh.run(nil, "scripts/07-restore.sh", as[0], "--key-file", keyFile)
 	if err != nil {
 		t.Fatalf("restore: %v\n%s", err, out)
+	}
+	for _, name := range []string{"old-marker", "recent-marker"} {
+		if _, err := os.Stat(filepath.Join(fresh.data, "member-erasures", "scope", name)); err != nil {
+			t.Fatal("journal merge", err)
+		}
 	}
 	if got := ticketIn(t, filepath.Join(fresh.data, "cicord.db")); got != "Cannot join voice" {
 		t.Errorf("restored ticket = %q", got)

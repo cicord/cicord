@@ -2113,6 +2113,20 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
           return r.status === 200 ? json(r.body) : fail(400, "invalid", r.message);
         });
       if (method === "GET" && rest === "/plan") return staff(() => json(plan()), true);
+      if (method === "POST" && (rest === "/privacy/export" || rest === "/privacy/erase"))
+        return staff(() => {
+          if (!/^[1-9][0-9]{0,19}$/.test(jsonText(body["userId"])))
+            return fail(400, "invalid", "Expected a Discord member ID.");
+          return json({
+            complete: false,
+            plugins: state.instances.map((i) => ({
+              instance: i.bot + "/" + i.instance,
+              status: "undeclared",
+            })),
+            tasksErased: 0,
+            interopErased: 0,
+          });
+        }, true);
       if (method === "GET" && rest === "/dead-letters")
         return staff(() => json({ items: [] }), true);
       if (method === "GET" && rest === "/diagnostics")

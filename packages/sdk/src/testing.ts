@@ -61,6 +61,7 @@ import type {
   User,
   VoiceStateUpdate,
 } from "@cicord/sdk";
+import { createHmac } from "node:crypto";
 import { testStorage } from "./testing-storage.js";
 import { CapabilityError } from "./index.js";
 
@@ -1645,6 +1646,14 @@ export function createTestContext(options: TestContextOptions = {}): TestHarness
     server,
     config,
     log: { debug: log("debug"), info: log("info"), warn: log("warn"), error: log("error") },
+    privacy: {
+      async pseudonym(userId) {
+        const hash = createHmac("sha256", "cicord-test-privacy")
+          .update(server.id + "\0" + userId)
+          .digest("hex");
+        return "deleted-user-" + hash.slice(0, 16);
+      },
+    },
     kv,
     schedule: {
       async after(delayMs, task, payload) {

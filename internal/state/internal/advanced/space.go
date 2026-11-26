@@ -61,7 +61,7 @@ func (s Space) Transaction(ctx context.Context, fn func(state.KV) error) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if s.Postgres {
 		if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 9351))", s.Scope); err != nil {
 			return err
@@ -147,20 +147,25 @@ func (s Space) Entries(ctx context.Context, keys []string) ([]*state.KVEntry, er
 }
 
 func (s Space) Get(ctx context.Context, key string) (json.RawMessage, error) {
-	entries, err := s.Entries(ctx, []string{key})
+	defer s.readLock()()
+	var raw []byte
+	var exp sql.NullInt64
+	err := s.reader().QueryRowContext(ctx, s.query("SELECT value,expires_at FROM kv WHERE scope=?1 AND key=?2"), s.Scope, s.bytes(key)).Scan(&raw, &exp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, state.ErrNotFound
+	}
 	if err != nil {
 		return nil, err
 	}
-	if entries[0] == nil {
-		defer s.readLock()()
+	if now := s.Now().UnixNano(); exp.Valid && exp.Int64 <= now {
 		var w runner = s.Write
 		if s.tx != nil {
 			w = s.tx
 		}
-		_, _ = w.ExecContext(ctx, s.query("DELETE FROM kv WHERE scope=?1 AND key=?2 AND expires_at<=?3"), s.Scope, s.bytes(key), s.Now().UnixNano())
+		_, _ = w.ExecContext(ctx, s.query("DELETE FROM kv WHERE scope=?1 AND key=?2 AND expires_at<=?3"), s.Scope, s.bytes(key), now)
 		return nil, state.ErrNotFound
 	}
-	return entries[0].Value, nil
+	return raw, nil
 }
 
 func (s Space) Set(ctx context.Context, key string, value json.RawMessage, ttl time.Duration) error {
@@ -304,3 +309,7 @@ func (s Space) List(ctx context.Context, prefix string, limit int, cursor string
 	}
 	return items, "", nil
 }
+
+// InteropTx lets the host write validated action outbox records in the same
+// transaction as the state and receipt. It is nil on an unbound space.
+func (s Space) InteropTx() *sql.Tx { return s.tx }

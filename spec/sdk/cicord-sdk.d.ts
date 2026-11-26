@@ -854,6 +854,8 @@ export interface Context {
   /** Effective config: base config merged with the server override. */
   readonly config: Readonly<PluginConfig>;
   readonly log: Logger;
+  /** Pseudonym for the subject of the current privacy hook. */
+  readonly privacy: { pseudonym(userId: string): Promise<string> };
   readonly kv: KV;
   readonly schedule: Scheduler;
   readonly http: Http;
@@ -1053,6 +1055,10 @@ export type ContextMenuDefinition =
  | { type:"user"; permissions?: Permission[]; ephemeral?: boolean; run(ctx:Context,i:Interaction & {readonly target:Member}):Awaitable<void> };
 export interface PluginDefinition {
   contextMenus?: Record<string,ContextMenuDefinition>;
+  privacy?: {
+    export(ctx: Context, userId: string): Promise<Json>;
+    erase(ctx: Context, userId: string): Promise<{ erased: number }>;
+  };
   /** Called when the instance starts (new revision, restart, plugin enabled). */
   onStart?(ctx: Context): Awaitable<void>;
   /** Called before the instance stops; must finish quickly. */

@@ -662,6 +662,7 @@
       server,
       config: deepFreeze(d.config || {}),
       log: freeze({ debug: logFn("debug"), info: logFn("info"), warn: logFn("warn"), error: logFn("error") }),
+      privacy: freeze({pseudonym: userId => acall("privacy.pseudonym",userId)}),
       kv,
       schedule,
       status: freeze({set(key,message) { hcall("status.set",{key,message}); }}),
@@ -719,7 +720,7 @@
   function describe() {
     const def = plugin;
     const sections = {};
-    for (const k of ["events", "commands", "contextMenus","components", "modals", "schedules", "tasks", "subscriptions", "routes"]) {
+    for (const k of ["events", "commands", "contextMenus","components", "modals", "schedules", "tasks", "subscriptions", "routes", "privacy"]) {
       sections[k] = typeof def[k];
     }
     return JSON.stringify({
@@ -745,6 +746,7 @@
       components: fns(def.components),
       modals: fns(def.modals),
       schedules: entries(def.schedules).map(([name, s]) => ({ name, cron: s && s.cron, type: typeof (s && s.run) })),
+      privacy: fns(def.privacy),
       tasks: fns(def.tasks),
       subscriptions: fns(def.subscriptions),
       routes: entries(def.routes).map(([name, r]) => ({ name, access: r && r.access, type: typeof (r && r.handler) })),
@@ -807,6 +809,7 @@
         }
         return f ? [table, f] : null;
       }
+      case "privacy": { const f=own(plugin.privacy,name); return f ? [plugin.privacy,f] : null; }
       case "schedule": { const s = own(plugin.schedules, name); return s && s.run ? [s, s.run] : null; }
       case "task": { const f = own(plugin.tasks, name); return f ? [plugin.tasks, f] : null; }
       case "subscription": { const f = own(plugin.subscriptions, name); return f ? [plugin.subscriptions, f] : null; }
@@ -864,6 +867,7 @@
       case "autocomplete": return [mkAutocompleteInteraction(d), freeze({ name: d.focused.name, value: d.focused.value })];
       case "component": return [mkComponentInteraction(d)];
       case "modal": return [mkModalInteraction(d)];
+      case "privacy": return [d];
       case "task": return [d.payload, freeze(d.task)];
       case "subscription": return [d.payload];
       case "route": return [freeze({
@@ -901,7 +905,8 @@
         (v) => {
           let s;
           try {
-            if (kind === "route") s = JSON.stringify(routeOut(v));
+            if (kind === "privacy") s = JSON.stringify(v);
+            else if (kind === "route") s = JSON.stringify(routeOut(v));
             else if (kind === "autocomplete") s = JSON.stringify(v === undefined || v === null ? [] : v);
             ok(s);
           } catch (e) {

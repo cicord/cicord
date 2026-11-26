@@ -249,3 +249,9 @@ provider: paste it straight into `cicord secret set`.
 | `CICORD_ALERT_WEBHOOK` | delete the webhook in the Discord channel settings (or at the receiver) and create a new one | `cicord secret set CICORD_ALERT_WEBHOOK`, restart the runtime, `cicord alert test` |
 | the store's key (`secret.key`) | `cicord secret rotate-key` re-encrypts every secret with a new key | store the new key in the password manager, delete the old copy |
 | `link.key` | delete the file (or change `CICORD_LINK_SECRET`) and restart | portal links already sent stop working |
+
+## Restore member erasures
+
+Keep the newest `member-erasures/` directory independently of the database snapshot. Each marker contains a date and an HMAC scoped to the server. Keep the deployment’s separate `privacy.key` in key escrow alongside the encryption key. You can supply the same 32-byte key as base64 or hex using `CICORD_PRIVACY_KEY`. All runtime processes for one deployment must use the same key and journal. Rotating the portal signing or encrypted-secret key preserves these markers.
+
+The VPS backup includes the HMAC journal and excludes `privacy.key`. The VPS restore merges the archive’s journal into the current one. On a replacement machine restore the escrowed privacy key and the newest journal before starting Cicord, including when the selected SQL backup predates the erasures. On startup each plugin with privacy hooks checks its restored keys, values, rankings and task payloads for recorded subjects and reapplies erasure before its startup handler. Replayed work containing a recorded subject is suppressed and its erasure hooks run again. Old backups remain subject to their retention policy.

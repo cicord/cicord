@@ -342,6 +342,10 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 			return cl.SetIncident(c, srt.cfg.Spec.DiscordID, actions)
 		},
 		UploadLimit: func() int { return discord.UploadLimit(srt.cache.Server().PremiumTier) },
+		Pseudonym:   func(user string) string { return r.Pseudonym(in.Server, user) },
+		BeforeStart: func(ctx context.Context, inst *plugin.Instance) error {
+			return r.restoreMemberData(ctx, in.Server, instanceScope(in), inst)
+		},
 		ManagedResource: func(id string) (bool, bool) {
 			managed := srt.cache.Owner(id) == state.OwnerGit
 			return managed, managed && srt.cfg.Spec.SyncPolicy.SelfHeal() && !r.isPaused(in.Server)
@@ -674,7 +678,7 @@ func (r *Runtime) publish(bot, serverID, topic string, payload json.RawMessage) 
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					defer cancel()
-					err := i.inst().Deliver(ctx, topic, payload)
+					_, err := r.WithReplayPrivacy(ctx, i.cfg.Server, payload, func() error { return i.inst().Deliver(ctx, topic, payload) })
 					r.handlerDone(i, err)
 				}()
 			}

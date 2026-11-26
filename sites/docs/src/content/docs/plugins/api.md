@@ -91,7 +91,7 @@ const next = await ctx.server.role("staff").members({ limit: 1000, after: staff.
 | Errors | An unknown role key throws in `ctx.server.role()`; `@everyone` and a missing intent throw; a Discord refusal (Server Members Intent off in the developer portal) rejects |
 
 Discord has no "members of a role" endpoint: the runtime lists the server's members
-(`GET /guilds/{id}/members`, 1000 per request, at most 100,000 members) and filters them.
+(`GET /guilds/{id}/members`, 1000 per request, at most 1,000,000 members) and filters them.
 The listing is shared by the plugins of the server, reused for up to 60 seconds and kept
 current in between by member joins, updates and leaves, so repeated calls are cheap; the first
 call on a large server takes one request per 1000 members (rate limited): it may outlast the
@@ -664,8 +664,16 @@ const result = await ctx.kv.atomic()
   .commit();
 ```
 
-A failed check returns `{ok:false}`. Mutation errors reject the promise and roll back every change. Ordinary writes also change the version. An increment preserves a live value’s expiry. A set replaces its expiry and accepts `{ttlSeconds}`. A transaction accepts 128 checks and mutations combined. Keys, board names and member keys allow 1–512 UTF-8 bytes. A value can hold up to 1 MiB. A plugin instance can store 100,000 KV keys and ranking members combined. Expired keys free capacity when swept or removed. A multi-read accepts 128 keys and up to 4 MiB of returned values.
+A failed check returns `{ok:false}`. Mutation errors reject the promise and roll back every change. Ordinary writes also change the version. An increment preserves a live value’s expiry. A set replaces its expiry and accepts `{ttlSeconds}`. A transaction accepts 128 checks and mutations combined. Keys, board names and member keys allow 1–512 UTF-8 bytes. A value can hold up to 1 MiB. A plugin instance can store 1,000,000 KV keys and ranking members combined. Expired keys free capacity when swept or removed. A multi-read accepts 128 keys and up to 4 MiB of returned values.
 
 `ctx.kv.ranking(name)` supports `add`, `set`, `score`, `rank`, `top({offset,limit})`, `around(member,radius)`, `remove` and `count`. Order is by descending finite score, then ascending UTF-8 member key. Ranks start at 1. A page returns `{member,score,rank}[]` and can contain up to 1,000 entries. The maximum radius is 499. Both databases maintain indexed positions, so even a deep page seeks in O(log n + limit). Moving a member updates each intervening position. Atomic builders also support `rankRemove(name,member)`.
 
 The global `crypto.getRandomValues(view)` fills a Uint8Array of up to 65,536 bytes from the host’s cryptographic random source. `crypto.randomUUID()` returns a random RFC 4122 version 4 UUID.
+
+### Member privacy
+
+Declare each member-bearing record in `spec.privacy.records`. Include members mentioned inside shared records, ranking members, task payloads, transcripts, Discord messages sent by the bot and other copies. Each entry has `name`, `description`, and a `policy` of `erase`, `anonymize`, or `retain`. Include the retention period and justification for retained data. Declare an empty array when the plugin keeps no member data.
+
+Implement `privacy.export(ctx,userId)` to return the member’s JSON records and `privacy.erase(ctx,userId)` to return `{erased:number}`. Erasure must be idempotent. For shared records, preserve the other members’ data. For anonymized records use `await ctx.privacy.pseudonym(userId)` and clear identifying text. The host restricts pseudonym generation to the subject of the current privacy hook. Track Discord message IDs if the bot must edit or delete those copies.
+
+Server administrators can run both operations in **Server settings → Member data**. The report includes per-instance policies, hook results and failures. A legacy plugin without a declaration is reported as unverified. Test with two members sharing one record, erase one, and re-export both. A check of storage key prefixes alone cannot verify shared values or remote copies.

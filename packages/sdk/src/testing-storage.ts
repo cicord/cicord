@@ -27,14 +27,12 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
     if ((expiry.get(key) ?? Infinity) <= Date.now()) erase(key);
     return data.has(key) ? (versions.get(key) ?? "legacy") : undefined;
   };
-  const read = <T extends Json>(key: string) => {
+  const read = (key: string) => {
     const v = version(key);
-    return v === undefined
-      ? undefined
-      : { version: v, value: structuredClone(data.get(key)!) as T };
+    return v === undefined ? undefined : { version: v, value: structuredClone(data.get(key)!) };
   };
   const checkQuota = () => {
-    if (data.size + members > 100_000) throw new Error("plugin storage quota exceeded");
+    if (data.size + members > 1_000_000) throw new Error("plugin storage quota exceeded");
   };
   const put = (key: string, value: Json, ttl?: number) => {
     validKey(key);
@@ -43,7 +41,7 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
       throw new TypeError("invalid KV value");
     if (ttl !== undefined && (!Number.isFinite(ttl) || ttl < 0 || ttl >= 9223372036.854776))
       throw new TypeError("invalid TTL");
-    if (!data.has(key) && data.size + members >= 100_000)
+    if (!data.has(key) && data.size + members >= 1_000_000)
       throw new Error("plugin storage quota exceeded");
     data.set(key, JSON.parse(raw));
     versions.set(key, randomUUID());
@@ -69,7 +67,7 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
       return;
     }
     finite(score);
-    if (!board?.has(member) && data.size + members >= 100_000)
+    if (!board?.has(member) && data.size + members >= 1_000_000)
       throw new Error("plugin storage quota exceeded");
     if (!board) {
       board = new Map();
@@ -81,16 +79,16 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
   return {
     async get<T extends Json>(key: string) {
       need();
-      return read<T>(key)?.value;
+      return read(key)?.value as T | undefined;
     },
-    async getEntry<T extends Json>(key: string) {
+    getEntry: (async (key: string) => {
       need();
-      return read<T>(key);
-    },
+      return read(key);
+    }) as KV["getEntry"],
     async getMany<T extends Json>(keys: readonly string[]) {
       need();
       if (keys.length > 128) throw new TypeError("kv.getMany: at most 128 keys");
-      const values = keys.map((k) => read<T>(k)?.value);
+      const values = keys.map((k) => read(k)?.value as T | undefined);
       if (Buffer.byteLength(JSON.stringify(values)) > 4 << 20)
         throw new TypeError("kv.getMany: result exceeds 4 MiB");
       return values;
@@ -117,8 +115,8 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
         .filter(
           (k) => k.startsWith(opts.prefix ?? "") && order(k, opts.cursor ?? "") > 0 && version(k),
         )
-        .sort(order);
-      const items = keys.slice(0, limit).map((key) => ({ key, value: read<T>(key)!.value }));
+        .toSorted(order);
+      const items = keys.slice(0, limit).map((key) => ({ key, value: read(key)!.value as T }));
       return keys.length > limit ? { items, cursor: items.at(-1)!.key } : { items };
     },
     atomic() {
@@ -198,7 +196,7 @@ export function testStorage(data: Map<string, Json>, need: () => void): KV {
       validKey(name);
       const list = () =>
         [...(rankings.get(name) ?? [])]
-          .sort(([a, x], [b, y]) => y - x || order(a, b))
+          .toSorted(([a, x], [b, y]) => y - x || order(a, b))
           .map(([member, score], i) => ({ member, score, rank: i + 1 }));
       return {
         async set(member, score) {

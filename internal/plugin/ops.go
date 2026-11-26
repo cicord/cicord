@@ -203,6 +203,7 @@ func init() {
 		"server.incident":        opIncident,
 		"server.requestSync":     opRequestSync,
 		"dm.retract":             opRetractDM,
+		"privacy.pseudonym":      opPrivacyPseudonym,
 	}
 }
 
