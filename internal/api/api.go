@@ -279,6 +279,7 @@ func (s *server) routes() {
 	h("POST /api/v1/sim/servers/{id}/members", s.simOnly(s.handleSimJoin))
 	h("POST /api/v1/sim/servers/{id}/boosts", s.simOnly(s.handleSimBoosts))
 	h("DELETE /api/v1/sim/servers/{id}/members/{userId}", s.simOnly(s.handleSimLeave))
+	h("POST /api/v1/sim/channels/{id}/permissions", s.simOnly(s.handleSimPermissions))
 	h("GET /api/v1/sim/channels/{id}/messages", s.simOnly(s.handleSimMessages))
 	h("GET /api/v1/sim/users/{id}/dms", s.simOnly(s.handleSimDMs))
 	h("POST /api/v1/sim/messages", s.simOnly(s.handleSimSend))

@@ -359,6 +359,56 @@ func (s *server) handleSimDMs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": toMessages(lastN(all, queryLimit(r)))})
 }
 
+// handleSimPermissions simulates an operator replacing a channel's permission
+// overwrites in Discord. The World performs its ordinary validation and emits a
+// real channelUpdate gateway event. Production mode never exposes this endpoint.
+func (s *server) handleSimPermissions(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Overwrites *[]struct {
+			ID, Type    string
+			Allow, Deny []string
+		} `json:"overwrites"`
+	}
+	if err := s.decodeJSON(w, r, &b); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if b.Overwrites == nil || len(*b.Overwrites) > 100 {
+		s.fail(w, httpErr(http.StatusBadRequest, "invalid", "provide up to 100 overwrites"))
+		return
+	}
+	ows := make([]discord.Overwrite, 0, len(*b.Overwrites))
+	for _, row := range *b.Overwrites {
+		var kind discord.OverwriteType
+		switch row.Type {
+		case "role":
+			kind = discord.OverwriteRole
+		case "member":
+			kind = discord.OverwriteMember
+		default:
+			s.fail(w, httpErr(http.StatusBadRequest, "invalid", "unknown overwrite type"))
+			return
+		}
+		allow, e := discord.ParsePermissions(row.Allow)
+		if e != nil {
+			s.fail(w, httpErr(http.StatusBadRequest, "invalid", "%v", e))
+			return
+		}
+		deny, e := discord.ParsePermissions(row.Deny)
+		if e != nil {
+			s.fail(w, httpErr(http.StatusBadRequest, "invalid", "%v", e))
+			return
+		}
+		ows = append(ows, discord.Overwrite{ID: row.ID, Type: kind, Allow: allow, Deny: deny})
+	}
+	_, err := s.opts.Sim.AdminUpdateChannel(r.PathValue("id"), discord.ChannelParams{Overwrites: &ows})
+	if err != nil {
+		s.fail(w, simErr(err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *server) handleSimSend(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		UserID    string `json:"userId"`
