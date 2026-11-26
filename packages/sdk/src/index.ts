@@ -9,6 +9,8 @@
  */
 import type * as Spec from "@cicord/sdk";
 
+export const sdkFeatures = Object.freeze({ contextMenus: true } as const);
+
 const CAPABILITY_IN_MESSAGE = /capability "?([a-z]+(?:\.[a-z]+)+)"?/;
 
 /** Thrown when a call needs a capability that is not granted in bot.yaml. */

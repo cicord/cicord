@@ -793,8 +793,27 @@ func (o CommandOption) IsSubcommand() bool {
 }
 
 // Command is a chat-input (slash) command.
+type CommandType int
+
+const (
+	ChatInput   CommandType = 1
+	UserMenu    CommandType = 2
+	MessageMenu CommandType = 3
+)
+
+func (t CommandType) Key(name string) string {
+	switch t {
+	case UserMenu:
+		return "user:" + name
+	case MessageMenu:
+		return "message:" + name
+	}
+	return name
+}
+
 type Command struct {
 	CommandLabels
+	Type        CommandType
 	Name        string
 	Description string
 	Options     []CommandOption
@@ -859,6 +878,9 @@ type Resolved struct {
 }
 
 type Interaction struct {
+	CommandType   CommandType
+	TargetMessage *Message
+	TargetMember  *Member
 	Locale        string
 	ID            string
 	Token         string

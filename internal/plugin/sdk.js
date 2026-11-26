@@ -660,7 +660,7 @@
 
   function defineRoutes(routes) { return routes; }
 
-  const sdk = freeze({ definePlugin, command, subcommand, defineRoutes, CapabilityError });
+  const sdk = freeze({ sdkFeatures:freeze({contextMenus:true}), definePlugin, command, subcommand, defineRoutes, CapabilityError });
 
   const entries = (o) => (o && typeof o === "object" ? Object.keys(o).map((k) => [k, o[k]]) : []);
   const fns = (o) => entries(o).map(([name, f]) => ({ name, type: typeof f }));
@@ -681,7 +681,7 @@
   function describe() {
     const def = plugin;
     const sections = {};
-    for (const k of ["events", "commands", "components", "modals", "schedules", "tasks", "subscriptions", "routes"]) {
+    for (const k of ["events", "commands", "contextMenus","components", "modals", "schedules", "tasks", "subscriptions", "routes"]) {
       sections[k] = typeof def[k];
     }
     return JSON.stringify({
@@ -690,6 +690,7 @@
       onStart: typeof def.onStart,
       onStop: typeof def.onStop,
       events: fns(def.events),
+      contextMenus: entries(def.contextMenus).map(([name,m])=>({name,type:m&&m.type,run:typeof(m&&m.run),permissions:m&&m.permissions,ephemeral:m&&m.ephemeral})),
       commands: entries(def.commands).map(([name, c]) => Object.assign(describeLeaf(name, c), {
         ephemeral: c && c.ephemeral,
         permissions: c && c.permissions,
@@ -749,6 +750,7 @@
       case "start": return plugin.onStart ? [plugin, plugin.onStart] : null;
       case "stop": return plugin.onStop ? [plugin, plugin.onStop] : null;
       case "event": { const f = own(plugin.events, name); return f ? [plugin.events, f] : null; }
+      case "contextMenu": {const m=own(plugin.contextMenus,name);return m&&m.run?[m,m.run]:null;}
       case "command": { const c = commandTarget(name); return c && c.run ? [c, c.run] : null; }
       case "autocomplete": {
         // "<command path>/<option>"
@@ -819,6 +821,7 @@
   function args(kind, name, d) {
     switch (kind) {
       case "event": return eventArgs(name, d);
+      case "contextMenu": {const o=baseInteraction(InteractionProto,d);o.target=d.targetMember?mkMember(d.targetMember):mkMessage(d.targetMessage);return [freeze(o)];}
       case "command": return [mkCommandInteraction(d)];
       case "autocomplete": return [mkAutocompleteInteraction(d), freeze({ name: d.focused.name, value: d.focused.value })];
       case "component": return [mkComponentInteraction(d)];

@@ -695,6 +695,8 @@ func cloneModal(m *discord.Modal) *discord.Modal {
 }
 
 func cloneInteraction(ix discord.Interaction) discord.Interaction {
+	ix.TargetMessage = cloneMessagePtr(ix.TargetMessage)
+	ix.TargetMember = cloneMemberPtr(ix.TargetMember)
 	ix.Member = cloneMemberPtr(ix.Member)
 	ix.Options = cloneInteractionOptions(ix.Options)
 	r := ix.Resolved

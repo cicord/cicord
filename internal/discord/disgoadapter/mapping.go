@@ -972,7 +972,10 @@ func commandOptionToWire(o discord.CommandOption) wireCommandOption {
 }
 
 func commandToWire(c discord.Command) wireCommand {
-	w := wireCommand{CommandLabels: c.CommandLabels, Type: 1, Name: c.Name, Description: c.Description}
+	w := wireCommand{CommandLabels: c.CommandLabels, Type: int(c.Type), Name: c.Name, Description: c.Description}
+	if w.Type == 0 {
+		w.Type = 1
+	}
 	for _, o := range c.Options {
 		w.Options = append(w.Options, commandOptionToWire(o))
 	}
@@ -1191,6 +1194,22 @@ func interactionFromWire(w wireInteraction) discord.Interaction {
 			in.CommandName = d.Name
 			in.Options = interactionOptionsFromWire(d.Options)
 			in.Resolved = resolvedFromWire(w.GuildID, d.Resolved)
+			in.CommandType = discord.CommandType(d.Type)
+			if d.Resolved != nil && d.TargetID != "" {
+				if in.CommandType == discord.UserMenu {
+					if member, ok := in.Resolved.Members[d.TargetID]; ok {
+						in.TargetMember = &member
+					}
+				}
+				if in.CommandType == discord.MessageMenu {
+					if msg, ok := d.Resolved.Messages[d.TargetID]; ok && (msg.ChannelID == "" || msg.ChannelID == in.ChannelID) && (msg.GuildID == "" || msg.GuildID == in.ServerID) {
+						msg.ChannelID = in.ChannelID
+						msg.GuildID = in.ServerID
+						target := messageFromWire(msg)
+						in.TargetMessage = &target
+					}
+				}
+			}
 		case discord.InteractionComponent:
 			in.CustomID = d.CustomID
 			in.ComponentType = discord.ComponentType(d.ComponentType)

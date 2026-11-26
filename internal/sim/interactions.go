@@ -604,7 +604,7 @@ func (w *World) commandInteraction(userID, serverID, channelID, applicationID, n
 	}
 	var cmd *discord.Command
 	for i := range w.commands[applicationID][serverID] {
-		if w.commands[applicationID][serverID][i].Name == path[0] {
+		if w.commands[applicationID][serverID][i].Type <= discord.ChatInput && w.commands[applicationID][serverID][i].Name == path[0] {
 			cmd = &w.commands[applicationID][serverID][i]
 		}
 	}
@@ -1007,4 +1007,55 @@ func (w *World) SubmitModal(userID, serverID, channelID, applicationID, customID
 		ix.Message = &m
 	}
 	return &InteractionHandle{w: w, st: w.startInteraction(ix, bot)}
+}
+
+// InvokeContextMenu dispatches a registered guild user or message command with its resolved target.
+func (w *World) InvokeContextMenu(userID, serverID, channelID, applicationID, name string, typ discord.CommandType, targetID string) *InteractionHandle {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	bot := w.botsByApp[applicationID]
+	if bot == nil {
+		return failedHandle(w, notFound("unknown application"))
+	}
+	user, member, ch, err := w.interactionContext(userID, serverID, channelID)
+	if err != nil {
+		return failedHandle(w, err)
+	}
+	server := w.servers[serverID]
+	if server == nil || !w.channelPerms(ch, userID).Has(permUseAppCommands) {
+		return failedHandle(w, forbidden("cannot invoke guild command"))
+	}
+	for _, cmd := range w.commands[applicationID][serverID] {
+		if cmd.Name != name || cmd.Type != typ {
+			continue
+		}
+		if p := cmd.DefaultMemberPermissions; p != nil {
+			have := w.channelPerms(ch, userID)
+			if !have.Has(*p) || (*p == 0 && have != allPermissions) {
+				return failedHandle(w, forbidden("missing command permissions"))
+			}
+		}
+		ix := discord.Interaction{Type: discord.InteractionCommand, ServerID: serverID, ChannelID: channelID, User: user, Member: member, CommandType: typ, CommandName: name}
+		switch typ {
+		case discord.UserMenu:
+			ix.TargetMember = cloneMemberPtr(server.members[targetID])
+			if ix.TargetMember == nil {
+				return failedHandle(w, notFound("unknown target member"))
+			}
+		case discord.MessageMenu:
+			_, m, err := w.channelMessage(channelID, targetID)
+			if err != nil {
+				return failedHandle(w, err)
+			}
+			if err = w.readAccess(actor{userID: userID}, ch); err != nil {
+				return failedHandle(w, err)
+			}
+			msg := cloneMessage(m.msg)
+			ix.TargetMessage = &msg
+		default:
+			return failedHandle(w, badRequest("unknown context menu type"))
+		}
+		return &InteractionHandle{w: w, st: w.startInteraction(ix, bot)}
+	}
+	return failedHandle(w, notFound("unknown context menu %q", name))
 }

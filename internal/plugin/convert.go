@@ -587,21 +587,23 @@ type optionDTO struct {
 }
 
 type interactionDTO struct {
-	Locale      string            `json:"locale,omitempty"`
-	Handle      string            `json:"handle"`
-	ID          string            `json:"id"`
-	User        userDTO           `json:"user"`
-	Member      *memberDTO        `json:"member,omitempty"`
-	Channel     *channelDTO       `json:"channel,omitempty"`
-	Command     string            `json:"command,omitempty"`
-	Group       string            `json:"group,omitempty"`
-	Subcommand  string            `json:"subcommand,omitempty"`
-	Options     []optionDTO       `json:"options,omitempty"`
-	ComponentID string            `json:"componentId,omitempty"`
-	Values      []string          `json:"values,omitempty"`
-	Message     *messageDTO       `json:"message,omitempty"`
-	ModalID     string            `json:"modalId,omitempty"`
-	Fields      map[string]string `json:"fields,omitempty"`
+	TargetMessage *messageDTO       `json:"targetMessage,omitempty"`
+	TargetMember  *memberDTO        `json:"targetMember,omitempty"`
+	Locale        string            `json:"locale,omitempty"`
+	Handle        string            `json:"handle"`
+	ID            string            `json:"id"`
+	User          userDTO           `json:"user"`
+	Member        *memberDTO        `json:"member,omitempty"`
+	Channel       *channelDTO       `json:"channel,omitempty"`
+	Command       string            `json:"command,omitempty"`
+	Group         string            `json:"group,omitempty"`
+	Subcommand    string            `json:"subcommand,omitempty"`
+	Options       []optionDTO       `json:"options,omitempty"`
+	ComponentID   string            `json:"componentId,omitempty"`
+	Values        []string          `json:"values,omitempty"`
+	Message       *messageDTO       `json:"message,omitempty"`
+	ModalID       string            `json:"modalId,omitempty"`
+	Fields        map[string]string `json:"fields,omitempty"`
 }
 
 var optionTypeNames = map[discord.CommandOptionType]string{}
@@ -638,6 +640,15 @@ func (i *Instance) interactionDTO(x *interaction, localID string) interactionDTO
 		d.Channel = &ch
 	}
 	switch x.kind {
+	case "contextMenu":
+		if it.TargetMessage != nil {
+			m := i.messageDTO(*it.TargetMessage)
+			d.TargetMessage = &m
+		}
+		if it.TargetMember != nil {
+			m := i.memberDTO(*it.TargetMember)
+			d.TargetMember = &m
+		}
 	case "command":
 		path, opts := it.CommandPath()
 		d.Command = path[0]

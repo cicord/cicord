@@ -2199,3 +2199,30 @@ export async function submitModal(
   await handler(localizedContext(harness.ctx, interaction.locale), interaction);
   return result;
 }
+
+/** Invoke a guild context menu with a resolved message or member. */
+export async function runContextMenu(
+  plugin: PluginDefinition,
+  harness: TestHarness,
+  name: string,
+  call: InteractionCall & { targetId: string },
+): Promise<InteractionResult> {
+  const menu = plugin.contextMenus?.[name];
+  if (!menu) throw new Error(`unknown context menu ${name}`);
+  const member = harness.member(call.user);
+  if (menu.permissions?.some((p) => !member?.permissions?.includes(p)))
+    throw new Error("missing context menu permissions");
+  const result = emptyResult();
+  const base = fakeInteraction(harness, "command", name, call, result);
+  if (menu.type === "message") {
+    const target = harness.message(call.targetId);
+    if (!target || (base.channel && target.channel.id !== base.channel.id))
+      throw new Error("unknown target message");
+    await menu.run(harness.ctx, Object.assign(base, { target }));
+  } else {
+    const target = harness.member(call.targetId);
+    if (!target) throw new Error("unknown target member");
+    await menu.run(harness.ctx, Object.assign(base, { target }));
+  }
+  return result;
+}

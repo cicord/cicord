@@ -469,7 +469,7 @@ type wireCommand struct {
 	discord.CommandLabels
 	Type                     int                 `json:"type"`
 	Name                     string              `json:"name"`
-	Description              string              `json:"description"`
+	Description              string              `json:"description,omitempty"`
 	Options                  []wireCommandOption `json:"options,omitempty"`
 	DefaultMemberPermissions *string             `json:"default_member_permissions,omitempty"`
 }
@@ -496,6 +496,7 @@ type wireInteractionOption struct {
 }
 
 type wireResolved struct {
+	Messages    map[string]wireMessage    `json:"messages"`
 	Users       map[string]wireUser       `json:"users"`
 	Members     map[string]wireMember     `json:"members"`
 	Roles       map[string]wireRole       `json:"roles"`
@@ -504,6 +505,8 @@ type wireResolved struct {
 }
 
 type wireInteractionData struct {
+	Type     int    `json:"type"`
+	TargetID string `json:"target_id"`
 	// Application command: the command's snowflake (a string). Component interactions send
 	// the clicked component's numeric id here instead (Discord's component "id" field), so
 	// the field accepts both: a number must not make the whole interaction undecodable.

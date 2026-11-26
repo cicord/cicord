@@ -19,6 +19,7 @@ import (
 // Definition is the static part of a plugin, extracted from `definePlugin({...})` by Inspect.
 // All lists are sorted by name, except command options (Discord order).
 type Definition struct {
+	ContextMenus  []CommandDef
 	Commands      []CommandDef
 	Events        []string // SDK event names: memberJoin, messageCreate, …
 	Components    []string // local component ids (handler keys)
@@ -34,6 +35,7 @@ type Definition struct {
 // CommandDef is a slash command declared under `commands`.
 type CommandDef struct {
 	discord.CommandLabels
+	Type        discord.CommandType
 	Name        string
 	Description string
 	// Ephemeral: replies are ephemeral by default and auto-defer is ephemeral (subcommands
@@ -131,7 +133,7 @@ func (d *Definition) HasTask(name string) bool { return slices.Contains(d.Tasks,
 
 // DiscordCommand converts the command for SetServerCommands.
 func (c CommandDef) DiscordCommand() discord.Command {
-	cmd := discord.Command{CommandLabels: c.CommandLabels, Name: c.Name, Description: c.Description, Options: c.Options}
+	cmd := discord.Command{CommandLabels: c.CommandLabels, Type: c.Type, Name: c.Name, Description: c.Description, Options: c.Options}
 	if len(c.Permissions) > 0 {
 		p, err := discord.ParsePermissions(c.Permissions) // validated by Inspect
 		if err == nil {
@@ -146,6 +148,9 @@ func (d *Definition) DiscordCommands() []discord.Command {
 	out := make([]discord.Command, len(d.Commands))
 	for i, c := range d.Commands {
 		out[i] = c.DiscordCommand()
+	}
+	for _, menu := range d.ContextMenus {
+		out = append(out, menu.DiscordCommand())
 	}
 	return out
 }
@@ -388,6 +393,11 @@ func splitPath(p string) []string {
 
 // describedPlugin is what the SDK prelude's describe() returns (JSON).
 type describedPlugin struct {
+	ContextMenus []struct {
+		Name, Type, Run string
+		Permissions     []string
+		Ephemeral       bool
+	} `json:"contextMenus"`
 	Keys       []string          `json:"keys"`
 	OnStart    string            `json:"onStart"` // typeof
 	OnStop     string            `json:"onStop"`
@@ -454,7 +464,7 @@ type describedOpt struct {
 }
 
 var knownSections = map[string]bool{
-	"onStart": true, "onStop": true, "events": true, "commands": true, "components": true,
+	"contextMenus": true, "onStart": true, "onStop": true, "events": true, "commands": true, "components": true,
 	"modals": true, "schedules": true, "tasks": true, "subscriptions": true, "routes": true,
 }
 
@@ -524,6 +534,29 @@ func buildDefinition(dp describedPlugin) (*Definition, error) {
 		}
 	}
 
+	for _, m := range dp.ContextMenus {
+		if n := utf8.RuneCountInString(m.Name); n < 1 || n > 32 {
+			fail("context menu %q: name must be 1–32 characters", m.Name)
+		}
+		if !checkFn("contextMenus", m.Name, m.Run) {
+			continue
+		}
+		var typ discord.CommandType
+		switch m.Type {
+		case "user":
+			typ = discord.UserMenu
+		case "message":
+			typ = discord.MessageMenu
+		default:
+			fail("context menu %q: type must be user or message", m.Name)
+			continue
+		}
+		if _, err := discord.ParsePermissions(m.Permissions); err != nil {
+			fail("context menu %q: %v", m.Name, err)
+		}
+		d.ContextMenus = append(d.ContextMenus, CommandDef{Name: m.Name, Type: typ, Permissions: m.Permissions, Ephemeral: m.Ephemeral})
+	}
+	slices.SortFunc(d.ContextMenus, func(a, b CommandDef) int { return strings.Compare(a.Name, b.Name) })
 	for _, c := range dp.Commands {
 		cmd, cerrs := buildCommand(c)
 		errs = append(errs, cerrs...)

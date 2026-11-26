@@ -986,7 +986,12 @@ export interface EventHandlers {
   serverLeave?(ctx: Context, server: { id: Snowflake }): Awaitable<void>;
 }
 
+export declare const sdkFeatures: Readonly<{contextMenus: true}>;
+export type ContextMenuDefinition =
+ | { type:"message"; permissions?: Permission[]; ephemeral?: boolean; run(ctx:Context,i:Interaction & {readonly target:Message}):Awaitable<void> }
+ | { type:"user"; permissions?: Permission[]; ephemeral?: boolean; run(ctx:Context,i:Interaction & {readonly target:Member}):Awaitable<void> };
 export interface PluginDefinition {
+  contextMenus?: Record<string,ContextMenuDefinition>;
   /** Called when the instance starts (new revision, restart, plugin enabled). */
   onStart?(ctx: Context): Awaitable<void>;
   /** Called before the instance stops; must finish quickly. */

@@ -346,6 +346,19 @@ func (r *Runtime) LoadAndBuild(dir string) (*config.Repo, map[string]*builtPlugi
 	if ds.HasErrors() || repo == nil {
 		return repo, nil, ds, ds.Err()
 	}
+	builds, errors := inspectRepoPlugins(repo)
+	ds = append(ds, errors...)
+	ds.Sort()
+	return repo, builds, ds, ds.Err()
+}
+
+// ValidatePluginCommands checks the command set of each concrete bot and server offline.
+func ValidatePluginCommands(repo *config.Repo) config.Diagnostics {
+	_, ds := inspectRepoPlugins(repo)
+	return ds
+}
+func inspectRepoPlugins(repo *config.Repo) (map[string]*builtPlugin, config.Diagnostics) {
+	var ds config.Diagnostics
 	builds := map[string]*builtPlugin{}
 	keys := make([]string, 0, len(repo.Plugins))
 	for k := range repo.Plugins {
@@ -362,9 +375,17 @@ func (r *Runtime) LoadAndBuild(dir string) (*config.Repo, map[string]*builtPlugi
 		}
 		builds[k] = bp
 	}
+	ds = append(ds, validateRepoCommands(repo, builds)...)
+	ds.Sort()
+	return builds, ds
+}
+
+func validateRepoCommands(repo *config.Repo, builds map[string]*builtPlugin) config.Diagnostics {
+	var ds config.Diagnostics
 	// Per (bot, server): command names must be unique across instances.
 	type pair struct{ bot, server string }
 	seen := map[pair]map[string]string{}
+	menuOwners := map[pair]map[discord.CommandType][]string{}
 	for _, in := range repo.Instances {
 		bp := builds[in.Plugin.Key]
 		if bp == nil {
@@ -374,6 +395,17 @@ func (r *Runtime) LoadAndBuild(dir string) (*config.Repo, map[string]*builtPlugi
 		if seen[p] == nil {
 			seen[p] = map[string]string{}
 		}
+		for _, m := range bp.def.ContextMenus {
+			if menuOwners[p] == nil {
+				menuOwners[p] = map[discord.CommandType][]string{}
+			}
+			menuOwners[p][m.Type] = append(menuOwners[p][m.Type], in.Name)
+			key := m.Type.Key(m.Name)
+			if other, exists := seen[p][key]; exists {
+				ds = append(ds, config.Diagnostic{Severity: config.SeverityError, File: repo.Bots[in.Bot].File, Message: fmt.Sprintf("context menu %q duplicated by %q and %q on %s/%s", m.Name, other, in.Name, in.Bot, in.Server)})
+			}
+			seen[p][key] = in.Name
+		}
 		for _, c := range bp.def.Commands {
 			if other, dup := seen[p][c.Name]; dup && other != in.Name {
 				ds = append(ds, config.Diagnostic{Severity: config.SeverityError, File: repo.Bots[in.Bot].File,
@@ -382,8 +414,22 @@ func (r *Runtime) LoadAndBuild(dir string) (*config.Repo, map[string]*builtPlugi
 			seen[p][c.Name] = in.Name
 		}
 	}
+	for p, groups := range menuOwners {
+		for typ, instances := range groups {
+			if len(instances) > 15 {
+				count := len(instances)
+				sort.Strings(instances)
+				owners := strings.Join(slices.Compact(instances), ", ")
+				kind := "USER"
+				if typ == discord.MessageMenu {
+					kind = "MESSAGE"
+				}
+				ds = append(ds, config.Diagnostic{Severity: config.SeverityError, File: repo.Bots[p.bot].File, Message: fmt.Sprintf("%s/%s has %d %s context menus (limit 15); instances: %s", p.bot, p.server, count, kind, owners)})
+			}
+		}
+	}
 	ds.Sort()
-	return repo, builds, ds, ds.Err()
+	return ds
 }
 
 func buildPlugin(lp *config.LoadedPlugin) (*builtPlugin, error) {

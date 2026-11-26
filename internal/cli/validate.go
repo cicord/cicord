@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cicord/cicord/internal/config"
+	"github.com/cicord/cicord/internal/runtime"
 	"github.com/cicord/cicord/internal/version"
 )
 
@@ -23,6 +24,10 @@ func newValidateCmd() *cobra.Command {
 				dir = args[0]
 			}
 			repo, ds := loadRepo(dir)
+			if repo != nil && !ds.HasErrors() {
+				ds = append(ds, runtime.ValidatePluginCommands(repo)...)
+				ds.Sort()
+			}
 			if output == "json" {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")

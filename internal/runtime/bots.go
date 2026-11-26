@@ -66,7 +66,7 @@ func (h *botHost) syncCommands(ctx context.Context, rt *routing, sid string) {
 	for _, i := range rt.byServer[sid] {
 		cmds = append(cmds, i.plugin.def.DiscordCommands()...)
 	}
-	sort.Slice(cmds, func(x, y int) bool { return cmds[x].Name < cmds[y].Name })
+	sort.Slice(cmds, func(x, y int) bool { return cmds[x].Type.Key(cmds[x].Name) < cmds[y].Type.Key(cmds[y].Name) })
 	data, _ := json.Marshal(cmds)
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
@@ -441,11 +441,11 @@ func (h *botHost) install(ctx context.Context, a *active) {
 			rt.byName[i.cfg.Name] = map[string]*instanceRT{}
 		}
 		rt.byName[i.cfg.Name][sid] = i
-		for _, c := range i.plugin.def.Commands {
+		for _, c := range i.plugin.def.DiscordCommands() {
 			if rt.commands[sid] == nil {
 				rt.commands[sid] = map[string]*instanceRT{}
 			}
-			rt.commands[sid][c.Name] = i
+			rt.commands[sid][c.Type.Key(c.Name)] = i
 		}
 	}
 	for _, sk := range b.Spec.ServerKeys() {
@@ -608,7 +608,10 @@ func (h *botHost) routeInteraction(rt *routing, it discord.Interaction) {
 	)
 	switch it.Type {
 	case discord.InteractionCommand:
-		target, kind, localID = rt.commands[it.ServerID][it.CommandName], "command", it.CommandName
+		target, kind, localID = rt.commands[it.ServerID][it.CommandType.Key(it.CommandName)], "command", it.CommandName
+		if it.CommandType == discord.UserMenu || it.CommandType == discord.MessageMenu {
+			kind = "contextMenu"
+		}
 	case discord.InteractionAutocomplete:
 		target, kind, localID = rt.commands[it.ServerID][it.CommandName], "autocomplete", it.CommandName
 	case discord.InteractionComponent, discord.InteractionModalSubmit:

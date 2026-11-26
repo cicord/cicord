@@ -467,10 +467,12 @@ func interactionResult(h *sim.InteractionHandle) interactionResultDTO {
 
 func (s *server) handleSimCommand(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		UserID    string `json:"userId"`
-		ServerID  string `json:"serverId"`
-		ChannelID string `json:"channelId"`
-		Bot       string `json:"bot"`
+		UserID      string `json:"userId"`
+		ServerID    string `json:"serverId"`
+		ChannelID   string `json:"channelId"`
+		Bot         string `json:"bot"`
+		ContextMenu string `json:"contextMenu"`
+		TargetID    string `json:"targetId"`
 		// Name is the command path: "poll", "polls close", "polls admin purge".
 		Name    string         `json:"name"`
 		Options map[string]any `json:"options"`
@@ -491,7 +493,19 @@ func (s *server) handleSimCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var h *sim.InteractionHandle
-	if ac := body.Autocomplete; ac != nil {
+	if body.ContextMenu != "" {
+		var typ discord.CommandType
+		switch body.ContextMenu {
+		case "user":
+			typ = discord.UserMenu
+		case "message":
+			typ = discord.MessageMenu
+		default:
+			s.fail(w, httpErr(http.StatusBadRequest, "invalid_menu", "expected user or message"))
+			return
+		}
+		h = s.opts.Sim.InvokeContextMenu(body.UserID, body.ServerID, body.ChannelID, app, body.Name, typ, body.TargetID)
+	} else if ac := body.Autocomplete; ac != nil {
 		h = s.opts.Sim.Autocomplete(body.UserID, body.ServerID, body.ChannelID, app, body.Name, ac.Option, ac.Value, body.Options)
 	} else {
 		h = s.opts.Sim.InvokeCommand(body.UserID, body.ServerID, body.ChannelID, app, body.Name, body.Options)

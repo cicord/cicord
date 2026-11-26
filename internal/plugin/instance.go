@@ -1036,6 +1036,18 @@ func (i *Instance) DispatchInteraction(ctx context.Context, it discord.Interacti
 	}
 	var ephemeral bool
 	switch kind {
+	case "contextMenu":
+		if it.CommandType == discord.MessageMenu && it.TargetMessage == nil || it.CommandType == discord.UserMenu && it.TargetMember == nil {
+			return errChan(errors.New("context menu target is unavailable"))
+		}
+		if def := i.Definition(); def != nil {
+			for _, m := range def.ContextMenus {
+				if m.Name == localID && m.Type == it.CommandType {
+					ephemeral = m.Ephemeral
+					break
+				}
+			}
+		}
 	case "command":
 		// The handler is the invoked leaf: "poll", "polls close", "polls admin purge".
 		path, _ := it.CommandPath()

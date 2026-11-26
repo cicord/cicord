@@ -22,11 +22,22 @@ func validDescription(d string) bool {
 }
 
 func validateCommands(cmds []discord.Command) error {
-	if len(cmds) > 100 {
-		return badRequest("at most 100 commands")
-	}
+	counts := map[discord.CommandType]int{}
 	names := map[string]bool{}
 	for _, c := range cmds {
+		if c.Type == discord.UserMenu || c.Type == discord.MessageMenu {
+			key := c.Type.Key(c.Name)
+			counts[c.Type]++
+			if counts[c.Type] > 15 || names[key] || utf8.RuneCountInString(c.Name) > 32 || c.Name == "" || c.Description != "" || len(c.Options) > 0 {
+				return badRequest("invalid or duplicate context menu %q (limit 15 per type)", c.Name)
+			}
+			names[key] = true
+			continue
+		}
+		counts[discord.ChatInput]++
+		if counts[discord.ChatInput] > 100 {
+			return badRequest("at most 100 commands")
+		}
 		if !validCommandName(c.Name) {
 			return badRequest("invalid command name %q (lowercase, 1-32 of letters, digits, - and _)", c.Name)
 		}
