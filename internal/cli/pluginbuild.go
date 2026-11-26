@@ -634,6 +634,11 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	refs := map[string]map[string]bool{}
 	refsOf(schema, effective, refs)
 
+	policy, err := readTestSyncPolicy(absPlugin)
+	if err != nil {
+		return fmt.Errorf("test/server.yaml: %w", err)
+	}
+
 	// throw-away repository
 	repoDir, err := os.MkdirTemp("", "cicord-plugin-test-*")
 	if err != nil {
@@ -644,7 +649,7 @@ func runPluginTest(cmd *cobra.Command, pluginDir, configFile string, verbose, sc
 	if err := copyRepoTree(absPlugin, filepath.Join(repoDir, "plugins", name)); err != nil {
 		return err
 	}
-	if err := writeTestRepo(repoDir, name, m, cfg, refs); err != nil {
+	if err := writeTestRepo(repoDir, name, m, cfg, refs, policy); err != nil {
 		return err
 	}
 	repo, ds := config.Load(repoDir, config.LoadOptions{})
@@ -880,7 +885,7 @@ func printDiagnosticsRel(w io.Writer, ds config.Diagnostics, prefix, real string
 	}
 }
 
-func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs map[string]map[string]bool) error {
+func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs map[string]map[string]bool, policy *testSyncPolicy) error {
 	write := func(rel string, v any) error {
 		data, err := yaml.Marshal(v)
 		if err != nil {
@@ -917,6 +922,9 @@ func writeTestRepo(dir, name string, m *config.Plugin, cfg map[string]any, refs 
 	project := map[string]any{"apiVersion": config.APIVersion, "kind": "Project",
 		"metadata": map[string]any{"name": "plugin-test"}, "spec": map[string]any{"engine": engineRange()}}
 	srvSpec := map[string]any{"discordId": testServerID, "profile": map[string]any{"name": "Plugin test"}, "channels": channels}
+	if policy != nil {
+		srvSpec["syncPolicy"] = policy
+	}
 	if len(roles) > 0 {
 		srvSpec["roles"] = roles
 	}

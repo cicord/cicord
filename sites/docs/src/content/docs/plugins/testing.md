@@ -202,6 +202,18 @@ cicord plugin test plugins/welcome
 cicord plugin test plugins/onboarding --config plugins/onboarding/test/config.yaml
 ```
 
+A plugin whose startup checks depend on the server’s reconciliation policy can include
+`test/server.yaml`. The smoke test applies its values to the disposable simulated server.
+The fixture may set either or both booleans below and is limited to 4 KiB. Omitting the
+file preserves the simulator’s default server policy.
+
+```yaml
+syncPolicy:
+  selfHeal: true
+  deletionProtection: true
+```
+
+
 ```text
 Starting the plugin on the simulator…
 ok   instance onboarding started
