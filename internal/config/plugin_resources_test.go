@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +41,31 @@ func TestReviewedNetworkConfig(t *testing.T) {
 	}
 	if !networkAllows("https://ok.example.org/path", []string{"*.example.org"}) {
 		t.Fatal("wildcard")
+	}
+}
+
+func TestReservedPhysicalSecretReferences(t *testing.T) {
+	repo := &Repo{Bots: map[string]*Bot{"one": {Spec: BotSpec{Token: TokenRef{SecretRef: "DISCORD_GATEWAY"}}}}}
+	for _, name := range []string{"DISCORD_GATEWAY", "CICORD_SECRET_KEY", "CICORD_REGISTRY_PRIVATE_TOKEN", "CICORD_PLUGIN_" + strings.Repeat("A", 64)} {
+		if !repo.ReservedPluginRef(name) {
+			t.Errorf("host reference permitted: %s", name)
+		}
+	}
+	if repo.ReservedPluginRef("CICORD_AI_ANTHROPIC") {
+		t.Fatal("ordinary provider binding refused")
+	}
+}
+
+func TestProviderBudgetSchemaDefault(t *testing.T) {
+	_, schema, err := compilePluginConfigSchema("urn:test:budget", []byte(`{"type":"object","properties":{"tokens":{"type":"integer","default":500000}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := map[string]any{}
+	ApplyDefaults(schema, cfg)
+	decl := PluginSecret{Budget: &ProviderBudget{DailyLimitConfig: "tokens"}}
+	n, ok := decl.BudgetLimit(cfg)
+	if !ok || n != 500000 {
+		t.Fatalf("default (%T) was rejected", cfg["tokens"])
 	}
 }

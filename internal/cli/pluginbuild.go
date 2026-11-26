@@ -228,7 +228,7 @@ func buildPluginReport(dir string) (*pluginReport, error) {
 			r.Warnings = append(r.Warnings, fmt.Sprintf("plugin.yaml declares the %s intent, which no handler needs", in))
 		}
 	}
-	if slices.Contains(m.Spec.Capabilities, "http.fetch") && (m.Spec.Network == nil || len(m.Spec.Network.Allow) == 0) {
+	if slices.Contains(m.Spec.Capabilities, "http.fetch") && (m.Spec.Network == nil || (len(m.Spec.Network.Allow) == 0 && !m.Spec.Network.Configurable)) {
 		r.Errors = append(r.Errors, "http.fetch requires spec.network.allow")
 	}
 	// The route contract is copied into the portals (cicord portal typegen).

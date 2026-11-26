@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,7 +15,7 @@ import (
 	"strings"
 )
 
-func (l *loader) instanceResources(spec PluginSpec, inst PluginInstance, file, base string) ([]string, map[string][]byte) {
+func (l *loader) instanceResources(repo *Repo, spec PluginSpec, inst PluginInstance, file, base string) ([]string, map[string][]byte) {
 	report := func(field, msg string, args ...any) {
 		p := base + "/" + field
 		l.sink.errorf(file, l.docs[file].lineOf(p), p, msg, args...)
@@ -39,7 +41,10 @@ func (l *loader) instanceResources(spec PluginSpec, inst PluginInstance, file, b
 		}
 		declared[d.Name] = true
 	}
-	for n := range inst.Secrets {
+	for n, binding := range inst.Secrets {
+		if repo.ReservedPluginRef(binding.SecretRef) {
+			report("secrets", "%q is reserved for the host and cannot be bound to a plugin", binding.SecretRef)
+		}
 		if !declared[n] {
 			report("secrets", "secret %q is not declared by the plugin", n)
 		}
@@ -58,12 +63,51 @@ func (l *loader) instanceResources(spec PluginSpec, inst PluginInstance, file, b
 	return allow, files
 }
 
+// ReservedPluginRef separates the runtime's credentials and generated admin slots
+// from explicitly named plugin-provider bindings.
+func (r *Repo) ReservedPluginRef(name string) bool {
+	switch name {
+	case "CICORD_SECRET_KEY", "CICORD_DATABASE_URL", "CICORD_DISCORD_CLIENT_SECRET", "CICORD_GITHUB_APP_PRIVATE_KEY", "CICORD_GITHUB_APP_PRIVATE_KEY_FILE", "CICORD_GIT_TOKEN", "CICORD_LINK_SECRET", "CICORD_RUNTIME_TOKEN", "CICORD_WEBHOOK_SECRET":
+		return true
+	}
+	if strings.HasPrefix(name, "CICORD_REGISTRY_") && strings.HasSuffix(name, "_TOKEN") {
+		return true
+	}
+	if tail, ok := strings.CutPrefix(name, "CICORD_PLUGIN_"); ok && len(tail) == 64 {
+		if _, err := hex.DecodeString(tail); err == nil {
+			return true
+		}
+	}
+	if r != nil {
+		for _, b := range r.Bots {
+			if name == b.Spec.Token.SecretRef {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (d PluginSecret) BudgetLimit(cfg map[string]any) (int, bool) {
 	if d.Budget == nil {
 		return 0, false
 	}
-	n, ok := cfg[d.Budget.DailyLimitConfig].(float64)
-	if !ok || math.Trunc(n) != n || n < 1 || n > 10000000 {
+	var n float64
+	switch v := cfg[d.Budget.DailyLimitConfig].(type) {
+	case json.Number:
+		var err error
+		n, err = v.Float64()
+		if err != nil {
+			return 0, false
+		}
+	case float64:
+		n = v
+	case int:
+		n = float64(v)
+	default:
+		return 0, false
+	}
+	if math.Trunc(n) != n || n < 1 || n > 10000000 {
 		return 0, false
 	}
 	return int(n), true

@@ -473,7 +473,7 @@ func (l *loader) checkBots(repo *Repo) {
 				continue
 			}
 
-			network, files := l.instanceResources(lp.Manifest.Spec, inst, b.File, base)
+			network, files := l.instanceResources(repo, lp.Manifest.Spec, inst, b.File, base)
 
 			// grants must cover requested capabilities
 			granted := map[string]bool{}
