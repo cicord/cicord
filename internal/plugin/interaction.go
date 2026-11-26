@@ -45,6 +45,8 @@ type interaction struct {
 
 	mu           sync.Mutex
 	acked        bool
+	privateDefer bool
+	handedOff    bool
 	deferredMsg  bool // acked with DeferredMessage (5)
 	deferredUpd  bool // acked with DeferredUpdate (6)
 	updated      bool // acked with UpdateMessage (7) or edited after 6
@@ -140,7 +142,7 @@ func (x *interaction) deferLocked(ctx context.Context, ephemeral bool) error {
 		if err := x.respond(ctx, discord.InteractionResponse{Type: discord.ResponseDeferredMessage, Data: data}); err != nil {
 			return err
 		}
-		x.acked, x.deferredMsg = true, true
+		x.acked, x.deferredMsg, x.privateDefer = true, true, ephemeral
 	}
 	x.syncFlags()
 	return nil
@@ -250,6 +252,9 @@ func (x *interaction) finish(err error) {
 		x.autoDefer.Stop()
 	}
 	log := x.i.logger
+	if x.handedOff {
+		return
+	}
 	if err != nil {
 		generic := discord.MessageCreate{Content: GenericErrorMessage, Flags: discord.MessageFlagEphemeral}
 		var rerr error

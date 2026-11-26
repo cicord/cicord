@@ -158,3 +158,33 @@ func TestResolverEnvFirst(t *testing.T) {
 		t.Fatal("missing resolved")
 	}
 }
+
+func TestEphemeralReceiptBinding(t *testing.T) {
+	ctx := context.Background()
+	st, err := sqlite.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	s, err := Open(ctx, st, newKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := s.SealEphemeral("server/plugin/code/job", []byte("private-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(sealed), "private-token") {
+		t.Fatal("plaintext receipt")
+	}
+	clear, err := s.OpenEphemeral("server/plugin/code/job", sealed)
+	if err != nil || string(clear) != "private-token" {
+		t.Fatalf("open %q %v", clear, err)
+	}
+	if _, err = s.OpenEphemeral("other/plugin/code/job", sealed); !errors.Is(err, ErrWrongKey) {
+		t.Fatal("binding accepted", err)
+	}
+	if _, err = s.OpenEphemeral("server/plugin/code/job", []byte(`{"nonce":"","ciphertext":""}`)); !errors.Is(err, ErrWrongKey) {
+		t.Fatal("malformed receipt", err)
+	}
+}

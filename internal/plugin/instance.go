@@ -23,11 +23,16 @@ import (
 	"github.com/cicord/cicord/internal/media"
 	"github.com/cicord/cicord/internal/plugin/qjs"
 	"github.com/cicord/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/secrets"
 	"github.com/cicord/cicord/internal/state"
 )
 
 // Env is everything an instance may touch. It is provided by the bot host.
 type Env struct {
+	DeferredSecrets *secrets.Store
+	DeferredRecords state.KV
+	DeferredSource  string // reviewed plugin identity and code fingerprint
+
 	PrivacyFence  *PrivacyFence
 	Locales       locales.Catalog
 	OverlayApply  func(context.Context, reconcile.Overlay) error
@@ -821,6 +826,8 @@ type invResult struct {
 // invocation is one handler run. Its context bounds every host call made by its code
 // (attributed per turn, see currentInv).
 type invocation struct {
+	interaction    *interaction
+	deferred       *deferredReceipt
 	work           invocationWork
 	locale         string
 	privacySubject string // only this subject can be pseudonymized by the current privacy hook
@@ -980,6 +987,11 @@ func (i *Instance) dispatch(caller context.Context, kind, name string, data any,
 		return out
 	}
 	inv, stopCaller := i.newInvocation(caller, kind, name, timeout)
+	inv.interaction = inter
+	inv.deferred, _ = caller.Value(deferredKey{}).(*deferredReceipt)
+	if inv.deferred != nil {
+		inv.locale = inv.deferred.Locale
+	}
 	switch v := data.(type) {
 	case interactionDTO:
 		inv.locale = v.Locale
@@ -1407,6 +1419,9 @@ func (i *Instance) RunSchedule(ctx context.Context, name string) error {
 func (i *Instance) RunTask(ctx context.Context, name string, payload json.RawMessage, delivery TaskDelivery) error {
 	if err := i.require(capScheduler); err != nil {
 		return err
+	}
+	if strings.HasPrefix(delivery.ID, deferredTaskPrefix) {
+		return i.runDeferred(ctx, name, payload, delivery)
 	}
 	return (<-i.dispatch(ctx, "task", name, payloadDTO{Payload: rawOrNil(payload), Task: &delivery}, nil)).err
 }

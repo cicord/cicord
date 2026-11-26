@@ -452,6 +452,7 @@
 
   function mkCommandInteraction(d) {
     const o = baseInteraction(InteractionProto, d);
+    o.deferTask = async (name, payload) => acall("it.deferTask", { h: hOf(o), name, payload });
     o.command = d.command;
     o.group = d.group || undefined;
     o.subcommand = d.subcommand || undefined;
@@ -917,7 +918,15 @@
       case "component": return [mkComponentInteraction(d)];
       case "modal": return [mkModalInteraction(d)];
       case "privacy": return [d];
-      case "task": return [d.payload, freeze(d.task)];
+      case "task": {
+        const meta = d.task;
+        if (meta?.interaction) meta.interaction = freeze({
+          ...meta.interaction,
+          expiresAt: new Date(meta.interaction.expiresAt),
+          async reply(message) { await sendCall("task.reply", { message: msgIn(message) }); },
+        });
+        return [d.payload, freeze(meta)];
+      }
       case "subscription": return [d.payload, d.meta && deepFreeze(d.meta)];
       case "query": case "action": return [d.input, deepFreeze(d.call)];
       case "route": return [freeze({

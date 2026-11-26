@@ -191,6 +191,8 @@ func init() {
 		"portal.link":            opPortalLink,
 		"portal.revoke":          opPortalRevoke,
 		"it.reply":               opInteractionReply,
+		"it.deferTask":           opDeferTask,
+		"task.reply":             opDeferredReply,
 		"it.defer":               opInteractionDefer,
 		"it.followUp":            opInteractionFollowUp,
 		"it.showModal":           opInteractionShowModal,

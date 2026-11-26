@@ -29,12 +29,15 @@ import (
 	"github.com/cicord/cicord/internal/metrics"
 	"github.com/cicord/cicord/internal/plugin"
 	"github.com/cicord/cicord/internal/reconcile"
+	"github.com/cicord/cicord/internal/secrets"
 	"github.com/cicord/cicord/internal/source"
 	"github.com/cicord/cicord/internal/state"
 	"github.com/cicord/cicord/internal/version"
 )
 
 type Options struct {
+	DeferredSecrets *secrets.Store
+
 	PrivacySigner *auth.Signer
 	PrivacyDir    string // durable HMAC erasure markers, retained independently of SQL backups
 	Source        source.Source

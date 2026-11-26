@@ -50,6 +50,11 @@ func TestMemberErasureReplayAndRestore(t *testing.T) {
 	snapshot := json.RawMessage(`[{"user":"` + a + `","text":"private A"},{"user":"` + b + `","text":"keep B"}]`)
 	seed := func() {
 		t.Helper()
+		for _, user := range []string{a, b} {
+			if err := e.rt.Store().KV("private-replies:"+server).Set(ctx, "user:"+user+":private-command:pending", json.RawMessage(`{"ciphertext":"sealed"}`), time.Minute); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if err := kv.Set(ctx, "ticket:1", snapshot, 0); err != nil {
 			t.Fatal(err)
 		}
@@ -59,6 +64,12 @@ func TestMemberErasureReplayAndRestore(t *testing.T) {
 	}
 	verify := func() {
 		t.Helper()
+		for _, user := range []string{a, b} {
+			_, err := e.rt.Store().KV("private-replies:"+server).Get(ctx, "user:"+user+":private-command:pending")
+			if (user == a && err != state.ErrNotFound) || (user == b && err != nil) {
+				t.Fatalf("private reply erasure %s: %v", user, err)
+			}
+		}
 		raw, err := kv.Get(ctx, "ticket:1")
 		if err != nil || strings.Contains(string(raw), a) || strings.Contains(string(raw), "private A") || !strings.Contains(string(raw), "keep B") {
 			t.Fatalf("shared ticket %s %v", raw, err)

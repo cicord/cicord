@@ -496,9 +496,10 @@ func runServe(ctx context.Context, stdout, stderr io.Writer, dir string, f serve
 		return err
 	}
 	rt := runtime.New(runtime.Options{
-		PrivacySigner: privacy,
-		PrivacyDir:    filepath.Join(dataDir, "member-erasures"),
-		Source:        src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
+		DeferredSecrets: sec,
+		PrivacySigner:   privacy,
+		PrivacyDir:      filepath.Join(dataDir, "member-erasures"),
+		Source:          src, Connector: disgoadapter.NewConnector(disgoadapter.WithLogger(log)), Store: store, Secrets: resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: portalURL, Mode: "serve", Logger: log,
 		CommitStatus: commitStatusHook(log, ghRepo, tokens, console), Metrics: reg,

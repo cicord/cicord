@@ -402,6 +402,7 @@ func (r *Runtime) startInstance(ctx context.Context, host *botHost, srt *serverR
 		},
 		AFKChannelID: func() string { return srt.cache.Server().AFKChannelID },
 		OwnerID:      func() string { return discord.CurrentGuildOwner(host.session, srt.cfg.Spec.DiscordID) }, Access: pluginAccess(srt.cfg.Spec.Access),
+		DeferredSecrets: r.opts.DeferredSecrets, DeferredRecords: r.opts.Store.KV("private-replies:" + in.Server), DeferredSource: in.Plugin.Source + "#" + irt.plugin.hash,
 		DMReceipts: r.opts.Store.KV("dm-receipts:" + in.ID()), KV: r.opts.Store.KV(instanceScope(in)), Tasks: r.opts.Store.Tasks(), TaskScope: instanceScope(in),
 		Resources:          ownedResources{ResourceMap: r.opts.Store.Resources(), cache: srt.cache},
 		Portal:             &auth.Linker{Signer: r.opts.Signer, BaseURL: r.opts.PortalURL, Server: in.Server, Store: r.opts.Store, Bot: in.Bot, Instance: in.Name, Plugin: m.Metadata.Name, MaxTTL: 24 * time.Hour},

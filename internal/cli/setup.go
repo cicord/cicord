@@ -218,10 +218,11 @@ func (e *runtimeEnv) build(repo setup.RepoConfig) (*runtime.Runtime, writeback.W
 		return nil, nil, nil, "", err
 	}
 	rt := runtime.New(runtime.Options{
-		HostSecretRefs: []string{repo.TokenRef},
-		PrivacySigner:  privacy,
-		PrivacyDir:     filepath.Join(e.dataDir, "member-erasures"),
-		Source:         src, Connector: e.connector, Store: e.store, Secrets: e.resolve,
+		DeferredSecrets: e.secrets,
+		HostSecretRefs:  []string{repo.TokenRef},
+		PrivacySigner:   privacy,
+		PrivacyDir:      filepath.Join(e.dataDir, "member-erasures"),
+		Source:          src, Connector: e.connector, Store: e.store, Secrets: e.resolve,
 		Resolver: func(root string) config.PluginResolver { return registry.NewRuntimeResolver(root, cacheDir, e.resolve) },
 		Signer:   auth.NewSigner(key), PortalURL: e.public, Mode: e.mode, Simulator: e.world != nil,
 		AllowPrivateNetworks: e.world != nil, Logger: e.log, CommitStatus: commitStatusHook(e.log, ghRepo, tokens, e.console()),

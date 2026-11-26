@@ -658,6 +658,12 @@ export type OptionValues<O extends Record<string, CommandOption>> = {
 
 export interface CommandInteraction<O extends Record<string, CommandOption> = Record<string, CommandOption>>
   extends Interaction {
+  /** Queue a private guild command task and defer ephemerally. The host retains an
+   * encrypted reply credential for at most 14 minutes. Task execution is claimed
+   * once: ambiguous execution is not repeated; a safe private interruption notice
+   * is attempted on retry unless a response was already attempted.
+   * @capability scheduler */
+  deferTask(name: string, payload?: Json): Promise<void>;
   /** Top-level command name. */
   readonly command: string;
   /** Group of the invoked subcommand (`/polls admin purge` → `"admin"`). */
@@ -665,6 +671,16 @@ export interface CommandInteraction<O extends Record<string, CommandOption> = Re
   /** Invoked subcommand (`/polls close` → `"close"`). */
   readonly subcommand?: string;
   readonly options: OptionValues<O>;
+}
+
+/** Available only inside the task handed off by a private guild command. */
+export interface DeferredCommandReply {
+  readonly id: string;
+  readonly userId: Snowflake;
+  readonly channelId: Snowflake;
+  readonly expiresAt: Date;
+  /** Edit the original ephemeral response. The credential stays in the host. */
+  reply(message: MessageInput): Promise<void>;
 }
 
 export interface ComponentInteraction extends Interaction {
@@ -1247,7 +1263,7 @@ export interface PluginDefinition {
   schedules?: Record<string, { cron: string; run(ctx: Context): Awaitable<void> }>;
   /** One-shot tasks started with ctx.schedule.after(). @capability scheduler */
   /** A task may be delivered more than once. Its ID is stable across attempts. */
-  tasks?: Record<string, (ctx: Context, payload: Json | undefined, task?: { readonly id: string; readonly attempt: number }) => Awaitable<void>>;
+  tasks?: Record<string, (ctx: Context, payload: Json | undefined, task?: { readonly id: string; readonly attempt: number; readonly interaction?: DeferredCommandReply }) => Awaitable<void>>;
   /** Cross-plugin event subscriptions, keyed by "<plugin>.<topic>". @capability events.subscribe */
   subscriptions?: {
     [K in keyof SubscribedEvents]?: (ctx: Context, payload: SubscribedEvents[K], meta: EventMeta) => Awaitable<void>;

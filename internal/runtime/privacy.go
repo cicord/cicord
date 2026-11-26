@@ -176,6 +176,32 @@ func (r *Runtime) restoreMemberData(ctx context.Context, server, scope string, i
 	fence := r.privacyFence(server)
 	fence.LockErase()
 	defer fence.UnlockErase()
+	// Host receipts are outside plugin KV; reapply external erasure markers to
+	// restored credentials before routing any instance work.
+	replies := r.opts.Store.KV("private-replies:" + server)
+	for cursor := ""; ; {
+		items, next, err := replies.List(ctx, "user:", 100, cursor)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			erased := false
+			subjects(item.Key, nil, func(id string) {
+				if marks[r.fingerprint(server, id)] {
+					erased = true
+				}
+			})
+			if erased {
+				if err := replies.Delete(ctx, item.Key); err != nil {
+					return err
+				}
+			}
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
 	kv, ok := r.opts.Store.KV(scope).(privacyStore)
 	if !ok {
 		return errors.New("privacy inventory scan unavailable")
@@ -264,6 +290,23 @@ func (r *Runtime) memberReport(ctx context.Context, server, user, action string)
 	}
 	sort.Slice(rep.Plugins, func(a, b int) bool { return rep.Plugins[a].Instance < rep.Plugins[b].Instance })
 	if action == "erase" {
+		// Interaction credentials live outside plugin storage and must be erased too.
+		replies := r.opts.Store.KV("private-replies:" + server)
+		for cursor := ""; ; {
+			items, next, err := replies.List(ctx, "user:"+user+":", 100, cursor)
+			if err != nil {
+				return rep, err
+			}
+			for _, item := range items {
+				if err := replies.Delete(ctx, item.Key); err != nil {
+					return rep, err
+				}
+			}
+			if next == "" {
+				break
+			}
+			cursor = next
+		}
 		storage, ok := r.privacyKV(server).(privacyStore)
 		if !ok {
 			return rep, errors.New("privacy task purge unavailable")

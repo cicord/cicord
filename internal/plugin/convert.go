@@ -814,8 +814,9 @@ type viewerDTO struct {
 
 // TaskDelivery is stable across retries except for the increasing attempt.
 type TaskDelivery struct {
-	ID      string `json:"id"`
-	Attempt int    `json:"attempt"`
+	Interaction *deferredInfo `json:"interaction,omitempty"`
+	ID          string        `json:"id"`
+	Attempt     int           `json:"attempt"`
 }
 type payloadDTO struct {
 	Task    *TaskDelivery   `json:"task,omitempty"`

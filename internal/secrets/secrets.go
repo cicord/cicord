@@ -204,6 +204,9 @@ func (s *Store) open(name string, rec record) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if len(nonce) != s.gcm.NonceSize() {
+		return "", ErrWrongKey
+	}
 	pt, err := s.gcm.Open(nil, nonce, ct, []byte(name))
 	if err != nil {
 		return "", fmt.Errorf("secrets: cannot decrypt %s: %w", name, ErrWrongKey)
@@ -223,6 +226,28 @@ func (s *Store) put(ctx context.Context, name, value string, created time.Time) 
 	data, _ := json.Marshal(record{Nonce: base64.StdEncoding.EncodeToString(nonce),
 		Ciphertext: base64.StdEncoding.EncodeToString(ct), CreatedAt: created, UpdatedAt: now})
 	return s.kv.Set(ctx, name, data, 0)
+}
+
+// SealEphemeral and OpenEphemeral use the runtime's AES-GCM key for short-lived
+// host receipts held outside the operator secret namespace. The caller supplies
+// the full tenant/installation/job binding and enforces the KV expiration.
+func (s *Store) SealEphemeral(binding string, value []byte) (json.RawMessage, error) {
+	n, ct, err := s.seal("ephemeral-v1:"+binding, string(value))
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(record{Nonce: base64.StdEncoding.EncodeToString(n), Ciphertext: base64.StdEncoding.EncodeToString(ct)})
+}
+func (s *Store) OpenEphemeral(binding string, raw json.RawMessage) ([]byte, error) {
+	var r record
+	if json.Unmarshal(raw, &r) != nil {
+		return nil, ErrWrongKey
+	}
+	pt, err := s.open("ephemeral-v1:"+binding, r)
+	if err != nil {
+		return nil, ErrWrongKey
+	}
+	return []byte(pt), nil
 }
 
 func (s *Store) get(ctx context.Context, name string) (record, error) {
