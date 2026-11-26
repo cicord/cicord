@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cicord/cicord/internal/discord"
+	"github.com/cicord/cicord/internal/state"
 )
 
 const operationRetention = 7 * 24 * time.Hour
@@ -64,12 +67,49 @@ func (r *Runtime) attribute(ctx context.Context, e discord.AuditLogEntryEvent) d
 		return a
 	}
 	prefix := operationPrefix(e.UserID, e.ActionType, e.TargetID)
+	kv, ok := r.opts.Store.KV("emitted:" + e.ServerID).(state.AdvancedKV)
+	if !ok {
+		return a
+	}
+	entryKey := "entry:" + e.ID
+	// A second observation of the same entry (REST, gateway or another subscriber)
+	// returns the original proof even if another operation was emitted since.
+	bound := func() (*discord.Operation, error) {
+		data, err := kv.Get(ctx, entryKey)
+		if err != nil {
+			return nil, err
+		}
+		var key string
+		if err = json.Unmarshal(data, &key); err != nil || !strings.HasPrefix(key, prefix) {
+			return nil, errors.New("invalid audit binding")
+		}
+		data, err = kv.Get(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		var op discord.Operation
+		if err = json.Unmarshal(data, &op); err != nil {
+			return nil, err
+		}
+		if op.ActorID != e.UserID || op.Action != e.ActionType || op.Target != e.TargetID || op.ServerID != e.ServerID {
+			return nil, errors.New("audit binding scope mismatch")
+		}
+		return &op, nil
+	}
+	if op, err := bound(); err == nil {
+		a.Certainty = "confirmed"
+		a.Operation = op
+		return a
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return a
+	}
 	cursor := fmt.Sprintf("%s%020d", prefix, at.Add(-30*time.Second).UnixMilli())
-	entries, _, err := r.opts.Store.KV("emitted:"+e.ServerID).List(ctx, prefix, 2, cursor)
+	entries, _, err := kv.List(ctx, prefix, 2, cursor)
 	if err != nil {
 		return a
 	}
 	var match *discord.Operation
+	var operationKey string
 	for _, row := range entries {
 		var op discord.Operation
 		if json.Unmarshal(row.Value, &op) != nil {
@@ -82,11 +122,29 @@ func (r *Runtime) attribute(ctx context.Context, e discord.AuditLogEntryEvent) d
 			return a
 		}
 		match = &op
+		operationKey = row.Key
 	}
-	if match != nil {
+	if match == nil {
+		return a
+	}
+	claimKey := "claimed:" + operationKey
+	encodedEntry, _ := json.Marshal(e.ID)
+	encodedKey, _ := json.Marshal(operationKey)
+	commit, err := kv.Atomic(ctx, []state.KVCheck{{Key: claimKey}, {Key: entryKey}}, []state.KVMutation{
+		{Op: "set", Key: claimKey, Value: encodedEntry, TTL: operationRetention},
+		{Op: "set", Key: entryKey, Value: encodedKey, TTL: operationRetention},
+	})
+	if err != nil {
+		return a
+	}
+	if commit.OK {
 		a.Certainty = "confirmed"
 		a.Operation = match
+	} else if op, err := bound(); err == nil {
+		a.Certainty = "confirmed"
+		a.Operation = op
 	}
+
 	return a
 }
 

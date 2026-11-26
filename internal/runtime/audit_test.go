@@ -44,8 +44,16 @@ func TestAuditAttributionRequiresActorTargetTypeAndTime(t *testing.T) {
 	if a := e.rt.attribute(t.Context(), other); a.Certainty != "unknown" {
 		t.Fatal(a)
 	}
+	otherEntry := entry
+	otherEntry.ID = strconv.FormatUint(uint64(now.UnixMilli()-1420070400000)<<22|1, 10)
+	if a := e.rt.attribute(t.Context(), otherEntry); a.Certainty == "confirmed" {
+		t.Fatal("one operation confirmed two different audit entries")
+	}
 	origin.Emitted(t.Context(), "UpdateRole", entry.TargetID, now.Add(time.Millisecond))
-	if a := e.rt.attribute(t.Context(), entry); a.Certainty != "probable" {
+	if a := e.rt.attribute(t.Context(), entry); a.Certainty != "confirmed" {
+		t.Fatal("re-reading an already bound entry lost its proof")
+	}
+	if a := e.rt.attribute(t.Context(), otherEntry); a.Certainty != "probable" {
 		t.Fatalf("ambiguous operations: %+v", a)
 	}
 }
