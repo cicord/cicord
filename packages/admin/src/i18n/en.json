@@ -1854,7 +1854,7 @@
         "text": "The registry now points to another repository than the one locked in cicord.lock. Make sure the publisher announced it before updating."
       },
       "instances": "Instances updated",
-      "instancesHint": "Each instance's grants are set to what the new version requests.",
+      "instancesHint": "Grants the new version requires are added and grants it no longer declares are removed; grants used by its optional features are kept.",
       "rangeChange": "version {{from}} → {{to}}",
       "grantsAdded": "grants + {{caps}}",
       "grantsRemoved": "grants − {{caps}}",
@@ -1929,6 +1929,50 @@
         "openPr": "Open the pull request",
         "plugins": "Go to Plugins",
         "back": "Back to the Store"
+      },
+      "grantsKept": "kept {{caps}}",
+      "grantKeptFor": "{{cap}}: kept for the optional feature {{features}}"
+    },
+    "updates": {
+      "button": "Update all ({{count}})",
+      "buttonTip": "Review every available update and apply them in one change",
+      "crumb": "Updates",
+      "title": "Update plugins",
+      "description": "Review every available update, then apply them together in one change: one commit, or one pull request, depending on the repository's write-back mode.",
+      "back": "Back to the Store",
+      "loadFailed": "Could not review the updates",
+      "empty": {
+        "title": "Every plugin is up to date",
+        "text": "Refresh the Store to look for newer releases."
+      },
+      "unavailable": {
+        "title": "Some updates cannot be reviewed",
+        "hint": "They are left out of this change. Open them from the Store once their source can be read."
+      },
+      "selected": "{{count}} of {{total}} selected",
+      "include": "Include {{name}}",
+      "version": "{{current}} → {{latest}}",
+      "newPermissions": "New permissions: {{caps}}",
+      "privilegedIntents": "Privileged intents to turn on: {{intents}}",
+      "credential": "Expands access to a plugin credential",
+      "modified": "Local changes in plugins/{{name}}/",
+      "blocked": {
+        "config": "Cannot be included: the config of an instance is not valid for {{version}}. Open its review to see why.",
+        "admin": "Cannot be included: it also runs on {{servers}}, where you are not admin."
+      },
+      "openReview": "Open its review",
+      "details": {
+        "show": "Show what changes",
+        "hide": "Hide what changes"
+      },
+      "confirmUnofficial": "I trust the publishers of these plugins from unofficial sources and grant the new versions:",
+      "submit_one": "Update {{count}} plugin",
+      "submit_other": "Update {{count}} plugins",
+      "noneSelected": "Select at least one plugin.",
+      "secretRequired": "Approve the credential changes first.",
+      "done": {
+        "title_one": "{{count}} plugin updated",
+        "title_other": "{{count}} plugins updated"
       }
     }
   },

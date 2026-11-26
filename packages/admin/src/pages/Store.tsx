@@ -35,7 +35,14 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
-import { keys, useResources, useStatus, useStoreDetail, useStoreSources } from "../api.ts";
+import {
+  invalidateAfterStoreWrite,
+  keys,
+  useResources,
+  useStatus,
+  useStoreDetail,
+  useStoreSources,
+} from "../api.ts";
 import {
   EmptyState,
   Mono,
@@ -49,7 +56,7 @@ import { DataTable, type DataTableColumn, type TableQuery } from "../components/
 import { Callout, ErrorState, HumanErrorCallout, toastError } from "../components/errors.tsx";
 import { HealthBadge } from "../components/status.tsx";
 import { RISK, TrustBadge } from "../components/trust.tsx";
-import { UpdateBadge, WriteWarnings } from "../components/update.tsx";
+import { UpdateAllButton, UpdateBadge, WriteWarnings } from "../components/update.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -267,15 +274,18 @@ function Store({ serverKey }: { serverKey: string }) {
           ) : null
         }
         actions={
-          <Button
-            variant="outline"
-            loading={refreshing}
-            onClick={() => void refresh()}
-            disabled={!sources.data}
-          >
-            {refreshing ? null : <RefreshCw />}
-            {t("store.refresh")}
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              loading={refreshing}
+              onClick={() => void refresh()}
+              disabled={!sources.data}
+            >
+              {refreshing ? null : <RefreshCw />}
+              {t("store.refresh")}
+            </Button>
+            <UpdateAllButton serverKey={serverKey} />
+          </>
         }
       />
       <Tabs value={tab} onValueChange={setTab}>
@@ -1175,13 +1185,7 @@ function InstallForm({
       onDone(result, effectiveBot);
       if (result.mode === "pullRequest") toast.info(t("store.install.done.pr"));
       else toast.success(t("store.install.done.title", { name }));
-      await Promise.all([
-        cache.invalidate(keys.store()),
-        cache.invalidate(keys.plugins(serverKey)),
-        cache.invalidate(["admin", "status"]),
-        cache.invalidate(["admin", "history"]),
-        cache.invalidate(["admin", "server", serverKey, "audit"]),
-      ]);
+      await invalidateAfterStoreWrite(cache, serverKey);
     } catch (err) {
       if (err instanceof CicordApiError && err.code === "invalid" && err.diagnostics.length)
         setServerErrors(mapDiagnostics(err.diagnostics, collectPointers(schema, draft)));

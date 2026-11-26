@@ -1,6 +1,6 @@
 ---
 title: "HTTP API: Store"
-description: Plugin sources and computed trust, the signed official registry, private registries, browsing, installing exactly the reviewed version, reviewing and applying updates, managing registries, and the registry index format.
+description: Plugin sources and computed trust, the signed official registry, private registries, browsing, installing exactly the reviewed version, reviewing and applying updates (one plugin or several in one change), managing registries, and the registry index format.
 ---
 
 Part of the [HTTP API reference](../). For the user's view, see the
@@ -108,6 +108,8 @@ of them at once:
 | GET | `/api/v1/store/{source}/{plugin}` | admin of a server | `StoreDetail` for the latest version (`404` unknown source or plugin, `502 registry_unavailable`). |
 | GET | `/api/v1/store/{source}/{plugin}/update` | admin of a server | [`UpdateReview`](#updating-a-plugin) (`404 not_installed`, `502 registry_unavailable`). |
 | POST | `/api/v1/store/{source}/{plugin}/update` | admin of **every** server running it | [`UpdateResult`](#updating-a-plugin). |
+| GET | `/api/v1/store/updates` | admin of a server | [`{"items": [UpdateReview], "unavailable": […]}`](#updating-several-plugins): every available update. |
+| POST | `/api/v1/store/updates` | admin of **every** server running each plugin | [`UpdateResult`](#updating-several-plugins): several updates in one change. |
 | POST | `/api/v1/servers/{server}/store/install` | admin of `{server}` | [`InstallResult`](#installing). |
 | POST | `/api/v1/registries` | project (see above) | [`WriteResult`](#registries). |
 | DELETE | `/api/v1/registries/{name}` | project | `WriteResult`. |
@@ -157,7 +159,7 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
 
 ```json
 // UpdateReview
-{ "available": true, "update": PluginUpdate | null,
+{ "source": "acme", "plugin": "xp", "available": true, "update": PluginUpdate | null,
   "detail": StoreDetail,                     // the new version: send its version/commit/integrity back
   "current": { "version": "1.0.0", "commit"?: "…", "integrity"?: "…", "repo"?: "…",
                "capabilities": [], "intents": [], "privilegedIntents": [], "network": [] },
@@ -218,20 +220,93 @@ never evaluates the new version's code (its config schema and `plugin.yaml` only
   are checked for every bot running it (`409 intents`); the change is validated on a copy of
   the active revision, plugins built (`422 invalid` with `diagnostics`).
 - Mode and activation wait as an install. Audit `plugin.update` on each server (target
-  `<source>/<plugin>`, details `{from, to, commit, trust, capabilitiesAdded,
-  capabilitiesRemoved, forced, mode, revision, pullRequestUrl}`).
+  `<source>/<plugin>`, details `{source, plugin, from, to, commit, trust, capabilitiesAdded,
+  capabilitiesRemoved, approvedSecretReview, forced, mode, revision, pullRequestUrl}`).
 
 ```json
 // UpdateResult
 { "version": "1.1.0", "mode": "commit|pullRequest", "revision"?: "…", "pullRequestUrl"?: "…",
   "message"?: "…", "instances": [{ "server", "bot", "instance", "health", "message"? }],
+  "updated": [{ "source": "acme/xp", "from": "1.0.0", "to": "1.1.0" }],
   "warnings"?: ["…"] }
 ```
 
-The CLI equivalent is `cicord plugin update [<registry>/<plugin>] [--to <range>] [--force]`:
-without an argument it lists the available updates; with a plugin it updates `cicord.lock`,
+`updated` lists the plugins of the change, each by its full `<source>/<plugin>` (one entry
+here). In the review, `source` and `plugin` are the two parts of that name.
+
+The CLI equivalent is `cicord plugin update [<registry>/<plugin>...] [--all] [--to <range>] [--force]`:
+without an argument it lists the available updates; with plugins it updates `cicord.lock`,
 the ranges and grants of `bot.yaml` (or `plugins/<name>/`) locally and prints the capability
 diff.
+
+## Updating several plugins
+
+Separate update pull requests opened from the same `main` each edit `cicord.lock`, `bot.yaml`
+and the portal's route types, and conflict with each other once one is merged. These
+endpoints update several plugins in one change instead.
+
+`GET /store/updates` reviews every installed plugin that has an update, each against the same
+configuration (`POST /store/updates` applies them together). Registry data is fetched when
+missing or stale, as when browsing:
+
+```json
+{ "items": [UpdateReview],          // one per plugin with an update, sorted by source/plugin
+  "unavailable": [{ "source": "acme", "plugin": "xp", "message": "The acme source could not be read." }] }
+```
+
+- `items` are the reviews of `GET /store/{source}/{plugin}/update`, with `missingAdmin` and
+  `restricted` as there (`secretReview` is left out when `missingAdmin` is not empty).
+- `unavailable` lists the plugins with an update whose review cannot be computed (an
+  unreadable source, for example), with the message the single review would answer.
+
+`POST /store/updates` request:
+
+```json
+{ "updates": [{ "source": "acme", "plugin": "xp", "version": "1.1.0", "commit"?: "<sha>",
+                "integrity"?: "sha256-…", "confirmSecretChanges"?: "<review digest>",
+                "force"?: false }],
+  "confirmUnofficial"?: false, "confirmPrivileged"?: false }
+```
+
+- `updates` has 1 to 64 items, each with `source` and `plugin` (no `/` in `plugin`), and no
+  plugin twice. Otherwise `400 invalid`.
+- Each item carries what its review showed, as the body of `POST /store/{source}/{plugin}/update`:
+  `version`, `commit` and `integrity` of its `detail` (`400` when missing, as there), its
+  `secretReview` in `confirmSecretChanges`, and `force` for a modified bundled copy.
+  `confirmUnofficial` and `confirmPrivileged` are given once, for the whole request.
+- Every check of a single update applies to each plugin, in the order of `updates`: installed
+  (`404 not_installed`), the `admin` role on every server where it runs (`403 forbidden`),
+  `confirmUnofficial` for an `unofficial` source (`409 confirmation_required`), the reviewed
+  version still the latest (`409 changed`), not already the latest (`409 up_to_date`), the
+  item's `force` for a modified copy (`409 modified`), and the item's `confirmSecretChanges`
+  (`409 confirmation_required`). `confirmPrivileged` is checked
+  once, over every capability the updates add. The first refusal is answered and nothing is
+  written.
+- One write-back: one commit or one pull request, with the mode of the
+  [write-back policies](../../../concepts/write-back/#policies) for every path the updates
+  edit (a pull request when any of them needs one). The configuration is validated once, on a
+  copy of the active revision with every update applied (`422 invalid`), and the portal's route
+  types are regenerated once, so the pull request passes `cicord portal typegen --check`.
+  Privileged intents are checked for every plugin (`409 intents`).
+- The commit message (and the pull request description) lists each plugin:
+
+  ```text
+  plugin: update 2 plugins
+
+  acme/hello 1.0.0 → 1.1.0
+  Newly granted: storage.kv.
+
+  acme/hi 1.0.0 → 1.0.1
+
+  Updated on my-community.
+  ```
+
+  A single plugin keeps the message of `POST /store/{source}/{plugin}/update`
+  (`plugin: update <source> <from> → <to>`).
+- The answer is an `UpdateResult` with `version: ""`, `updated` listing every plugin (sorted by
+  source) and `instances` the health of every updated instance. Audit `plugin.update` per
+  plugin, as a single update, with `batch` (every `<source>/<plugin>` of the change) in the
+  details.
 
 ## Registries
 

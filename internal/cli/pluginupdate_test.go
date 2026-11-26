@@ -286,3 +286,48 @@ func TestPluginUpdateKeepsOptionalGrants(t *testing.T) {
 		t.Errorf("validate after update: %s", errOut)
 	}
 }
+
+// `cicord plugin update --all` updates every plugin with an update, in turn.
+func TestPluginUpdateAll(t *testing.T) {
+	t.Setenv("CICORD_CACHE_DIR", t.TempDir())
+	src := `import {definePlugin} from "@cicord/sdk"; export default definePlugin({});`
+	hiManifest := strings.Replace(updManifest, "name: hello", "name: hi", 1)
+	hello := commitRepo(t, map[string]string{"plugin.yaml": updManifest, "src/index.ts": src}, "v1.0.0")
+	hi := commitRepo(t, map[string]string{"plugin.yaml": hiManifest, "src/index.ts": src}, "v1.0.0")
+	reg := commitRepo(t, map[string]string{"index.yaml": "plugins:\n  hello:\n    repo: " + hello + "\n  hi:\n    repo: " + hi + "\n"})
+	dir := t.TempDir()
+	if code, _, errOut := run(t, "init", dir, "--server", "srv", "--bot", "bot"); code != 0 {
+		t.Fatalf("init: %s", errOut)
+	}
+	if code, _, errOut := run(t, "registry", "add", "acme", reg, "--dir", dir); code != 0 {
+		t.Fatalf("registry add: %s", errOut)
+	}
+	for _, p := range []string{"acme/hello", "acme/hi"} {
+		if code, _, errOut := run(t, "plugin", "add", p, "--bot", "bot", "--dir", dir); code != 0 {
+			t.Fatalf("plugin add %s: %s", p, errOut)
+		}
+	}
+	if code, out, errOut := run(t, "plugin", "update", "--all", "--dir", dir); code != 0 || !strings.Contains(out, "up to date") {
+		t.Fatalf("--all before a release: %d %s %s", code, out, errOut)
+	}
+	tagRelease(t, hello, map[string]string{"plugin.yaml": strings.Replace(strings.Replace(updManifest, "1.0.0", "1.1.0", 1),
+		"[discord.messages.send]", "[discord.messages.send, storage.kv]", 1)}, "v1.1.0")
+	tagRelease(t, hi, map[string]string{"plugin.yaml": strings.Replace(hiManifest, "1.0.0", "1.0.1", 1)}, "v1.0.1")
+	if code, _, errOut := run(t, "plugin", "update", "--all", "acme/hi", "--dir", dir); code == 0 || !strings.Contains(errOut, "--all") {
+		t.Fatalf("--all with a plugin: %d %s", code, errOut)
+	}
+	code, out, errOut := run(t, "plugin", "update", "--all", "--dir", dir)
+	if code != 0 || !strings.Contains(out, "1.0.0 → 1.1.0") || !strings.Contains(out, "1.0.0 → 1.0.1") {
+		t.Fatalf("--all: %d %s %s", code, out, errOut)
+	}
+	lock, _ := registry.ReadLock(dir)
+	if lock.Plugins["acme/hello"].Version != "1.1.0" || lock.Plugins["acme/hi"].Version != "1.0.1" {
+		t.Errorf("cicord.lock = %+v", lock.Plugins)
+	}
+	if code, out, _ := run(t, "plugin", "update", "--dir", dir); code != 0 || !strings.Contains(out, "up to date") {
+		t.Errorf("list after --all: %d %s", code, out)
+	}
+	if code, _, errOut := run(t, "validate", dir); code != 0 {
+		t.Errorf("validate after --all: %s", errOut)
+	}
+}

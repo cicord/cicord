@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
-import { keys, useStoreUpdateReview } from "../api.ts";
+import { invalidateAfterStoreWrite, keys, useStoreUpdateReview } from "../api.ts";
 import { EmptyState, Mono, Page, Sha } from "../components/common.tsx";
 import { Callout, ErrorState } from "../components/errors.tsx";
 import { HealthBadge } from "../components/status.tsx";
@@ -181,8 +181,9 @@ function DiffList({
 }
 
 /** The permission diff between the installed version and the new one. */
-function Changes({ review }: { review: StoreUpdateReview }) {
+export function Changes({ review }: { review: StoreUpdateReview }) {
   const { t } = useTranslation();
+  const headingId = useId();
   const { diff } = review;
   const privileged = new Set(review.detail.privilegedIntents);
   const nothing =
@@ -196,9 +197,9 @@ function Changes({ review }: { review: StoreUpdateReview }) {
     review.current.capabilities.includes(c),
   );
   return (
-    <section aria-labelledby="update-changes" className="flex flex-col gap-5">
+    <section aria-labelledby={headingId} className="flex flex-col gap-5">
       <div>
-        <h3 id="update-changes" className="text-[14px] font-semibold">
+        <h3 id={headingId} className="text-[14px] font-semibold">
           {t("store.update.changes")}
         </h3>
         <p className="text-xs text-muted-foreground">
@@ -290,12 +291,13 @@ function Changes({ review }: { review: StoreUpdateReview }) {
 }
 
 /** What the update does to each instance (only those of servers where the viewer is admin). */
-function Instances({ review, serverKey }: { review: StoreUpdateReview; serverKey: string }) {
+export function Instances({ review, serverKey }: { review: StoreUpdateReview; serverKey: string }) {
   const { t } = useTranslation();
+  const headingId = useId();
   return (
-    <section aria-labelledby="update-instances" className="flex flex-col gap-2">
+    <section aria-labelledby={headingId} className="flex flex-col gap-2">
       <div>
-        <h3 id="update-instances" className="text-[14px] font-semibold">
+        <h3 id={headingId} className="text-[14px] font-semibold">
           {t("store.update.instances")}
         </h3>
         <p className="text-xs text-muted-foreground">{t("store.update.instancesHint")}</p>
@@ -332,6 +334,22 @@ function Instances({ review, serverKey }: { review: StoreUpdateReview; serverKey
                 {i.grantsRemoved.length ? (
                   <Badge>
                     {t("store.update.grantsRemoved", { caps: i.grantsRemoved.join(", ") })}
+                  </Badge>
+                ) : null}
+                {i.grantsKept?.length ? (
+                  <Badge
+                    title={i.grantsKept
+                      .map((k) =>
+                        t("store.update.grantKeptFor", {
+                          cap: k.name,
+                          features: k.features.join(", "),
+                        }),
+                      )
+                      .join("\n")}
+                  >
+                    {t("store.update.grantsKept", {
+                      caps: i.grantsKept.map((k) => k.name).join(", "),
+                    })}
                   </Badge>
                 ) : null}
                 {!invalid ? (
@@ -403,7 +421,7 @@ function Instances({ review, serverKey }: { review: StoreUpdateReview; serverKey
   );
 }
 
-function Files({ review }: { review: StoreUpdateReview }) {
+export function Files({ review }: { review: StoreUpdateReview }) {
   const { t } = useTranslation();
   const f = review.files;
   if (!f) return null;
@@ -491,13 +509,7 @@ function UpdateForm({
       onDone(result);
       if (result.mode === "pullRequest") toast.info(t("store.update.done.pr"));
       else toast.success(t("store.update.done.title", { name, version: result.version }));
-      await Promise.all([
-        cache.invalidate(keys.store()),
-        cache.invalidate(keys.plugins(serverKey)),
-        cache.invalidate(["admin", "status"]),
-        cache.invalidate(["admin", "history"]),
-        cache.invalidate(["admin", "server", serverKey, "audit"]),
-      ]);
+      await invalidateAfterStoreWrite(cache, serverKey);
     } catch (err) {
       if (err instanceof CicordApiError && err.code === "changed") setConfirmed(false);
       setProblem(err);
@@ -568,17 +580,7 @@ function UpdateForm({
           change={setServerConfirmed}
         />
       )}
-      {d.privilegedIntents.length && review.diff.privilegedIntents.added.length ? (
-        <Callout
-          tone="warning"
-          title={t("store.install.intentsWarning", {
-            intents: review.diff.privilegedIntents.added.map((i) => intentLabel(t, i)).join(", "),
-          })}
-          action={
-            <ExternalButton href={DEVELOPER_PORTAL}>{t("store.detail.portal")}</ExternalButton>
-          }
-        />
-      ) : null}
+      <PrivilegedIntentsWarning intents={review.diff.privilegedIntents.added} />
       {review.modified ? (
         <Checkbox
           tone="danger"
@@ -631,7 +633,7 @@ function UpdateForm({
 }
 
 /** What the new version is newly granted (restated in the unofficial confirmation). */
-function NewlyGranted({ review }: { review: StoreUpdateReview }) {
+export function NewlyGranted({ review }: { review: StoreUpdateReview }) {
   const { t } = useTranslation();
   const { diff } = review;
   const items = [
@@ -656,7 +658,7 @@ function NewlyGranted({ review }: { review: StoreUpdateReview }) {
   );
 }
 
-function Checkbox({
+export function Checkbox({
   tone,
   checked,
   onChange,
@@ -702,7 +704,7 @@ function Checkbox({
   );
 }
 
-function UpdateProblem({ error, onChanged }: { error: unknown; onChanged: () => void }) {
+export function UpdateProblem({ error, onChanged }: { error: unknown; onChanged: () => void }) {
   const { t } = useTranslation();
   const e = error instanceof CicordApiError ? error : null;
   const message = e?.message ?? "";
@@ -810,6 +812,46 @@ function UpdateDone({
 }) {
   const { t } = useTranslation();
   const name = review.detail.displayName || review.detail.name;
+  return (
+    <UpdateOutcome
+      result={result}
+      serverKey={serverKey}
+      title={t("store.update.done.title", { name, version: result.version })}
+    />
+  );
+}
+
+/** Privileged intents the new versions request: turned on in the developer portal first. */
+export function PrivilegedIntentsWarning({ intents }: { intents: string[] }) {
+  const { t } = useTranslation();
+  if (!intents.length) return null;
+  return (
+    <Callout
+      tone="warning"
+      title={t("store.install.intentsWarning", {
+        intents: intents.map((i) => intentLabel(t, i)).join(", "),
+      })}
+      action={<ExternalButton href={DEVELOPER_PORTAL}>{t("store.detail.portal")}</ExternalButton>}
+    />
+  );
+}
+
+/**
+ * The outcome of an update (one plugin or several): the pull request to merge, or the new
+ * revision and the health of the updated instances. `title` is shown in commit mode.
+ */
+export function UpdateOutcome({
+  result,
+  serverKey,
+  title,
+  children,
+}: {
+  result: StoreUpdateResult;
+  serverKey: string;
+  title: string;
+  children?: ReactNode;
+}) {
+  const { t } = useTranslation();
   const pr = result.mode === "pullRequest";
   return (
     <section
@@ -824,10 +866,9 @@ function UpdateDone({
           className={cn("size-5", pr ? "text-info" : "text-success")}
           aria-hidden="true"
         />
-        {pr
-          ? t("store.update.done.pr")
-          : t("store.update.done.title", { name, version: result.version })}
+        {pr ? t("store.update.done.pr") : title}
       </p>
+      {children}
       <WriteWarnings warnings={result.warnings} />
       {pr ? (
         <>

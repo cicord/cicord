@@ -407,14 +407,24 @@ func PlanUpdate(repo *config.Repo, spec UpdateSpec) (*UpdatePlan, error) {
 
 // UpdateResult is the outcome of an update.
 type UpdateResult struct {
+	// Version is the installed version (a single plugin; "" for several).
 	Version        string                 `json:"version"`
 	Mode           string                 `json:"mode"`
 	Revision       string                 `json:"revision,omitempty"`
 	PullRequestURL string                 `json:"pullRequestUrl,omitempty"`
 	Message        string                 `json:"message,omitempty"`
 	Instances      []UpdateInstanceHealth `json:"instances"`
+	// Updated lists the plugins of the change, by source.
+	Updated []UpdatedPlugin `json:"updated"`
 	// Warnings: what the change could not keep up to date (the portal's route types).
 	Warnings []string `json:"warnings,omitempty"`
+}
+
+// UpdatedPlugin is one plugin of an update.
+type UpdatedPlugin struct {
+	Source string `json:"source"`
+	From   string `json:"from"`
+	To     string `json:"to"`
 }
 
 // UpdateInstanceHealth is the health of an updated instance once the revision is active.
@@ -426,31 +436,49 @@ type UpdateInstanceHealth struct {
 	Message  string `json:"message,omitempty"`
 }
 
-// Update applies a plan computed against the active configuration: privileged intents
-// check, validation on a copy of the active revision (plugins built), write-back and, in
-// commit mode, the wait for the new revision.
+// Update applies a plan computed against the active configuration (UpdateAll of one plan).
 func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor string) (UpdateResult, error) {
+	return in.UpdateAll(ctx, []*UpdatePlan{plan}, source, actor)
+}
+
+// UpdateAll applies plans computed against the active configuration, one per plugin, as
+// one change (one commit or one pull request): privileged intents check, validation on a
+// copy of the active revision with every update applied (plugins built, portal route types
+// regenerated once), write-back and, in commit mode, the wait for the new revision. It
+// applies all of them or none.
+func (in *Installer) UpdateAll(ctx context.Context, plans []*UpdatePlan, source, actor string) (UpdateResult, error) {
 	rt := in.Runtime
 	repo := rt.Repo()
 	rev, ok := rt.Revision()
 	if repo == nil || !ok {
 		return UpdateResult{}, errorf(http.StatusServiceUnavailable, "unavailable", "", "No active configuration yet.")
 	}
-	if plan.baseRepo != nil && plan.baseRepo != repo {
-		return UpdateResult{}, errorf(http.StatusConflict, "changed", "", "The active configuration changed. Review the update again.")
+	if len(plans) == 0 {
+		return UpdateResult{}, errorf(http.StatusBadRequest, "invalid", "", "Nothing to update.")
+	}
+	plans = slices.Clone(plans)
+	slices.SortFunc(plans, func(a, b *UpdatePlan) int { return strings.Compare(a.Spec.Source, b.Spec.Source) })
+	for i, plan := range plans {
+		if plan.baseRepo != nil && plan.baseRepo != repo {
+			return UpdateResult{}, errorf(http.StatusConflict, "changed", "", "The active configuration changed. Review the update again.")
+		}
+		if i > 0 && plans[i-1].Spec.Source == plan.Spec.Source {
+			return UpdateResult{}, errorf(http.StatusBadRequest, "invalid", "", "%s is listed twice.", plan.Spec.Source)
+		}
 	}
 	if in.Writer == nil {
 		return UpdateResult{}, errorf(http.StatusServiceUnavailable, "unavailable", "", "Write-back is not configured: plugins cannot be updated from the admin.")
 	}
-	spec := plan.Spec
-	for _, bk := range plan.bots {
-		if b := repo.Bots[bk]; b != nil {
-			if err := in.checkIntents(ctx, b, spec.DisplayName, spec.PrivilegedIntents); err != nil {
-				return UpdateResult{}, err
+	for _, plan := range plans {
+		for _, bk := range plan.bots {
+			if b := repo.Bots[bk]; b != nil {
+				if err := in.checkIntents(ctx, b, plan.Spec.DisplayName, plan.Spec.PrivilegedIntents); err != nil {
+					return UpdateResult{}, err
+				}
 			}
 		}
 	}
-	edits := maps.Clone(plan.Edits)
+	edits := MergeEdits(plans)
 	ds, routes, err := in.validate(rev.Dir, edits)
 	if err != nil {
 		return UpdateResult{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
@@ -460,18 +488,17 @@ func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor
 		for _, d := range ds.Errors() {
 			msgs = append(msgs, d.Message)
 		}
+		with := "these updates"
+		if len(plans) == 1 {
+			with = plans[0].Spec.DisplayName + " " + plans[0].Spec.Version
+		}
 		return UpdateResult{}, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid",
-			Message:     "The configuration is not valid with " + spec.DisplayName + " " + spec.Version + ": " + msgs[0],
+			Message:     "The configuration is not valid with " + with + ": " + msgs[0],
 			Hint:        "Fix the configuration of the instances (see the details), then update again.",
 			Diagnostics: ds.Errors(), Details: strings.Join(msgs, "\n")}
 	}
 
-	added := ""
-	if len(plan.Diff.Capabilities.Added) > 0 {
-		added = "\nNewly granted: " + strings.Join(plan.Diff.Capabilities.Added, ", ") + "."
-	}
-	msg := routes.apply(edits, fmt.Sprintf("plugin: update %s %s → %s\n\nUpdated on %s.%s", spec.Source, plan.Current.Version, spec.Version,
-		strings.Join(plan.Servers, ", "), added))
+	msg := routes.apply(edits, updateMessage(plans))
 	mode := writeback.ModeFor(repo.Project.Spec.WriteBack, editPaths(edits))
 	prevErr := rt.Status().LastError
 	res, err := in.Writer.Write(ctx, writeback.Request{Edits: edits, Message: msg, Actor: actor, Source: source, Mode: mode})
@@ -482,8 +509,14 @@ func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor
 		return UpdateResult{}, &Error{Status: http.StatusServiceUnavailable, Code: "unavailable", Message: "Could not save the update to the repository.",
 			Hint: "Check the repository access (Diagnostics → write-back), then try again.", Details: err.Error()}
 	}
-	out := UpdateResult{Version: spec.Version, Mode: res.Mode, PullRequestURL: res.PullRequestURL, Instances: []UpdateInstanceHealth{},
-		Warnings: routes.Warnings}
+	out := UpdateResult{Mode: res.Mode, PullRequestURL: res.PullRequestURL, Instances: []UpdateInstanceHealth{},
+		Updated: make([]UpdatedPlugin, 0, len(plans)), Warnings: routes.Warnings}
+	for _, plan := range plans {
+		out.Updated = append(out.Updated, UpdatedPlugin{Source: plan.Spec.Source, From: plan.Current.Version, To: plan.Spec.Version})
+	}
+	if len(plans) == 1 {
+		out.Version = plans[0].Spec.Version
+	}
 	if out.Mode == "" {
 		out.Mode = mode
 	}
@@ -503,7 +536,9 @@ func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor
 	for {
 		if cur, ok := rt.Revision(); ok && cur.SHA != rev.SHA {
 			out.Revision = cur.ID
-			out.Instances = updatedHealth(rt, plan)
+			for _, plan := range plans {
+				out.Instances = append(out.Instances, updatedHealth(rt, plan)...)
+			}
 			return out, nil
 		}
 		if e := rt.Status().LastError; e != "" && e != prevErr {
@@ -517,6 +552,62 @@ func (in *Installer) Update(ctx context.Context, plan *UpdatePlan, source, actor
 		case <-tick.C:
 		}
 	}
+}
+
+// MergeEdits combines the edits of several plans (sorted by source) into one change. A
+// file several plans edit (a bot.yaml, cicord.lock) gets their edits in turn: each edits
+// its own plugin's entries, and the cicord.lock edit of each checks its own entry.
+func MergeEdits(plans []*UpdatePlan) map[string]writeback.EditFunc {
+	out := map[string]writeback.EditFunc{}
+	for _, plan := range plans {
+		for _, path := range slices.Sorted(maps.Keys(plan.Edits)) {
+			next := plan.Edits[path]
+			prev, ok := out[path]
+			if !ok {
+				out[path] = next
+				continue
+			}
+			out[path] = func(cur []byte) ([]byte, error) {
+				mid, err := prev(cur)
+				if err != nil {
+					return nil, err
+				}
+				return next(mid)
+			}
+		}
+	}
+	return out
+}
+
+// updateMessage is the commit message (and pull request description) of an update.
+func updateMessage(plans []*UpdatePlan) string {
+	var servers []string
+	for _, plan := range plans {
+		for _, k := range plan.Servers {
+			if !slices.Contains(servers, k) {
+				servers = append(servers, k)
+			}
+		}
+	}
+	sort.Strings(servers)
+	granted := func(plan *UpdatePlan) string {
+		if len(plan.Diff.Capabilities.Added) == 0 {
+			return ""
+		}
+		return "\nNewly granted: " + strings.Join(plan.Diff.Capabilities.Added, ", ") + "."
+	}
+	if len(plans) == 1 {
+		p := plans[0]
+		return fmt.Sprintf("plugin: update %s %s → %s\n\nUpdated on %s.%s", p.Spec.Source, p.Current.Version, p.Spec.Version,
+			strings.Join(servers, ", "), granted(p))
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "plugin: update %d plugins\n", len(plans))
+	for _, p := range plans {
+		fmt.Fprintf(&b, "\n%s %s → %s%s\n", p.Spec.Source, p.Current.Version, p.Spec.Version, granted(p))
+	}
+	fmt.Fprintf(&b, "\nUpdated on %s.", strings.Join(servers, ", "))
+	return b.String()
 }
 
 func updatedHealth(rt *runtime.Runtime, plan *UpdatePlan) []UpdateInstanceHealth {

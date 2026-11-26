@@ -26,10 +26,10 @@ func init() {
 // plugins) locally; commit the result like any other change.
 func newPluginUpdateCmd() *cobra.Command {
 	var dir, to, approveSecrets string
-	var force bool
+	var force, all bool
 	cmd := &cobra.Command{
-		Use:   "update [<registry>/<plugin>]",
-		Short: "Update a plugin to its latest version, or list available updates",
+		Use:   "update [<registry>/<plugin>...]",
+		Short: "Update plugins to their latest version, or list available updates",
 		Long: `Without argument, lists the plugins of the repository that have a newer version:
 registry plugins (cicord.lock) and copies of the official plugins (plugins/<name>/).
 
@@ -39,6 +39,8 @@ version requires are added, grants it still declares (required or for an optiona
 are kept, and grants it no longer declares are removed. Only these values change in
 bot.yaml; the rest of the file keeps its layout. Copies of official plugins (cicord/<name>) are rewritten from the plugins
 bundled in this binary; a locally modified copy is only overwritten with --force.
+Several plugins (or --all: every plugin with an update) are updated in turn, in the same
+working tree: commit them together.
 Review the printed capability changes before committing.
 
 When the repository's custom portal has typed routes (<portal>/src/cicord-routes.d.ts), they
@@ -47,8 +49,9 @@ check stays green; when they cannot be generated, a warning says so.`,
 		Example: `  cicord plugin update
   cicord plugin update acme/xp
   cicord plugin update acme/xp --to ^2.0.0
-  cicord plugin update cicord/welcome`,
-		Args: cobra.MaximumNArgs(1),
+  cicord plugin update cicord/welcome cicord/polls
+  cicord plugin update --all`,
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			abs, err := filepath.Abs(dir)
 			if err != nil {
@@ -61,12 +64,48 @@ check stays green; when they cannot be generated, a warning says so.`,
 				printDiagnostics(cmd.ErrOrStderr(), ds)
 				return exitError{1}
 			}
+			if all && len(args) > 0 {
+				return fmt.Errorf("--all updates every plugin: name no plugin")
+			}
+			if all {
+				rows, err := pluginUpdates(cmd, repo)
+				if err != nil {
+					return err
+				}
+				for _, r := range rows {
+					args = append(args, r.source)
+				}
+				if len(args) == 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), "Every plugin is up to date.")
+					return nil
+				}
+			}
 			if len(args) == 0 {
 				return listPluginUpdates(cmd, repo)
 			}
-			return updatePlugin(cmd, repo, args[0], to, force, approveSecrets)
+			if len(args) > 1 && (to != "" || approveSecrets != "") {
+				return fmt.Errorf("--to and --approve-secret-changes apply to one plugin: update it on its own")
+			}
+			for i, source := range args {
+				if i > 0 {
+					// The previous update changed the working tree: plan the next one on it.
+					fmt.Fprintln(cmd.OutOrStdout())
+					if repo, ds = config.Load(abs, config.LoadOptions{Resolver: res}); repo == nil || repo.Project == nil {
+						printDiagnostics(cmd.ErrOrStderr(), ds)
+						return exitError{1}
+					}
+				}
+				if err := updatePlugin(cmd, repo, source, to, force, approveSecrets); err != nil {
+					if len(args) > 1 {
+						return fmt.Errorf("%s: %w", source, err)
+					}
+					return err
+				}
+			}
+			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&all, "all", false, "update every plugin that has an update")
 	cmd.Flags().StringVar(&approveSecrets, "approve-secret-changes", "", "approve the exact credential review printed by a previous update attempt")
 	cmd.Flags().StringVar(&dir, "dir", ".", "repository root")
 	cmd.Flags().StringVar(&to, "to", "", "version range to update to (default: the latest version, any major); written to every instance")
@@ -74,11 +113,35 @@ check stays green; when they cannot be generated, a warning says so.`,
 	return cmd
 }
 
+// pluginUpdateRow is an available update of an installed plugin.
+type pluginUpdateRow struct {
+	source, current, latest, note string
+}
+
 func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
+	rows, err := pluginUpdates(cmd, repo)
+	if err != nil {
+		return err
+	}
 	w := cmd.OutOrStdout()
+	if len(rows) == 0 {
+		fmt.Fprintln(w, "Every plugin is up to date.")
+		return nil
+	}
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	n := 0
 	fmt.Fprintln(tw, "PLUGIN\tCURRENT\tLATEST\tUPDATE")
+	for _, r := range rows {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.source, r.current, r.latest, r.note)
+	}
+	tw.Flush()
+	fmt.Fprintln(w, "\nRun `cicord plugin update <plugin>` to review and apply an update, or `cicord plugin update --all`.")
+	return nil
+}
+
+// pluginUpdates lists the available updates: copies of official plugins, then registry
+// plugins of cicord.lock (sorted).
+func pluginUpdates(cmd *cobra.Command, repo *config.Repo) ([]pluginUpdateRow, error) {
+	var rows []pluginUpdateRow
 	// Copies of official plugins.
 	cat := catalog.Official()
 	es, _ := cat.List()
@@ -95,14 +158,13 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 			if st.Modified {
 				note += " (modified locally: --force)"
 			}
-			fmt.Fprintf(tw, "%s/%s\t%s\t%s\t%s\n", config.OfficialRegistryName, e.Name, st.Version, e.Version, note)
-			n++
+			rows = append(rows, pluginUpdateRow{config.OfficialRegistryName + "/" + e.Name, st.Version, e.Version, note})
 		}
 	}
 	// Registry plugins of cicord.lock.
 	lock, err := registry.ReadLock(repo.Root)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ctx := registry.WithRegistryTokens(cmd.Context(), repo.Project.Spec.Registries, os.LookupEnv)
 	// cicord.yaml registries and the implicit official one ("cicord/<plugin>" lock entries).
@@ -148,17 +210,10 @@ func listPluginUpdates(cmd *cobra.Command, repo *config.Repo) error {
 			continue
 		}
 		if level := registry.UpdateLevel(le.Version, latest); level != "" {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", src, le.Version, latest, level)
-			n++
+			rows = append(rows, pluginUpdateRow{src, le.Version, latest, level})
 		}
 	}
-	if n == 0 {
-		fmt.Fprintln(w, "Every plugin is up to date.")
-		return nil
-	}
-	tw.Flush()
-	fmt.Fprintln(w, "\nRun `cicord plugin update <plugin>` to review and apply an update.")
-	return nil
+	return rows, nil
 }
 
 func updatePlugin(cmd *cobra.Command, repo *config.Repo, source, to string, force bool, approveSecrets string) error {

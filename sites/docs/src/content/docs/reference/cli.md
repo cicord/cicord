@@ -591,12 +591,15 @@ Without argument, list the plugins with a newer version: registry plugins (`cico
 
 When the new version widens what a bound plugin secret (`secrets` of an instance) may reach, with a new host, another use or a larger or different provider budget, the update prints the before and after policy of each binding and stops without changing anything. Review it, then repeat the command with `--approve-secret-changes <digest>`, the digest it printed. The digest covers the plugin version, its package integrity and every widened binding, so it approves only that exact review: a different release or a new binding needs a new one. Narrower changes are shown and need no approval. No credential is read while planning.
 
+Several plugins (`cicord plugin update cicord/welcome cicord/polls`), or `--all` for every plugin with an update, are updated in turn in the same working tree: commit them together. `--all` cannot be combined with plugin names, and with no update available it prints `Every plugin is up to date.` `--force` applies to every plugin of the command; `--to` and `--approve-secret-changes` apply to one plugin only, so a plugin whose update needs a credential approval is updated on its own. When one plugin fails (for example a modified copy without `--force`, or a credential review to approve), the command stops with `<plugin>: <error>`; the plugins updated before it stay updated in the working tree. Unlike the admin console's **Update all**, the CLI is not all-or-nothing.
+
 ```text
-cicord plugin update [<registry>/<plugin>] [flags]
+cicord plugin update [<registry>/<plugin>...] [flags]
 ```
 
 | Flag | Description |
 |---|---|
+| `--all` | update every plugin that has an update |
 | `--approve-secret-changes` `string` | approve the exact credential review printed by a previous update attempt |
 | `--dir` `string` | repository root (default ".") |
 | `--force` | overwrite a locally modified copy of an official plugin |
@@ -606,7 +609,8 @@ cicord plugin update [<registry>/<plugin>] [flags]
 cicord plugin update
 cicord plugin update acme/xp
 cicord plugin update acme/xp --to ^2.0.0
-cicord plugin update cicord/welcome
+cicord plugin update cicord/welcome cicord/polls
+cicord plugin update --all
 ```
 
 ### `cicord plugin purge-data`

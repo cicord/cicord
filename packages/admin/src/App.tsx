@@ -44,6 +44,7 @@ import { ResourcesPage } from "./pages/Resources.tsx";
 import { ServerSettingsPage } from "./pages/ServerSettings.tsx";
 import { SettingsPage } from "./pages/Settings.tsx";
 import { StorePage, StorePluginPage } from "./pages/Store.tsx";
+import { StoreUpdatesPage } from "./pages/StoreUpdates.tsx";
 import { DriftPage, HistoryPage, PlanPage } from "./pages/Sync.tsx";
 import { DiagnosticsPage } from "./pages/Diagnostics.tsx";
 import { SetupPage } from "./setup/SetupPage.tsx";
@@ -241,7 +242,9 @@ function Shell() {
       );
       break;
     case "store":
-      page = route.storePlugin ? (
+      page = route.storeUpdates ? (
+        <StoreUpdatesPage serverKey={key} key={`${key}/updates`} />
+      ) : route.storePlugin ? (
         <StorePluginPage
           serverKey={key}
           source={route.storePlugin.source}
@@ -300,6 +303,7 @@ function Shell() {
 
 /** Label of a detail page's last crumb (the plugin's display name, the raw id meanwhile). */
 function useDetailLabel(route: Route): string | undefined {
+  const { t } = useTranslation();
   const ws = useWorkspace();
   const key = route.serverKey ?? ws.serverKey ?? "";
   const instance = usePlugin(key, route.instance?.bot, route.instance?.instance);
@@ -315,6 +319,7 @@ function useDetailLabel(route: Route): string | undefined {
     const d = store.data;
     return d?.displayName || d?.name || route.storePlugin.plugin;
   }
+  if (route.storeUpdates) return t("store.updates.crumb");
   return undefined;
 }
 

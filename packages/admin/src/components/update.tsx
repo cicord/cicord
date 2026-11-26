@@ -1,7 +1,11 @@
 /** "Update available" badge of Store plugins and plugin instances (https://cicord.dev/docs/reference/http-api/store/). */
 import type { PluginUpdate } from "@cicord/client";
+import { useCicord, useCicordQuery } from "@cicord/react";
 import { ArrowUpCircle } from "lucide-react";
+import { keys } from "../api.ts";
 import { useTranslation } from "../i18n/index.ts";
+import { storeUpdatesPath } from "../shell/nav.ts";
+import { Button } from "./ui/button.tsx";
 import { cn } from "../lib/utils.ts";
 import { Link } from "../router.tsx";
 import { Callout } from "./errors.tsx";
@@ -68,5 +72,28 @@ export function WriteWarnings({ warnings }: { warnings?: string[] | undefined })
         ))}
       </ul>
     </Callout>
+  );
+}
+
+/**
+ * "Update all (N)": the review of every available update, applied in one change. Shown to
+ * admins when at least one installed plugin has an update (N counts plugins, not instances).
+ */
+export function UpdateAllButton({ serverKey }: { serverKey: string }) {
+  const { t } = useTranslation();
+  const { client } = useCicord();
+  const params = { installed: true, updates: true, limit: 1 } as const;
+  const q = useCicordQuery(keys.storePlugins(params), (signal) =>
+    client.store.plugins(params, { signal }),
+  );
+  const count = q.data?.total ?? 0;
+  if (!count) return null;
+  return (
+    <Button asChild title={t("store.updates.buttonTip")}>
+      <Link to={storeUpdatesPath(serverKey)}>
+        <ArrowUpCircle />
+        {t("store.updates.button", { count })}
+      </Link>
+    </Button>
   );
 }

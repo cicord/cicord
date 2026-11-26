@@ -83,6 +83,8 @@ export interface Route {
   instance?: { bot: string; instance: string };
   /** A Store plugin's page (/servers/:key/store/:source/:plugin). */
   storePlugin?: { source: string; plugin: string };
+  /** The review of every available update (/servers/:key/store/updates). */
+  storeUpdates?: true;
 }
 
 /** Path of a plugin instance's page. */
@@ -92,6 +94,10 @@ export const instancePath = (serverKey: string, bot: string, instance: string): 
 /** Path of a Store plugin's page. */
 export const storePluginPath = (serverKey: string, source: string, plugin: string): string =>
   `/servers/${encodeURIComponent(serverKey)}/store/${encodeURIComponent(source)}/${encodeURIComponent(plugin)}`;
+
+/** Path of the review of every available update (one change). */
+export const storeUpdatesPath = (serverKey: string): string =>
+  `/servers/${encodeURIComponent(serverKey)}/store/updates`;
 
 /** Path of the update review of an installed Store plugin. */
 export const storeUpdatePath = (serverKey: string, source: string, plugin: string): string =>
@@ -119,6 +125,8 @@ export function parseRoute(path: string): Route {
       serverKey: p["key"]!,
       instance: { bot: p["bot"]!, instance: p["instance"]! },
     };
+  if ((p = match("/servers/:key/store/updates", path)))
+    return { page: "store", serverKey: p["key"]!, storeUpdates: true };
   if ((p = match("/servers/:key/store/:source/:plugin", path)))
     return {
       page: "store",

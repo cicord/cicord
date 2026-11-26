@@ -19,6 +19,7 @@ import type {
   StorePluginParams,
   StoreSourceSummary,
   StoreUpdateReview,
+  StoreUpdatesReview,
   SyncRecord,
 } from "@cicord/client";
 import { useCicord, useCicordQuery, type QueryResult } from "@cicord/react";
@@ -52,6 +53,7 @@ export const keys = {
     ["admin", "store", "detail", source, plugin] as const,
   storeUpdate: (source: string, plugin: string) =>
     ["admin", "store", "update", source, plugin] as const,
+  storeUpdates: () => ["admin", "store", "updates"] as const,
   sim: () => ["sim"] as const,
   simState: (userId = "") => ["sim", "state", userId] as const,
   simCommands: (serverId: string, channelId: string, userId: string) =>
@@ -182,6 +184,29 @@ export function useStoreUpdateReview(
   return useCicordQuery(keys.storeUpdate(source, plugin), (signal) =>
     client.store.updateReview(source, plugin, { signal }),
   );
+}
+
+/**
+ * After a Store write (install, update): the Store, the server's plugins, the runtime
+ * status, the sync history and the audit log change.
+ */
+export function invalidateAfterStoreWrite(
+  cache: ReturnType<typeof useCicord>["cache"],
+  serverKey: string,
+): Promise<unknown> {
+  return Promise.all([
+    cache.invalidate(keys.store()),
+    cache.invalidate(keys.plugins(serverKey)),
+    cache.invalidate(["admin", "status"]),
+    cache.invalidate(["admin", "history"]),
+    cache.invalidate(["admin", "server", serverKey, "audit"]),
+  ]);
+}
+
+/** The review of every available update (`GET /store/updates`). */
+export function useStoreUpdatesReview(): QueryResult<StoreUpdatesReview> {
+  const { client } = useCicord();
+  return useCicordQuery(keys.storeUpdates(), (signal) => client.store.updatesReview({ signal }));
 }
 
 export function useSimState(enabled = true, userId?: string): QueryResult<SimState> {

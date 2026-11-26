@@ -6,6 +6,30 @@ and versions follow [Semantic Versioning](https://semver.org/) (`0.x` while the 
 
 ## [Unreleased]
 
+### Added
+
+- **The Store can update every plugin in one change.** **Update all**, at the top of the Store
+  and Plugins pages when updates are available, opens one review with a section per plugin
+  (each can be left out) and applies the selected updates in one commit or one pull request. Separate update pull requests opened from the same `main` each edited
+  `cicord.lock`, `bot.yaml` and the portal's route types, and conflicted with each other once
+  one was merged. The configuration is now validated once with every update applied, and the
+  route types are regenerated once, so the pull request passes `cicord portal typegen
+  --check`. Every check of a single update still applies to each plugin, and if any of them
+  refuses, nothing is written. The API adds `GET /api/v1/store/updates` (the review of every
+  available update) and `POST /api/v1/store/updates` (up to 64 reviewed updates). Update
+  reviews now include `source` and `plugin`, and update results list `updated`.
+- **`cicord plugin update` takes several plugins, or `--all`.** `cicord plugin update
+  cicord/welcome cicord/polls` updates them in turn in the working tree, and `--all` updates
+  every plugin that has an update. `--to` and `--approve-secret-changes` still apply to one
+  plugin only.
+
+### Fixed
+
+- **`@cicord/client` types match the update review of 0.2.1.** `PermissionDiff` gains
+  `madeOptional` and `intentsMadeOptional`, and `PluginUpdateInstance` gains `grantsKept`. The
+  admin's update review shows the grants kept for an optional feature and no longer says that
+  grants are set to what the new version requests.
+
 ## [0.2.1] - 2026-11-26
 
 ### Fixed

@@ -59,6 +59,8 @@ import type {
   StoreUpdateRequest,
   StoreUpdateResult,
   StoreUpdateReview,
+  StoreUpdatesRequest,
+  StoreUpdatesReview,
   SyncRecord,
   SyncResult,
   PauseResult,
@@ -1083,6 +1085,19 @@ export class CicordClient {
         body: request,
         ...options,
       }),
+    /**
+     * `GET /store/updates` (admin of a server): the review of every available update, all
+     * computed against the active configuration.
+     */
+    updatesReview: (options?: CallOptions): Promise<StoreUpdatesReview> =>
+      this.#api<StoreUpdatesReview>("GET", "/store/updates", options),
+    /**
+     * `POST /store/updates` (admin of every server where these plugins run): updates several
+     * plugins in one write-back (one commit or one pull request), all or none. Each plugin is
+     * checked like a single update; rejects with the same errors.
+     */
+    updateAll: (request: StoreUpdatesRequest, options?: CallOptions): Promise<StoreUpdateResult> =>
+      this.#api<StoreUpdateResult>("POST", "/store/updates", { body: request, ...options }),
   };
 
   readonly registries = {

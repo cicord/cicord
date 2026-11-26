@@ -1469,10 +1469,27 @@ export interface ListDiff {
   removed: string[];
 }
 
+/** A capability (or intent) declared by optional features of the new version. */
+export interface OptionalGrant {
+  name: string;
+  features: string[];
+}
+
 /** What the new version requests compared with the installed one. */
 export interface PermissionDiff {
+  /**
+   * `added`: required by the new version and not by the installed one; `removed`: no longer
+   * declared at all (neither required nor in an optional feature).
+   */
   capabilities: ListDiff;
+  /**
+   * Capabilities the installed version required that the new one declares in optional
+   * features only: instances that grant them keep them.
+   */
+  madeOptional: OptionalGrant[];
   intents: ListDiff;
+  /** The same for intents (requested while their feature is granted). */
+  intentsMadeOptional: OptionalGrant[];
   /** Intents that must be enabled in the Discord developer portal. */
   privilegedIntents: ListDiff;
   /** Hosts the plugin may call. */
@@ -1513,9 +1530,12 @@ export interface PluginUpdateInstance {
   range?: string;
   /** The range the update writes, when the new version is outside `range`. */
   newRange?: string;
-  /** Grants are set to what the new version requests. */
+  /** Capabilities the new version requires that the instance did not grant (added). */
   grantsAdded: string[];
+  /** Grants the new version no longer declares at all (removed). */
   grantsRemoved: string[];
+  /** Grants kept for an optional feature of the new version (not required by it). */
+  grantsKept: OptionalGrant[];
   /** The instance's current config is not valid for the new version's config schema. */
   diagnostics: Diagnostic[];
 }
@@ -1532,6 +1552,13 @@ export interface PluginUpdateFiles {
  * is installed. Computed without evaluating the new version's code.
  */
 export interface StoreUpdateReview {
+  /** The installed plugin (`<source>/<plugin>`). */
+  source: string;
+  plugin: string;
+  /**
+   * Set when the update widens access to a bound plugin credential: send it back as
+   * `confirmSecretChanges` once reviewed.
+   */
   secretReview?: string;
   /** `false` when the installed version is the latest. */
   available: boolean;
@@ -1585,9 +1612,50 @@ export interface UpdatedInstance {
   message?: string;
 }
 
-/** Result of `POST /store/{source}/{plugin}/update`. */
-export interface StoreUpdateResult {
+/** `GET /store/updates` (admin of a server): the review of every available update. */
+export interface StoreUpdatesReview {
+  /** One review per plugin with an update, sorted by `<source>/<plugin>`. */
+  items: StoreUpdateReview[];
+  /** Plugins with an update whose review cannot be computed (an unreadable source…). */
+  unavailable: { source: string; plugin: string; message: string }[];
+}
+
+/** One plugin of `POST /store/updates`: what its review showed. */
+export interface StoreUpdatesItem {
+  source: string;
+  plugin: string;
+  /** `detail.version` of the review (required). */
   version: string;
+  /** `detail.commit` and `detail.integrity` (required for registry plugins). */
+  commit?: string;
+  integrity?: string;
+  /** The review's `secretReview`, when it has one. */
+  confirmSecretChanges?: string;
+  /** Overwrite a locally modified copy of an official plugin. */
+  force?: boolean;
+}
+
+/** `POST /store/updates`: several plugins updated in one change (1 to 64, all or none). */
+export interface StoreUpdatesRequest {
+  updates: StoreUpdatesItem[];
+  /** Required (`true`) when one of them comes from an `unofficial` source. */
+  confirmUnofficial?: boolean;
+  confirmPrivileged?: boolean;
+}
+
+/** A plugin of an update. */
+export interface UpdatedPlugin {
+  source: string;
+  from: string;
+  to: string;
+}
+
+/** Result of `POST /store/{source}/{plugin}/update` and `POST /store/updates`. */
+export interface StoreUpdateResult {
+  /** The installed version (one plugin; `""` for several: see `updated`). */
+  version: string;
+  /** The plugins of the change, by source. */
+  updated: UpdatedPlugin[];
   mode: "commit" | "pullRequest";
   revision?: string;
   pullRequestUrl?: string;

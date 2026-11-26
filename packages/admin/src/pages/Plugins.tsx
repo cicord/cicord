@@ -7,7 +7,7 @@ import { EmptyState, Mono, Page, PageHeader } from "../components/common.tsx";
 import { DataTable, type DataTableColumn, type TableQuery } from "../components/data-table.tsx";
 import { HealthBadge } from "../components/status.tsx";
 import { TrustBadge } from "../components/trust.tsx";
-import { UpdateBadge } from "../components/update.tsx";
+import { UpdateAllButton, UpdateBadge } from "../components/update.tsx";
 import { useTranslation } from "../i18n/index.ts";
 import { useFlash } from "../lib/flash.ts";
 import { useWorkspace } from "../context.tsx";
@@ -123,7 +123,11 @@ export function PluginsPage({ serverKey }: { serverKey: string }) {
 
   return (
     <Page>
-      <PageHeader title={t("plugins.title")} description={t("plugins.description")} />
+      <PageHeader
+        title={t("plugins.title")}
+        description={t("plugins.description")}
+        actions={ws.isAdmin ? <UpdateAllButton serverKey={serverKey} /> : null}
+      />
       {flash ? <UninstallNotice flash={flash} onDismiss={dismissFlash} /> : null}
       <DataTable
         label={t("plugins.table")}

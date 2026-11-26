@@ -233,3 +233,59 @@ describe("plugin updates", () => {
     );
   });
 });
+
+describe("update all", () => {
+  test("one review of every update, applied in one change", async () => {
+    const { user, sent } = setup(`${SERVER}/plugins`);
+    await login(user);
+    await user.click(
+      await screen.findByRole("link", { name: "Update all (2)" }, { timeout: 3000 }),
+    );
+    const main = screen.getByRole("main");
+    expect(await within(main).findByRole("heading", { name: "Update plugins" })).toBeTruthy();
+    const welcome = await within(main).findByRole("checkbox", { name: /Include Welcome/ });
+    const giveaways = within(main).getByRole("checkbox", { name: /Include Giveaways/ });
+    expect((welcome as HTMLInputElement).checked).toBe(true);
+    expect((giveaways as HTMLInputElement).checked).toBe(true);
+    expect(within(main).getByText("2 of 2 selected")).toBeTruthy();
+
+    // Giveaways comes from an unofficial source: its trust is confirmed first.
+    const submit = within(main).getByRole("button", { name: "Update 2 plugins" });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    await user.click(within(main).getByRole("checkbox", { name: /I trust the publishers/ }));
+    // The details of a plugin open on demand.
+    await user.click(within(main).getAllByRole("button", { name: "Show what changes" })[1]!);
+    expect(within(main).getByText("Files of plugins/welcome/")).toBeTruthy();
+
+    await user.click(within(main).getByRole("button", { name: "Update 2 plugins" }));
+    expect(await within(main).findByText("2 plugins updated")).toBeTruthy();
+    expect(within(main).getByText("acme/giveaways")).toBeTruthy();
+    const posts = sent.filter((s) => s.method === "POST" && s.path.startsWith("/api/v1/store/"));
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toMatchObject({
+      path: "/api/v1/store/updates",
+      body: {
+        confirmUnofficial: true,
+        updates: [
+          { source: "acme", plugin: "giveaways" },
+          { source: "cicord", plugin: "welcome", version: "0.1.0" },
+        ],
+      },
+    });
+  });
+
+  test("a plugin left out is not sent", async () => {
+    const { user, sent } = setup(`${SERVER}/store/updates`);
+    await login(user);
+    const main = screen.getByRole("main");
+    await user.click(await within(main).findByRole("checkbox", { name: /Include Giveaways/ }));
+    expect(within(main).getByText("1 of 2 selected")).toBeTruthy();
+    // Only official plugins left: no trust confirmation.
+    expect(within(main).queryByRole("checkbox", { name: /I trust the publishers/ })).toBeNull();
+    await user.click(within(main).getByRole("button", { name: "Update 1 plugin" }));
+    expect(await within(main).findByText("1 plugin updated")).toBeTruthy();
+    const post = sent.find((s) => s.method === "POST" && s.path === "/api/v1/store/updates");
+    expect(post?.body).toMatchObject({ updates: [{ source: "cicord", plugin: "welcome" }] });
+    expect((post!.body as { updates: unknown[] }).updates).toHaveLength(1);
+  });
+});

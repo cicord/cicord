@@ -83,7 +83,9 @@ is also the body of the pull request.
 
 A plugin install, update or uninstall made in the Store changes `cicord.lock` or
 `plugins/<name>/` and `bot.yaml`. Generated files that depend on them are regenerated in the
-same commit or pull request, so the repository's CI passes without a manual fix:
+same commit or pull request, so the repository's CI passes without a manual fix. Updating
+several plugins at once (**Update all**) writes one commit or pull request and regenerates
+them once, with every update applied:
 
 - **The custom portal's route types** (`<portal>/src/cicord-routes.d.ts`, when the portal has
   it): they name every plugin with routes and its version. They are written with the code of

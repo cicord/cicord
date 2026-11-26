@@ -62,7 +62,7 @@ Clients must accept unknown codes.
 | `invalid_token`, `intents` | 422 / 409: [setup wizard](setup/#errors) explanations (`intents` also on Store installs and updates) |
 | `too_large`, `unsupported_media_type` | 413 / 415: [server image uploads](servers/#server-images) |
 | `changed`, `confirmation_required`, `in_use`, `up_to_date`, `modified` | 409: [Store](store/) |
-| `not_installed` | 404: [Store update review](store/#updating-a-plugin) of a plugin that is not installed |
+| `not_installed` | 404: [Store update](store/#updating-a-plugin) of a plugin that is not installed |
 | `analytics_disabled` | 404: [analytics](analytics/#errors) on a runtime without an analytics store |
 | `registry_unavailable` | 502: [Store](store/), a registry could not be fetched |
 
@@ -224,6 +224,7 @@ Roles are per server: see [Roles](authentication/#roles).
 | POST | `/api/v1/store/refresh` | admin | Refetch every registry index. |
 | GET | `/api/v1/store/{source}/{plugin}` | admin | What the latest version requests. |
 | GET, POST | `/api/v1/store/{source}/{plugin}/update` | admin (POST: on every server running it) | [Review, then apply, an update](store/#updating-a-plugin). |
+| GET, POST | `/api/v1/store/updates` | admin (POST: on every server running each plugin) | [Review, then apply, several updates in one change](store/#updating-several-plugins). |
 | POST | `/api/v1/servers/{server}/store/install` | admin | [Install exactly the reviewed version](store/#installing). |
 | POST, DELETE | `/api/v1/registries`, `/api/v1/registries/{name}` | admin of every server | [Add or remove a registry](store/#registries). |
 | PUT, DELETE | `/api/v1/registries/{name}/token` | admin of every server | Set or remove a private registry's token. |

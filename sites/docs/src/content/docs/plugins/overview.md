@@ -104,12 +104,25 @@ plugin runs. Unofficial sources ask again for an explicit confirmation restating
 granted. As for installs, the code updated to is exactly the reviewed code: if the release
 changed in between, the update is refused (`409 changed`) and asks for a new review.
 
+When several plugins have an update, **Update all** at the top of the Store and Plugins pages
+opens one review with a section per plugin (each can be left out), then applies the selected
+updates in one commit or one pull request.
+Separate update pull requests opened from the same `main` each edit `cicord.lock`, `bot.yaml`
+and the portal's route types, so they conflict with each other once one is merged; one change
+avoids that. Each plugin still gets every check of a single update (admin role on every server
+where it runs, unofficial source, credential review, modified copy), and if any of them
+refuses, nothing is written.
+
 ```sh
-cicord plugin update                       # list available updates
-cicord plugin update acme/xp               # update to the latest version, print the capability diff
-cicord plugin update acme/xp --to ^2.0.0   # or to a range (written to every instance)
-cicord plugin update cicord/welcome        # an official plugin
+cicord plugin update                               # list available updates
+cicord plugin update acme/xp                       # update to the latest version, print the capability diff
+cicord plugin update acme/xp --to ^2.0.0           # or to a range (written to every instance)
+cicord plugin update cicord/welcome                # an official plugin
+cicord plugin update cicord/welcome cicord/polls   # several plugins, in turn
+cicord plugin update --all                         # every plugin with an update
 ```
+
+The CLI updates several plugins in turn in your working tree: commit them together.
 
 Copies of official plugins in `plugins/<name>/` update from the binary: a newer Cicord may bundle
 a newer version. A copy you changed is not overwritten unless you force it (admin console

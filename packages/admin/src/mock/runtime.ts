@@ -1616,6 +1616,7 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
             : {}),
           grantsAdded: grants.added,
           grantsRemoved: grants.removed,
+          grantsKept: [],
           diagnostics,
         };
       });
@@ -1633,7 +1634,9 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       },
       diff: {
         capabilities: listDiff(v.capabilities, p.capabilities),
+        madeOptional: [],
         intents: listDiff(v.intents, p.intents),
+        intentsMadeOptional: [],
         privilegedIntents: listDiff(privileged(v.intents), privileged(p.intents)),
         network: listDiff(v.network, p.network),
       },
@@ -1647,9 +1650,15 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
     if (!detail.ok) return detail;
     if (!storeInstalled(source, name).length)
       return fail(404, "not_installed", `${source}/${name} is not installed`);
+    return json(updateReviewBody(source, name));
+  }
+
+  function updateReviewBody(source: string, name: string) {
     const planned = updatePlan(source, name);
     const bundled = source === "cicord";
-    return json({
+    return {
+      source,
+      plugin: name,
       available: !!updateOf(source, name),
       update: updateOf(source, name) ?? null,
       detail: storeDetailBody(source, name),
@@ -1671,11 +1680,18 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
       configValid: planned.instances.every((i) => !i.diagnostics.length),
       missingAdmin: [],
       restricted: [],
-    });
+    };
   }
 
   /** POST /store/{source}/{plugin}/update (https://cicord.dev/docs/reference/http-api/store/). */
   function storeUpdate(viewer: string, source: string, name: string, body: Obj): Response {
+    const problem = updateProblem(source, name, body);
+    if (problem) return problem;
+    return json(applyUpdates(viewer, [{ source, name, force: body["force"] === true }]));
+  }
+
+  /** The checks of one reviewed update (null: it can be applied). */
+  function updateProblem(source: string, name: string, body: Obj): Response | null {
     const detail = storeDetail(source, name);
     if (!detail.ok) return detail;
     if (!storeInstalled(source, name).length)
@@ -1742,42 +1758,109 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         hint: "Fix the configuration of the instances (see the details), then update again.",
         diagnostics,
       });
+    return null;
+  }
+
+  /** Applies reviewed updates in one revision (POST /store/updates, or one plugin). */
+  function applyUpdates(viewer: string, list: { source: string; name: string; force: boolean }[]) {
     const user = userById(viewer)!;
-    const key = `${source}/${name}`;
-    state.versions = {
-      ...state.versions,
-      [key]: {
-        version: p.version,
-        capabilities: p.capabilities,
-        intents: p.intents,
-        network: p.network,
-        ...(found.registry ? { commit: (p as MockRegistry["plugins"][number]).commit } : {}),
-      },
-    };
-    newRevision(`plugin: update ${key} ${v.version} → ${p.version}`, user.displayName);
-    addAudit(`discord:${viewer} (${user.displayName})`, "plugin.update", key, {
-      source,
-      plugin: name,
-      from: v.version,
-      to: p.version,
-      capabilitiesAdded: planned.diff.capabilities.added,
-      capabilitiesRemoved: planned.diff.capabilities.removed,
-      forced: body["force"] === true && !!v.modified,
-      trust: found.registry ? "unofficial" : "official",
-      mode: "commit",
-    });
+    const plans = list.map((u) => ({ ...u, planned: updatePlan(u.source, u.name) }));
+    for (const { source, name, planned } of plans) {
+      const { p, found } = planned;
+      state.versions = {
+        ...state.versions,
+        [`${source}/${name}`]: {
+          version: p.version,
+          capabilities: p.capabilities,
+          intents: p.intents,
+          network: p.network,
+          ...(found.registry ? { commit: (p as MockRegistry["plugins"][number]).commit } : {}),
+        },
+      };
+    }
+    const one = plans.length === 1 ? plans[0]! : null;
+    newRevision(
+      one
+        ? `plugin: update ${one.source}/${one.name} ${one.planned.v.version} → ${one.planned.p.version}`
+        : `plugin: update ${plans.length} plugins`,
+      user.displayName,
+    );
+    const refs = plans.map((u) => `${u.source}/${u.name}`);
+    for (const { source, name, force, planned } of plans) {
+      addAudit(`discord:${viewer} (${user.displayName})`, "plugin.update", `${source}/${name}`, {
+        source,
+        plugin: name,
+        from: planned.v.version,
+        to: planned.p.version,
+        capabilitiesAdded: planned.diff.capabilities.added,
+        capabilitiesRemoved: planned.diff.capabilities.removed,
+        forced: force && !!planned.v.modified,
+        trust: planned.found.registry ? "unofficial" : "official",
+        mode: "commit",
+        ...(plans.length > 1 ? { batch: refs } : {}),
+      });
+    }
     changed();
-    return json({
-      version: p.version,
+    return {
+      version: one ? one.planned.p.version : "",
+      updated: plans.map((u) => ({
+        source: `${u.source}/${u.name}`,
+        from: u.planned.v.version,
+        to: u.planned.p.version,
+      })),
       mode: "commit",
       revision: state.revision.id,
-      instances: planned.instances.map((i) => ({
-        server: i.server,
-        bot: i.bot,
-        instance: i.instance,
-        health: "Healthy",
-      })),
+      instances: plans.flatMap((u) =>
+        u.planned.instances.map((i) => ({
+          server: i.server,
+          bot: i.bot,
+          instance: i.instance,
+          health: "Healthy",
+        })),
+      ),
+    };
+  }
+
+  /** GET /store/updates: the review of every available update. */
+  function storeUpdatesReview(): Response {
+    const items = Object.keys(state.versions ?? {})
+      .toSorted()
+      .flatMap((key) => {
+        const [source, name] = key.split("/") as [string, string];
+        if (!updateOf(source, name) || !storeInstalled(source, name).length) return [];
+        return [updateReviewBody(source, name)];
+      });
+    return json({ items, unavailable: [] });
+  }
+
+  /** POST /store/updates: several reviewed updates in one revision, all or none. */
+  function storeUpdates(viewer: string, body: Obj): Response {
+    const str = (v: Json | undefined) => (typeof v === "string" ? v : "");
+    const updates = (Array.isArray(body["updates"]) ? body["updates"] : []).map((u) => {
+      const o = u && typeof u === "object" && !Array.isArray(u) ? u : {};
+      return {
+        body: o,
+        source: str(o["source"]),
+        name: str(o["plugin"]),
+        force: o["force"] === true,
+      };
     });
+    if (!updates.length) return fail(400, "invalid", "updates is empty");
+    const seen = new Set<string>();
+    for (const u of updates) {
+      const ref = `${u.source}/${u.name}`;
+      if (seen.has(ref)) return fail(400, "invalid", `${ref} is listed twice`);
+      seen.add(ref);
+    }
+    for (const u of updates) {
+      const problem = updateProblem(u.source, u.name, {
+        ...u.body,
+        confirmUnofficial: body["confirmUnofficial"] === true,
+        confirmPrivileged: body["confirmPrivileged"] === true,
+      });
+      if (problem) return problem;
+    }
+    return json(applyUpdates(viewer, updates));
   }
 
   /** A registry whose token is missing cannot be read. */
@@ -2179,6 +2262,10 @@ export function createMockRuntime(options: MockRuntimeOptions = {}) {
         changed();
         return json({ sources: storeSources() });
       }, true);
+    if (path === `${API}/store/updates` && method === "GET")
+      return staff(() => storeUpdatesReview(), true);
+    if (path === `${API}/store/updates` && method === "POST")
+      return staff((v) => storeUpdates(v, body), true);
     const upd = /^\/api\/v1\/store\/([^/]+)\/([^/]+)\/update$/.exec(path);
     if (upd && method === "GET")
       return staff(
