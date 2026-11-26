@@ -249,6 +249,8 @@
             }
           },
           "required": ["allow"],
+          "if": {"properties":{"allow":{"maxItems":0}}},
+          "then": {"required":["configurable"],"properties":{"configurable":{"const":true}}},
           "additionalProperties": false
         },
         "intents": {

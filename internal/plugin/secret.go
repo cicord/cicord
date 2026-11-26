@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/url"
@@ -122,7 +123,9 @@ func redactResponse(r *fetchResult, materials []material, limit int64) error {
 	mask := []byte("[redacted]")
 	for _, s := range materials {
 		encoded, _ := json.Marshal(s.value)
-		for _, v := range []string{s.value, url.QueryEscape(s.value), string(encoded[1 : len(encoded)-1])} {
+		for _, v := range []string{s.value, url.QueryEscape(s.value), url.PathEscape(s.value), string(encoded[1 : len(encoded)-1]),
+			base64.StdEncoding.EncodeToString([]byte(s.value)), base64.RawStdEncoding.EncodeToString([]byte(s.value)),
+			base64.URLEncoding.EncodeToString([]byte(s.value)), base64.RawURLEncoding.EncodeToString([]byte(s.value))} {
 			if v == "" || seen[v] {
 				continue
 			}

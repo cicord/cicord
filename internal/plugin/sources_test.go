@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/cicord/cicord/internal/discord"
 )
 
 func TestSecretFetch(t *testing.T) {
@@ -94,5 +96,26 @@ func TestSecretFetch(t *testing.T) {
 	}
 	if requests != 3 {
 		t.Fatalf("got %d requests", requests)
+	}
+}
+
+func TestFilesVMReadsBinaryChunks(t *testing.T) {
+	source := `import {definePlugin,command} from "@cicord/sdk";
+ export default definePlugin({commands:{inspect:command({description:"read files",async run(ctx,it){
+  const keys=await ctx.files.list("knowledge/**/*.bin"), data=await ctx.files.bytes(keys[0]);
+  const text=await ctx.files.read("knowledge/intro.md");await it.reply([keys.length,data.length,data[32768],data[data.length-1],text].join("/"));
+ }})}});`
+	data := make([]byte, 128<<10)
+	data[32768] = 19
+	data[len(data)-1] = 255
+	h := start(t, source, func(e *Env) {
+		e.Grants = append([]string{"files.read"}, e.Grants...)
+		e.Files = map[string][]byte{"knowledge/intro.md": []byte("welcome"), "knowledge/attachments/data.bin": data}
+	})
+	if err := h.command("inspect", nil, discord.Resolved{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := contentOf(h.responses()[0]); got != "1/131072/19/255/welcome" {
+		t.Fatal(got)
 	}
 }

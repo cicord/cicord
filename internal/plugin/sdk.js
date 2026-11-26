@@ -637,13 +637,17 @@
       list(glob) { return acall("files.list", {glob}); },
       read(path) { return acall("files.read", {path}); },
       async bytes(path) {
-        const encoded = await acall("files.bytes", {path});
+        let page = await acall("files.bytes", {path,offset:0}), pos = 0;
         const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        const out = new Uint8Array(Math.floor(encoded.replace(/=+$/, "").length * 3 / 4));
-        let buffer = 0, bits = 0, pos = 0;
-        for (let n=0; n<encoded.length && encoded[n]!=="="; n++) {
-          buffer = (buffer << 6) | alphabet.indexOf(encoded[n]); bits += 6;
-          if (bits >= 8) {bits -= 8; out[pos++] = buffer >> bits;}
+        const out = new Uint8Array(page.size);
+        while (pos < out.length) {
+          const encoded = page.data;
+          let buffer = 0, bits = 0;
+          for (let n=0; n<encoded.length && encoded[n]!=="="; n++) {
+            buffer = (buffer << 6) | alphabet.indexOf(encoded[n]); bits += 6;
+            if (bits >= 8) {bits -= 8; out[pos++] = buffer >> bits;}
+          }
+          if (pos < out.length) page = await acall("files.bytes",{path,offset:pos});
         }
         return out;
       },

@@ -15,7 +15,10 @@ func opFile(method string) asyncOp {
 		if err := i.require("files.read"); err != nil {
 			return nil, err
 		}
-		a, err := decode[struct{ Path, Glob string }](args)
+		a, err := decode[struct {
+			Path, Glob string
+			Offset     int
+		}](args)
 		if err != nil {
 			return nil, err
 		}
@@ -44,7 +47,11 @@ func opFile(method string) asyncOp {
 				return nil, errors.New("undeclared instance file")
 			}
 			if method == "bytes" {
-				return data, nil
+				if a.Offset < 0 || a.Offset > len(data) {
+					return nil, errors.New("invalid file offset")
+				}
+				const chunk = 32 << 10
+				return map[string]any{"size": len(data), "data": data[a.Offset:min(len(data), a.Offset+chunk)]}, nil
 			}
 			if !utf8.Valid(data) {
 				return nil, errors.New("file is not UTF-8")
