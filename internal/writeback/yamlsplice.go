@@ -296,10 +296,8 @@ func (t text) restIsBlank(off int) bool {
 }
 
 func (t text) replace(start, end int, with string) []byte {
-	out := make([]byte, 0, len(t.src)-(end-start)+len(with))
-	out = append(out, t.src[:start]...)
-	out = append(out, with...)
-	return append(out, t.src[end:]...)
+	// slices.Concat sizes the result once and checks the sum for overflow.
+	return slices.Concat(t.src[:start], []byte(with), t.src[end:])
 }
 
 // scalarSpan locates a one-line scalar.

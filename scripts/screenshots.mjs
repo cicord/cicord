@@ -515,6 +515,16 @@ async function devLogin(cdp, username) {
 /** Options of the demo runtime for the current shot (login "mock"). */
 let mockOptions = null;
 
+/** Characters JSON leaves as is that must not appear raw in a spliced script. */
+const unsafeInScript = new RegExp(`[<>/${String.fromCharCode(0x2028, 0x2029)}]`, "g");
+
+/** A JSON value as a JavaScript literal that is safe to splice into a script. */
+const jsLiteral = (value) =>
+  JSON.stringify(value).replace(
+    unsafeInScript,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+
 /**
  * Applies edit (a function of this script, so its source is ours) to the demo runtime's
  * saved state.
@@ -592,7 +602,7 @@ async function main() {
         throw new Error("src/config.ts no longer calls createMockRuntime({");
       const patched = source.replace(
         anchor,
-        `((o) => createMockRuntime({ ...o, ...${JSON.stringify(mockOptions)} }))({`,
+        `((o) => createMockRuntime({ ...o, ...${jsLiteral(mockOptions)} }))({`,
       );
       await cdp.send("Fetch.fulfillRequest", {
         requestId,
